@@ -1,0 +1,12 @@
+load("//buck2:materialization.bzl", "export_materialization_inputs")
+
+export_materialization_inputs([
+    "main.ts",
+    "types.d.ts",
+    "main.test.jsx",
+    "__snapshots__/main.test.jsx.snap",
+    "vitest.config.ts",
+    "tsconfig.json",
+    "input.json",
+    "value$input.ts",
+])

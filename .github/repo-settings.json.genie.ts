@@ -1,5 +1,5 @@
-import { requiredCIJobs } from '../genie/ci.ts'
 import { prReviewsPullRequestRule } from '../genie/ci-workflow.ts'
+import { requiredCIJobs } from '../genie/ci.ts'
 import {
   githubRuleset,
   type GithubRulesetArgs,
@@ -33,13 +33,26 @@ export default githubRuleset({
     // `pr-reviews-resolved` is the early visible CI signal; this native flag is the
     // live merge-time gate (thread resolution does not retrigger workflows).
     prReviewsPullRequestRule(),
-    // Require CI to pass
+    // PR feedback and merge-group product evidence use the same required contexts.
     {
       type: 'required_status_checks',
       parameters: {
         do_not_enforce_on_create: true, // Allow first push
         strict_required_status_checks_policy: false, // Don't require branch to be up-to-date
         required_status_checks: requiredCIJobs.map((context) => ({ context })),
+      },
+    },
+    // One native queue cohort at a time bounds Namespace heavy-lane concurrency.
+    {
+      type: 'merge_queue',
+      parameters: {
+        merge_method: 'SQUASH',
+        min_entries_to_merge: 1,
+        max_entries_to_merge: 1,
+        min_entries_to_merge_wait_minutes: 0,
+        max_entries_to_build: 1,
+        grouping_strategy: 'ALLGREEN',
+        check_response_timeout_minutes: 180,
       },
     },
     // Prevent force push

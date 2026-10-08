@@ -9,6 +9,10 @@
 # proven here by the script text the boundary emits.
 set -euo pipefail
 
+# Supplied by devenv for both task execution and direct shell-based CI calls.
+# Keep the digest tool independent of the caller's ambient PATH.
+openssl_bin="${JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN:?devenv must provide the OpenSSL binary}"
+
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -16,7 +20,7 @@ trap 'rm -rf "$tmp"' EXIT
 module="$tmp/tool.js"
 printf '%s\n' 'process.stdout.write("candidate-ok\n")' >"$module"
 module_digest="$(sha256sum "$module" | cut -d ' ' -f 1)"
-integrity="sha256-$(openssl dgst -sha256 -binary "$module" | openssl base64 -A)"
+integrity="sha256-$("$openssl_bin" dgst -sha256 -binary "$module" | "$openssl_bin" base64 -A)"
 size="$(stat --format=%s "$module")"
 
 # Stubbed `pkgs`: every referenced package is a sentinel string and

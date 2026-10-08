@@ -33,6 +33,13 @@ support_tool(
     visibility = ["PUBLIC"],
 )
 
+support_tool(
+    name = "tool_action_env",
+    protocol = "gnu/coreutils-env/v9",
+    tool_id = "action-env",
+    visibility = ["PUBLIC"],
+)
+
 # The Node runtime Vitest lanes select when a suite exercises Node built-ins Bun
 # does not implement. Attested like every other executable a contained action
 # launches, so the lane reads the realization's whole closure rather than one file.
@@ -75,6 +82,20 @@ support_tool(
     name = "tool_cargo",
     protocol = "rust-lang/cargo/v1",
     tool_id = "cargo",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_wasm_bindgen",
+    protocol = "rustwasm/wasm-bindgen/v0.2.127",
+    tool_id = "wasm-bindgen",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_wasm_opt",
+    protocol = "webassembly/binaryen/v132",
+    tool_id = "wasm-opt",
     visibility = ["PUBLIC"],
 )
 

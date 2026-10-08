@@ -53,7 +53,7 @@ macOS ARM runner definitively rejects the unprivileged wrapper path through
 unprivileged exact backend to pursue. Until the helper exists, macOS ARM support
 must be documented as degraded.
 
-## VRS Impact
+## Intent Impact
 
 - `requirements.md` treats release-grade exactness as platform/backend-specific.
 - `spec.md` keeps macOS ARM degraded until Endpoint Security or an equivalent

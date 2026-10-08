@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Status: accepted
 
 ## Context
 
@@ -26,3 +26,15 @@ The first real adapter does not need to emit events, spans, metrics, and profile
 - The vertical slice stays representative instead of being distorted around one all-purpose fixture tool.
 - CAS/profile behavior remains testable at the artifact contract boundary.
 - Later adapter additions can broaden ladder coverage without redefining the initial release proof.
+
+## Evidence and Argument
+
+The context and consequences above supply this record's rationale; this shape
+normalization adds no new implementation evidence or historical deliberation.
+
+## Options
+
+| Recorded design state | Disposition |
+| --- | --- |
+| Decision stated above | Accepted in the original record |
+| Prior limitation described in Context | Contrasted by the original rationale; no additional historical option claim |

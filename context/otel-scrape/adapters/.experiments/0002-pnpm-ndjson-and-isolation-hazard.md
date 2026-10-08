@@ -1,13 +1,19 @@
 # Experiment 0002 — pnpm --reporter=ndjson source + isolation hazard
 
-**Hypothesis:** pnpm exposes a declared machine-readable phase source suitable
+## Question
+
+pnpm exposes a declared machine-readable phase source suitable
 for a phase-lane adapter (ADP-R01), without debug-log parsing.
 
-**Method:** pnpm 11.8.0. Probed `--reporter={ndjson,append-only,default,silent}`
+## Method
+
+pnpm 11.8.0. Probed `--reporter={ndjson,append-only,default,silent}`
 and `--json` on a throwaway `is-odd@3.0.1` project with `--ignore-workspace` and
 an out-of-workspace `--store-dir`. Cold install vs warm `--frozen-lockfile`.
 
-**Result:** `--reporter=ndjson` is the only machine-readable install source —
+## Result
+
+`--reporter=ndjson` is the only machine-readable install source —
 bunyan NDJSON on stdout (stderr empty), events keyed by `name`. Clean phase
 lifecycle from `pnpm:stage`:
 
@@ -23,7 +29,9 @@ importing_started +619 → importing_done +664ms`; progress
 Warm `--frozen-lockfile` (up-to-date): ~5 lines, no stage/progress/stats.
 Overhead vs default reporter: within noise (~300ms frozen either way).
 
-**Conclusion:** phase-lane adapter-worthwhile; value confined to `pnpm:install`.
+## Conclusion
+
+phase-lane adapter-worthwhile; value confined to `pnpm:install`.
 The flag is stable; per-event payloads (`@pnpm/core-loggers`) are de-facto
 (DQ-pnpm-1). Confirms-and-refines the parent audit's "no per-diagnostic source"
 — that holds; this is a separate phase lane.
@@ -44,3 +52,8 @@ lockfile churn.
 
 **Rule:** always audit pnpm with `--ignore-workspace` (or fully outside the
 repo) plus an out-of-workspace `--store-dir`. Filed as agent-tooling friction.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

@@ -4,8 +4,8 @@
 # Projection source: rust/buck2-tools/core/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:2d5db5fe5f51aadf67f3c44bd5316ee860386ea4834f6703f472790c5844bac4
-# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/BUCK.genie.ts, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/core/src/**/*.rs, rust/buck2-tools/core/tests/**/*.rs, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Semantic fingerprint: sha256:b85f189d9f772009e801e4855d2b5130dd68fc33240b5c9d5ff1bbd10bbabede
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/BUCK.genie.ts, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/core/src/**/*.rs, rust/buck2-tools/core/tests/**/*.rs, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
@@ -22,6 +22,30 @@ static_source_set(
         "src/lib.rs",
         "tests/fingerprint.rs",
     ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/bin/buck2-fingerprint.rs",
+    src = "src/bin/buck2-fingerprint.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/fingerprint.rs",
+    src = "src/fingerprint.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
     visibility = ["PUBLIC"],
 )
 

@@ -1,14 +1,20 @@
 """Generic TypeScript package-tree assembly from declared Buck artifacts."""
 
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command")
 load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
-
 
 PackageTreeInfo = provider(fields = {
     "read_roots": provider_field(list[Artifact]),
     "tree": Artifact,
 })
 
+GeneratedPackageInfo = provider(fields = {
+    "package_name": str,
+    "package": Artifact,
+    "read_roots": provider_field(list[Artifact]),
+})
 
 def _unique_artifacts(artifacts):
     seen = {}
@@ -19,7 +25,6 @@ def _unique_artifacts(artifacts):
             roots.append(artifact)
     return roots
 
-
 def _require_relative_path(value, field):
     if not value:
         fail("{} must not be empty".format(field))
@@ -28,7 +33,6 @@ def _require_relative_path(value, field):
     for component in value.split("/"):
         if component == "" or component == "." or component == "..":
             fail("{} must be normalized: {}".format(field, value))
-
 
 def _add_mapped_sources(args, flag, sources):
     for destination in sorted(sources.keys()):
@@ -47,7 +51,7 @@ def _package_tree_impl(ctx):
     # Only the declared modules are present: an undeclared one fails closed.
     runtime_tree = ctx.attrs.runtime[DefaultInfo].default_outputs[0]
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         cmd_args(runtime_tree, format = "{}/" + ctx.attrs.runtime_entry),
         "--output",
         out.as_output(),
@@ -75,17 +79,28 @@ def _package_tree_impl(ctx):
         args.add("--workspace-dependency-view", destination, package_tree.tree)
         args.add(cmd_args(hidden = package_tree.read_roots))
         read_roots = _unique_artifacts(read_roots + package_tree.read_roots)
+    for package_name in sorted(ctx.attrs.generated_dependencies.keys()):
+        _require_relative_path(package_name, "generated package name")
+        product = ctx.attrs.generated_dependencies[package_name][GeneratedPackageInfo]
+        if product.package_name != package_name:
+            fail("generated dependency name does not match product: {}".format(package_name))
+        args.add("--workspace-file", "node_modules/" + package_name, product.package)
+        args.add(cmd_args(hidden = product.read_roots))
+        read_roots = _unique_artifacts(read_roots + product.read_roots)
     for link_path in sorted(ctx.attrs.workspace_links.keys()):
         target_path = ctx.attrs.workspace_links[link_path]
         _require_relative_path(link_path, "workspace link")
         _require_relative_path(target_path, "workspace link target")
         args.add("--workspace-link", link_path, target_path)
-    ctx.actions.run(
+    # local-materialization-policy: cheap tree assembly stays on the nonremote
+    # platform; local_only alone would still permit remote-cache downloads.
+    hermetic_action(
+        ctx,
         args,
         category = "package_tree",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = True,
+        cacheable = False,
     )
     providers = [
         # Export every root that links beneath the tree may resolve into.
@@ -101,10 +116,9 @@ def _package_tree_impl(ctx):
         ))
     return providers
 
-
-_package_tree = rule(
+_package_tree = cache_guarded_rule(
     impl = _package_tree_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "node_modules": attrs.option(attrs.source(), default = None),
         "empty_dependencies": attrs.bool(default = False),
         "dependency_view": attrs.option(
@@ -122,6 +136,11 @@ _package_tree = rule(
             value = attrs.dep(providers = [PackageTreeInfo]),
             default = {},
         ),
+        "generated_dependencies": attrs.dict(
+            key = attrs.string(),
+            value = attrs.dep(providers = [GeneratedPackageInfo]),
+            default = {},
+        ),
         "strip_project_references": attrs.bool(default = False),
         "workspace_links": attrs.dict(
             key = attrs.string(),
@@ -134,9 +153,8 @@ _package_tree = rule(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
         )),
-    },
+    }),
 )
-
 
 def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_siblings = {}, workspace_dependency_views = {}, workspace_dist = {}, **kwargs):
     """Assembles one package tree; sibling specs carry files plus node_modules-relative links."""
@@ -166,9 +184,9 @@ def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_si
         workspace_files = workspace_files,
         workspace_dependency_views = workspace_dependency_views,
         workspace_links = workspace_links,
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
-
 
 def package_view(name, dependency_view, files, runtime, runtime_entry, workspace_dependency_views = {}, workspace_dist = {}, **kwargs):
     """Assembles one bounded package view over a normalized dependency view."""
@@ -185,9 +203,9 @@ def package_view(name, dependency_view, files, runtime, runtime_entry, workspace
         workspace_dependency_views = workspace_dependency_views,
         workspace_files = workspace_files,
         workspace_links = {},
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
-
 
 def empty_package_view(name, files, runtime, runtime_entry, **kwargs):
     """Assembles a bounded package view for code with no package dependencies."""
@@ -200,9 +218,9 @@ def empty_package_view(name, files, runtime, runtime_entry, **kwargs):
         workspace_files = {},
         workspace_dependency_views = {},
         workspace_links = {},
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
-
 
 def export_materialization_inputs(inputs):
     """Exports explicit root inputs for package-local rules."""

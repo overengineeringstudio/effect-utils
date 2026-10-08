@@ -1,17 +1,22 @@
 """Package-local JavaScript check, build, and launch rules."""
 
-load("//buck2/dependencies:defs.bzl", "PnpmPlatformGatedPackagesInfo")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
+load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo", "PnpmPlatformGatedPackagesInfo")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
-load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
-load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
+load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
+
 JavaScriptModuleInfo = provider(fields = {
     "module": Artifact,
     "descriptor": Artifact,
     "dependency_closure_identity": str,
 })
 
-
+PackageCommandRuntimeInfo = provider(fields = {
+    "runtime": Artifact,
+    "read_roots": provider_field(list[Artifact]),
+})
 
 PackageCheckInfo = provider(fields = {
     "descriptor": Artifact,
@@ -29,7 +34,6 @@ JavaScriptLaunchInfo = provider(fields = {
     "runtime_kind": str,
 })
 
-
 def _relative(value, field):
     if not value or value.startswith("/") or "\\" in value:
         fail("{} must be a normalized relative path: {}".format(field, value))
@@ -37,19 +41,41 @@ def _relative(value, field):
         if part in ["", ".", ".."]:
             fail("{} must be a normalized relative path: {}".format(field, value))
 
-def _runner(ctx):
-    return cmd_args(
-        ctx.attrs._runner[DefaultInfo].default_outputs[0],
-        format = "{}/package-command-runner.ts",
-    )
+def _package_command_runtime_impl(ctx):
+    view = ctx.attrs.dependency_view
+    vendored_files = ctx.attrs.vendored_files
+    if (view == None and vendored_files == None) or (view != None and vendored_files != None):
+        fail("package_command_runtime requires exactly one declared or vendored dependency closure")
+    runtime = ctx.attrs.files[DefaultInfo].default_outputs[0]
+    read_roots = view[PnpmDeclaredClosureInfo].read_roots if view != None else vendored_files[DefaultInfo].default_outputs
+    return [
+        DefaultInfo(default_output = runtime),
+        PackageCommandRuntimeInfo(runtime = runtime, read_roots = read_roots),
+    ]
 
+package_command_runtime = cache_guarded_rule(
+    impl = _package_command_runtime_impl,
+    attrs = {
+        "files": attrs.dep(providers = [DefaultInfo]),
+        "dependency_view": attrs.option(attrs.dep(providers = [PnpmDeclaredClosureInfo]), default = None),
+        "vendored_files": attrs.option(attrs.dep(providers = [DefaultInfo]), default = None),
+    },
+)
+
+def package_command_runtime_inputs(ctx):
+    """Stages a runner and the read roots of its declared parser closure."""
+    runner = ctx.attrs._runner[PackageCommandRuntimeInfo]
+    return cmd_args(
+        cmd_args(runner.runtime, format = "{}/package-command-runner.ts"),
+        hidden = runner.read_roots,
+    )
 
 def _runner_args(ctx, mode, output = None):
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
     toolchain = ctx.attrs._bun[BunToolchainInfo]
     args = cmd_args([
-        toolchain.executable,
-        _runner(ctx),
+        hermetic_bun_command(ctx, toolchain.executable) if mode != "exec" else toolchain.executable,
+        package_command_runtime_inputs(ctx),
         mode,
         toolchain.executable,
         package_tree.tree,
@@ -72,17 +98,17 @@ def _runner_args(ctx, mode, output = None):
         args.add("--")
     return args
 
-
 def _package_check_impl(ctx):
     _relative(ctx.attrs.entrypoint, "entrypoint")
     verdict = ctx.actions.declare_output("check.ok")
     descriptor = ctx.actions.declare_output("check.json")
     args = _runner_args(ctx, "check", verdict)
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "package_bin_check",
         local_only = True,
-        allow_cache_upload = False,
+        cacheable = False,
     )
     ctx.actions.write_json(descriptor, {
         "schema": "effect-utils/package-check/v1",
@@ -97,10 +123,9 @@ def _package_check_impl(ctx):
         PackageCheckInfo(descriptor = descriptor, verdict = verdict),
     ]
 
-
-package_bin_check = rule(
+package_bin_check = cache_guarded_rule(
     impl = _package_check_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "entrypoint": attrs.string(),
         "args": attrs.list(attrs.string(), default = []),
@@ -111,32 +136,31 @@ package_bin_check = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
             providers = [BuckSupportToolInfo],
         )),
-    },
+    }),
 )
-
 
 def _package_build_impl(ctx):
     _relative(ctx.attrs.entrypoint, "entrypoint")
     output = ctx.actions.declare_output(ctx.attrs.output, dir = True)
     args = _runner_args(ctx, "build-dir", output)
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "package_bin_build",
         local_only = True,
-        allow_cache_upload = False,
+        cacheable = False,
     )
     return [DefaultInfo(default_output = output)]
 
-
-package_bin_build = rule(
+package_bin_build = cache_guarded_rule(
     impl = _package_build_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "entrypoint": attrs.string(),
         "args": attrs.list(attrs.string()),
@@ -148,15 +172,14 @@ package_bin_build = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
             providers = [BuckSupportToolInfo],
         )),
-    },
+    }),
 )
-
 
 def _package_launch_impl(ctx):
     _relative(ctx.attrs.entrypoint, "entrypoint")
@@ -193,8 +216,7 @@ def _package_launch_impl(ctx):
         info,
     ]
 
-
-package_bin = rule(
+package_bin = cache_guarded_rule(
     impl = _package_launch_impl,
     attrs = {
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
@@ -209,7 +231,7 @@ package_bin = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
@@ -218,14 +240,12 @@ package_bin = rule(
     },
 )
 
-
 def _closure_root_name(artifact):
     """Return a configuration-free name for one declared package-tree root."""
     owner = artifact.owner
     if owner == None:
         fail("closure root {} has no owning target".format(artifact))
     return "{}/{}/{}/{}".format(owner.cell, owner.package, owner.name, artifact.short_path)
-
 
 def _package_bundle_impl(ctx):
     _relative(ctx.attrs.entrypoint, "entrypoint")
@@ -241,8 +261,8 @@ def _package_bundle_impl(ctx):
         ctx.attrs.package_tree.label,
     )
     args = cmd_args([
-        toolchain.executable,
-        _runner(ctx),
+        hermetic_bun_command(ctx, toolchain.executable),
+        package_command_runtime_inputs(ctx),
         "bundle",
         toolchain.executable,
         package_tree.tree,
@@ -280,11 +300,11 @@ def _package_bundle_impl(ctx):
             format = _closure_root_name(read_root) + "\t{}",
         ))
     args.add(cmd_args(hidden = package_tree.read_roots))
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "package_bin_artifact",
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [
         DefaultInfo(
@@ -299,10 +319,10 @@ def _package_bundle_impl(ctx):
         ),
     ]
 
-
-_package_bin_artifact = rule(
+_package_bin_artifact = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _package_bundle_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "entrypoint": attrs.string(),
         "output": attrs.string(),
@@ -321,15 +341,14 @@ _package_bin_artifact = rule(
         ),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
         "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:fingerprint_tool",
             providers = [BuckSupportToolInfo],
         )),
-    },
+    }),
 )
-
 
 def package_bin_artifact(
         name,
@@ -339,9 +358,9 @@ def package_bin_artifact(
         name = name,
         default_target_platform = "@rules//buck2/platforms:javascript_portable",
         _platform_gated_packages = _platform_gated_packages,
+        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
         **kwargs
     )
-
 
 def _npm_package_archive_impl(ctx):
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
@@ -368,8 +387,7 @@ def _npm_package_archive_impl(ctx):
     )
     return [DefaultInfo(default_output = output)]
 
-
-_npm_package_archive = rule(
+_npm_package_archive = cache_guarded_rule(
     impl = _npm_package_archive_impl,
     attrs = {
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
@@ -380,7 +398,6 @@ _npm_package_archive = rule(
         "product_tool": attrs.exec_dep(providers = [BuckSupportToolInfo]),
     },
 )
-
 
 def npm_package_archive(name, package_tree, dist, typecheck, output, **kwargs):
     """Archives one typechecked package tree plus its emitted dist as a deterministic npm tgz."""

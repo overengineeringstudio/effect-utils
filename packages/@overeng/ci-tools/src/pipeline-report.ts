@@ -1,12 +1,27 @@
-import { Effect, Schema } from 'effect'
+import { Clock, Duration, Effect, Schedule, Schema } from 'effect'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
-import { pipelineJobIdentityForName, type PipelineJobIdentity } from './pipeline-job-names.ts'
+import {
+  latestJobsWithExecutionAttempt,
+  pipelineDevenvStepName,
+  pipelineExportStepName,
+  pipelineIdentityStepName,
+  pipelineJobIdentityForName,
+  type PipelineJobIdentity,
+} from './pipeline-job-names.ts'
 import { canonicalJobKey } from './pipeline-trace-identity.ts'
+import type { PipelineTimeline } from './pipeline-waterfall.ts'
 import type { WorkflowReportRecord } from './workflow-report.ts'
 
 const NullableString = Schema.Union([Schema.String, Schema.Null])
+const JobStep = Schema.Struct({
+  name: Schema.String,
+  status: Schema.String,
+  conclusion: NullableString,
+  started_at: Schema.optional(NullableString),
+  completed_at: Schema.optional(NullableString),
+})
 const Job = Schema.Struct({
   name: Schema.String,
   run_attempt: Schema.Finite,
@@ -14,10 +29,15 @@ const Job = Schema.Struct({
   conclusion: NullableString,
   started_at: NullableString,
   completed_at: NullableString,
+  steps: Schema.Array(JobStep),
 })
 const JobsPage = Schema.Struct({ total_count: Schema.Finite, jobs: Schema.Array(Job) })
-/** Bound main-history API work even when a PR-only job has no main samples. */
+/** Bound main-history work even when a PR-only job has no main samples. */
 export const maxBaselineRuns = 20
+/** Limit each GitHub API attempt, including an unresponsive response body. */
+export const pipelineRequestTimeoutMs = 20_000
+/** Bound the entire report collection, including retries and baseline pagination. */
+export const pipelineCollectionTimeoutMs = 90_000
 
 const Run = Schema.Struct({
   id: Schema.Finite,
@@ -44,7 +64,11 @@ export type PipelineRow = {
   readonly status: string
   readonly wallTime: string
   readonly delta: string
+  readonly instrumented: boolean
   readonly traceId?: string
+  readonly wallTimeMs?: number
+  readonly deltaMs?: number
+  readonly baselineMs?: number
   readonly traceUrl?: string
 }
 
@@ -52,8 +76,12 @@ export type PipelineRow = {
 export type PipelineReportData = {
   readonly rows: readonly PipelineRow[]
   readonly gantt?: string
+  readonly timeline?: PipelineTimeline
+  readonly waterfall?: { readonly lightUrl: string; readonly darkUrl: string }
   readonly omittedBars: number
   readonly baselineRunIds: readonly number[]
+  readonly skippedBaselineRunIds: readonly number[]
+  readonly baselineIncompleteReason?: string
   readonly baselineCounts: Readonly<Record<string, number>>
   readonly counts: Readonly<Record<string, number>>
 }
@@ -63,19 +91,52 @@ const PipelineRowSchema = Schema.Struct({
   status: Schema.String,
   wallTime: Schema.String,
   delta: Schema.String,
+  instrumented: Schema.Boolean,
   traceId: Schema.optional(Schema.String),
   traceUrl: Schema.optional(Schema.String),
+  wallTimeMs: Schema.optional(Schema.Finite),
+  deltaMs: Schema.optional(Schema.Finite),
+  baselineMs: Schema.optional(Schema.Finite),
 })
 const PipelineReportDataSchema = Schema.Struct({
   rows: Schema.Array(PipelineRowSchema),
   gantt: Schema.optional(Schema.String),
+  waterfall: Schema.optional(Schema.Struct({ lightUrl: Schema.String, darkUrl: Schema.String })),
+  timeline: Schema.optional(
+    Schema.Struct({
+      attempt: Schema.Finite,
+      jobs: Schema.Array(
+        Schema.Struct({
+          name: Schema.String,
+          status: Schema.String,
+          attempt: Schema.Finite,
+          start: Schema.optional(Schema.Finite),
+          end: Schema.optional(Schema.Finite),
+          steps: Schema.Array(
+            Schema.Struct({
+              name: Schema.String,
+              status: Schema.String,
+              start: Schema.Finite,
+              end: Schema.Finite,
+            }),
+          ),
+        }),
+      ),
+    }),
+  ),
   omittedBars: Schema.Finite,
   baselineRunIds: Schema.Array(Schema.Finite),
+  skippedBaselineRunIds: Schema.Array(Schema.Finite),
+  baselineIncompleteReason: Schema.optional(Schema.String),
   baselineCounts: Schema.Record(Schema.String, Schema.Finite),
   counts: Schema.Record(Schema.String, Schema.Finite),
 })
 /** Validates a decoded record's timeline and baseline counts before rendering. */
 export const decodePipelineReportData = Schema.decodeUnknownSync(PipelineReportDataSchema)
+/** Decodes the JSON file handed to the waterfall renderer by the CI attachment step. */
+export const decodePipelineReportDataJson = Schema.decodeUnknownSync(
+  Schema.fromJsonString(PipelineReportDataSchema),
+)
 
 const wallTimeMs = (job: PipelineJob): number | undefined => {
   if (job.conclusion === 'skipped' || job.status !== 'completed') return undefined
@@ -157,16 +218,19 @@ export const buildPipelineReport = (opts: {
   readonly repository: string
   readonly runId: number
   readonly attempt: number
+  /** The run's `filter=all` jobs; carried-over rerun jobs keep their execution attempt. */
   readonly jobs: readonly PipelineJob[]
   readonly baselines: readonly { readonly id: number; readonly jobs: readonly PipelineJob[] }[]
+  readonly skippedBaselineRunIds?: readonly number[]
+  readonly baselineIncompleteReason?: string
   readonly generatedAtUtc: string
   readonly grafanaBaseUrl: string
   readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
+  /** Job identities of the workflow that produced `jobs`; defaults to this commit's workflow. */
+  readonly jobIdentityForName?: (name: string) => PipelineJobIdentity | undefined
 }): WorkflowReportRecord => {
-  const current = opts.jobs.filter(
-    (job) => job.run_attempt === opts.attempt && isBuildJob(job.name),
-  )
-  const runIdentity = `ci/github/${encodeURIComponent(opts.repository)}/${opts.runId}/${opts.attempt}`
+  const jobIdentityForName = opts.jobIdentityForName ?? pipelineJobIdentityForName
+  const current = latestJobsWithExecutionAttempt(opts.jobs).filter((job) => isBuildJob(job.name))
   const duplicateNames = new Set<string>()
   const countsByName: Record<string, number> = {}
   for (const job of current) countsByName[job.name] = (countsByName[job.name] ?? 0) + 1
@@ -177,7 +241,7 @@ export const buildPipelineReport = (opts: {
     const durations = new Map<string, number>()
     const duplicates = new Set<string>()
     for (const candidate of baseline.jobs) {
-      const identity = pipelineJobIdentityForName(candidate.name)
+      const identity = jobIdentityForName(candidate.name)
       const duration = wallTimeMs(candidate)
       if (identity === undefined || candidate.conclusion !== 'success' || duration === undefined)
         continue
@@ -192,10 +256,10 @@ export const buildPipelineReport = (opts: {
   const baselineRunIds = opts.baselines.map((baseline) => baseline.id)
   const counts: Record<string, number> = {}
   let omittedBars = 0
-  const bars: string[] = []
+  const bars: { start: number; text: string }[] = []
   const rows = current.map((job, index): PipelineRow => {
     const identity =
-      duplicateNames.has(job.name) === true ? undefined : pipelineJobIdentityForName(job.name)
+      duplicateNames.has(job.name) === true ? undefined : jobIdentityForName(job.name)
     const key = identity === undefined ? job.name : canonicalKey(identity)
     const status = jobStatus(job)
     counts[status] = (counts[status] ?? 0) + 1
@@ -231,14 +295,40 @@ export const buildPipelineReport = (opts: {
       end >= start
     ) {
       const label = mermaidLabel(`${key} (${status})`)
-      bars.push(
-        `${label} :${status === 'unfinished' ? 'active, ' : ''}job${index}, ${new Date(start).toISOString()}, ${new Date(end).toISOString()}`,
-      )
+      const tag =
+        status === 'failure'
+          ? 'crit, '
+          : status === 'cancelled'
+            ? 'done, '
+            : status === 'unfinished'
+              ? 'active, '
+              : ''
+      const utcStart = `${new Date(start).toISOString().slice(0, 19).replace('T', ' ')}+0000`
+      const duration = Math.max(1, Math.ceil((end - start) / 1000))
+      bars.push({ start, text: `${label} :${tag}job${index}, ${utcStart}, ${duration}s` })
     } else omittedBars++
+    // The adapter returns before emitting a root without identity or devenv, even
+    // when its always() export step itself reports success.
+    const instrumented = [
+      pipelineIdentityStepName,
+      pipelineDevenvStepName,
+      pipelineExportStepName,
+    ].every((name) =>
+      job.steps.some(
+        (step) =>
+          step.name === name && step.status === 'completed' && step.conclusion === 'success',
+      ),
+    )
     const traceId =
-      identity === undefined || start === undefined
+      identity === undefined ||
+      start === undefined ||
+      status === 'unfinished' ||
+      instrumented === false
         ? undefined
-        : opts.traceIdForJob(runIdentity, identity)
+        : opts.traceIdForJob(
+            `ci/github/${encodeURIComponent(opts.repository)}/${opts.runId}/${job.executionAttempt}`,
+            identity,
+          )
     const traceUrl =
       traceId === undefined || job.started_at === null
         ? undefined
@@ -253,7 +343,11 @@ export const buildPipelineReport = (opts: {
       status,
       wallTime: wallMs === undefined ? 'unavailable' : seconds(wallMs),
       delta,
+      instrumented,
       ...(traceId === undefined ? {} : { traceId }),
+      ...(wallMs === undefined ? {} : { wallTimeMs: wallMs }),
+      ...(p50 === undefined ? {} : { baselineMs: p50 }),
+      ...(wallMs === undefined || p50 === undefined ? {} : { deltaMs: wallMs - p50 }),
       ...(traceUrl === undefined ? {} : { traceUrl }),
     }
   })
@@ -266,16 +360,65 @@ export const buildPipelineReport = (opts: {
       ? undefined
       : [
           'gantt',
-          `    title Pipeline jobs (from ${new Date(earliest).toISOString()})`,
-          '    dateFormat YYYY-MM-DDTHH:mm:ss.SSSZ',
+          `    title Pipeline jobs (start ${new Date(earliest).toISOString().slice(0, 19).replace('T', ' ')} UTC; axis in local time)`,
+          '    dateFormat YYYY-MM-DD HH:mm:ssZZ',
           '    axisFormat %H:%M',
+          '    todayMarker off',
           '    section Jobs',
-          ...bars.map((bar) => `    ${bar}`),
+          ...bars.toSorted((a, b) => a.start - b.start).map((bar) => `    ${bar.text}`),
         ].join('\n')
   const data: PipelineReportData = {
     rows,
+    timeline: {
+      attempt: opts.attempt,
+      jobs: current.map((job, index) => {
+        const start =
+          job.started_at === null || job.conclusion === 'skipped' ? NaN : Date.parse(job.started_at)
+        const end = Date.parse(job.completed_at ?? opts.generatedAtUtc)
+        const timed = Number.isFinite(start) && Number.isFinite(end) && end >= start
+        return {
+          name: rows[index]!.job,
+          status: jobStatus(job),
+          attempt: job.executionAttempt,
+          start: timed === true ? start : undefined,
+          end: timed === true ? end : undefined,
+          steps:
+            timed === true
+              ? job.steps.flatMap((step) => {
+                  if (step.conclusion === 'skipped' || step.started_at == null) return []
+                  const stepStart = Math.max(start, Date.parse(step.started_at))
+                  const stepEnd = Math.min(
+                    end,
+                    Date.parse(
+                      step.completed_at ?? (step.status === 'completed' ? '' : opts.generatedAtUtc),
+                    ),
+                  )
+                  return Number.isFinite(stepStart) === true &&
+                    Number.isFinite(stepEnd) === true &&
+                    stepEnd >= stepStart
+                    ? [
+                        {
+                          name: step.name,
+                          status:
+                            step.status === 'completed'
+                              ? (step.conclusion ?? 'unfinished')
+                              : 'unfinished',
+                          start: stepStart,
+                          end: stepEnd,
+                        },
+                      ]
+                    : []
+                })
+              : [],
+        }
+      }),
+    },
     ...(gantt === undefined ? {} : { gantt }),
     omittedBars,
+    skippedBaselineRunIds: opts.skippedBaselineRunIds ?? [],
+    ...(opts.baselineIncompleteReason === undefined
+      ? {}
+      : { baselineIncompleteReason: opts.baselineIncompleteReason }),
     baselineRunIds,
     baselineCounts,
     counts,
@@ -300,7 +443,35 @@ class PipelineReportGitHubApiError extends Schema.TaggedError<PipelineReportGitH
   message: Schema.String,
   path: Schema.String,
   status: Schema.Finite,
+  retryAfterMs: Schema.optional(Schema.Finite),
 }) {}
+
+class PipelineReportDeadlineExceeded extends Schema.TaggedError<PipelineReportDeadlineExceeded>(
+  '@overeng/ci-tools/pipeline-report/DeadlineExceeded',
+)('PipelineReportDeadlineExceeded', { message: Schema.String }) {}
+
+const retryAfterMs = (header: string | undefined): number | undefined => {
+  if (header === undefined) return undefined
+  const secondsValue = Number(header)
+  const delay =
+    Number.isFinite(secondsValue) === true ? secondsValue * 1000 : Date.parse(header) - Date.now()
+  return Number.isFinite(delay) === true ? Math.max(0, delay) : undefined
+}
+
+const githubRetrySchedule = Schedule.exponential('1 second').pipe(
+  Schedule.modifyDelay(({ duration, input }) =>
+    Effect.succeed(
+      Math.min(
+        5_000,
+        Math.max(
+          Duration.toMillis(duration),
+          input instanceof PipelineReportGitHubApiError ? (input.retryAfterMs ?? 0) : 0,
+        ),
+      ),
+    ),
+  ),
+  Schedule.upTo({ times: 3 }),
+)
 
 const githubJson = Effect.fn('ci-tools.pipeline-report.github-json')(function* <
   T extends Schema.Schema<unknown>,
@@ -318,12 +489,16 @@ const githubJson = Effect.fn('ci-tools.pipeline-report.github-json')(function* <
       HttpClientRequest.setHeader('X-GitHub-Api-Version', '2022-11-28'),
     ),
   )
-  if (response.status < 200 || response.status >= 300)
+  if (response.status < 200 || response.status >= 300) {
+    const retryAfter =
+      response.status === 429 ? retryAfterMs(response.headers['retry-after']) : undefined
     return yield* new PipelineReportGitHubApiError({
       message: `GitHub API ${opts.path}: HTTP ${response.status}`,
       path: opts.path,
       status: response.status,
+      ...(retryAfter === undefined ? {} : { retryAfterMs: retryAfter }),
     })
+  }
   return yield* Schema.decodeEffect(opts.schema)(yield* response.json)
 })
 
@@ -339,22 +514,40 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     readonly generatedAtUtc: string
     readonly traceIdForJob: (runId: string, identity: PipelineJobIdentity) => string | undefined
     readonly apiBaseUrl?: string
+    readonly requestTimeoutMs?: number
+    readonly collectionTimeoutMs?: number
   }) {
     const apiBaseUrl = (opts.apiBaseUrl ?? 'https://api.github.com').replace(/\/+$/u, '')
     const repoPath = opts.repository.split('/').map(encodeURIComponent).join('/')
+    const deadline =
+      (yield* Clock.currentTimeMillis) + (opts.collectionTimeoutMs ?? pipelineCollectionTimeoutMs)
     const get = <T extends Schema.Schema<unknown>>({
       path,
       schema,
     }: {
       readonly path: string
       readonly schema: T
-    }) => githubJson({ path, schema, token: opts.token, apiBaseUrl })
-    const workflowId =
-      opts.workflowId ??
-      (yield* get({
-        path: `/repos/${repoPath}/actions/runs/${opts.runId}`,
-        schema: WorkflowIdentity,
-      })).workflow_id
+    }) =>
+      Effect.gen(function* () {
+        const remaining = deadline - (yield* Clock.currentTimeMillis)
+        if (remaining <= 0)
+          return yield* new PipelineReportDeadlineExceeded({
+            message: 'Pipeline report collection deadline exceeded',
+          })
+        return yield* githubJson({ path, schema, token: opts.token, apiBaseUrl }).pipe(
+          Effect.timeout(Duration.millis(opts.requestTimeoutMs ?? pipelineRequestTimeoutMs)),
+          Effect.retry({
+            schedule: githubRetrySchedule,
+            while: (error) =>
+              error instanceof PipelineReportGitHubApiError
+                ? (error.status === 429 || error.status >= 500) &&
+                  (error.retryAfterMs ?? 0) <= 5_000
+                : error._tag === 'TimeoutError' ||
+                  (error._tag === 'HttpClientError' && error.reason._tag === 'TransportError'),
+          }),
+          Effect.timeout(Duration.millis(remaining)),
+        )
+      })
     const jobs: PipelineJob[] = []
     for (let page = 1; ; page++) {
       const payload = yield* get({
@@ -366,7 +559,7 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     }
     const wantedKeys = new Set(
       jobs
-        .filter((job) => job.run_attempt === opts.attempt && isBuildJob(job.name))
+        .filter((job) => isBuildJob(job.name))
         .flatMap((job) => {
           const identity = pipelineJobIdentityForName(job.name)
           return identity === undefined ? [] : [canonicalJobKey(identity).toString('hex')]
@@ -374,12 +567,38 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
     )
     const counts: Record<string, number> = {}
     const baselines: { id: number; jobs: PipelineJob[] }[] = []
+    const skippedBaselineRunIds: number[] = []
+    const workflowId =
+      opts.workflowId ??
+      (yield* get({
+        path: `/repos/${repoPath}/actions/runs/${opts.runId}`,
+        schema: WorkflowIdentity,
+      }).pipe(Effect.orElseSucceed(() => undefined)))?.workflow_id
+    if (workflowId === undefined)
+      return buildPipelineReport({
+        ...opts,
+        jobs,
+        baselines,
+        baselineIncompleteReason:
+          (yield* Clock.currentTimeMillis) >= deadline
+            ? 'collection deadline exceeded'
+            : 'workflow metadata unavailable',
+      })
+    let baselineIncompleteReason: string | undefined
+    let inspectedBaselines = 0
     let examined = 0
     for (let page = 1; ; page++) {
       const payload = yield* get({
         path: `/repos/${repoPath}/actions/runs?branch=main&event=push&status=completed&per_page=100&page=${page}`,
         schema: RunsPage,
-      })
+      }).pipe(Effect.orElseSucceed(() => undefined))
+      if (payload === undefined) {
+        baselineIncompleteReason =
+          (yield* Clock.currentTimeMillis) >= deadline
+            ? 'collection deadline exceeded'
+            : 'main run listing unavailable'
+        break
+      }
       const candidates = payload.workflow_runs.filter(
         (run) =>
           run.workflow_id === workflowId &&
@@ -390,18 +609,30 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
       )
       for (const run of candidates) {
         if (
-          baselines.length === maxBaselineRuns ||
+          inspectedBaselines === maxBaselineRuns ||
           [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7) === true
         )
           break
-        const candidateJobs: PipelineJob[] = []
-        for (let jobsPage = 1; ; jobsPage++) {
-          const response = yield* get({
-            path: `/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${jobsPage}`,
-            schema: JobsPage,
-          })
-          candidateJobs.push(...response.jobs.filter((job) => job.run_attempt === run.run_attempt))
-          if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
+        inspectedBaselines++
+        const candidateJobs = yield* Effect.gen(function* () {
+          const result: PipelineJob[] = []
+          for (let jobsPage = 1; ; jobsPage++) {
+            const response = yield* get({
+              path: `/repos/${repoPath}/actions/runs/${run.id}/jobs?filter=latest&per_page=100&page=${jobsPage}`,
+              schema: JobsPage,
+            })
+            result.push(...response.jobs)
+            if (jobsPage * 100 >= response.total_count || response.jobs.length === 0) break
+          }
+          return result
+        }).pipe(Effect.orElseSucceed(() => undefined))
+        if (candidateJobs === undefined) {
+          skippedBaselineRunIds.push(run.id)
+          if ((yield* Clock.currentTimeMillis) >= deadline) {
+            baselineIncompleteReason = 'collection deadline exceeded'
+            break
+          }
+          continue
         }
         baselines.push({ id: run.id, jobs: candidateJobs })
         const candidateDurations = new Map<string, number>()
@@ -425,15 +656,22 @@ export const collectPipelineReport = Effect.fn('ci-tools.pipeline-report.collect
           counts[key] = (counts[key] ?? 0) + 1
         }
       }
+      if (baselineIncompleteReason !== undefined) break
       examined += payload.workflow_runs.length
       if (
-        baselines.length === maxBaselineRuns ||
+        inspectedBaselines === maxBaselineRuns ||
         [...wantedKeys].every((key) => (counts[key] ?? 0) >= 7) === true ||
         examined >= payload.total_count ||
         payload.workflow_runs.length === 0
       )
         break
     }
-    return buildPipelineReport({ ...opts, jobs, baselines })
+    return buildPipelineReport({
+      ...opts,
+      jobs,
+      baselines,
+      skippedBaselineRunIds,
+      ...(baselineIncompleteReason === undefined ? {} : { baselineIncompleteReason }),
+    })
   },
 )

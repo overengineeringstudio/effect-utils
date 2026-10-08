@@ -6,7 +6,7 @@ rec {
   # can import Nix helpers (for example lib.mkCliPackages) with a stable API.
   # This keeps the build logic reusable without requiring devenv in the parent.
   #
-  # Prepared pnpm trees are content-addressed against the effect-utils build
+  # Buck product wrappers and capabilities share the effect-utils package
   # graph, so downstream repos should make their root nixpkgs follow
   # `effect-utils/nixpkgs` instead of overriding the input the other way around.
   # Flake nixConfig is independently honored by Nix on every runner. Never
@@ -49,23 +49,8 @@ rec {
         pkgs = import nixpkgs { inherit system; };
         weaverPackages =
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
-        rootPath = self.outPath;
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
-        mkPnpmCliSupport = import ./nix/workspace-tools/lib/mk-pnpm-cli-support.nix { inherit pkgs; };
-        cliPackageRegistry = import ./nix/cli-packages.nix { inherit pkgs; };
         pnpm = import ./nix/pnpm.nix { inherit pkgs; };
-        mkPnpmCli = import ./nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
-        megarepoSourceDepsSupport = mkPnpmCli {
-          name = "megarepo-source-deps-support";
-          entry = "packages/@overeng/megarepo/bin/mr.ts";
-          binaryName = "mr";
-          packageDir = "packages/@overeng/megarepo";
-          workspaceRoot = self;
-          depsBuilds = cliPackageRegistry."megarepo-source-deps-support".depsBuilds;
-          generateCompletions = false;
-          smokeTestArgs = [ "--version" ];
-          inherit gitRev commitTs dirty;
-        };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
         providerCliPackages = {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
@@ -172,6 +157,10 @@ rec {
           buck2-events = buck2-stage0-tools.events;
           buck2-product = buck2-stage0-tools.product;
           buck2-fingerprint = buck2-stage0-tools.fingerprint;
+          # The native env binary must start before any interpreter; a shell
+          # wrapper could read ambient BASH_ENV before clearing the environment.
+          # Use explicit multicall dispatch; capability paths are canonicalized.
+          buck2-action-env = pkgs.coreutils;
           buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
             exec ${pkgs.coreutils}/bin/readlink "$@"
           '';
@@ -189,6 +178,11 @@ rec {
           buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
           buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
           buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
+          buck2-rust-wasm-compiler = buck2-rust-toolchain-capability.packages.rust-wasm-compiler;
+          buck2-rust-wasm-rustdoc = buck2-rust-toolchain-capability.packages.rust-wasm-rustdoc;
+          buck2-rust-wasm-linker = buck2-rust-toolchain-capability.packages.rust-wasm-linker;
+          buck2-wasm-bindgen = buck2-rust-toolchain-capability.packages.wasm-bindgen;
+          buck2-wasm-opt = buck2-rust-toolchain-capability.packages.wasm-opt;
           effect-tsgo = tsgo.packages.${system}.effect-tsgo;
           cargo = pkgs.writeShellScriptBin "cargo" ''
             exec ${pkgs.cargo}/bin/cargo "$@"
@@ -206,12 +200,12 @@ rec {
           semconv-model = semconv-model-capability;
         };
         buck2Rules = import ./nix/buck2-rules {
-          inherit pkgs buck2;
-          src = rootPath;
+          inherit pkgs buck2 pnpmArchives;
+          src = ./.;
         };
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;
-          src = rootPath;
+          src = ./.;
         };
         # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products {
@@ -234,7 +228,7 @@ rec {
           EOF
           chmod +x "$out/bin/semconv-model"
         '';
-        buck2ProductCandidates = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
+        cliPackages = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
           inherit
             pkgs
             gitRev
@@ -244,13 +238,6 @@ rec {
           products = trackedBuck2Products.products;
           nativeProducts = nativeProductPackages;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
-        };
-        cliPackages = buck2ProductCandidates // {
-          genie = buck2ProductCandidates.genie.overrideAttrs (old: {
-            passthru = (old.passthru or { }) // {
-              inherit (mkPnpmCliSupport) alignAggregateManifestSpecifiersScript;
-            };
-          });
         };
 
       in
@@ -268,9 +255,14 @@ rec {
             buck2-pnpm-archives = pnpmArchives;
             cli-build-stamp = cliBuildStamp.package;
             otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
-            "megarepo-source-deps-support" = megarepoSourceDepsSupport;
-            "megarepo-source-product-pnpm-deps" =
-              megarepoSourceDepsSupport.passthru.depsBuildsByInstallRoot.root;
+            # Both the rasterizer and fonts follow this repository's locked nixpkgs.
+            # Ignore runner fonts so identical SVGs have a deterministic font closure.
+            pipeline-waterfall-rasterizer = pkgs.writeShellScriptBin "pipeline-waterfall-rasterizer" ''
+              exec ${pkgs.resvg}/bin/resvg \
+                --skip-system-fonts \
+                --use-fonts-dir ${pkgs.dejavu_fonts}/share/fonts/truetype \
+                "$@"
+            '';
             buck-products-from-source = pkgs.linkFarm "effect-utils-buck-products-from-source" (
               pkgs.lib.mapAttrsToList (name: path: {
                 name = pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name;
@@ -375,6 +367,20 @@ rec {
 
       # Build a materialized standalone Buck root for a consumer checkout.
       lib.mkConsumerBuckRoot = args: import ./nix/buck2-products/consumer-root.nix args;
+      # Consumers extend the same capability projection with named, immutable
+      # Nix inputs; producer tool declarations remain owned by buck2-member.json.
+      lib.mkBuck2Capabilities =
+        {
+          pkgs,
+          extraCapabilities ? { },
+        }:
+        let
+          base = self.packages.${pkgs.stdenv.hostPlatform.system}.buck2-capabilities;
+        in
+        import ./nix/buck2-capabilities.nix {
+          inherit pkgs extraCapabilities;
+          inherit (base.passthru) capabilityPackages src;
+        };
 
       # Stage private package products (decision 0037) for pnpm and Buck consumers
       # from the producer manifest's substituted store paths.

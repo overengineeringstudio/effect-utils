@@ -1,0 +1,117 @@
+diff --git a/buck2/dependencies/defs.bzl b/buck2/dependencies/defs.bzl
+index ad139c90d..f2882c1f9 100644
+--- a/buck2/dependencies/defs.bzl
++++ b/buck2/dependencies/defs.bzl
+@@ -49,6 +49,9 @@ maps have exactly the keys ``linux_x86_64``, ``linux_aarch64``, and
+ load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
+ 
+ PnpmPackageInfo = provider(fields = {
++    "archive": Artifact,
++    "patches": provider_field(list[Artifact]),
++    "strip_prefix": str,
+     "bins": provider_field(dict[str, str]),
+     "package_name": str,
+     "tree": Artifact,
+@@ -317,7 +320,14 @@ def _extract_impl(ctx):
+         _require_portable_path(entrypoint, "package bin entrypoint")
+     return [
+         DefaultInfo(default_output = out),
+-        PnpmPackageInfo(bins = ctx.attrs.bins, package_name = ctx.attrs.package_name, tree = out),
++        PnpmPackageInfo(
++            archive = ctx.attrs.archive,
++            bins = ctx.attrs.bins,
++            package_name = ctx.attrs.package_name,
++            patches = ctx.attrs.patches,
++            strip_prefix = strip_prefix,
++            tree = out,
++        ),
+     ]
+ 
+ 
+@@ -500,6 +510,7 @@ def _store_entry_impl(ctx):
+         ]
+ 
+     out = ctx.actions.declare_output("entry", dir = True)
++    fused = read_config("pnpm", "fuse_extract_entry", "false") == "true" and override == ""
+     args = cmd_args([
+         ctx.attrs._bun[BunToolchainInfo].executable,
+         ctx.attrs.runtime,
+@@ -517,7 +528,11 @@ def _store_entry_impl(ctx):
+     # is content-addressed and immutable, and it appears in the command line, so
+     # the action key still distinguishes overridden from archive-backed bytes.
+     if override == "":
+-        args.add("--package-tree", package.tree)
++        if fused:
++            extracted = ctx.actions.declare_output("package", dir = True)
++            args.add("--package-tree", extracted.as_output())
++        else:
++            args.add("--package-tree", package.tree)
+     else:
+         args.add("--package-override", override)
+     bins = {}
+@@ -546,11 +561,34 @@ def _store_entry_impl(ctx):
+             artifact if entry_path == "" else cmd_args(artifact, format = "{}/" + entry_path),
+             entrypoint,
+         )
++    if fused:
++        extract_args = cmd_args([
++            ctx.attrs._archive_tool[RunInfo],
++            "extract-npm",
++            "--archive",
++            package.archive,
++            "--out",
++            extracted.as_output(),
++            "--strip-prefix",
++            package.strip_prefix,
++        ])
++        for patch in package.patches:
++            extract_args.add("--patch", patch)
++        args = cmd_args([
++            ctx.attrs._bun[BunToolchainInfo].executable,
++            ctx.attrs._fused_runner,
++            "--extract",
++            extract_args,
++            "--assemble",
++            args,
++        ])
+     ctx.actions.run(
+         args,
+-        category = "pnpm_store_entry",
++        category = "pnpm_extract_entry" if fused else "pnpm_store_entry",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        # Both sources and destinations of the assembly hardlinks now belong
++        # to this action, so extraction need not inherit local-only assembly.
++        local_only = not fused,
+         allow_cache_upload = True,
+     )
+     return [
+@@ -586,6 +624,13 @@ _store_entry = rule(
+             default = "//buck2/toolchains:bun",
+             providers = [BunToolchainInfo],
+         )),
++        "_archive_tool": attrs.default_only(attrs.exec_dep(
++            default = "//buck2/toolchains:archive_tool",
++            providers = [RunInfo],
++        )),
++        "_fused_runner": attrs.default_only(attrs.source(
++            default = "//buck2/dependencies:fused-extract-entry.ts",
++        )),
+     },
+ )
+ 
+diff --git a/buck2/dependencies/fused-extract-entry.ts b/buck2/dependencies/fused-extract-entry.ts
+new file mode 100644
+--- /dev/null
++++ b/buck2/dependencies/fused-extract-entry.ts
+@@ -0,0 +1,10 @@
++// Disposable prototype: does removing one extract/entry scheduling boundary help cold //:quick?
++const args = process.argv.slice(2)
++const boundary = args.indexOf('--assemble')
++if (args[0] !== '--extract' || boundary < 2)
++  throw new Error('expected --extract COMMAND --assemble COMMAND')
++for (const command of [args.slice(1, boundary), args.slice(boundary + 1)]) {
++  const child = Bun.spawn(command, { stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' })
++  const status = await child.exited
++  if (status !== 0) process.exit(status)
++}

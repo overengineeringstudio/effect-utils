@@ -22,7 +22,6 @@ def admitted_rust_target_triple(os, architecture, abi, runtime_contract):
         fail("platform fields do not identify an admitted native Rust pair")
     return triple
 
-
 # A portable product is a real target platform, not metadata: the graph under a
 # product is CONFIGURED for it, which is what makes the dependency store select
 # the platform-invariant package set instead of the host's.
@@ -87,8 +86,6 @@ portable_product_platform = rule(
     },
 )
 
-
-
 def _product_platform_impl(ctx):
     expected_triple = admitted_rust_target_triple(
         ctx.attrs.os,
@@ -136,6 +133,26 @@ def root_remote_cache_enabled():
 def root_allow_cache_uploads():
     return read_root_config("buck2", "allow_cache_uploads", "true") == "true"
 
+def cache_guarded_rule(impl, attrs, cache_eligible = None, **kwargs):
+    """Owns shared-cache admission at rule definition, never at a call site."""
+    rule_attrs = dict(attrs)
+    rule_attrs["_cache_admission_constraint"] = _cache_admission_label_attr()
+
+    def guarded_impl(ctx):
+        # Buck resolves both the built-in compatibility list and this label to
+        # canonical cell identities. Aliases and relative spellings cannot
+        # evade this comparison. Check before registering any actions.
+        constraint = str(ctx.attrs._cache_admission_constraint.raw_target())
+        if constraint in ctx.attrs.exec_compatible_with:
+            if cache_eligible == None or not cache_eligible(ctx):
+                fail("this rule is not eligible for the cache-admitted execution platform")
+        return impl(ctx)
+
+    return rule(impl = guarded_impl, attrs = rule_attrs, **kwargs)
+
+def _cache_admission_label_attr():
+    return attrs.default_only(attrs.label(default = "@rules//buck2/platforms:cache_hermetic"))
+
 def _native_execution_platform_impl(ctx):
     constraints = {}
     for dep in ctx.attrs.constraint_values:
@@ -148,8 +165,8 @@ def _native_execution_platform_impl(ctx):
         executor_config = CommandExecutorConfig(
             local_enabled = True,
             remote_enabled = False,
-            remote_cache_enabled = root_remote_cache_enabled(),
-            allow_cache_uploads = root_allow_cache_uploads(),
+            remote_cache_enabled = ctx.attrs.cache_hermetic and root_remote_cache_enabled(),
+            allow_cache_uploads = ctx.attrs.cache_hermetic and root_allow_cache_uploads(),
             use_windows_path_separators = False,
         ),
     )
@@ -158,7 +175,7 @@ def _native_execution_platform_impl(ctx):
         platform,
         PlatformInfo(label = str(ctx.label.raw_target()), configuration = configuration),
         ExecutionPlatformRegistrationInfo(
-            platforms = [platform],
+            platforms = [platform] + ([ctx.attrs.hermetic_platform[ExecutionPlatformInfo]] if ctx.attrs.hermetic_platform != None else []),
             exec_marker_constraint = get_exec_platform_marker(),
         ),
     ]
@@ -167,6 +184,8 @@ native_execution_platform = rule(
     impl = _native_execution_platform_impl,
     attrs = {
         "constraint_values": attrs.list(attrs.dep(providers = [ConstraintValueInfo])),
+        "cache_hermetic": attrs.bool(default = False),
+        "hermetic_platform": attrs.option(attrs.dep(providers = [ExecutionPlatformInfo]), default = None),
     },
 )
 

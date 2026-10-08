@@ -91,6 +91,11 @@
       "description": "TypeScript code, tsconfig, and type definitions · Set: manual"
     },
     {
+      "name": "ci:heavy-proofs",
+      "color": "ededed",
+      "description": "Opt in to credential-free empirical CI proofs on this PR · Set: manual"
+    },
+    {
       "name": "ci:publish-snapshot",
       "color": "0e8a16",
       "description": "Trust this fork PR branch for snapshot publishing · Set: manual"
@@ -166,6 +171,11 @@
       "description": "@overeng/content-address package · Set: manual"
     },
     {
+      "name": "system:devbar",
+      "color": "a371f7",
+      "description": "@overeng/devbar package · Set: manual"
+    },
+    {
       "name": "system:effect-ai-claude-cli",
       "color": "a371f7",
       "description": "@overeng/effect-ai-claude-cli package · Set: manual"
@@ -206,6 +216,16 @@
       "description": "@overeng/effect-rpc-tanstack package · Set: manual"
     },
     {
+      "name": "system:effect-rust",
+      "color": "a371f7",
+      "description": "@overeng/effect-rust package · Set: manual"
+    },
+    {
+      "name": "system:effect-rust-fixture-consumer",
+      "color": "a371f7",
+      "description": "@overeng/effect-rust-fixture-consumer package · Set: manual"
+    },
+    {
       "name": "system:effect-schema-form",
       "color": "a371f7",
       "description": "@overeng/effect-schema-form package · Set: manual"
@@ -219,6 +239,11 @@
       "name": "system:genie",
       "color": "a371f7",
       "description": "@overeng/genie package · Set: manual"
+    },
+    {
+      "name": "system:genie-smalltalk",
+      "color": "a371f7",
+      "description": "@overeng/genie-smalltalk package · Set: manual"
     },
     {
       "name": "system:gh-ci-utils",
@@ -286,6 +311,11 @@
       "description": "@overeng/npm-release package · Set: manual"
     },
     {
+      "name": "system:otel-browser",
+      "color": "a371f7",
+      "description": "@overeng/otel-browser package · Set: manual"
+    },
+    {
       "name": "system:otel-contract",
       "color": "a371f7",
       "description": "@overeng/otel-contract package · Set: manual"
@@ -299,6 +329,11 @@
       "name": "system:otelite",
       "color": "a371f7",
       "description": "@overeng/otelite package · Set: manual"
+    },
+    {
+      "name": "system:outline",
+      "color": "a371f7",
+      "description": "@overeng/outline package · Set: manual"
     },
     {
       "name": "system:oxc-config",

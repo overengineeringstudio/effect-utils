@@ -1,0 +1,2 @@
+# Borsh's cfg_aliases build script derives hash_collections from admitted features.
+buildscript.run = true

@@ -1,5 +1,9 @@
 # Experiment 0007 — devenv instrumentation footprint (task cooperation)
 
+## Question
+
+What structured telemetry or fidelity evidence does the Experiment 0007 — devenv instrumentation footprint (task cooperation) probe provide?
+
 Evidence for [decision 0018](../.decisions/0018-devenv-task-cooperation.md).
 Question: on the real devenv path, what does the blanket task wrapper actually
 emit, and what is the call-site footprint of wrapping the concrete command
@@ -15,7 +19,7 @@ by trace id. Call-site footprint read from the real task modules
 (`lint-oxc.nix` `mkOxlintCmd`, `ts.nix` `tscWithDiagnostics`, `test.nix`
 `vitestExec`).
 
-## Findings
+## Result
 
 1. **Blanket wrap = 100% noise, 0% signal.** `otel-scrape -- bash -c '<otel-span
 … -- bash -c body>'` always produces a `program=bash, adapter=none` command
@@ -34,7 +38,7 @@ by trace id. Call-site footprint read from the real task modules
 4. **Token count is not the cost.** The real costs are the `run_package_bin`
    indirection and (for a real adapter) the tool's format flag — not the prefix.
 
-## Verdict
+## Conclusion
 
 The blanket wrap is pure duplication; wrapping the concrete command is a ~1-line
 change that yields a named, correctly-nested command span. The task span (otel-
@@ -43,3 +47,8 @@ span) owns the task level; otel-scrape owns the command level (decision 0018).
 Findings detail: `tmp/vista-issue866/m4-instrumentation-preview.md` (gitignored).
 Trace ids: current `d6887239…`, oxlint `9b9c41ab…`, tsc `b75541b3…`, vitest
 `0aae67f0…`.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

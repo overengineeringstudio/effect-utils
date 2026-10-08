@@ -46,6 +46,8 @@ maps have exactly the keys ``linux_x86_64``, ``linux_aarch64``, and
 ``macos_aarch64``; the macros own the mandatory cpu/os ``select()``.
 """
 
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
 PnpmPackageInfo = provider(fields = {
@@ -72,7 +74,6 @@ PnpmDeclaredClosureInfo = provider(fields = {
 PnpmPlatformGatedPackagesInfo = provider(fields = {
     "manifest": Artifact,
 })
-
 
 def _platform_gated_packages_impl(ctx):
     manifest = ctx.actions.declare_output("platform-gated-packages.json")
@@ -101,15 +102,13 @@ def _platform_gated_packages_impl(ctx):
         PnpmPlatformGatedPackagesInfo(manifest = manifest),
     ]
 
-
-pnpm_platform_gated_packages = rule(
+pnpm_platform_gated_packages = cache_guarded_rule(
     impl = _platform_gated_packages_impl,
     attrs = {
         "capabilities": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "families": attrs.dict(key = attrs.string(), value = attrs.list(attrs.string()), default = {}),
     },
 )
-
 
 def _unique_artifacts(artifacts):
     seen = {}
@@ -132,7 +131,6 @@ _PLATFORM_CONFIGURATIONS = {
     "macos_aarch64": ":_pnpm_macos_aarch64",
 }
 
-
 def _require_sha256(value):
     if len(value) != 64:
         fail("pnpm package sha256 must contain exactly 64 lowercase hex digits")
@@ -147,11 +145,9 @@ def _require_url(value):
     if not value.startswith("https://") and not _is_product_tarball(value):
         fail("pnpm package URL must use https or name a private product file: tarball: {}".format(value))
 
-
 def _require_size(value):
     if value <= 0:
         fail("pnpm package size_bytes must be positive")
-
 
 def _require_nix_store_path(value, field):
     _require_absolute_path(value, field)
@@ -165,7 +161,6 @@ def _require_portable_path(value, field):
         if component == "" or component == "." or component == "..":
             fail("{} must be normalized: {}".format(field, value))
 
-
 def _require_absolute_path(value, field):
     if not value.startswith("/") or "\\" in value or "\x00" in value or value.endswith("/"):
         fail("{} must be an absolute, immutable directory path: {}".format(field, value))
@@ -173,12 +168,10 @@ def _require_absolute_path(value, field):
         if component == "" or component == "." or component == "..":
             fail("{} must be normalized: {}".format(field, value))
 
-
 def _require_store_key(value, field):
     _require_portable_path(value, field)
     if "/" in value:
         fail("{} must be one virtual-store path component: {}".format(field, value))
-
 
 def _record(value, field):
     parts = value.split("\t")
@@ -187,7 +180,6 @@ def _record(value, field):
     _require_store_key(parts[0], "{} owner".format(field))
     _require_portable_path(parts[1], "{} name".format(field))
     return parts
-
 
 def _fetch_impl(ctx):
     _require_sha256(ctx.attrs.sha256)
@@ -216,15 +208,17 @@ def _fetch_impl(ctx):
             )
         else:
             out = ctx.actions.declare_output("package.tgz")
+
             # Bun resolves relative imports beside the executed script, not
             # beside its separately materialized source artifacts.
             sources = ctx.actions.copied_dir("acquisition_sources", {
                 "acquire-archive.ts": ctx.attrs._acquire_archive,
                 "public-archive-origin.ts": ctx.attrs._public_archive_origin,
             })
-            ctx.actions.run(
+            hermetic_action(
+                ctx,
                 cmd_args([
-                    ctx.attrs._bun[BunToolchainInfo].executable,
+                    hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
                     sources.project("acquire-archive.ts"),
                     "--cas-url",
                     "{}{}".format(url_prefix, ctx.attrs.sha256),
@@ -240,14 +234,14 @@ def _fetch_impl(ctx):
                 category = "pnpm_archive",
                 identifier = ctx.attrs.name,
                 local_only = True,
-                allow_cache_upload = True,
             )
     else:
         _require_nix_store_path(archive_root, "nix_store.root")
         out = ctx.actions.declare_output("package.tgz")
-        ctx.actions.run(
+        hermetic_action(
+            ctx,
             cmd_args([
-                ctx.attrs._bun[BunToolchainInfo].executable,
+                hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
                 ctx.attrs._nix_archive,
                 "--root",
                 archive_root,
@@ -261,14 +255,13 @@ def _fetch_impl(ctx):
             category = "pnpm_nix_archive",
             identifier = ctx.attrs.name,
             local_only = True,
-            allow_cache_upload = True,
         )
     return [DefaultInfo(default_output = out)]
 
-
-_fetch = rule(
+_fetch = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _fetch_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "sha256": attrs.string(),
         "size_bytes": attrs.int(),
         "url": attrs.string(),
@@ -285,10 +278,13 @@ _fetch = rule(
         "_nix_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:nix-archive.ts",
         )),
-    },
+    }),
 )
 
-
+# local-materialization-policy: extraction and store assembly are cheaper than
+# downloading their trees. Leave these rules on the default execution platform,
+# which disables remote reads and uploads, and disable each action's upload bit.
+# cache_guarded_rule rejects caller attempts to opt them back into shared cache.
 def _extract_impl(ctx):
     out = ctx.actions.declare_output("package", dir = True)
     strip_prefix = "package"
@@ -306,11 +302,13 @@ def _extract_impl(ctx):
     ])
     for patch in ctx.attrs.patches:
         args.add("--patch", patch)
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "pnpm_extract",
         identifier = ctx.attrs.name,
-        allow_cache_upload = True,
+        cacheable = False,
+        local_only = True,
     )
     for name, entrypoint in ctx.attrs.bins.items():
         _require_portable_path(name, "package bin name")
@@ -320,10 +318,9 @@ def _extract_impl(ctx):
         PnpmPackageInfo(bins = ctx.attrs.bins, package_name = ctx.attrs.package_name, tree = out),
     ]
 
-
-_extract = rule(
+_extract = cache_guarded_rule(
     impl = _extract_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "archive": attrs.source(),
         "bins": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "package_name": attrs.string(),
@@ -332,9 +329,8 @@ _extract = rule(
             default = "//buck2/toolchains:archive_tool",
             providers = [RunInfo],
         )),
-    },
+    }),
 )
-
 
 def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches = [], **kwargs):
     """Declares one digest-and-size-pinned acquisition and offline extraction target."""
@@ -348,6 +344,7 @@ def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches
         sha256 = sha256,
         size_bytes = size_bytes,
         url = url,
+        exec_compatible_with = hermetic_execution_constraints(),
         visibility = [],
     )
     _extract(
@@ -356,9 +353,9 @@ def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches
         bins = bins,
         package_name = package_name,
         patches = patches,
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
-
 
 def pnpm_platform_configurations(platforms_cell = ""):
     """Declares the four config settings owned by the store selects."""
@@ -396,12 +393,10 @@ def pnpm_platform_configurations(platforms_cell = ""):
         visibility = [],
     )
 
-
 def _platform_select(values, field):
     if sorted(values.keys()) != _PLATFORMS:
         fail("{} must provide exactly these admitted platforms: {}".format(field, ", ".join(_PLATFORMS)))
     return select({_PLATFORM_CONFIGURATIONS[platform]: values[platform] for platform in _PLATFORMS})
-
 
 # ---------------------------------------------------------------------------
 # Normalized store (decision 0030)
@@ -433,7 +428,6 @@ PnpmStoreSccInfo = provider(fields = {
     "read_roots": provider_field(list[Artifact]),
 })
 
-
 def _exactly_one(invariant, by_platform, field):
     if (invariant == None) == (by_platform == None):
         fail("{} requires exactly one of the invariant or per-platform form".format(field))
@@ -441,17 +435,14 @@ def _exactly_one(invariant, by_platform, field):
         return invariant
     return _platform_select(by_platform, field)
 
-
 def _entry_dir(info):
     if info.entry_path == "":
         return info.artifact
     return cmd_args(info.artifact, format = "{}/" + info.entry_path)
 
-
 def _entry_link_args(args, flag, name, entry):
     info = entry[PnpmStoreEntryInfo]
     args.add(flag, name, info.package_name, _entry_dir(info))
-
 
 def _workspace_tree(view):
     outputs = view[DefaultInfo].default_outputs
@@ -459,12 +450,10 @@ def _workspace_tree(view):
         fail("a workspace dependency must declare exactly one package view output: {}".format(view.label))
     return outputs[0]
 
-
 def _workspace_roots(view):
     # A package view exports its own declared roots as `other_outputs`, so the
     # sibling's dependency view and store entries travel with the first hop.
     return [_workspace_tree(view)] + list(view[DefaultInfo].other_outputs)
-
 
 def _store_entry_impl(ctx):
     _require_store_key(ctx.attrs.store_key, "store_key")
@@ -501,7 +490,7 @@ def _store_entry_impl(ctx):
 
     out = ctx.actions.declare_output("entry", dir = True)
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         ctx.attrs.runtime,
         "--mode",
         "entry",
@@ -546,12 +535,13 @@ def _store_entry_impl(ctx):
             artifact if entry_path == "" else cmd_args(artifact, format = "{}/" + entry_path),
             entrypoint,
         )
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "pnpm_store_entry",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = True,
+        cacheable = False,
     )
     return [
         DefaultInfo(
@@ -568,10 +558,9 @@ def _store_entry_impl(ctx):
         ),
     ]
 
-
-_store_entry = rule(
+_store_entry = cache_guarded_rule(
     impl = _store_entry_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "dependencies": attrs.dict(
             key = attrs.string(),
             value = attrs.dep(providers = [PnpmStoreEntryInfo]),
@@ -586,9 +575,8 @@ _store_entry = rule(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
         )),
-    },
+    }),
 )
-
 
 def pnpm_store_entry(
         name,
@@ -613,9 +601,9 @@ def pnpm_store_entry(
         runtime = runtime,
         scc = scc,
         store_key = store_key,
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
-
 
 def _store_scc_impl(ctx):
     members = {}
@@ -629,7 +617,7 @@ def _store_scc_impl(ctx):
 
     out = ctx.actions.declare_output("group", dir = True)
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         ctx.attrs.runtime,
         "--mode",
         "scc",
@@ -660,12 +648,13 @@ def _store_scc_impl(ctx):
     for record in sorted(ctx.attrs.external_edges.keys()):
         read_root_candidates.extend(ctx.attrs.external_edges[record][PnpmStoreEntryInfo].read_roots)
     read_roots = _unique_artifacts(read_root_candidates)
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "pnpm_store_scc",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = True,
+        cacheable = False,
     )
     return [
         DefaultInfo(default_output = out, other_outputs = read_roots[1:]),
@@ -676,10 +665,9 @@ def _store_scc_impl(ctx):
         ),
     ]
 
-
-_store_scc = rule(
+_store_scc = cache_guarded_rule(
     impl = _store_scc_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "external_edges": attrs.dict(
             key = attrs.string(),
             value = attrs.dep(providers = [PnpmStoreEntryInfo]),
@@ -692,9 +680,8 @@ _store_scc = rule(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
         )),
-    },
+    }),
 )
-
 
 def pnpm_store_scc(
         name,
@@ -720,9 +707,9 @@ def pnpm_store_scc(
         ),
         members = members,
         runtime = runtime,
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
-
 
 def _store_view_impl(ctx):
     closure = ctx.attrs.closure
@@ -753,7 +740,7 @@ def _store_view_impl(ctx):
     }, pretty = True)
 
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         ctx.attrs.runtime,
         "--mode",
         "view",
@@ -784,12 +771,13 @@ def _store_view_impl(ctx):
     # Every root reachable through the view's links is both an action input and
     # an exported declared root for downstream sandbox mounting and hashing.
     args.add(cmd_args(hidden = read_roots[1:]))
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "pnpm_store_view",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = True,
+        cacheable = False,
     )
     return [
         DefaultInfo(
@@ -804,10 +792,9 @@ def _store_view_impl(ctx):
         ),
     ]
 
-
-_store_view = rule(
+_store_view = cache_guarded_rule(
     impl = _store_view_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "bins": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "closure": attrs.dict(
             key = attrs.string(),
@@ -822,9 +809,8 @@ _store_view = rule(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
         )),
-    },
+    }),
 )
-
 
 def pnpm_store_view(
         name,
@@ -847,9 +833,9 @@ def pnpm_store_view(
         runtime = runtime,
         workspace_dependencies = workspace_dependencies,
         workspace_trees = workspace_trees,
+        exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
-
 
 def _runtime_closure_impl(ctx):
     if ctx.attrs.primary not in ctx.attrs.importers:
@@ -864,7 +850,7 @@ def _runtime_closure_impl(ctx):
     roots = _unique_artifacts(roots)
     out = ctx.actions.declare_output("runtime-closure", dir = True)
     args = cmd_args([
-        ctx.attrs._bun[BunToolchainInfo].executable,
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
         ctx.attrs.runtime,
         "--output",
         out.as_output(),
@@ -875,19 +861,19 @@ def _runtime_closure_impl(ctx):
         args.add("--view", name, views[name])
     for root in roots:
         args.add("--root", root)
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "pnpm_runtime_closure",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = True,
     )
     return [DefaultInfo(default_output = out)]
 
-
-pnpm_runtime_closure = rule(
+_pnpm_runtime_closure = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _runtime_closure_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "importers": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [PnpmDeclaredClosureInfo])),
         "primary": attrs.string(),
         "runtime": attrs.source(),
@@ -895,5 +881,12 @@ pnpm_runtime_closure = rule(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
         )),
-    },
+    }),
 )
+
+def pnpm_runtime_closure(name, **kwargs):
+    _pnpm_runtime_closure(
+        name = name,
+        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        **kwargs
+    )

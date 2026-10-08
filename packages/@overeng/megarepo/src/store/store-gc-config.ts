@@ -7,8 +7,6 @@
  * unknown/invalid files fall back to the defaults (never fail the gc path).
  */
 
-import { isAbsolute, normalize } from 'node:path'
-
 import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
@@ -31,6 +29,7 @@ export const STORE_GC_GENERATED_ARTIFACTS = [
   'build',
   '.next',
   '.turbo',
+  'storybook-static',
 ] as const
 
 /** Generated-artifact directory class accepted by the bounded GC planner. */
@@ -57,13 +56,6 @@ export interface StoreGcConfig {
     readonly enabled: boolean
     readonly retentionMs: number
     readonly allowlist: ReadonlyArray<StoreGcGeneratedArtifact>
-    readonly agentLivenessManifest?: string | undefined
-    /**
-     * Epoch that admits an `st2.workspace-activity.v1` snapshot: a snapshot is
-     * evidence only when it was produced for THIS catalog and host, so a fresh
-     * snapshot from another fleet epoch can never be trusted.
-     */
-    readonly agentLivenessEpoch?: { readonly catalog: string; readonly host: string } | undefined
   }
 }
 
@@ -89,10 +81,6 @@ const StoreGcConfigOverride = Schema.Struct({
       enabled: Schema.optional(Schema.Boolean),
       retentionMs: Schema.optional(Schema.Finite),
       allowlist: Schema.optional(Schema.Array(Schema.Literals([...STORE_GC_GENERATED_ARTIFACTS]))),
-      agentLivenessManifest: Schema.optional(Schema.String),
-      agentLivenessEpoch: Schema.optional(
-        Schema.Struct({ catalog: Schema.String, host: Schema.String }),
-      ),
     }),
   ),
 })
@@ -109,9 +97,6 @@ const validDuration = ({
 }): number =>
   value !== undefined && Number.isFinite(value) === true && value >= 0 ? value : fallback
 
-const normalizedAbsolutePath = (path: string): string | undefined =>
-  isAbsolute(path) === true && normalize(path) === path ? path : undefined
-
 /** Relative path of the override file within the store. */
 export const GC_CONFIG_RELATIVE_PATH = '.state/gc-config.json'
 
@@ -125,18 +110,6 @@ const gcConfigPath = (storeBasePath: AbsoluteDirPath) =>
  * the default. Pure so it is the unit-tested seam for the merge contract.
  */
 export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConfig => {
-  const agentLivenessManifest =
-    override.generatedArtifacts?.agentLivenessManifest === undefined
-      ? undefined
-      : normalizedAbsolutePath(override.generatedArtifacts.agentLivenessManifest)
-  const overrideEpoch = override.generatedArtifacts?.agentLivenessEpoch
-  // Both halves are load-bearing; a half-configured epoch admits nothing.
-  const agentLivenessEpoch =
-    overrideEpoch === undefined ||
-    normalizedAbsolutePath(overrideEpoch.catalog) === undefined ||
-    overrideEpoch.host.length === 0
-      ? undefined
-      : { catalog: overrideEpoch.catalog, host: overrideEpoch.host }
   return {
     absenceGraceMs: validDuration({
       value: override.absenceGraceMs,
@@ -163,8 +136,6 @@ export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConf
             DEFAULT_STORE_GC_CONFIG.generatedArtifacts.allowlist,
         ),
       ],
-      ...(agentLivenessManifest === undefined ? {} : { agentLivenessManifest }),
-      ...(agentLivenessEpoch === undefined ? {} : { agentLivenessEpoch }),
     },
   }
 }

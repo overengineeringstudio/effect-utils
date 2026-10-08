@@ -19,7 +19,7 @@ Archive pack and restore cost outweighed the warm-install savings.
 Live setup/fan-out must beat the current warm path in integrated real-workload
 benchmarks, not only synthetic copy tests.
 
-## VRS Impact
+## Intent Impact
 
 Supports DMP.STORE-R14 and DMP.VER-R12's same-workload, multidimensional default
 gate.

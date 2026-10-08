@@ -20,6 +20,15 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/devbar",
+      "outputName": "overeng-devbar.tgz",
+      "packagePath": "packages/@overeng/devbar",
+      "packageTreePath": "packages/@overeng/devbar",
+      "target": "effect_utils//packages/@overeng/devbar:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/effect-ai-claude-cli",
       "outputName": "overeng-effect-ai-claude-cli.tgz",
       "packagePath": "packages/@overeng/effect-ai-claude-cli",
@@ -142,6 +151,15 @@
       "packagePath": "packages/@overeng/otel-contract",
       "packageTreePath": "packages/@overeng/otel-contract",
       "target": "effect_utils//packages/@overeng/otel-contract:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/outline",
+      "outputName": "overeng-outline.tgz",
+      "packagePath": "packages/@overeng/outline",
+      "packageTreePath": "packages/@overeng/outline",
+      "target": "effect_utils//packages/@overeng/outline:dist-package",
       "version": "0.1.0"
     },
     {

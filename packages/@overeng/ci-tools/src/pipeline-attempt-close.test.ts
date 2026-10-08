@@ -12,15 +12,16 @@ const job = (name: string, attempt: number, started: string | null) => ({
   completed_at: started,
 })
 
-test('attempt close links only uniquely matched started jobs in this attempt, without claiming persistence', () => {
+test('attempt close links latest jobs from each job’s execution attempt without claiming persistence', () => {
   const { traceId, payload } = closePayload({
     runId: run,
     attempt: 2,
     jobs: [
       job('test (namespace-profile-linux-x86-64)', 2, '2026-09-29T10:01:00Z'),
-      job('typecheck', 2, '2026-09-29T10:02:00Z'),
+      job('pr/quality', 2, '2026-09-29T10:02:00Z'),
       job('cargo', 2, null),
-      job('lint', 1, '2026-09-29T09:00:00Z'),
+      job('weaver', 1, '2026-09-29T09:00:00Z'),
+      job('weaver', 2, '2026-09-29T09:00:00Z'), // carried over from attempt 1
       job('pr-a-inert-buck', 2, '2026-09-29T10:01:00Z'),
       job('pr-a-inert-buck', 2, null),
       job('unknown dynamically named job', 2, '2026-09-29T10:03:00Z'),
@@ -32,7 +33,7 @@ test('attempt close links only uniquely matched started jobs in this attempt, wi
   expect(root.traceId).toBe(traceId)
   expect(root.startTimeUnixNano).toBe('1790676060000000000') // this attempt's first job, not the prior run's creation
   expect(root.endTimeUnixNano).toBe('1790676720000000000')
-  expect(root.links).toHaveLength(3) // two started jobs and previous attempt root
+  expect(root.links).toHaveLength(4) // three started jobs and previous attempt root
   expect(root.links[0]!.traceId).toBe(
     deriveJobTraceId({
       runId: run,
@@ -41,11 +42,18 @@ test('attempt close links only uniquely matched started jobs in this attempt, wi
     }),
   )
   expect(root.links[1]!.traceId).toBe(
-    deriveJobTraceId({ runId: run, job: 'typecheck', dimensions: {} }),
+    deriveJobTraceId({ runId: run, job: 'quality', dimensions: {} }),
+  )
+  expect(root.links[2]!.traceId).toBe(
+    deriveJobTraceId({
+      runId: 'ci/github/overengineeringstudio%2Feffect-utils/421/1',
+      job: 'weaver',
+      dimensions: {},
+    }),
   )
   expect(
     root.links
-      .slice(0, 2)
+      .slice(0, 3)
       .every((link) => link.attributes?.[0]?.value.stringValue === 'unverified'),
   ).toBe(true)
 })

@@ -25,9 +25,7 @@ const consumerProjectionOptions = {
   generatorSourcePaths: [],
 } as const
 
-
 describe('Cargo Buck2 package projection', () => {
-
   it('rejects lexical and physical repository escapes', () => {
     expect(() =>
       defineCargoBuck2PackageProjection({
@@ -123,8 +121,10 @@ const renderCargoFixture = ({
   thirdPartyTargets = ['serde'],
   foreignPackages = {},
   extraFiles = [],
+  rootManifest,
   projectOptions = {},
   render,
+  prepareFixture,
 }: {
   readonly members: Readonly<Record<string, CargoFixtureMember>>
   readonly edition?: string
@@ -139,8 +139,11 @@ const renderCargoFixture = ({
   >
   /** Repository-relative files outside any member (for example build script inputs). */
   readonly extraFiles?: readonly string[]
+  /** Repository-root Cargo.toml, for foreign packages owned by a root workspace. */
+  readonly rootManifest?: string
   readonly render: string
   readonly projectOptions?: Omit<CargoBuck2PackageProjectionOptions, 'sourceUrl'>
+  readonly prepareFixture?: (root: string) => void
 }): string => {
   const root = mkdtempSync(path.join(tmpdir(), 'cargo-projection-discovery-'))
   const write = (relativePath: string, content: string) => {
@@ -183,7 +186,10 @@ const renderCargoFixture = ({
         )
         .join('')}`,
     )
-    write('rust/reindeer.toml', 'vendor = false\ncargo_env = true\nthird_party_dir = "third-party"\n')
+    write(
+      'rust/reindeer.toml',
+      'vendor = false\ncargo_env = true\nthird_party_dir = "third-party"\n',
+    )
     write(
       'rust/third-party/BUCK',
       thirdPartyTargets
@@ -204,8 +210,10 @@ const renderCargoFixture = ({
           ),
         }),
       )
+      write('rust/third-party/cargo-resolution.json', '{"dependencies":[]}\n')
     }
     for (const file of extraFiles) write(file, '// fixture\n')
+    if (rootManifest !== undefined) write('Cargo.toml', rootManifest)
     for (const [memberPath, member] of Object.entries(members)) {
       if (memberPath !== '.') {
         write(`rust/${memberPath}/Cargo.toml`, memberManifest(memberPath, member.manifest))
@@ -213,6 +221,7 @@ const renderCargoFixture = ({
       for (const file of member.files) write(`rust/${memberPath}/${file}`, '// fixture\n')
       write(`rust/${memberPath}/BUCK.genie.ts`, '// Runtime-only projection fixture.\n')
     }
+    prepareFixture?.(root)
     const project = defineCargoBuck2PackageProjection({
       repoName: 'discovery-fixture',
       repoImportMetaUrl: pathToFileURL(path.join(root, 'projection.ts')).href,
@@ -230,6 +239,116 @@ const renderCargoFixture = ({
     rmSync(root, { recursive: true, force: true })
   }
 }
+
+describe('Cargo compile-time resources', () => {
+  const renderResource = (
+    resources: NonNullable<CargoBuck2PackageProjectionOptions['compileTimeResources']>,
+    prepareFixture?: (root: string) => void,
+  ) =>
+    renderCargoFixture({
+      members: {
+        pkg: { manifest: '[package]\nname = "pkg"', files: ['src/lib.rs', 'schema.json'] },
+      },
+      extraFiles: ['shared/schema.json'],
+      render: 'pkg',
+      projectOptions: { compileTimeResources: resources },
+      prepareFixture,
+    })
+
+  it('changes freshness for local bytes, destinations and generated targets', () => {
+    const local = [{ path: 'rust/pkg/schema.json' }]
+    const fingerprint = (output: string) => output.match(/^# Semantic fingerprint: (.+)$/m)?.[1]
+    const initial = fingerprint(renderResource(local))
+    expect(
+      fingerprint(
+        renderResource(local, (root) =>
+          writeFileSync(path.join(root, 'rust/pkg/schema.json'), '{"changed":true}\n'),
+        ),
+      ),
+    ).not.toBe(initial)
+    expect(
+      fingerprint(
+        renderResource([{ path: 'rust/pkg/schema.json', destination: 'data/schema.json' }]),
+      ),
+    ).not.toBe(initial)
+    expect(
+      fingerprint(renderResource([{ label: '//generated:schema', destination: 'schema.json' }])),
+    ).not.toBe(
+      fingerprint(renderResource([{ label: '//generated:other', destination: 'schema.json' }])),
+    )
+  })
+
+  it('rejects traversal, unsafe destinations and Rust/resource collisions', () => {
+    expect(() => renderResource([{ path: 'rust/pkg/../pkg/schema.json' }])).toThrow(
+      'normalized repository-relative path',
+    )
+    for (const destination of [
+      '../schema.json',
+      '/schema.json',
+      'data\\schema.json',
+      'C:/schema.json',
+    ]) {
+      expect(() => renderResource([{ path: 'rust/pkg/schema.json', destination }])).toThrow(
+        'normalized crate-relative path',
+      )
+    }
+    for (const destination of ['src/lib.rs', 'src/lib.rs/child', 'src']) {
+      expect(() => renderResource([{ path: 'rust/pkg/schema.json', destination }])).toThrow(
+        'collides',
+      )
+    }
+    expect(() =>
+      renderResource([
+        { path: 'rust/pkg/schema.json' },
+        { label: '//generated:schema', destination: 'schema.json' },
+      ]),
+    ).toThrow('collides')
+    for (const destinations of [
+      ['data', 'data/schema.json'],
+      ['data/schema.json', 'data'],
+    ]) {
+      expect(() =>
+        renderResource(
+          destinations.map((destination) => ({
+            label: '//generated:schema',
+            destination,
+          })),
+        ),
+      ).toThrow('collides')
+    }
+  })
+
+  it('requires explicit destinations for external and generated labels', () => {
+    expect(() => renderResource([{ path: 'shared/schema.json' }])).toThrow('explicit destination')
+    expect(() =>
+      renderResource([{ path: 'shared/schema.json', destination: 'schema.json' }]),
+    ).toThrow('needs a label')
+    for (const label of [
+      '//generated:bad\nlabel',
+      '//../generated:schema',
+      '//generated:schema/../other',
+      '//generated//child:schema',
+    ]) {
+      expect(() => renderResource([{ label, destination: 'schema.json' }])).toThrow(
+        'Buck target label',
+      )
+    }
+  })
+
+  it('rejects local symlink escape', () => {
+    const outside = mkdtempSync(path.join(tmpdir(), 'cargo-resource-outside-'))
+    try {
+      writeFileSync(path.join(outside, 'schema.json'), '{}')
+      expect(() =>
+        renderResource([{ path: 'rust/pkg/escape.json' }], (root) =>
+          symlinkSync(path.join(outside, 'schema.json'), path.join(root, 'rust/pkg/escape.json')),
+        ),
+      ).toThrow('resolves outside the repository')
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+})
 
 /** The rendered `native.*` rule blocks keyed by target name. */
 const renderedRules = (rendered: string): Readonly<Record<string, string>> =>
@@ -252,6 +371,54 @@ const compileEnvironment = (rule: string): Readonly<Record<string, string>> => {
     ]),
   )
 }
+
+describe('Cargo dual Node-API and wasm products', () => {
+  it('keeps macOS dynamic symbol lookup native-only on the shared cdylib', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        adapter: {
+          manifest: '[package]\nname = "adapter"\n\n[lib]\ncrate-type = ["cdylib", "rlib"]',
+          files: ['src/lib.rs'],
+        },
+      },
+      render: 'adapter',
+      projectOptions: {
+        napi: { name: 'native-addon' },
+        wasmBindgen: { name: 'wasm-addon' },
+      },
+    })
+    // Both product wrappers consume the same library under different target configurations.
+    for (const [kind, name] of [
+      ['rust_napi_library', 'native-addon'],
+      ['rust_wasm_bindgen_library', 'wasm-addon'],
+    ]) {
+      const product = rendered.match(new RegExp(`^${kind}\\(\\n([\\s\\S]*?)^\\)`, 'm'))?.[1]
+      expect(product).toContain(`name = "${name}"`)
+      expect(product).toContain('crate = ":lib"')
+    }
+    const library = renderedRules(rendered)['lib']
+    const flagsExpression = library?.match(/^    rustc_flags = (.*),$/m)?.[1]
+    if (flagsExpression === undefined) throw new Error('Shared cdylib has no rustc flags')
+    // The generated select expression is also valid JavaScript. Evaluate its branches rather
+    // than pinning the source spelling; wasm retains macOS through the product transition.
+    const evaluateFlags = (conditions: readonly string[]): unknown =>
+      new Function('select', `return ${flagsExpression}`)(
+        (branches: Readonly<Record<string, readonly string[]>>) => {
+          const matching = Object.keys(branches).filter((key) => conditions.includes(key))
+          if (matching.length > 1) throw new Error('Ambiguous target configuration')
+          return branches[matching[0] ?? 'DEFAULT']
+        },
+      )
+    expect(evaluateFlags(['prelude//os/constraints:macos'])).toEqual([
+      '-Clink-arg=-Wl,-undefined,dynamic_lookup',
+    ])
+    expect(evaluateFlags(['prelude//os/constraints:macos', '//buck2/rust:wasm32_config'])).toEqual(
+      [],
+    )
+    expect(evaluateFlags(['//buck2/rust:wasm32_config'])).toEqual([])
+    expect(evaluateFlags([])).toEqual([])
+  })
+})
 
 describe('Cargo compile-time package identity', () => {
   it('inherits package fields and separates library, binary, and build-script target names', () => {
@@ -764,17 +931,6 @@ describe('Cargo cross-workspace path dependencies', () => {
     },
   }
 
-  it('labels a declared, projected foreign package by its package path', () => {
-    const rules = renderedRules(
-      renderCargoFixture({
-        members: consumer,
-        foreignPackages: sharedLibrary(true),
-        render: 'app',
-      }),
-    )
-    expect(rules.app).toContain('deps = [\n        "//shared/otel-bootstrap:lib",\n    ],')
-  })
-
   it('rejects undeclared and unprojected foreign packages', () => {
     expect(() => renderCargoFixture({ members: consumer, render: 'app' })).toThrow(
       'Cargo path dependency at dependencies.otel-bootstrap is neither a workspace member nor a declared foreign package: shared/otel-bootstrap',
@@ -1095,53 +1251,62 @@ describe('Cargo features', () => {
         ['src/main.rs'],
       ),
     ).toThrow('Cargo binary tool requires undefined features in rust/pkg/Cargo.toml: y')
-    expect(() =>
-      renderCargoFixture({
-        members: {
-          pkg: {
-            manifest:
-              '[package]\nname = "pkg"\n\n[dependencies]\nshared = { path = "../../shared", features = ["x"] }',
-            files: ['src/lib.rs'],
-          },
-        },
-        foreignPackages: {
-          shared: {
-            manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
-            files: ['src/lib.rs'],
-            projected: true,
-          },
-        },
-        render: 'pkg',
-      }),
-    ).toThrow(
-      'Cargo features on a foreign path dependency are unsupported at dependencies.shared: x',
-    )
-    // The same request written as a [features] item, strong or weak, even when disabled.
-    for (const [dependency, item] of [
-      ['shared = { path = "../../shared" }', 'shared/x'],
-      ['shared = { path = "../../shared", optional = true }', 'shared?/x'],
-    ] as const) {
-      expect(() =>
+  })
+
+  it('unifies foreign feature requests without enabling disabled defaults', () => {
+    for (const request of [
+      'shared = { path = "../../shared", features = ["x"], default-features = false }',
+      'shared = { path = "../../shared", default-features = false }\n\n[features]\ndefault = ["shared/x"]',
+    ]) {
+      const rules = renderedRules(
         renderCargoFixture({
           members: {
             pkg: {
-              manifest: `[package]\nname = "pkg"\n\n[features]\nturbo = ["${item}"]\n\n[dependencies]\n${dependency}`,
+              manifest: `[package]\nname = "pkg"\n\n[dependencies]\n${request}`,
               files: ['src/lib.rs'],
             },
           },
           foreignPackages: {
             shared: {
-              manifest: '[package]\nname = "shared"\nversion = "0.1.0"\n\n[features]\nx = []',
+              manifest:
+                '[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2024"\n\n[features]\ndefault = ["y"]\nx = []\ny = []',
               files: ['src/lib.rs'],
               projected: true,
             },
           },
           render: 'pkg',
         }),
-      ).toThrow(
-        `Cargo features on a foreign path dependency are unsupported at rust/pkg/Cargo.toml features.turbo: ${item}`,
       )
+      expect(rules['foreign-shared-lib']).toContain('features = [\n        "x",\n    ],')
+      expect(rules['foreign-shared-lib']).not.toContain('"y"')
     }
+  })
+
+  it('inherits foreign metadata from a repository-root workspace', () => {
+    const rules = renderedRules(
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n\n[dependencies]\nshared = { path = "../../shared" }',
+            files: ['src/lib.rs'],
+          },
+        },
+        rootManifest:
+          '[workspace]\nresolver = "2"\nmembers = ["shared"]\n\n[workspace.package]\nversion = "0.3.0"\nedition = "2021"\n',
+        foreignPackages: {
+          shared: {
+            manifest:
+              '[package]\nname = "shared"\nversion.workspace = true\nedition.workspace = true\n',
+            files: ['src/lib.rs'],
+            projected: true,
+          },
+        },
+        render: 'pkg',
+      }),
+    )
+    expect(rules['foreign-shared-lib']).toContain('"CARGO_PKG_VERSION": "0.3.0",')
+    expect(rules['foreign-shared-lib']).toContain('edition = "2021",')
   })
 
   it('rejects feature requests and optional activation on target-specific member edges', () => {

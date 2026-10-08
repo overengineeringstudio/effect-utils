@@ -288,6 +288,39 @@ let
         }' > "$out/descriptor.json"
       '';
 
+  wasmGuestProduct =
+    let
+      # (module (func (export "answer") (result i32) i32.const 42))
+      module = pkgs.runCommand "buck2-wasm-guest-module" { } ''
+        printf '\x00asm\x01\x00\x00\x00\x01\x05\x01\x60\x00\x01\x7f\x03\x02\x01\x00\x07\x0a\x01\x06answer\x00\x00\x0a\x06\x01\x04\x00\x41\x2a\x0b' > "$out"
+      '';
+    in
+    pkgs.runCommand "buck2-wasm-guest-product"
+      {
+        nativeBuildInputs = [
+          pkgs.gnutar
+          pkgs.jq
+          pkgs.openssl
+        ];
+      }
+      ''
+        mkdir -p payload/lib "$out"
+        cp ${module} payload/lib/guest.wasm
+        tar --create --format=gnu --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner \
+          --file "$out/artifact.tar" --directory payload .
+        digest="sha256-$(openssl dgst -sha256 -binary "$out/artifact.tar" | openssl base64 -A)"
+        size="$(stat --format=%s "$out/artifact.tar")"
+        jq -cn --arg digest "$digest" --argjson size "$size" '{
+          entrypoints: ["lib/guest.wasm"],
+          name: "fixture-wasm-guest",
+          payload: { digest: { algorithm: "sha256", sri: $digest }, file: "artifact.tar", format: "tar", sizeBytes: $size },
+          platform: { abi: "unknown", architecture: "wasm32", os: "wasm" },
+          runtime: { exports: [{ name: "answer", kind: "function" }], harness: "fixture-harness/v1", imports: [], inspectionContract: "wasm32-unknown-unknown/v1", kind: "wasm-guest", targetTriple: "wasm32-unknown-unknown" },
+          schema: "buck-build-product/v1",
+          semanticProvenance: { recipe: "fixture/v1", target: "//fixtures:guest", toolchain: "fixture/v1" }
+        }' > "$out/descriptor.json"
+      '';
+
   importProduct =
     product: platform:
     let
@@ -312,7 +345,13 @@ in
     fixtureMachOLipo
     fatMachOLipo
     hostileMachOOtool
+    wasmGuestProduct
     ;
+  wasmGuestImport = importProduct wasmGuestProduct {
+    os = "wasm";
+    architecture = "wasm32";
+    abi = "unknown";
+  };
   staticElfImport = importProduct staticElfProduct {
     os = "linux";
     architecture = hostArchitecture;

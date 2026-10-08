@@ -31,7 +31,12 @@
 
 let
   lib = pkgs.lib;
+  watcherPolicies = import ./watcher-policies.nix;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
+  # Cargo manifests in consumer roots live in repositorySource, which can be a
+  # derivation. Read the staged workspace at build time, not repositoryRoot at
+  # evaluation time: the latter belongs to this rules package.
+  releaseProfileScript = ../workspace-tools/lib/cargo-release-profile.py;
   # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
   # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
   cliBuildStamp = product.cliBuildStamp or null;
@@ -50,6 +55,7 @@ let
           [
             (repositoryRoot + "/.buckconfig")
             (repositoryRoot + "/.buckroot")
+            (repositoryRoot + "/.watchmanconfig")
             (repositoryRoot + "/BUCK")
             (repositoryRoot + "/package.json")
             (repositoryRoot + "/pnpm-workspace.yaml")
@@ -82,16 +88,20 @@ let
   productName = product.name;
   outputName = product.outputName;
   safeName = lib.replaceStrings [ "@" "/" ] [ "" "-" ] productName;
-  # `build_product` kinds: a Rust `native` executable or a Bun
-  # `compiled-executable` (`bun build --compile` of a CLI module).
+  # `build_product` kinds: a Rust `native` executable, a Bun
+  # `compiled-executable` (`bun build --compile` of a CLI module), or a
+  # `swift-app-bundle` Darwin app bundle.
   isBuildProduct = builtins.elem product.kind [
     "native"
     "compiled-executable"
+    "swift-app-bundle"
   ];
   # Descriptor-bearing products: JavaScript product-v2 and build_product.
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
-  buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
+  buckBuildArgs = "-j \"$NIX_BUILD_CORES\" --config build.num_tokio_workers=\"$NIX_BUILD_CORES\" --config nix_store.root=${pnpmArchives}${
+    lib.optionalString (product.kind == "native") " --config rust_profile.mode=release"
+  }${
     lib.concatMapStringsSep "" (
       package: " --config ${lib.escapeShellArg "test_capabilities.${package.name}=${package.package}"}"
     ) nativeStorePackages
@@ -139,9 +149,8 @@ assert lib.assertMsg (
     && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" cargoWorkspaceRoot)
   )
 ) "buck2-products: cargoWorkspaceRoot must be a safe relative path on a native product";
-assert lib.assertMsg (
-  !importNative || isBuildProduct
-) "buck2-products: importNative requires a native or compiled-executable product";
+assert lib.assertMsg (!importNative || isBuildProduct)
+  "buck2-products: importNative requires a native, compiled-executable, or swift-app-bundle product";
 assert lib.assertMsg (
   cliBuildStamp == null
   || (
@@ -160,13 +169,21 @@ let
       buck2
       pkgs.cacert
       pkgs.jq
-    ];
+    ]
+    ++ lib.optionals (cargoWorkspaceRoot != null) [ pkgs.python3 ];
 
     dontConfigure = true;
     dontFixup = true;
 
     buildPhase = ''
       runHook preBuild
+      # Nix's zero/unset budget must not expand to the host's CPU count.
+      export NIX_BUILD_CORES="''${NIX_BUILD_CORES:-1}"
+      if [ "$NIX_BUILD_CORES" = 0 ]; then
+        export NIX_BUILD_CORES=1
+      fi
+      # Bound daemon blocking work as well as execution and Tokio workers.
+      export BUCK2_MAX_BLOCKING_THREADS="$NIX_BUILD_CORES"
       export HOME="$TMPDIR/home"
       export XDG_CACHE_HOME="$TMPDIR/cache"
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"
@@ -177,6 +194,14 @@ let
       ''}
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
       cp -R ${capabilities}/. .buck2/capabilities
+      # Nix inputs are immutable and Watchman's state-directory chmod is not
+      # permitted in the sandbox. Hash only this declared source tree instead
+      # of requiring a native notification daemon; mutable edit loops use the
+      # shipped Watchman policy. Startup reads the file, not CLI -c overrides.
+      cat >> .buckconfig.local <<'BUCKLOCAL'
+      [buck2]
+        file_watcher = ${watcherPolicies.immutable-input}
+      BUCKLOCAL
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
         # Consumer roots carry the already-patched local prelude from
         # buck2-rules. Only the producer's bundled external prelude needs
@@ -194,16 +219,24 @@ let
         fi
       ''}
 
-      artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg target})"
+      rust_profile_args=()
+      ${lib.optionalString (cargoWorkspaceRoot != null) ''
+        release_settings="$(${pkgs.python3}/bin/python3 ${releaseProfileScript} ${lib.escapeShellArg "${cargoWorkspaceRoot}/Cargo.toml"})"
+        while IFS= read -r setting; do
+          rust_profile_args+=(--config "$setting")
+        done <<< "$release_settings"
+      ''}
+
+      artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg target})"
       test -f "$artifact"
       cp "$artifact" ${lib.escapeShellArg outputName}
       ${lib.optionalString hasDescriptor ''
-        descriptor="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg "${target}[descriptor]"})"
+        descriptor="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg "${target}[descriptor]"})"
         test -f "$descriptor"
         jq -cS . "$descriptor" > descriptor.json
       ''}
       ${lib.optionalString (runtimeClosureTarget != null) ''
-        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} ${lib.escapeShellArg runtimeClosureTarget})"
+        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg runtimeClosureTarget})"
         test -f "$runtime_closure/descriptor.json"
         cp -R "$runtime_closure" runtime-closure
       ''}
@@ -289,10 +322,14 @@ if importNative then
       else
         expectedPlatform;
     runtimeKind =
-      if runtimeKind == null then
-        (if pkgs.stdenv.hostPlatform.isDarwin then "mach-o-dynamic" else "elf-dynamic")
+      if runtimeKind != null then
+        runtimeKind
+      else if product.kind == "swift-app-bundle" then
+        "mach-o-app-bundle"
+      else if pkgs.stdenv.hostPlatform.isDarwin then
+        "mach-o-dynamic"
       else
-        runtimeKind;
+        "elf-dynamic";
     descriptorPath = lib.escapeShellArg "${sourceProduct}/descriptor.json";
     archivePath = lib.escapeShellArg "${sourceProduct}/${outputName}";
     passthru.buck2Product = sourceProduct;

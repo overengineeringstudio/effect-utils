@@ -1,0 +1,41 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/effect-rust-fixtures/app/BUCK.genie.ts
+# Projection generator: effect-utils/rust/wasm-aggregator-fixture
+# Projection schema version: 1
+# Semantic fingerprint: sha256:181757a59493811f520134d5e226eba29212913e4cefd4af9dcb7618a625d976
+# Semantic inputs: rust/effect-rust-fixtures/app/BUCK.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2/rust:interop.bzl", "rust_interop_smoke", "rust_wasm_aggregator")
+
+rust_wasm_aggregator(
+    name = "app",
+    manifest = {
+    "eager": [
+        "hash_core"
+    ],
+    "lazy": [
+        "math_core"
+    ]
+},
+    crates = {
+    "hash_core": "//rust/effect-rust-fixtures/hash-interop:lib",
+    "math_core": "//rust/effect-rust-fixtures/math-interop:lib"
+},
+)
+
+rust_interop_smoke(
+    name = "app-smoke-node",
+    product = ":app",
+    runtime = "node",
+    script = "//rust/effect-rust-fixtures:smoke",
+)
+
+rust_interop_smoke(
+    name = "app-smoke-bun",
+    product = ":app",
+    runtime = "bun",
+    script = "//rust/effect-rust-fixtures:smoke",
+)

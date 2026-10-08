@@ -157,13 +157,16 @@ const duplicateTypesLock = lock({
       react: 19.0.0`,
 })
 
-const projectionOf = async (lockfileText: string) => {
+const projectionOf = async (
+  lockfileText: string,
+  workspaceTreeTargets?: Readonly<Record<string, string>>,
+) => {
   const metadata = translatePnpmLock({ lockfileText, workspaceText })
   const sidecar = await generatePnpmSha256Sidecar({
     metadata,
     fetchArchive: async () => archive,
   })
-  return makePnpmStoreProjection({ metadata, sidecar })
+  return makePnpmStoreProjection({ metadata, sidecar, workspaceTreeTargets })
 }
 
 describe('normalized store projection', () => {
@@ -351,6 +354,79 @@ describe('normalized store projection', () => {
     expect(view.workspaceTrees[expectedKey]).toBe('//packages/lib:package_tree')
   })
 
+  it.each(['injected', 'linked'] as const)(
+    'projects an %s frozen source through its declared tree without changing workspace identity',
+    async (kind) => {
+      const sourcePath = '.devenv/pnpm-source-inputs/current/repos/sdk/client'
+      const sourceTarget = 'pnpm_sources//:sdk_client_package_tree'
+      const sourceLock = lock({
+        importers: `  packages/app:
+    dependencies:
+      source-lib:
+        specifier: file:${sourcePath}
+        version: ${kind === 'injected' ? `file:${sourcePath}` : `link:../../${sourcePath}`}
+      local-lib:
+        specifier: workspace:*
+        version: link:../local`,
+        packages: `  source-lib@file:${sourcePath}:
+    resolution: {directory: ${sourcePath}, type: directory}`,
+        snapshots: `  source-lib@file:${sourcePath}: {}`,
+      })
+      const ordinary = await projectionOf(sourceLock)
+      const projected = await projectionOf(sourceLock, { [sourcePath]: sourceTarget })
+      const view = projected.views[0]!
+      const sourceKey = workspaceKey(sourcePath)
+      const localKey = workspaceKey('packages/local')
+
+      expect(view.workspaceTrees).toEqual({
+        [sourceKey]: sourceTarget,
+        [localKey]: '//packages/local:package_tree',
+      })
+      expect(view.variants).toEqual(ordinary.views[0]!.variants)
+      expect(projected.entries).toEqual(ordinary.entries)
+      expect(projected.fingerprint).not.toBe(ordinary.fingerprint)
+      expect(view.variants[0]!.direct['source-lib']).toEqual({
+        kind: 'workspace',
+        workspaceKey: sourceKey,
+        workspacePath: sourcePath,
+      })
+
+      const rendered = renderPnpmStoreBuck(projected)
+      expect(rendered).toContain(`"${sourceKey}": "${sourceTarget}"`)
+      expect(rendered).toContain(`"${localKey}": "//packages/local:package_tree"`)
+      expect(rendered).not.toContain(`//${sourcePath}:package_tree`)
+      // Matching a live-checkout suffix must not silently replace frozen bytes.
+      const suffixOnly = await projectionOf(sourceLock, {
+        'repos/sdk/client': sourceTarget,
+      })
+      expect(suffixOnly.fingerprint).toBe(ordinary.fingerprint)
+    },
+  )
+
+  it.each(['constructor', 'toString', '__proto__'])(
+    'maps only own target declarations for workspace path %s',
+    async (sourcePath) => {
+      const sourceLock = lock({
+        importers: `  packages/app:
+    dependencies:
+      source-lib:
+        specifier: workspace:*
+        version: link:../../${sourcePath}`,
+        packages: '  {}',
+        snapshots: '  {}',
+      })
+      const sourceKey = workspaceKey(sourcePath)
+      const ordinary = await projectionOf(sourceLock)
+      expect(ordinary.views[0]!.workspaceTrees[sourceKey]).toBe(`//${sourcePath}:package_tree`)
+      const unrelated = await projectionOf(sourceLock, { 'repos/sdk/client': 'pnpm_sources//:sdk' })
+      expect(unrelated.fingerprint).toBe(ordinary.fingerprint)
+      const ownTargets = Object.fromEntries([[sourcePath, 'pnpm_sources//:sdk']])
+      const projected = await projectionOf(sourceLock, ownTargets)
+      expect(projected.views[0]!.workspaceTrees[sourceKey]).toBe('pnpm_sources//:sdk')
+      expect(renderPnpmStoreBuck(projected)).toContain(`"${sourceKey}": "pnpm_sources//:sdk"`)
+    },
+  )
+
   it("links a peer's type companion into the entry that declares the peer", async () => {
     const projection = await projectionOf(peerTypesLock)
     const widget = projection.entries.find(
@@ -407,16 +483,17 @@ describe('normalized store projection of the real lockfile', () => {
         'eslint@10.10.0_jiti@2.7.0',
       ],
       [
-        '@storybook+builder-vite@10.6.0_storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+rea_27cb05be65527c5a',
+        '@storybook+builder-vite@10.6.0_patch_hash=3ea63b6347343243dbebc21be698afb9635d47f3fd2a5c2bb7b10c002250d_627b9302f264f878',
         '@storybook+react-dom-shim@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_reac_690867bbf0498919',
         '@storybook+react-vite@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-do_9b5eccc39f239997',
         '@storybook+react@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_react-dom@19._c8fa65d991fb5130',
         'storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_prettier@3.9.6_react_da9aab27e30e1021',
       ],
       [
-        '@vitest+browser-playwright@4.1.9_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9',
-        '@vitest+browser@4.1.9_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@4.1.9',
-        'vitest@4.1.9_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@4.1.9_happy-dom@20._f830263be88a0e28',
+        '@vitest+browser-playwright@5.0.3_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@5.0.3',
+        '@vitest+browser@5.0.3_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@5.0.3',
+        '@vitest+ui@5.0.3_vitest@5.0.3',
+        'vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._1c9a61b8ae5e04be',
       ],
       ['browserslist@4.28.8', 'update-browserslist-db@1.3.2_browserslist@4.28.8'],
     ])
@@ -463,31 +540,27 @@ describe('normalized store projection of the real lockfile', () => {
   it('derives the platform-varying entries the current lockfile actually has', () => {
     const varying = platformVaryingEntries(projection).map((entry) => entry.storeKey)
 
-    // Decision 0030 recorded nine such packages; `oxlint-tsgolint` became the
-    // tenth. TypeScript 7 itself is the eleventh: the compiler now ships as
-    // per-platform `@typescript/typescript-<platform>` optional packages, so
-    // `typescript` is platform-selected too. Playwright 1.63 no longer depends
-    // on Darwin-only `fsevents`, so it drops back out, and `@opentui/core`
-    // contributes exactly one entry because every OpenTUI importer now
-    // declares the catalog compiler. The count is derived here so a new
-    // platform-selected dependency needs no edit to admit it.
+    // Assert the current lock's exact identities, including peer-qualified
+    // packages whose optional native dependency edges vary by platform.
     expect(varying).toEqual([
       '@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10',
       'esbuild@0.28.2',
       'lightningcss@1.33.0',
-      'msgpackr-extract@3.0.4',
+      'next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45',
       'oxc-parser@0.127.0',
       'oxc-resolver@11.21.2',
       'oxlint-tsgolint@7.0.2001',
+      'oxlint@1.82.0_oxlint-tsgolint@7.0.2001',
       'rolldown@1.2.7',
+      'sharp@0.34.5',
       'typescript@7.0.2',
       'vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0',
     ])
   })
 
   it('declares one entry per snapshot and one view per importer', () => {
-    expect(projection.entries).toHaveLength(672)
-    expect(new Set(projection.entries.map((entry) => entry.storeKey)).size).toBe(672)
+    expect(projection.entries).toHaveLength(731)
+    expect(new Set(projection.entries.map((entry) => entry.storeKey)).size).toBe(731)
     expect(projection.views).toHaveLength(Object.keys(metadata.importers).length)
     expect(computeStoreSccs({ metadata })).toEqual(projection.sccs.map((scc) => scc.members))
   })
@@ -496,9 +569,29 @@ describe('normalized store projection of the real lockfile', () => {
     const rendered = renderPnpmStoreBuck(projection)
 
     expect(rendered).toBe(renderPnpmStoreBuck(projection))
-    expect([...rendered.matchAll(/^    dependencies_by_platform = \{$/gm)]).toHaveLength(
-      platformVaryingEntries(projection).length,
-    )
+    // A platform-restricted package with nonempty dependencies also needs a
+    // select: its unsupported platforms have no edges. Counting only entries
+    // with multiple admitted variants misses the sharp -> libvips first hops.
+    const configuredEntries = projection.entries
+      .filter(
+        (entry) =>
+          entry.sccIndex === undefined &&
+          new Set(
+            pnpmPlatforms.map((platform) =>
+              JSON.stringify(
+                entry.variants.find((variant) => variant.platforms.includes(platform))?.edges ?? {},
+              ),
+            ),
+          ).size > 1,
+      )
+      .map((entry) => entry.storeKey)
+    const renderedConfiguredEntries = rendered
+      .split('pnpm_store_entry(\n')
+      .slice(1)
+      .map((block) => block.split('\n)')[0]!)
+      .filter((block) => block.includes('    dependencies_by_platform = {'))
+      .map((block) => block.match(/^    store_key = "([^"]+)",$/m)?.[1])
+    expect(renderedConfiguredEntries).toEqual(configuredEntries)
     for (const platform of pnpmPlatforms) {
       expect(rendered).toContain(`"${platform}": {`)
     }

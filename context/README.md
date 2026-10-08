@@ -14,7 +14,7 @@ implementation details.
 - [Megarepo Spec](../packages/@overeng/megarepo/docs/spec.md) - package-local
   reference for commands, config, and integrations
 - [dependency-materialization/](./dependency-materialization/) - local pnpm,
-  projection, Nix prepared dependency, store authority, Buck2 evidence, and
+  projection, immutable archive acquisition, store authority, Buck2 evidence, and
   observability contracts
 - [content-address/](./content-address/) - VRS for reusable
   content-addressed descriptors, stores, resolvers, and artifact URIs

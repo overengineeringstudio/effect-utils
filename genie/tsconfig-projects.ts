@@ -6,17 +6,21 @@ import agentSessionIngestTsconfig from '../packages/@overeng/agent-session-inges
 import buck2ToolsTsconfig from '../packages/@overeng/buck2-tools/tsconfig.json.genie.ts'
 import ciToolsTsconfig from '../packages/@overeng/ci-tools/tsconfig.json.genie.ts'
 import contentAddressTsconfig from '../packages/@overeng/content-address/tsconfig.json.genie.ts'
+import devbarTsconfig from '../packages/@overeng/devbar/tsconfig.json.genie.ts'
 import effectAiClaudeCliTsconfig from '../packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts'
 import effectAiGatewayTsconfig from '../packages/@overeng/effect-ai-gateway/tsconfig.json.genie.ts'
 import effectDistributedLockTsconfig from '../packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts'
 import effectPathTsconfig from '../packages/@overeng/effect-path/tsconfig.json.genie.ts'
 import effectReactTsconfig from '../packages/@overeng/effect-react/tsconfig.json.genie.ts'
-import effectRpcExplorerTsconfig from '../packages/@overeng/effect-rpc-explorer/tsconfig.json.genie.ts'
 import effectRpcExplorerReactTsconfig from '../packages/@overeng/effect-rpc-explorer-react/tsconfig.json.genie.ts'
+import effectRpcExplorerTsconfig from '../packages/@overeng/effect-rpc-explorer/tsconfig.json.genie.ts'
 import effectRpcTanstackBasicTsconfig from '../packages/@overeng/effect-rpc-tanstack/examples/basic/tsconfig.json.genie.ts'
 import effectRpcTanstackTsconfig from '../packages/@overeng/effect-rpc-tanstack/tsconfig.json.genie.ts'
+import effectRustFixtureConsumerTsconfig from '../packages/@overeng/effect-rust-fixture-consumer/tsconfig.json.genie.ts'
+import effectRustTsconfig from '../packages/@overeng/effect-rust/tsconfig.json.genie.ts'
 import effectSchemaFormAriaTsconfig from '../packages/@overeng/effect-schema-form-aria/tsconfig.json.genie.ts'
 import effectSchemaFormTsconfig from '../packages/@overeng/effect-schema-form/tsconfig.json.genie.ts'
+import genieSmalltalkTsconfig from '../packages/@overeng/genie-smalltalk/tsconfig.json.genie.ts'
 import type { GenieOutput, TSConfigArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import genieTsconfig from '../packages/@overeng/genie/tsconfig.json.genie.ts'
 import ghCiUtilsTsconfig from '../packages/@overeng/gh-ci-utils/tsconfig.json.genie.ts'
@@ -32,6 +36,8 @@ import notionMdTsconfig from '../packages/@overeng/notion-md/tsconfig.json.genie
 import notionPropertyWriteTsconfig from '../packages/@overeng/notion-property-write/tsconfig.json.genie.ts'
 import notionReactTsconfig from '../packages/@overeng/notion-react/tsconfig.json.genie.ts'
 import npmReleaseTsconfig from '../packages/@overeng/npm-release/tsconfig.json.genie.ts'
+import outlineTsconfig from '../packages/@overeng/outline/tsconfig.json.genie.ts'
+import otelBrowserTsconfig from '../packages/@overeng/otel-browser/tsconfig.json.genie.ts'
 import otelContractTsconfig from '../packages/@overeng/otel-contract/tsconfig.json.genie.ts'
 import oxcConfigTsconfig from '../packages/@overeng/oxc-config/tsconfig.json.genie.ts'
 import ptyEffectTsconfig from '../packages/@overeng/pty-effect/tsconfig.json.genie.ts'
@@ -109,6 +115,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/buck2-tools': { tsconfig: buck2ToolsTsconfig },
     'packages/@overeng/ci-tools': { tsconfig: ciToolsTsconfig },
     'packages/@overeng/content-address': { tsconfig: contentAddressTsconfig },
+    'packages/@overeng/devbar': { tsconfig: devbarTsconfig },
     'packages/@overeng/effect-ai-claude-cli': { tsconfig: effectAiClaudeCliTsconfig },
     'packages/@overeng/effect-ai-gateway': { tsconfig: effectAiGatewayTsconfig },
     'packages/@overeng/effect-distributed-lock': { tsconfig: effectDistributedLockTsconfig },
@@ -120,9 +127,12 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/effect-rpc-tanstack/examples/basic': {
       tsconfig: effectRpcTanstackBasicTsconfig,
     },
+    'packages/@overeng/effect-rust': { tsconfig: effectRustTsconfig },
+    'packages/@overeng/effect-rust-fixture-consumer': { tsconfig: effectRustFixtureConsumerTsconfig },
     'packages/@overeng/effect-schema-form': { tsconfig: effectSchemaFormTsconfig },
     'packages/@overeng/effect-schema-form-aria': { tsconfig: effectSchemaFormAriaTsconfig },
     'packages/@overeng/genie': { tsconfig: genieTsconfig },
+    'packages/@overeng/genie-smalltalk': { tsconfig: genieSmalltalkTsconfig },
     'packages/@overeng/gh-ci-utils': { tsconfig: ghCiUtilsTsconfig },
     'packages/@overeng/kdl': { tsconfig: kdlTsconfig },
     'packages/@overeng/kdl-effect': { tsconfig: kdlEffectTsconfig },
@@ -136,6 +146,8 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/notion-md': { tsconfig: notionMdTsconfig },
     'packages/@overeng/notion-property-write': { tsconfig: notionPropertyWriteTsconfig },
     'packages/@overeng/notion-react': { tsconfig: notionReactTsconfig },
+    'packages/@overeng/outline': { tsconfig: outlineTsconfig },
+    'packages/@overeng/otel-browser': { tsconfig: otelBrowserTsconfig },
     'packages/@overeng/otel-contract': { tsconfig: otelContractTsconfig },
     'packages/@overeng/oxc-config': { tsconfig: oxcConfigTsconfig },
     'packages/@overeng/pty-effect': { tsconfig: ptyEffectTsconfig },

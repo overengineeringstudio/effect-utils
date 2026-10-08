@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/otelite/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:7e58096e8ff2f6c867271eb773abf248de1906db6457ad57f89f0e33ae90317a
-# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/BUCK.genie.ts, packages/@overeng/otelite/Cargo.toml, packages/@overeng/otelite/src/**/*.rs, packages/@overeng/otelite/tests/**/*.rs, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Semantic fingerprint: sha256:6e682d2bc87a5da98b4e4eda09b69d3e7f689e0e79838539795b55828a0b7135
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/BUCK.genie.ts, packages/@overeng/otelite/Cargo.toml, packages/@overeng/otelite/src/**/*.rs, packages/@overeng/otelite/tests/**/*.rs, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
@@ -48,6 +48,102 @@ static_source_set(
         "tests/run_cli.rs",
         "tests/spanmetrics.rs",
     ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/derive_spanmetrics.rs",
+    src = "src/derive_spanmetrics.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/canonical.rs",
+    src = "src/inspect/canonical.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/mod.rs",
+    src = "src/inspect/mod.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/model.rs",
+    src = "src/inspect/model.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/parse.rs",
+    src = "src/inspect/parse.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect/summarize.rs",
+    src = "src/inspect/summarize.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect_cmd.rs",
+    src = "src/inspect_cmd.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect_logs.rs",
+    src = "src/inspect_logs.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/inspect_metrics.rs",
+    src = "src/inspect_metrics.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/main.rs",
+    src = "src/main.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/otlp_json.rs",
+    src = "src/otlp_json.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/receiver.rs",
+    src = "src/receiver.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/run.rs",
+    src = "src/run.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/sink.rs",
+    src = "src/sink.rs",
     visibility = ["PUBLIC"],
 )
 

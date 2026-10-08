@@ -1,21 +1,24 @@
-import { pnpmWorkspaceMemberPaths } from '../packages.ts'
 import { buck2TypeScriptAdmission as effectSocketAdmission } from '../../context/effect/socket/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as opentuiAdmission } from '../../context/opentui/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as agentSessionIngestAdmission } from '../../packages/@overeng/agent-session-ingest/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/@overeng/buck2-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as devbarAdmission } from '../../packages/@overeng/devbar/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiClaudeCliAdmission } from '../../packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiGatewayAdmission } from '../../packages/@overeng/effect-ai-gateway/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectDistributedLockAdmission } from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectPathAdmission } from '../../packages/@overeng/effect-path/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectReactAdmission } from '../../packages/@overeng/effect-react/BUCK.genie.ts'
-import { buck2TypeScriptAdmission as effectRpcExplorerAdmission } from '../../packages/@overeng/effect-rpc-explorer/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcExplorerReactAdmission } from '../../packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectRpcExplorerAdmission } from '../../packages/@overeng/effect-rpc-explorer/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackAdmission } from '../../packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackBasicAdmission } from '../../packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectRustAdmission } from '../../packages/@overeng/effect-rust/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectRustFixtureConsumerAdmission } from '../../packages/@overeng/effect-rust-fixture-consumer/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAriaAdmission } from '../../packages/@overeng/effect-schema-form-aria/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAdmission } from '../../packages/@overeng/effect-schema-form/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as genieSmalltalkAdmission } from '../../packages/@overeng/genie-smalltalk/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as genieAdmission } from '../../packages/@overeng/genie/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ghCiUtilsAdmission } from '../../packages/@overeng/gh-ci-utils/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as kdlEffectAdmission } from '../../packages/@overeng/kdl-effect/BUCK.genie.ts'
@@ -30,6 +33,8 @@ import { buck2TypeScriptAdmission as notionMdAdmission } from '../../packages/@o
 import { buck2TypeScriptAdmission as notionPropertyWriteAdmission } from '../../packages/@overeng/notion-property-write/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as notionReactAdmission } from '../../packages/@overeng/notion-react/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as npmReleaseAdmission } from '../../packages/@overeng/npm-release/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as outlineAdmission } from '../../packages/@overeng/outline/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as otelBrowserAdmission } from '../../packages/@overeng/otel-browser/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as otelContractAdmission } from '../../packages/@overeng/otel-contract/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as oxcConfigAdmission } from '../../packages/@overeng/oxc-config/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ptyEffectAdmission } from '../../packages/@overeng/pty-effect/BUCK.genie.ts'
@@ -42,6 +47,7 @@ import { buck2TypeScriptAdmission as tuiStoriesAdmission } from '../../packages/
 import { buck2TypeScriptAdmission as utilsDevAdmission } from '../../packages/@overeng/utils-dev/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as utilsStorybookAdmission } from '../../packages/@overeng/utils-storybook/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as utilsAdmission } from '../../packages/@overeng/utils/BUCK.genie.ts'
+import { pnpmWorkspaceMemberPaths } from '../packages.ts'
 import {
   buck2TestCollectionTargetSuffix,
   discoverCollectableTestModules,
@@ -54,6 +60,7 @@ import type {
 
 export type { Buck2TypeScriptProjectAuthorityMetadata } from './typescript-package-projection.ts'
 
+// eslint-disable-next-line overeng/named-args -- Array sort comparator callbacks receive positional operands.
 const compareAuthorityStrings = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0
 
@@ -81,6 +88,7 @@ export const buck2TypeScriptAdmissions = {
   buck2Tools: buck2ToolsAdmission,
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,
+  devbar: devbarAdmission,
   effectAiClaudeCli: effectAiClaudeCliAdmission,
   effectAiGateway: effectAiGatewayAdmission,
   effectDistributedLock: effectDistributedLockAdmission,
@@ -90,9 +98,12 @@ export const buck2TypeScriptAdmissions = {
   effectRpcExplorerReact: effectRpcExplorerReactAdmission,
   effectRpcTanstack: effectRpcTanstackAdmission,
   effectRpcTanstackBasic: effectRpcTanstackBasicAdmission,
+  effectRust: effectRustAdmission,
+  effectRustFixtureConsumer: effectRustFixtureConsumerAdmission,
   effectSchemaForm: effectSchemaFormAdmission,
   effectSchemaFormAria: effectSchemaFormAriaAdmission,
   genie: genieAdmission,
+  genieSmalltalk: genieSmalltalkAdmission,
   ghCiUtils: ghCiUtilsAdmission,
   kdl: kdlAdmission,
   kdlEffect: kdlEffectAdmission,
@@ -106,6 +117,8 @@ export const buck2TypeScriptAdmissions = {
   notionPropertyWrite: notionPropertyWriteAdmission,
   notionReact: notionReactAdmission,
   npmRelease: npmReleaseAdmission,
+  outline: outlineAdmission,
+  otelBrowser: otelBrowserAdmission,
   otelContract: otelContractAdmission,
   oxcConfig: oxcConfigAdmission,
   ptyEffect: ptyEffectAdmission,

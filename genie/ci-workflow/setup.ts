@@ -1,9 +1,11 @@
+import { pipelineDevenvStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { RunnerProfile } from '../ci.ts'
 import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 import {
   jobCacheDescriptors,
+  trustedCacheWriterGuardedSecret,
   publisherWriteSecret,
   CachePublisherJobError,
 } from './cache-policy.ts'
@@ -265,6 +267,36 @@ export const cachixPushStep = <TStep extends { if?: string; env?: Record<string,
     env: { ...opts.step.env, CACHIX_AUTH_TOKEN: opts.authToken },
   }
 }
+
+/** Public Buck2 writer credential, supplied only to protected publisher steps. */
+export const buck2PublicCacheWriteSecret = 'BUCK2_PUBLIC_CACHE_WRITE_AUTH'
+
+/**
+ * Publish gating results on protected main pushes and merge groups, never PRs.
+ * The trusted-writer posture makes opportunistic uploads fail open (q10/q11/q14),
+ * unlike the dedicated trusted proof. Only the masked Base64 header reaches Buck.
+ */
+export const buck2TrustedCacheWriterStep = <
+  TStep extends { env?: Record<string, string>; run: string },
+>(
+  step: TStep,
+) => ({
+  ...step,
+  [publisherWriteSecret]: buck2PublicCacheWriteSecret,
+  env: {
+    ...step.env,
+    BUCK2_PUBLIC_CACHE_WRITE_AUTH: trustedCacheWriterGuardedSecret(buck2PublicCacheWriteSecret),
+  },
+  run: [
+    'if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then',
+    '  BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf \'%s\' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d \'\\n\')"',
+    '  echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"',
+    '  export BUCK2_CACHE_WRITE_BASIC_AUTH',
+    'fi',
+    'unset BUCK2_PUBLIC_CACHE_WRITE_AUTH',
+    step.run,
+  ].join('\n'),
+})
 
 export const cachixPublisherStep = (
   opts: CachePublisherScope & {
@@ -929,70 +961,6 @@ export const coldFreshNixBuildStep = ({
 })
 
 /**
- * Guard the pnpm dependency-prep contract against regressions that would
- * silently reintroduce package-manager self-bootstrap or implicit lockfile
- * normalization inside fixed-output builds.
- */
-export const pnpmBuilderContractStep = ({
-  builderFile = 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
-  policyFile = 'nix/workspace-tools/lib/pnpm-install-policy.nix',
-  name = 'Guard pnpm builder contract',
-}: {
-  builderFile?: string
-  policyFile?: string
-  name?: string
-}) => ({
-  name,
-  shell: 'bash',
-  run: withCiSourceRoot(
-    [
-      'set -euo pipefail',
-      `builder=${shellSingleQuote(builderFile)}`,
-      `policy=${shellSingleQuote(policyFile)}`,
-      'if [ ! -f "$builder" ]; then',
-      '  echo "::error::missing pnpm deps builder: $builder"',
-      '  exit 1',
-      'fi',
-      'if [ ! -f "$policy" ]; then',
-      '  echo "::error::missing pnpm install policy: $policy"',
-      '  exit 1',
-      'fi',
-      'for required in \\',
-      "  'store-dir=%s' \\",
-      "  'frozenLockfile ? true' \\",
-      "  'pnpm install --frozen-lockfile --ignore-scripts'; do",
-      '  if ! grep -Fq -- "$required" "$builder"; then',
-      '    echo "::error::missing required pnpm builder contract fragment: $required"',
-      '    exit 1',
-      '  fi',
-      'done',
-      'for required in \\',
-      "  'side-effects-cache=false' \\",
-      "  'verify-store-integrity=true' \\",
-      "  'package-import-method=${packageImportMethod}' \\",
-      "  'pm-on-fail=ignore' \\",
-      "  'strict-store-pkg-content-check=true' \\",
-      "  'child-concurrency=1' \\",
-      "  'network-concurrency=4'; do",
-      '  if ! grep -Fq -- "$required" "$policy"; then',
-      '    echo "::error::missing required pnpm policy contract fragment: $required"',
-      '    exit 1',
-      '  fi',
-      'done',
-      'for forbidden in \\',
-      "  'package-import-method=hardlink' \\",
-      "  'lockfile-only' \\",
-      "  'pnpm add pnpm@'; do",
-      '  if grep -Fq -- "$forbidden" "$builder" "$policy"; then',
-      '    echo "::error::forbidden pnpm builder contract fragment present: $forbidden"',
-      '    exit 1',
-      '  fi',
-      'done',
-    ].join('\n'),
-  ),
-})
-
-/**
  * Resolve the devenv binary and do a fast store-path validity check.
  *
  * Previously ran `devenv info` (~25s) as an eager canary to detect any store
@@ -1007,7 +975,7 @@ export const pnpmBuilderContractStep = ({
  */
 export const validateNixStoreStepFor = (lockFile = 'devenv.lock') =>
   ({
-    name: 'Resolve devenv',
+    name: pipelineDevenvStepName,
     env: githubTokenEnv(),
     // Routed through the shared retry wrapper: resolving devenv is the first step that
     // evaluates flake inputs, so it is where a transient store/input-cache failure lands

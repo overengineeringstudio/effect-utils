@@ -12,6 +12,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/buck2-tools' }),
+  dependencies: { external: catalog.pick('acorn', 'acorn-walk') },
   devDependencies: {
     workspace: [utilsDevPkg],
     external: catalog.pick('@types/bun', '@types/node', 'typescript', 'vitest'),

@@ -1,4 +1,4 @@
-import { pipelineJobIdentityForName } from './pipeline-job-names.ts'
+import { latestJobsWithExecutionAttempt, pipelineJobIdentityForName } from './pipeline-job-names.ts'
 import {
   deriveJobRootSpanId,
   deriveJobTraceId,
@@ -6,7 +6,7 @@ import {
   derivePipelineTraceId,
 } from './pipeline-trace-identity.ts'
 
-/** GitHub Jobs API fields used to identify one attempt's job spans. */
+/** GitHub Jobs API fields used to identify one attempt's job spans (`filter=all` rows). */
 export type Job = {
   name: string
   run_attempt: number
@@ -36,31 +36,37 @@ export const closePayload = ({
 }: {
   runId: string
   attempt: number
+  /** The run's `filter=all` jobs; carried-over rerun jobs link to their execution attempt. */
   jobs: readonly Job[]
   run: WorkflowRun
   closedAt?: string
 }) => {
+  const latest = latestJobsWithExecutionAttempt(jobs)
   const counts: Record<string, number> = {}
   let earliestStart = Number.POSITIVE_INFINITY
-  for (const job of jobs) {
-    if (job.run_attempt !== attempt) continue
-    if (job.started_at !== null) earliestStart = Math.min(earliestStart, Date.parse(job.started_at))
+  for (const job of latest) {
+    if (job.executionAttempt === attempt && job.started_at !== null)
+      earliestStart = Math.min(earliestStart, Date.parse(job.started_at))
     if (job.name !== 'pipeline-attempt-close') counts[job.name] = (counts[job.name] ?? 0) + 1
   }
-  const links: OtlpLink[] = jobs.flatMap((row) => {
-    if (
-      row.run_attempt !== attempt ||
-      row.started_at === null ||
-      row.name === 'pipeline-attempt-close' ||
-      counts[row.name] !== 1
-    )
+  const links: OtlpLink[] = latest.flatMap((row) => {
+    if (row.started_at === null || row.name === 'pipeline-attempt-close' || counts[row.name] !== 1)
       return []
     const identity = pipelineJobIdentityForName(row.name)
     if (identity === undefined) return []
+    const jobRunId = runId.replace(/\/[1-9]\d*$/, `/${row.executionAttempt}`)
     return [
       {
-        traceId: deriveJobTraceId({ runId, job: identity.job, dimensions: identity.dimensions }),
-        spanId: deriveJobRootSpanId({ runId, job: identity.job, dimensions: identity.dimensions }),
+        traceId: deriveJobTraceId({
+          runId: jobRunId,
+          job: identity.job,
+          dimensions: identity.dimensions,
+        }),
+        spanId: deriveJobRootSpanId({
+          runId: jobRunId,
+          job: identity.job,
+          dimensions: identity.dimensions,
+        }),
         attributes: [str({ key: 'buck2.job_trace.link_state', value: 'unverified' })],
       },
     ]

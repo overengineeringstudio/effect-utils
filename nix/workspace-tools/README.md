@@ -1,83 +1,59 @@
 # Workspace Tools (Nix)
 
-Reusable Nix helpers for Buck products, pnpm-based workspace CLIs, and shared
-CLI utilities. These are pure and designed to work in both megarepo workspaces
-and standalone repos.
+Reusable Nix helpers for Buck product packaging, shared CLI build identity, and
+live pnpm workspace policy. Buck owns product compilation; Nix acquires declared
+dependency archives and imports or reconstructs the pinned Buck product graph.
 
 ## Layout
 
 - `lib/`
   - `buck2-build-product-contract.nix` — pure exact validation and canonical
     identity for the shared Buck-to-Nix product descriptor.
-  - `buck2-artifact-import.nix` — fail-closed product import entry point; the
-    exact `elf-dynamic/v1` inspector is admitted and other runtimes remain
-    rejected until their inspectors exist.
-  - `buck2-runtime-inspect-elf-dynamic.nix` — observation-only ELF class,
-    machine, interpreter, dependency, and runtime-path verification.
-  - `mk-pnpm-cli.nix` — pnpm + bun compile builder for workspace CLIs.
-  - `mk-pnpm-deps.nix` — FOD helper for preparing relocatable pnpm install trees that downstream builds restore without rerunning `pnpm install`.
-  - `cli-build-stamp.nix` — build stamp helper for CLIs.
-  - `pnpm-install-policy.nix` — install knobs shared by live and prepared
-    installs, plus the workspace-boundary rule below.
-  - `pnpm-source-input-specifiers.cjs` — the staged source-input `file:`
-    specifier algebra shared by every surface that writes, classifies, or
-    strips one.
+  - `buck2-artifact-import.nix` — fail-closed product import entry point with
+    runtime inspection delegated to the admitted runtime-specific inspectors.
+  - `buck2-runtime-inspect-*.nix` — observation-only runtime verification.
+  - `buck2-product-candidates.nix` — package candidates backed by Buck products.
+  - `javascript-product-import.nix` — JavaScript module and runtime-tree import.
+  - `mk-cli-packages.nix` — the retained Buck-backed CLI package wrapper.
+  - Buck capability, archive, source-identity, and release helpers and tests.
+  - `cli-build-stamp.nix` — shared build stamp helper for CLIs.
+  - `pnpm-install-policy.nix` — strict live install policy and workspace-boundary
+    handling.
+  - `pnpm-source-input-specifiers.cjs` — importer-relative staged source-input
+    `file:` specifier algebra.
 
 ## Flake Exports
 
 From `effect-utils/flake.nix`:
 
 ```nix
+lib.mkBuck2ArtifactImport
+lib.mkBuck2JavaScriptProductImport
+lib.mkCliPackages
 lib.cliBuildStamp
 ```
 
-When a downstream repo consumes `effect-utils` packages or pnpm-based builders,
-its root `nixpkgs` and `flake-utils` should follow `effect-utils/nixpkgs` and
-`effect-utils/flake-utils`. That keeps prepared pnpm trees content-addressed
-against one canonical build graph across standalone and composed views.
+Downstream package consumers should make their root `nixpkgs` and `flake-utils`
+follow `effect-utils/nixpkgs` and `effect-utils/flake-utils` to share the canonical
+build graph.
 
-For `mk-pnpm-cli`, the core contract mirrors the layered derivation graph:
+Run `bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"` to
+exercise the retained public outputs from standalone and composed downstream
+flake layouts. The test archives the committed `HEAD` source for both layouts,
+so commit local source changes first. Live editor projections, daemon state,
+and CI evidence are deliberately outside this consumer contract.
 
-```nix
-depsBuilds = {
-  "." = { hash = "sha256-..."; };
-  "repos/effect-utils" = { hash = "sha256-..."; };
-};
-```
+The Buck-to-Nix product contract is specified in
+[`context/builds/05-product-distribution/02-nix-bridge`](../../context/builds/05-product-distribution/02-nix-bridge/spec.md).
+`nix/buck2-products/pnpm-archives.nix` acquires immutable per-package archives;
+it does not install a workspace dependency tree. Shared native dependency
+classification and audits remain live independently of CLI packaging.
 
-- single-root CLIs use one `"."` entry
-- composed CLIs use one entry per authoritative install root
-
-Each `hash` is the authoritative fixed-output hash of one prepared deps
-artifact. The downstream CLI derivation depends on those artifacts directly, so
-the artifact hash already is the effective dependency fingerprint for rebuilds.
-Any faster preflight staleness check belongs in tooling, not in the builder API.
-
-Prepared pnpm dependency artifacts intentionally skip lifecycle scripts. Native
-Node packages that require install/build scripts belong in the Nix package or
-build phase that actually needs them, usually via `nativeBuildInputs`, PATH,
-`nativeNodePackages`, or an explicit wrapper. `nativeNodePackages` links a
-Nix-owned Node package into the restored build workspace for packages that still
-resolve a native binding by npm name. Prebuilt optional native packages from the
-lockfile, such as Rollup/Rolldown/Vite toolchain bindings, are acceptable only
-as locked fixed-output pnpm inputs; they must not require a lifecycle build to
-materialize.
-
-The helper exposes the resulting install-root metadata via
-`passthru.installRoots`, `passthru.depsBuildsByInstallRoot`, and
-`passthru.depsBuildEntries` so downstream hash-refresh tooling can target the
-real prepared dependency boundary for each root. Each `depsBuildEntries`
-element also includes the install-root `drvPath` and dependency freshness
-digests, which lets CI/tooling evict or realize the authoritative prepared-deps
-derivation without guessing from derivation names.
-
-`passthru.dependencyMaterializationEvidence` is the Nix-prepared dependency
-contract. Its profile keys include staged manifest digests and inherited root
-patch authority, so shared external install-root FODs converge for
-byte-identical dependency inputs but move when lockfiles, package manifests, or
-patch authority change. `passthru.buck2DependencyMaterializationEvidence`
-adapts the same evidence into a Buck2-facing shape while explicitly declaring
-that Buck2 does not own live pnpm materialization or repair.
+The former compiler/prepared-install packaging family is retired. There is no
+workspace-install FOD hash registry, source-support package export, aggregate
+manifest alignment passthrough, or prepared-tree restore API. Product consumers
+use the Buck packaging boundary above; live workspaces continue to use the
+strict pnpm task policy and source-input algebra below.
 
 ## Two pnpm invariants every install root depends on
 
@@ -95,10 +71,8 @@ appears — after which a frozen install fails with `ERR_PNPM_NO_LOCKFILE`.
 `--ignore-workspace` and a `cd`/`--dir` into the root do not prevent this.
 
 `pnpmInstallPolicy.nestedWorkspaceBoundaryShell` is the one encoding. It
-asserts the boundary by default (a staged root that lacks one is a builder
-bug), and `ephemeral = true` declares a missing boundary only for the wrapped
-install, for a root whose directory is itself a build artifact whose hash must
-not move.
+asserts the boundary by default; `ephemeral = true` creates a missing boundary
+only for the wrapped install, without persisting that boundary into the root.
 
 ### A `file:` specifier is relative to the manifest that declares it
 
@@ -115,5 +89,4 @@ rejects.
 `relativizeSourceInputSpecifier` re-spells an existing one for its importer,
 and `targetsSourceInputStage` classifies a recorded value by resolved target so
 that the root-relative and importer-relative spellings of the same dependency
-are treated alike — which is what lets the projection be stripped from a
-prepared tree completely.
+are treated alike when classifying staged source-input projections.

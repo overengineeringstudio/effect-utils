@@ -1,0 +1,24 @@
+[package]
+name = "effect-rust"
+workspace = ".."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+wasm = []
+napi = []
+# Rust-owned contracts: schemars schemas with the effect-rust vocabulary and
+# the `#[effect_rust::contract]` attribute. Required by exports with serde domain types.
+contract = ["dep:schemars", "dep:regex"]
+
+[dependencies]
+borsh.workspace = true
+chrono.workspace = true
+effect-rust-macros = { path = "../effect-rust-macros" }
+regex = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+serde_path_to_error.workspace = true

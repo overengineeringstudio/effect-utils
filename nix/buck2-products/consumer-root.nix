@@ -3,9 +3,11 @@
   rules,
   capabilities,
   cellName,
+  watcherPolicy ? "mutable-checkout",
   remoteCacheEnabled ? false,
   allowCacheUploads ? false,
   actionCacheAddress ? null,
+  engineAddress ? null,
   casAddress ? null,
   cacheInstanceName ? null,
   cacheTls ? null,
@@ -14,6 +16,8 @@
   # `mkPrivateProductTarballs` `archiveRoot`: the only source of private product
   # archives for live (non-sandboxed) Buck builds.
   privateProductRoot ? null,
+  # Consumer-owned capability bindings appended to this root's toolchain cell.
+  extraToolchainsBuck ? "",
   projectIgnore ? [
     "**/__pycache__"
     "**/dist"
@@ -30,10 +34,13 @@
 
 let
   lib = pkgs.lib;
+  watcherPolicies = import ./watcher-policies.nix;
   ignore = lib.concatStringsSep "," projectIgnore;
   boolString = value: if value then "true" else "false";
+  effectiveEngineAddress = if engineAddress == null then actionCacheAddress else engineAddress;
   remoteClientValues = [
     actionCacheAddress
+    effectiveEngineAddress
     casAddress
     cacheInstanceName
     cacheTls
@@ -62,7 +69,7 @@ let
       execution_platforms = rules//buck2/platforms:host_execution_platform
 
     [buck2]
-      file_watcher = notify
+      file_watcher = ${watcherPolicies.${watcherPolicy}}
       digest_algorithms = SHA256
       remote_cache_enabled = ${boolString remoteCacheEnabled}
       allow_cache_uploads = ${boolString allowCacheUploads}${lib.optionalString allowCacheUploads "\n  default_allow_cache_upload = true"}
@@ -72,10 +79,13 @@ let
   ''
   + lib.optionalString remoteClientConfigured ''
     [buck2_re_client]
+      engine_address = ${effectiveEngineAddress}
       action_cache_address = ${actionCacheAddress}
       cas_address = ${casAddress}
       instance_name = ${cacheInstanceName}
       tls = ${boolString cacheTls}
+      # Buck batches payload bytes, not protobuf overhead; leave room below 4 MiB.
+      max_total_batch_size = 3145728
   ''
   + lib.optionalString (privateProductRoot != null) ''
     [nix_store]
@@ -84,6 +94,7 @@ let
   + lib.optionalString archiveOriginConfigured ''
     [archive_origin]
       url_prefix = ${archiveOriginUrlPrefix}
+      trusted_url_prefix = ${archiveOriginUrlPrefix}
       trusted_tier = ${archiveOriginTier}
   '';
   rootBuck = ''
@@ -117,8 +128,12 @@ let
         runner = "@rules//:packages/@overeng/buck2-tools/src/typescript-runner.ts",
         visibility = ["PUBLIC"],
     )
-  '';
+  ''
+  + extraToolchainsBuck;
 in
+assert lib.assertMsg
+  (builtins.isString watcherPolicy && builtins.hasAttr watcherPolicy watcherPolicies)
+  "mkConsumerBuckRoot: watcherPolicy must be one of: ${lib.concatStringsSep ", " (builtins.attrNames watcherPolicies)}";
 assert lib.assertMsg (
   builtins.isString cellName
   && builtins.match "[A-Za-z][A-Za-z0-9_]*" cellName != null
@@ -135,9 +150,8 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   !allowCacheUploads || remoteCacheEnabled
 ) "mkConsumerBuckRoot: cache uploads require the remote cache";
-assert lib.assertMsg (
-  !remoteClientConfigured || remoteClientComplete
-) "mkConsumerBuckRoot: action/cache addresses, instance name, and TLS must be configured together";
+assert lib.assertMsg (!remoteClientConfigured || remoteClientComplete)
+  "mkConsumerBuckRoot: engine/action/cache addresses, instance name, and TLS must be configured together";
 assert lib.assertMsg (
   !remoteCacheEnabled || remoteClientComplete
 ) "mkConsumerBuckRoot: the enabled remote cache requires a complete client configuration";
@@ -145,6 +159,7 @@ assert lib.assertMsg (
   !remoteClientComplete
   || (
     builtins.isString actionCacheAddress
+    && builtins.isString effectiveEngineAddress
     && builtins.isString casAddress
     && builtins.isString cacheInstanceName
     && builtins.isBool cacheTls
@@ -167,6 +182,8 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   privateProductRoot == null || lib.hasPrefix "/nix/store/" "${privateProductRoot}"
 ) "mkConsumerBuckRoot: privateProductRoot must be a Nix store path";
+assert lib.assertMsg (builtins.isString extraToolchainsBuck)
+  "mkConsumerBuckRoot: extraToolchainsBuck must be a Buck declaration string";
 pkgs.runCommand "${cellName}-buck2-root"
   {
     passthru = {
@@ -181,6 +198,7 @@ pkgs.runCommand "${cellName}-buck2-root"
         capabilities
         casAddress
         cellName
+        engineAddress
         privateProductRoot
         remoteCacheEnabled
         rootBuck
@@ -196,6 +214,7 @@ pkgs.runCommand "${cellName}-buck2-root"
     cat > "$out/.buckconfig" <<'BUCKCONFIG'
     ${buckConfig}
     BUCKCONFIG
+    cp ${../../.watchmanconfig} "$out/.watchmanconfig"
     : > "$out/.buckroot"
     cat > "$out/BUCK" <<'ROOT_BUCK'
     ${rootBuck}

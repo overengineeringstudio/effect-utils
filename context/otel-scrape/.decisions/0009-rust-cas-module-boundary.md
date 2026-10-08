@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Status: accepted
 
 ## Context
 
@@ -37,3 +37,15 @@ contract boundary without prematurely creating a new package. The tradeoff is
 that TypeScript and Rust still have separate implementations of the same CAS
 contract. The conformance vectors are the guardrail until the contract is
 generated or promoted into a shared Rust crate.
+
+## Evidence and Argument
+
+The context and consequences above supply this record's rationale; this shape
+normalization adds no new implementation evidence or historical deliberation.
+
+## Options
+
+| Recorded design state | Disposition |
+| --- | --- |
+| Decision stated above | Accepted in the original record |
+| Prior limitation described in Context | Contrasted by the original rationale; no additional historical option claim |

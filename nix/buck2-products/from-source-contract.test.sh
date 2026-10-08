@@ -3,10 +3,11 @@ set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
+bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
 contract="$(nix eval --impure --json --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
-    flake = builtins.getFlake (toString repo);
+    flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
     system = builtins.currentSystem;
     packages = flake.packages.${system};
     product = packages.buck-product-megarepo-from-source;
@@ -48,5 +49,6 @@ nix build "$repo_root#buck-product-megarepo-from-source" --no-link
 # Source products must also build against the exported, local-cell consumer root.
 "$repo_root/nix/buck2-rules/tests/consumer-root-contract.test.sh" "$repo_root"
 bash "$repo_root/nix/workspace-tools/lib/tests/source-identity.sh" "$repo_root"
+bash "$repo_root/nix/workspace-tools/lib/tests/cargo-release-profile.sh" "$repo_root"
 
 printf 'buck2 from-source contracts passed\n'

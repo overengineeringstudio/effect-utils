@@ -49,6 +49,6 @@ Repo concurrency is bounded and tuned by measurement. The accepted default is 4,
 the observed throughput knee. OTEL verifies the operating point with phase spans,
 `git.output.bytes`, and `megarepo_store_gc_rss_bytes`.
 
-Policy decision [0001](0001-reclaim-cold-worktrees-in-default-gc.md) is
+Policy decision [0001](./0001-reclaim-cold-worktrees-in-default-gc.md) is
 unchanged. Telemetry tests use explicit OTLP endpoints and wall-time sampling so
 fixed decision clocks cannot hot-loop sampler/exporter schedules.

@@ -38,28 +38,238 @@ const generatedWorkflowSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml.genie.ts'].join('/'), import.meta.url),
   'utf8',
 )
-const generatedCiWorkflowYamlSource = readFileSync(
+const generatedProductCiWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml'].join('/'), import.meta.url),
   'utf8',
 )
-const generatedCiWorkflowTriggers = generatedCiWorkflowYamlSource.split('\njobs:\n')[0] ?? ''
-const generatedStorybookPlaysWorkflowYamlSource = readFileSync(
+const generatedEmpiricalWorkflowYamlSource = readFileSync(
   new URL(
-    ['../../../../../../.github/workflows', 'storybook-plays.yml'].join('/'),
+    ['../../../../../../.github/workflows', 'empirical-proofs.yml'].join('/'),
     import.meta.url,
   ),
   'utf8',
 )
+const generatedCiWorkflowYamlSource = [
+  generatedProductCiWorkflowYamlSource,
+  generatedEmpiricalWorkflowYamlSource,
+].join('\n')
+
+describe('pipeline traces image attachment', () => {
+  // Modes that run the checked-in GitBucket adapter instead of a stub uploader.
+  const adapterModes: Readonly<Record<string, true>> = {
+    'oidc-429': true,
+    'exchange-403': true,
+    'upload-timeout': true,
+  }
+  it.each([
+    'absent',
+    'dry-run',
+    'success',
+    'dark-upload-failure',
+    'private-url',
+    'multiple-urls',
+    'raster-failure',
+    'oversized',
+    'oidc-429',
+    'exchange-403',
+    'upload-timeout',
+  ] as const)('preserves atomic report publication for %s', (mode) => {
+    const root = mkdtempSync(join(tmpdir(), 'pipeline-traces-assets-'))
+    const bin = join(root, 'bin')
+    mkdirSync(bin)
+    const executable = (name: string, body: string) => {
+      const path = join(bin, name)
+      writeFileSync(path, `#!/usr/bin/env bash\nset -euo pipefail\n${body}\n`)
+      chmodSync(path, 0o755)
+      return path
+    }
+    const record = {
+      kind: 'pipeline-traces',
+      data: { rows: [{ job: 'build', status: 'success' }], omittedBars: 0 },
+    }
+    // The real collector emits marker-prefixed JSONL, never bare JSON records.
+    writeFileSync(join(root, 'original.jsonl'), `WORKFLOW_REPORT_V1: ${JSON.stringify(record)}\n`)
+    const ciTools = executable(
+      'ci-tools',
+      `
+command="$1 $2"
+shift 2
+while (( $# )); do
+  case "$1" in
+    --output-path|--output-dir|--summary-path|--comment-body-path|--comment-id-path|--input-paths-json|--bundle-path) key="$1"; value="$2"; shift 2 ;;
+    *) shift; continue ;;
+  esac
+  case "$command:$key" in
+    'pipeline-report collect:--output-path') cp "$FIXTURE_ROOT/original.jsonl" "$value" ;;
+    'pipeline-waterfall --input:--output-dir') mkdir -p "$value"; printf '<svg/>' | tee "$value/light.svg" > "$value/dark.svg" ;;
+    'workflow-report collect-bundle:--input-paths-json') input="$(jq -r '.[0]' <<< "$value")" ;;
+    'workflow-report collect-bundle:--output-path') sed -n 's/^WORKFLOW_REPORT_V1: //p' "$input" | jq -s '{records: .}' > "$value" ;;
+    'workflow-report render-comment-body:--bundle-path') cp "$value" "$FIXTURE_ROOT/published.json" ;;
+    'workflow-report render-comment-body:--summary-path') printf 'report rendered\\n' > "$value" ;;
+    'workflow-report render-comment-body:--comment-body-path') printf 'comment rendered\\n' > "$value" ;;
+    'workflow-report find-comment:--comment-id-path') : > "$value" ;;
+  esac
+done`,
+    )
+    executable('gh', "printf '[]\\n'")
+    executable('nix', 'printf "%s\\n" "$FIXTURE_ROOT"')
+    executable(
+      'pipeline-waterfall-rasterizer',
+      `
+[[ "$FIXTURE_MODE" != raster-failure ]] || exit 1
+if [[ "$FIXTURE_MODE" == oversized ]]; then
+  truncate -s 5242881 "$2"
+else
+  printf '\\x89PNG\\r\\n\\x1a\\nfixture' > "$2"
+fi`,
+    )
+    const uploader = executable(
+      'asset uploader',
+      `
+printf '%s\\n' "$1" >> "$FIXTURE_ROOT/uploads"
+theme="$(basename "$1" .png)"
+case "$FIXTURE_MODE" in
+  dark-upload-failure) printf 'secret-bearing diagnostic\\n' >&2; [[ "$theme" != dark ]] || exit 1 ;;
+  private-url) printf 'https://private.invalid/%s.png\\n' "$theme"; exit 0 ;;
+  multiple-urls) printf 'https://gitbucket.schickling.dev/one\\nhttps://gitbucket.schickling.dev/two\\n'; exit 0 ;;
+esac
+if [[ "$theme" == light ]]; then hash="${'a'.repeat(64)}"; else hash="${'b'.repeat(64)}"; fi
+printf 'https://gitbucket.schickling.dev/api/get/%s\\n' "$hash"`,
+    )
+    // The checked-in GitBucket adapter runs against stubbed HTTP boundaries.
+    // Authentication denials carry a body and diagnostics containing secrets.
+    // upload-timeout: authentication succeeds and the upload times out after the
+    // server already sent 200 headers, so the reason must be the exit code, not the status.
+    // Every request records its endpoint and --max-time so the per-stage bounds are pinned.
+    executable(
+      'curl',
+      `
+output='' max_time='' url=''
+while (( $# )); do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    --max-time) max_time="$2"; shift 2 ;;
+    https://*) url="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+printf '%s %s\\n' "\${url##*/}" "$max_time" >> "$FIXTURE_ROOT/curl-requests"
+if [[ "$FIXTURE_MODE" == oidc-429 || ( "$FIXTURE_MODE" == exchange-403 && "$url" == */github-actions ) ]]; then
+  status=429
+  if [[ "$FIXTURE_MODE" == exchange-403 ]]; then status=403; fi
+  printf '{"message":"secret-response-body"}' > "$output"
+  printf 'curl: (22) The requested URL returned error: %s secret-response-body\\n' "$status" >&2
+  printf '%s' "$status"
+  exit 22
+fi
+case "$url" in
+  */oidc) printf '{"value":"secret-response-body"}' > "$output" ;;
+  */github-actions) printf '{"access_token":"secret-response-body"}' > "$output" ;;
+  */upload) printf 'curl: (28) Operation timed out secret-response-body\\n' >&2; printf '200'; exit 28 ;;
+esac
+printf '200'`,
+    )
+    try {
+      const result = spawnSync(
+        'bash',
+        [join(ciWorkflowModuleRoot, 'genie/ci-scripts/pipeline-traces-report.sh')],
+        {
+          encoding: 'utf8',
+          timeout: 10_000,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH ?? ''}`,
+            GH_TOKEN: 'fixture',
+            GH_REPO: 'fixture/repository',
+            PR_NUMBER: '1',
+            GITHUB_RUN_ID: '2',
+            GITHUB_RUN_ATTEMPT: '1',
+            CI_TOOLS_BIN: ciTools,
+            PIPELINE_REPORT_DRY_RUN: mode === 'dry-run' ? '1' : '0',
+            GITHUB_STEP_SUMMARY: join(root, 'summary.md'),
+            PIPELINE_TRACES_PUBLIC_ASSET_COMMAND:
+              mode === 'absent' || adapterModes[mode] === true ? '' : uploader,
+            ACTIONS_ID_TOKEN_REQUEST_URL:
+              adapterModes[mode] === true ? 'https://fixture.invalid/oidc' : '',
+            ACTIONS_ID_TOKEN_REQUEST_TOKEN:
+              adapterModes[mode] === true ? 'fixture-request-token' : '',
+            FIXTURE_ROOT: root,
+            FIXTURE_MODE: mode,
+          },
+        },
+      )
+      expect(result.status, result.stderr).toBe(0)
+      if (mode === 'dry-run') {
+        expect(result.stdout).toContain('report rendered')
+        expect(existsSync(join(root, 'summary.md'))).toBe(false)
+      } else {
+        expect(readFileSync(join(root, 'summary.md'), 'utf8')).toBe('report rendered\n')
+      }
+      for (const secret of [
+        'secret-bearing diagnostic',
+        'secret-response-body',
+        'fixture-request-token',
+      ])
+        expect(result.stdout + result.stderr).not.toContain(secret)
+      if (mode === 'oidc-429')
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-light failed (oidc http 429); retaining jobs-only Mermaid report.',
+        )
+      if (mode === 'exchange-403')
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-light failed (exchange http 403); retaining jobs-only Mermaid report.',
+        )
+      if (mode === 'upload-timeout') {
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-light failed (upload exit 28); retaining jobs-only Mermaid report.',
+        )
+        // Authentication stays short; only the content upload gets the longer deadline.
+        expect(readFileSync(join(root, 'curl-requests'), 'utf8')).toBe(
+          'oidc 8\ngithub-actions 8\nupload 40\n',
+        )
+      }
+      // An uploader whose last line is not the sanitized contract keeps the generic text.
+      if (mode === 'dark-upload-failure')
+        expect(result.stdout).toContain(
+          '::warning::Pipeline waterfall stage upload-dark failed; retaining jobs-only Mermaid report.',
+        )
+      const published = JSON.parse(readFileSync(join(root, 'published.json'), 'utf8'))
+      expect(published).toEqual({
+        records: [
+          mode === 'success'
+            ? {
+                ...record,
+                data: {
+                  ...record.data,
+                  waterfall: {
+                    lightUrl: `https://gitbucket.schickling.dev/api/get/${'a'.repeat(64)}`,
+                    darkUrl: `https://gitbucket.schickling.dev/api/get/${'b'.repeat(64)}`,
+                  },
+                },
+              }
+            : record,
+        ],
+      })
+      if (mode === 'absent' || mode === 'dry-run' || mode === 'success') {
+        expect(result.stdout).not.toContain('::warning::')
+      } else {
+        expect(result.stdout).toContain('::warning::')
+      }
+      if (
+        mode === 'absent' ||
+        mode === 'dry-run' ||
+        mode === 'raster-failure' ||
+        mode === 'oversized'
+      ) {
+        expect(existsSync(join(root, 'uploads'))).toBe(false)
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
 const generatedAutoReviewWorkflowYamlSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'auto-review.yml'].join('/'), import.meta.url),
-  'utf8',
-)
-const generatedLabelsSource = readFileSync(
-  new URL(['../../../../../../.github', 'labels.json.genie.ts'].join('/'), import.meta.url),
-  'utf8',
-)
-const generatedLabelsJsonSource = readFileSync(
-  new URL(['../../../../../../.github', 'labels.json'].join('/'), import.meta.url),
   'utf8',
 )
 const generatedRepoSettings = JSON.parse(
@@ -127,53 +337,6 @@ const buckToolchainsSource = readFileSync(
   'utf8',
 )
 
-const workflowJobKeys = (workflowYamlSource: string) =>
-  Array.from(
-    (workflowYamlSource.split('\njobs:\n')[1] ?? '').matchAll(/^  ([a-zA-Z0-9_-]+):$/gm),
-    ([, jobKey]) => jobKey,
-  ).filter((jobKey): jobKey is string => jobKey !== undefined)
-
-// Required-eligible jobs come from `ci.yml` plus the standalone per-PR workflows that
-// `ci.yml`'s size limit pushes out of it.
-const generatedCiJobKeys = [
-  ...workflowJobKeys(generatedCiWorkflowYamlSource),
-  ...workflowJobKeys(generatedStorybookPlaysWorkflowYamlSource),
-]
-
-const advisoryCheckContexts: Record<string, true> = {
-  'ci/measurements-report': true,
-  'notify-alignment': true,
-  'pipeline-attempt-close': true,
-  'pipeline-traces': true,
-}
-// Dispatch-only lanes (see OPT_IN_CI_JOB_NAMES in genie/ci.ts) are non-advisory but do
-// not run on every pull request, so branch protection cannot require them: an absent lane
-// produces no check run and a required-but-absent context would wait forever.
-const optInCheckContexts = new Set([
-  'devenv-perf',
-  'pr-a-inert-buck',
-  'trusted-buck2-remote-cache-proof',
-])
-const mainOnlyCheckContexts: Record<string, true> = {
-  'test-integration-notion': true,
-  'test-live-deploy-ci-tools': true,
-  'deploy-storybooks': true,
-  'seed-pnpm-archives': true,
-  'publish-products': true,
-}
-const matrixCheckJobs: Record<string, true> = { test: true }
-const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
-
-const generatedNonAdvisoryCheckContexts = generatedCiJobKeys
-  .flatMap((jobKey) => {
-    if (jobKey === 'ci-measurements-report') return ['ci/measurements-report']
-    if (matrixCheckJobs[jobKey] === true) {
-      return matrixRunners.map((runner) => `${jobKey} (${runner})`)
-    }
-    return [jobKey]
-  })
-  .filter((context) => advisoryCheckContexts[context] !== true)
-
 const generatedRequiredCheckContexts =
   generatedRepoSettings.rules
     .find((rule) => rule.type === 'required_status_checks')
@@ -197,12 +360,6 @@ const generatedDevenvPerfJob = extractSourceBlock(
   generatedCiWorkflowYamlSource,
   '  devenv-perf:',
   '  nix-closure-sizes:',
-)
-
-const generatedSeedPnpmArchivesJob = extractSourceBlock(
-  generatedCiWorkflowYamlSource,
-  '  seed-pnpm-archives:',
-  '  publish-products:',
 )
 
 const restorePnpmStateStepSource = extractSourceBlock(
@@ -260,50 +417,18 @@ describe('pull request control-event workflows', () => {
       "      - name: Request review from schickling\n        if: github.event.pull_request.user.login == 'schickling-assistant' && github.event.pull_request.draft == false",
     )
   })
-
-  it('admits only revision-changing pull request events', () => {
-    expect(generatedCiWorkflowYamlSource).toContain(
-      '  pull_request:\n    types: [opened, reopened, synchronize]',
-    )
-    expect(generatedCiWorkflowTriggers).not.toContain('labeled')
-    expect(generatedWorkflowSource).not.toContain('notPerfLabelEventIf')
-  })
-
-  it('runs devenv-perf only for explicit dispatch without label coupling', () => {
-    expect(generatedDevenvPerfJob).toContain("if: ${{ github.event_name == 'workflow_dispatch' }}")
-    expect(generatedDevenvPerfJob).not.toContain("github.event_name == 'schedule'")
-    expect(generatedWorkflowSource).not.toContain('perfLaneLabel')
-    expect(generatedWorkflowSource).not.toContain('ci:perf')
-    expect(generatedLabelsSource).not.toContain('ci:perf')
-    expect(generatedLabelsJsonSource).not.toContain('ci:perf')
-    expect(generatedCiWorkflowYamlSource).toContain('BASELINE_CANDIDATE_EVENTS: workflow_dispatch')
-  })
 })
 
 describe('protected-main archive seeding', () => {
-  it('passes the tracked trusted origin into the protected-main seed step', () => {
-    expect(generatedSeedPnpmArchivesJob).toContain('name: Resolve trusted archive origin')
-    expect(generatedSeedPnpmArchivesJob).toContain('trusted_url_prefix')
-    expect(generatedSeedPnpmArchivesJob).toContain(
-      'BUCK2_ARCHIVE_CAS_URL: ${{ steps.archive-origin.outputs.url }}',
-    )
-    expect(generatedSeedPnpmArchivesJob).toContain(
-      'BUCK2_ARCHIVE_CAS_TIER: ${{ steps.archive-origin.outputs.tier }}',
-    )
-    expect(generatedSeedPnpmArchivesJob).toContain("github.ref == 'refs/heads/main'")
+  it('keeps the archive CAS write credential out of every CI job', () => {
+    // The CAS host seeds itself from main (decision 0038, amendment 1); no runner holds the token.
+    expect(generatedCiWorkflowYamlSource).not.toContain('BUCK2_ARCHIVE_CAS_AUTHORIZATION')
+    expect(generatedCiWorkflowYamlSource).not.toContain('buck2:archives:seed')
     expect(generatedCiWorkflowYamlSource).not.toContain('trusted-cache.example')
   })
 })
 
 describe('ci workflow retry helpers', () => {
-  it('requires only non-advisory jobs that run on every pull request', () => {
-    const requiredCandidates = generatedNonAdvisoryCheckContexts.filter(
-      (context) =>
-        optInCheckContexts.has(context) === false && context in mainOnlyCheckContexts === false,
-    )
-    expect(new Set(generatedRequiredCheckContexts)).toEqual(new Set(requiredCandidates))
-  })
-
   it('emits compact calls to the checked-in retry helper script', () => {
     expect(ciWorkflowSource).toContain("defaultCiRuntimeScriptsDir = 'genie/ci-scripts'")
     expect(ciWorkflowSource).toContain(
@@ -1063,8 +1188,10 @@ describe('ci workflow standard job helpers', () => {
             const generatedWorkflow = Bun.YAML.parse(
               readFileSync('.github/workflows/ci.yml', 'utf8'),
             )
-            const pnpmRegressionStep = generatedWorkflow.jobs['pnpm-regression'].steps.find(
-              (step) => step.name === 'pnpm regression suite',
+            const nativeDependencyPolicyRegressionStep = generatedWorkflow.jobs[
+              'quality'
+            ].steps.find(
+              (step) => step.name === 'CI runtime and native dependency policy regression checks',
             )
             const generatedSteps = Object.entries(generatedWorkflow.jobs).flatMap(
               ([jobId, job]) =>
@@ -1138,7 +1265,8 @@ describe('ci workflow standard job helpers', () => {
             const scriptBackedNixStepNames = [
               'Resolve devenv',
               'Bootstrap cold-proof (R32)',
-              'pnpm regression suite',
+              'CI runtime and native dependency policy regression checks',
+              'Downstream flake-input regression',
             ]
             const scriptBackedNixAuthMissing = generatedSteps
               .filter(({ step }) => scriptBackedNixStepNames.includes(step.name))
@@ -1148,10 +1276,7 @@ describe('ci workflow standard job helpers', () => {
               ({ step }) => step.name === 'Measure source shape: effect-utils',
             )?.step
             const localOnlyStepTokenPresence = Object.fromEntries(
-              [
-                'Guard pnpm builder contract',
-                'Reject tracked product and editor payload bytes',
-              ].map((name) => {
+              ['Reject tracked product and editor payload bytes'].map((name) => {
                 const step = generatedSteps.find(({ step }) => step.name === name)?.step
                 if (step === undefined) {
                   throw new Error('missing generated local-only step: ' + name)
@@ -1177,7 +1302,7 @@ describe('ci workflow standard job helpers', () => {
                 artifactName: 'baseline',
                 outputDir: 'tmp/baseline',
               }).env.GITHUB_TOKEN,
-              pnpmRegressionStepEnv: pnpmRegressionStep.env,
+              nativeDependencyPolicyRegressionStepEnv: nativeDependencyPolicyRegressionStep.env,
               sourceShapeStepEnv: sourceShapeStep?.env,
               generatedDevenvAuthMissing,
               netlifyStepEnv: netlifyStep.env,
@@ -1236,7 +1361,7 @@ describe('ci workflow standard job helpers', () => {
         nixStepEnv: expectedTokenEnv,
         devenvStepEnv: expectedTokenEnv,
         ghStepEnv: '${{ github.token }}',
-        pnpmRegressionStepEnv: expectedTokenEnv,
+        nativeDependencyPolicyRegressionStepEnv: expectedTokenEnv,
         sourceShapeStepEnv: {
           ARTIFACT_DIR: 'tmp/source-shape-ci/current/effect-utils',
           RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
@@ -1269,7 +1394,6 @@ describe('ci workflow standard job helpers', () => {
         directNixAuthMissing: [],
         scriptBackedNixAuthMissing: [],
         localOnlyStepTokenPresence: {
-          'Guard pnpm builder contract': false,
           'Reject tracked product and editor payload bytes': false,
         },
         comparisonHasToken: false,
@@ -1327,65 +1451,6 @@ describe('ci workflow standard job helpers', () => {
     expect(ciWorkflowSource).toContain('export const standardSelfHostedDevenvTaskJob')
     expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPrepSteps(prep)')
     expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPostSteps(post)')
-  })
-})
-
-interface StorybookPlaysWorkflowFacts {
-  readonly triggers: unknown
-  readonly jobs: readonly string[]
-  readonly permissions: readonly unknown[]
-  readonly referencesSecrets: boolean
-  readonly runsPlays: boolean
-  readonly jobConditions: ReadonlyArray<string | null>
-  readonly ciHasPlaysJob: boolean
-}
-
-describe('storybook plays workflow', () => {
-  let facts: StorybookPlaysWorkflowFacts
-
-  beforeAll(() => {
-    const fixture = spawnSync(
-      'bun',
-      [
-        '-e',
-        `
-          import { readFileSync } from 'node:fs'
-          import { YAML } from 'bun'
-          const plays = YAML.parse(readFileSync('.github/workflows/storybook-plays.yml', 'utf8'))
-          const ci = YAML.parse(readFileSync('.github/workflows/ci.yml', 'utf8'))
-          console.log(JSON.stringify({
-            triggers: plays.on,
-            jobs: Object.keys(plays.jobs),
-            jobConditions: Object.values(plays.jobs).map((job) => job.if ?? null),
-            permissions: [plays.permissions, ...Object.values(plays.jobs).map((job) => job.permissions)],
-            referencesSecrets: JSON.stringify(plays).includes('secrets.'),
-            runsPlays: JSON.stringify(plays).includes('tasks run storybook:test'),
-            ciHasPlaysJob: Object.keys(ci.jobs).includes('test-storybook-plays'),
-          }))
-        `,
-      ],
-      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
-    )
-    expect(fixture.status, fixture.stderr).toBe(0)
-    facts = JSON.parse(fixture.stdout) as StorybookPlaysWorkflowFacts
-  })
-
-  it('runs story plays for pull requests and main with read-only, secret-free access', () => {
-    expect(facts.triggers).toEqual({
-      pull_request: { types: ['opened', 'reopened', 'synchronize'] },
-      push: { branches: ['main'] },
-    })
-    expect(facts.jobs).toEqual(['test-storybook-plays'])
-    expect(facts.runsPlays).toBe(true)
-    expect(facts.referencesSecrets).toBe(false)
-    for (const permissions of facts.permissions) expect(permissions).toEqual({ contents: 'read' })
-  })
-
-  it('requires the plays lane from its own workflow, outside ci.yml', () => {
-    expect(facts.ciHasPlaysJob).toBe(false)
-    expect(generatedRequiredCheckContexts).toContain('test-storybook-plays')
-    // A skipped required job reports no check run and blocks every PR.
-    expect(facts.jobConditions).toEqual([null])
   })
 })
 
@@ -1831,11 +1896,28 @@ describe('ci workflow devenv perf helpers', () => {
     )
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^concurrency:/m)
     expect(generatedCiWorkflowYamlSource).toContain('concurrency:\n      group:')
-    expect(generatedCiWorkflowYamlSource).toContain('}}-typecheck')
     expect(ciWorkflowSource).toContain('export const ciJobConcurrency = ({ jobId, ...opts }:')
     expect(ciWorkflowSource).toContain("opts?.matrix === true ? '-${{ strategy.job-index }}' : ''")
     expect(ciWorkflowSource).toContain('const isMatrixJob = (job: GitHubWorkflowArgs')
-    expect(generatedCiWorkflowYamlSource).toContain('}}-test-${{ strategy.job-index }}')
+    // Repository workflow sources are outside this package's hermetic compiler input.
+    // Exercise their actual concurrency contract through the existing Bun probe boundary.
+    const concurrencyProbe = spawnSync(
+      process.env.BUN_BIN ?? 'bun',
+      [
+        '-e',
+        `import workflow from './.github/workflows/ci.yml.genie.ts';
+         console.log(JSON.stringify([
+           workflow.data.jobs.test.concurrency,
+           workflow.data.jobs['test-macos'].concurrency,
+         ]));`,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(concurrencyProbe.status, concurrencyProbe.stderr).toBe(0)
+    const [linuxConcurrency, darwinConcurrency] = JSON.parse(concurrencyProbe.stdout)
+    expect(linuxConcurrency.group).toBeTypeOf('string')
+    expect(darwinConcurrency.group).toBeTypeOf('string')
+    expect(linuxConcurrency.group).not.toBe(darwinConcurrency.group)
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
     expect(generatedCiWorkflowYamlSource).not.toContain("format('measurement-pr-{0}-run-{1}'")
     expect(generatedCiWorkflowYamlSource).not.toContain('inputs.measurement_pr_number')

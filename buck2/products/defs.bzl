@@ -1,8 +1,9 @@
 """Language-neutral portable build-product packaging contract."""
 
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
-load("//buck2/package_tools.bzl", "JavaScriptModuleInfo")
-load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2/package_tools.bzl", "JavaScriptModuleInfo", "PackageCommandRuntimeInfo", "package_command_runtime_inputs")
+load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/provenance:defs.bzl", "ProductExecutableInfo", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
@@ -11,7 +12,6 @@ BuildProductInfo = provider(fields = {
     "descriptor": Artifact,
     "payload": Artifact,
 })
-
 
 def _validate_product_name(value):
     if not value:
@@ -24,21 +24,14 @@ def _validate_product_name(value):
         if character not in allowed:
             fail("javascript_product product_name contains an unsupported character: {}".format(character))
 
-def _runner(ctx):
-    return cmd_args(
-        ctx.attrs._runner[DefaultInfo].default_outputs[0],
-        format = "{}/package-command-runner.ts",
-    )
-
-
 def _javascript_product_impl(ctx):
     _validate_product_name(ctx.attrs.product_name)
     module = ctx.attrs.module[JavaScriptModuleInfo]
     descriptor = ctx.actions.declare_output("descriptor.json")
     toolchain = ctx.attrs._bun[BunToolchainInfo]
     args = cmd_args([
-        toolchain.executable,
-        _runner(ctx),
+        hermetic_bun_command(ctx, toolchain.executable),
+        package_command_runtime_inputs(ctx),
         "product-descriptor",
         "--descriptor",
         descriptor.as_output(),
@@ -55,11 +48,11 @@ def _javascript_product_impl(ctx):
         "--provenance",
         "dependencyClosureIdentity={}".format(module.dependency_closure_identity),
     ])
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "javascript_product_descriptor",
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [
         DefaultInfo(
@@ -72,10 +65,12 @@ def _javascript_product_impl(ctx):
         BuildProductInfo(descriptor = descriptor, payload = module.module),
     ]
 
-
-_javascript_product = rule(
+_javascript_product = cache_guarded_rule(
+    # The only run action projects declared module JSON with a pinned, scrubbed
+    # Bun runtime. Configured labels name cells/configurations, not root paths.
+    cache_eligible = lambda ctx: True,
     impl = _javascript_product_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "module": attrs.dep(providers = [JavaScriptModuleInfo]),
         "product_kind": attrs.enum(["cli", "module"]),
         "product_name": attrs.string(),
@@ -85,11 +80,10 @@ _javascript_product = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
-    },
+    }),
 )
-
 
 def javascript_product(
         name,
@@ -104,9 +98,9 @@ def javascript_product(
         product_name = product_name,
         product_kind = product_kind,
         default_target_platform = "@rules//buck2/platforms:javascript_portable",
+        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
         **kwargs
     )
-
 
 def _validate_relative_path(value, subject):
     if not value or value.startswith("/"):
@@ -114,7 +108,6 @@ def _validate_relative_path(value, subject):
     for component in value.split("/"):
         if component == "" or component == "." or component == "..":
             fail("{} must be a normalized relative path".format(subject))
-
 
 def _package_tree_product_executable_impl(ctx):
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
@@ -129,6 +122,7 @@ def _package_tree_product_executable_impl(ctx):
         fail("package_tree_product_executable has no executable path for {}".format(platform_key))
     _validate_relative_path(ctx.attrs.package_anchor, "package_tree_product_executable package anchor")
     _validate_relative_path(executable_path, "package_tree_product_executable executable path")
+
     # Package trees link dependency entries. Resolve the anchor's real store
     # entry before materializing declared sibling files.
     executable = ctx.actions.declare_output("executable")
@@ -187,8 +181,7 @@ def _package_tree_product_executable_impl(ctx):
         product_executable,
     ]
 
-
-_package_tree_product_executable = rule(
+_package_tree_product_executable = cache_guarded_rule(
     impl = _package_tree_product_executable_impl,
     attrs = {
         "executable_paths": attrs.dict(key = attrs.string(), value = attrs.string()),
@@ -205,7 +198,6 @@ _package_tree_product_executable = rule(
         )),
     },
 )
-
 
 def package_tree_product_executable(
         name,
@@ -262,13 +254,18 @@ def _bun_compiled_product_executable_impl(ctx):
         cmd_args(
             [
                 bundler.executable,
-                _runner(ctx),
+                package_command_runtime_inputs(ctx),
                 "compile-executable",
-                "--module", module.module,
-                "--module-descriptor", module.descriptor,
-                "--compile-runtime", compile_runtime.store_path,
-                "--target", bun_target,
-                "--output", executable.as_output(),
+                "--module",
+                module.module,
+                "--module-descriptor",
+                module.descriptor,
+                "--compile-runtime",
+                compile_runtime.store_path,
+                "--target",
+                bun_target,
+                "--output",
+                executable.as_output(),
             ],
             hidden = [compile_runtime.executable, compile_runtime.manifest],
         ),
@@ -296,8 +293,7 @@ def _bun_compiled_product_executable_impl(ctx):
         product_executable,
     ]
 
-
-_bun_compiled_product_executable = rule(
+_bun_compiled_product_executable = cache_guarded_rule(
     impl = _bun_compiled_product_executable_impl,
     attrs = {
         "module": attrs.dep(providers = [JavaScriptModuleInfo]),
@@ -314,11 +310,10 @@ _bun_compiled_product_executable = rule(
         )),
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
-            providers = [DefaultInfo],
+            providers = [PackageCommandRuntimeInfo],
         )),
     },
 )
-
 
 def bun_compiled_product_executable(
         name,
@@ -380,20 +375,32 @@ def _build_product_impl(ctx):
     args = cmd_args([
         ctx.attrs._descriptor_tool[RunInfo],
         "package",
-        "--executable", executable,
-        "--entrypoint", entrypoint,
-        "--artifact", payload.as_output(),
-        "--name", ctx.attrs.product_name,
-        "--target", str(ctx.label.raw_target()),
-        "--platform-os", product_executable.target_platform_os,
-        "--platform-architecture", product_executable.target_platform_architecture,
-        "--platform-abi", product_executable.target_platform_abi,
-        "--runtime-contract", product_executable.target_platform_runtime_contract,
-        "--provenance", provenance.artifact,
-        "--descriptor", descriptor.as_output(),
+        "--executable",
+        executable,
+        "--entrypoint",
+        entrypoint,
+        "--artifact",
+        payload.as_output(),
+        "--name",
+        ctx.attrs.product_name,
+        "--target",
+        str(ctx.label.raw_target()),
+        "--platform-os",
+        product_executable.target_platform_os,
+        "--platform-architecture",
+        product_executable.target_platform_architecture,
+        "--platform-abi",
+        product_executable.target_platform_abi,
+        "--runtime-contract",
+        product_executable.target_platform_runtime_contract,
+        "--provenance",
+        provenance.artifact,
+        "--descriptor",
+        descriptor.as_output(),
     ])
     if product_executable.support_tree != None:
         args.add("--support-tree", product_executable.support_tree)
+
     # One action owns deterministic archive creation, native executable
     # inspection, and digesting the exact archive named by the descriptor.
     ctx.actions.run(args, category = "build_product_package", local_only = True)
@@ -409,7 +416,7 @@ def _build_product_impl(ctx):
         BuildProductInfo(descriptor = descriptor, payload = payload),
     ]
 
-_build_product = rule(
+_build_product = cache_guarded_rule(
     impl = _build_product_impl,
     attrs = {
         "executable": attrs.dep(providers = [ProductExecutableInfo]),

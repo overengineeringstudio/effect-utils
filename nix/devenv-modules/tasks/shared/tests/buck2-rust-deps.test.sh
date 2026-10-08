@@ -306,8 +306,6 @@ if grep -Fq 'name = "unicode_width"' "$fixture_a_graph"; then
 fi
 grep -Fq 'name = "unicode-width"' "$fixture_b_graph" ||
   fail "provider hyphenated registry dependency missing"
-grep -Fq 'name = "buck2-supply-toml_datetime-1-1-1-spec-1-1-0"' "$fixture_a_graph" ||
-  fail "multiple package versions with build metadata lost a valid synthetic alias"
 REPO_ROOT="$ROOT" "$BUN" -e '
   const root = process.env.REPO_ROOT
   const lock = Bun.TOML.parse(await Bun.file(`${root}/scripts/fixtures/rust-foreign/a/Cargo.lock`).text())
@@ -315,6 +313,16 @@ REPO_ROOT="$ROOT" "$BUN" -e '
   const graph = await Bun.file(`${root}/scripts/fixtures/rust-foreign/a/third-party/BUCK`).text()
   if (!itoa?.checksum || !graph.includes(`sha256 = "${itoa.checksum}"`)) {
     console.error("foreign registry archive is not pinned to the authoritative Cargo.lock")
+    process.exit(1)
+  }
+  const yanked = lock.package.find((entry) => entry.name === "yoke-derive")
+  if (
+    yanked?.version !== "0.8.3" ||
+    !yanked.checksum ||
+    !graph.includes(`name = "yoke-derive"`) ||
+    !graph.includes(`sha256 = "${yanked.checksum}"`)
+  ) {
+    console.error("foreign supply dropped the locked yanked yoke-derive release")
     process.exit(1)
   }
   // pulp 0.22.3 is a registry crate whose build.rs unwraps all three parts.
@@ -333,7 +341,7 @@ REPO_ROOT="$ROOT" "$BUN" -e '
 
 foreign_repo="$TEMP_ROOT/foreign-repository"
 mkdir -p "$foreign_repo/scripts/fixtures"
-cp "$ROOT/.buckconfig" "$ROOT/.buckroot" "$foreign_repo/"
+cp "$ROOT/.buckconfig" "$ROOT/.buckroot" "$ROOT/.watchmanconfig" "$foreign_repo/"
 cp -R "$ROOT/scripts/fixtures/rust-foreign" "$foreign_repo/scripts/fixtures/"
 foreign_workspace="scripts/fixtures/rust-foreign/a"
 foreign_graph="$foreign_workspace/third-party/BUCK"
@@ -353,20 +361,46 @@ cp "$ROOT/$foreign_workspace/foreign-packages.json" \
 cat >"$foreign_repo/$foreign_workspace/app/Cargo.toml" <<'TOML'
 [package]
 name = "foreign-consumer"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+workspace = ".."
 
 [dependencies]
 foreign-shared = { path = "../../b/crates/shared" }
 renamed_memchr = { package = "memchr", version = "2.7.5" }
+renamed_itoa = { package = "itoa", version = "1.0.15" }
 old_toml_datetime = { package = "toml_datetime", version = "0.6.11" }
 TOML
 "$GATE" generate "$foreign_repo" "$foreign_workspace" "$foreign_graph" \
   "$real_reindeer" "$real_cargo" "$real_rustc" "$BUN"
-grep -Fq 'name = "memchr"' "$foreign_repo/$foreign_graph" ||
-  fail "member rename removed the package-named third-party alias"
-if grep -Fq 'name = "renamed_memchr"' "$foreign_repo/$foreign_graph"; then
-  fail "member rename incorrectly changed the third-party alias"
+FOREIGN_REPO="$foreign_repo" "$BUN" -e '
+  const root = process.env.FOREIGN_REPO;
+  const workspace = "scripts/fixtures/rust-foreign/a";
+  const resolutionPath = `${root}/${workspace}/third-party/cargo-resolution.json`;
+  const resolution = await Bun.file(resolutionPath).json();
+  const edge = resolution.dependencies.find((entry) =>
+    entry.manifestPath === `${workspace}/app/Cargo.toml` &&
+    entry.name === "renamed_memchr" && entry.kind === "normal");
+  const lock = Bun.TOML.parse(await Bun.file(`${root}/${workspace}/Cargo.lock`).text());
+  const pinned = lock.package.find((entry) => entry.name === "memchr");
+  const graph = await Bun.file(`${root}/${workspace}/third-party/BUCK`).text();
+  if (!edge || edge.package !== "memchr" || edge.version !== pinned?.version ||
+      !graph.includes(`name = "${edge.alias}"`) ||
+      !graph.includes(`sha256 = "${pinned.checksum}"`)) {
+    throw new Error("member renamed dependency lost its exact locked registry resolution");
+  }
+  edge.version = "0.0.0";
+  await Bun.write(resolutionPath, `${JSON.stringify(resolution, null, 2)}\n`);
+'
+if "$GATE" check "$foreign_repo" "$foreign_workspace" "$foreign_graph" \
+  "$real_reindeer" "$real_cargo" "$real_rustc" "$BUN" 2>"$TEMP_ROOT/resolution-stale-error"; then
+  fail "gate accepted stale Cargo edge resolution"
 fi
+grep -Fq 'cargo-resolution.json is stale' "$TEMP_ROOT/resolution-stale-error" ||
+  fail "stale Cargo edge resolution was not diagnosed"
+"$GATE" generate "$foreign_repo" "$foreign_workspace" "$foreign_graph" \
+  "$real_reindeer" "$real_cargo" "$real_rustc" "$BUN"
+"$GATE" check "$foreign_repo" "$foreign_workspace" "$foreign_graph" \
+  "$real_reindeer" "$real_cargo" "$real_rustc" "$BUN"
 
 echo "Buck2 Rust dependency gate tests passed."

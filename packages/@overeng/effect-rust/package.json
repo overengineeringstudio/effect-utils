@@ -1,0 +1,61 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/effect-rust"
+    ]
+  },
+  "name": "@overeng/effect-rust",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./compiler": {
+      "types": "./dist/src/compiler/mod.d.ts",
+      "default": "./src/compiler/mod.ts"
+    },
+    "./runtime": {
+      "types": "./dist/src/runtime/interop.d.ts",
+      "default": "./src/runtime/interop.ts"
+    },
+    "./schema": {
+      "types": "./dist/src/schema/mod.d.ts",
+      "default": "./src/schema/mod.ts"
+    }
+  },
+  "dependencies": {
+    "effect": "4.0.0"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0",
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./runtime": {
+        "types": "./dist/src/runtime/interop.d.ts",
+        "default": "./dist/src/runtime/interop.js"
+      },
+      "./schema": {
+        "types": "./dist/src/schema/mod.d.ts",
+        "default": "./dist/src/schema/mod.js"
+      },
+      "./compiler": {
+        "types": "./dist/src/compiler/mod.d.ts",
+        "default": "./dist/src/compiler/mod.js"
+      }
+    }
+  }
+}

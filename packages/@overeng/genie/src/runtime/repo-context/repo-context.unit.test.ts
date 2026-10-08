@@ -1,6 +1,6 @@
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, parse } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -51,8 +51,8 @@ describe('repo context', () => {
   })
 
   it('refuses a module URL that is outside every repository', () => {
-    const outsidePath = join(mkdtempSync(join(tmpdir(), 'genie-outside-')), 'module.ts')
-    writeFileSync(outsidePath, '')
+    // The runner's temporary directory may itself be inside a repository.
+    const outsidePath = join(parse(tmpdir()).root, '__genie_outside_repository__', 'module.ts')
 
     expect(() => modulePathFromUrl(pathToFileURL(outsidePath).href)).toThrow(
       'Could not find repository root',

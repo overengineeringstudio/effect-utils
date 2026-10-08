@@ -24,6 +24,10 @@ execution-platform = true
 target = "aarch64-apple-darwin"
 execution-platform = true
 
+[platform.wasm32]
+target = "wasm32-unknown-unknown"
+execution-platform = false
+
 [cargo]
 
 [buck]
@@ -36,7 +40,7 @@ buildscript_genrule = "buildscript_run"
 http_archive = "crate_archive"
 
 buckfile_imports = """
-load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")
+load("//buck2/rust:defs.bzl", "buildscript_run")
 load("@prelude//rust:cargo_package.bzl", "cargo")
 load("//buck2/rust:crates.bzl", "crate_archive")
 """

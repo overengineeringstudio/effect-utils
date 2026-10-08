@@ -132,7 +132,6 @@ pkgs.writeShellScriptBin "otel-span" ''
       }
 
       _frame() {
-        local LC_ALL=C
         _u32be "''${#1}"
         printf '%s' "$1"
       }
@@ -167,7 +166,12 @@ pkgs.writeShellScriptBin "otel-span" ''
         done < <(printf '%s\0' "''${names[@]}" | LC_ALL=C ${pkgs.coreutils}/bin/sort -zu)
       }
 
-      _derive_pipeline_id() {
+      # Keep bytewise framing in an isolated locale context. Restoring a local
+      # LC_ALL in a forked Darwin shell can enter fork-unsafe CoreFoundation.
+      # A subshell body does not restore the ambient locale or affect commands
+      # wrapped by pipeline-run.
+      _derive_pipeline_id() (
+        export LC_ALL=C
         local domain=$1 length=$2 run=$3 counter=0 digest result
         shift 3
         while :; do
@@ -186,7 +190,7 @@ pkgs.writeShellScriptBin "otel-span" ''
           fi
           ((counter += 1))
         done
-      }
+      )
 
       _valid_ci_component() {
         local component=$1 char hex byte i
@@ -934,13 +938,15 @@ pkgs.writeShellScriptBin "otel-span" ''
         if (( ! nested )); then
           local status=ok link_args=()
           (( rc == 0 )) || status=error
+          local result=success
+          if [[ -n "$signal" ]]; then result=cancellation; elif (( rc != 0 )); then result=failure; fi
           if [[ -n "$outer" ]]; then link_args=(--link-traceparent "$outer"); fi
           local -a identity_attrs=()
           local env_name attr_name
           for env_name in CI_PROVIDER VCS_CHANGE_ID VCS_REF_HEAD_REVISION VCS_REF_BASE_REVISION BUCK2_VCS_MERGE_REVISION; do
             if [[ -n "''${!env_name:-}" ]]; then
               case "$env_name" in
-                CI_PROVIDER) attr_name=ci.provider ;;
+                CI_PROVIDER) attr_name=vcs.provider.name ;;
                 VCS_CHANGE_ID) attr_name=vcs.change.id ;;
                 VCS_REF_HEAD_REVISION) attr_name=vcs.ref.head.revision ;;
                 VCS_REF_BASE_REVISION) attr_name=vcs.ref.base.revision ;;
@@ -950,7 +956,7 @@ pkgs.writeShellScriptBin "otel-span" ''
             fi
           done
           if [[ "''${PIPELINE_FORK:-}" == true || "''${PIPELINE_FORK:-}" == false ]]; then
-            identity_attrs+=(--attr-bool "ci.pr.fork=$PIPELINE_FORK")
+            identity_attrs+=(--attr-bool "buck2.vcs.change.is_fork=$PIPELINE_FORK")
           fi
           (
             unset TRACEPARENT OTEL_TASK_TRACEPARENT
@@ -966,6 +972,7 @@ pkgs.writeShellScriptBin "otel-span" ''
                 --start-time-ns "$start_ns" --end-time-ns "$end_ns" \
                 --status-code "$status" --attr-string "cicd.pipeline.run.id=$run_id" \
                 --attr-string "cicd.pipeline.job.key=$job_key" --attr-int "exit.code=$rc" \
+                --attr-string "cicd.pipeline.task.run.result=$result" \
                 "''${identity_attrs[@]}" "''${link_args[@]}" || true
             fi
           )

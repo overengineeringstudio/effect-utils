@@ -36,6 +36,7 @@ const javascriptProducts = [
 const packageProducts = [
   '@overeng/agent-session-ingest',
   '@overeng/content-address',
+  '@overeng/devbar',
   '@overeng/effect-ai-claude-cli',
   '@overeng/effect-ai-gateway',
   '@overeng/effect-distributed-lock',
@@ -49,6 +50,7 @@ const packageProducts = [
   '@overeng/notion-md',
   '@overeng/notion-property-write',
   '@overeng/notion-react',
+  '@overeng/outline',
   '@overeng/otel-contract',
   '@overeng/restate-effect',
   '@overeng/stylex-tokens',

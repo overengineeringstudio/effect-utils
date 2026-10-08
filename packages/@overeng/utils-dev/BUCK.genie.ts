@@ -14,9 +14,10 @@ export const buck2TypeScriptAdmission = {
     {
       name: 'test',
       runner: 'vitest',
-      // Only the CLI contract suite is bounded: every otelite helper suite spawns the real
-      // `otelite` capture binary and stays unbounded (decision 0026).
+      // Git repository and otelite helper suites spawn real subprocesses and
+      // stay source-owned and unbounded (decision 0026).
       excludes: [
+        'src/node-vitest/git-environment.integration.test.ts',
         'src/node-vitest/otel-vitest-flush.test.ts',
         'src/otelite/Otelite.test.ts',
         'src/otelite/signal-expect.test.ts',

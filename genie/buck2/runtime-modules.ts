@@ -22,6 +22,8 @@ export type Buck2StagedRuntime = {
   readonly entry: string
   /** Complete relative-import closure of `entry`, repository-relative. */
   readonly modules: readonly string[]
+  /** Declared dependency view staged for runners importing third-party modules. */
+  readonly nodeModules?: string
   /** Multi-file closures use a filegroup; standalone modules use export_file. */
   readonly staging: 'export_file' | 'filegroup'
 }
@@ -46,12 +48,17 @@ export const buck2StagedRuntimes = [
       runnerSource('real-path.ts'),
       runnerSource('typescript-runner.ts'),
     ],
+    nodeModules: ':node_modules',
     staging: 'filegroup',
   },
   {
     label: buck2ToolsLabel('javascript_action_runtime'),
     entry: runnerSource('javascript-runner.ts'),
-    modules: [runnerSource('javascript-runner.ts'), runnerSource('typescript-runner.ts')],
+    modules: [
+      runnerSource('javascript-runner.ts'),
+      runnerSource('test-verdict.ts'),
+      runnerSource('typescript-runner.ts'),
+    ],
     staging: 'filegroup',
   },
   {
@@ -98,11 +105,25 @@ const renderRuntime = (runtime: Buck2StagedRuntime): string => {
         `        ${JSON.stringify(stagedModuleName(module))}: ${JSON.stringify(packageRelativeSource(module))},`,
     )
     .join('\n')
-  return `filegroup(
-    name = ${JSON.stringify(name)},
+  const nodeModules =
+    runtime.nodeModules === undefined
+      ? ''
+      : `\n        "node_modules": ${JSON.stringify(runtime.nodeModules)},`
+  const filesName = runtime.nodeModules === undefined ? name : `${name}_files`
+  const filegroup = `filegroup(
+    name = ${JSON.stringify(filesName)},
     srcs = {
-${sources}
+${sources}${nodeModules}
     },
+    visibility = ["PUBLIC"],
+)`
+  if (runtime.nodeModules === undefined) return filegroup
+  return `${filegroup}
+
+package_command_runtime(
+    name = ${JSON.stringify(name)},
+    files = ":${filesName}",
+    dependency_view = ${JSON.stringify(runtime.nodeModules)},
     visibility = ["PUBLIC"],
 )`
 }
@@ -112,5 +133,8 @@ export const withBuck2ToolsRuntimes = <TData>(projection: GenieOutput<TData>): G
   createGenieOutput({
     ...projection,
     stringify: (context) =>
-      `${projection.stringify(context)}\n${buck2StagedRuntimes.map(renderRuntime).join('\n\n')}\n`,
+      `load("//buck2/package_tools.bzl", "package_command_runtime")
+${projection.stringify(context)}
+${buck2StagedRuntimes.map(renderRuntime).join('\n\n')}
+`,
   })

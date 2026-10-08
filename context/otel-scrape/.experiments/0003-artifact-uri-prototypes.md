@@ -1,8 +1,12 @@
 # Experiment 0003 — Profile artifact URI schemes
 
-**Hypothesis:** A pure content-addressed `cas:` profile URI can be as practical as a two-tier `file:`/`artifact:` contract if `otel-scrape` owns a per-run CAS root.
+## Question
 
-**Method:** Built a disposable Bun prototype in `tmp/artifact-uri-prototypes/` that emits and verifies profile descriptors using `@overeng/content-address`. The prototype compares:
+A pure content-addressed `cas:` profile URI can be as practical as a two-tier `file:`/`artifact:` contract if `otel-scrape` owns a per-run CAS root.
+
+## Method
+
+Built a disposable Bun prototype in `tmp/artifact-uri-prototypes/` that emits and verifies profile descriptors using `@overeng/content-address`. The prototype compares:
 
 - option A: local `file:` URI plus CI/logical `artifact:` URI and optional `https:` UI link
 - option B: `cas:` URI using `@overeng/content-address` fan-out paths under a resolver root
@@ -15,7 +19,7 @@ Run:
 bun tmp/artifact-uri-prototypes/prototype.ts
 ```
 
-**Results:**
+## Result
 
 - Option A works, but embeds transport/location semantics into every descriptor:
   - `file:` is local-only and not portable across machines.
@@ -26,4 +30,11 @@ bun tmp/artifact-uri-prototypes/prototype.ts
   - CI can upload or expose the CAS root as one artifact tree.
   - Human-facing UI links can stay presentation metadata instead of retrieval identity.
 
-**Conclusion:** Prefer `cas:` if `otel-scrape` writes profile artifacts into a per-run CAS root and every resolver verifies bytes against the descriptor before use. The main caveat is resolver configuration, but that caveat is generic and cleaner than mixing local filesystem paths and CI artifact IDs into profile links.
+## Conclusion
+
+Prefer `cas:` if `otel-scrape` writes profile artifacts into a per-run CAS root and every resolver verifies bytes against the descriptor before use. The main caveat is resolver configuration, but that caveat is generic and cleaner than mixing local filesystem paths and CI artifact IDs into profile links.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

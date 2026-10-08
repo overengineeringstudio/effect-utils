@@ -120,6 +120,13 @@ export interface PnpmSettings {
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp'
 
   /**
+   * Share a mutable global virtual store when using the isolated node linker.
+   * Dependency realpaths may resolve outside the workspace.
+   * @see https://pnpm.io/settings#enableglobalvirtualstore
+   */
+  enableGlobalVirtualStore?: boolean
+
+  /**
    * Hard-link local workspace dependencies as injected package snapshots
    * instead of resolving them as plain live symlinks.
    *
@@ -725,6 +732,13 @@ export interface PnpmWorkspaceData {
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp'
 
   /**
+   * Share a mutable global virtual store when using the isolated node linker.
+   * Dependency realpaths may resolve outside the workspace.
+   * @see https://pnpm.io/settings#enableglobalvirtualstore
+   */
+  enableGlobalVirtualStore?: boolean
+
+  /**
    * Hard-link local workspace dependencies as injected package snapshots
    * instead of resolving them as plain live symlinks.
    *
@@ -1011,6 +1025,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.nodeLinker !== undefined) {
     result.nodeLinker = data.nodeLinker
+  }
+
+  if (data.enableGlobalVirtualStore !== undefined) {
+    result.enableGlobalVirtualStore = data.enableGlobalVirtualStore
   }
 
   if (data.injectWorkspacePackages !== undefined) {

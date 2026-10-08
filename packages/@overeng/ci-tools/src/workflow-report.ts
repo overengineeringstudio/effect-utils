@@ -1,10 +1,12 @@
 /* oxlint-disable overeng/jsdoc-require-exports, overeng/named-args -- Wire-contract exports mirror JSON field names; validators use value/path pairs for precise errors. */
+import type { PipelineRow } from './pipeline-report.ts'
+import { compactPipelineRows, pipelineWaterfallImageUrl } from './pipeline-waterfall.ts'
 
 /**
  * Bootstrap-safe workflow-report wire contract for CI (issue #884 closure).
  *
  * Constants, types, JSON schemas, decoders/encoders, and the managed-comment renderer for the
- * `WORKFLOW_REPORT_V1` protocol. This module imports NOTHING at runtime (no `effect`, no `./deploy-*`),
+ * `WORKFLOW_REPORT_V1` protocol. Runtime imports are limited to pure rendering (no `effect`, no `./deploy-*`),
  * so genie generator sources can import these symbols pre-install without dragging a runtime-only
  * package into their bootstrap import closure. `mod.ts` re-exports the whole surface, so runtime
  * consumers are unaffected.
@@ -712,29 +714,77 @@ const renderPipelineTraces = (opts: {
     throw new Error('Pipeline traces report rows are missing')
   }
   const rows = data.rows as readonly Record<string, unknown>[]
-  const visibleRows = opts.maxRows === undefined ? rows : rows.slice(0, opts.maxRows)
   const escaped = (value: unknown): string =>
-    escapeMarkdownTableCell(String(value ?? 'unavailable'))
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-  const lines = [
-    escaped(record.summary),
-    '',
-    '| Job | Status | Wall time | Delta vs main p50 | Trace |',
-    '| --- | --- | --- | --- | --- |',
-    ...visibleRows.map((row) => {
-      const trace =
-        typeof row.traceUrl === 'string' && /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl) === true
+    escapeMarkdownTableCell(
+      String(value ?? 'unavailable')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;'),
+    )
+      .replaceAll('`', '\\`')
+      .replaceAll('[', '\\[')
+      .replaceAll(']', '\\]')
+      .replaceAll('*', '\\*')
+      .replaceAll('_', '\\_')
+  // Image visibility depends only on valid URLs: the <picture> line is tiny, so fitting the
+  // comment never trades it away; only the much larger Mermaid fallback is omitted to fit.
+  const images = data.waterfall as { lightUrl?: unknown; darkUrl?: unknown } | undefined
+  const showImages =
+    typeof images?.lightUrl === 'string' &&
+    typeof images.darkUrl === 'string' &&
+    pipelineWaterfallImageUrl(images.lightUrl) &&
+    pipelineWaterfallImageUrl(images.darkUrl)
+  const showGantt =
+    showImages === false && typeof data.gantt === 'string' && opts.includeGantt !== false
+  const tableRow = (row: Record<string, unknown>): string => {
+    const trace =
+      row.status !== 'skipped' && row.status !== 'unfinished' && row.instrumented === false
+        ? 'not instrumented'
+        : typeof row.traceUrl === 'string' && /^https?:\/\/[^\s<>)]+$/u.test(row.traceUrl) === true
           ? `[Explore](${row.traceUrl})`
           : typeof row.traceId === 'string' && /^[0-9a-f]{32}$/u.test(row.traceId) === true
             ? `\`${row.traceId}\` (link unavailable)`
             : 'unavailable'
-      return `| ${escaped(row.job)} | ${escaped(row.status)} | ${escaped(row.wallTime)} | ${escaped(row.delta)} | ${trace} |`
-    }),
-    ...(visibleRows.length === rows.length
+    return `| ${escaped(row.job)} | ${escaped(row.status)} | ${escaped(row.wallTime)} | ${escaped(row.delta)} | ${trace} |`
+  }
+  // Select inline rows from ALL rows so trimming to fit only ever drops collapsed rows:
+  // failures, error conclusions, slowest jobs and regressions are never omitted.
+  const selected = compactPipelineRows(rows as unknown as readonly PipelineRow[])
+  const compact = rows.filter((row) => selected.has(row as unknown as PipelineRow))
+  const allRest = rows.filter((row) => !selected.has(row as unknown as PipelineRow))
+  const rest = opts.maxRows === undefined ? allRest : allRest.slice(0, opts.maxRows)
+  const table = (tableRows: readonly Record<string, unknown>[]): string[] => [
+    '| Job | Status | Wall time | Delta vs main p50 | Trace |',
+    '| --- | --- | --- | --- | --- |',
+    ...tableRows.map(tableRow),
+  ]
+  const lines = [
+    escaped(record.summary),
+    '',
+    ...(showImages === true
+      ? [
+          `<picture><source media="(prefers-color-scheme: dark)" srcset="${images!.darkUrl}"><img src="${images!.lightUrl}" alt="Pipeline jobs and steps waterfall"></picture>`,
+          '',
+        ]
+      : showGantt === true
+        ? ['Image unavailable; jobs-only Mermaid timeline below.', '']
+        : []),
+    ...table(compact),
+    ...(rest.length === 0
       ? []
       : [
-          `${rows.length - visibleRows.length} additional job row(s) omitted to fit the GitHub comment limit.`,
+          '',
+          '<details>',
+          `<summary>All other jobs (${rest.length})</summary>`,
+          '',
+          ...table(rest),
+          '',
+          '</details>',
+        ]),
+    ...(rest.length === allRest.length
+      ? []
+      : [
+          `${allRest.length - rest.length} additional job row(s) omitted to fit the GitHub comment limit.`,
           '',
         ]),
     '',
@@ -744,9 +794,17 @@ const renderPipelineTraces = (opts: {
         .join(', ') || 'unavailable'
     }.`,
     `Selected main run IDs: ${Array.isArray(data.baselineRunIds) === true ? data.baselineRunIds.map(escaped).join(', ') || 'none' : 'none'}.`,
+    ...(Array.isArray(data.skippedBaselineRunIds) === true && data.skippedBaselineRunIds.length > 0
+      ? [
+          `Skipped main run IDs (Jobs API unavailable): ${data.skippedBaselineRunIds.map(escaped).join(', ')}.`,
+        ]
+      : []),
+    ...(typeof data.baselineIncompleteReason === 'string'
+      ? [`Baseline incomplete: ${escaped(data.baselineIncompleteReason)}.`]
+      : []),
     'Task-level durations are not included. Trace links may be empty while export, indexing, or retention is pending.',
   ]
-  if (typeof data.gantt === 'string' && opts.includeGantt !== false) {
+  if (showGantt === true && typeof data.gantt === 'string') {
     lines.push(
       '',
       '<details>',
@@ -759,7 +817,7 @@ const renderPipelineTraces = (opts: {
       '</details>',
     )
   }
-  if (typeof data.gantt === 'string' && opts.includeGantt === false) {
+  if (showImages === false && typeof data.gantt === 'string' && opts.includeGantt === false) {
     lines.push('', 'Pipeline timeline omitted to fit the GitHub comment limit.')
   }
   if (typeof data.omittedBars === 'number' && data.omittedBars > 0) {

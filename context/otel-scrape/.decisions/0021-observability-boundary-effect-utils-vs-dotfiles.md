@@ -57,7 +57,7 @@ an immediate move: today those modules still live in effect-utils and work, and
 they cannot be removed until (a) native devenv tracing is usable and (b) the
 stack is provided by dotfiles.
 
-## Evidence
+## Evidence and Argument
 
 Phase-0 probe (this session): devenv 2.1.2 exposes `--trace-to` with
 `otlp-grpc`/`otlp-http-*` formats, but the pinned build lacks the
@@ -83,7 +83,7 @@ features. See the dotfiles architecture VRS / #1238 for the migration plan.
 The Buck2 event-log observability lane — caller correlation, run records,
 the direct-decode event-log adapter, trace views, and CI ingest/archive — is
 owned by the buck2 tree's
-[`context/buck2/07-observability`](../../buck2/07-observability/spec.md) by
+[`context/builds/04-buck2/07-observability`](../../builds/04-buck2/07-observability/spec.md) by
 decision (q7, 2026-09-25), consciously overriding this boundary's
 stack/ingest split _for that lane_: the buck2 tree specifies the
 ingest/archive contract, and the dotfiles fleet config implements the
@@ -91,3 +91,10 @@ deployed pieces (ingester, auth front, store lifecycle, retention timer).
 This decision stands unchanged for everything else otel-scrape touches; the
 adapter admission cross-reference is in
 [0012](./0012-adapter-admission-policy.md).
+
+## Options
+
+| Recorded design state | Disposition |
+| --- | --- |
+| Decision stated above | Accepted in the original record |
+| Prior limitation described in Context | Contrasted by the original rationale; no additional historical option claim |

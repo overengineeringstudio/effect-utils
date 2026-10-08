@@ -4,6 +4,7 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { tsconfigReferencesFromPackages } from '../composition/mod.ts'
 import { tsconfigJson, type GenieContext } from '../mod.ts'
 import { tsconfigJsonFromPackages } from '../node/mod.ts'
 import type { WorkspacePackageLike } from '../package-json/mod.ts'
@@ -151,6 +152,67 @@ describe('tsconfigJson', () => {
         ),
       ).toEqual([])
     })
+
+    it.each([
+      { location: 'apps/app', target: 'apps/app/packages/lib' },
+      { location: '.', target: 'packages/lib' },
+      { location: 'apps/app', target: '.' },
+      { location: './apps/app/', target: './apps/app/packages/./lib' },
+      { location: './', target: 'packages/lib' },
+    ])('accepts projected references from $location to $target', ({ location, target }) => {
+      const lib: WorkspacePackageLike = {
+        data: { name: '@test/lib' },
+        meta: { workspace: { repoName: 'repo', memberPath: target, deps: [] } },
+      }
+      const app: WorkspacePackageLike = {
+        data: { name: '@test/app' },
+        meta: { workspace: { repoName: 'repo', memberPath: location, deps: [lib] } },
+      }
+      const packages = [
+        { ...workspacePackages[0]!, path: location },
+        { ...workspacePackages[1]!, path: target },
+      ]
+      const ctx: GenieContext = {
+        ...context({ tsconfig: '{"compilerOptions":{"composite":true}}' }),
+        location,
+        workspace: { packages, byName: new Map(packages.map((pkg) => [pkg.name, pkg])) },
+        io: {
+          fileExists: (filePath) => filePath === `/workspace/${target}/tsconfig.json`,
+          readText: (filePath) =>
+            filePath === `/workspace/${target}/tsconfig.json`
+              ? '{"compilerOptions":{"composite":true}}'
+              : undefined,
+        },
+      }
+
+      const references = tsconfigReferencesFromPackages({ from: app })
+      expect(tsconfigJson({ references }).validate?.(ctx)).toEqual([])
+      expect(tsconfigJson({ references: [] }).validate?.(ctx)).toMatchObject([
+        { rule: 'tsconfig-references', dependency: '@test/lib' },
+      ])
+    })
+
+    it.each(['../lib', './../lib/', '../app/../lib', '../lib//.'])(
+      'accepts equivalent relative reference %s',
+      (reference) => {
+        expect(
+          tsconfigJson({ references: [{ path: reference }] }).validate?.(
+            context({ tsconfig: '{"compilerOptions":{"composite":true}}' }),
+          ),
+        ).toEqual([])
+      },
+    )
+
+    it.each(['../../lib', './lib', '../lib/../../lib'])(
+      'rejects references to a different directory: %s',
+      (reference) => {
+        expect(
+          tsconfigJson({ references: [{ path: reference }] }).validate?.(
+            context({ tsconfig: '{"compilerOptions":{"composite":true}}' }),
+          ),
+        ).toMatchObject([{ rule: 'tsconfig-references', dependency: '@test/lib' }])
+      },
+    )
   })
 })
 

@@ -20,7 +20,7 @@ repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 export BUCK2_BRIDGE_REPO="$repo_root"
 
 common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
-  flake = builtins.getFlake (toString repo);
+  flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
   pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
   test = import (repo + "/nix/workspace-tools/lib/tests/buck2-bridge.nix") { inherit pkgs; };
   contract = import (repo + "/nix/workspace-tools/lib/buck2-build-product-contract.nix");
@@ -55,7 +55,7 @@ expect_build_failure() {
   local expression="$3"
   local log
   log="$(mktemp)"
-  if nix build --impure --no-link --expr "$expression" >"$log" 2>&1; then
+  if nix build --impure --no-link --print-build-logs --expr "$expression" >"$log" 2>&1; then
     echo "buck2-bridge-test: expected $label to fail" >&2
     rm -f "$log"
     exit 1
@@ -137,6 +137,64 @@ static_import="$(build_expr "$static_runtime_expr")"
   exit 1
 }
 
+wasm_guest_import="$(build_expr "($base_expr).wasmGuestImport")"
+[ -f "$wasm_guest_import/lib/guest.wasm" ] || {
+  echo "buck2-bridge-test: wasm guest entrypoint is missing" >&2
+  exit 1
+}
+magic="$(od -An -tx1 -N4 "$wasm_guest_import/lib/guest.wasm" | tr -d ' ')"
+[ "$magic" = "0061736d" ] || {
+  echo "buck2-bridge-test: wasm guest entrypoint lost its wasm magic" >&2
+  exit 1
+}
+
+node_out="$(build_expr "let $common_let in pkgs.nodejs")"
+"$node_out/bin/node" - "$wasm_guest_import/lib/guest.wasm" <<'JS'
+const fs = require('node:fs')
+const guest = new WebAssembly.Instance(new WebAssembly.Module(fs.readFileSync(process.argv[2])))
+if (guest.exports.answer() !== 42) throw new Error('imported wasm guest returned the wrong answer')
+JS
+
+wasm_guest_product="$(build_expr "($base_expr).wasmGuestProduct")"
+export BUCK2_BRIDGE_WASM_PRODUCT="$wasm_guest_product"
+wasm_product_let='exported = builtins.storePath (builtins.getEnv "BUCK2_BRIDGE_WASM_PRODUCT");
+  original = builtins.fromJSON (builtins.readFile (exported + "/descriptor.json"));'
+missing_wasm_export_expr="let
+  $common_let
+  $wasm_product_let
+  descriptor = original // {
+    runtime = original.runtime // {
+      exports = original.runtime.exports ++ [ { name = \"missing\"; kind = \"function\"; } ];
+    };
+  };
+in test.mkImport {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = exported + \"/artifact.tar\";
+}"
+# Regression: this rejection is emitted by the import builder, not Nix evaluation.
+# Remote builder logs must reach expect_build_failure's captured diagnostic.
+expect_build_failure \
+  "wasm guest missing declared export" \
+  'wasm guest export mismatch: expected [{"name":"answer","kind":"function"},{"name":"missing","kind":"function"}], observed [{"name":"answer","kind":"function"}]' \
+  "$missing_wasm_export_expr"
+
+wasm_inspector_out="$(build_expr "let $common_let in
+  import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-wasm-guest.nix\") { inherit pkgs; }")"
+wasm_descriptor="$(mktemp)"
+jq '.runtime.exports = []' "$wasm_guest_product/descriptor.json" >"$wasm_descriptor"
+expect_command_failure \
+  "wasm guest undeclared actual export" \
+  'wasm guest export mismatch: expected [], observed [{"name":"answer","kind":"function"}]' \
+  "$wasm_inspector_out" "$wasm_descriptor" "$wasm_guest_import"
+jq '.runtime.exports[0].kind = "global"' "$wasm_guest_product/descriptor.json" >"$wasm_descriptor"
+expect_command_failure \
+  "wasm guest export kind mismatch" \
+  'wasm guest export mismatch: expected [{"name":"answer","kind":"global"}], observed [{"name":"answer","kind":"function"}]' \
+  "$wasm_inspector_out" "$wasm_descriptor" "$wasm_guest_import"
+rm -f "$wasm_descriptor"
+
 dynamic_export="$(build_expr "($base_expr).dynamicExport")"
 export BUCK2_BRIDGE_DYNAMIC_EXPORT="$dynamic_export"
 jq -e '
@@ -207,6 +265,12 @@ dynamic_import="$(build_expr "$dynamic_import_expr")"
 # substitute a descriptor-bearing attrset for the source Buck derivation.
 source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
   descriptor = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+  # The fixture is a Rust native product: like real ones, its staged source
+  # carries the Cargo workspace whose release profile the recipe reads.
+  repositorySource = pkgs.runCommand \"buck2-bridge-rust-source\" { } ''
+    mkdir -p \$out/rust
+    printf '%s\\n' '[workspace]' > \$out/rust/Cargo.toml
+  '';
   builder = import (repo + \"/nix/buck2-products/from-source.nix\") {
     inherit pkgs;
     buck2 = pkgs.writeShellScriptBin \"buck2\" \"exit 1\";
@@ -232,7 +296,7 @@ source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDG
       importNative = true;
       expectedPlatform = descriptor.platform;
       runtimeKind = \"elf-dynamic\";
-      repositorySource = exported;
+      inherit repositorySource;
       capabilities = pkgs.runCommand \"empty-buck-capabilities\" { } \"mkdir \$out\";
       pnpmArchives = pkgs.runCommand \"empty-pnpm-archives\" { } \"mkdir \$out\";
       producerCommit = \"0000000000000000000000000000000000000000\";

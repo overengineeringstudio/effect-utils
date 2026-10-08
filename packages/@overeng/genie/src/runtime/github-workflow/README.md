@@ -45,6 +45,11 @@ This rejects invalid runner labels such as:
 
 This is mainly intended to catch CI helper API drift early. Without this validation, stale generated workflows can look superficially valid in the repo but only fail later when GitHub tries to load or schedule the workflow.
 
+Private binary-cache jobs accept the static fleet runner labels, including
+`sh-linux-x64-publish` and `sh-linux-arm64-publish` for dedicated cache publishers.
+Each publisher label can be used alone or with the optional `nix` capability label;
+unknown labels are rejected.
+
 ## Type Reference
 
 See [GitHub Actions workflow syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions) for detailed documentation on all options.

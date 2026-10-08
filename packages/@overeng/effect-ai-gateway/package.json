@@ -18,20 +18,20 @@
     }
   },
   "devDependencies": {
-    "@effect/ai-openai-compat": "4.0.0-rc.118",
-    "@effect/ai-typesafe": "4.0.0-rc.118",
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/ai-openai-compat": "4.0.0",
+    "@effect/ai-typesafe": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "typescript": "7.0.2",
     "vite": "8.2.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "@effect/ai-openai-compat": "4.0.0-rc.118",
-    "@effect/ai-typesafe": "4.0.0-rc.118",
-    "effect": "4.0.0-rc.118"
+    "@effect/ai-openai-compat": "^4.0.0",
+    "@effect/ai-typesafe": "^4.0.0",
+    "effect": "^4.0.0"
   },
   "publishConfig": {
     "access": "public",

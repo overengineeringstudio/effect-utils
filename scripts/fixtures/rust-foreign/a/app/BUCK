@@ -1,14 +1,63 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: scripts/fixtures/rust-foreign/a/app/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:ba0d220dde784a287b0cbd2d523bf24715946744419aa823e6e5b1d5c30e2d87
+# Semantic inputs: genie/buck2/mod.ts, rust/buck2-tools/core/cargo-buck2-package-projection.ts, scripts/fixtures/rust-foreign/a/Cargo.lock, scripts/fixtures/rust-foreign/a/Cargo.toml, scripts/fixtures/rust-foreign/a/app/BUCK.genie.ts, scripts/fixtures/rust-foreign/a/app/Cargo.toml, scripts/fixtures/rust-foreign/a/app/src/**/*.rs, scripts/fixtures/rust-foreign/a/app/tests/**/*.rs, scripts/fixtures/rust-foreign/a/foreign-packages.json, scripts/fixtures/rust-foreign/a/reindeer.toml, scripts/fixtures/rust-foreign/a/third-party/BUCK, scripts/fixtures/rust-foreign/a/third-party/cargo-resolution.json, scripts/fixtures/rust-foreign/b/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/src/**/*.rs, scripts/fixtures/rust-foreign/projection.ts
+# Regenerate: devenv tasks run genie:run
+
 load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "scripts/fixtures/rust-foreign/a/app",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/main.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
 
 native.rust_binary(
-    name = "app",
+    name = "foreign-consumer",
     crate = "foreign_consumer",
     crate_root = "src/main.rs",
-    srcs = ["src/main.rs"],
+    srcs = [
+        "src/main.rs",
+    ],
     deps = [
         "//scripts/fixtures/rust-foreign/a/third-party:memchr",
-        "//scripts/fixtures/rust-foreign/b/crates/shared:lib",
+        "//scripts/fixtures/rust-foreign/a:foreign-foreign-shared-lib",
     ],
+    named_deps = {
+        "old_toml_datetime": "//scripts/fixtures/rust-foreign/a/third-party:old_toml_datetime",
+        "renamed_itoa": "//scripts/fixtures/rust-foreign/a/third-party:renamed_itoa",
+    },
     edition = "2021",
-    visibility = ["PUBLIC"],
+    env = {
+        "CARGO_PKG_NAME": "foreign-consumer",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "foreign_consumer",
+        "CARGO_MANIFEST_DIR": "scripts/fixtures/rust-foreign/a/app",
+        "CARGO_BIN_NAME": "foreign-consumer",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
 )

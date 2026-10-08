@@ -1,6 +1,7 @@
 """Repository-wide static checks over exact package-local source manifests."""
 
-load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/provenance:defs.bzl", "ProductExecutableInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
@@ -47,7 +48,6 @@ StaticSourceSetInfo = provider(fields = {
     "prefix": str,
 })
 
-
 def _static_source_set_impl(ctx):
     node_modules = [] if ctx.attrs.node_modules == None else ctx.attrs.node_modules[DefaultInfo].default_outputs
     if len(node_modules) > 1:
@@ -57,8 +57,7 @@ def _static_source_set_impl(ctx):
         StaticSourceSetInfo(files = ctx.attrs.srcs, node_modules = node_modules, prefix = ctx.attrs.prefix),
     ]
 
-
-_static_source_set = rule(
+_static_source_set = cache_guarded_rule(
     impl = _static_source_set_impl,
     attrs = {
         "prefix": attrs.string(),
@@ -66,7 +65,6 @@ _static_source_set = rule(
         "srcs": attrs.list(attrs.source()),
     },
 )
-
 
 def static_source_set(name, prefix, srcs, node_modules = None, **kwargs):
     """Declares one package boundary's governed static source files and dependency view."""
@@ -89,14 +87,13 @@ def _collect_static_sources(ctx, output, include_node_modules):
                 sources[destination] = node_modules
     return sources, ctx.actions.copied_dir(output, sources)
 
-
 def _repository_static_check_impl(ctx):
     tool = ctx.attrs.tool[BuckSupportToolInfo]
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
     sources, source_tree = _collect_static_sources(ctx, "source", True)
     result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
     args = cmd_args([
-        toolchain.bun,
+        hermetic_bun_command(ctx, toolchain.bun),
         ctx.attrs._runner,
         "--kind",
         ctx.attrs.kind,
@@ -110,19 +107,19 @@ def _repository_static_check_impl(ctx):
     for source_path in sorted(sources.keys()):
         args.add("--path", source_path)
     args.add(cmd_args(hidden = [source_tree, tool.manifest]))
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         args,
         category = "{}_check".format(ctx.attrs.kind),
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [DefaultInfo(default_output = result)]
 
-
-_repository_static_check = rule(
+_repository_static_check = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _repository_static_check_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "kind": attrs.enum(["format", "lint"]),
         "source_sets": attrs.list(attrs.dep(providers = [StaticSourceSetInfo])),
         "tool": attrs.exec_dep(providers = [BuckSupportToolInfo]),
@@ -133,9 +130,8 @@ _repository_static_check = rule(
         "_runner": attrs.default_only(attrs.source(
             default = "//packages/@overeng/buck2-tools:src/static-check-runner.ts",
         )),
-    },
+    }),
 )
-
 
 def _repository_policy_check_impl(ctx):
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
@@ -146,9 +142,10 @@ def _repository_policy_check_impl(ctx):
         "sourcePaths": sorted(sources.keys()),
     })
     result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
-    ctx.actions.run(
+    hermetic_action(
+        ctx,
         cmd_args([
-            toolchain.bun,
+            hermetic_bun_command(ctx, toolchain.bun),
             ctx.attrs._runner,
             "--manifest",
             manifest,
@@ -160,14 +157,13 @@ def _repository_policy_check_impl(ctx):
         category = "repository_policy_check",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [DefaultInfo(default_output = result)]
 
-
-_repository_policy_check = rule(
+_repository_policy_check = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _repository_policy_check_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "declared_packages": attrs.list(attrs.string()),
         "source_sets": attrs.list(attrs.dep(providers = [StaticSourceSetInfo])),
         "_javascript": attrs.default_only(attrs.exec_dep(
@@ -177,7 +173,7 @@ _repository_policy_check = rule(
         "_runner": attrs.default_only(attrs.source(
             default = "//packages/@overeng/buck2-tools:src/repository-policy-runner.ts",
         )),
-    },
+    }),
 )
 
 def _single_default_output(target, field):
@@ -207,9 +203,9 @@ def _stage_product_executable(ctx, target):
     )
     return cmd_args(staged, format = "{}/bin/typescript-api-server"), staged
 
-
 def _repository_validation_check_impl(ctx):
     toolchain = ctx.attrs._javascript[EffectTsgoToolchainInfo]
+    audited = ctx.attrs.mode in ["nix-source", "devenv-trace-audit"]
     sources, source_tree = _collect_static_sources(ctx, "validation_source", False)
     result = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
     hidden = [source_tree]
@@ -243,7 +239,7 @@ def _repository_validation_check_impl(ctx):
             hidden.append(tool.manifest)
     else:
         args = cmd_args([
-            toolchain.bun,
+            hermetic_bun_command(ctx, toolchain.bun) if audited else toolchain.bun,
             ctx.attrs._runner,
             "--mode",
             ctx.attrs.mode,
@@ -269,19 +265,28 @@ def _repository_validation_check_impl(ctx):
         if manifest != None:
             args.add("--manifest", manifest)
     args.add(cmd_args(hidden = hidden))
-    ctx.actions.run(
-        args,
-        category = "repository_validation",
-        identifier = ctx.attrs.name,
-        local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
-    )
+    if audited:
+        hermetic_action(
+            ctx,
+            args,
+            category = "repository_validation",
+            identifier = ctx.attrs.name,
+            local_only = True,
+        )
+    else:
+        ctx.actions.run(
+            args,
+            category = "repository_validation",
+            identifier = ctx.attrs.name,
+            local_only = True,
+            allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+        )
     return [DefaultInfo(default_output = result)]
 
-
-_repository_validation_check = rule(
+_repository_validation_check = cache_guarded_rule(
+    cache_eligible = lambda ctx: ctx.attrs.mode in ["nix-source", "devenv-trace-audit"],
     impl = _repository_validation_check_impl,
-    attrs = {
+    attrs = dict(hermetic_attrs(), **{
         "checker": attrs.option(attrs.dep(), default = None),
         "declared_packages": attrs.list(attrs.string(), default = []),
         "mode": attrs.enum([
@@ -305,9 +310,8 @@ _repository_validation_check = rule(
         "_runner": attrs.default_only(attrs.source(
             default = "//packages/@overeng/buck2-tools:src/repository-validation-runner.ts",
         )),
-    },
+    }),
 )
-
 
 def repository_static_checks(
         name,
@@ -317,25 +321,27 @@ def repository_static_checks(
         repository_source_sets,
         **kwargs):
     """Checks repository formatting, lint, source policy, and deterministic validation contracts."""
+    admitted_kwargs = dict(kwargs)
+    admitted_kwargs["exec_compatible_with"] = hermetic_execution_constraints(kwargs.get("exec_compatible_with", []))
     _repository_static_check(
         name = name + "_format",
         kind = "format",
         source_sets = source_sets,
         tool = "//buck2/toolchains:tool_oxfmt",
-        **kwargs
+        **admitted_kwargs
     )
     _repository_static_check(
         name = name + "_lint",
         kind = "lint",
         source_sets = source_sets,
         tool = "//buck2/toolchains:tool_oxlint",
-        **kwargs
+        **admitted_kwargs
     )
     _repository_policy_check(
         name = name + "_policy",
         declared_packages = declared_packages,
         source_sets = source_sets,
-        **kwargs
+        **admitted_kwargs
     )
     _repository_validation_check(
         name = "nix_source_check",
@@ -345,7 +351,7 @@ def repository_static_checks(
             "deadnix": "//buck2/toolchains:tool_deadnix",
             "nixfmt": "//buck2/toolchains:tool_nixfmt",
         },
-        **kwargs
+        **admitted_kwargs
     )
     _repository_validation_check(
         name = "genie_import_closure_check",
@@ -359,7 +365,7 @@ def repository_static_checks(
         name = "devenv_trace_audit_check",
         mode = "devenv-trace-audit",
         source_sets = repository_source_sets,
-        **kwargs
+        **admitted_kwargs
     )
     _repository_validation_check(
         name = "workspace_contract_check",

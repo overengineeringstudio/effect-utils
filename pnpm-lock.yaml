@@ -6,7 +6,7 @@ settings:
   injectWorkspacePackages: true
 
 overrides:
-  '@effect/platform-node-shared': 4.0.0-rc.118
+  '@effect/platform-node-shared': 4.0.0
 
 packageExtensionsChecksum: sha256-epTbgV6B/4VjMZl+6yKpdYaKky9k3quNEA681y79Hlk=
 
@@ -22,11 +22,11 @@ importers:
   context/effect/socket:
     dependencies:
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
     devDependencies:
       '@types/node':
         specifier: 26.5.0
@@ -35,8 +35,8 @@ importers:
   context/opentui:
     dependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@opentui/core':
         specifier: 0.5.11
         version: 0.5.11(typescript@7.0.2)(web-tree-sitter@0.25.10)
@@ -44,8 +44,8 @@ importers:
         specifier: 0.5.11
         version: 0.5.11(react-devtools-core@7.0.1)(react@19.2.8)(typescript@7.0.2)(web-tree-sitter@0.25.10)(ws@8.22.0)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -63,14 +63,14 @@ importers:
   packages/@overeng/agent-session-ingest:
     dependencies:
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -78,11 +78,11 @@ importers:
         specifier: 1.63.0
         version: 1.63.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^
@@ -95,6 +95,13 @@ importers:
         version: 7.0.2
 
   packages/@overeng/buck2-tools:
+    dependencies:
+      acorn:
+        specifier: 8.18.0
+        version: 8.18.0
+      acorn-walk:
+        specifier: 8.3.5
+        version: 8.3.5
     devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^
@@ -109,14 +116,14 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/ci-tools:
     dependencies:
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: ^4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@overeng/otel-contract':
         specifier: workspace:^
         version: link:../otel-contract
@@ -130,21 +137,21 @@ importers:
         specifier: ^10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       '@vitest/browser-playwright':
-        specifier: ^4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: ^5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: ^4.0.0
+        version: 4.0.0
       storybook:
         specifier: ^10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     devDependencies:
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -158,21 +165,27 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/content-address:
     dependencies:
+      '@effect/platform-node':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@noble/hashes':
         specifier: 2.4.0
         version: 2.4.0
+      '@overeng/effect-rust':
+        specifier: workspace:^
+        version: link:../effect-rust
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
     devDependencies:
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -183,14 +196,84 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+
+  packages/@overeng/devbar:
+    dependencies:
+      '@overeng/stylex-tokens':
+        specifier: workspace:^
+        version: link:../stylex-tokens
+    devDependencies:
+      '@overeng/utils':
+        specifier: workspace:^
+        version: link:../utils
+      '@overeng/utils-storybook':
+        specifier: workspace:^
+        version: link:../utils-storybook
+      '@storybook/addon-a11y':
+        specifier: 10.6.0
+        version: 10.6.0(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))
+      '@storybook/react':
+        specifier: 10.6.0
+        version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))(typescript@7.0.2)
+      '@storybook/react-vite':
+        specifier: 10.6.0
+        version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
+      '@testing-library/react':
+        specifier: 16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@testing-library/user-event':
+        specifier: 14.6.7
+        version: 14.6.7(@testing-library/dom@10.4.1)
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.7
+        version: 19.2.7(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 6.1.1
+        version: 6.1.1(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      '@vitest/browser':
+        specifier: 5.0.3
+        version: 5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
+      '@vitest/browser-playwright':
+        specifier: 5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
+      happy-dom:
+        specifier: 20.14.0
+        version: 20.14.0
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+      storybook:
+        specifier: 10.6.0
+        version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vite:
+        specifier: 8.2.2
+        version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-ai-claude-cli:
     devDependencies:
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -198,8 +281,8 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -207,20 +290,20 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-ai-gateway:
     devDependencies:
       '@effect/ai-openai-compat':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)
       '@effect/ai-typesafe':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -228,8 +311,8 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -237,14 +320,14 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-distributed-lock:
     devDependencies:
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -252,23 +335,23 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-path:
     devDependencies:
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -276,14 +359,14 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-react:
     dependencies:
@@ -313,8 +396,8 @@ importers:
         specifier: 6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -334,8 +417,8 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-rpc-explorer:
     dependencies:
@@ -344,14 +427,14 @@ importers:
         version: link:../otel-contract
     devDependencies:
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-rpc-explorer-react:
     dependencies:
@@ -390,14 +473,14 @@ importers:
         specifier: 6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       '@vitest/browser':
-        specifier: 4.1.9
-        version: 4.1.9(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       '@vitest/browser-playwright':
-        specifier: 4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       playwright:
         specifier: 1.63.0
         version: 1.63.0
@@ -420,14 +503,14 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-rpc-tanstack:
     devDependencies:
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -441,8 +524,8 @@ importers:
         specifier: 19.2.18
         version: 19.2.18
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -456,14 +539,14 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-rpc-tanstack/examples/basic:
     dependencies:
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@overeng/effect-rpc-tanstack':
         specifier: workspace:^
         version: link:../..
@@ -474,8 +557,8 @@ importers:
         specifier: 1.168.50
         version: 1.168.50(esbuild@0.28.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(rolldown@1.2.7)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -511,6 +594,41 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
 
+  packages/@overeng/effect-rust:
+    dependencies:
+      effect:
+        specifier: 4.0.0
+        version: 4.0.0
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
+      '@types/node':
+        specifier: 26.5.0
+        version: 26.5.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+
+  packages/@overeng/effect-rust-fixture-consumer:
+    dependencies:
+      '@overeng/effect-rust':
+        specifier: workspace:^
+        version: link:../effect-rust
+      effect:
+        specifier: 4.0.0
+        version: 4.0.0
+    devDependencies:
+      '@types/node':
+        specifier: 26.5.0
+        version: 26.5.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   packages/@overeng/effect-schema-form:
     devDependencies:
       '@types/react':
@@ -520,8 +638,8 @@ importers:
         specifier: 19.2.7
         version: 19.2.7(@types/react@19.2.18)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -532,8 +650,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/effect-schema-form-aria:
     dependencies:
@@ -581,14 +699,14 @@ importers:
         specifier: 6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       '@vitest/browser':
-        specifier: 4.1.9
-        version: 4.1.9(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       '@vitest/browser-playwright':
-        specifier: 4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       playwright:
         specifier: 1.63.0
         version: 1.63.0
@@ -602,23 +720,23 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/genie:
     dependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@opentui/core':
         specifier: 0.5.11
         version: 0.5.11(typescript@7.0.2)(web-tree-sitter@0.25.10)
@@ -647,8 +765,8 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.18)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       jsonc-parser:
         specifier: 3.3.1
         version: 3.3.1
@@ -665,8 +783,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -696,20 +814,48 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
 
+  packages/@overeng/genie-smalltalk:
+    dependencies:
+      '@overeng/genie':
+        specifier: workspace:^
+        version: link:../genie
+      effect:
+        specifier: 4.0.0
+        version: 4.0.0
+    devDependencies:
+      '@effect/opentelemetry':
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
+      '@effect/vitest':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
+      '@overeng/utils-dev':
+        specifier: workspace:^
+        version: link:../utils-dev
+      '@types/node':
+        specifier: 26.5.0
+        version: 26.5.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+
   packages/@overeng/gh-ci-utils:
     dependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@opentui/core':
         specifier: 0.5.11
         version: 0.5.11(typescript@7.0.2)(web-tree-sitter@0.25.10)
@@ -744,11 +890,11 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.18)
       '@vitest/browser-playwright':
-        specifier: 4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -762,8 +908,8 @@ importers:
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -790,8 +936,8 @@ importers:
   packages/@overeng/kdl:
     devDependencies:
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -799,14 +945,14 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/kdl-effect:
     dependencies:
@@ -815,8 +961,8 @@ importers:
         version: link:../kdl
     devDependencies:
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -824,29 +970,29 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/megarepo:
     dependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@opentui/core':
         specifier: 0.5.11
         version: 0.5.11(typescript@7.0.2)(web-tree-sitter@0.25.10)
@@ -884,11 +1030,11 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.18)
       '@vitest/browser-playwright':
-        specifier: ^4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: ^5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -899,8 +1045,8 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(react@19.2.8)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -945,17 +1091,17 @@ importers:
   packages/@overeng/notion-cli:
     dependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@opentui/core':
         specifier: 0.5.11
         version: 0.5.11(typescript@7.0.2)(web-tree-sitter@0.25.10)
@@ -1002,11 +1148,11 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.18)
       '@vitest/browser-playwright':
-        specifier: ^4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: ^5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -1017,8 +1163,8 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(react@19.2.8)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -1057,20 +1203,20 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/notion-datasource-sync:
     dependencies:
       '@overeng/content-address':
         specifier: workspace:^
-        version: link:../content-address
+        version: file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@overeng/notion-core':
         specifier: workspace:^
         version: link:../notion-core
@@ -1103,17 +1249,17 @@ importers:
         injected: true
     devDependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@opentui/core':
         specifier: 0.5.11
         version: 0.5.11(typescript@7.0.2)(web-tree-sitter@0.25.10)
@@ -1139,11 +1285,11 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.18)
       '@vitest/browser-playwright':
-        specifier: 4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
@@ -1157,23 +1303,23 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/notion-effect-client:
     dependencies:
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/content-address':
         specifier: workspace:^
-        version: link:../content-address
+        version: file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@overeng/notion-core':
         specifier: workspace:^
         version: link:../notion-core
@@ -1190,8 +1336,8 @@ importers:
         specifier: 1.63.0
         version: 1.63.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       mdast-util-gfm-strikethrough:
         specifier: 2.0.0
         version: 2.0.0
@@ -1223,8 +1369,8 @@ importers:
         specifier: 5.1.0
         version: 5.1.0
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^
@@ -1243,8 +1389,8 @@ importers:
         version: link:../notion-core
     devDependencies:
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -1252,20 +1398,20 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/notion-md:
     dependencies:
       '@overeng/content-address':
         specifier: workspace:^
-        version: link:../content-address
+        version: file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@overeng/notion-core':
         specifier: workspace:^
         version: link:../notion-core
@@ -1286,17 +1432,17 @@ importers:
         version: link:../utils
     devDependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/tui-react':
         specifier: workspace:^
         version: link:../tui-react
@@ -1328,11 +1474,11 @@ importers:
         specifier: 6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       '@vitest/browser-playwright':
-        specifier: 4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -1352,8 +1498,8 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/notion-property-write:
     dependencies:
@@ -1362,8 +1508,8 @@ importers:
         version: link:../notion-effect-schema
     devDependencies:
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -1371,29 +1517,29 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/notion-react:
     dependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@opentui/core':
         specifier: 0.5.11
         version: 0.5.11(typescript@7.0.2)(web-tree-sitter@0.25.10)
@@ -1422,8 +1568,8 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.18)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -1434,8 +1580,8 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(react@19.2.8)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     devDependencies:
       '@opentelemetry/api':
         specifier: 1.9.1
@@ -1477,8 +1623,8 @@ importers:
   packages/@overeng/npm-release:
     devDependencies:
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -1486,20 +1632,48 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+
+  packages/@overeng/otel-browser:
+    dependencies:
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
+    devDependencies:
+      '@overeng/utils-dev':
+        specifier: workspace:^
+        version: link:../utils-dev
+      '@types/bun':
+        specifier: 1.4.2
+        version: 1.4.2
+      '@types/node':
+        specifier: 26.5.0
+        version: 26.5.0
+      effect:
+        specifier: 4.0.0
+        version: 4.0.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vite:
+        specifier: 8.2.2
+        version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/otel-contract:
     dependencies:
       '@overeng/content-address':
         specifier: workspace:^
-        version: link:../content-address
+        version: file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))
     devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^
@@ -1508,14 +1682,44 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+
+  packages/@overeng/outline:
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.7
+        version: 19.2.7(@types/react@19.2.18)
+      effect:
+        specifier: 4.0.0
+        version: 4.0.0
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-aria-components:
+        specifier: 1.21.1
+        version: 1.21.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/oxc-config:
     devDependencies:
@@ -1544,8 +1748,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/pty-effect:
     dependencies:
@@ -1557,8 +1761,8 @@ importers:
         version: link:../otel-contract
     devDependencies:
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -1566,8 +1770,8 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -1575,8 +1779,8 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/react-inspector:
     dependencies:
@@ -1609,8 +1813,8 @@ importers:
         specifier: 6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       happy-dom:
         specifier: 20.14.0
         version: 20.14.0
@@ -1630,8 +1834,8 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/restate-effect:
     dependencies:
@@ -1649,14 +1853,14 @@ importers:
         version: 1.17.0
     devDependencies:
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@opentelemetry/api':
         specifier: 1.9.1
         version: 1.9.1
@@ -1697,11 +1901,11 @@ importers:
         specifier: 26.5.0
         version: 26.5.0
       '@vitest/browser-playwright':
-        specifier: 4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       storybook:
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
@@ -1709,8 +1913,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/stylex-tokens:
     devDependencies:
@@ -1730,20 +1934,20 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/tui-react:
     dependencies:
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/tui-core':
         specifier: workspace:^
         version: link:../tui-core
@@ -1769,21 +1973,21 @@ importers:
         specifier: 6.1.1
         version: 6.1.1
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       string-width:
         specifier: 8.2.2
         version: 8.2.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       yoga-layout:
         specifier: 3.2.1
         version: 3.2.1
     devDependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@noble/hashes':
         specifier: 2.4.0
         version: 2.4.0
@@ -1842,17 +2046,17 @@ importers:
   packages/@overeng/tui-stories:
     dependencies:
       '@effect/atom-react':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@opentui/core':
         specifier: 0.5.11
         version: 0.5.11(typescript@7.0.2)(web-tree-sitter@0.25.10)
@@ -1881,11 +2085,11 @@ importers:
         specifier: 0.33.0
         version: 0.33.0(@types/react@19.2.18)
       '@vitest/browser-playwright':
-        specifier: 4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -1899,8 +2103,8 @@ importers:
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -1927,14 +2131,14 @@ importers:
   packages/@overeng/utils:
     dependencies:
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@noble/hashes':
         specifier: 2.4.0
         version: 2.4.0
@@ -1951,8 +2155,8 @@ importers:
         specifier: 0.19.0
         version: 0.19.0(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.7)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       postcss:
         specifier: 8.5.26
         version: 8.5.26
@@ -1960,8 +2164,8 @@ importers:
         specifier: 3.3.0
         version: 3.3.0(esbuild@0.28.2)(rolldown@1.2.7)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     devDependencies:
       '@babel/core':
         specifier: 7.29.7
@@ -2033,45 +2237,45 @@ importers:
   packages/@overeng/utils-dev:
     devDependencies:
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@types/node':
         specifier: 26.5.0
         version: 26.5.0
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   packages/@overeng/utils-storybook:
     dependencies:
       '@blazediff/core':
-        specifier: 1.9.1
-        version: 1.9.1
+        specifier: 1.10.0
+        version: 1.10.0
       pngjs:
         specifier: 7.0.0
         version: 7.0.0
     devDependencies:
       '@effect/opentelemetry':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)
+        specifier: 4.0.0
+        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
       '@effect/platform-node':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -2097,14 +2301,14 @@ importers:
         specifier: 19.2.18
         version: 19.2.18
       '@vitest/browser':
-        specifier: 4.1.9
-        version: 4.1.9(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       '@vitest/browser-playwright':
-        specifier: 4.1.9
-        version: 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+        specifier: 5.0.3
+        version: 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
       effect:
-        specifier: 4.0.0-rc.118
-        version: 4.0.0-rc.118
+        specifier: 4.0.0
+        version: 4.0.0
       playwright:
         specifier: 1.63.0
         version: 1.63.0
@@ -2124,8 +2328,8 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
       vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
 packages:
 
@@ -2229,8 +2433,8 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
-  '@blazediff/core@1.9.1':
-    resolution: {integrity: sha512-ehg3jIkYKulZh+8om/O25vkvSsXXwC+skXmyA87FFx6A/45eqOkZsBltMw/TVteb0mloiGT8oGRTcjRAz66zaA==}
+  '@blazediff/core@1.10.0':
+    resolution: {integrity: sha512-AOQff0zgR7cGsZL+4E7hVkmujoPUpm0J9xzWGWZj5wCjd3gmxESXAPfKyuzs93VdpQNFhHlBhfOjrcZ+XTERtQ==}
 
   '@cacheable/memory@2.2.0':
     resolution: {integrity: sha512-CTLKqLItRCEixEAewD3/j9DB3/o96gpTPD4eJ1v+DGOlxZRZncRQkGYqqnAGCscYd6RNeXfGeiuCphsPtqyIfQ==}
@@ -2245,25 +2449,25 @@ packages:
   '@dual-bundle/import-meta-resolve@4.2.1':
     resolution: {integrity: sha512-id+7YRUgoUX6CgV0DtuhirQWodeeA7Lf4i2x71JS/vtA5pRb/hIGWlw+G6MeXvsM+MXrz0VAydTGElX1rAfgPg==}
 
-  '@effect/ai-openai-compat@4.0.0-rc.118':
-    resolution: {integrity: sha512-VqjUIq1HDcluCx6Xoqg+nDY4UC2FQUnfihNitg0y3rj/gHOps70k1PCgyPzBXNNi6GWzfakjNp69d2PfTryyOA==}
+  '@effect/ai-openai-compat@4.0.0':
+    resolution: {integrity: sha512-zoFwI5M7pUEj4UMHMbPsQGaVRxirIAIqzfVZAtpjJPXWwd/acwxN4kI1nS9gfn/lCHvFIc9xPEMstforcODesw==}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
 
-  '@effect/ai-typesafe@4.0.0-rc.118':
-    resolution: {integrity: sha512-I8woyusKXG8u8p2VHXGL9Xbcw0ZPWAmqxa/rAgdZcaOErqWl9q1I+ubqiqSQS4AbMCJP2aIF2j4b+YIJBfj7Zw==}
+  '@effect/ai-typesafe@4.0.0':
+    resolution: {integrity: sha512-TbInR017yf4KFAYD1jTSr9pkQrob1+9UNyW6KKRHHGfmD8j121f41fOf+60RJ7IIBl/XOUAURC8/Mj7aWkGZtg==}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
 
-  '@effect/atom-react@4.0.0-rc.118':
-    resolution: {integrity: sha512-H6XBWGOlKIe53yFHdzd9zJE+H1RDoMvqF5OyWBZetbaHJUYlSbZECvDzBw1545fSoHrgH2JmlWePFPsXOgGSqA==}
+  '@effect/atom-react@4.0.0':
+    resolution: {integrity: sha512-VPP2oOjj56iwOpL5aIGbu7Qhb4+1sFNdU16aI5of3JqToqWWX9eJPBfeiPyQ1eTYof1hnNX1auyRiTORSfLT6g==}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
       react: '>=19.0.0 <20.0.0'
       scheduler: '>=0.25.0 <0.28.0'
 
-  '@effect/opentelemetry@4.0.0-rc.118':
-    resolution: {integrity: sha512-N5dvEeCj1W/9zgBvyyp/GucOKOEJdV7QNirWp+4g/axFKTB/cfV2gx/ZhMDUb69HzlyRmOelNvKEmB3RA0PdVw==}
+  '@effect/opentelemetry@4.0.0':
+    resolution: {integrity: sha512-vXVhqlcADHtmKlw2gIqRRlXFve4ms4JJ5ykAqzNe37QQ/5N5A5gJ9VOXkMBORHZC5O4gdHZwxhAzGZb0zvFf/Q==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@opentelemetry/api': '>=1.9.0 <2.0.0'
@@ -2275,7 +2479,7 @@ packages:
       '@opentelemetry/sdk-trace-node': '>=2.0.0 <3.0.0'
       '@opentelemetry/sdk-trace-web': '>=2.0.0 <3.0.0'
       '@opentelemetry/semantic-conventions': '>=1.33.0 <2.0.0'
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
@@ -2294,23 +2498,23 @@ packages:
       '@opentelemetry/sdk-trace-web':
         optional: true
 
-  '@effect/platform-node-shared@4.0.0-rc.118':
-    resolution: {integrity: sha512-pNbmIlxbAUxAthUNsp2xm1NLG9kxoYecsPkoYl9mNF2oxPcKDxAvkOar7tYnLSUpXJeATm4pxYVipdZjQfqO4Q==}
+  '@effect/platform-node-shared@4.0.0':
+    resolution: {integrity: sha512-VBXHJU9UXVZPdQGGDRjGXpo+TpOzRwZuMrdKAtIxi1qwcRftmacZ1zTgIrzBa0Z2RA2KVkoOecQUsTlt/nJZhw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
 
-  '@effect/platform-node@4.0.0-rc.118':
-    resolution: {integrity: sha512-qdAxPZ+5bKxVnzkwziqcHZTHRHz2hyfFX6NhwEmm75CBpmaIzXIZR2LRqGd1/8eI3J3cOrXcAYzByhln7T1/EA==}
+  '@effect/platform-node@4.0.0':
+    resolution: {integrity: sha512-/L+4MUbl8FejPKLHLROYSOebvHnfixkP8KiblSD/DE5uH5xENZBHaux4nH6XMnRP+lr8ajpEJFS8sUrmmxFJeQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
       redis: '>=5.0.0 <7.0.0'
 
-  '@effect/vitest@4.0.0-rc.118':
-    resolution: {integrity: sha512-O0CPgtFVhkB+pyFtjP4up2XF4uVWsPgUmlv4hMjq8ARLOPKYix+uu3AUFIUKRHjzzQpx+JPce6KPhD6Flkrfag==}
+  '@effect/vitest@4.0.0':
+    resolution: {integrity: sha512-kGElCPFGtP+CgMCwV/HjJWqtE3zYo6I1+8MSA54l+EI24lPU9p2Efa+TBp1jfkg9j711KKzEqgSAy3VzTsb76Q==}
     peerDependencies:
-      effect: ^4.0.0-rc.118
+      effect: ^4.0.0
       vitest: '>=5.0.0 <6.0.0'
 
   '@emnapi/core@1.11.0':
@@ -2952,6 +3156,12 @@ packages:
       react-devtools-core: ^7.0.1
       ws: ^8.18.0
 
+  '@overeng/content-address@file:packages/@overeng/content-address':
+    resolution: {directory: packages/@overeng/content-address, type: directory}
+
+  '@overeng/effect-rust@file:packages/@overeng/effect-rust':
+    resolution: {directory: packages/@overeng/effect-rust, type: directory}
+
   '@oxc-parser/binding-android-arm-eabi@0.127.0':
     resolution: {integrity: sha512-0LC7ye4hvqbIKxAzThzvswgHLFu2AURKzYLeSVvLdu2TBOYWQDmHnTqPLeA597BcUCxiLqLsS4CJ5uoI5WYWCQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -3547,9 +3757,6 @@ packages:
   '@shikijs/vscode-textmate@10.0.2':
     resolution: {integrity: sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg==}
 
-  '@standard-schema/spec@1.1.0':
-    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
-
   '@storybook/addon-a11y@10.6.0':
     resolution: {integrity: sha512-Z/CZor/F8H74/+IoeLroEQXQoVxvmjVtUgATJ95KPBolHxMaHLXLsYU0wosIiiORxmfRCnpen5pQl1n4+pBWQw==}
     peerDependencies:
@@ -4075,25 +4282,22 @@ packages:
       oxc-transform-react:
         optional: true
 
-  '@vitest/browser-playwright@4.1.9':
-    resolution: {integrity: sha512-Bq1rOGf9waevzG3EOkO/dene6bvKTUsZMVg8S1i+WH3JcMjuXEjiahP9rAqZRELUqjBySOJsvvSWqK/B3wjKQw==}
+  '@vitest/browser-playwright@5.0.3':
+    resolution: {integrity: sha512-rYBHwIFL/ZtI6dl0rbrAatScXCrvX+TL2BX2AGOigkC1Y6u3rIWw8KMQJJMS4drSa1ksMCmZU2wpgwdE7kqu3g==}
     peerDependencies:
       playwright: '*'
-      vitest: 4.1.9
+      vitest: 5.0.3
 
-  '@vitest/browser@4.1.9':
-    resolution: {integrity: sha512-j1BKtWmPcqpMhmx/L9EPLgAJpCb0zKfwoWLmqBbxaogCXHjOwHFSEoHCBfnGtx93xKQwilZ26m+UOsHqHMkRNg==}
+  '@vitest/browser@5.0.3':
+    resolution: {integrity: sha512-7KHIkVA/gTRxQV9qPa9qLK+g5INZG6iRrlwXSFG5EKsOomW3UzzW7wsdt1Yp5PufzQ43lniuONlb4lUVCC2qSg==}
     peerDependencies:
-      vitest: 4.1.9
+      vitest: 5.0.3
 
   '@vitest/expect@3.2.4':
     resolution: {integrity: sha512-Io0yyORnB6sikFlt8QW5K7slY4OjqNX9jmJQ02QDda8lyM6B5oNgVWoSoKPac8/kgnCUzuHQKrSLtu/uOqqrig==}
 
-  '@vitest/expect@4.1.9':
-    resolution: {integrity: sha512-vl/rYsUKcBr3SnQn166+XR5ZQcgMx3DQhFWdfli/cWpLnLUmbxZvyrJZotLFUryib+LtArYMSTJ5RbQ57ZqrlA==}
-
-  '@vitest/mocker@4.1.9':
-    resolution: {integrity: sha512-EVkXzBjrPGM+cK8/ANWgBrkUCfJfb38/EfTSO8h7pWvKkyPkpWxvR7BkD2MyItMF62C97zAEoqdpUixwR/e+Rw==}
+  '@vitest/mocker@5.0.3':
+    resolution: {integrity: sha512-T8sWAIbkSyAjkwTcaEc3Iu0o9A27X1/kdXrizhZkGuSKScRQtRzclfAMpOTcGdXCsqxeWlpGy3XjqaW8CpLORg==}
     peerDependencies:
       msw: ^2.4.9
       vite: ^6.0.0 || ^7.0.0 || ^8.0.0
@@ -4106,26 +4310,25 @@ packages:
   '@vitest/pretty-format@3.2.4':
     resolution: {integrity: sha512-IVNZik8IVRJRTr9fxlitMKeJeXFFFN0JaB9PHPGQ8NKQbGpfjlTx9zO4RefN8gp7eqjNy8nyK3NZmBzOPeIxtA==}
 
-  '@vitest/pretty-format@4.1.9':
-    resolution: {integrity: sha512-s0iufns3iIFitdgm+YR7g1whCAaGtXz459VS9/PqyKDEEFgYIhsHOQmXgIgDuYCt7DeQmiZT0Qe2OA2p4ZPu5A==}
-
-  '@vitest/runner@4.1.9':
-    resolution: {integrity: sha512-KXLMDtc7oe70+3mJfGrPUWPesswH+3sTxAMAMl8DG7I8IUQT4XW718dY5ID3vPUcmlu27CcKfY4P3h3I29SLJg==}
-
-  '@vitest/snapshot@4.1.9':
-    resolution: {integrity: sha512-Jc7RKGNBo8Z28WYIm0Niej4xdSPByRf6mU58VpHQkd6Zh05rlnA+twjbK5HyeIGHxrzsc3mJgS43uM0CZKzaIA==}
+  '@vitest/pretty-format@5.0.3':
+    resolution: {integrity: sha512-3hr5eV5z2ff0l2Q1vaKQbB4j3M3tElw8stDokEOTqXJB3Es5VrT8gBRIMY59gGuFp8Y61sWlWFK1aNUH5dHDYw==}
 
   '@vitest/spy@3.2.4':
     resolution: {integrity: sha512-vAfasCOe6AIK70iP5UD11Ac4siNUNJ9i/9PZ3NKx07sG6sUxeag1LWdNrMWeKKYBLlzuK+Gn65Yd5nyL6ds+nw==}
 
-  '@vitest/spy@4.1.9':
-    resolution: {integrity: sha512-fHpsS6mIi+PiEW+vcRVOMkX1oSaPKne3VOclSFICPcGOmfKgXPU5iAah+wcNcj2xPrCCmfq99IDGf+EojhhvhA==}
+  '@vitest/spy@5.0.3':
+    resolution: {integrity: sha512-XhFysQTB8AZ+P4gMi+Lpo99vg2AZi0qKpaB9yXQl37+CaMEAPO3iH/wGVnSyL5MPERiLezpqTVtrR6UZH5GCXg==}
+
+  '@vitest/ui@5.0.3':
+    resolution: {integrity: sha512-9dfvqDBvSbHM6y9YVXxAypkl2z7mrWozK/JFo237qI0cj/3M/kzDKiVZqzi3TE54Ler7Jditud7OMBZCyUvRHA==}
+    peerDependencies:
+      vitest: 5.0.3
 
   '@vitest/utils@3.2.4':
     resolution: {integrity: sha512-fB2V0JFrQSMsCo9HiSq3Ezpdv4iYaXRG1Sx8edX3MwxfyNn83mKiGzOcH+Fkxt4MHxr3y42fQi1oeAInqgX2QA==}
 
-  '@vitest/utils@4.1.9':
-    resolution: {integrity: sha512-A51o8ymO5PpqlWNnBP9ZHPXDIpuMtTLlGSjN7la4US+LJzoUMyhwjA5QXlm39JexgwHKW4Xjs8Z2d3dLCXOeuA==}
+  '@vitest/utils@5.0.3':
+    resolution: {integrity: sha512-77fDTZv8eu1CzlIfgPU2yrl5MXSUaUAOvgdZEeVm3X3WIxUubIX2SforqS6176lT32HCF6uBVMYVqfHxw7o6eg==}
 
   '@webcontainer/env@1.1.1':
     resolution: {integrity: sha512-6aN99yL695Hi9SuIk1oC88l9o0gmxL1nGWWQ/kNy81HigJ0FoaoTXpytCj6ItzgyCEwA9kF1wixsTuv5cjsgng==}
@@ -4149,6 +4352,10 @@ packages:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
     peerDependencies:
       acorn: ^6.0.0 || ^7.0.0 || ^8.0.0
+
+  acorn-walk@8.3.5:
+    resolution: {integrity: sha512-HEHNfbars9v4pgpW6SO1KSPkfoS0xVOM/9UzkJltjlsHZmJasxg8aXkuZa7SMf8vKGIBhpUsPluQSqhJFCqebw==}
+    engines: {node: '>=0.4.0'}
 
   acorn@8.18.0:
     resolution: {integrity: sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==}
@@ -4396,8 +4603,8 @@ packages:
   dom-accessibility-api@0.6.3:
     resolution: {integrity: sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w==}
 
-  effect@4.0.0-rc.118:
-    resolution: {integrity: sha512-hxhpCd+swzrtu9lnyPpEFre2ODQzJ9qxgyL1oHIEY8NKnW4PxTbM1XzplMZXiAsLD62HO+KJc41Nqxr9T791ZQ==}
+  effect@4.0.0:
+    resolution: {integrity: sha512-ooc1TG5t+FfzgYnFz2ff6BBKyZ7EwBRVXC7c4RhQUAD6/TZ2gTXXMeb4WX7a19ozQo4J73/QW+S00YAIresoMQ==}
 
   electron-to-chromium@1.5.418:
     resolution: {integrity: sha512-UzS26r3AEbG5wSoGVpJKqwHIU9zwQN7LHdVIThDrJpS0I5KdlXFMEb8543fhc9dVnIIAST6ar8rhwa00AL5MlA==}
@@ -4523,6 +4730,9 @@ packages:
 
   fetchdts@0.1.7:
     resolution: {integrity: sha512-YoZjBdafyLIop9lSxXVI33oLD5kN31q4Td+CasofLLYeLXRFeOsuOw0Uo+XNRi9PZlbfdlN2GmRtm4tCEQ9/KA==}
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   file-entry-cache@11.1.5:
     resolution: {integrity: sha512-+PFTHITI08JIGhnNpGNI8T8inUpgZfk3GNEqfT9R2zZV2iFXg3CvqzSl/uEhs7TSGujYRELEANyDvS8Fj7+S7Q==}
@@ -5276,9 +5486,6 @@ packages:
     resolution: {integrity: sha512-Mb/GvXPHBAXdgGIcnfU5L3ldpn1XcxrGkPHwqgRx17/I2XRfqlFKk2vGkHWINn1kdXvzJZeuO3is6I9KLPFm0g==}
     engines: {node: '>=20'}
 
-  siginfo@2.0.0:
-    resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
-
   sirv@3.0.2:
     resolution: {integrity: sha512-2wcC/oGxHis/BoHkkPwldgiPSYcpZK3JU28WoMVv55yHJgcZ8rlXvuG9iZggz+sU1d4bRgIGASwyWqjxu3FM0g==}
     engines: {node: '>=18'}
@@ -5310,9 +5517,6 @@ packages:
     resolution: {integrity: sha512-LqZxxBDMKuMAZzFzJnDCkFOrs9MZQZr0LvHiO/SuSZVdQaXD7xQ5UWTUxheJrQPve1qk9MG2B/yttUvJxw8egQ==}
     engines: {node: '>=20.16.0'}
     hasBin: true
-
-  stackback@0.0.2:
-    resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
   std-env@4.2.0:
     resolution: {integrity: sha512-oCUKSupKTHX53EyjDtuZQ64pjLJ6yYCtpmEw0goYxtjG9KpbRe8KAsl2tBUGU9DyMcJ0RwJ8GqJAFzMXcXW1Rw==}
@@ -5386,8 +5590,9 @@ packages:
   tiny-invariant@1.3.3:
     resolution: {integrity: sha512-+FbBPE1o9QAYvviau/qC5SE3caw21q3xkvWKBtja5vgqOWIHHJ3ioaq1VPfn/Szqctz2bU/oYeKd9/z5BL+PVg==}
 
-  tinybench@2.9.0:
-    resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
+  tinybench@6.2.0:
+    resolution: {integrity: sha512-78U2TlB2CnVenajOFzf3BKSm0J6oz5L0NV7g32LCPccvYc0lbWvys4d3uUUCS2B1N8PAf2+aekR8i1KbC3HO7Q==}
+    engines: {node: '>=20.0.0'}
 
   tinyexec@1.3.0:
     resolution: {integrity: sha512-QKAl9m8gWWGHV8jZcPeym6j+XULi6tOf1mT83WYJ4Lk2ytW/uwAWkrP0uFsdoYMdueVJ0qs26wZ+23xeB4ibNQ==}
@@ -5586,23 +5791,23 @@ packages:
       vite:
         optional: true
 
-  vitest@4.1.9:
-    resolution: {integrity: sha512-nE3/LEyc0z87uHYLZebqCUOaJr2hdtuPp7BQ4BosVFnfltxgAvMG08NyrSGlPpOUWvR27c5flSmYFTNr78L9GQ==}
-    engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
+  vitest@5.0.3:
+    resolution: {integrity: sha512-xMw97S3rjdtj5dkVat7jCsqWBpvchs3RlpQctUqwJD0KkERk40vz2fJ77lDwW/Vzh/pk18eItYAzkodhSes3jQ==}
+    engines: {node: ^22.12.0 || ^24.0.0 || >=26.0.0}
     hasBin: true
     peerDependencies:
       '@edge-runtime/vm': '*'
       '@opentelemetry/api': ^1.9.0
-      '@types/node': ^20.0.0 || ^22.0.0 || >=24.0.0
-      '@vitest/browser-playwright': 4.1.9
-      '@vitest/browser-preview': 4.1.9
-      '@vitest/browser-webdriverio': 4.1.9
-      '@vitest/coverage-istanbul': 4.1.9
-      '@vitest/coverage-v8': 4.1.9
-      '@vitest/ui': 4.1.9
+      '@types/node': ^22.0.0 || >=24.0.0
+      '@vitest/browser-playwright': 5.0.3
+      '@vitest/browser-preview': 5.0.3
+      '@vitest/browser-webdriverio': ^5.0.0-beta.5 || >=5.0.0
+      '@vitest/coverage-istanbul': 5.0.3
+      '@vitest/coverage-v8': 5.0.3
+      '@vitest/ui': 5.0.3
       happy-dom: '*'
       jsdom: '*'
-      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
+      vite: ^6.4.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -5647,9 +5852,9 @@ packages:
     engines: {node: '>= 8'}
     hasBin: true
 
-  why-is-node-running@2.3.0:
-    resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
-    engines: {node: '>=8'}
+  why-is-node-running@3.2.1:
+    resolution: {integrity: sha512-Tb2FUhB4vUsGQlfSquQLYkApkuPAFQXGFzxWKHHumVz2dK+X1RUm/HnID4+TfIGYJ1kTcwOaCk/buYCEJr6YjQ==}
+    engines: {node: '>=20.11'}
     hasBin: true
 
   word-wrap@1.2.5:
@@ -5833,7 +6038,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@blazediff/core@1.9.1': {}
+  '@blazediff/core@1.10.0': {}
 
   '@cacheable/memory@2.2.0':
     dependencies:
@@ -5851,24 +6056,24 @@ snapshots:
 
   '@dual-bundle/import-meta-resolve@4.2.1': {}
 
-  '@effect/ai-openai-compat@4.0.0-rc.118(effect@4.0.0-rc.118)':
+  '@effect/ai-openai-compat@4.0.0(effect@4.0.0)':
     dependencies:
-      effect: 4.0.0-rc.118
+      effect: 4.0.0
 
-  '@effect/ai-typesafe@4.0.0-rc.118(effect@4.0.0-rc.118)':
+  '@effect/ai-typesafe@4.0.0(effect@4.0.0)':
     dependencies:
-      effect: 4.0.0-rc.118
+      effect: 4.0.0
 
-  '@effect/atom-react@4.0.0-rc.118(effect@4.0.0-rc.118)(react@19.2.8)(scheduler@0.27.0)':
+  '@effect/atom-react@4.0.0(effect@4.0.0)(react@19.2.8)(scheduler@0.27.0)':
     dependencies:
-      effect: 4.0.0-rc.118
+      effect: 4.0.0
       react: 19.2.8
       scheduler: 0.27.0
 
-  '@effect/opentelemetry@4.0.0-rc.118(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-rc.118)':
+  '@effect/opentelemetry@4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)':
     dependencies:
       '@opentelemetry/semantic-conventions': 1.43.0
-      effect: 4.0.0-rc.118
+      effect: 4.0.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.222.0
@@ -5879,29 +6084,29 @@ snapshots:
       '@opentelemetry/sdk-trace-node': 2.11.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-web': 2.11.0(@opentelemetry/api@1.9.1)
 
-  '@effect/platform-node-shared@4.0.0-rc.118(effect@4.0.0-rc.118)':
+  '@effect/platform-node-shared@4.0.0(effect@4.0.0)':
     dependencies:
       '@types/ws': 8.18.1
-      effect: 4.0.0-rc.118
+      effect: 4.0.0
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1(@opentelemetry/api@1.9.1))':
+  '@effect/platform-node@4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-rc.118(effect@4.0.0-rc.118)
-      effect: 4.0.0-rc.118
+      '@effect/platform-node-shared': 4.0.0(effect@4.0.0)
+      effect: 4.0.0
       redis: 6.2.1(@opentelemetry/api@1.9.1)
       undici: 8.11.2
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/vitest@4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@4.1.9)':
+  '@effect/vitest@4.0.0(effect@4.0.0)(vitest@5.0.3)':
     dependencies:
-      effect: 4.0.0-rc.118
-      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      effect: 4.0.0
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   '@emnapi/core@1.11.0':
     dependencies:
@@ -6402,6 +6607,21 @@ snapshots:
       - typescript
       - web-tree-sitter
 
+  '@overeng/content-address@file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))':
+    dependencies:
+      '@effect/platform-node': 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
+      '@noble/hashes': 2.4.0
+      '@overeng/effect-rust': file:packages/@overeng/effect-rust
+      effect: 4.0.0
+    transitivePeerDependencies:
+      - bufferutil
+      - redis
+      - utf-8-validate
+
+  '@overeng/effect-rust@file:packages/@overeng/effect-rust':
+    dependencies:
+      effect: 4.0.0
+
   '@oxc-parser/binding-android-arm-eabi@0.127.0':
     optional: true
 
@@ -6748,8 +6968,6 @@ snapshots:
       '@types/hast': 3.0.5
 
   '@shikijs/vscode-textmate@10.0.2': {}
-
-  '@standard-schema/spec@1.1.0': {}
 
   '@storybook/addon-a11y@10.6.0(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)))':
     dependencies:
@@ -7364,29 +7582,30 @@ snapshots:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
 
-  '@vitest/browser-playwright@4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)':
+  '@vitest/browser-playwright@5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)':
     dependencies:
-      '@vitest/browser': 4.1.9(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
-      '@vitest/mocker': 4.1.9(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      '@vitest/browser': 5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
+      '@vitest/mocker': 5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       playwright: 1.63.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
     transitivePeerDependencies:
       - bufferutil
       - msw
       - utf-8-validate
       - vite
 
-  '@vitest/browser@4.1.9(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)':
+  '@vitest/browser@5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)':
     dependencies:
-      '@blazediff/core': 1.9.1
-      '@vitest/mocker': 4.1.9(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
-      '@vitest/utils': 4.1.9
-      magic-string: 0.30.21
+      '@blazediff/core': 1.10.0
+      '@vitest/mocker': 5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      '@vitest/ui': 5.0.3(vitest@5.0.3)
+      '@vitest/utils': 5.0.3
+      magic-string: 1.2.3
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.1.1
-      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
@@ -7402,20 +7621,12 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 2.0.0
 
-  '@vitest/expect@4.1.9':
+  '@vitest/mocker@5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))':
     dependencies:
-      '@standard-schema/spec': 1.1.0
-      '@types/chai': 5.2.3
-      '@vitest/spy': 4.1.9
-      '@vitest/utils': 4.1.9
-      chai: 6.2.2
-      tinyrainbow: 3.1.1
-
-  '@vitest/mocker@4.1.9(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))':
-    dependencies:
-      '@vitest/spy': 4.1.9
+      '@jridgewell/trace-mapping': 0.3.31
+      '@vitest/spy': 5.0.3
       estree-walker: 3.0.3
-      magic-string: 0.30.21
+      magic-string: 1.2.3
     optionalDependencies:
       vite: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
 
@@ -7423,27 +7634,25 @@ snapshots:
     dependencies:
       tinyrainbow: 2.0.0
 
-  '@vitest/pretty-format@4.1.9':
+  '@vitest/pretty-format@5.0.3':
     dependencies:
       tinyrainbow: 3.1.1
-
-  '@vitest/runner@4.1.9':
-    dependencies:
-      '@vitest/utils': 4.1.9
-      pathe: 2.0.3
-
-  '@vitest/snapshot@4.1.9':
-    dependencies:
-      '@vitest/pretty-format': 4.1.9
-      '@vitest/utils': 4.1.9
-      magic-string: 0.30.21
-      pathe: 2.0.3
 
   '@vitest/spy@3.2.4':
     dependencies:
       tinyspy: 4.0.4
 
-  '@vitest/spy@4.1.9': {}
+  '@vitest/spy@5.0.3': {}
+
+  '@vitest/ui@5.0.3(vitest@5.0.3)':
+    dependencies:
+      '@vitest/utils': 5.0.3
+      fflate: 0.8.3
+      flatted: 3.4.4
+      pathe: 2.0.3
+      sirv: 3.0.2
+      tinyrainbow: 3.1.1
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
 
   '@vitest/utils@3.2.4':
     dependencies:
@@ -7451,9 +7660,9 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
-  '@vitest/utils@4.1.9':
+  '@vitest/utils@5.0.3':
     dependencies:
-      '@vitest/pretty-format': 4.1.9
+      '@vitest/pretty-format': 5.0.3
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.1
 
@@ -7470,6 +7679,10 @@ snapshots:
   '@xterm/xterm@6.0.0': {}
 
   acorn-jsx@5.3.2(acorn@8.18.0):
+    dependencies:
+      acorn: 8.18.0
+
+  acorn-walk@8.3.5:
     dependencies:
       acorn: 8.18.0
 
@@ -7670,7 +7883,7 @@ snapshots:
 
   dom-accessibility-api@0.6.3: {}
 
-  effect@4.0.0-rc.118: {}
+  effect@4.0.0: {}
 
   electron-to-chromium@1.5.418: {}
 
@@ -7820,6 +8033,8 @@ snapshots:
       picomatch: 4.0.7
 
   fetchdts@0.1.7: {}
+
+  fflate@0.8.3: {}
 
   file-entry-cache@11.1.5:
     dependencies:
@@ -8779,8 +8994,6 @@ snapshots:
       '@shikijs/vscode-textmate': 10.0.2
       '@types/hast': 3.0.5
 
-  siginfo@2.0.0: {}
-
   sirv@3.0.2:
     dependencies:
       '@polka/url': 1.0.0-next.29
@@ -8803,8 +9016,6 @@ snapshots:
   space-separated-tokens@2.0.2: {}
 
   srvx@0.11.22: {}
-
-  stackback@0.0.2: {}
 
   std-env@4.2.0: {}
 
@@ -8887,7 +9098,7 @@ snapshots:
 
   tiny-invariant@1.3.3: {}
 
-  tinybench@2.9.0: {}
+  tinybench@6.2.0: {}
 
   tinyexec@1.3.0: {}
 
@@ -9045,32 +9256,27 @@ snapshots:
     optionalDependencies:
       vite: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
 
-  vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@4.1.9)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)):
+  vitest@5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)):
     dependencies:
-      '@vitest/expect': 4.1.9
-      '@vitest/mocker': 4.1.9(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
-      '@vitest/pretty-format': 4.1.9
-      '@vitest/runner': 4.1.9
-      '@vitest/snapshot': 4.1.9
-      '@vitest/spy': 4.1.9
-      '@vitest/utils': 4.1.9
+      '@types/chai': 5.2.3
+      '@vitest/mocker': 5.0.3(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))
+      chai: 6.2.2
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
-      magic-string: 0.30.21
+      magic-string: 1.2.3
       obug: 2.1.4
-      pathe: 2.0.3
       picomatch: 4.0.7
       std-env: 4.2.0
-      tinybench: 2.9.0
+      tinybench: 6.2.0
       tinyexec: 1.3.0
       tinyglobby: 0.2.17
-      tinyrainbow: 3.1.1
       vite: 8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)
-      why-is-node-running: 2.3.0
+      why-is-node-running: 3.2.1
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@types/node': 26.5.0
-      '@vitest/browser-playwright': 4.1.9(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@4.1.9)
+      '@vitest/browser-playwright': 5.0.3(playwright@1.63.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0))(vitest@5.0.3)
+      '@vitest/ui': 5.0.3(vitest@5.0.3)
       happy-dom: 20.14.0
     transitivePeerDependencies:
       - msw
@@ -9085,10 +9291,7 @@ snapshots:
     dependencies:
       isexe: 2.0.0
 
-  why-is-node-running@2.3.0:
-    dependencies:
-      siginfo: 2.0.0
-      stackback: 0.0.2
+  why-is-node-running@3.2.1: {}
 
   word-wrap@1.2.5: {}
 

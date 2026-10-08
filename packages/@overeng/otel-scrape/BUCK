@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:041a04a9348860671f13ec0efdfa2b15f4fea7c83f652fc5488af74a7b51903c
-# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Semantic fingerprint: sha256:12be64911adde1c22a911d0ef294cb98c8afe6ff2658a3b1f9f7c44451759a83
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
@@ -31,6 +31,66 @@ static_source_set(
         "src/telemetry_registry.gen.rs",
         "tests/cli.rs",
     ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/deadnix.rs",
+    src = "src/adapters/deadnix.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/mod.rs",
+    src = "src/adapters/mod.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/node_cpuprofile.rs",
+    src = "src/adapters/node_cpuprofile.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/oxlint.rs",
+    src = "src/adapters/oxlint.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/adapters/vitest.rs",
+    src = "src/adapters/vitest.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/content_address.rs",
+    src = "src/content_address.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/main.rs",
+    src = "src/main.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/telemetry_registry.gen.rs",
+    src = "src/telemetry_registry.gen.rs",
     visibility = ["PUBLIC"],
 )
 

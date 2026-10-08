@@ -21,7 +21,11 @@ pkgs.runCommand
   ''
     set -euo pipefail
     mkdir -p "$out"
-    tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+    # Nix store optimisation may deduplicate equal files into hardlinks after
+    # this source is pinned; archive bytes must not depend on physical inodes.
+    # NAR identity excludes symlink permissions (0777 on Linux, 0755 on Darwin).
+    # Keep Nix's read-only modes and executable bits, including symlink headers.
+    tar --hard-dereference --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --mode='a=rX' \
       --format=posix --pax-option=delete=atime,delete=ctime \
       --transform='flags=r;s|^\.|${stripPrefix}|' \
       -C ${pkgs.lib.escapeShellArg (toString src)} \

@@ -2,7 +2,9 @@
 
 Status: accepted
 
-**Context:** The adapter admission policy (decision 0012) already requires a
+## Context
+
+The adapter admission policy (decision 0012) already requires a
 machine-readable Source ("Human logs are degraded fallback only"). Two problems
 surfaced when oxlint (the only adapter exercised on the devenv path; 0012 also
 ships node-cpuprofile) was run on the real devenv
@@ -30,7 +32,9 @@ the terminal (`oxlint: 2 diagnostic(s) over 1 file(s)` + per-diagnostic lines),
 UX-neutral, while the OTLP export stayed byte-clean (severity + hashed filename
 only).
 
-**Decision:** A release adapter MUST consume a **declared, stable, structured
+## Decision
+
+A release adapter MUST consume a **declared, stable, structured
 source**, and otel-scrape OWNS re-presentation so instrumenting never degrades
 the terminal. Concretely:
 
@@ -83,7 +87,7 @@ the terminal. Concretely:
 | tsc / tsgo              | deferred · no structured _diagnostics_ source; the `--generateTrace` _phase_ artifact remains the deferred profile-adapter path (0012), distinct from the current best-effort text scraper |
 | vite / storybook / pnpm | deferred · no per-diagnostic structured source                                                                                                                                             |
 
-**Consequences:**
+## Consequences
 
 - Refines **0012 (adapter admission):** the Source gate becomes concrete and
   testable — an adapter PR declares its format flag + schema and ships a
@@ -111,3 +115,15 @@ the terminal. Concretely:
 Grounded by `.experiments/0008-adapter-structured-source-contract.md`. Refines
 [.decisions/0012-adapter-admission-policy.md](./0012-adapter-admission-policy.md)
 and [.decisions/0002-leaf-wrapper-owns-adapter-parsing.md](./0002-leaf-wrapper-owns-adapter-parsing.md).
+
+## Evidence and Argument
+
+The context and consequences above supply this record's rationale; this shape
+normalization adds no new implementation evidence or historical deliberation.
+
+## Options
+
+| Recorded design state | Disposition |
+| --- | --- |
+| Decision stated above | Accepted in the original record |
+| Prior limitation described in Context | Contrasted by the original rationale; no additional historical option claim |

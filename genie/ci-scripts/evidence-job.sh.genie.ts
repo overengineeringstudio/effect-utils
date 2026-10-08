@@ -23,7 +23,8 @@ case "\${1:?mode required}" in
     printf 'PIPELINE_JOB_KEY=%s\\nPIPELINE_TASK_KEY=%s\\nPIPELINE_MATRIX_RUNNER=%s\\n' "\${JOB_KEY:?}" "$JOB_KEY" "\${MATRIX_VALUE:-}" >> "$GITHUB_ENV"
     printf 'PIPELINE_EXPORT_OWNER=adapter\\nCI_PROVIDER=github\\nPIPELINE_REPOSITORY=%s\\nPIPELINE_EVENT=%s\\n' "$GITHUB_REPOSITORY" "$GITHUB_EVENT_NAME" >> "$GITHUB_ENV"
     printf 'VCS_CHANGE_ID=%s\\nPIPELINE_FORK=%s\\n' "\${PR_NUMBER:-}" "\${PR_FORK:-false}" >> "$GITHUB_ENV"
-    if [ "\${PR_FORK:-false}" = true ]; then echo 'PIPELINE_TRUSTED=false' >> "$GITHUB_ENV"; else echo 'PIPELINE_TRUSTED=true' >> "$GITHUB_ENV"; fi
+    # A merge group can include fork code; the event has no trustworthy per-PR fork identity.
+    if [ "$GITHUB_EVENT_NAME" = merge_group ] || [ "\${PR_FORK:-false}" = true ]; then echo 'PIPELINE_TRUSTED=false' >> "$GITHUB_ENV"; else echo 'PIPELINE_TRUSTED=true' >> "$GITHUB_ENV"; fi
     merge=$(git rev-parse HEAD)
     base=$(git rev-parse --verify 'HEAD^1^{commit}' 2>/dev/null || printf '%s' "$merge")
     printf 'BUCK2_VCS_MERGE_REVISION=%s\\nVCS_REF_BASE_REVISION=%s\\nVCS_REF_HEAD_REVISION=%s\\n' "$merge" "$base" "\${PR_HEAD:-$merge}" >> "$GITHUB_ENV"
@@ -43,17 +44,24 @@ case "\${1:?mode required}" in
       export OTEL_SPAN_SPOOL_DIR="$spool/spans" OTEL_SPOOL_MULTI_WRITER=1
       status=error
       if [ "\${PIPELINE_JOB_STATUS:-}" = success ]; then status=ok; fi
+      case "$PIPELINE_JOB_STATUS" in
+        success|failure) result=$PIPELINE_JOB_STATUS ;;
+        cancelled) result=cancellation ;;
+        skipped) result=skip ;;
+        timed_out) result=timeout ;;
+        *) result=error ;;
+      esac
       attrs=()
-      for entry in "ci.provider:\${CI_PROVIDER:-}" "vcs.change.id:\${VCS_CHANGE_ID:-}" "vcs.ref.head.revision:\${VCS_REF_HEAD_REVISION:-}" "vcs.ref.base.revision:\${VCS_REF_BASE_REVISION:-}" "buck2.vcs.merge.revision:\${BUCK2_VCS_MERGE_REVISION:-}"; do
+      for entry in "vcs.provider.name:\${CI_PROVIDER:-}" "vcs.change.id:\${VCS_CHANGE_ID:-}" "vcs.ref.head.revision:\${VCS_REF_HEAD_REVISION:-}" "vcs.ref.base.revision:\${VCS_REF_BASE_REVISION:-}" "buck2.vcs.merge.revision:\${BUCK2_VCS_MERGE_REVISION:-}"; do
         if [ -n "\${entry#*:}" ]; then attrs+=(--attr-string "\${entry/:/=}"); fi
       done
-      if [ "\${PIPELINE_FORK:-}" = true ] || [ "\${PIPELINE_FORK:-}" = false ]; then attrs+=(--attr-bool "ci.pr.fork=$PIPELINE_FORK"); fi
+      if [ "\${PIPELINE_FORK:-}" = true ] || [ "\${PIPELINE_FORK:-}" = false ]; then attrs+=(--attr-bool "buck2.vcs.change.is_fork=$PIPELINE_FORK"); fi
       otel-span emit-span effect-utils-devenv cicd.pipeline.job \\
         --trace-id "\${trace_assignment#trace=}" --span-id "\${root_assignment#root=}" \\
         --start-time-ns "\${PIPELINE_JOB_START_NS:?}" --end-time-ns "\${PIPELINE_JOB_END_NS:?}" \\
         --status-code "$status" --attr-string "cicd.pipeline.run.id=$PIPELINE_RUN_ID" \\
         --attr-string "cicd.pipeline.job.key=$PIPELINE_JOB_KEY" \\
-        --attr-string "ci.job.status=\${PIPELINE_JOB_STATUS:?}" "\${attrs[@]}"
+        --attr-string "cicd.pipeline.task.run.result=$result" "\${attrs[@]}"
       otel-span pipeline-export --spool "$spool" || echo "Warning: OTLP chunks retained in $spool" >&2
     '
     ;;

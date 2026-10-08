@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -122,6 +122,15 @@ const discoverPackageFiles = ({
       if (entry.isSymbolicLink() === true) {
         throw new Error(`Package source census refuses symlink: ${relativePath}`)
       }
+      // Running Genie with --cwd inside a source root leaves output-lock state here.
+      // It is not package input; do not descend into its URL-encoded semaphore keys.
+      if (
+        entry.isDirectory() === true &&
+        entry.name === 'genie-locks' &&
+        path.posix.basename(relativeDirectory) === 'tmp'
+      ) {
+        continue
+      }
       if (entry.isDirectory() === true) {
         walk(relativePath)
       } else if (entry.isFile() === true && admit(relativePath) === true) {
@@ -244,9 +253,9 @@ const vitestCollectRuleName = 'vitest_collect'
 /** Suffix of the collection target derived beside a Vitest execution lane. */
 export const buck2TestCollectionTargetSuffix = '_collect'
 /**
- * Attributes the collect rule does not accept. Both bound a running test, and collection
- * runs none; everything else the execution lane validated is passed through unchanged so the
- * inventory is the selection the lane executes rather than a second, drifting declaration.
+ * Attributes the collect rule does not render. These bound a running test;
+ * collection runs none. Both rule macros own their execution admission, so the
+ * projection never supplies raw execution compatibility constraints.
  */
 const collectUnsupportedAttributes: Readonly<Record<string, true>> = {
   hook_timeout_ms: true,
@@ -460,9 +469,9 @@ const projectTestTarget = ({
       `Vitest target ${target.name} cannot inherit ${inheritedEnv.join(', ')} because its derived collection action requires every input in the action identity`,
     )
   }
-  if (target.runner === 'vitest' && cacheable === false) {
+  if (target.runner === 'vitest' && cacheable === true && configuredInputKeys.length > 0) {
     throw new Error(
-      `Vitest target ${target.name} cannot be uncacheable because its derived collection action has no per-action remote-cache read switch`,
+      `Cacheable Vitest target ${target.name} requires provider-backed external inputs`,
     )
   }
   if (inheritedEnv.length > 0 && cacheable === true) {
@@ -693,6 +702,9 @@ export type Buck2WorkspacePackageGenerator = {
   }
 }
 
+/** Absolute Buck package-product label, resolved in the owning cell. */
+export type BuckTarget = `${string}//${string}:${string}`
+
 export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly packageName: string
   readonly packagePath: string
@@ -700,6 +712,8 @@ export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly rulesCell?: `@${string}`
   readonly sourceRoots: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
+  /** Generated package products participate in build, editor and runtime package views. */
+  readonly generatedDependencies?: Readonly<Record<string, BuckTarget>>
   /** Consumer roots supply their own Genie registry; the platform root defaults to its own. */
   readonly workspacePackages?: readonly Buck2WorkspacePackageGenerator[]
   /** Project-level authority declarations; one package may own more than one root project. */
@@ -720,6 +734,7 @@ export const buck2TypeScriptPackageProjection = ({
   rulesCell,
   sourceRoots,
   workspaceSiblings = [],
+  generatedDependencies = {},
   workspacePackages = rootWorkspacePackages,
   authorities,
   tests,
@@ -815,6 +830,46 @@ export const buck2TypeScriptPackageProjection = ({
   if (packageManifest === undefined) {
     throw new Error(`${packagePath}: missing workspace package generator`)
   }
+  const generatedDependencyEntries = sortedEntries(generatedDependencies)
+  for (const [name, target] of generatedDependencyEntries) {
+    const validName = /^(?:@[A-Za-z0-9][A-Za-z0-9._-]*\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)
+    if (validName === false) {
+      throw new Error(`${packagePath}: unsafe generated dependency package name ${name}`)
+    }
+    const label = /^(?:@?[A-Za-z0-9_.-]+)?\/\/([A-Za-z0-9_./@-]*):([A-Za-z0-9_.+=,@~/-]+)$/.exec(
+      target,
+    )
+    if (
+      label === null ||
+      [label[1], label[2]].some(
+        (part) =>
+          part !== undefined &&
+          part !== '' &&
+          part
+            .split('/')
+            .some((segment) => segment === '' || segment === '.' || segment === '..') === true,
+      ) === true
+    ) {
+      throw new Error(
+        `${packagePath}: generated dependency requires a normalized absolute Buck target: ${target}`,
+      )
+    }
+    if (workspaceSiblings.some((sibling) => sibling.packageName === name) === true) {
+      throw new Error(
+        `${packagePath}: dependency ${name} is both generated and a workspace sibling`,
+      )
+    }
+    if (
+      [
+        packageManifest.dependencies,
+        packageManifest.devDependencies,
+        packageManifest.optionalDependencies,
+        packageManifest.peerDependencies,
+      ].some((dependencies) => Object.hasOwn(dependencies ?? {}, name)) === true
+    ) {
+      throw new Error(`${packagePath}: dependency ${name} is both generated and manifest-declared`)
+    }
+  }
   const workspaceNames = new Set(
     [
       packageManifest.dependencies,
@@ -851,18 +906,34 @@ export const buck2TypeScriptPackageProjection = ({
   const rulesPrefix = rulesCell ?? ''
   const visibility = ['PUBLIC'] as const
   const runtimeEntry = stagedModuleName(packageTreeRuntime.entry)
-  const sourceLabel = (repoRelativePath: string): string => {
-    if (repoRelativePath.startsWith(`${packagePath}/`) === true) {
-      return repoRelativePath.slice(packagePath.length + 1)
-    }
-    const sourcePackage = [...buckPackagePaths]
-      .filter((candidate) => repoRelativePath.startsWith(`${candidate}/`) === true)
-      .toSorted((left, right) => right.length - left.length || compareStrings({ left, right }))[0]
-    if (sourcePackage !== undefined) {
-      return `//${sourcePackage}:${repoRelativePath.slice(sourcePackage.length + 1)}`
-    }
-    return `//:${repoRelativePath}`
+  // Resolve actual package boundaries, including handwritten BUCK files and generators
+  // whose outputs have not been written yet. Cache directories, not files: one census
+  // commonly contains many inputs from the same owning package.
+  const sourceOwners = new Map<string, string>()
+  const sourceOwner = (directory: string): string => {
+    const cached = sourceOwners.get(directory)
+    if (cached !== undefined) return cached
+    const owner =
+      directory === packagePath ||
+      directory === '.' ||
+      existsSync(path.join(process.cwd(), directory, 'BUCK')) ||
+      existsSync(path.join(process.cwd(), directory, 'BUCK.genie.ts'))
+        ? directory
+        : sourceOwner(path.posix.dirname(directory))
+    sourceOwners.set(directory, owner)
+    return owner
   }
+  const sourceLabel = (repoRelativePath: string): string => {
+    const owner = sourceOwner(path.posix.dirname(repoRelativePath))
+    const ownerRelativePath = path.posix.relative(owner, repoRelativePath)
+    if (owner === packagePath) return ownerRelativePath
+    // export_materialization_inputs uses this spelling for target names.
+    return `//${owner === '.' ? '' : owner}:${ownerRelativePath.replaceAll('$', '__dollar__')}`
+  }
+  const sourceEntries = (files: readonly string[]): readonly (readonly [string, string])[] =>
+    files.map((file) => [file, sourceLabel(`${packagePath}/${file}`)] as const)
+  const isLocallyOwned = (file: string): boolean =>
+    sourceOwner(path.posix.dirname(`${packagePath}/${file}`)) === packagePath
   const testTargets = (tests ?? []).map((target) =>
     projectTestTarget({ packagePath, sourceRoots, sourceLabel, target, visibility }),
   )
@@ -906,14 +977,15 @@ export const buck2TypeScriptPackageProjection = ({
   // config loads have to be staged: they live beside `package.json`, outside every source root.
   const testConfigEntries = [
     ...new Set(
-      (tests ?? []).flatMap((target) => [
-        ...(target.runner === 'vitest' ? [target.config ?? defaultVitestConfig] : []),
-        ...(target.configInputs ?? []),
-      ]),
+      (tests ?? []).flatMap((target) =>
+        (target.runner === 'vitest' ? [target.config ?? defaultVitestConfig] : []).concat(
+          target.configInputs ?? [],
+        ),
+      ),
     ),
   ]
     .toSorted((left, right) => compareStrings({ left, right }))
-    .map((file): readonly [string, string] => [file, file])
+    .map((file): readonly [string, string] => [file, sourceLabel(`${packagePath}/${file}`)])
   const testDataFiles = testDataRoots.flatMap((dataRoot) => {
     for (const extension of dataRoot.extensions) {
       if (extension.startsWith('.') === false || safeSourceSegment(extension) === false) {
@@ -941,17 +1013,14 @@ export const buck2TypeScriptPackageProjection = ({
     ),
   ]
     .toSorted((left, right) => compareStrings({ left, right }))
-    .map((authorityProjectFile) => [authorityProjectFile, authorityProjectFile] as const)
-  const identityEntries = (files: readonly string[]): readonly (readonly [string, string])[] =>
-    files.map((file) => [file, file] as const)
+    .map((file) => [file, sourceLabel(`${packagePath}/${file}`)] as const)
   // The compile tree: typecheck, emit and the editor read it, so it carries the TypeScript
   // census and nothing a runner alone collects. A `.jsx` spec, a snapshot baseline, a Vitest
   // config or a committed fixture in here would widen every compile action's identity for
   // inputs no compiler ever opens.
   const packageFileEntries = [
-    ...identityEntries(packageSources),
-    ['package.json', 'package.json'] as const,
-    ['tsconfig.json', 'tsconfig.json'] as const,
+    ...sourceEntries(packageSources),
+    ...sourceEntries(['package.json', 'tsconfig.json']),
     ...projectFileEntries,
   ].toSorted(([left], [right]) => compareStrings({ left, right }))
   // The test tree: the compile tree plus everything only a runner reads — the collectable
@@ -964,10 +1033,10 @@ export const buck2TypeScriptPackageProjection = ({
       : [
           ...new Map<string, string>([
             ...packageFileEntries,
-            ...identityEntries(collectableTestModules),
-            ...identityEntries(snapshotBaselines),
+            ...sourceEntries(collectableTestModules),
+            ...sourceEntries(snapshotBaselines),
             ...testConfigEntries,
-            ...identityEntries(testDataFiles),
+            ...sourceEntries(testDataFiles),
           ]),
         ].toSorted(([left], [right]) => compareStrings({ left, right }))
   const workspaceSiblingProjections = workspaceSiblings.map((sibling) => {
@@ -1064,15 +1133,20 @@ export const buck2TypeScriptPackageProjection = ({
     ...[...buckPackagePaths].map((buckPackagePath) => `${buckPackagePath}/BUCK.genie.ts`),
   ].toSorted((left, right) => compareStrings({ left, right }))
 
+  const nestedFileEntries = [...new Map([...packageFileEntries, ...testPackageFileEntries])]
+    .filter(([, source]) => source.startsWith('//'))
+    .toSorted(([left], [right]) => compareStrings({ left, right }))
   const data = {
     buckPackagePaths: [...buckPackagePaths].toSorted((left, right) =>
       compareStrings({ left, right }),
     ),
     dependencyLabel,
     dependencyView,
+    generatedDependencies,
     packageName,
     packagePath,
     packageSources,
+    ...(nestedFileEntries.length === 0 ? {} : { nestedFileEntries }),
     collectableTestModules,
     snapshotBaselines,
     declarationSources,
@@ -1093,7 +1167,7 @@ export const buck2TypeScriptPackageProjection = ({
   }
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-typescript-package-projection',
-    schemaVersion: 12,
+    schemaVersion: 13,
     semanticData: data,
   })
 
@@ -1126,7 +1200,7 @@ export const buck2TypeScriptPackageProjection = ({
     '    package_tree = ":package_tree",',
     ...renderMap({
       name: 'declaration_sources',
-      entries: declarationSources.map((source) => [source, source]),
+      entries: sourceEntries(declarationSources),
     }),
     ...(targetProjectFile === 'tsconfig.json'
       ? []
@@ -1154,7 +1228,7 @@ export const buck2TypeScriptPackageProjection = ({
   const stringify = (): string => {
     const lines = [
       `# Projection source: ${projectionSource}`,
-      '# Projection schema version: 12',
+      '# Projection schema version: 13',
       '# Projection generator: effect-utils/genie/buck2-typescript-package-projection',
       `# Semantic fingerprint: ${fingerprint}`,
       `# Semantic inputs: ${semanticInputs.join(', ')}`,
@@ -1183,7 +1257,7 @@ export const buck2TypeScriptPackageProjection = ({
       ')',
       '',
       ...testDataFiles
-        .filter((file) => file.endsWith('.patch'))
+        .filter((file) => file.endsWith('.patch') && isLocallyOwned(file))
         .flatMap((file) => [
           'export_file(',
           `    name = ${starlarkString(file)},`,
@@ -1193,7 +1267,7 @@ export const buck2TypeScriptPackageProjection = ({
           '',
         ]),
       'export_materialization_inputs([',
-      ...packageSources.map((source) => `    ${starlarkString(source)},`),
+      ...packageSources.filter(isLocallyOwned).map((source) => `    ${starlarkString(source)},`),
       '])',
       '',
       'static_source_set(',
@@ -1237,6 +1311,7 @@ export const buck2TypeScriptPackageProjection = ({
       )},`,
       ...renderMap({ name: 'files', entries: packageFileEntries }),
       ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
+      ...renderMap({ name: 'generated_dependencies', entries: generatedDependencyEntries }),
       ...renderMap({
         name: 'workspace_dependency_views',
         entries: workspaceDependencyViewEntries,
@@ -1255,6 +1330,7 @@ export const buck2TypeScriptPackageProjection = ({
             `    dependency_view = ${starlarkString(dependencyView)},`,
             ...renderMap({ name: 'files', entries: testPackageFileEntries }),
             ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
+            ...renderMap({ name: 'generated_dependencies', entries: generatedDependencyEntries }),
             ...renderMap({
               name: 'workspace_dependency_views',
               entries: workspaceDependencyViewEntries,

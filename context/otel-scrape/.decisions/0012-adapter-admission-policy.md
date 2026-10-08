@@ -85,7 +85,7 @@ lane) are added, and the fleet vertical slices live under
 
 The Buck2 event-log → OTLP adapter is **not** admitted through this gate: it
 is owned by the buck2 tree's observability lane
-([`context/buck2/07-observability`](../../buck2/07-observability/spec.md))
+([`context/builds/04-buck2/07-observability`](../../builds/04-buck2/07-observability/spec.md))
 by decision (q7, 2026-09-25), which consciously overrides this admission
 policy and the boundary in
 [0021](./0021-observability-boundary-effect-utils-vs-dotfiles.md) for that
