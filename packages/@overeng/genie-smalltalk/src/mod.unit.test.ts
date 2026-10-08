@@ -72,9 +72,9 @@ describe('Smalltalk declarations', () => {
     expect(rendered).toBe('version 2\nstep "next" {\n  assigned-to "agent/example/worker"\n  depends-on {\n    step "first" "completed"\n  }\n  goal "Finish."\n}\n')
     expect(emit([step({ ...next, goal: [next.goal], dependsOn: [next.dependsOn] })])).toBe(rendered)
   })
-  it.each([[], ['one', 'two', 'three', 'four'], ['']])(
-    'rejects invalid goal arrays %j',
-    (goal) => {
+  it.each([{ goal: [] }, { goal: ['one', 'two', 'three', 'four'] }, { goal: [''] }])(
+    'rejects invalid goal arrays $goal',
+    ({ goal }) => {
       expect(() => mission({
         id: 'demo', state: 'ready', goal, steps: [{ id: 'first', agentless: true }],
       } as never)).toThrow()
