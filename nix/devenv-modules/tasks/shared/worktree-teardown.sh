@@ -34,6 +34,42 @@ while [ -n "$remaining" ]; do
   if [ "$remaining" = "$component" ]; then break; fi
   remaining="${remaining#*/}"
 done
+
+# The pinned Buck lifecycle client owns only the `prev` history directory
+# (buck2_client_ctx/src/daemon/client.rs, BuckdLifecycleLock::BUCKD_PREV_DIR).
+# Even an isolation can share its path with a descendant checkout's state.
+verify_isolation_contents() {
+  local directory="$1" entry history
+  for entry in "$directory"/*; do
+    if [ -L "$entry" ]; then
+      echo "worktree:teardown: refusing ambiguous Buck isolation content (symlink): $entry" >&2
+      return 1
+    elif [ -f "$entry" ]; then
+      continue
+    elif [ -d "$entry" ]; then
+      if [ -e "$root/${directory##*/}/${entry##*/}" ] || [ -L "$root/${directory##*/}/${entry##*/}" ]; then
+        echo "worktree:teardown: refusing ambiguous Buck isolation content (descendant path exists): $entry" >&2
+        return 1
+      fi
+      if [ "${entry##*/}" != prev ]; then
+        echo "worktree:teardown: refusing ambiguous Buck isolation content (unknown directory): $entry" >&2
+        return 1
+      fi
+      # Buck history consists of regular daemon files. A directory inside it
+      # may be descendant state moved by an earlier native daemon restart.
+      for history in "$entry"/*; do
+        if [ -L "$history" ] || [ ! -f "$history" ]; then
+          echo "worktree:teardown: refusing ambiguous Buck isolation content (history): $history" >&2
+          return 1
+        fi
+      done
+    else
+      echo "worktree:teardown: refusing ambiguous Buck isolation content: $entry" >&2
+      return 1
+    fi
+  done
+}
+
 if [ -d "$state" ]; then
   for directory in "$state"/*; do
     [ -e "$directory" ] || [ -L "$directory" ] || continue
@@ -52,10 +88,20 @@ if [ -d "$state" ]; then
       if [ -f "$directory/$marker" ]; then isolation=true; fi
     done
     [ "$isolation" = true ] || continue
+    # Refuse ambiguity before even stopping this daemon or deleting its files.
+    verify_isolation_contents "$directory"
     # Native kill is offline and never starts a daemon. Use its protocol rather
     # than signaling a potentially recycled PID from buckd.pid.
     buck2 --isolation-dir "${directory##*/}" kill
-    rm -rf -- "$directory"
+    verify_isolation_contents "$directory"
+    # Never recursively delete an isolation or its history. Shallow regular-file
+    # deletion plus rmdir leaves any newly appearing unknown directory intact.
+    find -P "$directory" -mindepth 1 -maxdepth 1 -type f -delete
+    if [ -d "$directory/prev" ] && [ ! -L "$directory/prev" ]; then
+      find -P "$directory/prev" -mindepth 1 -maxdepth 1 -type f -delete
+      rmdir -- "$directory/prev"
+    fi
+    rmdir -- "$directory"
   done
   remaining_directories=( "$state"/* )
   if [ "${#remaining_directories[@]}" = 0 ]; then rmdir -- "$state"; fi

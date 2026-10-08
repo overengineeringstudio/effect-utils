@@ -240,9 +240,15 @@ Buck state is a hierarchy under canonical `~/.buck/buckd`: the absolute checkout
 path without its leading slash, followed by an isolation name. A directory with
 direct `buckd.info`, `buckd.pid`, `buckd.stdout`, `buckd.stderr`, or
 `buckd.lifecycle` files identifies an isolation. Other child directories hold
-descendant checkout state and are untouched. Teardown deletes only isolation
-directories; it removes the checkout's state container only if empty. It refuses
-state paths outside the canonical base and any symlinked state component.
+descendant checkout state and are untouched. An identified isolation can itself
+contain descendant state when its name overlaps a descendant checkout path.
+Before stopping its daemon, teardown refuses ambiguous contents with a nonzero
+exit: subdirectories matching actual descendant paths, unknown subdirectories,
+symlinks, or non-regular history entries. It clears only regular daemon files and
+the shallow regular-file contents of Buck's owned `prev` history directory, then
+uses `rmdir`; isolation directories are never recursively deleted. The checkout's
+state container is removed only if empty. State paths outside the canonical base
+and any symlinked state component are refused.
 
 `devenv tasks run buck2:editor:release --mode single` is the editor-only release
 surface. Teardown calls that existing task when the consuming repository defines

@@ -17,10 +17,21 @@ watchman_started=false
 nested_outer=""
 nested_child=""
 descendant_state=""
+collision_started=false
 cleanup() {
   local result=$?
   if [ -n "$descendant_state" ]; then rm -rf -- "$descendant_state"; fi
   if [ -n "$nested_outer" ] && [ -d "$nested_outer" ]; then
+    if [ -d "$nested_child" ]; then
+      (cd "$nested_child" && "$BUCK2" --isolation-dir child kill) >/dev/null 2>&1 || true
+    fi
+    (cd "$nested_outer" && "$BUCK2" --isolation-dir outer kill) >/dev/null 2>&1 || true
+    if [ "$collision_started" = true ]; then
+      (cd "$nested_outer" && "$BUCK2" --isolation-dir nested kill) >/dev/null 2>&1 || true
+      # Both daemons above are test-owned and stopped. Remove only the child's
+      # known fixture isolation so the parent's ambiguous container can clear.
+      rm -rf -- "$child_state/child"
+    fi
     for checkout in "$nested_child" "$nested_outer"; do
       if [ -d "$checkout" ]; then
         DEVENV_ROOT="$checkout" WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
@@ -143,6 +154,8 @@ for isolation in first .second; do
   kill -0 "$pid" || fail 'fixture daemon is not live'
   pids+=("$pid")
 done
+# Exercise Buck-owned history cleanup with regular log files, not just emptiness.
+printf 'retained daemon log\n' >"$state/first/prev/retained.log"
 mkdir -p "$worktree/readonly/nested" "$TEMP_ROOT/external"
 printf 'immutable\n' >"$worktree/readonly/nested/file"
 chmod 444 "$worktree/readonly/nested/file"
@@ -239,3 +252,32 @@ for iteration in first second; do
 done
 (cd "$nested_child" && "$BUCK2" --isolation-dir child status >/dev/null)
 echo 'PASS: nested checkout state and live daemon survive both parent teardowns; Git checkout/worktree and megarepo directory modes remain unchanged; escaping and in-base intermediate symlinks are refused'
+
+# The review collision: the parent isolation name is also the nested checkout's
+# path component. Start the parent first, since native startup rotates its state.
+rm -rf -- "$descendant_state"
+descendant_state=""
+DEVENV_ROOT="$nested_child" WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+  bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh"
+collision_started=true
+(cd "$nested_outer" && "$BUCK2" --isolation-dir nested targets //: >/dev/null)
+(cd "$nested_child" && "$BUCK2" --isolation-dir child targets //: >/dev/null)
+collision_parent_pid="$(cat "$child_state/buckd.pid")"
+child_pid="$(cat "$child_state/child/buckd.pid")"
+chmod 555 "$nested_child" "$nested_child/readonly"
+for iteration in first second; do
+  if (cd "$nested_outer" && "$DEVENV" tasks run worktree:teardown --mode single) \
+    >"$TEMP_ROOT/collision-refusal.log" 2>&1; then
+    fail 'teardown accepted an isolation containing descendant checkout state'
+  fi
+  "$BUN" -e 'if (!require("node:fs").readFileSync(process.argv[1], "utf8").includes("refusing ambiguous Buck isolation content")) process.exit(1)' \
+    "$TEMP_ROOT/collision-refusal.log" || fail 'collision refusal lacks a clear diagnostic'
+  [ "$(cat "$child_state/buckd.pid")" = "$collision_parent_pid" ] || fail 'ambiguous parent metadata changed'
+  [ "$(cat "$child_state/child/buckd.pid")" = "$child_pid" ] || fail 'colliding nested metadata changed'
+  kill -0 "$collision_parent_pid" && kill -0 "$child_pid" || fail 'collision refusal stopped a daemon'
+  "$BUN" -e 'const fs=require("node:fs"); for (const path of process.argv.slice(1)) if ((fs.statSync(path).mode & 0o777) !== 0o555) process.exit(1)' \
+    "${protected[@]}" || fail 'collision refusal changed protected directory modes'
+done
+(cd "$nested_outer" && "$BUCK2" --isolation-dir nested status >/dev/null)
+(cd "$nested_child" && "$BUCK2" --isolation-dir child status >/dev/null)
+echo 'PASS: colliding parent isolation/nested-checkout state is refused twice with a clear diagnostic; both live daemons and their metadata remain intact'

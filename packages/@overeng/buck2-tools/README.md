@@ -52,11 +52,15 @@ files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
 tracked files, and does not decide whether a checkout is eligible for removal.
 
-Buck's absolute-path state hierarchy can contain descendant checkouts. Only
-directories with direct daemon files identify this checkout's isolations; their
-siblings are preserved, and the parent state directory is removed only when
-empty. State paths must remain under the canonical Buck state base and contain
-no symlinked components. The permission walk prunes nested Git checkouts,
+Buck's absolute-path state hierarchy can contain descendant checkouts, even
+inside a directory with direct daemon files identifying this checkout's isolation.
+Before stopping that daemon, teardown refuses ambiguous contents with a nonzero
+exit: subdirectories matching descendant paths, unknown subdirectories, symlinks,
+or non-regular history entries. Only regular daemon files and Buck's shallow
+`prev` history directory are cleared; isolation directories are never recursively
+deleted. Sibling state is preserved, and the parent state directory is removed
+only when empty. State paths must remain under the canonical Buck state base and
+contain no symlinked components. The permission walk prunes nested Git checkouts,
 worktrees, and megarepo member/composition boundaries before changing their modes.
 
 Capability-profile Nix indirect gcroots are left alone: worktree removal makes
