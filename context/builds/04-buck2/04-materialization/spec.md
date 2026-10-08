@@ -123,13 +123,16 @@ the lock, the publisher:
 
 1. fingerprints each distinct selected dependency view and finite declared root
    once for the admitted state;
-2. recursively copies the selected view and disjoint backing roots into a
-   same-filesystem candidate with dereferenced, byte-owned regular files;
-3. relocates internal links into `.backing/`, rejects links outside the declared
-   roots, and proves no snapshot file shares an inode with a disposable source;
+2. derives the content-addressed snapshot name before copying; if that entry
+   exists, verifies its complete immutable payload and exact admission record
+   and reuses it without writing store bytes;
+3. for a missing entry, copies the selected view and disjoint backing roots into
+   a same-filesystem byte-owned candidate, relocates links into `.backing/`,
+   rejects links outside declared roots, and proves no snapshot file shares an
+   inode with a disposable source;
 4. verifies the complete payload digest and writes `editor-view.json`;
-5. hardens a new candidate read-only and renames it to the deterministic
-   snapshot, or verifies an existing immutable snapshot before reuse;
+5. hardens the new candidate read-only and renames it to the deterministic
+   snapshot;
 6. atomically renames the current pointer, installs or validates the package
    first hop, and emits the package-manifest settle signal required by live
    language servers;
@@ -147,6 +150,16 @@ If a legacy root install occupies the first hop, immutable GNU
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip
 leaves the prior current view intact. Snapshot payloads never retain links into
 `buck-out`, whose action directories Buck may delete before rebuilding.
+
+Repository tasks configure two completed snapshots **per view**: current and
+previous. For `N` admitted views the shared-store bound is `2 × N`, excluding
+in-flight candidates, which are not retention garbage. GC deletes only
+validated older snapshots of the publishing view after its pointer flip; it
+neither infers process liveness nor collects inactive worktrees. The preceding
+snapshot supplies a bounded rollback/read-overlap window, not an indefinite
+lease for a process pinned to an older generation. Literal admitted link text
+participates in identity, so changed Buck artifact paths can create a new
+snapshot even when dependency file bytes remain identical.
 
 ## Staleness Gate
 
