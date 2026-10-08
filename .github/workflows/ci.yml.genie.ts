@@ -484,9 +484,16 @@ const unitTestJob = (runner: RunnerProfile) => ({
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:run'),
     }),
+    ...(runner === 'namespace-profile-macos-arm64'
+      ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep), macosNixSubstituterSaveStep]
+      : []),
+    nixDiagnosticsSummaryStep,
+    nixDiagnosticsArtifactStep(),
+    failureReminderStep,
     {
       name: 'Upload retained Vitest collection reports',
-      if: '${{ !cancelled() }}',
+      if: '${{ always() }}',
+      'continue-on-error': true,
       uses: 'actions/upload-artifact@v4',
       with: {
         name: 'vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}',
@@ -495,12 +502,6 @@ const unitTestJob = (runner: RunnerProfile) => ({
         'retention-days': 14,
       },
     },
-    ...(runner === 'namespace-profile-macos-arm64'
-      ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep), macosNixSubstituterSaveStep]
-      : []),
-    nixDiagnosticsSummaryStep,
-    nixDiagnosticsArtifactStep(),
-    failureReminderStep,
   ],
 })
 

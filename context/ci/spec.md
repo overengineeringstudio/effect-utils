@@ -142,7 +142,8 @@ reported separately and is not part of the execution budget.
 Successful `devenv-modules:test` scripts emit UTC start/end timestamps on stderr
 with their script basename and phase. Both required jobs retain source Vitest
 JSON collection reports as a job/run/attempt-scoped Actions artifact for timing
-and collection diagnosis; report publication does not replace test enforcement.
+and collection diagnosis. This diagnostic upload runs after enforcement and
+product smoke, is non-gating, and does not replace test enforcement.
 
 ## Gates and no-op actions
 
