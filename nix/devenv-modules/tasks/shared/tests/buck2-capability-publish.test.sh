@@ -21,7 +21,133 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-fail() { echo "FAIL: $*" >&2; exit 1; }
+retain_failure_evidence() {
+  local evidence_base evidence name reference pid job_line job_id="" job_state=""
+  evidence_base="${CAPABILITY_TEST_EVIDENCE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/buck2-cache-reports/capability-publisher}"
+  umask 077
+  mkdir -p "$evidence_base" || return 1
+  evidence="$(mktemp -d "$evidence_base/capability-publisher.XXXXXX")" || return 1
+  {
+    printf 'fixture shell: $$=%s BASHPID=%s\n' "$$" "$BASHPID"
+    for name in child_pids competing_pids first_publisher rooting_pid crashed_publisher; do
+      if ! declare -p "$name" >/dev/null 2>&1; then continue; fi
+      reference="$name[@]"
+      for pid in "${!reference}"; do
+        if [[ "$pid" =~ ^[1-9][0-9]*$ ]]; then printf 'owner=%s pid=%s\n' "$name" "$pid"; fi
+      done
+    done
+    while IFS= read -r job_line; do
+      if [[ "$job_line" =~ ^\[([0-9]+)\][+-]?[[:space:]]+([0-9]+)[[:space:]]+(Exit[[:space:]]+[0-9]+|[[:alpha:]]+) ]]; then
+        job_id="${BASH_REMATCH[1]}"
+        job_state="${BASH_REMATCH[3]}"
+        printf 'job=%s pid=%s state=%s\n' "$job_id" "${BASH_REMATCH[2]}" "$job_state"
+      elif [ -n "$job_id" ] && [[ "$job_line" =~ ^[[:space:]]+([0-9]+)[[:space:]] ]]; then
+        printf 'job=%s pid=%s state=%s\n' "$job_id" "${BASH_REMATCH[1]}" "$job_state"
+      fi
+    done < <(LC_ALL=C jobs -l)
+  } >"$evidence/shell-ownership.txt"
+  "$BUN" -e '
+    const fs = require("fs");
+    const path = require("path");
+    const { spawnSync } = require("child_process");
+    const [temp, destination, shellPid, assertion, assertionRoot, expectedCount, ...pidArgs] = process.argv.slice(1);
+    const fixturePid = Number(shellPid);
+    const trackedPids = [...new Set(pidArgs.filter((pid) => /^[1-9][0-9]*$/.test(pid)).map(Number))];
+    const errors = [];
+    const collect = (label, operation) => {
+      try { return operation(); } catch (error) { errors.push({ label, error: String(error) }); }
+    };
+    fs.mkdirSync(path.join(destination, "publisher-jsons"));
+    fs.mkdirSync(path.join(destination, "generation-trees"));
+    const cells = [];
+    for (const name of fs.readdirSync(temp)) {
+      const source = path.join(temp, name);
+      if (name.endsWith(".json")) {
+        collect(`publisher JSON ${name}`, () => fs.copyFileSync(source, path.join(destination, "publisher-jsons", name)));
+      }
+      if (!fs.lstatSync(source).isDirectory() || !fs.existsSync(path.join(source, ".buck2"))) continue;
+      collect(`generation metadata ${name}`, () => {
+        const cell = path.join(source, ".buck2", "capabilities");
+        cells.push({
+          fixture: name,
+          generations: fs.readdirSync(path.join(cell, "generations")),
+          definitions: fs.readFileSync(path.join(cell, "defs.bzl"), "utf8"),
+        });
+      });
+      collect(`generation tree ${name}`, () => fs.cpSync(path.join(source, ".buck2"), path.join(destination, "generation-trees", name), { recursive: true, dereference: false }));
+    }
+    const native = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid=,stat=,comm="], { encoding: "utf8" });
+    const processes = [];
+    if (native.error || native.status !== 0) {
+      errors.push({ label: "native PID ancestry", error: String(native.error || native.stderr) });
+    } else {
+      const rows = native.stdout.trim().split("\n").filter(Boolean).map((line) => {
+        const [pid, parentPid, group, status, ...command] = line.trim().split(/\s+/);
+        return { pid: Number(pid), parentPid: Number(parentPid), group: Number(group), status, command: command.join(" ") };
+      });
+      const byPid = new Map(rows.map((row) => [row.pid, row]));
+      const fixtureGroup = byPid.get(fixturePid)?.group;
+      const selected = new Set([fixturePid, ...trackedPids]);
+      // Same-group rows retain orphaned publishers without recording arguments
+      // or environment; group membership alone is not an ownership claim.
+      for (const row of rows) if (row.group === fixtureGroup) selected.add(row.pid);
+      for (let changed = true; changed;) {
+        changed = false;
+        for (const row of rows) {
+          if (selected.has(row.parentPid) && !selected.has(row.pid)) {
+            selected.add(row.pid);
+            changed = true;
+          }
+        }
+      }
+      for (const pid of [...selected]) {
+        for (let row = byPid.get(pid); row && !selected.has(row.parentPid); row = byPid.get(row.parentPid)) selected.add(row.parentPid);
+      }
+      processes.push(...rows.filter((row) => selected.has(row.pid)));
+    }
+    collect("evidence retention", () => {
+      const base = path.dirname(destination);
+      const previous = fs.readdirSync(base, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && /^capability-publisher\.[A-Za-z0-9]{6}$/.test(entry.name))
+        .map((entry) => path.join(base, entry.name))
+        .filter((directory) => directory !== destination)
+        .flatMap((directory) => {
+          try { return [{ directory, modified: fs.lstatSync(directory).mtimeMs }]; }
+          catch (error) { if (error.code === "ENOENT") return []; throw error; }
+        })
+        .sort((left, right) => right.modified - left.modified || right.directory.localeCompare(left.directory));
+      const makeDirectoriesWritable = (directory) => {
+        try {
+          const metadata = fs.lstatSync(directory);
+          if (!metadata.isDirectory()) return;
+          fs.chmodSync(directory, metadata.mode | 0o700);
+          for (const name of fs.readdirSync(directory)) makeDirectoriesWritable(path.join(directory, name));
+        } catch (error) { if (error.code !== "ENOENT") throw error; }
+      };
+      for (const { directory } of previous.slice(4)) {
+        makeDirectoriesWritable(directory);
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
+    fs.writeFileSync(path.join(destination, "evidence.json"), JSON.stringify({
+      observedAt: new Date().toISOString(), assertion, assertionRoot,
+      expectedCount: expectedCount === "" ? null : Number(expectedCount),
+      fixturePid, trackedPids, cells, processes, errors,
+    }, null, 2) + "\n");
+    if (errors.length) console.error("Failure evidence collection errors:", JSON.stringify(errors));
+  ' "$TEMP_ROOT" "$evidence" "$BASHPID" "$1" "${root:-}" "${count:-}" \
+    "${child_pids[@]}" "${competing_pids[@]-}" "${first_publisher:-}" \
+    "${rooting_pid:-}" "${crashed_publisher:-}" || {
+      printf 'Partial capability publisher failure evidence retained at %s\n' "$evidence" >&2
+      return 1
+    }
+  printf 'Capability publisher failure evidence retained at %s\n' "$evidence" >&2
+}
+fail() {
+  echo "FAIL: $*" >&2
+  retain_failure_evidence "$*" || echo "FAIL: could not completely retain assertion evidence" >&2
+  exit 1
+}
 export NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"
 export CAPABILITY_FIXTURE_ROOT="$ROOT" CAPABILITY_FIXTURE_NIX="$TESTS_DIR/buck2-capability-fixture/profiles.nix"
 profiles_file="$("$NIX" build --impure --no-link --print-out-paths --expr '
@@ -58,8 +184,13 @@ assert_retained() {
     const count = Number(process.argv[2]);
     const names = fs.readdirSync(path.join(root, "generations"));
     const current = fs.readFileSync(path.join(root, "defs.bzl"), "utf8").match(/^GENERATION = "([0-9a-f]{64})"$/m)[1];
-    if (names.length !== count || !names.includes(current) || names.some((name) => !/^[0-9a-f]{64}$/.test(name))) process.exit(1);
-  ' "$root/.buck2/capabilities" "$count" || fail "generation set does not match selected defs or expected retained count"
+    if (names.length !== count || !names.includes(current) || names.some((name) => !/^[0-9a-f]{64}$/.test(name))) {
+      fs.writeFileSync(path.join(process.argv[3], "failed-generation-assertion.json"), JSON.stringify({
+        observedAt: new Date().toISOString(), root, expectedCount: count, names, current,
+      }) + "\n");
+      process.exit(1);
+    }
+  ' "$root/.buck2/capabilities" "$count" "$TEMP_ROOT" || fail "generation set does not match selected defs or expected retained count"
   for version in "${versions[@]}"; do
     target="$(profile "$version")"
     gen="$(generation "$target")"
