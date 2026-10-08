@@ -89,7 +89,10 @@ const withSilentEventBus = <A, E, R>(
     }),
   ) as Effect.Effect<A, E, Exclude<R, GenieEventBus>>
 
-/** Generate files from all discovered .genie.ts sources. */
+/**
+ * Generate files from all discovered .genie.ts sources.
+ * Source-mode callers must use a separate Bun process for each workspace; a second workspace fails.
+ */
 export const generate = ({
   cwd: inputCwd,
   writeable = false,
@@ -119,7 +122,10 @@ export const generate = ({
   return core
 }
 
-/** Check that all generated files are up to date. */
+/**
+ * Check that all generated files are up to date.
+ * Source-mode callers must use a separate Bun process for each workspace; a second workspace fails.
+ */
 export const check = ({
   cwd: inputCwd,
   env,

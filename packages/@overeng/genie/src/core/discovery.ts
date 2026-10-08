@@ -9,7 +9,7 @@ import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
 import * as Observability from './observability.ts'
 import type { StatResult } from './types.ts'
 
-let importMapResolverRegistered = false
+let importMapResolverWorkspace: string | undefined
 
 /** Detect if we're running as a compiled Bun binary (bunfs paths indicate compiled binary) */
 export const isCompiledBinary = (): boolean => {
@@ -54,6 +54,8 @@ type BunPluginBuilder = {
 /**
  * Register a Bun import resolver for the invoking workspace. Ordinary `#...` specifiers still use
  * the nearest import map, while nested `#mr/...` imports retain this workspace's lock.
+ * Source-mode callers must use one workspace per process because Bun caches imported modules.
+ * Registering another workspace fails before import rather than reusing the first workspace's lock.
  *
  * Note: In compiled Bun binaries, the Bun.plugin API causes class identity mismatches
  * with Bun internals (ResolveMessage instanceof checks fail). We skip plugin registration
@@ -63,10 +65,19 @@ export const ensureImportMapResolver = Effect.fn('ensureImportMapResolver')(func
   workspaceRoot: string,
 ) {
   yield* Observability.annotatePath({ label: 'import-map', path: workspaceRoot })
-  if (importMapResolverRegistered === true) return
-  importMapResolverRegistered = true
-  // Skip Bun.plugin in compiled binaries to avoid ResolveMessage class identity issues.
+  // Compiled graphs carry their own workspace context and do not use the process-global hook.
   if (isCompiledBinary() === true) return
+  const normalizedWorkspaceRoot = path.resolve(workspaceRoot)
+  if (importMapResolverWorkspace !== undefined) {
+    if (importMapResolverWorkspace !== normalizedWorkspaceRoot) {
+      return yield* Effect.fail(
+        new Error(
+          `Genie's source import resolver is already registered for ${importMapResolverWorkspace}; cannot load workspace ${normalizedWorkspaceRoot} in the same process. Run each workspace in a separate Bun process.`,
+        ),
+      )
+    }
+    return
+  }
   Bun.plugin({
     name: 'genie-import-map',
     // Bun type definitions are not guaranteed inside Nix builds, so we keep a local shape.
@@ -81,7 +92,7 @@ export const ensureImportMapResolver = Effect.fn('ensureImportMapResolver')(func
         const resolved = resolveImportMapSpecifierForImporterSync({
           specifier: args.path,
           importerPath,
-          workspaceRoot,
+          workspaceRoot: normalizedWorkspaceRoot,
         })
 
         if (resolved === undefined) return undefined
@@ -90,6 +101,7 @@ export const ensureImportMapResolver = Effect.fn('ensureImportMapResolver')(func
       })
     },
   })
+  importMapResolverWorkspace = normalizedWorkspaceRoot
 }, Observability.withImportMapResolverSpan)
 
 /** Directories to skip when searching for .genie.ts files */

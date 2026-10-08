@@ -917,8 +917,8 @@ const computeLocationFromPath = ({
 /**
  * Import a genie file and return its typed output plus the base context.
  *
- * A Bun import resolver is registered once so `#...` specifiers are resolved
- * using the import map closest to the importing file (including transitive imports).
+ * A source-mode Bun import resolver is registered once for one workspace per process.
+ * Ordinary import maps remain importer-relative; transitive `#mr` imports use that workspace's lock.
  */
 export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
   genieFilePath,
@@ -938,7 +938,16 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
     genieFilePath,
     targetFilePath: genieFilePath.replace('.genie.ts', ''),
   })
-  yield* ensureImportMapResolver(cwd)
+  yield* ensureImportMapResolver(cwd).pipe(
+    Effect.mapError(
+      (cause) =>
+        new GenieImportError({
+          genieFilePath,
+          message: `Failed to import ${genieFilePath}: ${cause.message}`,
+          cause,
+        }),
+    ),
+  )
 
   const importModule = (
     importPath: string,

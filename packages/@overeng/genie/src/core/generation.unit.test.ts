@@ -369,6 +369,96 @@ describe('locked workspace nested member imports', () => {
   )
 })
 
+describe('source import resolver workspace isolation', () => {
+  it.each(['sequential', 'overlapping'])(
+    'refuses a second workspace during %s loads in the same Bun process',
+    async (mode) => {
+      const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-workspace-isolation-'))
+      const store = path.join(tempRoot, 'store')
+      const workspaces = ['first', 'second'].map((name) => path.join(tempRoot, name))
+      const runnerPath = path.join(
+        process.cwd(),
+        `.genie-workspace-isolation-${mode}-${Date.now()}.ts`,
+      )
+      try {
+        for (const [index, workspace] of workspaces.entries()) {
+          const commit = String(index + 1).repeat(40)
+          const memberRoot = path.join(store, 'github.com/fixture/library/refs/commits', commit)
+          await Promise.all([mkdir(workspace), mkdir(memberRoot, { recursive: true })])
+          await Promise.all([
+            writeFile(
+              path.join(workspace, 'megarepo.lock'),
+              JSON.stringify({
+                members: {
+                  library: { url: 'https://github.com/fixture/library', ref: 'main', commit },
+                },
+              }),
+            ),
+            writeFile(
+              path.join(memberRoot, 'manifest.json'),
+              JSON.stringify({ value: path.basename(workspace) }),
+            ),
+            writeFile(
+              path.join(workspace, 'config.json.genie.ts'),
+              [
+                `import data from '#mr/library/manifest.json'`,
+                `const boundary = (globalThis as typeof globalThis & { boundary?: () => Promise<void> }).boundary`,
+                `if (boundary !== undefined && ${index === 0}) await boundary()`,
+                `export default { data, stringify: () => data.value }`,
+              ].join('\n'),
+            ),
+          ])
+        }
+        await writeFile(
+          runnerPath,
+          [
+            `import path from 'node:path'`,
+            `import { NodeServices } from '@effect/platform-node'`,
+            `import { Effect } from 'effect'`,
+            `import { loadGenieFile } from './src/core/generation.ts'`,
+            `const [firstWorkspace, secondWorkspace, mode] = process.argv.slice(2)`,
+            `const load = (cwd: string) => Effect.runPromise(loadGenieFile({ cwd, genieFilePath: path.join(cwd, 'config.json.genie.ts') }).pipe(Effect.provide(NodeServices.layer)))`,
+            `let entered!: () => void`,
+            `let release!: () => void`,
+            `const entering = new Promise<void>((resolve) => { entered = resolve })`,
+            `const blocked = new Promise<void>((resolve) => { release = resolve })`,
+            `if (mode === 'overlapping') (globalThis as typeof globalThis & { boundary?: () => Promise<void> }).boundary = async () => { entered(); await blocked }`,
+            `const first = load(firstWorkspace!)`,
+            `if (mode === 'overlapping') await entering; else await first`,
+            `let secondError: string | undefined`,
+            `try { await load(secondWorkspace!) } catch (error) { secondError = String(error) }`,
+            `release()`,
+            `const loaded = await first`,
+            `console.log(JSON.stringify({ first: loaded.output.data, secondError }))`,
+          ].join('\n'),
+        )
+        const output = execFileSync('bun', [runnerPath, ...workspaces, mode], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          env: {
+            ...process.env,
+            MEGAREPO_STORE: store,
+            GENIE_MEMBER_OVERRIDE_MAP: '',
+            GENIE_MEMBER_SOURCE_MAP: '',
+          },
+        })
+        const result = JSON.parse(output) as { first: unknown; secondError: string }
+        expect(result.first).toEqual({ value: 'first' })
+        expect(result.secondError).toContain('GenieImportError')
+        expect(result.secondError).toContain(`already registered for ${workspaces[0]}`)
+        expect(result.secondError).toContain(`cannot load workspace ${workspaces[1]}`)
+        expect(result.secondError).toContain('separate Bun process')
+      } finally {
+        await Promise.all([
+          rm(runnerPath, { force: true }),
+          rm(tempRoot, { recursive: true, force: true }),
+        ])
+      }
+    },
+    120_000,
+  )
+})
+
 describe('compiled binary import graph staging', () => {
   it('leaves an entry-level non-analyzable #mr import to the absolute-path rewrite', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-staging-json-member-'))

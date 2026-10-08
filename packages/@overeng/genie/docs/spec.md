@@ -181,6 +181,8 @@ Local member root resolution follows this order:
 
 The invoking workspace remains authoritative across the entire import graph, including helpers reached through member store paths or relative `repos/` imports. A nested member's own lock or symlink tree does not replace the invoking workspace's member set. The source-mode runtime hook is registered for the invocation workspace; compiled-binary staging and the static bootstrap-closure walk carry that workspace identity explicitly.
 
+Source-mode loading supports one workspace per Bun process. Repeated and concurrent loads within that workspace share the resolver. A subsequent load for a different workspace fails before importing its generator with an actionable error instructing the caller to use a separate process; the hook is never silently rebound because Bun also caches transitive modules. Compiled-binary staging and bootstrap-closure traversal are not subject to this process-global hook restriction.
+
 Genie can resolve `#mr/...` imports without a local `repos/` symlink tree. Missing locked worktrees fail at the locked path rather than silently using host checkout state. Explicit override and fallback source maps remain available for callers supplying source trees.
 
 Genie does not materialize missing megarepo members itself. Repository task wiring is responsible for ensuring required bootstrap members exist before Genie-backed tasks run.
