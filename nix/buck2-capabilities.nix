@@ -6,6 +6,18 @@
 }:
 
 let
+  sourceRoot = /. + builtins.unsafeDiscardStringContext (toString src);
+  # The projection has only built-in runtime imports. Its other reads are the
+  # generated input JSON and declared Nix package closures, not checkout files.
+  # Building from this fileset makes any undeclared checkout read fail in the
+  # sandbox; package sources and lockfiles remain owned by capabilityPackages.
+  projectionSource = pkgs.lib.fileset.toSource {
+    root = sourceRoot;
+    fileset = pkgs.lib.fileset.unions [
+      (sourceRoot + "/buck2-member.json")
+      (sourceRoot + "/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts")
+    ];
+  };
   manifest = builtins.fromJSON (builtins.readFile (src + "/buck2-member.json"));
   executableCapabilities = builtins.filter (capability: !(capability ? _tag)) manifest.capabilities;
   authorityCapabilities = builtins.concatMap (
@@ -72,11 +84,12 @@ pkgs.runCommand "buck2-capabilities"
   {
     nativeBuildInputs = [ pkgs.bun ];
     passthru = {
-      inherit capabilityPackages src;
+      inherit capabilityPackages;
+      src = projectionSource;
     };
   }
   ''
-    bun ${src}/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts \
+    bun ${projectionSource}/packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts \
       --input ${input} \
       --output "$out" \
       --platform ${platform}

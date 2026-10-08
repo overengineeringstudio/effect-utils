@@ -1,0 +1,8 @@
+# Public rule API lives in defs.bzl; concrete Swift products belong to
+# repository adapters next to their app targets.
+
+export_file(
+    name = "compile",
+    src = "compile.ts",
+    visibility = ["PUBLIC"],
+)

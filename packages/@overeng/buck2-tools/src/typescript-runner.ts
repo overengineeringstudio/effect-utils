@@ -5,15 +5,16 @@ import { type Stats } from 'node:fs'
 import {
   chmod,
   copyFile,
-  cp,
   lstat,
   mkdir,
   mkdtemp,
   readdir,
   readFile,
+  readlink,
   realpath,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -294,18 +295,36 @@ const pathExists = async (path: string): Promise<boolean> => {
   }
 }
 
-const makeTreeReadOnly = async (path: string): Promise<void> => {
-  const metadata = await lstat(path)
-  if (metadata.isSymbolicLink() === true) return
-  if (metadata.isDirectory() === true) {
-    await forEachSequential({
-      iterator: (await readdir(path)).values(),
-      visit: async (child) => makeTreeReadOnly(join(path, child)),
-    })
-  } else if (metadata.isFile() === false) {
-    fail(`unsupported filesystem entry while making staging read-only: ${path}`)
+/**
+ * Scratch directories must be writable from creation, including if copying is interrupted.
+ * Do not follow dependency symlinks or carry immutable input modes into Buck's TMPDIR.
+ */
+export const copyWritableTree = async ({
+  source,
+  destination,
+}: {
+  readonly source: string
+  readonly destination: string
+}): Promise<void> => {
+  const metadata = await lstat(source)
+  if (metadata.isSymbolicLink() === true) {
+    await symlink(await readlink(source), destination)
+    return
   }
-  await chmod(path, metadata.mode & ~0o222)
+  if (metadata.isDirectory() === true) {
+    await mkdir(destination, { mode: (metadata.mode & 0o777) | 0o700, recursive: true })
+    await forEachSequential({
+      iterator: (await readdir(source)).values(),
+      visit: async (child) =>
+        copyWritableTree({ source: join(source, child), destination: join(destination, child) }),
+    })
+  } else if (metadata.isFile() === true) {
+    await copyFile(source, destination)
+    await chmod(destination, (metadata.mode & 0o777) | 0o200)
+  } else {
+    fail(`unsupported filesystem entry while copying staging: ${source}`)
+  }
+  await utimes(destination, metadata.atime, metadata.mtime)
 }
 
 const makeTreeRemovable = async (path: string): Promise<void> => {
@@ -483,12 +502,7 @@ export const linkStagedWorkspaceProjects = async (options: {
         fail(`workspace project escapes emit staging root: ${projectPath}`)
       }
       await mkdir(dirname(destination), { recursive: true })
-      await cp(readRoot, destination, {
-        dereference: false,
-        preserveTimestamps: true,
-        recursive: true,
-        verbatimSymlinks: true,
-      })
+      await copyWritableTree({ source: readRoot, destination })
       await relinkStagedDependencyView({
         packageTree: readRoot,
         stagedPackageRoot: destination,
@@ -651,7 +665,8 @@ const runTypecheck = async (options: TypecheckOptions): Promise<number> => {
   return 0
 }
 
-const runEmit = async (options: EmitOptions): Promise<number> => {
+/** Emits through a writable scratch workspace and rejects staged or declared input mutations. */
+export const runEmit = async (options: EmitOptions): Promise<number> => {
   const packageTree = resolve(options.packageTree)
   const output = resolve(options.output)
   const readRoots = canonicalRoots([packageTree, ...options.readRoots])
@@ -666,12 +681,7 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
   try {
     const packageRoot = stagedEmitPackageRoot({ packageTree, readRoots, stagingRoot })
     await mkdir(dirname(packageRoot), { recursive: true })
-    await cp(packageTree, packageRoot, {
-      dereference: false,
-      preserveTimestamps: true,
-      recursive: true,
-      verbatimSymlinks: true,
-    })
+    await copyWritableTree({ source: packageTree, destination: packageRoot })
     await relinkStagedDependencyView({ packageTree, stagedPackageRoot: packageRoot })
     await linkStagedWorkspaceProjects({
       packageTree,
@@ -680,7 +690,11 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
       stagingRoot,
     })
     await prepareStagedOutput({ outDir: options.outDir, output, packageRoot })
-    await makeTreeReadOnly(packageRoot)
+    // The output is a symlink: no-follow hashing covers all staged inputs, not emitted bytes.
+    const stagedBefore = await hashDeclaredInputRoots({
+      roots: [stagingRoot],
+      fingerprintTool: options.fingerprintTool,
+    })
     status = await runTsgo({
       argv: [
         options.tsgo,
@@ -705,6 +719,12 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
       ],
       cwd: packageRoot,
     })
+    const stagedAfter = await hashDeclaredInputRoots({
+      roots: [stagingRoot],
+      fingerprintTool: options.fingerprintTool,
+    })
+    if (stagedAfter !== stagedBefore)
+      fail(`staged input roots changed during emit (before ${stagedBefore}, after ${stagedAfter})`)
     if (status === 0) {
       await copyDeclarationSources({
         declarationSources: options.declarationSources,
@@ -734,7 +754,7 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
 
   let cleanupError: unknown
   try {
-    await removeTree(stagingRoot)
+    await rm(stagingRoot, { force: true, recursive: true })
   } catch (error) {
     cleanupError = error
   }

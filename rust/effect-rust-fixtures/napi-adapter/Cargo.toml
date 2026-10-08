@@ -1,0 +1,18 @@
+[package]
+name = "effect-rust-fixture-napi"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "effect_rust_fixture_napi"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["napi"]
+napi = []
+
+[dependencies]
+hash-interop = { path = "../hash-interop" }
+math-interop = { path = "../math-interop" }

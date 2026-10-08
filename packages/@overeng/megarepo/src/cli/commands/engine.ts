@@ -42,6 +42,7 @@ import { generateAll, getEnabledGenerators } from '../../generators/mod.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
 import type { StoreLock } from '../../store/store-lock.ts'
+import { assertCanonicalMutationAllowed } from '../../store/store-path.ts'
 import { Store, StoreLayer } from '../../store/store.ts'
 import { foreignMemberMountMessage, inspectMemberMount } from '../../sync/member-mount.ts'
 import {
@@ -93,6 +94,7 @@ export const syncMegarepo = <R = never>({
   options,
   depth = 0,
   visited = new Set<string>(),
+  createdWorktrees = new Set<string>(),
   progressHandle,
   onMissingRef,
 }: {
@@ -115,6 +117,8 @@ export const syncMegarepo = <R = never>({
   }
   depth?: number
   visited?: Set<string>
+  /** Invocation-local physical identities; never persisted or granted to authoring writers. */
+  createdWorktrees?: Set<string>
   /** Handle for dispatching progress updates */
   progressHandle?: SyncUIHandle
   /** Callback for interactive prompts when a ref doesn't exist */
@@ -162,7 +166,17 @@ export const syncMegarepo = <R = never>({
     const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
 
     if (dryRun === false) {
+      const authorization =
+        isApplyMode === true && depth === 0
+          ? { materializationRoot: megarepoRoot }
+          : isApplyMode === true &&
+              (options.lockSyncMode ?? 'off') === 'off' &&
+              createdWorktrees.has(resolvedRoot) === true
+            ? { materializationRoot: megarepoRoot, materializedRoot: resolvedRoot }
+            : {}
+      yield* assertCanonicalMutationAllowed({ target: megarepoRoot, ...authorization })
       const membersRoot = getMembersRoot(megarepoRoot)
+      yield* assertCanonicalMutationAllowed({ target: membersRoot, ...authorization })
       yield* fs.makeDirectory(membersRoot, { recursive: true })
     }
 
@@ -284,6 +298,9 @@ export const syncMegarepo = <R = never>({
             gitProtocol,
             createBranches,
             ...(options.commitMode === true ? { commitMode: true } : {}),
+            ...(isApplyMode === true && all === true && (options.lockSyncMode ?? 'off') === 'off'
+              ? { onWorktreeCreated: (physicalRoot: string) => createdWorktrees.add(physicalRoot) }
+              : {}),
             ...(onMissingRef !== undefined ? { onMissingRef } : {}),
           })
 
@@ -518,6 +535,7 @@ export const syncMegarepo = <R = never>({
                   options,
                   depth: depth + 1,
                   visited,
+                  createdWorktrees,
                   ...(onMissingRef !== undefined ? { onMissingRef } : {}),
                 })
               }).pipe(

@@ -49,7 +49,6 @@ rec {
         pkgs = import nixpkgs { inherit system; };
         weaverPackages =
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
-        rootPath = self.outPath;
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         pnpm = import ./nix/pnpm.nix { inherit pkgs; };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
@@ -158,6 +157,10 @@ rec {
           buck2-events = buck2-stage0-tools.events;
           buck2-product = buck2-stage0-tools.product;
           buck2-fingerprint = buck2-stage0-tools.fingerprint;
+          # The native env binary must start before any interpreter; a shell
+          # wrapper could read ambient BASH_ENV before clearing the environment.
+          # Use explicit multicall dispatch; capability paths are canonicalized.
+          buck2-action-env = pkgs.coreutils;
           buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
             exec ${pkgs.coreutils}/bin/readlink "$@"
           '';
@@ -175,6 +178,11 @@ rec {
           buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
           buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
           buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
+          buck2-rust-wasm-compiler = buck2-rust-toolchain-capability.packages.rust-wasm-compiler;
+          buck2-rust-wasm-rustdoc = buck2-rust-toolchain-capability.packages.rust-wasm-rustdoc;
+          buck2-rust-wasm-linker = buck2-rust-toolchain-capability.packages.rust-wasm-linker;
+          buck2-wasm-bindgen = buck2-rust-toolchain-capability.packages.wasm-bindgen;
+          buck2-wasm-opt = buck2-rust-toolchain-capability.packages.wasm-opt;
           effect-tsgo = tsgo.packages.${system}.effect-tsgo;
           cargo = pkgs.writeShellScriptBin "cargo" ''
             exec ${pkgs.cargo}/bin/cargo "$@"
@@ -193,11 +201,11 @@ rec {
         };
         buck2Rules = import ./nix/buck2-rules {
           inherit pkgs buck2 pnpmArchives;
-          src = rootPath;
+          src = ./.;
         };
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;
-          src = rootPath;
+          src = ./.;
         };
         # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products {

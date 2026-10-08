@@ -1,10 +1,16 @@
 # Experiment 0007 — vite build: profile-lane reuse, no structured stats
 
-**Method:** vite 8.0.16 (Rolldown-based, node 24) on a throwaway project.
+## Question
+
+What structured telemetry or fidelity evidence does the Experiment 0007 — vite build: profile-lane reuse, no structured stats probe provide?
+
+## Method
+
+vite 8.0.16 (Rolldown-based, node 24) on a throwaway project.
 Probed `--profile`, `--manifest`, `--ssrManifest`, `-d`, and the node-invocation
 path against the existing node-cpuprofile lane.
 
-**Result:**
+## Result
 
 - No first-class OTEL.
 - `vite build --profile` writes a standard V8 `vite-profile-0.cpuprofile` on
@@ -23,10 +29,17 @@ path against the existing node-cpuprofile lane.
   per-chunk data lives only in the programmatic JS `output` object, behind no CLI
   flag.
 
-**Conclusion:** deferred profile-lane candidate. Today's answer for a real need is
+## Conclusion
+
+deferred profile-lane candidate. Today's answer for a real need is
 the node-cpuprofile invocation above. A first-class `vite` adapter is justified
 only once `vite build` is on a hot path (it is not in this repo — only one example
 app builds with vite; elsewhere vite is transitive under vitest/storybook). No
 phase/transform spans (no declared source), no size metrics. If ever built: inject
 `--profile`, add a CWD-glob discovery lane, reuse the CAS profile-link lane
 unchanged.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

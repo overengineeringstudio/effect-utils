@@ -1,7 +1,7 @@
 # Buck2 Dependency-Closure Roadmap
 
 This non-normative roadmap is subsumed by the canonical
-[`context/buck2/roadmap.md`](../../buck2/roadmap.md) and its linked GitHub
+[`context/builds/roadmap.md`](../../builds/.reference/migration-2026/roadmap.md) and its linked GitHub
 refactor epic.
 
 Dependency-closure work remains a distinct execution slice because resolver

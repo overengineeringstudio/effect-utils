@@ -98,6 +98,7 @@ fi
 # must never see a publication secret or push to the cache.
 build_job="$(sed -n '/^  build-products:/,/^  [a-z][a-z0-9-]*:$/p' "$workflow")"
 grep -F 'product_refs+=(".#buck-product-$safe_name-from-source")' <<<"$build_job" >/dev/null
+grep -F "BUCK2_PUBLIC_CACHE_READ_ONLY: '1'" <<<"$build_job" >/dev/null
 if grep -E 'secrets\.|cachix push|authToken|contents: write' <<<"$build_job" >/dev/null; then
   echo "buck2-cache-products-test: build-products must stay credential-free and must not push" >&2
   exit 1

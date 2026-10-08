@@ -27,6 +27,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Package(Box<PackageArgs>),
+    PackageAppBundle(Box<PackageAppBundleArgs>),
     NpmPackage(NpmPackageArgs),
 }
 
@@ -52,6 +53,38 @@ struct PackageArgs {
     platform_abi: String,
     #[arg(long = "runtime-contract")]
     runtime_contract: String,
+    #[arg(long)]
+    provenance: PathBuf,
+    #[arg(long)]
+    descriptor: PathBuf,
+}
+
+#[derive(Args)]
+struct PackageAppBundleArgs {
+    #[arg(long = "bundle-root")]
+    bundle_root: String,
+    #[arg(long = "bundle-executable", value_name = "RELPATH=SRCPATH")]
+    bundle_executables: Vec<String>,
+    #[arg(long = "bundle-resource", value_name = "RELPATH=SRCPATH")]
+    bundle_resources: Vec<String>,
+    #[arg(long = "bundle-plist")]
+    bundle_plist: PathBuf,
+    #[arg(long = "bundle-stamp")]
+    bundle_stamp: Option<PathBuf>,
+    #[arg(long = "main-executable")]
+    main_executable: String,
+    #[arg(long)]
+    artifact: PathBuf,
+    #[arg(long)]
+    name: String,
+    #[arg(long)]
+    target: String,
+    #[arg(long = "platform-os")]
+    platform_os: String,
+    #[arg(long = "platform-architecture")]
+    platform_architecture: String,
+    #[arg(long = "platform-abi")]
+    platform_abi: String,
     #[arg(long)]
     provenance: PathBuf,
     #[arg(long)]
@@ -177,7 +210,7 @@ fn elf_identity(
             return Err(fail(
                 "BUCK2_PRODUCT_ELF",
                 format!("unsupported ELF machine: {value}"),
-            ))
+            ));
         }
     };
     if machine != architecture {
@@ -262,7 +295,7 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
                 return Err(fail(
                     "BUCK2_PRODUCT_ELF",
                     "elf-dynamic/v1 forbids DT_RPATH and DT_RUNPATH",
-                ))
+                ));
             }
             0x6fff_fffe => version_needs_address = Some(value),
             0x6fff_ffff => version_needs_count = Some(value),
@@ -342,7 +375,7 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
             return Err(fail(
                 "BUCK2_PRODUCT_ELF",
                 "incomplete ELF version-needs metadata",
-            ))
+            ));
         }
     }
     Ok(json!({
@@ -501,7 +534,7 @@ fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
             return Err(fail(
                 "BUCK2_PRODUCT_MACHO",
                 format!("unsupported Mach-O CPU type: {value:#x}"),
-            ))
+            ));
         }
     };
     let expected_architecture = match architecture {
@@ -511,7 +544,7 @@ fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
             return Err(fail(
                 "BUCK2_PRODUCT_PLATFORM",
                 format!("unsupported Darwin architecture: {value}"),
-            ))
+            ));
         }
     };
     if observed_architecture != expected_architecture {
@@ -558,7 +591,7 @@ fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
                 return Err(fail(
                     "BUCK2_PRODUCT_MACHO",
                     "mach-o-dynamic/v1 forbids LC_RPATH",
-                ))
+                ));
             }
             0x1d => {
                 if signature.is_some() {
@@ -708,6 +741,7 @@ fn archive(
             ));
         }
         collect_support_files(root, root, &mut files)?;
+        collect_support_files(root, root, &mut files)?;
     }
     if files
         .insert(entrypoint.to_owned(), executable.to_vec())
@@ -717,6 +751,19 @@ fn archive(
             "BUCK2_PRODUCT_INPUT",
             "support tree collides with the executable entrypoint",
         ));
+    }
+    archive_tree(files, &[entrypoint.to_owned()])
+}
+
+/// Archives exactly the given files, marking only the named executables 0555.
+fn archive_tree(files: BTreeMap<String, Vec<u8>>, executables: &[String]) -> ToolResult<Vec<u8>> {
+    for executable in executables {
+        if !files.contains_key(executable) {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("declared executable is missing from the archived tree: {executable}"),
+            ));
+        }
     }
 
     let mut directories = BTreeSet::new();
@@ -737,7 +784,11 @@ fn archive(
                 .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
         }
         for (path, contents) in files {
-            let mode = if path == entrypoint { 0o555 } else { 0o444 };
+            let mode = if executables.contains(&path) {
+                0o555
+            } else {
+                0o444
+            };
             let header = tar_header(
                 &path,
                 u64::try_from(contents.len())
@@ -1043,7 +1094,7 @@ fn package(args: PackageArgs) -> ToolResult<()> {
             return Err(fail(
                 "BUCK2_PRODUCT_RUNTIME",
                 format!("unsupported runtime contract: {value}"),
-            ))
+            ));
         }
     };
     let provenance_bytes = fs::read(&args.provenance).map_err(|error| {
@@ -1105,6 +1156,200 @@ fn package(args: PackageArgs) -> ToolResult<()> {
     })
 }
 
+fn package_app_bundle(args: PackageAppBundleArgs) -> ToolResult<()> {
+    validate_name(&args.name)?;
+    safe_text(&args.target, "target")?;
+    safe_text(&args.platform_os, "platform OS")?;
+    safe_text(&args.platform_architecture, "platform architecture")?;
+    safe_text(&args.platform_abi, "platform ABI")?;
+    if args.platform_os != "darwin" || args.platform_abi != "darwin" {
+        return Err(fail(
+            "BUCK2_PRODUCT_PLATFORM",
+            "mach-o-app-bundle/v1 requires darwin/darwin",
+        ));
+    }
+    let bundle_root = normalized_relative(&args.bundle_root, "bundle root")?.to_owned();
+    let bundle_root_prefix = format!("{bundle_root}/");
+    let parse_input = |spec: &str, kind: &str| -> ToolResult<(String, String)> {
+        let (relative, source) = spec.split_once('=').ok_or_else(|| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("{kind} must be RELPATH=SRCPATH"),
+            )
+        })?;
+        let relative = normalized_relative(relative, kind)?;
+        if !relative.starts_with(&bundle_root_prefix) {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("{kind} is outside the bundle root: {relative}"),
+            ));
+        }
+        safe_text(source, kind)?;
+        Ok((relative.to_owned(), source.to_owned()))
+    };
+    if args.bundle_executables.is_empty() {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "an app bundle must declare at least one executable",
+        ));
+    }
+    let mut executables = BTreeMap::new();
+    for spec in &args.bundle_executables {
+        let (relative, source) = parse_input(spec, "bundle executable")?;
+        if executables.insert(relative.clone(), source).is_some() {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("bundle executable declared twice: {relative}"),
+            ));
+        }
+    }
+    let main_executable = normalized_relative(&args.main_executable, "main executable")?.to_owned();
+    if !executables.contains_key(&main_executable) {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "the main executable must be one of the bundle executables",
+        ));
+    }
+    let mut resources = BTreeMap::new();
+    for spec in &args.bundle_resources {
+        let (relative, source) = parse_input(spec, "bundle resource")?;
+        if executables.contains_key(&relative)
+            || resources.insert(relative.clone(), source).is_some()
+        {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("bundle input declared twice: {relative}"),
+            ));
+        }
+    }
+    let plist_relative = format!("{bundle_root}/Contents/Info.plist");
+    if executables.contains_key(&plist_relative) || resources.contains_key(&plist_relative) {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "the bundle already declares its Info.plist path",
+        ));
+    }
+    let stamp_relative = format!("{bundle_root}/Contents/Resources/nix-build-stamp.json");
+    if args.bundle_stamp.is_some()
+        && (executables.contains_key(&stamp_relative) || resources.contains_key(&stamp_relative))
+    {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "the bundle already declares its build stamp path",
+        ));
+    }
+    let mut files = BTreeMap::new();
+    let mut runtime_executables = Vec::new();
+    for (relative, source) in &executables {
+        let observed = fs::read(source).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read bundle executable {relative}: {error}"),
+            )
+        })?;
+        let runtime = mach_o_runtime(&observed, &args.platform_architecture)?;
+        files.insert(relative.clone(), observed);
+        runtime_executables.push(json!({
+            "architecture": runtime["architecture"].clone(),
+            "dylibs": runtime["dylibs"].clone(),
+            "minimumOs": runtime["minimumOs"].clone(),
+            "path": relative,
+            "signingPolicy": runtime["signingPolicy"].clone(),
+        }));
+    }
+    for (relative, source) in &resources {
+        let contents = fs::read(source).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read bundle resource {relative}: {error}"),
+            )
+        })?;
+        files.insert(relative.clone(), contents);
+    }
+    files.insert(
+        plist_relative,
+        fs::read(&args.bundle_plist).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read the bundle Info.plist: {error}"),
+            )
+        })?,
+    );
+    if let Some(stamp) = &args.bundle_stamp {
+        let contents = fs::read(stamp).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read the bundle build stamp: {error}"),
+            )
+        })?;
+        files.insert(stamp_relative, contents);
+    }
+    let artifact = archive_tree(files, &executables.keys().cloned().collect::<Vec<_>>())?;
+    let provenance_bytes = fs::read(&args.provenance).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_PROVENANCE",
+            format!("could not read provenance: {error}"),
+        )
+    })?;
+    let provenance: Provenance = serde_json::from_slice(&provenance_bytes).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_PROVENANCE",
+            format!("invalid provenance: {error}"),
+        )
+    })?;
+    if provenance.schema != "buck-build-provenance/v1" {
+        return Err(fail(
+            "BUCK2_PRODUCT_PROVENANCE",
+            "unsupported provenance schema",
+        ));
+    }
+    safe_text(&provenance.recipe, "provenance recipe")?;
+    safe_text(&provenance.toolchain, "provenance toolchain")?;
+    let digest = sha256_sri(&sha256_bytes(&artifact))?;
+    let descriptor = json!({
+        "entrypoints": executables.keys().cloned().collect::<Vec<_>>(),
+        "name": args.name,
+        "payload": {
+            "digest": {"algorithm": "sha256", "sri": digest},
+            "file": "artifact.tar",
+            "format": "tar",
+            "sizeBytes": artifact.len(),
+        },
+        "platform": {
+            "abi": args.platform_abi,
+            "architecture": args.platform_architecture,
+            "os": args.platform_os,
+        },
+        "runtime": {
+            "bundleRoot": bundle_root,
+            "executables": runtime_executables,
+            "inspectionContract": "mach-o-app-bundle/v1",
+            "installNamePolicy": "system-only/v1",
+            "kind": "mach-o-app-bundle",
+            "mainExecutable": main_executable,
+            "rpathPolicy": "empty/v1",
+        },
+        "schema": "buck-build-product/v1",
+        "semanticProvenance": {
+            "recipe": provenance.recipe,
+            "target": args.target,
+            "toolchain": provenance.toolchain,
+        },
+    });
+    fs::write(&args.artifact, artifact).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_OUTPUT",
+            format!("could not write artifact: {error}"),
+        )
+    })?;
+    fs::write(&args.descriptor, canonical_json(&descriptor)?).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_OUTPUT",
+            format!("could not write descriptor: {error}"),
+        )
+    })
+}
+
 fn main() {
     let cli = Cli::parse();
     let result = verify_execution_capability(
@@ -1115,6 +1360,7 @@ fn main() {
     )
     .and_then(|()| match cli.command {
         Command::Package(args) => package(*args),
+        Command::PackageAppBundle(args) => package_app_bundle(*args),
         Command::NpmPackage(args) => npm_package(args),
     });
     if let Err(error) = result {
@@ -1261,6 +1507,32 @@ mod tests {
         assert_eq!(descriptor["runtime"]["machine"], std::env::consts::ARCH);
     }
 
+    #[test]
+    fn package_app_bundle_rejects_a_non_darwin_platform() {
+        let temporary = tempdir().unwrap();
+        let arguments = PackageAppBundleArgs {
+            bundle_root: "Applications/Demo.app".into(),
+            bundle_executables: vec![format!(
+                "Applications/Demo.app/Contents/MacOS/demo={}",
+                temporary.path().join("demo").display()
+            )],
+            bundle_resources: vec![],
+            bundle_plist: temporary.path().join("Info.plist"),
+            bundle_stamp: None,
+            main_executable: "Applications/Demo.app/Contents/MacOS/demo".into(),
+            artifact: temporary.path().join("artifact.tar"),
+            name: "demo".into(),
+            target: "//pkg:app".into(),
+            platform_os: "linux".into(),
+            platform_architecture: std::env::consts::ARCH.into(),
+            platform_abi: "glibc".into(),
+            provenance: temporary.path().join("provenance.json"),
+            descriptor: temporary.path().join("descriptor.json"),
+        };
+        let error = package_app_bundle(arguments).unwrap_err();
+        assert_eq!(error.code, "BUCK2_PRODUCT_PLATFORM");
+    }
+
     fn signature_with_cms(code_directory_flags: u32, cms_size: u32) -> Vec<u8> {
         let declared_size = 44 + cms_size;
         let mut signature = Vec::new();
@@ -1283,6 +1555,149 @@ mod tests {
         }
         signature.resize(usize::try_from(declared_size).unwrap(), 0);
         signature
+    }
+
+    fn app_bundle_args(root: &Path) -> PackageAppBundleArgs {
+        let signature = signature_with_cms(2, 8);
+        let mut executable = [
+            0xfeed_facfu32,
+            0x0100_000c,
+            0,
+            2,
+            2,
+            40,
+            0,
+            0,
+            0x32,
+            24,
+            1,
+            14 << 16,
+            14 << 16,
+            0,
+            0x1d,
+            16,
+            72,
+            u32::try_from(signature.len()).unwrap(),
+        ]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+        executable.extend_from_slice(&signature);
+        fs::write(root.join("demo"), executable).unwrap();
+        fs::write(root.join("icon.icns"), b"icon").unwrap();
+        fs::write(root.join("Info.plist"), b"<?xml version=\"1.0\"?><plist/>").unwrap();
+        fs::write(root.join("stamp.json"), br#"{"version":"1.2.3"}"#).unwrap();
+        fs::write(
+            root.join("provenance.json"),
+            br#"{"schema":"buck-build-provenance/v1","recipe":"demo","toolchain":"swift-test"}"#,
+        )
+        .unwrap();
+        PackageAppBundleArgs {
+            bundle_root: "Applications/Demo.app".into(),
+            bundle_executables: vec![format!(
+                "Applications/Demo.app/Contents/MacOS/demo={}",
+                root.join("demo").display()
+            )],
+            bundle_resources: vec![format!(
+                "Applications/Demo.app/Contents/Resources/icon.icns={}",
+                root.join("icon.icns").display()
+            )],
+            bundle_plist: root.join("Info.plist"),
+            bundle_stamp: Some(root.join("stamp.json")),
+            main_executable: "Applications/Demo.app/Contents/MacOS/demo".into(),
+            artifact: root.join("artifact.tar"),
+            name: "demo".into(),
+            target: "//pkg:app".into(),
+            platform_os: "darwin".into(),
+            platform_architecture: "aarch64".into(),
+            platform_abi: "darwin".into(),
+            provenance: root.join("provenance.json"),
+            descriptor: root.join("descriptor.json"),
+        }
+    }
+
+    #[test]
+    fn packages_app_bundle_layout_and_observed_runtime_deterministically() {
+        let temporary = tempdir().unwrap();
+        package_app_bundle(app_bundle_args(temporary.path())).unwrap();
+        let first = fs::read(temporary.path().join("artifact.tar")).unwrap();
+        let descriptor: Value =
+            serde_json::from_slice(&fs::read(temporary.path().join("descriptor.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            descriptor["runtime"]["executables"][0],
+            json!({
+                "architecture": "arm64", "dylibs": [], "minimumOs": "14.0",
+                "path": "Applications/Demo.app/Contents/MacOS/demo", "signingPolicy": "adhoc/v1"
+            })
+        );
+        assert_eq!(
+            descriptor["payload"]["digest"]["sri"],
+            sha256_sri(&sha256_bytes(&first)).unwrap()
+        );
+        let entries = tar::Archive::new(first.as_slice())
+            .entries()
+            .unwrap()
+            .map(|entry| {
+                let mut entry = entry.unwrap();
+                let path = entry.path().unwrap().into_owned();
+                let mode = entry.header().mode().unwrap();
+                let mut contents = Vec::new();
+                entry.read_to_end(&mut contents).unwrap();
+                (path, (mode, contents))
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            entries[Path::new("Applications/Demo.app/Contents/Info.plist")].1,
+            fs::read(temporary.path().join("Info.plist")).unwrap()
+        );
+        assert_eq!(
+            entries[Path::new("Applications/Demo.app/Contents/MacOS/demo")].0,
+            0o555
+        );
+        assert_eq!(
+            entries[Path::new("Applications/Demo.app/Contents/Resources/icon.icns")],
+            (0o444, b"icon".to_vec())
+        );
+        assert_eq!(
+            entries[Path::new("Applications/Demo.app/Contents/Resources/nix-build-stamp.json")].1,
+            br#"{"version":"1.2.3"}"#
+        );
+        package_app_bundle(app_bundle_args(temporary.path())).unwrap();
+        assert_eq!(
+            first,
+            fs::read(temporary.path().join("artifact.tar")).unwrap()
+        );
+    }
+
+    #[test]
+    fn app_bundle_rejects_escaped_resources_and_undeclared_main_executable() {
+        let temporary = tempdir().unwrap();
+        let mut arguments = app_bundle_args(temporary.path());
+        arguments.bundle_resources = vec![format!(
+            "Applications/Other.app/icon={}",
+            temporary.path().join("icon.icns").display()
+        )];
+        assert_eq!(
+            package_app_bundle(arguments).unwrap_err().code,
+            "BUCK2_PRODUCT_INPUT"
+        );
+        let mut arguments = app_bundle_args(temporary.path());
+        arguments.main_executable = "Applications/Demo.app/Contents/MacOS/absent".into();
+        assert_eq!(
+            package_app_bundle(arguments).unwrap_err().code,
+            "BUCK2_PRODUCT_INPUT"
+        );
+        let mut arguments = app_bundle_args(temporary.path());
+        arguments.bundle_resources = vec![format!(
+            "Applications/Demo.app/Contents/Resources/nix-build-stamp.json={}",
+            temporary.path().join("stamp.json").display()
+        )];
+        assert_eq!(
+            package_app_bundle(arguments).unwrap_err().code,
+            "BUCK2_PRODUCT_INPUT"
+        );
+        assert!(!temporary.path().join("artifact.tar").exists());
     }
 
     #[test]

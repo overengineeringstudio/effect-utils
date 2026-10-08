@@ -4,7 +4,7 @@
 
 The workspace prepared-install packaging realization is retired. This node
 records its retirement boundary, not an available builder API. Product packaging
-is governed by the [Buck-to-Nix bridge](../../buck2/06-nix-bridge/spec.md); live
+is governed by the [Buck-to-Nix bridge](../../builds/05-product-distribution/02-nix-bridge/spec.md); live
 installs remain governed by [live pnpm](../01-live-pnpm/requirements.md).
 
 ## Requirements

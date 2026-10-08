@@ -21,6 +21,7 @@ sha256; declared Nix flake sources carry a source-derived archive digest:
     '''
 """
 
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
 def _nix_crate_archive_impl(ctx):
@@ -71,7 +72,7 @@ def _nix_crate_archive_impl(ctx):
         },
     )]
 
-_nix_crate_archive = rule(
+_nix_crate_archive = cache_guarded_rule(
     impl = _nix_crate_archive_impl,
     attrs = {
         "extract_command": attrs.enum(["extract-crate", "extract-git-archive"], default = "extract-crate"),

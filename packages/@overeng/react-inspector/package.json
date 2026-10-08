@@ -5,6 +5,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/react-inspector",
       "packages/@overeng/utils",
@@ -46,17 +47,17 @@
     "@types/is-dom": "1.1.2",
     "@types/react": "19.2.18",
     "@vitejs/plugin-react": "6.1.1",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "happy-dom": "20.14.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "storybook": "10.6.0",
     "typescript": "7.0.2",
     "vite": "8.2.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "4.0.0-rc.118",
+    "effect": "^4.0.0",
     "react": "^19.2.8"
   },
   "publishConfig": {

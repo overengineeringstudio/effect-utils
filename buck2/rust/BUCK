@@ -9,3 +9,49 @@ native.config_setting(
     values = {"rust_profile.mode": "release"},
     visibility = ["PUBLIC"],
 )
+
+# A wasm product changes the compilation target, not the native action executor.
+native.constraint_setting(name = "target", visibility = ["PUBLIC"])
+native.constraint_value(
+    name = "wasm32",
+    constraint_setting = ":target",
+    visibility = ["PUBLIC"],
+)
+native.config_setting(
+    name = "wasm32_config",
+    constraint_values = [":wasm32"],
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(name = "interop-package.ts", visibility = ["PUBLIC"])
+native.export_file(name = "wasm-guest-package.ts", visibility = ["PUBLIC"])
+native.export_file(name = "interop-service.ts", visibility = ["PUBLIC"])
+native.export_file(name = "interop-service-package.ts", visibility = ["PUBLIC"])
+
+native.constraint_setting(name = "opt_level", visibility = ["PUBLIC"])
+native.constraint_setting(name = "lto", visibility = ["PUBLIC"])
+native.constraint_setting(name = "strip", visibility = ["PUBLIC"])
+native.constraint_value(name = "opt_0", constraint_setting = ":opt_level", visibility = ["PUBLIC"])
+native.constraint_value(name = "opt_1", constraint_setting = ":opt_level", visibility = ["PUBLIC"])
+native.constraint_value(name = "opt_2", constraint_setting = ":opt_level", visibility = ["PUBLIC"])
+native.constraint_value(name = "opt_3", constraint_setting = ":opt_level", visibility = ["PUBLIC"])
+native.constraint_value(name = "opt_s", constraint_setting = ":opt_level", visibility = ["PUBLIC"])
+native.constraint_value(name = "opt_z", constraint_setting = ":opt_level", visibility = ["PUBLIC"])
+native.constraint_value(name = "lto_fat", constraint_setting = ":lto", visibility = ["PUBLIC"])
+native.constraint_value(name = "lto_thin", constraint_setting = ":lto", visibility = ["PUBLIC"])
+native.constraint_value(name = "lto_off", constraint_setting = ":lto", visibility = ["PUBLIC"])
+native.constraint_value(name = "strip_symbols", constraint_setting = ":strip", visibility = ["PUBLIC"])
+native.constraint_value(name = "strip_debuginfo", constraint_setting = ":strip", visibility = ["PUBLIC"])
+native.constraint_value(name = "strip_none", constraint_setting = ":strip", visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_opt_0", constraint_values = [":opt_0"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_opt_1", constraint_values = [":opt_1"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_opt_2", constraint_values = [":opt_2"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_opt_3", constraint_values = [":opt_3"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_opt_s", constraint_values = [":opt_s"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_opt_z", constraint_values = [":opt_z"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_lto_fat", constraint_values = [":lto_fat"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_lto_thin", constraint_values = [":lto_thin"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_lto_off", constraint_values = [":lto_off"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_strip_symbols", constraint_values = [":strip_symbols"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_strip_debuginfo", constraint_values = [":strip_debuginfo"], visibility = ["PUBLIC"])
+native.config_setting(name = "wasm_strip_none", constraint_values = [":strip_none"], visibility = ["PUBLIC"])

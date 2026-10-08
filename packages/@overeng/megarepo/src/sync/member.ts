@@ -26,6 +26,7 @@ import * as Observability from '../core/observability.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../core/ref.ts'
 import { resolveStoreBranchWorktree } from '../store/store-branch-worktree.ts'
 import { StoreLock } from '../store/store-lock.ts'
+import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
 import { Store } from '../store/store.ts'
 import { foreignMemberMountMessage, inspectMemberMount } from './member-mount.ts'
 import type { MemberSyncResult, SyncMode } from './types.ts'
@@ -382,6 +383,7 @@ export const syncMember = <R = never>({
   createBranches = false,
   commitMode,
   onMissingRef,
+  onWorktreeCreated,
 }: {
   name: string
   sourceString: string
@@ -398,6 +400,8 @@ export const syncMember = <R = never>({
   commitMode?: boolean
   /** Callback when a ref doesn't exist. If not provided, defaults to 'error' behavior. */
   onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, never, R>
+  /** Reports only commit worktrees actually created under this invocation's worktree lock. */
+  onWorktreeCreated?: (physicalRoot: string) => void
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1058,6 +1062,7 @@ export const syncMember = <R = never>({
               // Preserve the existing recovery policy for mutable branch and tag targets.
               const dirExists = yield* fs.exists(worktreePath)
               if (dirExists === true) {
+                yield* assertCanonicalMutationAllowed({ target: worktreePath })
                 yield* fs.remove(worktreePath, { recursive: true })
                 yield* Git.pruneWorktrees(bareRepoPath)
               }
@@ -1076,6 +1081,9 @@ export const syncMember = <R = never>({
                 worktreePath,
                 commit: targetCommit ?? worktreeRef,
               })
+              if (isApplyMode === true && worktreeRefType === 'commit') {
+                onWorktreeCreated?.(yield* fs.realPath(worktreePath))
+              }
             } else {
               yield* Git.createWorktree({
                 repoPath: bareRepoPath,
@@ -1143,6 +1151,9 @@ export const syncMember = <R = never>({
               worktreePath: commitWorktreePath,
               commit: targetCommit!,
             })
+            if (isApplyMode === true) {
+              onWorktreeCreated?.(yield* fs.realPath(commitWorktreePath))
+            }
           }),
         )
       })
@@ -1170,6 +1181,7 @@ export const syncMember = <R = never>({
         const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
         const currentCommit = Option.getOrUndefined(currentCommitOpt)
         if (currentCommit !== undefined && currentCommit !== targetCommit) {
+          yield* assertCanonicalMutationAllowed({ target: worktreePath })
           const mergeResult = yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
             Effect.map(() => 'ok' as const),
             Effect.orElseSucceed(() => 'failed' as const),

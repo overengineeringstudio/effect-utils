@@ -89,14 +89,8 @@ const editorTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => v
 
 const runRootCli = async (argv: ReadonlyArray<string>) => {
   /*
-   * These trees are imported CONCURRENTLY. That concurrency is what triggers the
-   * upstream Bun bug oven-sh/bun#30634 (TDZ on a re-exported `const` read during
-   * parallel dynamic `import()`, Node-fine) — which is why every renderer's TUI
-   * app is built lazily via `get*App()` instead of at module top level (#787).
-   * TODO(bun#30634): once the Bun fix (PR oven-sh/bun#30656) ships and we pin a
-   * Bun version that includes it, the lazy `get*App()` workaround can be reverted
-   * to plain top-level `const *App = createTuiApp(...)`. See
-   * `concurrent-import.unit.test.ts` (the regression guard).
+   * These command trees are imported concurrently; the regression test guards
+   * the shared renderer initialization against Bun's former TDZ bug (#30634).
    */
   const [{ notionMdDispatchCommand, notionEditAliasCommand }, { dbCommand }, { schemaCommand }] =
     await Promise.all([

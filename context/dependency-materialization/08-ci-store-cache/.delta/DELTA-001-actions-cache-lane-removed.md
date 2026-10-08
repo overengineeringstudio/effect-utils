@@ -21,7 +21,7 @@ DMP.CICACHE-R04 requires. The violation was fixed by removal, not by adopting
 the primitive: the composition cutover deleted the lane rather than
 coordinating it.
 
-## VRS
+## Intent
 
 - [requirements.md](../requirements.md) A02 assumes a keyed save/restore
   cache backend; DMP.CICACHE-R03/R04 require exactly one fail-closed
@@ -44,7 +44,7 @@ actions-cache lane.
 
 ## Direction
 
-update VRS
+update Intent
 
 ## Resolution Signal
 

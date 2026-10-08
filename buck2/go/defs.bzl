@@ -30,6 +30,7 @@ every Go product and `"embedded"` compiles the zone database in.
 
 load("@prelude//:paths.bzl", "paths")
 load("@prelude//go_bootstrap:go_bootstrap.bzl", "GoBootstrapToolchainInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 
 def go_module_archives(pins, input_digest, visibility = ["PUBLIC"]):
     """Declares one `http_archive` per pinned Go module version.
@@ -163,7 +164,7 @@ def _go_vendored_binary_impl(ctx: AnalysisContext) -> list[Provider]:
         RunInfo(args = [output]),
     ]
 
-go_vendored_binary = rule(
+go_vendored_binary = cache_guarded_rule(
     impl = _go_vendored_binary_impl,
     attrs = {
         "binary_name": attrs.option(attrs.string(), default = None),

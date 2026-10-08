@@ -5,6 +5,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/genie",
       "packages/@overeng/genie-smalltalk",
       "packages/@overeng/otel-contract",
@@ -27,14 +28,15 @@
   },
   "dependencies": {
     "@overeng/genie": "workspace:^",
-    "effect": "4.0.0-rc.118"
+    "effect": "4.0.0"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-rc.118",
+    "@effect/opentelemetry": "4.0.0",
+    "@effect/vitest": "4.0.0",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
     "typescript": "7.0.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "publishConfig": {
     "access": "public",

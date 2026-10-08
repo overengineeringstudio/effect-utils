@@ -1,3 +1,4 @@
+import { pnpmPatchedDependencies } from '../../genie/external.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const files = [
@@ -10,6 +11,7 @@ const files = [
   'buck2/dependencies/runtime-closure.ts',
   'buck2/editor_view.bzl',
   'buck2/go/defs.bzl',
+  'buck2/hermetic.bzl',
   'buck2/javascript.bzl',
   'buck2/materialization.bzl',
   'buck2/package_tools.bzl',
@@ -20,10 +22,19 @@ const files = [
   'buck2/provenance/BUCK',
   'buck2/provenance/defs.bzl',
   'buck2/rust/BUCK',
+  'buck2/rust/content-address-parity.bzl',
   'buck2/rust/crates.bzl',
   'buck2/rust/defs.bzl',
+  'buck2/rust/interop-package.ts',
+  'buck2/rust/interop-service-package.ts',
+  'buck2/rust/interop-service.ts',
+  'buck2/rust/interop.bzl',
+  'buck2/rust/wasm-guest-package.ts',
   'buck2/rust/toolchains.bzl',
   'buck2/static_checks.bzl',
+  'buck2/swift/BUCK',
+  'buck2/swift/compile.ts',
+  'buck2/swift/defs.bzl',
   'buck2/toolchains/BUCK',
   'buck2/toolchains/configured.bzl',
   'buck2/toolchains/defs.bzl',
@@ -37,10 +48,12 @@ const files = [
   'packages/@overeng/buck2-tools/src/repository-policy-runner.ts',
   'packages/@overeng/buck2-tools/src/repository-validation-runner.ts',
   'packages/@overeng/buck2-tools/src/static-check-runner.ts',
+  'packages/@overeng/buck2-tools/src/test-verdict.ts',
   'packages/@overeng/buck2-tools/src/typescript-runner.ts',
   'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
   'packages/@overeng/megarepo/src/buck2-manifest.ts',
-] as const
+  ...Object.values(pnpmPatchedDependencies()),
+].toSorted()
 
 export const buck2RulesInventory = {
   schema: 'effect-utils/buck2-rules-inventory/v1',

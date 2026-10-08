@@ -20,6 +20,67 @@ import {
 const genieContext: GenieContext = { cwd: process.cwd(), location: '' }
 const buck2ToolsBuck = readFileSync('packages/@overeng/buck2-tools/BUCK', 'utf8')
 
+describe('nested Buck package ownership', () => {
+  const packagePath = 'genie/buck2/fixtures/nested-package/parent'
+  const output = (): string =>
+    buck2TypeScriptPackageProjection({
+      packageName: 'nested-fixture',
+      packagePath,
+      projectionSource: `${packagePath}/BUCK.genie.ts`,
+      dependencyImporter: '//buck2/dependencies:importer_fixture',
+      sourceRoots: ['src', 'bin'],
+      workspacePackages: [
+        { meta: { workspace: { memberPath: packagePath } }, data: { name: 'nested-fixture' } },
+      ],
+      authorities: [
+        {
+          projectFile: 'tsconfig.json',
+          projectInputs: ['src/deeper/input.json', 'src/deeper/tsconfig.json'],
+        },
+      ],
+      tests: [
+        {
+          name: 'test',
+          runner: 'vitest',
+          config: 'vitest.config.ts',
+          configInputs: ['config.json'],
+        },
+      ],
+      testDataRoots: [{ root: 'data', extensions: ['.json'] }],
+    }).stringify(genieContext)
+
+  it('keeps parent and child destinations while depending on the nearest owner', () => {
+    const rendered = output()
+    expect(rendered).toContain('"bin/main.ts": "bin/main.ts",')
+    expect(rendered).toContain(`"src/main.ts": "//${packagePath}/src:main.ts",`)
+    expect(rendered).toContain(`"src/deeper/main.ts": "//${packagePath}/src/deeper:main.ts",`)
+    expect(rendered).toContain(
+      `"src/deeper/value$input.ts": "//${packagePath}/src/deeper:value__dollar__input.ts",`,
+    )
+    const exports = rendered.split('export_materialization_inputs([\n')[1]?.split('])')[0]
+    expect(exports).toContain('"bin/main.ts",')
+    expect(exports).not.toContain('"src/')
+  })
+
+  it('resolves test, snapshot, config, project, declaration and data inputs too', () => {
+    const rendered = output()
+    for (const file of [
+      'main.test.jsx',
+      '__snapshots__/main.test.jsx.snap',
+      'vitest.config.ts',
+      'tsconfig.json',
+      'input.json',
+      'types.d.ts',
+    ]) {
+      expect(rendered).toContain(`"src/deeper/${file}": "//${packagePath}/src/deeper:${file}",`)
+    }
+    expect(rendered).toContain(`"data/fixture.json": "//${packagePath}/data:fixture.json",`)
+    for (const file of ['vitest.config.ts', 'config.json', 'package.json', 'tsconfig.json']) {
+      expect(rendered).toContain(`"${file}": "${file}",`)
+    }
+  })
+})
+
 const outputsByAdmission = Object.fromEntries(
   Object.entries(buck2TypeScriptAdmissions).map(([name, admission]) => [
     name,
@@ -111,6 +172,71 @@ const retiredProviderTerms = [
   'store_dir',
 ] as const
 
+describe('generated dependency admission', () => {
+  it('rejects package destinations that escape or alias the dependency tree', () => {
+    for (const name of [
+      '../escape',
+      '@scope/../escape',
+      '@scope',
+      '@scope/',
+      '@scope/@alias',
+      '.pnpm',
+      '.bin',
+      'pkg/child',
+      'pkg\\child',
+    ]) {
+      expect(() =>
+        buck2TypeScriptPackageProjection({
+          ...buck2TypeScriptAdmissions.kdl,
+          generatedDependencies: { [name]: '//generated:package' },
+        }),
+      ).toThrow('unsafe generated dependency package name')
+    }
+  })
+
+  it('rejects malformed and traversing absolute product labels', () => {
+    for (const target of [
+      '//generated:',
+      '//../generated:package',
+      '//generated//child:package',
+      '//generated:../package',
+      '//generated:bad\nlabel',
+    ] as const) {
+      expect(() =>
+        buck2TypeScriptPackageProjection({
+          ...buck2TypeScriptAdmissions.kdl,
+          generatedDependencies: { 'generated-package': target },
+        }),
+      ).toThrow('normalized absolute Buck target')
+    }
+  })
+
+  it('rejects competing generated and workspace package authorities', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.kdl,
+        generatedDependencies: { 'generated-package': '//generated:package' },
+        workspaceSiblings: [
+          {
+            packageName: 'generated-package',
+            packagePath: 'packages/@overeng/kdl',
+            distTarget: '//packages/@overeng/kdl:dist',
+          },
+        ],
+      }),
+    ).toThrow('both generated and a workspace sibling')
+  })
+
+  it('rejects generated packages shadowing manifest-declared dependencies', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.kdl,
+        generatedDependencies: { effect: '//generated:package' },
+      }),
+    ).toThrow('both generated and manifest-declared')
+  })
+})
+
 describe('declared-closure package projection', () => {
   it('publishes editor views for the complete workspace package registry', () => {
     expect(editorViewConsumerPackagePaths).toEqual(
@@ -125,6 +251,33 @@ describe('declared-closure package projection', () => {
       'exclude = STATIC_SOURCE_EXCLUDES + ["examples/basic/**"]',
     )
     expect(outputsByAdmission.effectRpcTanstackBasic).toContain('exclude = STATIC_SOURCE_EXCLUDES)')
+  })
+
+  it('resolves a nested workspace manifest through its own Buck package', () => {
+    const parent = buck2TypeScriptAdmissions.effectRpcTanstack
+    const nested = buck2TypeScriptAdmissions.effectRpcTanstackBasic
+    const output = buck2TypeScriptPackageProjection({
+      ...parent,
+      workspacePackages: [
+        {
+          meta: { workspace: { memberPath: parent.packagePath } },
+          data: {
+            name: parent.packageName,
+            dependencies: { [nested.packageName]: 'workspace:*' },
+          },
+        },
+        {
+          meta: { workspace: { memberPath: nested.packagePath } },
+          data: { name: nested.packageName },
+        },
+      ],
+    }).stringify(genieContext)
+    const manifests = output.split('    workspace_manifests = [\n')[1]?.split('    ],')[0]
+    const labels = manifests
+      ?.trim()
+      .split('\n')
+      .map((line) => JSON.parse(line.trim().slice(0, -1)))
+    expect(labels).toEqual([`//${nested.packagePath}:package.json`])
   })
 
   it('wires each admitted package only to its normalized dependency view', () => {
@@ -201,14 +354,6 @@ describe('declared-closure package projection', () => {
     expect(workflow).not.toContain('Save pnpm state')
     expect(workflow).not.toContain('pnpm-state-v3-')
     expect(workflow).not.toContain('composition-state/pnpm-store-pure-v1')
-  })
-
-  it('runs the Buck quick aggregate as the CI typecheck authority', () => {
-    const workflow = ciWorkflow.stringify(genieContext)
-    const typecheckJob = workflow.split('\n  typecheck:\n')[1]?.split('\n  lint:\n')[0] ?? ''
-    expect(typecheckJob).toContain('devenv tasks run buck2:quick')
-    expect(typecheckJob).not.toContain('ts:check')
-    expect(typecheckJob).not.toContain('tsconfig.lint.json')
   })
 
   it('projects package-specific declaration entrypoints for authoritative emits', () => {
@@ -487,15 +632,13 @@ describe('declared test lanes', () => {
     expect(outputsByAdmission.reactInspector).not.toContain('    "src/object/ObjectName.spec.jsx",')
   })
 
-  it('reads a task-supplied host path from a derived config key', () => {
-    const output = buck2TypeScriptPackageProjection({
-      ...kdlAdmissionWithoutTests,
-      tests: [{ name: 'test', runner: 'vitest', configuredExternalInputs: ['NODE_PTY_PACKAGE'] }],
-    }).stringify(genieContext)
-
-    expect(output).toContain(
-      '        "NODE_PTY_PACKAGE": read_config("javascript_test_inputs", "kdl_test_node_pty_package", ""),',
-    )
+  it('rejects live host paths in a cacheable Vitest lane', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...kdlAdmissionWithoutTests,
+        tests: [{ name: 'test', runner: 'vitest', configuredExternalInputs: ['NODE_PTY_PACKAGE'] }],
+      }).stringify(genieContext),
+    ).toThrow('requires provider-backed external inputs')
   })
 
   it('projects the node Vitest runtime only with its attested executable', () => {
@@ -521,15 +664,6 @@ describe('declared test lanes', () => {
     ).toThrow('derived collection action requires every input in the action identity')
   })
 
-  it('refuses an uncacheable Vitest lane because its collection stays cacheable', () => {
-    expect(() =>
-      buck2TypeScriptPackageProjection({
-        ...kdlAdmissionWithoutTests,
-        tests: [{ name: 'test', runner: 'vitest', cacheable: false }],
-      }).stringify(genieContext),
-    ).toThrow('derived collection action has no per-action remote-cache read switch')
-  })
-
   it('refuses test selections the package tree does not carry', () => {
     expect(() =>
       buck2TypeScriptPackageProjection({
@@ -539,43 +673,7 @@ describe('declared test lanes', () => {
     ).toThrow('declare e2e in sourceRoots')
   })
 
-  it('renders a second named lane deterministically after the default one', () => {
-    const projection = buck2TypeScriptPackageProjection({
-      ...kdlAdmissionWithoutTests,
-      tests: [
-        { name: 'test', runner: 'vitest', excludes: ['src/upstream.test.ts'] },
-        {
-          name: 'test_upstream',
-          runner: 'vitest',
-          testFiles: ['src/upstream.test.ts'],
-          timeoutMs: 120_000,
-          writableDirectories: { KDL_WORKSPACE: 'kdl' },
-        },
-      ],
-    })
-    const output = projection.stringify(genieContext)
-
-    expect(output).toBe(projection.stringify(genieContext))
-    expect(output.indexOf('    name = "test",')).toBeLessThan(
-      output.indexOf('    name = "test_upstream",'),
-    )
-    expect(output).toContain(
-      [
-        'vitest_test(',
-        '    name = "test_upstream",',
-        '    package_tree = ":test_package_tree",',
-        '    test_files = [',
-        '        "src/upstream.test.ts",',
-        '    ],',
-        '    timeout_ms = 120000,',
-        '    writable_directories = {',
-        '        "KDL_WORKSPACE": "kdl",',
-        '    },',
-        '    visibility = ["PUBLIC"],',
-        ')',
-      ].join('\n'),
-    )
-
+  it('requires the default execution lane to be named test', () => {
     expect(() =>
       buck2TypeScriptPackageProjection({
         ...kdlAdmissionWithoutTests,
@@ -584,7 +682,7 @@ describe('declared test lanes', () => {
     ).toThrow('must be named test')
   })
 
-  it('carries the declared lane into the schema version and semantic fingerprint', () => {
+  it('carries the declared lane into the semantic fingerprint', () => {
     const fingerprintOf = (output: string): string =>
       output.split('# Semantic fingerprint: ')[1]?.split('\n')[0] ?? ''
     const withoutTests =
@@ -598,7 +696,6 @@ describe('declared test lanes', () => {
       tests: [{ name: 'test', runner: 'vitest', staticCollection: true }],
     }).stringify(genieContext)
 
-    expect(outputsByAdmission.kdl).toContain('# Projection schema version: 12')
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withoutTests))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withLongerTimeout))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withStaticCollection))
@@ -672,20 +769,6 @@ describe('derived test collection targets', () => {
     const executionBlock = output.split('\nvitest_test(\n')[1]?.split('\n)\n')[0] ?? ''
     expect(executionBlock).toContain('    timeout_ms = 120000,')
     expect(executionBlock).toContain('    hook_timeout_ms = 45000,')
-  })
-
-  it('reuses the execution lane config keys instead of deriving a second set', () => {
-    const output = buck2TypeScriptPackageProjection({
-      ...kdlAdmission,
-      tests: [{ name: 'test', runner: 'vitest', configuredExternalInputs: ['NODE_PTY_PACKAGE'] }],
-    }).stringify(genieContext)
-
-    expect(
-      output.split(
-        '        "NODE_PTY_PACKAGE": read_config("javascript_test_inputs", "kdl_test_node_pty_package", ""),',
-      ),
-    ).toHaveLength(3)
-    expect(output).not.toContain('kdl_test_collect_node_pty_package')
   })
 
   it('refuses a declared lane that collides with a derived collection target', () => {

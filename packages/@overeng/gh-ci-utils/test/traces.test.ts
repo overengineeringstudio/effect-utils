@@ -87,16 +87,16 @@ describe('Grafana trace URLs', () => {
       ...args,
       jobs: [
         makeJob({ id: 1, name: 'test (namespace-profile-linux-x86-64)' }),
-        makeJob({ id: 2, name: 'typecheck', attempt: 1 }),
-        makeJob({ id: 3, name: 'typecheck', conclusion: 'skipped' }),
+        makeJob({ id: 2, name: 'pr/quality', attempt: 1 }),
+        makeJob({ id: 3, name: 'pr/quality', conclusion: 'skipped' }),
         makeJob({ id: 4, name: 'unknown-dynamic-name' }),
-        makeJob({ id: 5, name: 'lint' }),
-        makeJob({ id: 6, name: 'lint', conclusion: 'failure' }),
+        makeJob({ id: 5, name: 'source-shape' }),
+        makeJob({ id: 6, name: 'source-shape', conclusion: 'failure' }),
         makeJob({ id: 7, name: 'pipeline-attempt-close' }),
         makeJob({ id: 9, name: 'weaver', conclusion: 'cancelled' }),
         makeJob({
           id: 10,
-          name: 'bundle-smoke',
+          name: 'cargo',
           status: 'queued',
           conclusion: null,
           startedAt: null,
@@ -112,17 +112,19 @@ describe('Grafana trace URLs', () => {
     expect(output).toContain(
       `test (namespace-profile-linux-x86-64): completed (success)\n    ${canonical} https://grafana.example.test/explore?`,
     )
-    expect(output).toContain('typecheck: completed (skipped) — trace unavailable (not started)')
+    expect(output).toContain('pr/quality: completed (skipped) — trace unavailable (not started)')
     expect(output).toContain(
       'unknown-dynamic-name: completed (success) — trace unavailable (unmatched job name)',
     )
-    expect(output).toContain('lint: completed (failure) — trace unavailable (unmatched job name)')
+    expect(output).toContain(
+      'source-shape: completed (failure) — trace unavailable (unmatched job name)',
+    )
     expect(output).toMatch(
       /weaver: completed \(cancelled\)\n    [0-9a-f]{32} https:\/\/grafana\.example\.test\/explore\?/,
     )
-    expect(output).toContain('bundle-smoke: queued — trace unavailable (not started)')
+    expect(output).toContain('cargo: queued — trace unavailable (not started)')
     expect(output).not.toContain('pipeline-attempt-close')
-    expect(output).not.toContain('typecheck: completed (success)')
+    expect(output).not.toContain('pr/quality: completed (success)')
     expect(output).not.toContain('exported successfully')
   })
 

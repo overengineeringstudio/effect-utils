@@ -1,0 +1,164 @@
+# 0037 Nix Substitution Is the Distribution Layer
+
+Status: accepted
+
+Accepted 2026-09-19 (decisions q42-q46, oversight seat, confirmed by Johannes).
+
+## Context
+
+Decision 0034 made GitHub immutable releases the durable product origin, the
+shared CAS an accelerator, and `pkgs.fetchurl` the only import path; a missing
+asset hard-fails an evaluation (BRIDGE-R08 as previously written). Five dotfiles
+consumers depend on packages in the private repository `private-shared`, which
+must stay private; GitHub release assets for a private repository need a
+credential inside every consumer fetch. Johannes asked to keep the
+infrastructure simple, follow industry practice, lessen GitHub dependence, treat
+published products as an optimization rather than a prerequisite, and use
+S3-compatible storage as the agnostic foundation
+(`/srv/bulk/coding-agents/_briefs/buck2-infra-options.chatgpt.md`, 2026-09-19).
+
+## Evidence and Argument
+
+- Sandboxed reconstruction works: a plain Nix derivation with filtered source,
+  the prepared dependency closure, and the capability projection runs the
+  pinned Buck graph for a real product with no sandbox exception (701 MB input
+  closure, 0.6 s inner build, 3 local actions)
+  ([experiment](../.experiments/2026-09-19-nix-reconstruction-from-source.md), PR #1318).
+  The output differs from the published asset by one generated identifier
+  because the checked-in manifest lacks producer-commit provenance; the
+  same-commit equivalence claim needs that provenance.
+- Cachix as origin: the public `overeng-effect-utils` cache's pinned artifact
+  URL passes anonymous HTTP, `nix store prefetch-file`, sandboxed
+  `pkgs.fetchurl`, a pnpm URL dependency, and Buck2 `http_file`; the private
+  `schickling-dotfiles` cache passes daemon-netrc Nix substitution and pnpm with
+  a user `.npmrc`, while sandboxed `pkgs.fetchurl` and Buck2 `http_file` fail
+  401 ([experiment](../.experiments/2026-09-19-cachix-artifact-origin.md), PR #1315).
+- The same private boundary appears with a bazel-remote HTTP CAS behind Basic
+  auth ([experiment](../.experiments/2026-09-19-cas-origin-prototype.md), PR
+  #1310): it is a property of sandboxed HTTP fetch, not of any origin. Private
+  bytes must therefore travel through the Nix store protocol (daemon netrc) or
+  a network perimeter, never through a credential inside a build.
+- bazel-remote's S3 write-behind is best-effort and may drop uploads; NativeLink
+  and bazel-remote object layouts are internal; single-node Garage is
+  upstream-labelled test-only; Nix has a native signed S3 binary-cache protocol
+  and Cloudflare R2 supports it with lifecycle and bucket locks
+  (`/srv/bulk/coding-agents/_reports/s3-foundation-research.md`).
+- Remote execution is a separate concern: NativeLink could not be started on
+  aarch64 (compiler-rt build failure, dev4 contention); a rerunnable kit exists
+  (PR #1317). Nothing in this decision depends on it.
+
+## Options
+
+| Option                                                                                                                                 | Tradeoff                                                                                                                                  | Outcome                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Nix substitution is the distribution layer: per-product sandboxed Buck-invoking derivations, binary caches as origins, rebuild on miss | One protocol for public and private; removes GitHub from the build path; adds a generated derivation per product and pin/retention duties | Accepted                                       |
+| bazel-remote tiers plus R2 write-behind as the origin                                                                                  | Transport proven, but durability is a self-built contract over a cache and Nix consumers keep a fetch-only path                           | Rejected                                       |
+| Keep GitHub releases, reconstruction as fallback only                                                                                  | Least migration; two mechanisms permanently; GitHub remains a build-time dependency                                                       | Rejected                                       |
+| NativeLink as combined cache and origin                                                                                                | No HTTP fetch by digest, no auth roles; adds a gateway rather than removing one                                                           | Rejected for distribution (open for execution) |
+| Cachix pins as sole origin without a source recipe                                                                                     | Solves hosting, keeps the hard block on a missing artifact                                                                                | Rejected                                       |
+
+## Decision
+
+1. Every portable Buck product and every published package has a
+   genie-generated, sandbox-compatible Nix derivation that invokes the pinned
+   Buck graph (the PR #1318 shape). The derivation is the recipe; its output is
+   an ordinary store path.
+2. Binary caches are the origins: the public `overeng-effect-utils` Cachix cache
+   for public products, the private Cachix cache for `private-shared`; a native
+   S3/R2 binary cache is the exit path and uses the same protocol.
+3. A Nix consumer substitutes the output and, on a miss, rebuilds through the
+   same graph at the pinned producer revision; a rebuilt product must
+   reproduce the pinned digest or fail (BRIDGE-R08 as amended).
+4. A pnpm consumer pins a public product by its Cachix pinned-artifact URL plus
+   SHA-512; a private product enters the staged manifest as the Nix-realized
+   tarball (`file:`), never through a credential inside the install.
+5. A Buck consumer cell fetches public products with `http_file` by digest and
+   private products as Nix capabilities.
+6. Pins are named by digest and never re-pointed; the publisher verifies the
+   pinned path anonymously after publication (public) and records producer
+   commit, target, and digest as provenance.
+7. The JavaScript/package GitHub-release publication and import path
+   (`buck2-product-v3-*` and new `buck2-package-v1-*` releases) is retired
+   once its manifest contains only cache rows. Existing immutable releases
+   stay accessible for frozen consumer pins. The Cachix publisher at
+   `nix/buck2-products/publish.sh` remains; native Rust product releases are
+   a separate import path until they have a cache-backed equivalent.
+8. bazel-remote remains the disposable action cache (REUSE-A02 unchanged).
+   Remote execution is decided separately.
+
+## Consequences
+
+- 0034 is amended (Amendment 1): "durable origin" becomes the binary cache plus
+  the source recipe; the consumer pin clause gains the substitution form.
+- vision.md lines 30-32 and criterion 6, and BRIDGE-R08, are rewritten as
+  confirmed in q46.
+- New work: generated per-product derivations (genie), Cachix publish/pin
+  publisher with provenance, private-shared product lane, and retirement of
+  the GitHub-release import path; ledger rows for publication move from
+  GitHub to the cache publisher.
+- Open: Cachix retention at our volume,
+  R2 exit criteria, remote execution (04-reuse / 02-execution open questions).
+
+## Amendment 1 (2026-09-22)
+
+Decision [0038](./0038-digest-origins-for-acquisition.md) replaces the prepared
+dependency tree used by the source recipe with the pinned checked-in graph fed
+by independently verified per-digest archive FODs. Clauses 1 and 3 continue to
+require a sandbox-compatible source recipe and same-graph reconstruction on a
+substitution miss. Clauses 2, 4–8, publication as an optimization, and the
+product provenance/digest contract are unchanged.
+
+## Amendment 2 (2026-09-26)
+
+Principal decision q1 adds a consumer compatibility clause to clause 4. Each
+published package declares its Effect peer (every peer whose catalog version
+is a prerelease) as the exact catalog version, e.g. `effect: 4.0.0-rc.113`,
+not `^4.0.0-rc.113`. Genie derives the range from the catalog
+(`peerRangeFromCatalogVersion`), and package manifests never spell it out by
+hand. A consumer running with `strict-peer-dependencies` therefore fails the
+install on any other Effect prerelease instead of silently resolving across
+breaking RC iterations.
+
+Repin rule: a consumer repins effect-utils only to a commit that
+`automation/buck2-products-manifest` merged to `main`, i.e. one where
+`nix/buck2-products/manifest.json` describes products built from that commit.
+Before repinning, move the consumer's catalog `effect` (and its Effect cohort)
+to the exact version in effect-utils' `genie/external.ts` catalog, then
+regenerate. Otherwise the strict peer check fails the install.
+
+## Amendment 3 (2026-09-28)
+
+Principal decision q6 (manual-rebuild-amendment). For private products,
+clause 3's rebuild-on-miss is replaced: a substitution miss fails consumer
+evaluation closed with an actionable error that names the product, its store
+path, the cache, and the producer commit. Recovery is manual: rebuild the
+product at `producerCommit` with the producer's own lock and push that store
+path to the private cache.
+
+The consumer cannot rebuild on its own. A private product's store path is
+input-addressed over the producer's flake source (`self`) and `self.rev`. The
+manifest that records the path is committed after the producer commit, so
+evaluating the recipe from the manifest commit (or with `follows` overrides)
+yields a different path; the recorded path is reproducible only at the
+producer commit. Consumers therefore substitute the recorded path and never
+evaluate the producer recipe (06-nix-bridge "Private pnpm Consumption").
+
+The consequence "Open: private pnpm `file:` variant (unproven)" is closed:
+PR #1472 implements it (`mkPrivateProductTarballs`, the `productTarball`
+sidecar row, and the consumer fixture).
+
+## Changed-closure Action Reuse
+
+Pure sandboxed Nix product builds remain the publication recipe. The
+[InNixReuse experiment](../05-product-distribution/02-nix-bridge/.experiments/2026-10-05-action-level-innix-reuse.md)
+records measured Linux action reuse via an offline REAPI capsule, failed
+`buck-out` restoration and a direct-Buck/local-CA-import smoke.
+
+Johannes chose to retain pure builds and record the evidence, revisiting only
+if the daily cache-health mission shows changed-product rebuild cost
+dominating. This is not an amendment to clauses 1 or 3 and does not authorize
+an outside-Nix publisher. The Nix bridge's
+[DQ1](../05-product-distribution/02-nix-bridge/open-questions.md#dq1-action-level-reuse-across-changed-closure-product-builds)
+owns the revisit trigger and non-chosen alternatives: slim dependency-only
+capsules (E), or an explicit 0037 amendment for protected direct-Buck publication
+with verified content-addressed import (D).

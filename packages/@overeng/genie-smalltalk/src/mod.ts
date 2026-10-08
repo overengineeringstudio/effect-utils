@@ -176,12 +176,28 @@ const RenderOperation = Schema.Struct({
   arrays: Schema.optionalKey(Schema.Literals(['replace', 'union'])),
 })
 
+/** Resume a specific OMP transcript, or continue the latest session in its session directory. */
+export const OmpResumeSchema = Schema.Union([
+  Schema.Literal('latest'),
+  Schema.Struct({ transcript: Text }),
+]).annotate({ identifier: 'St.OmpResume' })
+
 /** OMP harness selection for a seat. */
 export const OmpSchema = Schema.Struct({
   kind: Schema.Literal('omp'),
   model: Text,
   effort: Schema.Literals(['low', 'medium', 'high']),
+  resume: Schema.optionalKey(OmpResumeSchema),
 }).annotate({ identifier: 'St.Omp' })
+
+/** Codex configuration; omitted model and effort retain provider defaults. */
+export const CodexSchema = Schema.Struct({
+  kind: Schema.Literal('codex'),
+  model: Schema.optionalKey(Text),
+  effort: Schema.optionalKey(Text),
+  args: Schema.optionalKey(Schema.Array(Text)),
+  resume: Schema.optionalKey(Schema.Struct({ session: Text })),
+}).annotate({ identifier: 'St.Codex' })
 
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
@@ -203,13 +219,15 @@ const AgentSchemaFields = Schema.Struct({
     Schema.Array(Schema.Struct({ target: Text, reason: Schema.optionalKey(Text) })),
   ),
   restart: Schema.optionalKey(Restart),
+  rollout: Schema.optionalKey(Schema.Literal('manual')),
   shutdownTimeout: Schema.optionalKey(Duration),
   command: Schema.optionalKey(Text),
   argv: Schema.optionalKey(Schema.Array(Text)),
   env: Schema.optionalKey(Env),
   render: Schema.optionalKey(Schema.Array(RenderOperation)),
-  harness: Schema.optionalKey(OmpSchema),
+  harness: Schema.optionalKey(Schema.Union([OmpSchema, CodexSchema])),
   freshContext: Schema.optionalKey(Schema.Literal(true)),
+  handlesFaults: Schema.optionalKey(Schema.Literal(true)),
   missionAuthority: Schema.optionalKey(Authority),
   queueAuthority: Schema.optionalKey(Authority),
   seatAuthority: Schema.optionalKey(Authority),
@@ -222,6 +240,10 @@ const isValidAgent = (a: typeof AgentSchemaFields.Type): boolean =>
   (a.create === undefined || a.workspace !== undefined) &&
   (a.name === undefined || a.name.length <= 160) &&
   (a.description === undefined || a.description.length <= 1000) &&
+  (a.harness?.kind !== 'codex' ||
+    a.harness.resume === undefined ||
+    a.env?.ST3_NATIVE_RESUME_SESSION === undefined ||
+    a.env.ST3_NATIVE_RESUME_SESSION === a.harness.resume.session) &&
   Number(a.command !== undefined) +
     Number(a.argv !== undefined) +
     Number(a.harness !== undefined) <=
@@ -337,14 +359,20 @@ const decode = <S extends Schema.ConstraintDecoder<unknown>>({
   readonly input: unknown
 }): S['Type'] => Schema.decodeUnknownSync(schema, { onExcessProperty: 'error' })(input)
 
-/** Decodes an OMP harness selection. */
+/** Decodes an OMP harness selection, including optional conversation recovery. */
 export const omp = ({
   model,
   effort,
+  resume,
 }: {
   readonly model: string
   readonly effort: 'low' | 'medium' | 'high'
-}): typeof OmpSchema.Type => decode({ schema: OmpSchema, input: { kind: 'omp', model, effort } })
+  readonly resume?: typeof OmpResumeSchema.Encoded
+}): typeof OmpSchema.Type =>
+  decode({
+    schema: OmpSchema,
+    input: { kind: 'omp', model, effort, ...(resume === undefined ? {} : { resume }) },
+  })
 
 /** Decodes and renders a resource node. */
 export const resource = (input: typeof ResourceSchema.Encoded): Node => {
@@ -510,12 +538,17 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
   }
   children.push(
     ...optionalChild({ name: 'restart', value: a.restart }),
+    ...optionalChild({ name: 'rollout', value: a.rollout }),
     ...optionalChild({ name: 'shutdown-timeout', value: a.shutdownTimeout }),
     ...optionalChild({ name: 'command', value: a.command }),
   )
   if (a.argv !== undefined) children.push(node({ name: 'argv', args: a.argv }))
-  if (a.env !== undefined) {
-    const entries = Object.entries(a.env).toSorted(([x], [y]) => x.localeCompare(y, 'en'))
+  const env = { ...a.env }
+  if (a.harness?.kind === 'codex' && a.harness.resume !== undefined) {
+    env.ST3_NATIVE_RESUME_SESSION = a.harness.resume.session
+  }
+  if (a.env !== undefined || Object.keys(env).length > 0) {
+    const entries = Object.entries(env).toSorted(([x], [y]) => x.localeCompare(y, 'en'))
     children.push(
       block({ name: 'env', children: entries.map(([key, value]) => child({ name: key, value })) }),
     )
@@ -539,13 +572,28 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
         name: 'harness',
         args: [a.harness.kind],
         children: [
-          child({ name: 'model', value: a.harness.model }),
-          child({ name: 'effort', value: a.harness.effort }),
+          ...optionalChild({ name: 'model', value: a.harness.model }),
+          ...optionalChild({ name: 'effort', value: a.harness.effort }),
+          ...(a.harness.kind === 'codex' && a.harness.args !== undefined
+            ? [node({ name: 'args', args: a.harness.args })]
+            : []),
+          ...(a.harness.kind !== 'omp' || a.harness.resume === undefined
+            ? []
+            : [
+                node({
+                  name: 'args',
+                  args:
+                    a.harness.resume === 'latest'
+                      ? ['--continue']
+                      : ['--resume', a.harness.resume.transcript],
+                }),
+              ]),
         ],
       }),
     )
   }
   if (a.freshContext === true) children.push(node({ name: 'fresh-context' }))
+  if (a.handlesFaults === true) children.push(node({ name: 'handles-faults' }))
   for (const key of authorityKeys) {
     const rules = a[key]
     if (rules !== undefined) {

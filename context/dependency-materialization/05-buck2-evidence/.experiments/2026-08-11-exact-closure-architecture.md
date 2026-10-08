@@ -110,7 +110,7 @@ and retain whole-workspace projections only as an explicit compatibility
 fallback. Do not admit the design to authoritative or remote-cache use until
 the listed parity, hermeticity, trust, and Nix-import gates pass.
 
-## VRS Impact
+## Intent Impact
 
 - Amends decision 0003 to separate package payload, peer-context, and
   target-closure identities.

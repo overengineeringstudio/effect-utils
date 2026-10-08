@@ -319,6 +319,38 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-rust:test_collect",
+      "excludes": [],
+      "packageName": "effect-rust",
+      "packagePath": "packages/@overeng/effect-rust",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/compiler/compiler.unit.test.ts",
+        "src/compiler/import-rust.unit.test.ts",
+        "src/compiler/optional-omission.unit.test.ts",
+        "src/compiler/rough-edges.unit.test.ts",
+        "src/runtime/host.unit.test.ts",
+        "src/runtime/instance.unit.test.ts",
+        "src/runtime/worker.unit.test.ts",
+        "src/schema/contract-json.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-rust:test",
+      "taskName": "test:effect-rust",
+      "testFiles": [
+        "src/compiler/compiler.unit.test.ts",
+        "src/compiler/import-rust.unit.test.ts",
+        "src/compiler/optional-omission.unit.test.ts",
+        "src/compiler/rough-edges.unit.test.ts",
+        "src/runtime/host.unit.test.ts",
+        "src/runtime/instance.unit.test.ts",
+        "src/runtime/worker.unit.test.ts",
+        "src/schema/contract-json.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/effect-schema-form-aria:test_collect",
       "excludes": [],
       "packageName": "effect-schema-form-aria",
@@ -380,6 +412,7 @@
         "src/cli.contract.test.ts",
         "src/core/discovery.unit.test.ts",
         "src/core/error-detection.unit.test.ts",
+        "src/core/generation-locks.integration.test.ts",
         "src/core/generation.unit.test.ts",
         "src/core/import-map/import-map.unit.test.ts",
         "src/core/observability.unit.test.ts",
@@ -418,6 +451,7 @@
         "src/cli.contract.test.ts",
         "src/core/discovery.unit.test.ts",
         "src/core/error-detection.unit.test.ts",
+        "src/core/generation-locks.integration.test.ts",
         "src/core/generation.unit.test.ts",
         "src/core/import-map/import-map.unit.test.ts",
         "src/core/observability.unit.test.ts",
@@ -1329,6 +1363,20 @@
       "unboundedTaskName": "test:otel-contract:unbounded"
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/outline:test_collect",
+      "excludes": [],
+      "packageName": "outline",
+      "packagePath": "packages/@overeng/outline",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/model.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/outline:test",
+      "taskName": "test:outline",
+      "testFiles": ["src/model.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/oxc-config:test_collect",
       "excludes": [],
       "packageName": "oxc-config",
@@ -1718,6 +1766,7 @@
     {
       "collectionTarget": "effect_utils//packages/@overeng/utils-dev:test_collect",
       "excludes": [
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1731,6 +1780,7 @@
       "selectedTestFiles": [
         "src/baseline-collection.test.ts",
         "src/cli-contract.test.ts",
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1744,6 +1794,7 @@
       "testFiles": [
         "src/baseline-collection.test.ts",
         "src/cli-contract.test.ts",
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1753,6 +1804,7 @@
       ],
       "unboundedAfter": [],
       "unboundedFiles": [
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1799,6 +1851,7 @@
         "src/node/cmd.unit.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "packageName": "utils",
@@ -1831,6 +1884,7 @@
         "src/node/stylex/mod.unit.test.ts",
         "src/node/stylex/next.build.test.ts",
         "src/node/stylex/next.unit.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "sourceOwners": {
@@ -1865,6 +1919,7 @@
         "src/node/stylex/mod.unit.test.ts",
         "src/node/stylex/next.build.test.ts",
         "src/node/stylex/next.unit.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "unboundedAfter": [],
@@ -1872,6 +1927,7 @@
         "src/node/cmd.unit.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
+        "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "unboundedTaskName": "test:utils:unbounded"

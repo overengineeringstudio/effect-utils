@@ -48,6 +48,38 @@ let
       ) values) "${path} entries must not contain control characters")
     ] values;
 
+  validateWasmExports =
+    values:
+    if !builtins.isList values then
+      fail "descriptor.runtime.exports must be a list"
+    else
+      let
+        exports = builtins.map (
+          entry:
+          let
+            value = exactAttrs "descriptor.runtime.exports entry" [ "name" "kind" ] entry;
+          in
+          force [
+            (ensure (builtins.isString value.name) "descriptor.runtime.exports entry.name must be a string")
+            (ensure (builtins.elem value.kind [
+              "function"
+              "table"
+              "memory"
+              "global"
+              "tag"
+            ]) "descriptor.runtime.exports entry.kind must be function, table, memory, global, or tag")
+          ] value
+        ) values;
+        names = builtins.map (entry: entry.name) exports;
+      in
+      force [
+        exports
+        (ensure (unique names) "descriptor.runtime.exports names must be unique")
+        (ensure (
+          names == builtins.sort builtins.lessThan names
+        ) "descriptor.runtime.exports must be sorted by name")
+      ] exports;
+
   safePath =
     value:
     nonEmptyString value
@@ -164,6 +196,100 @@ let
           (ensure (nonEmptyString value.installNamePolicy) "descriptor.runtime.installNamePolicy must be a non-empty string")
           (ensure (nonEmptyString value.rpathPolicy) "descriptor.runtime.rpathPolicy must be a non-empty string")
           (ensure (nonEmptyString value.signingPolicy) "descriptor.runtime.signingPolicy must be a non-empty string")
+        ] value
+      else if kind == "mach-o-app-bundle" then
+        let
+          value = exactAttrs "descriptor.runtime" [
+            "bundleRoot"
+            "executables"
+            "inspectionContract"
+            "installNamePolicy"
+            "kind"
+            "mainExecutable"
+            "rpathPolicy"
+          ] runtime;
+          bundleRootPrefix = value.bundleRoot + "/";
+          insideBundleRoot =
+            path: builtins.substring 0 (builtins.stringLength bundleRootPrefix) path == bundleRootPrefix;
+          paths = map (entry: entry.path) value.executables;
+          validateExecutable =
+            entry:
+            let
+              executable = exactAttrs "descriptor.runtime.executables entry" [
+                "architecture"
+                "dylibs"
+                "minimumOs"
+                "path"
+                "signingPolicy"
+              ] entry;
+              dynamic = validateRuntime (
+                (builtins.removeAttrs executable [ "path" ])
+                // {
+                  kind = "mach-o-dynamic";
+                  inspectionContract = "mach-o-dynamic/v1";
+                  inherit (value) installNamePolicy rpathPolicy;
+                }
+              );
+            in
+            force [
+              dynamic
+              (ensure (safePath executable.path) "bundle executable path must be safe")
+              (ensure (builtins.elem executable.signingPolicy [
+                "adhoc/v1"
+                "embedded/v1"
+              ]) "bundle executable signing policy is unsupported")
+              (ensure (
+                executable.dylibs == builtins.sort builtins.lessThan executable.dylibs
+              ) "bundle executable dylibs must be sorted")
+              (ensure (builtins.all (
+                dylib: builtins.match "(/usr/lib|/System/Library)/.*" dylib != null
+              ) executable.dylibs) "bundle executable dylibs must use system install names")
+            ] executable;
+        in
+        force [
+          (ensure (
+            value.inspectionContract == "mach-o-app-bundle/v1"
+          ) "descriptor.runtime.inspectionContract must be mach-o-app-bundle/v1")
+          (ensure (safePath value.bundleRoot) "descriptor.runtime.bundleRoot must be a safe relative path")
+          (ensure (builtins.isList value.executables) "descriptor.runtime.executables must be a list")
+          (ensure (value.executables != [ ]) "descriptor.runtime.executables must not be empty")
+          (map validateExecutable value.executables)
+          (ensure (unique paths) "descriptor.runtime.executables paths must be unique")
+          (ensure (
+            paths == builtins.sort builtins.lessThan paths
+          ) "descriptor.runtime.executables must be sorted by path")
+          (ensure (builtins.all insideBundleRoot paths) "descriptor.runtime.executables must live inside the bundle root")
+          (ensure (safePath value.mainExecutable) "descriptor.runtime.mainExecutable must be a safe relative path")
+          (ensure (builtins.elem value.mainExecutable paths) "descriptor.runtime.mainExecutable must name a declared bundle executable")
+          (ensure (
+            value.installNamePolicy == "system-only/v1"
+          ) "descriptor.runtime.installNamePolicy must be system-only/v1")
+          (ensure (value.rpathPolicy == "empty/v1") "descriptor.runtime.rpathPolicy must be empty/v1")
+        ] value
+      else if kind == "wasm-guest" then
+        let
+          value = exactAttrs "descriptor.runtime" [
+            "exports"
+            "harness"
+            "imports"
+            "inspectionContract"
+            "kind"
+            "targetTriple"
+          ] runtime;
+        in
+        force [
+          (ensure (
+            value.inspectionContract == "wasm32-unknown-unknown/v1"
+          ) "descriptor.runtime.inspectionContract must be wasm32-unknown-unknown/v1")
+          (ensure (
+            value.targetTriple == "wasm32-unknown-unknown"
+          ) "descriptor.runtime.targetTriple must be wasm32-unknown-unknown")
+          (ensure (nonEmptyString value.harness) "descriptor.runtime.harness must be a non-empty string")
+          (validateWasmExports value.exports)
+          (validateStructuredStringList "descriptor.runtime.imports" value.imports)
+          (ensure (
+            value.imports == builtins.sort builtins.lessThan value.imports
+          ) "descriptor.runtime.imports must be sorted")
         ] value
       else if kind == "self-contained" then
         let
@@ -290,6 +416,44 @@ let
             (ensure (builtins.all (
               dylib: builtins.match "(/usr/lib|/System/Library)/.*" dylib != null
             ) runtime.dylibs) "descriptor.runtime.dylibs must use system install names")
+          ]
+        else if runtime.kind == "mach-o-app-bundle" then
+          [
+            (ensure (
+              platform.os == "darwin"
+            ) "descriptor.runtime mach-o-app-bundle requires descriptor.platform.os = darwin")
+            (ensure (
+              platform.abi == "darwin"
+            ) "descriptor.runtime mach-o-app-bundle/v1 requires descriptor.platform.abi = darwin")
+            (ensure (builtins.elem platform.architecture [
+              "x86_64"
+              "aarch64"
+            ]) "descriptor.runtime mach-o-app-bundle architecture is unsupported")
+            (ensure (
+              value.entrypoints == map (entry: entry.path) runtime.executables
+            ) "descriptor.entrypoints must be exactly the runtime bundle executables")
+            (ensure (builtins.all (
+              entry:
+              entry.architecture == (
+                {
+                  x86_64 = "x86_64";
+                  aarch64 = "arm64";
+                }
+                .${platform.architecture} or null
+              )
+            ) runtime.executables) "bundle executable architecture must match descriptor.platform.architecture")
+          ]
+        else if runtime.kind == "wasm-guest" then
+          [
+            (ensure (
+              platform.os == "wasm"
+            ) "descriptor.runtime wasm-guest requires descriptor.platform.os = wasm")
+            (ensure (
+              platform.architecture == "wasm32"
+            ) "descriptor.runtime wasm-guest requires descriptor.platform.architecture = wasm32")
+            (ensure (
+              platform.abi == "unknown"
+            ) "descriptor.runtime wasm-guest requires descriptor.platform.abi = unknown")
           ]
         else
           [ ];

@@ -1,6 +1,8 @@
 # 0018 — devenv cooperation: task span owns the task level; otel-scrape wraps the concrete command
 
-Status: accepted (boundary realigned by 0021)
+Status: accepted
+
+Boundary realigned by 0021.
 
 > **Realignment (0021):** only the otel-scrape _tool-side_ of this cooperation is
 > effect-utils' contract — join via `TRACEPARENT`, export `OTEL_TASK_TRACEPARENT`,
@@ -9,7 +11,9 @@ Status: accepted (boundary realigned by 0021)
 > dotfiles#1238) — is the fleet/architecture layer, owned by the dotfiles
 > observability VRS, not this decision.
 
-**Context:** The previous blanket task wrapper wrapped EVERY task phase in
+## Context
+
+The previous blanket task wrapper wrapped EVERY task phase in
 `otel-scrape -- bash -c '<otel-span
 devenv.task.exec … -- bash -c body>'`. That places a generic `otel-scrape`
 command span (program=`bash`, adapter=none) ABOVE the real `devenv.task.exec`
@@ -22,7 +26,9 @@ one meaningless generic wrapper span per task. The concrete commands (`tsc`,
 otel-scrape never directly wrapped them and no adapter ever fired on the devenv
 path (experiment `.experiments/0007-instrumentation-footprint.md`).
 
-**Decision:** The task instrumentation owns the task level; `otel-scrape` owns
+## Decision
+
+The task instrumentation owns the task level; `otel-scrape` owns
 the concrete command level beneath it.
 
 1. **Task level = otel-span only.** `trace.exec`/`trace.status` emit the
@@ -58,7 +64,7 @@ the concrete command level beneath it.
    only its description updates (blanket otel-scrape task wrapper → otel-span task
    tracing plus opt-in concrete-command instrumentation).
 
-**Consequences:**
+## Consequences
 
 - The generic per-task `bash`/`otel_scrape.command` wrapper is gone; a real
   `check:all` trace shows one task span per task, with named command spans only
@@ -93,3 +99,15 @@ Grounded by `.experiments/0007-instrumentation-footprint.md` and
 [.decisions/0017-adapter-structured-source-and-presentation.md](./0017-adapter-structured-source-and-presentation.md);
 extends the cooperation invariant in
 [.decisions/0014-command-identity-and-span-naming.md](./0014-command-identity-and-span-naming.md).
+
+## Evidence and Argument
+
+The context and consequences above supply this record's rationale; this shape
+normalization adds no new implementation evidence or historical deliberation.
+
+## Options
+
+| Recorded design state | Disposition |
+| --- | --- |
+| Decision stated above | Accepted in the original record |
+| Prior limitation described in Context | Contrasted by the original rationale; no additional historical option claim |

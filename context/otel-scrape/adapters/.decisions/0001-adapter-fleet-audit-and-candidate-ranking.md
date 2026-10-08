@@ -57,7 +57,7 @@ now.
 ## Decision
 
 Adopt the OTLP-survival ranking. Update the parent
-[../.decisions/0012-adapter-admission-policy.md](../.decisions/0012-adapter-admission-policy.md)
+[../.decisions/0012-adapter-admission-policy.md](../../.decisions/0012-adapter-admission-policy.md)
 candidate queue with the audited results:
 
 - `pnpm` — promote to first candidate to implement (phase-lane source

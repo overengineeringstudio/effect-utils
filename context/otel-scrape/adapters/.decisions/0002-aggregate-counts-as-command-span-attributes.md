@@ -42,7 +42,7 @@ An adapter MAY attach its run-level aggregate counts to the wrapper command span
 as attributes under the `otel_scrape.adapter.<tool>.*` namespace (public-safe
 per R27: counts and ratios only, never identities). These attributes are
 generated-registry entries like any other telemetry constant (parent decision
-[../.decisions/0004-generated-telemetry-registry.md](../.decisions/0004-generated-telemetry-registry.md)).
+[../.decisions/0004-generated-telemetry-registry.md](../../.decisions/0004-generated-telemetry-registry.md)).
 The existing summary metric is retained; the span attribute is the OTLP-visible
 form until DQ1 resolves.
 

@@ -1,5 +1,9 @@
 # Experiment 0008 — adapter structured-source + presentation
 
+## Question
+
+What structured telemetry or fidelity evidence does the Experiment 0008 — adapter structured-source + presentation probe provide?
+
 Evidence for [decision 0017](../.decisions/0017-adapter-structured-source-and-presentation.md).
 Question: which tools expose a stable structured source, and can otel-scrape
 consume it while keeping the terminal UX-neutral (re-render or side-channel)?
@@ -12,7 +16,7 @@ after; lib.rs +76/-1) suppressing the raw-JSON tee for a presenting adapter and
 calling a per-adapter re-render. Captures to an internal Tempo backend; OTLP payload byte-grepped
 for leaks.
 
-## Findings
+## Result
 
 1. **Capability matrix.** STRUCTURED-READY now: **oxlint** (`--format=json`,
    replaces stdout → needs re-render), **vitest** (`--reporter=json
@@ -36,7 +40,7 @@ for leaks.
    filename, but the local **summary** still stored the raw `message`. The
    contract drops/gates it under the R27 / decision 0015 model.
 
-## Verdict
+## Conclusion
 
 An adapter MUST consume a declared stable structured source and otel-scrape
 re-presents it (or uses a side-channel), so instrumenting is reliable AND
@@ -44,3 +48,8 @@ UX-neutral; privacy holds. Unlocks now: oxlint, vitest, cargo. tsc deferred.
 
 Findings detail: `tmp/vista-issue866/m4-adapter-contract-experiment.md`
 (gitignored). Trace id: prototype export `a5cfafd142493180096512ae02ea29e0`.
+
+## Intent Impact
+
+The recorded evidence informs the owning requirements without changing their
+protected fidelity, public-safe output, or authority boundaries.

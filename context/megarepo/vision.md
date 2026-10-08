@@ -40,7 +40,7 @@
 - It is not a package manager or dependency resolver: members are
   repositories arranged on disk, not versioned artifacts to solve over.
 - It is not a build system, and it does not define composed-build
-  correctness: the composition contract (`COMP-R*`) is owned by the buck2
+  correctness: the composition contract (`BUILD.BUCK.ROOT-R*`) is owned by the buck2
   tree; `mr` implements it.
 - It is not a sync or publishing tool: it never edits intent, and it never
   pushes member history anywhere.

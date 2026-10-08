@@ -1,6 +1,8 @@
 # 0020 — root trace surfacing: print trace id + URL to stderr when otel-scrape is the trace root
 
-Status: accepted (boundary realigned by 0021)
+Status: accepted
+
+Boundary realigned by 0021.
 
 > **Realignment (0021):** effect-utils owns only the tool behavior — _surface the
 > trace id/URL when otel-scrape is the root_, using an opaque operator-supplied
@@ -9,7 +11,9 @@ Status: accepted (boundary realigned by 0021)
 > fleet/architecture layer (R26), owned by the dotfiles observability VRS, not
 > this decision.
 
-**Context:** When `otel-scrape` mints the trace root (no inbound `traceparent`),
+## Context
+
+When `otel-scrape` mints the trace root (no inbound `traceparent`),
 the trace it creates is only discoverable by opening the backend UI and
 searching. Agents and humans who wrap a command with `otel-scrape` have the
 trace id in hand the moment the run starts, but today nothing surfaces it — a
@@ -25,7 +29,9 @@ when piped. That convention is the template to mirror; the gap is that
 otel-scrape mints a _fresh_ root trace id per command, so the pre-baked session
 link is not it.
 
-**Decision:** When `otel-scrape` is the trace root and telemetry is active,
+## Decision
+
+When `otel-scrape` is the trace root and telemetry is active,
 surface the trace identity to stderr (terminal-only), backend-agnostically.
 
 1. **Root-only.** Surfacing happens only when otel-scrape mints the root
@@ -101,7 +107,7 @@ surface the trace identity to stderr (terminal-only), backend-agnostically.
    argv/cwd secrets the trust gate governs, and `--trace-link off` disables the
    whole line.
 
-**Consequences:**
+## Consequences
 
 - A root `otel-scrape -- <cmd>` with export configured and a template set now
   ends with one clickable/greppable trace line on stderr; agents can act on the
@@ -119,3 +125,15 @@ surface the trace identity to stderr (terminal-only), backend-agnostically.
   in the fleet/harness env for root invocations (R26), not in this repo's own
   `nix/devenv-modules/otel.nix`; wiring it there would never fire. Without a
   template in the root-invocation env, the binary degrades to the bare-id tier.
+
+## Evidence and Argument
+
+The context and consequences above supply this record's rationale; this shape
+normalization adds no new implementation evidence or historical deliberation.
+
+## Options
+
+| Recorded design state | Disposition |
+| --- | --- |
+| Decision stated above | Accepted in the original record |
+| Prior limitation described in Context | Contrasted by the original rationale; no additional historical option claim |

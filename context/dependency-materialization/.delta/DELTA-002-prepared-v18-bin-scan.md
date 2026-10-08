@@ -9,7 +9,7 @@ excluded and rejected by the strict scan. Current realized prepared artifacts
 still archive dozens of `.bin` directories and the implementation rewrites them
 after restore.
 
-## VRS
+## Intent
 
 - [Decision 0002](../.decisions/0002-effect-utils-owned-bin-projection.md)
   assigns bin projection to the effect-utils projector rather than prepared
