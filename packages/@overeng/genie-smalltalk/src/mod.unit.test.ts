@@ -28,6 +28,12 @@ const calendarSchedule = {
   work: scheduleWork,
 } as const
 describe('Smalltalk declarations', () => {
+  it('rejects unknown zones in the callable Intl timezone validator', () => {
+    expect(() => Intl.DateTimeFormat(undefined, { timeZone: 'Mars/Olympus' })).toThrow(RangeError)
+    expect(() => schedule({ ...calendarSchedule, timezone: 'Mars/Olympus' })).toThrow(
+      'unknown IANA timezone',
+    )
+  })
   it('renders the documented Berlin daily calendar schedule without interval fields', () => {
     expect(emit([schedule(calendarSchedule)])).toBe(
       `version 2
@@ -49,9 +55,9 @@ schedule "daily" {
   it.each(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const)(
     'renders a weekly %s calendar using st DAY HH:MM syntax',
     (day) => {
-      expect(emit([schedule({ ...calendarSchedule, at: '09:00', days: [day] as const })])).toContain(
-        `calendar {\n    at "${day} 09:00"\n    timezone "Europe/Berlin"\n  }`,
-      )
+      expect(
+        emit([schedule({ ...calendarSchedule, at: '09:00', days: [day] as const })]),
+      ).toContain(`calendar {\n    at "${day} 09:00"\n    timezone "Europe/Berlin"\n  }`)
     },
   )
   it('supports both tagged and existing untagged interval declarations', () => {
@@ -105,9 +111,7 @@ schedule "daily" {
     expect(() => schedule({ ...calendarSchedule, ...fields } as never)).toThrow()
   })
   it.each(['00:00', '23:59'])('accepts boundary calendar time %s', (at) => {
-    expect(emit([schedule({ ...calendarSchedule, at, timezone: 'UTC' })])).toContain(
-      `at "${at}"`,
-    )
+    expect(emit([schedule({ ...calendarSchedule, at, timezone: 'UTC' })])).toContain(`at "${at}"`)
   })
   it('resumes an exact Codex session without overriding provider defaults', () => {
     const seat = agent({

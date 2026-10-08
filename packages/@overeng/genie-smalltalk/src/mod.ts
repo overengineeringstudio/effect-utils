@@ -153,7 +153,7 @@ export const IanaTimezoneSchema = Schema.String.pipe(
     (s): s is string => {
       if (/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z0-9._+-]+)*$/u.test(s) === false) return false
       try {
-        Intl.DateTimeFormat('en', { timeZone: s })
+        Intl.DateTimeFormat(undefined, { timeZone: s })
         return true
       } catch {
         return false
@@ -369,10 +369,9 @@ export const CalendarScheduleSchema = Schema.TaggedStruct('calendar', {
 }).annotate({ identifier: 'St.CalendarSchedule' })
 
 /** A recurring schedule with latest-only catch-up. */
-export const ScheduleSchema = Schema.Union([
-  EveryScheduleSchema,
-  CalendarScheduleSchema,
-]).annotate({ identifier: 'St.Schedule' })
+export const ScheduleSchema = Schema.Union([EveryScheduleSchema, CalendarScheduleSchema]).annotate({
+  identifier: 'St.Schedule',
+})
 
 /** A ready mission with unique steps whose dependencies exist. */
 export const MissionSchema = Schema.Struct({
@@ -456,10 +455,7 @@ export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
               ],
             }),
           ]
-        : [
-            child({ name: 'every', value: s.every }),
-            child({ name: 'anchor', value: s.anchor }),
-          ]),
+        : [child({ name: 'every', value: s.every }), child({ name: 'anchor', value: s.anchor })]),
       child({ name: 'catch-up', value: s.catchUp }),
       block({
         name: 'work',
