@@ -64,11 +64,12 @@ export const rootRepositoryValidationSourceGlobs = [
 ] as const
 
 export const rootRepositoryValidationSourceExcludes = ['**/node_modules/**', 'buck-out/**'] as const
+export const rootNixSourceGlobs = ['**/*.nix'] as const
 
 const rootValidationSources = `static_source_set(
     name = "nix_sources",
     prefix = "",
-    srcs = glob(["**/*.nix"]),
+    srcs = glob(${JSON.stringify(rootNixSourceGlobs)}),
     visibility = ["PUBLIC"],
 )
 
