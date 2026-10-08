@@ -101,17 +101,23 @@ type CiConcurrencyOptions = {
   readonly labelEvents?: boolean
 }
 
-const ciConcurrencyScope = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>) => {
-  const manual = "github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id)"
-  const labels = opts?.labelEvents === false
-    ? "'code'"
-    : "(github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')"
+const ciConcurrencyScope = (
+  opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>,
+) => {
+  const manual =
+    "github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id)"
+  const labels =
+    opts?.labelEvents === false
+      ? "'code'"
+      : "(github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')"
   return opts?.measurementBaselineBackfill === true
     ? `\${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (${manual} || ${labels}) }}`
     : `\${{ ${manual} || ${labels} }}`
 }
 
-const ciCancelInProgress = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>) => {
+const ciCancelInProgress = (
+  opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>,
+) => {
   if (opts?.labelEvents === false) {
     return opts.measurementBaselineBackfill === true
       ? "\${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}"

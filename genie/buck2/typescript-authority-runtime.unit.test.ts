@@ -1,16 +1,10 @@
-import {
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+
 import {
   authoritativeBuck2TypeScriptDeclarations,
   type AuthoritativeBuck2TypeScriptDeclaration,
@@ -163,7 +157,6 @@ describe('Buck2 TypeScript authority runtime planning', () => {
         'types/index.d.ts',
       ],
     ])
-
   })
 
   it('preserves command coverage and ordering for the live registry', () => {
@@ -194,7 +187,6 @@ describe('Buck2 TypeScript authority runtime planning', () => {
         ],
       ),
     )
-
   })
 
   it('atomically replaces a stale declaration tree and removes staging state', async () => {
@@ -223,9 +215,9 @@ describe('Buck2 TypeScript authority runtime planning', () => {
       expect(readFileSync(join(dist, 'types/index.d.ts'), 'utf8')).toBe(
         'export type Fresh = true\n',
       )
-      expect(readdirSync(packageDirectory).filter((name) => name.startsWith('.dist-buck2.'))).toEqual(
-        [],
-      )
+      expect(
+        readdirSync(packageDirectory).filter((name) => name.startsWith('.dist-buck2.')),
+      ).toEqual([])
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -254,9 +246,9 @@ describe('Buck2 TypeScript authority runtime planning', () => {
           workspaceRoot,
         }),
       ).resolves.toEqual({ _tag: 'Signal', signal: 'SIGTERM' })
-      expect(readdirSync(packageDirectory).filter((name) => name.startsWith('.dist-buck2.'))).toEqual(
-        [],
-      )
+      expect(
+        readdirSync(packageDirectory).filter((name) => name.startsWith('.dist-buck2.')),
+      ).toEqual([])
     } finally {
       rmSync(root, { force: true, recursive: true })
     }

@@ -1,0 +1,80 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-rpc-explorer",
+      "packages/@overeng/effect-rpc-explorer-react",
+      "packages/@overeng/effect-rpc-observer",
+      "packages/@overeng/effect-rust",
+      "packages/@overeng/meters",
+      "packages/@overeng/otel-browser",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/rpc-devtools",
+      "packages/@overeng/stylex-tokens",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
+    ]
+  },
+  "name": "@overeng/rpc-devtools",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Scoped RPC meters and lazy explorer panels for host-owned developer tools",
+  "license": "MIT",
+  "exports": {
+    "./core": {
+      "types": "./dist/src/core.d.ts",
+      "default": "./src/core.ts"
+    },
+    "./react": {
+      "types": "./dist/src/react.d.ts",
+      "default": "./src/react.tsx"
+    }
+  },
+  "files": [
+    "package.json",
+    "dist",
+    "src",
+    "!dist/**/*.tsbuildinfo"
+  ],
+  "dependencies": {
+    "@overeng/effect-rpc-explorer": "workspace:^",
+    "@overeng/effect-rpc-explorer-react": "workspace:^",
+    "@overeng/effect-rpc-observer": "workspace:^",
+    "@overeng/meters": "workspace:^"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0",
+    "@stylexjs/stylex": "0.19.0",
+    "@types/react": "19.2.18",
+    "effect": "4.0.0",
+    "react": "19.2.8",
+    "react-aria-components": "1.21.1",
+    "react-dom": "19.2.8",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "@stylexjs/stylex": "^0.19.0",
+    "effect": "^4.0.0",
+    "react": "^19.2.8",
+    "react-aria-components": "^1.21.1",
+    "react-dom": "^19.2.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./core": {
+        "types": "./dist/src/core.d.ts",
+        "default": "./dist/src/core.js"
+      },
+      "./react": {
+        "types": "./dist/src/react.d.ts",
+        "default": "./dist/src/react.js"
+      }
+    }
+  }
+}

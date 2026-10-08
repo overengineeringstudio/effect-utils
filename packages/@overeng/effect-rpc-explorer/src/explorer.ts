@@ -1,6 +1,8 @@
-import { Effect } from 'effect'
+import { Clock, Effect } from 'effect'
 import type { Scope } from 'effect'
-import type { RpcClient, RpcGroup, RpcMiddleware, RpcServer } from 'effect/rpc'
+import type { RpcGroup } from 'effect/rpc'
+
+import type { CaptureSink } from '@overeng/effect-rpc-observer'
 
 import { makeDescriptorSet } from './descriptor-set.ts'
 import type { DescriptorSet } from './descriptor-set.ts'
@@ -8,7 +10,6 @@ import { makeRpcDescriptors } from './descriptor.ts'
 import type { RpcDescriptor } from './descriptor.ts'
 import { makeInspectorGroup, InspectorRpcGroup } from './inspector.ts'
 import type { InspectorGroup } from './inspector.ts'
-import { makeServerExplorerMiddleware } from './middleware.ts'
 import type {
   ChannelObservation,
   CaptureChannel,
@@ -19,11 +20,10 @@ import type {
   RequestIdentity,
   RpcRecord,
   SnapshotFrame,
-  Timestamp,
 } from './model.ts'
 import type { CapturePolicies, EncodedValueDecoder } from './policy.ts'
-import { decorateClientProtocol, decorateServerProtocol } from './protocol.ts'
-import type { ProtocolCaptureDescriptor, ProtocolObserverOptions } from './protocol.ts'
+import { makeCaptureSink } from './protocol.ts'
+import type { ProtocolCaptureDescriptor, MakeCaptureSinkOptions } from './protocol.ts'
 import { makeExplorerStore } from './store.ts'
 import type { ExplorerStore, ExplorerSubscription } from './store.ts'
 import { makeExplorerTelemetry } from './telemetry.ts'
@@ -32,17 +32,6 @@ import type {
   ExplorerTelemetryOptions,
   ExplorerTelemetryRegistrationError,
 } from './telemetry.ts'
-
-/** Host clock used to make explorer ordering deterministic without owning wall-clock services. */
-export interface ExplorerClock {
-  readonly now: () => Timestamp
-}
-
-/** Input used to derive one explorer-lifetime-local transport connection identity. */
-export interface ExplorerConnectionIdentity {
-  readonly observerSide: ObserverSide
-  readonly clientId: number
-}
 
 /** Stable identity supplied to the host capture selector; never includes request values. */
 export type ExplorerCaptureDescriptor = Pick<RpcDescriptor, 'descriptorId' | 'key' | 'tag' | 'kind'>
@@ -56,8 +45,6 @@ export interface ExplorerConfig {
   readonly instanceId: string
   readonly bounds: ExplorerBounds
   readonly capture?: ExplorerCaptureConfig | undefined
-  readonly clock?: ExplorerClock | undefined
-  readonly connectionId?: ((identity: ExplorerConnectionIdentity) => string) | undefined
   readonly telemetry: Omit<ExplorerTelemetryOptions, 'readRetainedCounts'>
 }
 
@@ -73,17 +60,10 @@ export type ExplorerEncodedDecodersByTag = ReadonlyMap<
   Readonly<Partial<Record<Exclude<CaptureChannel, 'headers'>, EncodedValueDecoder>>>
 >
 
-/** Named client decorator input bound to one concrete transport codec. */
-export interface ExplorerClientDecoratorOptions {
-  readonly protocol: RpcClient.Protocol['Service']
+/** Named capture input bound to one observer side and concrete transport codec. */
+export interface ExplorerCaptureSinkOptions {
+  readonly side: ObserverSide
   readonly encodedDecodersByTag?: ExplorerEncodedDecodersByTag | undefined
-}
-
-/** Named server decorator input bound to one concrete transport codec. */
-export interface ExplorerServerDecoratorOptions {
-  readonly protocol: RpcServer.Protocol['Service']
-  readonly encodedDecodersByTag?: ExplorerEncodedDecodersByTag | undefined
-  readonly requestObservation?: 'protocol' | 'middleware' | undefined
 }
 
 /** Named input for one runtime-mounted RPC group's descriptor registration. */
@@ -110,13 +90,8 @@ export interface ExplorerServices {
     options: RegisterDescriptorsOptions,
   ) => Effect.Effect<void, never, Scope.Scope>
   readonly store: ExplorerStore
-  readonly middleware: RpcMiddleware.RpcMiddleware<never, never, never>
-  readonly decorateClientProtocol: (
-    options: ExplorerClientDecoratorOptions,
-  ) => RpcClient.Protocol['Service']
-  readonly decorateServerProtocol: (
-    options: ExplorerServerDecoratorOptions,
-  ) => RpcServer.Protocol['Service']
+  /** Builds the explorer policy adapter registered as a capture-enabled observer sink. */
+  readonly makeCaptureSink: (options: ExplorerCaptureSinkOptions) => CaptureSink
   readonly inspector: InspectorGroup
   readonly telemetry: ExplorerTelemetry
 }
@@ -304,6 +279,7 @@ export const makeExplorer = ({
   Scope.Scope
 > =>
   Effect.gen(function* () {
+    const clock = yield* Clock.Clock
     const applicationDescriptors = makeDescriptorSet(makeRpcDescriptors(group))
     // Host capture resolves once per descriptor, at construction or at its registration.
     const captureDescriptors = new WeakMap<RpcDescriptor, ProtocolCaptureDescriptor>()
@@ -366,8 +342,10 @@ export const makeExplorer = ({
     }: {
       readonly observerSide: ObserverSide
       readonly encodedDecodersByTag?: ExplorerEncodedDecodersByTag | undefined
-    }): ProtocolObserverOptions => ({
+    }): MakeCaptureSinkOptions => ({
       store,
+      side: observerSide,
+      clock,
       descriptorForTag: (tag) => {
         const descriptor = captureDescriptorForTag(tag)
         const encodedDecoders = encodedDecodersByTag?.get(tag)
@@ -384,16 +362,9 @@ export const makeExplorer = ({
             durationSeconds,
           }),
         ),
-      coordinatorCapacity: Math.max(1, config.bounds.active.maxCount),
-      ...(config.clock === undefined ? {} : { timestamp: config.clock.now }),
-      ...(config.connectionId === undefined
-        ? {}
-        : {
-            connectionId: (clientId: number) =>
-              config.connectionId?.({ observerSide, clientId }) ?? String(clientId),
-          }),
+      streamValuesPerRecord: config.bounds.streamValuesPerRecord,
+      captureCapacity: Math.max(1, config.bounds.active.maxCount),
     })
-    const middlewareOptions = optionsFor({ observerSide: 'server' })
     const inspector = makeInspectorGroup({
       store,
       descriptors: applicationDescriptors,
@@ -419,21 +390,8 @@ export const makeExplorer = ({
       },
       registerDescriptors,
       store,
-      middleware: makeServerExplorerMiddleware(middlewareOptions),
-      decorateClientProtocol: ({ protocol, encodedDecodersByTag }) =>
-        decorateClientProtocol(
-          protocol,
-          optionsFor({ observerSide: 'client', encodedDecodersByTag }),
-        ),
-      decorateServerProtocol: ({
-        protocol,
-        encodedDecodersByTag,
-        requestObservation = 'protocol',
-      }) =>
-        decorateServerProtocol(protocol, {
-          ...optionsFor({ observerSide: 'server', encodedDecodersByTag }),
-          requestObservation,
-        }),
+      makeCaptureSink: ({ side, encodedDecodersByTag }) =>
+        makeCaptureSink(optionsFor({ observerSide: side, encodedDecodersByTag })),
       inspector,
       telemetry,
     }

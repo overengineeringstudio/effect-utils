@@ -1,2 +1,2 @@
-export { Devbar, FpsMeter } from './Devbar.tsx'
-export type { DevbarPanel, DevbarProps, FpsMeterProps } from './Devbar.tsx'
+export { Devbar } from './Devbar.tsx'
+export type { DevbarPanel, DevbarProps, DevbarSegment } from './Devbar.tsx'
