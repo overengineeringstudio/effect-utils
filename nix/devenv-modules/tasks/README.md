@@ -71,6 +71,12 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `devenv-eval-input-budget.nix` - Per-attribute recursive eval-cache input budget,
   wired into `check:quick` and `check:all` by default
 - `clean.nix` - Clean tasks
+- `worktree-teardown.nix` - Explicit offline `worktree:teardown` before worktree
+  removal; inherited by setup, check, clean, and worktree-guard imports. Stops
+  every root-owned Buck isolation, releases reachable Watchman and root-keyed
+  admission state, calls `buck2:editor:release` when defined, and makes real
+  directories owner-writable. Never auto-scheduled; indirect Nix gcroots are
+  left to become dangling and be pruned by Nix GC.
 - `genie.nix` - Genie config generation tasks
 - `lint-oxc.nix` - Linting tasks (oxlint, oxfmt)
   - `lintPaths` are Git pathspecs. The lint tasks enumerate tracked and untracked

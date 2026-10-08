@@ -172,17 +172,19 @@ for (const name of ['nix:build', 'nix:check']) {
   })
 }
 
-requireTask('buck2:editor:release')
-ok({
-  condition: dependencies.get('buck2:editor:release').size === 0,
-  name: 'editor release does not build or publish dependencies',
-})
-for (const name of tasks.keys()) {
-  if (name === 'buck2:editor:release') continue
+for (const lifecycle of ['buck2:editor:release', 'worktree:teardown']) {
+  requireTask(lifecycle)
   ok({
-    condition: reaches({ start: name, target: 'buck2:editor:release' }) === false,
-    name: `${name} never schedules retired-worktree teardown`,
+    condition: dependencies.get(lifecycle).size === 0,
+    name: `${lifecycle} does not build or publish dependencies`,
   })
+  for (const name of tasks.keys()) {
+    if (name === lifecycle) continue
+    ok({
+      condition: reaches({ start: name, target: lifecycle }) === false,
+      name: `${name} never schedules ${lifecycle}`,
+    })
+  }
 }
 
 const visiting = new Set()

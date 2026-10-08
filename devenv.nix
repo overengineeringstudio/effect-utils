@@ -1079,6 +1079,26 @@ in
         nix/devenv-modules/tasks/shared/tests/buck2-capability-daemon.test.sh
     '';
   };
+
+  tasks."worktree:teardown:test" = {
+    description = "Prove offline teardown with live Buck daemons, Watchman, and an editor view";
+    exec = trace.exec "worktree:teardown:test" ''
+      set -euo pipefail
+      export BUN_BIN=${pkgs.bun}/bin/bun
+      export CP_BIN=${pkgs.coreutils}/bin/cp MV_BIN=${pkgs.coreutils}/bin/mv
+      export FINGERPRINT_BIN=${
+        repoFlake.packages.${currentSystem}.buck2-fingerprint
+      }/bin/buck2-fingerprint
+      export PATH=${
+        lib.makeBinPath [
+          pkgs.watchman
+          pkgs.jq
+        ]
+      }:$PATH
+      exec ${pkgs.bash}/bin/bash \
+        "''${DEVENV_ROOT:-$PWD}/nix/devenv-modules/tasks/shared/tests/worktree-teardown.test.sh"
+    '';
+  };
   # The Buck2 genie projection suite lives outside packages/@overeng, so the
   # per-package `test:<pkg>` tasks and the root Vitest projects list both miss
   # it. Give it its own task and hang it off `test:run`, or the projection and
@@ -1519,6 +1539,7 @@ in
     "buck2:quick"
     "buck2:cache-posture:test"
     "buck2:capabilities:test"
+    "worktree:teardown:test"
     "cargo:proto-bindings:check"
     "check:buck2-producer-overlap"
     "nix:check:quick"

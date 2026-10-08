@@ -26,6 +26,7 @@ let
   extraDirCommands = lib.concatMapStringsSep "\n" (d: "rm -rf ${d}") extraDirs;
 in
 {
+  imports = [ ./worktree-teardown.nix ];
   tasks = {
     "build:clean" = {
       description = "Remove build artifacts (dist, .next, tsbuildinfo${
