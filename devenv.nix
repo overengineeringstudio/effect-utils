@@ -351,6 +351,13 @@ let
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   sourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  testPackagePublisherName = name: "buck2:editor:publish:test:${name}";
+  standaloneTestPublicationPackages =
+    sourceTestPackages
+    ++ map (lane: {
+      path = lane.packagePath;
+      name = lib.removePrefix "test:" lane.taskName;
+    }) (builtins.filter (lane: !(lane ? unboundedTaskName)) buck2TestLanes);
   # Editor views the source-side test partition executes through: every source test package,
   # the repository root (`genie:buck2:test` runs `bun test genie/buck2/` from it), and the
   # packages `devenv-modules:test` runs from source (Genie's compiled-staging proof and the
@@ -431,7 +438,15 @@ let
       lane:
       lib.nameValuePair lane.taskName {
         description = "Execute the bounded ${lane.packageName} unit-test lane under Buck";
-        after = [ "genie:check" ] ++ lib.optional (lane ? unboundedTaskName) lane.unboundedTaskName;
+        after = [
+          "genie:check"
+          (
+            if lane ? unboundedTaskName then
+              lane.unboundedTaskName
+            else
+              testPackagePublisherName (lib.removePrefix "test:" lane.taskName)
+          )
+        ];
         # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
         exec = buck2UnitTestExec {
           name = lane.taskName;
@@ -781,7 +796,9 @@ in
     })
     (taskModules.test {
       installTask = "buck2:editor:publish:test";
-      packages = sourceTestPackages;
+      packages = map (
+        pkg: pkg // { installTask = testPackagePublisherName pkg.name; }
+      ) sourceTestPackages;
       extraTests = [
         "devenv-modules:test"
         "genie:buck2:test"
@@ -791,6 +808,18 @@ in
     })
     # Per-lane Buck `test:<package>` tasks, each pulling in its unbounded complement.
     { tasks = buck2TestLaneTasks; }
+    {
+      tasks = lib.listToAttrs (
+        map (
+          pkg:
+          lib.nameValuePair (testPackagePublisherName pkg.name) (scopedEditorViewPublisher {
+            description = "Publish only bootstrap and ${pkg.name} test dependency views";
+            packagePaths = lib.unique (editorBootstrapPackagePaths ++ [ pkg.path ]);
+            traceScope = "test:${pkg.name}";
+          })
+        ) standaloneTestPublicationPackages
+      );
+    }
     (taskModules.storybook {
       installTask = "buck2:editor:publish";
       packages = packagesWithStorybook;

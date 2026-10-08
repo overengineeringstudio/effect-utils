@@ -175,16 +175,27 @@ This does not change the standalone freshness contract: `genie:check` still
 runs after bootstrap without invoking `genie:run`, so it cannot repair the
 projection it proves.
 
-`buck2:editor:publish:test` publishes only the views the source-side test
-partition executes through: every source test package, the repository root,
-and the packages `devenv-modules:test` runs from source. Test lanes, the
-`check:all` aggregate, and its observability profile depend on it instead of the
-whole-workspace publisher, so a test run does not rebuild views no test reads.
-Views outside that set refresh only through `buck2:editor:publish` or
-`buck2:editor:materialize`, which setup runs. Two publishers sharing the
-`packages/.editor-view` state root must never be scheduled without an ordering
-edge: the publication lock fails fast instead of waiting, so
-`scripts/devenv-task-graph-check.mjs` rejects such a task graph.
+Direct `test:<package>` and source-complement tasks publish only that package's
+view plus the repository-root and OpenTelemetry bootstrap views. The scoped
+publisher still proves complete workspace authority and waits for unchanged
+generator freshness validation; the selected package snapshot contains its
+entire provider-declared runtime closure, not links to sibling editor views.
+
+`test:run` uses aggregate-only execution aliases. These aliases retain bounded
+batch ordering and share `buck2:editor:publish:test`, which publishes the union
+of all source-test consumers plus the root and extra source-suite consumers.
+Direct package tasks never depend on an earlier batch; requesting one package
+does not run unrelated package tests. The `check:all` observability profile and
+extra source suites retain the union publisher.
+
+Explicit setup/materialization and the full `buck2:editor:publish` entrypoint
+remain complete-workspace operations for human consumers; shell entry is
+mutation-free. Views not selected by a test refresh through these explicit
+operations. Publishers sharing `packages/.editor-view` must be ordered: their
+publication lock fails fast rather than waiting. Aggregate aliases use the one
+union publisher rather than concurrently scheduling per-package publishers.
+`scripts/devenv-task-graph-check.mjs` verifies scopes, direct-task isolation,
+batch ordering, and publisher ordering on the evaluated graph.
 
 Missing, malformed, escaping, dangling, incomplete, or stale state fails with
 the recorded and current identities. `buck2:editor:recover-lock` is the only
