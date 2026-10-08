@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, setSystemTime } from 'bun:test'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -48,9 +49,13 @@ if [ "$1" = "--version" ]; then
   exit 0
 fi
 if [ "$1" = "--no-spawn" ]; then shift; fi
-# Like Watchman, a client-local version is healthy even with no reachable service.
+# Like Watchman, client-local commands are healthy even with no reachable
+# service; get-sockname reports the computed socket without connecting.
 if [ "$1" != "--no-local" ]; then
-  printf '{"version":"2026.10.05"}\\n'
+  case " $* " in
+    *" get-sockname "*) printf '{"version":"2026.10.05","sockname":"${state}"}\n' ;;
+    *) printf '{"version":"2026.10.05"}\n' ;;
+  esac
   exit 0
 fi
 shift
@@ -60,21 +65,23 @@ case "$1" in
   --sockname=*) socket="\${1#--sockname=}"; shift ;;
 esac
 [ "$*" = "--output-encoding=json watch-project ${root}" ] || exit 2
-case "$(cat "$socket")" in
-  healthy) printf '{"version":"2026.10.05","watch":"${root}"}\\n' ;;
-  unreachable) printf 'unable to connect to service\\n' >&2; exit 1 ;;
-  nice-refusal) printf 'Watchman is running at a lower than normal priority. (nice_value=19, min_acceptable_nice_value=0). Watchman is refusing to start.\\n' >&2; exit 1 ;;
-  malformed) printf 'not json\\n' ;;
-  error) printf '{"version":"2026.10.05","error":"service unavailable"}\\n' ;;
-  wrong-type) printf '{"version":123,"watch":"${root}"}\\n' ;;
-  missing-version) printf '{"watch":"${root}"}\\n' ;;
-  missing-root) printf '{"version":"2026.10.05"}\\n' ;;
-  wrong-root) printf '{"version":"2026.10.05","watch":"${dirname(root)}","relative_path":"fixture"}\\n' ;;
-  relative-root) printf '{"version":"2026.10.05","watch":"${root}","relative_path":"ignored"}\\n' ;;
+# The real client exits silently when --no-spawn finds no reachable service.
+case "$(cat "$socket" 2>/dev/null)" in
+  healthy) printf '{"version":"2026.10.05","watch":"${root}"}\n' ;;
+  unreachable) printf 'unable to connect to service\n' >&2; exit 1 ;;
+  nice-refusal) printf 'Watchman is running at a lower than normal priority. (nice_value=19, min_acceptable_nice_value=0). Watchman is refusing to start.\n' >&2; exit 1 ;;
+  malformed) printf 'not json\n' ;;
+  error) printf '{"version":"2026.10.05","error":"service unavailable"}\n' ;;
+  wrong-type) printf '{"version":123,"watch":"${root}"}\n' ;;
+  missing-version) printf '{"watch":"${root}"}\n' ;;
+  missing-root) printf '{"version":"2026.10.05"}\n' ;;
+  wrong-root) printf '{"version":"2026.10.05","watch":"${dirname(root)}","relative_path":"fixture"}\n' ;;
+  relative-root) printf '{"version":"2026.10.05","watch":"${root}","relative_path":"ignored"}\n' ;;
   retry-timeout)
     if [ "$(wc -l < '${calls}')" -eq 1 ]; then exec sleep 30; fi
-    printf '{"version":"2026.10.05","watch":"${root}"}\\n' ;;
+    printf '{"version":"2026.10.05","watch":"${root}"}\n' ;;
   hanging) exec sleep 30 ;;
+  *) exit 1 ;;
 esac
 `,
     { mode: 0o700 },
@@ -563,11 +570,12 @@ describe('direct pinned Buck watcher admission', () => {
     expect(watcherLocal(root)).not.toContain('file_watcher = notify')
   })
 
-  it.each(['healthy', 'unreachable'])(
-    'a nice 19 default-service client connects only to a %s existing service',
+  it.each(['healthy', 'missing'])(
+    'a nice 19 default-service client connects only to a %s service',
     async (mode) => {
       const { root, env, state, calls } = watcherFixture()
-      writeFileSync(state, mode)
+      if (mode === 'missing') rmSync(state)
+      else writeFileSync(state, 'healthy')
       const child = Bun.spawn({
         cmd: [
           process.execPath,
@@ -586,15 +594,54 @@ describe('direct pinned Buck watcher admission', () => {
       const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
       expect(exit).toBe(mode === 'healthy' ? 0 : 1)
       expect(readFileSync(calls, 'utf8')).toBe(
-        `--no-spawn --no-local --output-encoding=json watch-project ${root}\n`,
+        mode === 'missing'
+          ? `--no-spawn --no-local --output-encoding=json watch-project ${root}\n--no-spawn --output-encoding=json get-sockname\n`
+          : `--no-spawn --no-local --output-encoding=json watch-project ${root}\n`,
       )
-      if (mode === 'unreachable') {
-        expect(stderr).toContain('Watchman refuses to start at nice 19')
+      if (mode === 'missing') {
+        expect(stderr).toContain('no default Watchman service is running')
         expect(stderr).toContain('watchman get-sockname` outside the gate')
         expect(watcherLocal(root)).not.toContain('file_watcher = notify')
       } else expect(watcherLocal(root)).toContain('file_watcher = watchman')
     },
   )
+
+  it.each([
+    ['refused', 'probe failed (service)'],
+    ['eacces', 'probe failed (executable)'],
+  ] as const)('a nice 19 client facing %s keeps the genuine failure class', async (mode, expected) => {
+    const { root, env, state } = watcherFixture()
+    if (mode === 'refused') writeFileSync(state, 'refused')
+    else {
+      rmSync(state)
+      chmodSync(join(root, 'watchman'), 0o644)
+    }
+    const child = Bun.spawn({
+      cmd: [
+        process.execPath,
+        '-e',
+        `import { setPriority } from 'node:os';
+         import { directBuckArguments } from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
+         setPriority(19);
+         try {
+           await directBuckArguments({ cwd: ${JSON.stringify(root)}, env: process.env, args: ['build', '//:app'] });
+         } catch (error) { console.error(error.message); process.exit(1); }`,
+      ],
+      env: {
+        ...env,
+        WATCHMAN_SOCK: undefined,
+        PATH: mode === 'eacces' ? root : env['PATH'],
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect(exit).toBe(1)
+    expect(stderr).toContain(expected)
+    expect(stderr).not.toContain('(priority)')
+    expect(stderr).not.toContain('watchman get-sockname` outside the gate')
+    expect(watcherLocal(root)).not.toContain('file_watcher = notify')
+  })
 
   it.each(['wrong-root', 'relative-root'])(
     'fails closed on %s Watchman selection',

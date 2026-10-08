@@ -290,9 +290,13 @@ for at most five seconds, scoped to the root, `.watchmanconfig`, PATH, HOME and
 socket environment identity. Un-niced default-service queries allow Watchman
 to spawn on demand on Linux and Darwin, including job-local CI runners. Niced
 clients use `--no-spawn`: they may connect to an existing service, but never
-create a permanently niced shared daemon. If no service is available, start it
-un-niced with `watchman get-sockname` outside the gate or provision the host
-service; admission never relaxes the shared startup priority limit.
+create a permanently niced shared daemon. Only a proven-missing default
+service (the silent no-spawn client plus an absent computed socket) or
+Watchman's own startup refusal is diagnosed as a priority problem: start the
+service un-niced with `watchman get-sockname` outside the gate or provision
+the host service, and never relax the shared startup priority limit. Other
+niced failures keep their genuine executable or service diagnosis; admission
+never falls back to notify.
 An explicit `WATCHMAN_SOCK` also uses `--no-spawn` on every platform: admission
 must reach that owned service, not create a replacement. Missing, unhealthy or incorrectly
 rooted Watchman fails with the probe command and remediation; it never selects notify as an

@@ -2,6 +2,7 @@ import { dlopen } from 'bun:ffi'
 import { execFile, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
+  accessSync,
   closeSync,
   existsSync,
   lstatSync,
@@ -99,6 +100,42 @@ export class WatchmanAdmissionError extends Error {
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`
 
+/** The real Watchman client exits silently when --no-spawn finds no reachable
+ * service. A client-local get-sockname never spawns or connects, so an absent
+ * reported socket is the evidence that no default service exists. */
+const defaultServiceMissing = async ({
+  env,
+  deadlineMs,
+}: {
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly deadlineMs: number
+}): Promise<boolean> => {
+  try {
+    const stdout = await new Promise<string>((resolve, reject) => {
+      execFile(
+        'watchman',
+        ['--no-spawn', '--output-encoding=json', 'get-sockname'],
+        { env, timeout: deadlineMs, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 },
+        (error, out) => {
+          if (error !== null) reject(error)
+          else resolve(out)
+        },
+      )
+    })
+    const parsed: unknown = JSON.parse(stdout)
+    const sockname =
+      typeof parsed === 'object' && parsed !== null && 'sockname' in parsed
+        ? parsed.sockname
+        : undefined
+    if (typeof sockname !== 'string' || sockname === '') return false
+    accessSync(sockname)
+    return false
+  } catch (error) {
+    return (
+      typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
+    )
+  }
+}
 /** Probe the actual service and root; a local version response proves neither. */
 export const probeWatchman = async ({
   env,
@@ -129,19 +166,26 @@ export const probeWatchman = async ({
       'watchman',
       args,
       { env, timeout: deadlineMs, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 },
-      (error, stdout, stderr) => {
+      async (error, stdout, stderr) => {
         if (error !== null) {
           const priorityRefusal = stderr.match(
             /nice_value=(\d+), min_acceptable_nice_value=\d+[\s\S]*Watchman is refusing to start/,
           )
-          const reason =
-            error.killed === true
-              ? 'timeout'
-              : error.code === 'ENOENT'
-                ? 'executable'
-                : nicedDefault === true || priorityRefusal !== null
-                  ? 'priority'
-                  : 'service'
+          // Priority is diagnosed only from evidence: Watchman's own startup
+          // refusal, or a niced --no-spawn probe whose silent failure is
+          // proven to mean "no default service". Every other failure keeps
+          // its genuine class (executable, service or timeout).
+          let reason: 'timeout' | 'executable' | 'priority' | 'service' = 'service'
+          if (error.killed === true) reason = 'timeout'
+          else if (error.code === 'ENOENT' || error.code === 'EACCES') reason = 'executable'
+          else if (priorityRefusal !== null) reason = 'priority'
+          else if (
+            nicedDefault === true &&
+            stdout.trim() === '' &&
+            stderr.trim() === '' &&
+            (await defaultServiceMissing({ env, deadlineMs })) === true
+          )
+            reason = 'priority'
           reject(
             new WatchmanAdmissionError({
               reason,
@@ -150,11 +194,13 @@ export const probeWatchman = async ({
                 reason === 'timeout'
                   ? `service did not answer within ${deadlineMs} ms`
                   : reason === 'priority'
-                    ? `Watchman refuses to start at nice ${priorityRefusal?.[1] ?? niceValue}; this client may only connect to an already-running service. ${stderr.trim() || error.message}`
+                    ? priorityRefusal !== null
+                      ? `Watchman refuses to start at nice ${priorityRefusal[1] ?? niceValue}; this client may only connect to an already-running service. ${stderr.trim() || error.message}`
+                      : `no default Watchman service is running and this client at nice ${niceValue} will not spawn one; ${error.message}`
                     : stderr.trim() || error.message,
               fix:
                 reason === 'executable'
-                  ? 'enter the repository development environment (`devenv shell`) so Watchman is on PATH, then rerun the probe'
+                  ? 'enter the repository development environment (`devenv shell`) so a runnable Watchman is on PATH, then rerun the probe'
                   : reason === 'priority'
                     ? 'start the service un-niced (`watchman get-sockname` outside the gate) or provision the host service, then rerun the probe; do not relax the shared service priority limit'
                     : socket === undefined
