@@ -4,6 +4,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import fixtureBuckProjection from '../../rust/effect-rust-fixtures/BUCK.genie.ts'
+import fixtureTsconfig from '../../rust/effect-rust-fixtures/tsconfig.json.genie.ts'
 import {
   planRootBuckAggregates,
   rootBuckAggregateProjection,
@@ -23,6 +25,7 @@ describe('root Buck aggregate projection', () => {
     ).toEqual({
       quick: [
         '//packages/@example/alpha:typecheck',
+        '//rust/effect-rust-fixtures:typecheck',
         ':weaver_check',
         ':weaver_version_smoke',
         '//buck2/static:check',
@@ -52,6 +55,31 @@ describe('root Buck aggregate projection', () => {
     expect(output).toContain('name = "all"')
     expect(output).toContain('check_aggregate(')
     expect(output).toContain('weaver_checks(')
+  })
+
+  it('checks every fixture TypeScript source against the real package declarations', () => {
+    const output = fixtureBuckProjection.stringify({ cwd: '/repo', location: '' })
+
+    expect(output).toContain('name = "typecheck"')
+    expect(output).toContain('glob(["**/*.ts"], exclude = ["**/*.genie.ts"])')
+    expect(output).toContain('dependency_view = "//packages/@overeng/effect-rust:node_modules"')
+    expect(output).toContain(
+      '"node_modules/@overeng/effect-rust/dist": "//packages/@overeng/effect-rust:dist"',
+    )
+    expect(output).toContain(
+      '"node_modules/@overeng/effect-rust/node_modules": "//packages/@overeng/effect-rust:package_tree"',
+    )
+    expect(output).toContain(
+      '"effect-rust-fixture": "//rust/effect-rust-fixtures/service:service"',
+    )
+    expect(fixtureTsconfig.data.include).toEqual(['**/*.ts'])
+    expect(fixtureTsconfig.data.exclude).toEqual(['**/*.genie.ts'])
+    expect(fixtureTsconfig.data.compilerOptions).toMatchObject({
+      strict: true,
+      noUncheckedIndexedAccess: true,
+      exactOptionalPropertyTypes: true,
+      noEmit: true,
+    })
   })
 
   it('stages nested generators and helpers outside admitted package directories', async () => {
@@ -92,6 +120,7 @@ describe('root Buck aggregate projection', () => {
   it('adds static validation and measured Weaver gates to the production quick target set', () => {
     expect(planRootBuckAggregates().quick).toEqual([
       ...authoritativeBuck2TypeScriptProjects.map((project) => project.typecheckTarget),
+      '//rust/effect-rust-fixtures:typecheck',
       ':weaver_check',
       ':weaver_version_smoke',
       '//buck2/static:check',

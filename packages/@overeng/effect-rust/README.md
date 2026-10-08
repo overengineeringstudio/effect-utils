@@ -69,6 +69,15 @@ delivery in a browser, supply the product's `./inline/load` loader to
 Inline/workerd glue contains no unused default asset URL, so importing an inline
 entry does not make a bundler emit a second wasm asset.
 
+The TypeScript smoke harnesses are checked by
+`buck2 build //rust/effect-rust-fixtures:typecheck`, included in `check:quick`
+and therefore `check:all`. Its declared package view stages all fixture
+TypeScript sources (excluding Genie generators) and resolves
+`@overeng/effect-rust` against the package's Buck-emitted declarations with the
+same normalized dependency closure. Runtime-selected service imports use the
+actual Buck-generated service and contract types. The check shares those
+products with the admitted fixture consumer; it does not run smoke scenarios.
+
 Delivery smoke scenarios live in `rust/effect-rust-fixtures`. After building the
 wasm product, run
 `node rust/effect-rust-fixtures/browser-smoke-server.mjs <wasm-package-directory>`,
