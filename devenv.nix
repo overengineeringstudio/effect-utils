@@ -1387,9 +1387,7 @@ in
     exec = trace.exec "buck2:editor:release" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      for package in ${
-        lib.concatStringsSep " " (map lib.escapeShellArg ([ "." ] ++ map (pkg: pkg.path) allPackages))
-      }; do
+      for package in ${lib.concatStringsSep " " (map lib.escapeShellArg ([ "." ] ++ allPackages))}; do
         ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" release \
           --repo-root "$root" --package "$package"
       done
