@@ -18,9 +18,14 @@ export const inspectGetFlake = (content, validFlakeRefs = new Set()) => {
     if (isGitRef(value)) refs.add(name)
     else violations.push(`${name} must be a git+file:// reference`)
   }
-  const calls = /\bbuiltins\.getFlake\s*\(*\s*(toString\b|builtins\.(?:toString|toPath)\b|builtins\.getEnv\s+"([^"]+)"|"(\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*(?::-[^"]*)?\}))"|"(?:path:|\/|\.\/|\.\.\/)[^"]*"|(?:\.\/|\.\.\/|\/)[^\s;)]+|(?!(?:builtins)\b)[a-zA-Z_][a-zA-Z0-9_]*)/g
+  const calls = /\bbuiltins\.getFlake\s*\(*\s*(toString\b|builtins\.(?:toString|toPath)\b|builtins\.getEnv\s+"([^"]+)"|"([^"]*)"|(?:\.\/|\.\.\/|\/)[^\s;)]+|(?!(?:builtins)\b)[a-zA-Z_][a-zA-Z0-9_]*)/g
   for (const match of source.matchAll(calls)) {
-    const envRef = match[2] ?? match[3]?.match(/^\$\{?([A-Za-z_][A-Za-z0-9_]*)/)?.[1]
+    const string = match[3]
+    // Schemes must be explicit: interpolation and relative/bare strings are
+    // paths too. file: and path: are not safe source-filtering fetchers.
+    if (string !== undefined && /^(?!path:|file:)[a-z][a-z0-9+.-]*:/i.test(string)) continue
+    const variable = string?.match(/^\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)(?::-git\+file:\/\/[^{}]*)?\})$/)
+    const envRef = match[2] ?? variable?.[1] ?? variable?.[2]
     if (envRef !== undefined && refs.has(envRef)) continue
     violations.push('bare-path getFlake; use "git+file://" + toString repo')
   }
