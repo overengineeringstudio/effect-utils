@@ -29,6 +29,18 @@ let
     '';
     builtins.getFlake "git+file://${toString ./.}";
   currentSystem = pkgs.stdenv.hostPlatform.system;
+  # Required CI tests do not run the interactive trace-capture verifier.
+  ciUnitTest = builtins.getEnv "EFFECT_UTILS_CI_TEST" == "1";
+  testPlatform = builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM";
+  testPlatforms = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-platforms.json);
+  darwinTestTasks = map (suite: suite.task) testPlatforms.darwin;
+  classifiedTestTasks = darwinTestTasks ++ map (suite: suite.task) testPlatforms.neutral;
+  extraSourceTestTasks = [
+    "devenv-modules:test"
+    "genie:buck2:test"
+    "genie:ci-workflow:test"
+  ];
+  selectedTestTask = task: testPlatform != "darwin" || builtins.elem task darwinTestTasks;
   buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
   # The flake wires the source recipes that cache-native manifest rows require;
@@ -350,10 +362,36 @@ let
     vitestArgs = lib.concatStringsSep " " (map lib.escapeShellArg lane.unboundedFiles);
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
-  sourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  allSourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  aggregateTestTasks = [
+    "test:buck2:unit"
+    "test:run"
+  ]
+  ++ extraSourceTestTasks
+  ++ map (pkg: "test:${pkg.name}") allSourceTestPackages;
+  sourceTestPackages =
+    assert lib.assertMsg (builtins.elem testPlatform [
+      ""
+      "linux"
+      "darwin"
+    ]) "EFFECT_UTILS_TEST_PLATFORM must be linux or darwin";
+    assert lib.assertMsg (
+      lib.unique classifiedTestTasks == classifiedTestTasks
+    ) "test-platforms.json classifies a task more than once";
+    assert lib.assertMsg (
+      builtins.sort builtins.lessThan aggregateTestTasks
+      == builtins.sort builtins.lessThan classifiedTestTasks
+    ) "test-platforms.json must classify every aggregate test task exactly once";
+    builtins.filter (pkg: selectedTestTask "test:${pkg.name}") allSourceTestPackages;
+  sourceTestScope = pkgs.writeText "test-source-scope.json" (
+    builtins.toJSON (
+      map (pkg: "test:${pkg.name}") sourceTestPackages
+      ++ builtins.filter selectedTestTask extraSourceTestTasks
+    )
+  );
   testPackagePublisherName = name: "buck2:editor:publish:test:${name}";
   standaloneTestPublicationPackages =
-    sourceTestPackages
+    allSourceTestPackages
     ++ map (lane: {
       path = lane.packagePath;
       name = lib.removePrefix "test:" lane.taskName;
@@ -534,6 +572,7 @@ let
   genieExtraInputGlobs = [
     "context/otel-scrape/telemetry-registry.json"
     "genie/buck2/*.ts"
+    "genie/ci-workflow/test-platforms.json"
     # Storybook workflow admission discovers consumers from these directories.
     "packages/**/.storybook/**"
     "packages/@overeng/buck2-tools/src/**/*.ts"
@@ -691,38 +730,6 @@ in
   imports = [
     # Git hook: prevent commits on default branch + enforce linked worktrees
     (taskModules.worktree-guard { })
-    # OpenTelemetry observability stack (Collector + Tempo + Grafana)
-    (import ./nix/devenv-modules/otel.nix { traceShellEntry = false; })
-    # Hermetic native-devenv + effect-utils task-tree capture. Ambient mode
-    # composes with the full stack above without importing it a second time.
-    (import ./nix/devenv-modules/observability.nix {
-      project = "effect-utils";
-      otelite = repoFlake.packages.${currentSystem}.otelite;
-      # Shell-entry setup is intentionally absent. Profile an instantiated,
-      # non-mutating task so check:all retains its trace integrity gate.
-      profile = {
-        name = "genie-check";
-        task = "genie:check";
-        mode = "single";
-        smokeTask = "genie:check";
-        smokeMode = "single";
-        bridgeTask = "genie:check";
-        # The verifier launches a nested, cache-refreshed task run. Keep it last
-        # so its task-cache refresh cannot race sibling check:all work.
-        prerequisiteTasks = [
-          "buck2:providers:check"
-          "cargo:check"
-          "dependency-materialization:evidence:check"
-          "check:devenv-eval-inputs"
-          "lint:check"
-          "nix:check:quick"
-          "buck2:editor:publish:test"
-          "test:run"
-          "weaver:diff"
-        ];
-      };
-      wireInto = [ "check:all" ];
-    })
     # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels
     (import ./nix/devenv-modules/gh-labels.nix { repo = "overengineeringstudio/effect-utils"; })
     # Playwright browser drivers and environment setup
@@ -798,12 +805,9 @@ in
       installTask = "buck2:editor:publish:test";
       packages = map (
         pkg: pkg // { installTask = testPackagePublisherName pkg.name; }
-      ) sourceTestPackages;
-      extraTests = [
-        "devenv-modules:test"
-        "genie:buck2:test"
-        "genie:ci-workflow:test"
-      ];
+      ) allSourceTestPackages;
+      aggregatePackages = sourceTestPackages;
+      extraTests = builtins.filter selectedTestTask extraSourceTestTasks;
       packageConcurrency = 4;
       retainVitestJson = true;
     })
@@ -888,6 +892,40 @@ in
     ./nix/devenv-modules/tasks/local/notion-integration-test.nix
     # Restate integration tests (native restate-server via RESTATE_SERVER_BIN)
     ./nix/devenv-modules/tasks/local/restate-integration-test.nix
+  ]
+  ++ lib.optionals (!ciUnitTest) [
+    # OpenTelemetry observability stack (Collector + Tempo + Grafana)
+    (import ./nix/devenv-modules/otel.nix { traceShellEntry = false; })
+    # Hermetic native-devenv + effect-utils task-tree capture. Ambient mode
+    # composes with the full stack above without importing it a second time.
+    (import ./nix/devenv-modules/observability.nix {
+      project = "effect-utils";
+      otelite = repoFlake.packages.${currentSystem}.otelite;
+      # Shell-entry setup is intentionally absent. Profile an instantiated,
+      # non-mutating task so check:all retains its trace integrity gate.
+      profile = {
+        name = "genie-check";
+        task = "genie:check";
+        mode = "single";
+        smokeTask = "genie:check";
+        smokeMode = "single";
+        bridgeTask = "genie:check";
+        # The verifier launches a nested, cache-refreshed task run. Keep it last
+        # so its task-cache refresh cannot race sibling check:all work.
+        prerequisiteTasks = [
+          "buck2:providers:check"
+          "cargo:check"
+          "dependency-materialization:evidence:check"
+          "check:devenv-eval-inputs"
+          "lint:check"
+          "nix:check:quick"
+          "buck2:editor:publish:test"
+          "test:run"
+          "weaver:diff"
+        ];
+      };
+      wireInto = [ "check:all" ];
+    })
   ];
 
   # The guarded `genie` command dispatches to this repository's own packaged
@@ -981,6 +1019,7 @@ in
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoPackages.notion-cli
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
+    # Retained source suites execute this native capture binary on both platforms.
     repoPackages.otelite
     repoPackages.otel-scrape
     repoPackages.buck2-events
@@ -1000,8 +1039,11 @@ in
     pkgs.reindeer
     pkgs.rustfmt
     pkgs.rust-analyzer
-  ];
+  ]
+  ++ lib.optional ciUnitTest otelSpan;
 
+  # Preserve the pinned task bridge without realizing the local capture stack.
+  env.OTEL_SPAN_BIN = lib.mkIf ciUnitTest "${otelSpan}/bin/otel-span";
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
@@ -1587,7 +1629,8 @@ in
       exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts" \
         --root "$root" \
         --buck2 "$BUCK2_BIN" \
-        --buck2-cwd "$root"
+        --buck2-cwd "$root" \
+        ${lib.optionalString (testPlatform == "darwin") "--source-tasks-file ${sourceTestScope}"}
     ''
   );
 

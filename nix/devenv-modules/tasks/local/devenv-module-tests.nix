@@ -15,8 +15,11 @@ let
     for testFile in "$testDir"/*.test.sh; do
       [ -f "$testFile" ] || continue
       found=true
-      echo "Running $testFile"
+      printf 'devenv-modules:test script=%s phase=start timestamp=%s\n' \
+        "''${testFile##*/}" "$(${pkgs.coreutils}/bin/date -u +%Y-%m-%dT%H:%M:%S.%NZ)" >&2
       NIX_FLAKE_REF="git+file://$PWD?shallow=1" BUN_BIN=${pkgs.bun}/bin/bun BASH_BIN=${pkgs.bashNonInteractive}/bin/bash ${pkgs.bashNonInteractive}/bin/bash "$testFile"
+      printf 'devenv-modules:test script=%s phase=end timestamp=%s\n' \
+        "''${testFile##*/}" "$(${pkgs.coreutils}/bin/date -u +%Y-%m-%dT%H:%M:%S.%NZ)" >&2
     done
 
     if [ "$found" != true ]; then

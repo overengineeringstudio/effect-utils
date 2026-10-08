@@ -34,6 +34,8 @@
 #   - test:<name> - Run tests for specific package (when packages provided)
 {
   packages ? [ ],
+  # Aggregate scope may be narrower than the standalone package task surface.
+  aggregatePackages ? packages,
   installTask ? "pnpm:install",
   extraTests ? [ ],
   packageConcurrency ? null,
@@ -124,7 +126,7 @@ let
 
   packageTestTaskNames = map (pkg: "test:${pkg.name}") packages;
   packageTestBatches =
-    if hasPackageConcurrency then chunkList validatedPackageConcurrency packages else [ ];
+    if hasPackageConcurrency then chunkList validatedPackageConcurrency aggregatePackages else [ ];
   packageTestBatchTaskName = index: "test:run:batch:${toString index}";
   lastPackageTestBatchTaskName = packageTestBatchTaskName (builtins.length packageTestBatches - 1);
 
@@ -205,10 +207,10 @@ let
           });
       after =
         if hasPackages then
-          if hasPackageConcurrency then
+          if hasPackageConcurrency && aggregatePackages != [ ] then
             [ lastPackageTestBatchTaskName ] ++ extraTests
           else
-            map (pkg: "test:${pkg.name}") packages ++ extraTests
+            map (pkg: "test:${pkg.name}") aggregatePackages ++ extraTests
         else
           [ "genie:run" ];
     };

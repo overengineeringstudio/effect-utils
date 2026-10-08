@@ -70,6 +70,30 @@ const isStringRecord = (value: unknown): value is Readonly<Record<string, string
 const isTestRunner = (value: unknown): value is TestRunner =>
   value === 'bun' || value === 'shell' || value === 'vitest'
 
+/** Decode the declared source scope; bounded and unowned files always remain enforced. */
+export const decodeSourceTaskScope = (decoded: unknown): ReadonlySet<string> => {
+  if (
+    isStringArray(decoded) === false ||
+    decoded.length === 0 ||
+    decoded.some(
+      (task) => /^(?:test|devenv-modules|genie):[A-Za-z0-9:_-]+$/.test(task) === false,
+    ) === true ||
+    new Set(decoded).size !== decoded.length
+  ) {
+    throw new Error('Source test scope must be a nonempty, unique array of safe task names')
+  }
+  return new Set(decoded)
+}
+
+/** A platform subset cannot suppress census errors or bounded collection evidence. */
+export const ownershipInSourceScope = ({
+  ownership,
+  scope,
+}: {
+  readonly ownership: FileOwnership
+  readonly scope: ReadonlySet<string> | undefined
+}): boolean => ownership.kind !== 'source' || scope === undefined || scope.has(ownership.taskName)
+
 /**
  * Lower bound on the registry size.
  *

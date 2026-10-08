@@ -1,0 +1,91 @@
+{
+  "darwin": [
+    {
+      "task": "test:buck2:unit",
+      "rationale": "Host-platform Buck daemon and native runners, including bounded filesystem, process, shell and native-binary suites."
+    },
+    {
+      "task": "devenv-modules:test",
+      "rationale": "Real Nix/devenv closures, Darwin store paths, compiled staging and BSD/GNU shell behavior."
+    },
+    {
+      "task": "test:buck2-tools",
+      "rationale": "Editor publication, filesystem locks, snapshots and Darwin fsevents dependency projection."
+    },
+    {
+      "task": "genie:buck2:test",
+      "rationale": "Checkout Buck wiring, native product staging and host-platform capability projection."
+    },
+    {
+      "task": "test:megarepo:unbounded",
+      "rationale": "Darwin process-CWD scans, signals, filesystem/watchers and PTY prompt behavior."
+    },
+    {
+      "task": "test:pty-effect:unbounded",
+      "rationale": "Native node-pty addon, terminal and process lifecycle behavior."
+    },
+    {
+      "task": "test:utils:unbounded",
+      "rationale": "Recursive fs.watch uses FSEvents on Darwin rather than Linux inotify; process execution and signals."
+    },
+    {
+      "task": "test:ci-tools:unbounded",
+      "rationale": "Deployment CLI subprocesses, executable shell fixtures, symlink/realpath handling and loopback sockets."
+    },
+    {
+      "task": "test:ci-tools:test_pipeline_report_local_api:unbounded",
+      "rationale": "Native Bun subprocesses, temporary filesystem state and loopback HTTP server lifecycle."
+    },
+    {
+      "task": "test:genie:unbounded",
+      "rationale": "Git/submodule subprocesses, symlink and realpath discovery, executable shell fixtures, BSD/GNU commands and FIFO pipes."
+    },
+    {
+      "task": "test:notion-datasource-sync:unbounded",
+      "rationale": "Filesystem case-folding and Unicode normalization, symlink/rename behavior, SQLite locking and watch-daemon lifecycle."
+    },
+    {
+      "task": "test:notion-cli:unbounded",
+      "rationale": "Native Bun CLI subprocess exit/signal behavior and symlink-aware repository-root discovery."
+    },
+    {
+      "task": "test:notion-md:unbounded",
+      "rationale": "Recursive filesystem watchers, native Bun CLI subprocesses and temporary editor filesystem lifecycle."
+    },
+    {
+      "task": "test:otel-contract:unbounded",
+      "rationale": "Native otelite/otel-scrape and Weaver subprocesses, stdin/exit lifecycle and capture/CAS filesystem state."
+    },
+    {
+      "task": "test:tui-stories:unbounded",
+      "rationale": "Native Bun CLI subprocess exit/signal behavior, symlink-aware discovery and filesystem glob/loader behavior."
+    },
+    {
+      "task": "test:restate-effect:unbounded",
+      "rationale": "Native restate-server subprocesses, SIGTERM/SIGKILL cancellation and durability, sockets and persistent filesystem state."
+    },
+    {
+      "task": "test:utils-dev:unbounded",
+      "rationale": "Native otelite capture subprocesses and pipes, Git subprocess environment isolation and index/filesystem state."
+    },
+    {
+      "task": "test:run",
+      "rationale": "Host-platform Buck collection gate enforces bounded census and the selected source reports."
+    }
+  ],
+  "neutral": [
+    {
+      "task": "test:agent-session-ingest:unbounded",
+      "rationale": "Session-file parsing contracts."
+    },
+    {
+      "task": "test:notion-effect-client:unbounded",
+      "rationale": "Service rate-limiting contracts, not OS signals."
+    },
+    { "task": "test:notion-react:unbounded", "rationale": "React synchronization regressions." },
+    {
+      "task": "genie:ci-workflow:test",
+      "rationale": "Pure workflow rendering and policy contracts."
+    }
+  ]
+}

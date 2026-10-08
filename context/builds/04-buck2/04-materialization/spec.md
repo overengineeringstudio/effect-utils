@@ -196,7 +196,9 @@ entire provider-declared runtime closure, not links to sibling editor views.
 
 `test:run` uses aggregate-only execution aliases. These aliases retain bounded
 batch ordering and share `buck2:editor:publish:test`, which publishes the union
-of all source-test consumers plus the root and extra source-suite consumers.
+of the aggregate's selected source-test consumers plus the root and extra
+source-suite consumers. Required CI platform scope is defined in
+[the CI spec](../../../ci/spec.md#required-platform-test-coverage).
 Direct package tasks never depend on an earlier batch; requesting one package
 does not run unrelated package tests. The `check:all` observability profile and
 extra source suites retain the union publisher.
