@@ -560,9 +560,9 @@ export const commonPnpmPolicySettings = {
   verifyStoreIntegrity: true as const,
   strictStorePkgContentCheck: true as const,
   ignoreScripts: true as const,
-  // Admit coordinated Effect cohort updates immediately while keeping
-  // minimum-release-age strict for other dependencies.
-  minimumReleaseAgeExclude: ['@types/node', ...effectV4Cohort, '@effect/platform-node-shared'],
+  // Keep minimum-release-age strict globally; @types/node alone is exempt so
+  // coordinated Node type refreshes can advance immediately.
+  minimumReleaseAgeExclude: ['@types/node'],
   pmOnFail: 'ignore' as const,
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,
@@ -975,6 +975,22 @@ export {
   prReviewsResolvedJobId,
   prReviewsResolvedStep,
   bashShellDefaults,
+  cargoClippyJob,
+  cargoClippyStep,
+  cargoFmtJob,
+  cargoFmtStep,
+  cargoNextestJob,
+  cargoNextestStep,
+  defaultActionlintConfig,
+  nixDevelopStep,
+  plainFlakeGenieCheckJob,
+  plainFlakeJob,
+  plainFlakeSetupSteps,
+  type CargoClippyOptions,
+  type CargoNextestOptions,
+  type NixDevelopStepOptions,
+  type PlainFlakeJobOptions,
+  type PlainFlakeSetupOptions,
   checkoutStep,
   cachixCliBuildStep,
   cachixStep,

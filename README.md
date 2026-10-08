@@ -87,8 +87,8 @@ callback or native section hrefs. Pass the active ID from actual scroll position
 The package supplies no theme, document discovery, domain extraction, or virtualization.
 
 Run `devenv tasks run test:outline` for the focused behavioral suite. Its scoped
-`buck2:editor:publish:outline` prerequisite publishes the package's Buck-owned dependency view
-without materializing unrelated package editor views.
+`buck2:editor:publish:test:outline` prerequisite publishes the package's Buck-owned dependency view
+plus the root and OpenTelemetry bootstrap views, without materializing unrelated package views.
 
 ### Browser Telemetry
 
@@ -213,6 +213,32 @@ devenv tasks run buck2:providers:check
 
 ### Consumer Buck Roots
 
+`mkConsumerBuckRoot` accepts the named `watcherPolicy` argument. Its default,
+`"mutable-checkout"`, emits `file_watcher = watchman` and retains fail-closed
+Watchman admission for interactive source edits. Roots copied into immutable
+Nix builds or filtered, immutable source checks must instead pass:
+
+```nix
+watcherPolicy = "immutable-input";
+```
+
+This emits `file_watcher = fs_hash_crawler`: declared inputs do not change
+during the build, so no Watchman executable or service is required. The
+from-source builder uses the same policy mapping. Unknown policies fail Nix
+evaluation with a message listing both allowed values; raw watcher-provider
+strings are not accepted.
+
+TypeScript package projections retain census destinations below nested Buck packages,
+but resolve each input through its nearest owning `BUCK` (or `BUCK.genie.ts` during
+generation). For example, `src/main.ts` below `parent/src/BUCK` is staged from
+`//parent/src:main.ts`; only locally owned sources are exported by the parent.
+Each nested package must publish the explicit inputs the parent consumes with
+`export_materialization_inputs`, including test modules, snapshots and fixture data.
+Its target names escape `$` as `__dollar__`, while staged destinations stay unchanged.
+This file-level contract preserves source-granular dependencies instead of introducing
+a second, nested-tree materialization interface. Project and runner configuration
+remain package-root files; declared `projectInputs` may reference nested files.
+
 Consumer dependency generators declare the cell that exports patches from each
 nested checkout instead of loading that checkout's standalone `BUCK` files:
 
@@ -271,7 +297,19 @@ topology and requires a fresh daemon. The publisher logs each stop; a persistent
 migration marker makes a failed or interrupted stop retryable.
 Preparation diagnostics go to stderr, preserving command stdout when callers
 capture Buck output paths. The daemon regression starts and shuts down its own
-private Watchman service; it does not depend on a host service on Linux or macOS.
+private Watchman service, using a fixture-only global config that permits nice 19;
+it does not depend on a host service on Linux or macOS.
+
+The publisher fixture retains assertion failures before cleanup under
+`${XDG_STATE_HOME:-$HOME/.local/state}/buck2-cache-reports/capability-publisher/`
+and prints the private evidence directory. Each capture keeps at most five
+snapshots: the new capture and the four newest prior evidence directories.
+It contains the failed generation observation, copied generation metadata and
+publisher JSONs, shell job IDs/PIDs/states without command text, and native PID
+ancestry without command arguments or environment.
+`CAPABILITY_TEST_EVIDENCE_DIR` overrides the destination for focused proofs.
+Copies are best-effort observations while writers may still run, not an atomic
+snapshot or a Nix closure archive; collection errors are recorded explicitly.
 
 Retained generations have indirect Nix GC roots under `.buck2/capability-roots`.
 The publisher keeps the three most recently published generations only when
@@ -286,10 +324,18 @@ Watchman service and canonical watched root with `watchman --no-local
 watch-project <root>` before native daemon startup. An attempt has a 2500 ms
 deadline and one retry for a timeout only. Successful root admission is cached
 for at most five seconds, scoped to the root, `.watchmanconfig`, PATH, HOME and
-socket environment identity. Default-service queries allow Watchman to spawn
-on demand on Linux and Darwin, including job-local CI runners. An explicit
-`WATCHMAN_SOCK` uses `--no-spawn` on every platform: admission must reach that
-owned service, not create a replacement. Missing, unhealthy or incorrectly
+socket environment identity. Un-niced default-service queries allow Watchman
+to spawn on demand on Linux and Darwin, including job-local CI runners. Niced
+clients use `--no-spawn`: they may connect to an existing service, but never
+create a permanently niced shared daemon. Only a proven-missing default
+service (the silent no-spawn client plus an absent computed socket) or
+Watchman's own startup refusal is diagnosed as a priority problem: start the
+service un-niced with `watchman get-sockname` outside the gate or provision
+the host service, and never relax the shared startup priority limit. Other
+niced failures keep their genuine executable or service diagnosis; admission
+never falls back to notify.
+An explicit `WATCHMAN_SOCK` also uses `--no-spawn` on every platform: admission
+must reach that owned service, not create a replacement. Missing, unhealthy or incorrectly
 rooted Watchman fails with the probe command and remediation; it never selects notify as an
 outage fallback. For an ancestor-root mismatch, run `watchman watch <root>` and
 rerun the displayed probe. Enter `devenv shell` if Watchman is missing from PATH.

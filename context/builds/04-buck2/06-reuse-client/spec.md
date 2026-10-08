@@ -168,10 +168,33 @@ availability and requires the returned canonical watched root to equal the
 resolved `.buckroot`; an ancestor-relative watch is rejected, even if its
 coverage appears sufficient. A service/version query alone is insufficient,
 and an ancestor watch whose ignore rules exclude the project is unsafe.
-Without `WATCHMAN_SOCK`, the client may spawn its default Watchman service on
-demand on Linux and Darwin; this also supplies a job-local service on macOS CI
-runners with no pre-existing daemon. With an explicit socket, `--no-spawn`
-preserves the caller's service ownership and an unreachable socket fails closed.
+Without `WATCHMAN_SOCK`, an un-niced client may spawn its default Watchman
+service on demand on Linux and Darwin, including job-local macOS CI runners.
+A client with positive niceness always uses `--no-spawn`: it may connect to an
+already-running service normally, but must not create a shared daemon that
+inherits the gate's reduced priority for its lifetime. An explicit socket also
+uses `--no-spawn` regardless of priority, preserving service ownership.
+Priority is diagnosed only from evidence. Either Watchman reports its own
+startup priority refusal, or a niced `--no-spawn` probe failed silently and a
+follow-up client-local `get-sockname` (which never spawns or connects) shows
+the computed default socket does not exist: the real client exits without any
+output when `--no-spawn` finds no service, and that silence alone is not
+evidence. Admission then fails closed with the nice value and remediation:
+start Watchman un-niced (`watchman get-sockname` outside the gate), or
+provision the host service. A niced failure against an existing but
+unreachable or permission-denied socket, a missing or unrunnable executable,
+and every other failure keep their genuine service/executable diagnosis.
+Consumer admission never relaxes the shared service's
+`min_acceptable_nice_value` (default 0).
+
+Private test-owned Watchman instances use a fixture-only global configuration
+through `WATCHMAN_CONFIG_FILE` with `min_acceptable_nice_value = 19`; their
+isolated HOME prevents user configuration from overriding that setting, and
+the regression spawns its private service explicitly at `nice -n 19`, so the
+exemption is asserted regardless of the runner's own priority.
+The exemption never reaches a shared default service. Source authority:
+[`WatchmanConfig.cpp` global loading](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/WatchmanConfig.cpp#L27-L68)
+and [`main.cpp` priority refusal](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/main.cpp#L87-L107).
 Each attempt uses the caller's probe deadline (2500 ms by default), replacing
 the former 900 ms cap. Only a timeout gets one retry; total probing is bounded
 to two caller deadlines (5000 ms by default).

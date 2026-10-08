@@ -123,13 +123,16 @@ the lock, the publisher:
 
 1. fingerprints each distinct selected dependency view and finite declared root
    once for the admitted state;
-2. recursively copies the selected view and disjoint backing roots into a
-   same-filesystem candidate with dereferenced, byte-owned regular files;
-3. relocates internal links into `.backing/`, rejects links outside the declared
-   roots, and proves no snapshot file shares an inode with a disposable source;
+2. derives the content-addressed snapshot name before copying; if that entry
+   exists, verifies its complete immutable payload and exact admission record
+   and reuses it without writing store bytes;
+3. for a missing entry, copies the selected view and disjoint backing roots into
+   a same-filesystem byte-owned candidate, relocates links into `.backing/`,
+   rejects links outside declared roots, and proves no snapshot file shares an
+   inode with a disposable source;
 4. verifies the complete payload digest and writes `editor-view.json`;
-5. hardens a new candidate read-only and renames it to the deterministic
-   snapshot, or verifies an existing immutable snapshot before reuse;
+5. hardens the new candidate read-only and renames it to the deterministic
+   snapshot;
 6. atomically renames the current pointer, installs or validates the package
    first hop, and emits the package-manifest settle signal required by live
    language servers;
@@ -147,6 +150,16 @@ If a legacy root install occupies the first hop, immutable GNU
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip
 leaves the prior current view intact. Snapshot payloads never retain links into
 `buck-out`, whose action directories Buck may delete before rebuilding.
+
+Repository tasks configure two completed snapshots **per view**: current and
+previous. For `N` admitted views the shared-store bound is `2 × N`, excluding
+in-flight candidates, which are not retention garbage. GC deletes only
+validated older snapshots of the publishing view after its pointer flip; it
+neither infers process liveness nor collects inactive worktrees. The preceding
+snapshot supplies a bounded rollback/read-overlap window, not an indefinite
+lease for a process pinned to an older generation. Literal admitted link text
+participates in identity, so changed Buck artifact paths can create a new
+snapshot even when dependency file bytes remain identical.
 
 ## Staleness Gate
 
@@ -175,21 +188,50 @@ This does not change the standalone freshness contract: `genie:check` still
 runs after bootstrap without invoking `genie:run`, so it cannot repair the
 projection it proves.
 
-`buck2:editor:publish:test` publishes only the views the source-side test
-partition executes through: every source test package, the repository root,
-and the packages `devenv-modules:test` runs from source. Test lanes, the
-`check:all` aggregate, and its observability profile depend on it instead of the
-whole-workspace publisher, so a test run does not rebuild views no test reads.
-Views outside that set refresh only through `buck2:editor:publish` or
-`buck2:editor:materialize`, which setup runs. Two publishers sharing the
-`packages/.editor-view` state root must never be scheduled without an ordering
-edge: the publication lock fails fast instead of waiting, so
-`scripts/devenv-task-graph-check.mjs` rejects such a task graph.
+Direct `test:<package>` and source-complement tasks publish only that package's
+view plus the repository-root and OpenTelemetry bootstrap views. The scoped
+publisher still proves complete workspace authority and waits for unchanged
+generator freshness validation; the selected package snapshot contains its
+entire provider-declared runtime closure, not links to sibling editor views.
+
+`test:run` uses aggregate-only execution aliases. These aliases retain bounded
+batch ordering and share `buck2:editor:publish:test`, which publishes the union
+of all source-test consumers plus the root and extra source-suite consumers.
+Direct package tasks never depend on an earlier batch; requesting one package
+does not run unrelated package tests. The `check:all` observability profile and
+extra source suites retain the union publisher.
+
+Explicit setup/materialization and the full `buck2:editor:publish` entrypoint
+remain complete-workspace operations for human consumers; shell entry is
+mutation-free. Views not selected by a test refresh through these explicit
+operations. Publishers sharing `packages/.editor-view` must be ordered: their
+publication lock fails fast rather than waiting. Aggregate aliases use the one
+union publisher rather than concurrently scheduling per-package publishers.
+`scripts/devenv-task-graph-check.mjs` verifies scopes, direct-task isolation,
+batch ordering, and publisher ordering on the evaluated graph.
 
 Missing, malformed, escaping, dangling, incomplete, or stale state fails with
 the recorded and current identities. `buck2:editor:recover-lock` is the only
 recovery surface; it requires both `EDITOR_VIEW_PACKAGE` and the exact printed
 `EDITOR_VIEW_LOCK_TOKEN`, and neither builds nor mutates snapshots.
+
+## Retired Worktree Teardown
+
+Read-only snapshot directories must be released before ordinary Git worktree
+removal. Once all editors, watchers, and builds using the worktree have stopped,
+`devenv tasks run buck2:editor:release --mode single` removes the registered
+worktree editor roots. The operator then leaves that working directory and runs
+`git worktree remove` from another worktree. Release is an explicit lifecycle
+operation, never an automatic dependency of publication, setup, tests, or checks.
+
+The publisher's `release --repo-root <root> --package <package>` command operates
+on the package's entire shared editor root, not just its individual view. It
+acquires the existing publication lock, refuses active or stale locks, makes
+owned directories writable without following symlinks, atomically retires the
+root, and removes it. Missing roots are a no-op; external dependency targets and
+source files are untouched. Exact-token recovery remains required for a stale
+lock. Package first-hop links can remain dangling until the retired worktree is
+removed or publication recreates its root.
 
 ## Relationship to Exact Closure Materialization
 

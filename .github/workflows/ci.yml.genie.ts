@@ -334,11 +334,13 @@ const measurementReportIf = [
 const job = ({
   step,
   extraSteps = [],
+  afterSteps = [],
   laneIf = heavyCiIf,
   timeoutMinutes = jobTimeoutMinutes,
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
   extraSteps?: readonly any[]
+  afterSteps?: readonly any[]
   laneIf?: string
   timeoutMinutes?: number
 }) => ({
@@ -354,11 +356,37 @@ const job = ({
     ...baseSteps,
     ...extraSteps,
     laneIf === heavyCiIf ? buck2TrustedCacheWriterStep(step) : step,
+    ...afterSteps,
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
   ],
 })
+
+const playwrightTestRun = (packageName: 'utils' | 'tui-react') =>
+  [
+    `network_dir="packages/@overeng/${packageName}/test-results/network"`,
+    'mkdir -p "$network_dir"',
+    'date -u --iso-8601=ns > "$network_dir/runner-network.log"',
+    'if command -v ip >/dev/null 2>&1; then',
+    '  ip -details link show >> "$network_dir/runner-network.log"',
+    '  ip address show >> "$network_dir/runner-network.log"',
+    '  ip route show table all >> "$network_dir/runner-network.log"',
+    '  TZ=UTC ip -ts monitor link address route >> "$network_dir/runner-network.log" 2>&1 &',
+    '  network_monitor_pid=$!',
+    '  stop_network_monitor() {',
+    '    kill "$network_monitor_pid" 2>/dev/null || true',
+    '    wait "$network_monitor_pid" 2>/dev/null || true',
+    '    date -u --iso-8601=ns >> "$network_dir/runner-network.log"',
+    '  }',
+    '  trap stop_network_monitor EXIT',
+    'else',
+    '  echo "iproute2 unavailable; runner network changes were not captured" >> "$network_dir/runner-network.log"',
+    '  echo "::warning::iproute2 unavailable for Playwright network evidence"',
+    'fi',
+    runDevenvTasksBefore(`test:pw:${packageName}`),
+  ].join('\n')
+
 
 /** Build and `--help`-smoke compiled-executable and native products. */
 const compiledProductsSmokeStep = {
@@ -590,16 +618,42 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
     step: {
       name: 'Utils Playwright tests',
       env: githubTokenEnv(),
-      run: runDevenvTasksBefore('test:pw:utils'),
+      run: playwrightTestRun('utils'),
     },
+    afterSteps: [
+      {
+        name: 'Upload Playwright failure evidence',
+        if: 'failure()',
+        uses: 'actions/upload-artifact@v4',
+        with: {
+          name: 'playwright-test-results-utils-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+          path: 'packages/@overeng/utils/test-results/',
+          'if-no-files-found': 'ignore',
+          'retention-days': 14,
+        },
+      },
+    ],
   }),
   'test-playwright-tui-react': job({
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'TUI React Playwright tests',
       env: githubTokenEnv(),
-      run: runDevenvTasksBefore('test:pw:tui-react'),
+      run: playwrightTestRun('tui-react'),
     },
+    afterSteps: [
+      {
+        name: 'Upload Playwright failure evidence',
+        if: 'failure()',
+        uses: 'actions/upload-artifact@v4',
+        with: {
+          name: 'playwright-test-results-tui-react-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+          path: 'packages/@overeng/tui-react/test-results/',
+          'if-no-files-found': 'ignore',
+          'retention-days': 14,
+        },
+      },
+    ],
   }),
   'test-megarepo-cold-gc': job({
     laneIf: empiricalProofLaneIf,
@@ -1559,10 +1613,10 @@ const allCiJobs: Record<string, any> = {
     ...notifyAlignmentJob({
       targetRepo: 'schickling/megarepo-all',
       needs: ['tested-tree', 'quality', ...Object.keys(deployJobs)],
-      runner: [
-        'namespace-profile-linux-x86-64',
-        'namespace-features:github.run-id=${{ github.run_id }}',
-      ],
+      runner: namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+      }),
     }),
     // Optional lookup failures permit authoritative quality fallback; publication must succeed.
     if: `\${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && ${Object.keys(

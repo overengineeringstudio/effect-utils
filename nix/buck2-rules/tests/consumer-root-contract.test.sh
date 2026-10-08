@@ -6,7 +6,8 @@ export BUCK2_RULES_REPO="$repo_root"
 "$repo_root/nix/buck2-rules/tests/consumer-root-config.test.sh" "$repo_root"
 bash "$repo_root/nix/buck2-rules/tests/file-watcher-contract.test.sh" "$repo_root"
 
-root="$(nix build --impure --no-link --print-out-paths --expr '
+build_root() {
+  BUCK2_WATCHER_POLICY="$1" nix build --impure --no-link --print-out-paths --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_RULES_REPO");
     flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
@@ -24,8 +25,15 @@ root="$(nix build --impure --no-link --print-out-paths --expr '
       };
     };
     cellName = "fixture";
+    watcherPolicy = builtins.getEnv "BUCK2_WATCHER_POLICY";
   }
-')"
+'
+}
+
+root="$(build_root mutable-checkout)"
+immutable_root="$(build_root immutable-input)"
+grep -Fx '  file_watcher = watchman' "$root/.buckconfig" >/dev/null
+grep -Fx '  file_watcher = fs_hash_crawler' "$immutable_root/.buckconfig" >/dev/null
 
 [ -f "$root/.buckroot" ]
 [ -f "$root/.buckconfig" ]

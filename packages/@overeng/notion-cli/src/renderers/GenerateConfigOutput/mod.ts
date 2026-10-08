@@ -6,7 +6,7 @@ export type {
 } from './schema.ts'
 
 // App
-export { getGenerateConfigApp } from './app.ts'
+export { GenerateConfigApp } from './app.ts'
 
 // Views
 export { GenerateConfigView, type GenerateConfigViewProps } from './view.tsx'

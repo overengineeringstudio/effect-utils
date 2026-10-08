@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
   lstatSync,
@@ -14,6 +15,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -23,6 +25,7 @@ import {
   checkEditorView,
   publishEditorView,
   recoverEditorViewLock,
+  releaseEditorViewRoot,
   verifyEditorViewSnapshot,
   type EditorViewOptions,
 } from './editor-view.ts'
@@ -135,6 +138,33 @@ const ownedSnapshots = (fixture: Fixture): readonly string[] =>
   readdirSync(join(fixture.editorRoot, '.store')).filter((name) =>
     name.startsWith(`${fixture.options.viewName}-`),
   )
+
+/** Payload identities and write timestamps, without following relocated snapshot links. */
+const storeFiles = (
+  store: string,
+): readonly {
+  readonly path: string
+  readonly ino: bigint
+  readonly size: bigint
+  readonly mtimeNs: bigint
+  readonly ctimeNs: bigint
+}[] =>
+  readdirSync(store)
+    .toSorted()
+    .flatMap((name) => {
+      const path = join(store, name)
+      const status = lstatSync(path, { bigint: true })
+      if (status.isDirectory() === true) return storeFiles(path)
+      return [
+        {
+          path,
+          ino: status.ino,
+          size: status.size,
+          mtimeNs: status.mtimeNs,
+          ctimeNs: status.ctimeNs,
+        },
+      ]
+    })
 
 /** A second package view publishing into the fixture's shared `packages/.editor-view` store. */
 const makeSiblingView = ({
@@ -331,6 +361,50 @@ describe('editor view publisher', () => {
     }
   })
 
+  it.each([false, true])(
+    'writes zero store bytes when republishing unchanged inputs (finite closure: %s)',
+    async (finite) => {
+      const fixture = makeFixture()
+      try {
+        const options = {
+          ...fixture.options,
+          ...(finite === true ? { backingRoots: [fixture.editorInputs] } : {}),
+        }
+        const record = await publishEditorView(options)
+        const store = join(fixture.editorRoot, '.store')
+        const before = storeFiles(store)
+        expect(before.reduce((bytes, file) => bytes + file.size, 0n)).toBeGreaterThan(0n)
+
+        // A warm publication must not invoke cp or enter materialization, even
+        // for finite closures. Compare every store file, not just the record.
+        await expect(
+          publishEditorView({
+            ...options,
+            cp: falseTool,
+            beforeMaterialize: () => {
+              throw new Error('unchanged publication attempted materialization')
+            },
+          }),
+        ).resolves.toEqual(record)
+        const after = storeFiles(store)
+        const previous = new Map(before.map((file) => [file.path, file]))
+        const writtenBytes = after.reduce((bytes, file) => {
+          const old = previous.get(file.path)
+          return old?.ino === file.ino &&
+            old.mtimeNs === file.mtimeNs &&
+            old.ctimeNs === file.ctimeNs
+            ? bytes
+            : bytes + file.size
+        }, 0n)
+        expect(writtenBytes).toBe(0n)
+        expect(after).toEqual(before)
+        expect(ownedSnapshots(fixture)).toEqual([storeName(record.snapshot)])
+      } finally {
+        cleanup(fixture)
+      }
+    },
+  )
+
   it('publishes the source-generator dependency closure at the repository root', async () => {
     const fixture = makeFixture()
     try {
@@ -448,6 +522,90 @@ describe('editor view publisher', () => {
       ) as { snapshots: readonly string[] }
       expect(retention.snapshots).toHaveLength(2)
       expect(retention.snapshots[0]).toBe(currentTarget(fixture).replace('.store/', ''))
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('releases read-only editor roots through the teardown CLI without following links', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      expect(statSync(join(fixture.editorRoot, record.snapshot)).mode & 0o222).toBe(0)
+      const external = join(fixture.root, 'external')
+      mkdirSync(external, { mode: 0o555 })
+      symlinkSync(external, join(fixture.editorRoot, 'external-link'))
+      const externalMode = statSync(external).mode
+      const result = spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(new URL('./editor-view.ts', import.meta.url)),
+          'release',
+          '--repo-root',
+          fixture.root,
+          '--package',
+          fixture.options.package,
+        ],
+        { encoding: 'utf8' },
+      )
+      expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' })
+      expect(readdirSync(dirname(fixture.editorRoot))).not.toContain('.editor-view')
+      expect(
+        readdirSync(dirname(fixture.editorRoot)).filter((name) =>
+          name.startsWith('.editor-view.release-'),
+        ),
+      ).toEqual([])
+      expect(statSync(external).mode).toBe(externalMode)
+      expect(lstatSync(join(fixture.packageDir, 'node_modules')).isSymbolicLink()).toBe(true)
+      releaseEditorViewRoot(fixture.options)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('refuses teardown while a publisher lock exists without unlocking payload directories', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      const lock = join(fixture.editorRoot, '.publish.lock')
+      mkdirSync(lock)
+      writeFileSync(
+        join(lock, 'owner.json'),
+        JSON.stringify({
+          schema: 'effect-utils/editor-view-lock/v1',
+          token: 'held',
+          pid: process.pid,
+        }),
+      )
+      expect(() => releaseEditorViewRoot(fixture.options)).toThrow('publication lock exists')
+      expect(statSync(join(fixture.editorRoot, record.snapshot)).mode & 0o222).toBe(0)
+      expect(readlinkSync(join(fixture.editorRoot, fixture.options.viewName))).toBe(record.snapshot)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('bounds a shared store to current plus previous for each publishing view', async () => {
+    const fixture = makeFixture()
+    try {
+      const sibling = makeSiblingView({ fixture, packageName: 'genie' })
+      const histories: string[][] = [[], []]
+      for (const revision of [1, 2, 3, 4, 5, 6]) {
+        for (const [index, options] of [fixture.options, sibling.options].entries()) {
+          writeFileSync(
+            join(options.editorInputs, 'install-descriptor.json'),
+            `${JSON.stringify({ revision })}\n`,
+          )
+          const record = await publishEditorView(options)
+          const history = histories[index]!
+          history.unshift(storeName(record.snapshot))
+          const retained = readdirSync(join(fixture.editorRoot, '.store'))
+            .filter((name) => name.startsWith(`${options.viewName}-`))
+            .toSorted()
+          expect(retained).toEqual(history.slice(0, 2).toSorted())
+        }
+        expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(revision === 1 ? 2 : 4)
+      }
     } finally {
       cleanup(fixture)
     }

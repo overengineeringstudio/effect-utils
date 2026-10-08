@@ -123,6 +123,65 @@ The editable authorities are:
 
 Generated YAML and JSON are checked-in review artifacts, never independent authoring surfaces.
 
+## Plain-flake Rust consumers
+
+`genie/ci-workflow/rust.ts` supplies small step and job builders for Rust repositories
+with a plain Nix flake. The helpers are also exported from `genie/ci-workflow.ts` and
+`genie/external.ts`; their runtime import graph needs no npm installation.
+
+The consumer devShell includes `effect-utils.packages.${system}.genie`, Rust and
+`cargo-nextest`, and creates `repos/effect-utils` as a symlink to the effect-utils
+flake input store path. Workflow sources can then import through that symlink:
+
+```ts
+import { githubWorkflow, githubWorkflowEvent } from '../../repos/effect-utils/genie/external.ts'
+import {
+  cargoFmtJob,
+  cargoClippyJob,
+  cargoNextestJob,
+  plainFlakeGenieCheckJob,
+  namespaceRunner,
+  RUNNER_PROFILES,
+  defaultActionlintConfig,
+} from '../../repos/effect-utils/genie/ci-workflow.ts'
+
+export default githubWorkflow({
+  name: 'Rust CI',
+  on: { pull_request: githubWorkflowEvent.all, push: { branches: ['main'] } },
+  actionlint: defaultActionlintConfig,
+  jobs: {
+    fmt: cargoFmtJob(),
+    clippy: cargoClippyJob({ extraArgs: ['--', '-D', 'warnings'] }),
+    test: cargoNextestJob({
+      retries: 2,
+      testThreads: 8,
+      'timeout-minutes': 30,
+      strategy: { matrix: { runner: [...RUNNER_PROFILES] }, 'fail-fast': false },
+      runsOn: namespaceRunner({ profile: '${{ matrix.runner }}', runId: '${{ github.run_id }}' }),
+    }),
+    freshness: plainFlakeGenieCheckJob(),
+  },
+})
+```
+
+Jobs default to the shared Namespace Linux profile with workflow-run affinity.
+Runner matrices use the same `namespaceRunner`, `RUNNER_PROFILES` and actionlint
+configuration as other CI helpers. Job options retain GitHub's gates, environment,
+permissions, defaults, matrix and timeout controls, plus `preSteps`/`postSteps`.
+
+`plainFlakeSetupSteps` installs Determinate Nix and accepts an optional public
+`cachix` name for read-only cache access. For custom jobs, compose these setup steps
+with `nixDevelopStep({ name, command })`; `command` is an argv vector, not a shell
+fragment. An optional `flake` selects a different devShell. The Cargo steps run
+`nix develop -c` with fmt checking all crates, clippy using
+`--workspace --all-targets --locked`, and nextest using `--workspace --locked`.
+Nextest retries default to two; an explicit zero disables retries. Omit
+`testThreads` to retain nextest's own concurrency selection.
+
+The freshness job runs `nix develop -c genie --check` and does not prepare a
+megarepo, install npm packages, or assume devenv tasks. The focused pure tests run
+through `devenv tasks run genie:ci-workflow:test` and are included in `test:run`.
+
 ## Traceability
 
 | Requirement area          | Source/evidence                                                                                    |

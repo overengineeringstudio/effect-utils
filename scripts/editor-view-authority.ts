@@ -166,7 +166,7 @@ const parseCli = (args: readonly string[]) => {
     cp: admitting === true ? get('--cp') : '',
     mv: admitting === true ? get('--mv') : '',
     fingerprintTool: admitting === true ? get('--fingerprint-tool') : '',
-    snapshotRetention: admitting === true ? Number(get('--snapshot-retention')) : 3,
+    snapshotRetention: admitting === true ? Number(get('--snapshot-retention')) : 2,
     publicationPackages: values.get('--packages'),
   }
 }

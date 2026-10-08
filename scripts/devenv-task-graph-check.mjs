@@ -172,6 +172,19 @@ for (const name of ['nix:build', 'nix:check']) {
   })
 }
 
+requireTask('buck2:editor:release')
+ok({
+  condition: dependencies.get('buck2:editor:release').size === 0,
+  name: 'editor release does not build or publish dependencies',
+})
+for (const name of tasks.keys()) {
+  if (name === 'buck2:editor:release') continue
+  ok({
+    condition: reaches({ start: name, target: 'buck2:editor:release' }) === false,
+    name: `${name} never schedules retired-worktree teardown`,
+  })
+}
+
 const visiting = new Set()
 const visited = new Set()
 const visitAcyclic = (name) => {
@@ -343,20 +356,67 @@ ok({
   name: 'editor bootstrap reads committed standalone dependencies without mutating projections',
 })
 
-// The source-side test partition executes through one union publisher: every source test task
-// scheduled by the aggregate's batches plus the two source-run extra suites.
+// Aggregate-only aliases use the union publisher. Direct source tasks publish
+// only their own execution view and the generator bootstrap closure.
 const sourceTestAggregate = 'test:run'
 const sourceTestExtraSuites = ['devenv-modules:test', 'genie:buck2:test']
 const sourceTestBatchPrefix = `${sourceTestAggregate}:batch:`
-const sourceTestTasks = [...dependencies.keys()]
-  .filter((name) => name.startsWith(sourceTestBatchPrefix))
-  .flatMap((batch) =>
-    [...dependencies.get(batch)].filter((name) => name.startsWith(sourceTestBatchPrefix) === false),
-  )
+const batchExecutionPattern = /^test:run:batch:\d+:/
+const sourceTestTasks = [...dependencies.keys()].filter((name) => batchExecutionPattern.test(name))
+const directSourceTestTasks = sourceTestTasks.map((name) =>
+  name.replace(batchExecutionPattern, 'test:'),
+)
+const bootstrapPackagePaths = ['.', 'packages/@overeng/otel-contract']
 ok({
   condition: sourceTestTasks.length > 0,
   name: `${sourceTestAggregate} schedules source test tasks through its batches`,
 })
+for (const name of buck2UnboundedTaskNames) {
+  ok({
+    condition: directSourceTestTasks.includes(name),
+    name: `${sourceTestAggregate} retains the ${name} source complement`,
+  })
+}
+ok({
+  condition: dependencies
+    .get('test:notion-cli:unbounded')
+    ?.has('buck2:editor:publish:test:notion-cli:unbounded'),
+  name: 'test:notion-cli:unbounded waits for its request-scoped publisher',
+})
+for (const name of directSourceTestTasks) {
+  ok({
+    condition: tasks.has(name),
+    name: `${name} remains independently addressable`,
+  })
+  ok({
+    condition: [...(dependencies.get(name) ?? [])].every(
+      (dependency) => dependency.startsWith(sourceTestBatchPrefix) === false,
+    ),
+    name: `${name} never pulls an earlier aggregate batch into direct execution`,
+  })
+}
+for (const name of sourceTestTasks) {
+  const batchIndex = Number(/^test:run:batch:(\d+):/.exec(name)?.[1])
+  ok({
+    condition:
+      batchIndex === 0 || dependencies.get(name).has(`${sourceTestBatchPrefix}${batchIndex - 1}`),
+    name: `${name} preserves aggregate-only batch ordering`,
+  })
+}
+const packagePublisherContracts = Object.fromEntries(
+  [
+    ...directSourceTestTasks.map((name) => ({
+      consumer: name,
+      packagePath: tasks.get(name)?.cwd,
+    })),
+    ...buck2TestAuthority.lanes
+      .filter(({ unboundedTaskName }) => unboundedTaskName === undefined)
+      .map(({ taskName, packagePath }) => ({ consumer: taskName, packagePath })),
+  ].map(({ consumer, packagePath }) => [
+    `buck2:editor:publish:${consumer}`,
+    { consumers: [consumer], packagePaths: [...new Set([...bootstrapPackagePaths, packagePath])] },
+  ]),
+)
 
 const scopedPublisherContracts = {
   'buck2:editor:publish:restate-effect': {
@@ -383,11 +443,10 @@ const scopedPublisherContracts = {
       '.',
       'packages/@overeng/ci-tools',
       'packages/@overeng/genie',
-      ...buck2TestAuthority.lanes.flatMap(({ packagePath, unboundedTaskName }) =>
-        unboundedTaskName === undefined ? [] : [packagePath],
-      ),
+      ...directSourceTestTasks.map((name) => tasks.get(name)?.cwd),
     ],
   },
+  ...packagePublisherContracts,
 }
 for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPublisherContracts)) {
   const publisherDependencies = [...(dependencies.get(publisher) ?? [])]
@@ -406,8 +465,9 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
     ok({
       condition:
         command.includes(publisher.replaceAll(':', '-')) &&
-        commandBody.includes('--packages') &&
-        packagePaths.every((packagePath) => commandBody.includes(`"${packagePath}"`)),
+        JSON.stringify(
+          JSON.parse(commandBody.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]').toSorted(),
+        ) === JSON.stringify([...new Set(packagePaths)].toSorted()),
       name: `${publisher} has its distinct trace identity and explicit canonical package scope`,
       detail: command,
     })

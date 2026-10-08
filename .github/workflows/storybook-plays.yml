@@ -19,8 +19,7 @@ concurrency:
 jobs:
   test-storybook-plays:
     if: ${{ github.event_name == 'merge_group' }}
-    runs-on:
-      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
     timeout-minutes: 45
     permissions:
       contents: read
