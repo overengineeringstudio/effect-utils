@@ -1,3 +1,4 @@
+import { rootNixSourceGlobs } from '../../genie/buck2/root-aggregate-projection.ts'
 import {
   type RunnerProfile,
   bashShellDefaults,
@@ -862,14 +863,28 @@ const extraJobs: Record<string, any> = {
       },
       {
         name: 'Reject tracked product and editor payload bytes',
-        // Colocated Nix recipes and contract tests are source, not inert product payload.
+        // Derive Nix recipe admission from //:nix_sources ownership, then check
+        // the remaining exact metadata/test allowlist.
         run: withCiSourceRoot(
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|compiled\\.nix|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|from-source\\.nix|manifest\\.json|native\\.nix|native-targets\\.json|native-targets\\.json\\.genie\\.ts|pnpm-archives\\.nix|private-product-tarballs\\.nix|private-product-tarballs\\.test\\.sh|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts|vite-runtime-fixture\\.nix)$' || true)`,
-            'if [ -n "$tracked_editor$tracked_product" ]; then',
-            '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" >&2',
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' ${rootNixSourceGlobs.map((glob) => `':(glob,exclude)nix/buck2-products/${glob}'`).join(' ')} | grep -Ev '^nix/buck2-products/(cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|manifest\\.json|native-targets\\.json|native-targets\\.json\\.genie\\.ts|private-product-tarballs\\.test\\.sh|publish\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+            'invalid_sources=()',
+            "while IFS= read -r -d '' path; do",
+            '  case "/$path/" in',
+            '    */buck-out/*|*/.editor-view/*|*/result*/*|*/dist/*|*/node_modules/*|*/storybook-static/*|*/tmp/*|*/target/*|*/.devenv/*) ;;',
+            '    *)',
+            '      if [ "$(git --literal-pathspecs cat-file -s ":$path")" -le 262144 ] && git --literal-pathspecs grep --cached -I --name-only -e \'\' -- "$path" >/dev/null; then',
+            '        continue',
+            '      fi',
+            '      ;;',
+            '  esac',
+            '  invalid_sources+=("$path")',
+            `done < <(git ls-files -z -- ${rootNixSourceGlobs.map((glob) => `':(glob)nix/buck2-products/${glob}'`).join(' ')})`,
+            'tracked_source=$(printf \'%s\\n\' "${invalid_sources[@]}")',
+            'if [ -n "$tracked_editor$tracked_product$tracked_source" ]; then',
+            '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" "$tracked_source" >&2',
             '  exit 1',
             'fi',
           ].join('\n'),
