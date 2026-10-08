@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { agent, emit, mission, node, omp, resource, schedule, smalltalkKdl } from './mod.ts'
+import { agent, emit, mission, node, omp, resource, schedule, smalltalkKdl, step } from './mod.ts'
 
 const canonical = () =>
   emit([
@@ -33,6 +33,80 @@ describe('Smalltalk declarations', () => {
     expect(() => schedule({ ...calendarSchedule, timezone: 'Mars/Olympus' })).toThrow(
       'unknown IANA timezone',
     )
+  })
+  it('renders ordered mission and step goals and every dependency parent', () => {
+    expect(emit([mission({
+      id: 'demo',
+      state: 'ready',
+      goal: ['Build.', 'Record.', 'Adopt.'],
+      steps: [
+        { id: 'kit', agentless: true },
+        { id: 'catalog', agentless: true },
+        {
+          id: 'acceptance',
+          agentless: true,
+          goal: ['Verify.', 'Report.'],
+          dependsOn: [
+            { step: 'kit', state: 'completed' },
+            { step: 'catalog', state: 'completed' },
+          ],
+        },
+      ],
+    })])).toBe(
+      'version 2\nmission "demo" state="ready" {\n  goal "Build."\n  goal "Record."\n  goal "Adopt."\n  step "kit" {\n    agentless\n  }\n  step "catalog" {\n    agentless\n  }\n  step "acceptance" {\n    agentless\n    depends-on {\n      step "kit" "completed"\n      step "catalog" "completed"\n    }\n    goal "Verify."\n    goal "Report."\n  }\n}\n',
+    )
+  })
+  it('keeps single-value declarations byte-identical to singleton arrays', () => {
+    const first = { id: 'first', agentless: true, goal: 'Inspect input.' } as const
+    const next = {
+      id: 'next',
+      assignedTo: 'agent/example/worker',
+      goal: 'Finish.',
+      dependsOn: { step: 'first', state: 'completed' },
+    } as const
+    expect(emit([mission({
+      id: 'demo', state: 'ready', goal: ['Demonstrate KDL.'],
+      steps: [{ ...first, goal: [first.goal] }],
+    })])).toBe(canonical())
+    const rendered = emit([step(next)])
+    expect(rendered).toBe('version 2\nstep "next" {\n  assigned-to "agent/example/worker"\n  depends-on {\n    step "first" "completed"\n  }\n  goal "Finish."\n}\n')
+    expect(emit([step({ ...next, goal: [next.goal], dependsOn: [next.dependsOn] })])).toBe(rendered)
+  })
+  it.each([[], ['one', 'two', 'three', 'four'], ['']])(
+    'rejects invalid goal arrays %j',
+    (goal) => {
+      expect(() => mission({
+        id: 'demo', state: 'ready', goal, steps: [{ id: 'first', agentless: true }],
+      } as never)).toThrow()
+      expect(() => step({ id: 'first', agentless: true, goal } as never)).toThrow()
+    },
+  )
+  it('accepts three step goals and omitted step goals', () => {
+    expect(emit([step({ id: 'first', goal: ['One.', 'Two.', 'Three.'] })])).toContain(
+      '  goal "One."\n  goal "Two."\n  goal "Three."\n',
+    )
+    expect(emit([step({ id: 'first' })])).toBe('version 2\nstep "first" {\n}\n')
+  })
+  it('rejects empty dependency arrays and unsupported dependency states', () => {
+    expect(() => step({ id: 'first', dependsOn: [] } as never)).toThrow()
+    expect(() => step({
+      id: 'first', dependsOn: [{ step: 'other', state: 'failed' }],
+    } as never)).toThrow()
+  })
+  it.each([0, 1])('validates every array dependency target at position %i', (missing) => {
+    expect(() => mission({
+      id: 'demo', state: 'ready', goal: 'Verify.',
+      steps: [
+        { id: 'first', agentless: true },
+        {
+          id: 'next', agentless: true,
+          dependsOn: [
+            { step: missing === 0 ? 'missing' : 'first', state: 'completed' },
+            { step: missing === 1 ? 'missing' : 'first', state: 'completed' },
+          ],
+        },
+      ],
+    })).toThrow()
   })
   it('renders the documented Berlin daily calendar schedule without interval fields', () => {
     expect(emit([schedule(calendarSchedule)])).toBe(

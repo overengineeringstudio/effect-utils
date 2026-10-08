@@ -320,14 +320,24 @@ export const DependsOnSchema = Schema.Struct({
   identifier: 'St.DependsOn',
 })
 
+/** st accepts one through three goals; a single goal retains its existing spelling. */
+export const GoalsSchema = Schema.Union([
+  Text,
+  Schema.NonEmptyArray(Text).pipe(
+    Schema.refine((goals): goals is typeof goals => goals.length <= 3, {
+      message: 'missions and steps accept at most three goals',
+    }),
+  ),
+]).annotate({ identifier: 'St.Goals' })
+
 /** One mission step. */
 export const StepSchema = Schema.Struct({
   id: LocalId,
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
   assignedTo: Schema.optionalKey(SubjectId),
-  dependsOn: Schema.optionalKey(DependsOnSchema),
-  goal: Schema.optionalKey(Text),
+  dependsOn: Schema.optionalKey(Schema.Union([DependsOnSchema, Schema.NonEmptyArray(DependsOnSchema)])),
+  goal: Schema.optionalKey(GoalsSchema),
   exec: Schema.optionalKey(ExecSchema),
   gate: Schema.optionalKey(GateSchema),
 }).pipe(
@@ -378,7 +388,7 @@ export const MissionSchema = Schema.Struct({
   id: MissionId,
   state: Schema.Literal('ready'),
   timeout: Schema.optionalKey(Duration),
-  goal: Text,
+  goal: GoalsSchema,
   constraints: Schema.optionalKey(Schema.Array(Text)),
   steps: Schema.Array(StepSchema),
   schedule: Schema.optionalKey(ScheduleSchema),
@@ -388,7 +398,11 @@ export const MissionSchema = Schema.Struct({
       m.steps.length > 0 &&
       new Set(m.steps.map((s) => s.id)).size === m.steps.length &&
       m.steps.every(
-        (s) => s.dependsOn === undefined || m.steps.some((p) => p.id === s.dependsOn?.step),
+        (s) =>
+          s.dependsOn === undefined ||
+          ('step' in s.dependsOn ? [s.dependsOn] : s.dependsOn).every((dependency) =>
+            m.steps.some((p) => p.id === dependency.step),
+          ),
       ),
     { message: 'mission needs unique steps and existing dependencies' },
   ),
@@ -478,11 +492,17 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
     children.push(
       block({
         name: 'depends-on',
-        children: [node({ name: 'step', args: [s.dependsOn.step, s.dependsOn.state] })],
+        children: ('step' in s.dependsOn ? [s.dependsOn] : s.dependsOn).map((dependency) =>
+          node({ name: 'step', args: [dependency.step, dependency.state] }),
+        ),
       }),
     )
   }
-  if (s.goal !== undefined) children.push(child({ name: 'goal', value: s.goal }))
+  if (s.goal !== undefined) {
+    for (const goal of typeof s.goal === 'string' ? [s.goal] : s.goal) {
+      children.push(child({ name: 'goal', value: goal }))
+    }
+  }
   if (s.exec !== undefined) {
     children.push(
       node({
@@ -523,7 +543,9 @@ export const mission = (input: typeof MissionSchema.Encoded): Node => {
     args: [m.id],
     props: { state: m.state, ...(m.timeout === undefined ? {} : { timeout: m.timeout }) },
     children: [
-      child({ name: 'goal', value: m.goal }),
+      ...(typeof m.goal === 'string' ? [m.goal] : m.goal).map((goal) =>
+        child({ name: 'goal', value: goal }),
+      ),
       ...(m.constraints ?? []).map((constraint) =>
         child({ name: 'constraint', value: constraint }),
       ),

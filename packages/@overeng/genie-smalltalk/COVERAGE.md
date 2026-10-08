@@ -61,3 +61,21 @@ st's broader `all`/`skip` catch-up controls are not modeled here.
 Runtime contract: [`mission-graph-runtime.md`, Continuous missions](https://github.com/compoundingtech/smalltalk/blob/main/docs/st3/mission-graph-runtime.md#continuous-missions),
 with grammar validation in `crates/st3/src/graph.rs` (`validate_schedule` and
 `parse_calendar_time`).
+
+## Mission goals and dependency parents
+
+Mission `goal` and optional step `goal` accept either one string or a non-empty
+array of at most three strings. Array order becomes KDL `goal` node order.
+Omitting a step goal still emits no goal node. The single-string form and a
+singleton array emit identical bytes.
+
+Step `dependsOn` accepts either one `{ step, state: 'completed' }` object or a
+non-empty array of those objects. Every array item becomes a `step` child in one
+`depends-on` block, preserving order. Every parent must exist in the mission.
+The single-object form and a singleton array emit identical bytes. Omit
+`dependsOn` for a root step; an empty array is rejected.
+
+Runtime contract: [`mission-graph-runtime.md`, Core rules](https://github.com/compoundingtech/smalltalk/blob/7bc90afd5b1365e24d6b3abdfc9f6ad89603cc7a/docs/st3/mission-graph-runtime.md#core-rules).
+The authoritative parser collects mission goals in `mission.rs:296`, bounds
+them to one through three in `mission.rs:1768-1779`, and extends a step's parent
+vector in `mission.rs:1302` using all children of its `depends-on` block.
