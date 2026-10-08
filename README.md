@@ -213,6 +213,21 @@ devenv tasks run buck2:providers:check
 
 ### Consumer Buck Roots
 
+`mkConsumerBuckRoot` accepts the named `watcherPolicy` argument. Its default,
+`"mutable-checkout"`, emits `file_watcher = watchman` and retains fail-closed
+Watchman admission for interactive source edits. Roots copied into immutable
+Nix builds or filtered, immutable source checks must instead pass:
+
+```nix
+watcherPolicy = "immutable-input";
+```
+
+This emits `file_watcher = fs_hash_crawler`: declared inputs do not change
+during the build, so no Watchman executable or service is required. The
+from-source builder uses the same policy mapping. Unknown policies fail Nix
+evaluation with a message listing both allowed values; raw watcher-provider
+strings are not accepted.
+
 TypeScript package projections retain census destinations below nested Buck packages,
 but resolve each input through its nearest owning `BUCK` (or `BUCK.genie.ts` during
 generation). For example, `src/main.ts` below `parent/src/BUCK` is staged from
