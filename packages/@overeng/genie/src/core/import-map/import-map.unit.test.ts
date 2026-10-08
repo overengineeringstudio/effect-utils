@@ -696,6 +696,47 @@ export default packageJson({
         )
       }, Effect.provide(TestLayer)),
     )
+
+    Vitest.it.effect(
+      'keeps an unavailable locked commit instead of using mutable host state',
+      Effect.fnUntraced(function* () {
+        const lockedCommit = '0123456789abcdef0123456789abcdef01234567'
+        const store = path.join(tempDir, 'store')
+        process.env[MEGAREPO_STORE_ENV] = store
+        yield* writeFile(
+          path.join(tempDir, 'megarepo.lock'),
+          toJson({
+            members: {
+              library: {
+                url: 'https://github.com/fixture/library',
+                ref: 'main',
+                commit: lockedCommit,
+              },
+            },
+          }),
+        )
+        yield* writeFile(path.join(store, 'github.com/fixture/library/refs/heads/main/mod.ts'), '')
+        yield* writeFile(path.join(tempDir, 'repos/library/mod.ts'), '')
+        const importerPath = path.join(tempDir, 'config.genie.ts')
+        const expected = path.join(
+          store,
+          'github.com/fixture/library/refs/commits',
+          lockedCommit,
+          'mod.ts',
+        )
+        expect(
+          resolveImportMapSpecifierForImporterSync({
+            specifier: '#mr/library/mod.ts',
+            importerPath,
+          }),
+        ).toBe(expected)
+        const resolved = yield* resolveImportMapSpecifierForImporter({
+          specifier: '#mr/library/mod.ts',
+          importerPath,
+        })
+        expect(Option.getOrUndefined(resolved)).toBe(expected)
+      }, Effect.provide(TestLayer)),
+    )
   })
 
   Vitest.describe('resolveImportMapsInSource', () => {

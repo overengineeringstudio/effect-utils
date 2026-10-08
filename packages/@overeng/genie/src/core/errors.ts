@@ -19,6 +19,16 @@ export class GenieImportError extends Schema.TaggedError<GenieImportError>()('Ge
   cause: Schema.Defect(),
 }) {}
 
+/** Error when source-mode loading would reuse another workspace's process-global import resolver. */
+export class GenieSourceWorkspaceConflictError extends Schema.TaggedError<GenieSourceWorkspaceConflictError>()(
+  'GenieSourceWorkspaceConflictError',
+  {
+    registeredWorkspace: Schema.String,
+    requestedWorkspace: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
 /** Error when generated file content doesn't match (in check mode) */
 export class GenieCheckError extends Schema.TaggedError<GenieCheckError>()('GenieCheckError', {
   targetFilePath: Schema.String,

@@ -1,7 +1,7 @@
 /**
  * Bootstrap-safe synchronous import-map / megarepo-member resolution.
  *
- * These resolvers use ONLY `node:fs` and `node:path` — no `effect`, no `@effect/platform`, and no
+ * These resolvers use ONLY Node builtins — no `effect`, no `@effect/platform`, and no
  * observability — so they are importable during genie bootstrap (before install), unlike the
  * Effect-based resolvers in `./mod.ts` which pull the runtime dependency graph. `mod.ts` re-exports
  * the public sync API from here for backward compatibility.
@@ -247,33 +247,16 @@ const deriveStoreWorktreePathFromLockMember = ({
 }: {
   member: MegarepoLockMember
 }): string | undefined => {
-  const selectors = [
-    ...(member.commit !== undefined && member.commit.length > 0 ? [member.commit] : []),
-    member.ref,
-  ]
-
-  for (const selector of selectors) {
-    const derivedPath = deriveStoreWorktreePath({
-      selector,
-      url: member.url,
-    })
-    if (derivedPath !== undefined && fs.existsSync(derivedPath) === true) {
-      return derivedPath
-    }
-  }
-
-  return selectors
-    .map((selector) =>
-      deriveStoreWorktreePath({
-        selector,
-        url: member.url,
-      }),
-    )
-    .find((derivedPath): derivedPath is string => derivedPath !== undefined)
+  // A declared commit is authoritative even when it has not been materialized. Falling back to
+  // a branch checkout would silently replace locked source with mutable host state.
+  return deriveStoreWorktreePath({
+    selector: member.commit !== undefined && member.commit.length > 0 ? member.commit : member.ref,
+    url: member.url,
+  })
 }
 
-const findRepoRootSync = (fromPath: string): string | undefined => {
-  let current = path.dirname(fromPath)
+const findRepoRootSync = (fromDirectory: string): string | undefined => {
+  let current = path.resolve(fromDirectory)
   let previous = ''
 
   while (current !== previous) {
@@ -296,11 +279,13 @@ const findRepoRootSync = (fromPath: string): string | undefined => {
 const resolveLocalMegarepoMemberRootSync = ({
   memberName,
   importerPath,
+  workspaceRoot,
 }: {
   memberName: string
   importerPath: string
+  workspaceRoot?: string | undefined
 }): string | undefined => {
-  const repoRoot = findRepoRootSync(importerPath)
+  const repoRoot = findRepoRootSync(workspaceRoot ?? path.dirname(importerPath))
   if (repoRoot === undefined) return undefined
 
   const lockPath = path.join(repoRoot, 'megarepo.lock')
@@ -311,7 +296,7 @@ const resolveLocalMegarepoMemberRootSync = ({
       const lockMember = lock.members?.[memberName]
       if (lockMember !== undefined) {
         const derivedPath = deriveStoreWorktreePathFromLockMember({ member: lockMember })
-        if (derivedPath !== undefined && fs.existsSync(derivedPath) === true) {
+        if (derivedPath !== undefined) {
           return derivedPath
         }
       }
@@ -332,13 +317,15 @@ const resolveLocalMegarepoMemberRootSync = ({
   return undefined
 }
 
-/** Resolve a `#mr/<member>/...` specifier to an absolute path via override map, local repo root, or `GENIE_MEMBER_SOURCE_MAP`. Returns undefined for non-`#mr` specifiers. */
+/** Resolve a `#mr/<member>/...` specifier via overrides, the initiating workspace, or `GENIE_MEMBER_SOURCE_MAP`. */
 export const resolveMegarepoMemberSpecifierSync = ({
   specifier,
   importerPath,
+  workspaceRoot,
 }: {
   specifier: string
   importerPath: string
+  workspaceRoot?: string | undefined
 }): string | undefined => {
   const parsed = parseMemberSpecifier(specifier)
   if (parsed === undefined) {
@@ -354,6 +341,7 @@ export const resolveMegarepoMemberSpecifierSync = ({
   const localRoot = resolveLocalMegarepoMemberRootSync({
     memberName: parsed.memberName,
     importerPath,
+    workspaceRoot,
   })
   if (localRoot !== undefined) {
     return joinMemberSubPath({ memberRoot: localRoot, subPath: parsed.subPath })
@@ -421,9 +409,11 @@ export const resolveImportMapSpecifier = ({
 export const resolveImportMapSpecifierForImporterSync = ({
   specifier,
   importerPath,
+  workspaceRoot,
 }: {
   specifier: string
   importerPath: string
+  workspaceRoot?: string | undefined
 }): string | undefined => {
   if (isImportMapSpecifier(specifier) === false) {
     return undefined
@@ -432,6 +422,7 @@ export const resolveImportMapSpecifierForImporterSync = ({
   const resolvedMegarepoMember = resolveMegarepoMemberSpecifierSync({
     specifier,
     importerPath,
+    workspaceRoot,
   })
   if (resolvedMegarepoMember !== undefined) {
     return resolvedMegarepoMember

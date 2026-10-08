@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -256,6 +256,207 @@ describe('compiled binary import graph pile-cache isolation', () => {
       ])
     }
   }, 120_000)
+})
+
+describe('locked workspace nested member imports', () => {
+  it.each([
+    { mode: 'source', entry: 'member' },
+    { mode: 'compiled', entry: 'member' },
+    { mode: 'source', entry: 'relative' },
+    { mode: 'compiled', entry: 'relative' },
+  ])(
+    'keeps $mode $entry imports in the entry workspace lock',
+    async ({ mode, entry }) => {
+      const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-nested-member-'))
+      const store = path.join(tempRoot, 'store')
+      const workspace = path.join(tempRoot, 'workspace')
+      const commit = '0123456789abcdef0123456789abcdef01234567'
+      const nestedCommit = '1111111111111111111111111111111111111111'
+      const missingCommit = '2222222222222222222222222222222222222222'
+      const memberRoot = (name: string, selector: string) =>
+        path.join(store, 'github.com', 'fixture', name, 'refs', 'commits', selector)
+      const nestedRoot = memberRoot('nested', nestedCommit)
+      const lockedRoot = memberRoot('library', commit)
+      const staleRoot = path.join(store, 'github.com/fixture/library/refs/heads/main')
+      const entryPath = path.join(workspace, 'config.json.genie.ts')
+      const runnerPath = path.join(
+        process.cwd(),
+        `.genie-nested-member-${Date.now()}-${mode}-${entry}.ts`,
+      )
+      const member = (name: string, pin: string) => ({
+        url: `https://github.com/fixture/${name}`,
+        ref: 'main',
+        commit: pin,
+      })
+      try {
+        await Promise.all(
+          [workspace, path.join(workspace, 'repos'), nestedRoot, lockedRoot, staleRoot].map((dir) =>
+            mkdir(dir, { recursive: true }),
+          ),
+        )
+        await symlink(nestedRoot, path.join(workspace, 'repos/nested'), 'dir')
+        await Promise.all([
+          writeFile(
+            path.join(workspace, 'megarepo.lock'),
+            JSON.stringify({
+              members: {
+                nested: member('nested', nestedCommit),
+                library: member('library', commit),
+              },
+            }),
+          ),
+          writeFile(
+            path.join(nestedRoot, 'megarepo.lock'),
+            JSON.stringify({ members: { library: member('library', missingCommit) } }),
+          ),
+          writeFile(
+            path.join(nestedRoot, 'mod.ts'),
+            `import { value } from './helper.ts'\nexport { value }\n`,
+          ),
+          writeFile(
+            path.join(nestedRoot, 'helper.ts'),
+            `import data from '#mr/library/manifest.json'\nexport const value = data.value\n`,
+          ),
+          writeFile(path.join(lockedRoot, 'manifest.json'), JSON.stringify({ value: 'locked' })),
+          // The mutable checkout exists, but predates the manifest.
+          writeFile(path.join(staleRoot, 'old.ts'), `export const value = 'stale'\n`),
+          writeFile(
+            entryPath,
+            `import { value } from '${entry === 'member' ? '#mr/nested/mod.ts' : './repos/nested/mod.ts'}'\nexport default { data: { value }, stringify: () => value }\n`,
+          ),
+          writeFile(
+            runnerPath,
+            [
+              `import { rm } from 'node:fs/promises'`,
+              `import { pathToFileURL } from 'node:url'`,
+              `import { NodeServices } from '@effect/platform-node'`,
+              `import { Effect } from 'effect'`,
+              `import { loadGenieFile, stageCompiledBinaryImportGraph } from './src/core/generation.ts'`,
+              `const entryPath = process.argv[2]!`,
+              `const cwd = process.argv[3]!`,
+              `if (process.argv[4] === 'source') {`,
+              `  const loaded = await Effect.runPromise(loadGenieFile({ genieFilePath: entryPath, cwd }).pipe(Effect.provide(NodeServices.layer)))`,
+              `  console.log(JSON.stringify(loaded.output.data))`,
+              `} else {`,
+              `  const staged = await Effect.runPromise(stageCompiledBinaryImportGraph({ entryPath }).pipe(Effect.provide(NodeServices.layer)))`,
+              `  try {`,
+              // The staged module path is selected at runtime.
+              `    const loaded = await import(pathToFileURL(staged.stagePath).href)`,
+              `    console.log(JSON.stringify(loaded.default.data))`,
+              `  } finally { await rm(staged.tempRoot, { recursive: true, force: true }) }`,
+              `}`,
+            ].join('\n'),
+          ),
+        ])
+        const output = execFileSync('bun', [runnerPath, entryPath, workspace, mode], {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            MEGAREPO_STORE: store,
+            GENIE_MEMBER_OVERRIDE_MAP: '',
+            GENIE_MEMBER_SOURCE_MAP: '',
+          },
+        })
+        expect(JSON.parse(output)).toEqual({ value: 'locked' })
+      } finally {
+        await Promise.all([
+          rm(runnerPath, { force: true }),
+          rm(tempRoot, { recursive: true, force: true }),
+        ])
+      }
+    },
+    120_000,
+  )
+})
+
+describe('source import resolver workspace isolation', () => {
+  it.each(['sequential', 'overlapping'])(
+    'refuses a second workspace during %s loads in the same Bun process',
+    async (mode) => {
+      const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-workspace-isolation-'))
+      const store = path.join(tempRoot, 'store')
+      const workspaces = ['first', 'second'].map((name) => path.join(tempRoot, name))
+      const runnerPath = path.join(
+        process.cwd(),
+        `.genie-workspace-isolation-${mode}-${Date.now()}.ts`,
+      )
+      try {
+        for (const [index, workspace] of workspaces.entries()) {
+          const commit = String(index + 1).repeat(40)
+          const memberRoot = path.join(store, 'github.com/fixture/library/refs/commits', commit)
+          await Promise.all([mkdir(workspace), mkdir(memberRoot, { recursive: true })])
+          await Promise.all([
+            writeFile(
+              path.join(workspace, 'megarepo.lock'),
+              JSON.stringify({
+                members: {
+                  library: { url: 'https://github.com/fixture/library', ref: 'main', commit },
+                },
+              }),
+            ),
+            writeFile(
+              path.join(memberRoot, 'manifest.json'),
+              JSON.stringify({ value: path.basename(workspace) }),
+            ),
+            writeFile(
+              path.join(workspace, 'config.json.genie.ts'),
+              [
+                `import data from '#mr/library/manifest.json'`,
+                `const boundary = (globalThis as typeof globalThis & { boundary?: () => Promise<void> }).boundary`,
+                `if (boundary !== undefined && ${index === 0}) await boundary()`,
+                `export default { data, stringify: () => data.value }`,
+              ].join('\n'),
+            ),
+          ])
+        }
+        await writeFile(
+          runnerPath,
+          [
+            `import path from 'node:path'`,
+            `import { NodeServices } from '@effect/platform-node'`,
+            `import { Effect } from 'effect'`,
+            `import { loadGenieFile } from './src/core/generation.ts'`,
+            `const [firstWorkspace, secondWorkspace, mode] = process.argv.slice(2)`,
+            `const load = (cwd: string) => Effect.runPromise(loadGenieFile({ cwd, genieFilePath: path.join(cwd, 'config.json.genie.ts') }).pipe(Effect.provide(NodeServices.layer)))`,
+            `let entered!: () => void`,
+            `let release!: () => void`,
+            `const entering = new Promise<void>((resolve) => { entered = resolve })`,
+            `const blocked = new Promise<void>((resolve) => { release = resolve })`,
+            `if (mode === 'overlapping') (globalThis as typeof globalThis & { boundary?: () => Promise<void> }).boundary = async () => { entered(); await blocked }`,
+            `const first = load(firstWorkspace!)`,
+            `if (mode === 'overlapping') await entering; else await first`,
+            `let secondError: string | undefined`,
+            `try { await load(secondWorkspace!) } catch (error) { secondError = String(error) }`,
+            `release()`,
+            `const loaded = await first`,
+            `console.log(JSON.stringify({ first: loaded.output.data, secondError }))`,
+          ].join('\n'),
+        )
+        const output = execFileSync('bun', [runnerPath, ...workspaces, mode], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          env: {
+            ...process.env,
+            MEGAREPO_STORE: store,
+            GENIE_MEMBER_OVERRIDE_MAP: '',
+            GENIE_MEMBER_SOURCE_MAP: '',
+          },
+        })
+        const result = JSON.parse(output) as { first: unknown; secondError: string }
+        expect(result.first).toEqual({ value: 'first' })
+        expect(result.secondError).toContain('GenieImportError')
+        expect(result.secondError).toContain(`already registered for ${workspaces[0]}`)
+        expect(result.secondError).toContain(`cannot load workspace ${workspaces[1]}`)
+        expect(result.secondError).toContain('separate Bun process')
+      } finally {
+        await Promise.all([
+          rm(runnerPath, { force: true }),
+          rm(tempRoot, { recursive: true, force: true }),
+        ])
+      }
+    },
+    120_000,
+  )
 })
 
 describe('compiled binary import graph staging', () => {
