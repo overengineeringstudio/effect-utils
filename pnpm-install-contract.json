@@ -28,17 +28,7 @@
   "installPolicy": {
     "dedupePeerDependents": true,
     "ignoreScripts": true,
-    "minimumReleaseAgeExclude": [
-      "@types/node",
-      "effect",
-      "@effect/ai-openai-compat",
-      "@effect/ai-typesafe",
-      "@effect/platform-node",
-      "@effect/vitest",
-      "@effect/opentelemetry",
-      "@effect/atom-react",
-      "@effect/platform-node-shared"
-    ],
+    "minimumReleaseAgeExclude": ["@types/node"],
     "optimisticRepeatInstall": false,
     "packageImportMethod": {
       "live": {
