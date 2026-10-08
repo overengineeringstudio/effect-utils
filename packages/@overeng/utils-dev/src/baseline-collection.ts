@@ -77,7 +77,7 @@ export const decodeSourceTaskScope = (decoded: unknown): ReadonlySet<string> => 
     decoded.length === 0 ||
     decoded.some(
       (task) => /^(?:test|devenv-modules|genie):[A-Za-z0-9:_-]+$/.test(task) === false,
-    ) ||
+    ) === true ||
     new Set(decoded).size !== decoded.length
   ) {
     throw new Error('Source test scope must be a nonempty, unique array of safe task names')
