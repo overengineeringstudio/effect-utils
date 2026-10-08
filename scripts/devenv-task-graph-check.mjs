@@ -172,6 +172,19 @@ for (const name of ['nix:build', 'nix:check']) {
   })
 }
 
+requireTask('buck2:editor:release')
+ok({
+  condition: dependencies.get('buck2:editor:release').size === 0,
+  name: 'editor release does not build or publish dependencies',
+})
+for (const name of tasks.keys()) {
+  if (name === 'buck2:editor:release') continue
+  ok({
+    condition: reaches({ start: name, target: 'buck2:editor:release' }) === false,
+    name: `${name} never schedules retired-worktree teardown`,
+  })
+}
+
 const visiting = new Set()
 const visited = new Set()
 const visitAcyclic = (name) => {

@@ -22,6 +22,21 @@ operate on the complete current registry. The exact-token
 publication lock. These tasks require a real composed megarepo workspace and
 are not global check dependencies.
 
+### Retired worktree removal
+
+After closing editors, watchers, and builds using a retired worktree, run
+`devenv tasks run buck2:editor:release --mode single` from that worktree. Then
+leave its working directory and use ordinary `git worktree remove` from another
+worktree. This explicit teardown is not garbage collection: it removes the
+worktree's editor roots, including every sibling view sharing those roots.
+
+The publisher CLI also supports `release --repo-root <root> --package <package>`
+for one shared editor root. Teardown holds the publication lock, refuses an
+existing lock (including a stale one until exact-token recovery), and makes only
+owned directories writable before removal. It never follows snapshot symlinks
+or changes external dependency targets. Release is never a dependency of setup,
+tests, or checks; republishing recreates a released root.
+
 ## Test collection
 
 The JavaScript runner loads test modules when collecting their inventory without

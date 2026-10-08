@@ -202,6 +202,24 @@ the recorded and current identities. `buck2:editor:recover-lock` is the only
 recovery surface; it requires both `EDITOR_VIEW_PACKAGE` and the exact printed
 `EDITOR_VIEW_LOCK_TOKEN`, and neither builds nor mutates snapshots.
 
+## Retired Worktree Teardown
+
+Read-only snapshot directories must be released before ordinary Git worktree
+removal. Once all editors, watchers, and builds using the worktree have stopped,
+`devenv tasks run buck2:editor:release --mode single` removes the registered
+worktree editor roots. The operator then leaves that working directory and runs
+`git worktree remove` from another worktree. Release is an explicit lifecycle
+operation, never an automatic dependency of publication, setup, tests, or checks.
+
+The publisher's `release --repo-root <root> --package <package>` command operates
+on the package's entire shared editor root, not just its individual view. It
+acquires the existing publication lock, refuses active or stale locks, makes
+owned directories writable without following symlinks, atomically retires the
+root, and removes it. Missing roots are a no-op; external dependency targets and
+source files are untouched. Exact-token recovery remains required for a stale
+lock. Package first-hop links can remain dangling until the retired worktree is
+removed or publication recreates its root.
+
 ## Relationship to Exact Closure Materialization
 
 The declared closure above is the per-package fetch-and-verify tier that the

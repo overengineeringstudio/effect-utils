@@ -1382,6 +1382,20 @@ in
     '';
   };
 
+  tasks."buck2:editor:release" = {
+    description = "Release read-only editor roots before removing a retired worktree";
+    exec = trace.exec "buck2:editor:release" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      for package in ${
+        lib.concatStringsSep " " (map lib.escapeShellArg ([ "." ] ++ map (pkg: pkg.path) allPackages))
+      }; do
+        ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" release \
+          --repo-root "$root" --package "$package"
+      done
+    '';
+  };
+
   tasks."buck2:typescript:materialize-dist" = {
     description = "Atomically materialize all Buck-owned TypeScript declarations";
     after = [ "buck2:editor:materialize" ];
