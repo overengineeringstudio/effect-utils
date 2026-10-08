@@ -16,7 +16,7 @@ expr='
 let
   repo = builtins.toPath (builtins.getEnv "BUCK2_SOURCE_IDENTITY_REPO");
   root = /. + (builtins.getEnv "BUCK2_SOURCE_IDENTITY_FIXTURE");
-  flake = builtins.getFlake (toString repo);
+  flake = builtins.getFlake ("git+file://" + toString repo);
   pkgs = import flake.inputs.nixpkgs {
     system = let selected = builtins.getEnv "BUCK2_SYSTEM"; in
       if selected == "" then builtins.currentSystem else selected;

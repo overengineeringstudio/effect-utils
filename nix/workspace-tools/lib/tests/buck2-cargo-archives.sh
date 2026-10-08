@@ -21,7 +21,7 @@ EOF
 export CARGO_ARCHIVES_REPO="$repo_root" CARGO_ARCHIVES_BUCK="$fixture/third-party/BUCK" CARGO_ARCHIVES_SOURCE="$fixture/source"
 common='let
   repo = builtins.toPath (builtins.getEnv "CARGO_ARCHIVES_REPO");
-  flake = builtins.getFlake (toString repo);
+  flake = builtins.getFlake ("git+file://" + toString repo);
   pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
   buck = builtins.toPath (builtins.getEnv "CARGO_ARCHIVES_BUCK");
   src = builtins.toPath (builtins.getEnv "CARGO_ARCHIVES_SOURCE");

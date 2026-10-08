@@ -20,7 +20,7 @@ repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 export BUCK2_BRIDGE_REPO="$repo_root"
 
 common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
-  flake = builtins.getFlake (toString repo);
+  flake = builtins.getFlake ("git+file://" + toString repo);
   pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
   test = import (repo + "/nix/workspace-tools/lib/tests/buck2-bridge.nix") { inherit pkgs; };
   contract = import (repo + "/nix/workspace-tools/lib/buck2-build-product-contract.nix");
