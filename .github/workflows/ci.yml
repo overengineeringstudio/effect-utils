@@ -1645,8 +1645,35 @@ jobs:
             export BUCK2_CACHE_WRITE_BASIC_AUTH
           fi
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          network_dir="packages/@overeng/utils/test-results/network"
+          mkdir -p "$network_dir"
+          date -u --iso-8601=ns > "$network_dir/runner-network.log"
+          if command -v ip >/dev/null 2>&1; then
+            ip -details link show >> "$network_dir/runner-network.log"
+            ip address show >> "$network_dir/runner-network.log"
+            ip route show table all >> "$network_dir/runner-network.log"
+            TZ=UTC ip -ts monitor link address route >> "$network_dir/runner-network.log" 2>&1 &
+            network_monitor_pid=$!
+            stop_network_monitor() {
+              kill "$network_monitor_pid" 2>/dev/null || true
+              wait "$network_monitor_pid" 2>/dev/null || true
+              date -u --iso-8601=ns >> "$network_dir/runner-network.log"
+            }
+            trap stop_network_monitor EXIT
+          else
+            echo "iproute2 unavailable; runner network changes were not captured" >> "$network_dir/runner-network.log"
+            echo "::warning::iproute2 unavailable for Playwright network evidence"
+          fi
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:utils' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:utils'
+      - name: Upload Playwright failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'playwright-test-results-utils-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: packages/@overeng/utils/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1926,6 +1953,25 @@ jobs:
             export BUCK2_CACHE_WRITE_BASIC_AUTH
           fi
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          network_dir="packages/@overeng/tui-react/test-results/network"
+          mkdir -p "$network_dir"
+          date -u --iso-8601=ns > "$network_dir/runner-network.log"
+          if command -v ip >/dev/null 2>&1; then
+            ip -details link show >> "$network_dir/runner-network.log"
+            ip address show >> "$network_dir/runner-network.log"
+            ip route show table all >> "$network_dir/runner-network.log"
+            TZ=UTC ip -ts monitor link address route >> "$network_dir/runner-network.log" 2>&1 &
+            network_monitor_pid=$!
+            stop_network_monitor() {
+              kill "$network_monitor_pid" 2>/dev/null || true
+              wait "$network_monitor_pid" 2>/dev/null || true
+              date -u --iso-8601=ns >> "$network_dir/runner-network.log"
+            }
+            trap stop_network_monitor EXIT
+          else
+            echo "iproute2 unavailable; runner network changes were not captured" >> "$network_dir/runner-network.log"
+            echo "::warning::iproute2 unavailable for Playwright network evidence"
+          fi
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:tui-react' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:tui-react'
       - name: Upload Playwright failure evidence

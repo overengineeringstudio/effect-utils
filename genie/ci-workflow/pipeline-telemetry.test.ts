@@ -44,3 +44,33 @@ test('GitBucket adds OIDC authority only to the same-repo PR reporter override',
   // Existing workflow-level Tailscale OIDC authority is unchanged by this cutover.
   expect(workflow).toContain('permissions:\n  contents: read\n  id-token: write')
 })
+
+test('Playwright jobs capture network events only during tests and upload failure evidence', () => {
+  for (const packageName of ['utils', 'tui-react'] as const) {
+    const steps = ciWorkflow.data.jobs[`test-playwright-${packageName}`]!.steps
+    const testStepIndex = steps.findIndex(
+      (step) => 'name' in step && step.name === `${packageName === 'utils' ? 'Utils' : 'TUI React'} Playwright tests`,
+    )
+    const testStep = steps[testStepIndex]!
+    expect('run' in testStep && testStep.run).toContain('TZ=UTC ip -ts monitor link address route')
+    expect('run' in testStep && testStep.run).toContain('trap stop_network_monitor EXIT')
+    expect('run' in testStep && testStep.run).toContain('wait "$network_monitor_pid"')
+    expect('run' in testStep && testStep.run).toContain(
+      `network_dir="packages/@overeng/${packageName}/test-results/network"`,
+    )
+    expect(steps[testStepIndex + 1]).toMatchObject({
+      name: 'Upload Playwright failure evidence',
+      if: 'failure()',
+      uses: 'actions/upload-artifact@v4',
+      with: {
+        name: `playwright-test-results-${packageName}-run-\${{ github.run_id }}-attempt-\${{ github.run_attempt }}`,
+        path: `packages/@overeng/${packageName}/test-results/`,
+        'retention-days': 14,
+      },
+    })
+    const tailnetStepIndex = steps.findIndex(
+      (step) => 'uses' in step && step.uses === 'tailscale/github-action@v4',
+    )
+    expect(tailnetStepIndex).toBeGreaterThan(testStepIndex + 1)
+  }
+})
