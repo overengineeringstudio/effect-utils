@@ -22,6 +22,7 @@ use syn::{
 mod backend;
 mod contract;
 mod error;
+mod resource;
 
 /// Makes a serde type a Rust-owned wire contract (requires effect-rust's `contract` feature).
 ///
@@ -104,6 +105,87 @@ pub fn export(args: TokenStream, item: TokenStream) -> TokenStream {
         Ok(output) => output.into(),
         Err(error) => error.into_compile_error().into(),
     }
+}
+
+/// Exports an inherent resource impl with a public `new(...) -> Self` constructor.
+/// Public synchronous `&self` / `&mut self` methods are serialized per resource by
+/// the generated scoped Effect API. Async, consuming, generic and static methods
+/// other than `new` are rejected. Native panics unwind; wasm traps retire the
+/// entire instance without running Rust destructors through poisoned glue.
+///
+/// Consuming methods cannot preserve scoped ownership:
+/// ```compile_fail
+/// struct Counter;
+/// #[effect_rust_macros::resource]
+/// impl Counter {
+///     pub fn new() -> Self { Self }
+///     pub fn consume(self) {}
+/// }
+/// ```
+///
+/// Async methods cannot hold mutable resource borrows across suspension:
+/// ```compile_fail
+/// struct Counter;
+/// #[effect_rust_macros::resource]
+/// impl Counter {
+///     pub fn new() -> Self { Self }
+///     pub async fn value(&self) -> u32 { 0 }
+/// }
+/// ```
+///
+/// Constructors must return the resource directly:
+/// ```compile_fail
+/// struct Counter;
+/// #[effect_rust_macros::resource]
+/// impl Counter {
+///     pub fn new() -> Result<Self, ()> { Ok(Self) }
+/// }
+/// ```
+///
+/// Exported methods cannot introduce generic contracts:
+/// ```compile_fail
+/// struct Counter;
+/// #[effect_rust_macros::resource]
+/// impl Counter {
+///     pub fn new() -> Self { Self }
+///     pub fn identity<T>(&self, value: T) -> T { value }
+/// }
+/// ```
+///
+/// Static helpers must live outside the resource export impl:
+/// ```compile_fail
+/// struct Counter;
+/// #[effect_rust_macros::resource]
+/// impl Counter {
+///     pub fn new() -> Self { Self }
+///     pub fn helper() -> u32 { 0 }
+/// }
+/// ```
+///
+/// Close is reserved for deterministic scoped release:
+/// ```compile_fail
+/// struct Counter;
+/// #[effect_rust_macros::resource]
+/// impl Counter {
+///     pub fn new() -> Self { Self }
+///     pub fn close(&mut self) {}
+/// }
+/// ```
+///
+/// Resources cannot escape through owned return positions:
+/// ```compile_fail
+/// struct Counter;
+/// #[effect_rust_macros::resource]
+/// impl Counter {
+///     pub fn new() -> Self { Self }
+///     pub fn sibling(&self) -> Option<Self> { Some(Self) }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn resource(args: TokenStream, item: TokenStream) -> TokenStream {
+    resource::expand(args.into(), item.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
