@@ -915,7 +915,13 @@ in
   );
   tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];
   tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish:test" ];
-  tasks."devenv-modules:test".env.OTEL_SPAN_BIN = "${otelSpan}/bin/otel-span";
+  tasks."devenv-modules:test".env = {
+    OTEL_SPAN_BIN = "${otelSpan}/bin/otel-span";
+    CP_BIN = "${pkgs.coreutils}/bin/cp";
+    MV_BIN = "${pkgs.coreutils}/bin/mv";
+    JQ_BIN = "${pkgs.jq}/bin/jq";
+    FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
+  };
   tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
   tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish" ];
   tasks."test:notion-integration:notion-cli".after = lib.mkForce [ "buck2:editor:publish" ];
@@ -1086,6 +1092,7 @@ in
       set -euo pipefail
       export BUN_BIN=${pkgs.bun}/bin/bun
       export CP_BIN=${pkgs.coreutils}/bin/cp MV_BIN=${pkgs.coreutils}/bin/mv
+      export JQ_BIN=${pkgs.jq}/bin/jq
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint

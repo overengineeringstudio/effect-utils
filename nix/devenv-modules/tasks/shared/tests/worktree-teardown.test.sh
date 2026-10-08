@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Keep command diagnostics in the aggregate runner's captured test stream.
+exec 2>&1
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd -P)"
 BUN="${BUN_BIN:-$(command -v bun)}"
@@ -8,6 +10,7 @@ DEVENV="${DEVENV_BIN:-$(command -v devenv)}"
 FINGERPRINT="${FINGERPRINT_BIN:?FINGERPRINT_BIN must name the pinned fingerprint tool}"
 CP="${CP_BIN:?CP_BIN must name pinned cp}"
 MV="${MV_BIN:?MV_BIN must name pinned mv}"
+JQ="${JQ_BIN:-$(command -v jq)}"
 TEMP_ROOT="$(mktemp -d)"
 TEMP_ROOT="$(cd "$TEMP_ROOT" && pwd -P)"
 main="$TEMP_ROOT/main"
@@ -132,16 +135,19 @@ if command -v watchman >/dev/null 2>&1; then
   printf '{"min_acceptable_nice_value":19}\n' >"$WATCHMAN_CONFIG_FILE"
   watchman_started=true
   watchman --no-site-spawner --sockname="$WATCHMAN_SOCK" --statefile="$TEMP_ROOT/w.state" \
-    --logfile="$TEMP_ROOT/w.log" --pidfile="$TEMP_ROOT/w.pid" --no-local version >/dev/null
-  watchman --sockname="$WATCHMAN_SOCK" --no-spawn --no-local watch "$worktree" >/dev/null
+    --logfile="$TEMP_ROOT/w.log" --pidfile="$TEMP_ROOT/w.pid" --no-local version
+  watchman --sockname="$WATCHMAN_SOCK" --no-spawn --no-local watch "$worktree"
   printf '\n[buck2]\nfile_watcher = watchman\n' >"$worktree/.buckconfig.local"
   # Production admission writes an actual root-keyed entry.
   "$BUN" -e 'const {directBuckArguments}=await import(process.argv[1]); await directBuckArguments({args:["targets","//:"],cwd:process.argv[2],env:process.env})' \
     "$ROOT/scripts/buck2-entrypoint.ts" "$worktree"
-  compgen -G "$cache/$root_hash-*.json" >/dev/null || fail 'production admission did not write a root-keyed entry'
 else
   printf '{}\n' >"$cache/$root_hash-fixture.json"
 fi
+# bashNonInteractive omits completion builtins such as compgen. Ordinary glob
+# expansion still supplies the exact admission filenames for these assertions.
+admission_entries=( "$cache/$root_hash-"*.json )
+[ -f "${admission_entries[0]}" ] || fail 'production admission did not write a root-keyed entry'
 # Cover other environment variants, interrupted writes, and unrelated shared state.
 printf '{}\n' >"$cache/$root_hash-other.json.pending"
 printf 'other-root\n' >"$cache/other-root.json"
@@ -182,7 +188,7 @@ for target in "$TEMP_ROOT/attack-outside" "$attack_base/alias"; do
   rm "$attack_base/$first_component"
 done
 for pid in "${pids[@]}"; do kill -0 "$pid" || fail 'refused teardown stopped a daemon'; done
-compgen -G "$cache/$root_hash-*" >/dev/null || fail 'refused teardown deleted admission state'
+[ -f "${admission_entries[0]}" ] || fail 'refused teardown deleted admission state'
 
 # Execute the inherited task through devenv, including its real nested release.
 (cd "$worktree" && "$DEVENV" tasks run worktree:teardown --mode single)
@@ -191,14 +197,16 @@ for pid in "${pids[@]}"; do
 done
 [ ! -e "$state" ] || fail 'root buckd state remains'
 [ ! -e "$worktree/.editor-view" ] || fail 'editor roots remain'
-if compgen -G "$cache/$root_hash-*" >/dev/null; then fail 'root admission entries remain'; fi
+for entry in "$cache/$root_hash-"*; do
+  if [ -e "$entry" ] || [ -L "$entry" ]; then fail 'root admission entries remain'; fi
+done
 [ "$(cat "$cache/other-root.json")" = other-root ] || fail 'unrelated root cache changed'
 [ "$(cat "$cache/endpoint.json")" = endpoint ] || fail 'shared endpoint cache changed'
 "$BUN" -e 'const fs=require("node:fs"); if ((fs.statSync(process.argv[1]).mode & 0o777) !== 0o444 || (fs.statSync(process.argv[2]).mode & 0o777) !== 0o555) process.exit(1)' \
   "$worktree/readonly/nested/file" "$TEMP_ROOT/external" || fail 'teardown changed a file mode or followed a symlink'
 if [ "$watchman_started" = true ]; then
   watchman --sockname="$WATCHMAN_SOCK" --no-spawn --no-local watch-list | \
-    jq -e --arg root "$worktree" '.roots | index($root) == null' >/dev/null || fail 'watch remains'
+    "$JQ" -e --arg root "$worktree" '.roots | index($root) == null' >/dev/null || fail 'watch remains'
 fi
 (cd "$worktree" && "$DEVENV" tasks run worktree:teardown --mode single)
 # Also prove an unreachable Watchman remains a successful no-op.
