@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { Effect, FileSystem, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
+import { GenieSourceWorkspaceConflictError } from './errors.ts'
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
 import * as Observability from './observability.ts'
 import type { StatResult } from './types.ts'
@@ -70,11 +71,11 @@ export const ensureImportMapResolver = Effect.fn('ensureImportMapResolver')(func
   const normalizedWorkspaceRoot = path.resolve(workspaceRoot)
   if (importMapResolverWorkspace !== undefined) {
     if (importMapResolverWorkspace !== normalizedWorkspaceRoot) {
-      return yield* Effect.fail(
-        new Error(
-          `Genie's source import resolver is already registered for ${importMapResolverWorkspace}; cannot load workspace ${normalizedWorkspaceRoot} in the same process. Run each workspace in a separate Bun process.`,
-        ),
-      )
+      return yield* new GenieSourceWorkspaceConflictError({
+        registeredWorkspace: importMapResolverWorkspace,
+        requestedWorkspace: normalizedWorkspaceRoot,
+        message: `Genie's source import resolver is already registered for ${importMapResolverWorkspace}; cannot load workspace ${normalizedWorkspaceRoot} in the same process. Run each workspace in a separate Bun process.`,
+      })
     }
     return
   }
