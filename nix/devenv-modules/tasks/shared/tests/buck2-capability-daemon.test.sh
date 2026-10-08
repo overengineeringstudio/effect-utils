@@ -150,22 +150,26 @@ CONFIG
     export WATCHMAN_CONFIG_FILE="$TEMP_ROOT/w.config"
     printf '{"min_acceptable_nice_value":19}\n' >"$WATCHMAN_CONFIG_FILE"
     private_watchman_started=true
-    # Assert the fixture relaxation under an explicitly raised priority, not
-    # just whatever priority the test runner happens to inherit.
+    # nice -n is relative to the inherited value, including negative CI values.
+    # Assert the increment from the measured baseline, capped at the nice ceiling.
+    baseline_nice="$(ps -o nice= -p "$$" | tr -d '[:space:]')"
+    expected_nice=$((baseline_nice + 19))
+    if [ "$expected_nice" -gt 19 ]; then expected_nice=19; fi
     HOME="$TEST_HOME" nice -n 19 "$WATCHMAN_COMMAND" --no-site-spawner --sockname="$WATCHMAN_SOCK" \
       --statefile="$TEMP_ROOT/w.state" --logfile="$TEMP_ROOT/w.log" \
       --pidfile="$TEMP_ROOT/w.pid" --no-local version >"$TEMP_ROOT/watchman-version.json"
     jq -e '.version | type == "string" and length > 0' "$TEMP_ROOT/watchman-version.json" >/dev/null \
-      || fail "private Watchman did not become ready at nice 19"
+      || fail "private Watchman did not become ready with nice increment 19"
     HOME="$TEST_HOME" "$WATCHMAN_COMMAND" --sockname="$WATCHMAN_SOCK" --no-spawn --no-local get-pid \
       >"$TEMP_ROOT/watchman-pid.json"
     jq -e '.pid | type == "number" and . > 0' "$TEMP_ROOT/watchman-pid.json" >/dev/null \
       || fail "private Watchman did not report its service PID"
     service_nice="$(ps -o nice= -p "$(jq -r '.pid' "$TEMP_ROOT/watchman-pid.json")" 2>/dev/null | tr -d '[:space:]')"
-    [ "$service_nice" -ge 1 ] 2>/dev/null \
-      || fail "private Watchman is not serving at a raised nice value (reported: '${service_nice}')"
-    jq -nc --arg socket "$WATCHMAN_SOCK" --slurpfile service "$TEMP_ROOT/watchman-pid.json" --arg nice "$service_nice" \
-      '{evidence:"private-watchman",socket:$socket,pid:$service[0].pid,nice:$nice}'
+    [ "$service_nice" -eq "$expected_nice" ] 2>/dev/null \
+      || fail "private Watchman is not serving at the expected nice value (baseline: '${baseline_nice}', expected: '${expected_nice}', reported: '${service_nice}')"
+    jq -nc --arg socket "$WATCHMAN_SOCK" --slurpfile service "$TEMP_ROOT/watchman-pid.json" \
+      --arg nice "$service_nice" --arg baselineNice "$baseline_nice" --arg expectedNice "$expected_nice" \
+      '{evidence:"private-watchman",socket:$socket,pid:$service[0].pid,nice:$nice,baselineNice:$baselineNice,expectedNice:$expectedNice}'
   fi
   # Start against the old deployment layout. The production scenario must
   # migrate this live cell, not merely rotate an already-real directory.
