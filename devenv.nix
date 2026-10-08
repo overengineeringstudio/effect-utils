@@ -909,7 +909,6 @@ in
   tasks."lint:check:lockfile".description =
     lib.mkForce "Verify lockfile and package specifiers through source-side Genie freshness";
   tasks."lint:check:lockfile".after = lib.mkForce [ "genie:check" ];
-  tasks."test:outline".after = lib.mkForce [ "buck2:editor:publish:outline" ];
   tasks."lint:check:lockfile".exec = lib.mkForce (
     trace.exec "lint:check:lockfile" "exec genie --check"
   );
@@ -1338,12 +1337,6 @@ in
     description = "Atomically publish the Weaver live-check editor dependency view";
     packagePaths = [ "packages/@overeng/otel-contract" ];
     traceScope = "otel-contract";
-  };
-
-  tasks."buck2:editor:publish:outline" = scopedEditorViewPublisher {
-    description = "Atomically publish the headless outline editor dependency view";
-    packagePaths = [ "packages/@overeng/outline" ];
-    traceScope = "outline";
   };
 
   tasks."buck2:editor:publish:playwright" = scopedEditorViewPublisher {
