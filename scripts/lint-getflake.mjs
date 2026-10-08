@@ -12,12 +12,13 @@ const isGitRef = (value) =>
   value.startsWith('git+file://') ||
   /^\$\{[A-Za-z_][A-Za-z0-9_]*_FLAKE_REF:-git\+file:\/\//.test(value)
 
-export const inspectGetFlake = (content, validFlakeRefs = new Set()) => {
+/** Inspect flake inputs against the validated Git-reference environment contract. */
+export const inspectGetFlake = ({ content, validFlakeRefs = new Set() }) => {
   const source = normalize(content)
   const violations = []
   const refs = new Set(validFlakeRefs)
   for (const [, name, value] of assignments(source)) {
-    if (isGitRef(value)) refs.add(name)
+    if (isGitRef(value) === true) refs.add(name)
     else violations.push(`${name} must be a git+file:// reference`)
   }
   const calls =
@@ -26,17 +27,19 @@ export const inspectGetFlake = (content, validFlakeRefs = new Set()) => {
     const string = match[3]
     // Schemes must be explicit: interpolation and relative/bare strings are
     // paths too. file: and path: are not safe source-filtering fetchers.
-    if (string !== undefined && /^(?!path:|file:)[a-z][a-z0-9+.-]*:/i.test(string)) continue
+    if (string !== undefined && /^(?!path:|file:)[a-z][a-z0-9+.-]*:/i.test(string) === true)
+      continue
     const variable = string?.match(
       /^\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)(?::-git\+file:\/\/[^{}]*)?\})$/,
     )
     const envRef = match[2] ?? variable?.[1] ?? variable?.[2]
-    if (envRef !== undefined && refs.has(envRef)) continue
+    if (envRef !== undefined && refs.has(envRef) === true) continue
     violations.push('bare-path getFlake; use "git+file://" + toString repo')
   }
   return violations
 }
 
+/** Lint tracked Nix and shell sources for bare-path flake inputs. */
 export const lintGetFlake = (paths) => {
   const files = paths.map((path) => ({ path, content: readFileSync(path, 'utf8') }))
   // Environment reads are allowed only when the scanned runner/test sources
@@ -44,11 +47,11 @@ export const lintGetFlake = (paths) => {
   const validFlakeRefs = new Set()
   for (const { content } of files) {
     for (const [, name, value] of assignments(normalize(content))) {
-      if (isGitRef(value)) validFlakeRefs.add(name)
+      if (isGitRef(value) === true) validFlakeRefs.add(name)
     }
   }
   const violations = files.flatMap(({ path, content }) =>
-    inspectGetFlake(content, validFlakeRefs).map((message) => `${path}: ${message}`),
+    inspectGetFlake({ content, validFlakeRefs }).map((message) => `${path}: ${message}`),
   )
   for (const violation of violations) console.error(violation)
   return violations.length === 0
