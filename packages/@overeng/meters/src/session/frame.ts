@@ -47,7 +47,9 @@ export class FrameState {
   cached: Sample<FrameStats> = { _tag: 'Unavailable', atMs: 0, reason: 'NoSamples' }
   lastDuration = 0
   lastSkipped = 0
-  constructor(readonly capacity: number) {
+  readonly capacity: number
+  constructor(capacity: number) {
+    this.capacity = capacity
     this.durations = Array.from<number | undefined>({ length: capacity })
     this.times = Array.from<number | undefined>({ length: capacity })
   }
