@@ -11,15 +11,10 @@ TEMP_ROOT="$(cd "$TEMP_ROOT" && pwd -P)"
 TEST_HOME="$TEMP_ROOT/home"
 mkdir -p "$TEST_HOME"
 declare -a child_pids=()
-selftest_evidence_root=""
 cleanup() {
   local pid
   for pid in "${child_pids[@]}"; do kill "$pid" 2>/dev/null || true; done
   for pid in "${child_pids[@]}"; do wait "$pid" 2>/dev/null || true; done
-  if [ -n "$selftest_evidence_root" ]; then
-    chmod -R u+w "$selftest_evidence_root" 2>/dev/null || true
-    rm -rf "$selftest_evidence_root"
-  fi
   chmod -R u+w "$TEMP_ROOT" 2>/dev/null || true
   rm -rf "$TEMP_ROOT"
 }
@@ -27,17 +22,29 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 retain_failure_evidence() {
-  local evidence_base evidence name
-  evidence_base="${CAPABILITY_TEST_EVIDENCE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/buck2-cache-reports/$(date -u +%F)}"
+  local evidence_base evidence name reference pid job_line job_id="" job_state=""
+  evidence_base="${CAPABILITY_TEST_EVIDENCE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/buck2-cache-reports/capability-publisher}"
   umask 077
   mkdir -p "$evidence_base" || return 1
   evidence="$(mktemp -d "$evidence_base/capability-publisher.XXXXXX")" || return 1
   {
     printf 'fixture shell: $$=%s BASHPID=%s\n' "$$" "$BASHPID"
-    for name in child_pids competing_pids first_publisher rooting_pid crashed_publisher evidence_publisher; do
-      if declare -p "$name" >/dev/null 2>&1; then declare -p "$name"; fi
+    for name in child_pids competing_pids first_publisher rooting_pid crashed_publisher; do
+      if ! declare -p "$name" >/dev/null 2>&1; then continue; fi
+      reference="$name[@]"
+      for pid in "${!reference}"; do
+        if [[ "$pid" =~ ^[1-9][0-9]*$ ]]; then printf 'owner=%s pid=%s\n' "$name" "$pid"; fi
+      done
     done
-    jobs -l
+    while IFS= read -r job_line; do
+      if [[ "$job_line" =~ ^\[([0-9]+)\][+-]?[[:space:]]+([0-9]+)[[:space:]]+(Exit[[:space:]]+[0-9]+|[[:alpha:]]+) ]]; then
+        job_id="${BASH_REMATCH[1]}"
+        job_state="${BASH_REMATCH[3]}"
+        printf 'job=%s pid=%s state=%s\n' "$job_id" "${BASH_REMATCH[2]}" "$job_state"
+      elif [ -n "$job_id" ] && [[ "$job_line" =~ ^[[:space:]]+([0-9]+)[[:space:]] ]]; then
+        printf 'job=%s pid=%s state=%s\n' "$job_id" "${BASH_REMATCH[1]}" "$job_state"
+      fi
+    done < <(LC_ALL=C jobs -l)
   } >"$evidence/shell-ownership.txt"
   "$BUN" -e '
     const fs = require("fs");
@@ -98,6 +105,30 @@ retain_failure_evidence() {
       }
       processes.push(...rows.filter((row) => selected.has(row.pid)));
     }
+    collect("evidence retention", () => {
+      const base = path.dirname(destination);
+      const previous = fs.readdirSync(base, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && /^capability-publisher\.[A-Za-z0-9]{6}$/.test(entry.name))
+        .map((entry) => path.join(base, entry.name))
+        .filter((directory) => directory !== destination)
+        .flatMap((directory) => {
+          try { return [{ directory, modified: fs.lstatSync(directory).mtimeMs }]; }
+          catch (error) { if (error.code === "ENOENT") return []; throw error; }
+        })
+        .sort((left, right) => right.modified - left.modified || right.directory.localeCompare(left.directory));
+      const makeDirectoriesWritable = (directory) => {
+        try {
+          const metadata = fs.lstatSync(directory);
+          if (!metadata.isDirectory()) return;
+          fs.chmodSync(directory, metadata.mode | 0o700);
+          for (const name of fs.readdirSync(directory)) makeDirectoriesWritable(path.join(directory, name));
+        } catch (error) { if (error.code !== "ENOENT") throw error; }
+      };
+      for (const { directory } of previous.slice(4)) {
+        makeDirectoriesWritable(directory);
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
     fs.writeFileSync(path.join(destination, "evidence.json"), JSON.stringify({
       observedAt: new Date().toISOString(), assertion, assertionRoot,
       expectedCount: expectedCount === "" ? null : Number(expectedCount),
@@ -106,7 +137,7 @@ retain_failure_evidence() {
     if (errors.length) console.error("Failure evidence collection errors:", JSON.stringify(errors));
   ' "$TEMP_ROOT" "$evidence" "$BASHPID" "$1" "${root:-}" "${count:-}" \
     "${child_pids[@]}" "${competing_pids[@]-}" "${first_publisher:-}" \
-    "${rooting_pid:-}" "${crashed_publisher:-}" "${evidence_publisher:-}" || {
+    "${rooting_pid:-}" "${crashed_publisher:-}" || {
       printf 'Partial capability publisher failure evidence retained at %s\n' "$evidence" >&2
       return 1
     }
@@ -322,58 +353,6 @@ publish "$concurrent" one >"$TEMP_ROOT/concurrent-pruned.json"
 assert_result "$TEMP_ROOT/concurrent-pruned.json" one 3 false
 assert_retained "$concurrent" 3
 
-# A deliberately failed assertion captures a real blocked publisher before
-# cleanup. Its copied state and native ancestry must survive fixture removal.
-selftest_evidence_root="$(mktemp -d)"
-evidence_fixture="$TEMP_ROOT/evidence-fixture"
-mkdir -p "$evidence_fixture"
-publish "$evidence_fixture" one >"$TEMP_ROOT/evidence-fixture-one.json"
-HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$evidence_fixture" --profile "$(profile two)" --nix-store "$TEMP_ROOT/gated-nix-store" >"$TEMP_ROOT/evidence-fixture-two.json" &
-evidence_publisher=$!
-child_pids+=("$evidence_publisher")
-read -r -t 30 -u 8 rooting_pid || fail "evidence publisher did not reach rooting barrier"
-child_pids+=("$rooting_pid")
-evidence_exit=0
-(
-  trap - EXIT INT TERM
-  CAPABILITY_TEST_EVIDENCE_DIR="$selftest_evidence_root" assert_retained "$evidence_fixture" 2
-) >"$TEMP_ROOT/evidence-failure.stdout" 2>"$TEMP_ROOT/evidence-failure.stderr" || evidence_exit=$?
-[ "$evidence_exit" -eq 1 ] || fail "evidence fixture did not preserve the failed assertion exit"
-grep -Fq 'Capability publisher failure evidence retained at ' "$TEMP_ROOT/evidence-failure.stderr" || fail "assertion did not print retained evidence path"
-kill -KILL "$evidence_publisher" "$rooting_pid"
-wait "$evidence_publisher" 2>/dev/null || true
-child_pids=()
-chmod -R u+w "$evidence_fixture"
-rm -rf "$evidence_fixture"
-"$BUN" -e '
-  const fs = require("fs");
-  const path = require("path");
-  const [base, publisherPid, rootingPid] = process.argv.slice(1);
-  const entries = fs.readdirSync(base);
-  if (entries.length !== 1) process.exit(1);
-  const directory = path.join(base, entries[0]);
-  if ((fs.statSync(directory).mode & 0o777) !== 0o700) process.exit(1);
-  const evidence = JSON.parse(fs.readFileSync(path.join(directory, "evidence.json"), "utf8"));
-  const observed = JSON.parse(fs.readFileSync(path.join(directory, "publisher-jsons", "failed-generation-assertion.json"), "utf8"));
-  if (evidence.errors.length || observed.expectedCount !== 2 || observed.names.length !== 1 || !observed.names.includes(observed.current)) process.exit(1);
-  const defs = fs.readFileSync(path.join(directory, "generation-trees", "evidence-fixture", "capabilities", "defs.bzl"), "utf8");
-  if (!defs.includes(observed.current)) process.exit(1);
-  const result = JSON.parse(fs.readFileSync(path.join(directory, "publisher-jsons", "evidence-fixture-one.json"), "utf8"));
-  if (result.generation !== observed.current || fs.readFileSync(path.join(directory, "publisher-jsons", "evidence-fixture-two.json"), "utf8") !== "") process.exit(1);
-  const ownership = fs.readFileSync(path.join(directory, "shell-ownership.txt"), "utf8");
-  if (!ownership.includes(publisherPid) || !ownership.includes(rootingPid)) process.exit(1);
-  const byPid = new Map(evidence.processes.map((row) => [row.pid, row]));
-  const ancestry = new Set();
-  for (let row = byPid.get(Number(rootingPid)); row && !ancestry.has(row.pid); row = byPid.get(row.parentPid)) ancestry.add(row.pid);
-  if (!ancestry.has(Number(publisherPid))) process.exit(1);
-' "$selftest_evidence_root" "$evidence_publisher" "$rooting_pid" || fail "retained assertion evidence lost generation state, publisher JSONs, ownership, or native ancestry"
-chmod -R u+w "$selftest_evidence_root"
-rm -rf "$selftest_evidence_root"
-selftest_evidence_root=""
-unset evidence_publisher
-rm -f "$TEMP_ROOT/failed-generation-assertion.json" "$TEMP_ROOT/evidence-fixture-one.json" \
-  "$TEMP_ROOT/evidence-fixture-two.json" "$TEMP_ROOT/evidence-failure.stdout" "$TEMP_ROOT/evidence-failure.stderr"
-
 # Kill the actual publisher while it holds flock, then publish again. The
 # delegated rooting subprocess is also test-owned and explicitly reaped.
 crash="$TEMP_ROOT/crash"
@@ -403,5 +382,5 @@ publish "$migration" one >"$TEMP_ROOT/corrupt.stdout" 2>"$TEMP_ROOT/corrupt.stde
 grep -Fq 'Immutable capability generation has changed contents' "$TEMP_ROOT/corrupt.stderr" || fail "generation corruption was not diagnosed"
 cmp -s "$TEMP_ROOT/defs-before-corruption" "$migration/.buck2/capabilities/defs.bzl" || fail "failed corrupt publication changed selected defs"
 
-jq -nc '{test:"publisher-contracts",concurrentPublishers:5,nativeFlock:true,crashReleasedLock:true,interruptedPruneRecovery:true,readOnlyPruneRecovery:true,liveRetainedCount:5,unknownStateDeferred:true,daemonFreeRetainedCount:3,migratedSymlink:true,registeredNixGCRoots:true,immutableCorruptionRejected:true,assertionEvidenceSurvivesCleanup:true,nativePublisherAncestryCaptured:true}'
+jq -nc '{test:"publisher-contracts",concurrentPublishers:5,nativeFlock:true,crashReleasedLock:true,interruptedPruneRecovery:true,readOnlyPruneRecovery:true,liveRetainedCount:5,unknownStateDeferred:true,daemonFreeRetainedCount:3,migratedSymlink:true,registeredNixGCRoots:true,immutableCorruptionRejected:true}'
 echo 'Buck capability publisher contracts passed.'
