@@ -205,6 +205,12 @@ Buck is the only repository-wide TypeScript check authority:
 devenv tasks run buck2:quick
 ```
 
+The shared compiler options require `erasableSyntaxOnly`, so package and fixture
+typechecks reject TypeScript constructs requiring runtime transformation, such
+as parameter properties, enums, and runtime namespaces, before merge-group
+consumer tests. Source exports can therefore use Node's strip-only mode without
+TypeScript lowering; unrelated runtime requirements and JSX transforms still apply.
+
 Audit cross-cell Buck provider identity separately:
 
 ```bash
