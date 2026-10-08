@@ -213,6 +213,17 @@ devenv tasks run buck2:providers:check
 
 ### Consumer Buck Roots
 
+TypeScript package projections retain census destinations below nested Buck packages,
+but resolve each input through its nearest owning `BUCK` (or `BUCK.genie.ts` during
+generation). For example, `src/main.ts` below `parent/src/BUCK` is staged from
+`//parent/src:main.ts`; only locally owned sources are exported by the parent.
+Each nested package must publish the explicit inputs the parent consumes with
+`export_materialization_inputs`, including test modules, snapshots and fixture data.
+Its target names escape `$` as `__dollar__`, while staged destinations stay unchanged.
+This file-level contract preserves source-granular dependencies instead of introducing
+a second, nested-tree materialization interface. Project and runner configuration
+remain package-root files; declared `projectInputs` may reference nested files.
+
 Consumer dependency generators declare the cell that exports patches from each
 nested checkout instead of loading that checkout's standalone `BUCK` files:
 
