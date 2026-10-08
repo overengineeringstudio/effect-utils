@@ -18,6 +18,7 @@ export const developerOperationDispositions = {
   'genie:run': 'outside-by-policy:authoring-mutation',
   'genie:watch': 'outside-by-policy:long-lived-watcher',
   'lint:check': 'outside-by-policy:includes-stage-zero-freshness',
+  'lint:check:getflake': 'buck-pending:static',
   'lint:fix': 'outside-by-policy:authoring-mutation',
   'nix:buck2-artifact-import:check': 'outside-by-policy:nix-artifact-import-contract',
   'nix:flake:eval': 'outside-by-policy:nix-flake-evaluation',
