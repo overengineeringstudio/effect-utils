@@ -106,7 +106,9 @@ export const validateId = (id: string): void => {
 
 class RingView<TValue> implements SeriesView<TValue> {
   readonly at: SeriesView<TValue>['at']
-  constructor(private readonly ring: Ring<TValue>) {
+  private readonly ring: Ring<TValue>
+  constructor(ring: Ring<TValue>) {
+    this.ring = ring
     this.at = ring.at
   }
   get capacity() {
@@ -147,14 +149,14 @@ class Ring<TValue> {
     Number.isInteger(index) === true && index >= 0 && index < this.length
       ? this.slots[(this.nextSequence - this.length + index) % this.series.capacity]
       : undefined
-  constructor(
-    readonly series: {
-      readonly id: string
-      readonly label: string
-      readonly unit: Unit
-      readonly capacity: number
-    },
-  ) {
+  readonly series: {
+    readonly id: string
+    readonly label: string
+    readonly unit: Unit
+    readonly capacity: number
+  }
+  constructor(series: Ring<TValue>['series']) {
+    this.series = series
     this.slots = Array.from<Sample<TValue> | undefined>({ length: series.capacity })
     this.view = new RingView(this)
   }
