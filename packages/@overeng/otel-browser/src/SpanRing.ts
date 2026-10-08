@@ -33,6 +33,13 @@ export interface Vitals {
   readonly longFrameMaxMs: number
 }
 
+/** Content-free evidence delivered exactly once for each pushed completion. */
+export interface RingCompletion {
+  readonly atMs: number
+  readonly durationMs: number
+  readonly status: 'ok' | 'error' | 'interrupted'
+}
+
 /** Identity-stable view of retained spans and current vitals. */
 export interface RingSnapshot {
   readonly spans: ReadonlyArray<RingSpan>
@@ -45,6 +52,10 @@ export interface SpanRing {
   readonly updateVitals: (patch: Partial<Vitals>) => void
   readonly getSnapshot: () => RingSnapshot
   readonly subscribe: (listener: () => void) => () => void
+  /** Unthrottled completion seam; ignores retained history and export sampling. */
+  readonly subscribeCompletions: (options: {
+    readonly onComplete: (completion: RingCompletion) => void
+  }) => () => void
   /** Throttled snapshots as a Stream, for Effect consumers. */
   readonly changes: Stream.Stream<RingSnapshot>
 }
@@ -74,6 +85,7 @@ export const make = (options?: RingOptions): SpanRing => {
   let vitals = emptyVitals
   let snapshot: RingSnapshot | undefined = { spans: [], vitals }
   const listeners = new Set<() => void>()
+  const completionListeners = new Set<(completion: RingCompletion) => void>()
   let scheduled = false
   const changed = () => {
     snapshot = undefined
@@ -103,6 +115,22 @@ export const make = (options?: RingOptions): SpanRing => {
       next = (next + 1) % capacity
       size = Math.min(size + 1, capacity)
       changed()
+      const completion: RingCompletion = Object.freeze({
+        atMs: span.startMs + span.durationMs,
+        durationMs: span.durationMs,
+        status: span.status,
+      })
+      let listenerFailure: unknown
+      let failed = false
+      for (const listener of completionListeners) {
+        try {
+          listener(completion)
+        } catch (cause) {
+          if (failed === false) listenerFailure = cause
+          failed = true
+        }
+      }
+      if (failed === true) throw listenerFailure
     },
     updateVitals: (patch) => {
       vitals = { ...vitals, ...patch }
@@ -110,6 +138,12 @@ export const make = (options?: RingOptions): SpanRing => {
     },
     getSnapshot,
     subscribe,
+    subscribeCompletions: ({ onComplete }) => {
+      completionListeners.add(onComplete)
+      return () => {
+        completionListeners.delete(onComplete)
+      }
+    },
     changes: Stream.callback<RingSnapshot>(
       (queue) =>
         Effect.acquireRelease(

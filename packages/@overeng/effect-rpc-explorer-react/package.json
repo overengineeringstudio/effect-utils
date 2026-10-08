@@ -7,6 +7,7 @@
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-rpc-explorer",
       "packages/@overeng/effect-rpc-explorer-react",
+      "packages/@overeng/effect-rpc-observer",
       "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/stylex-tokens",
@@ -43,6 +44,7 @@
   },
   "dependencies": {
     "@overeng/effect-rpc-explorer": "workspace:^",
+    "@overeng/effect-rpc-observer": "workspace:^",
     "@overeng/stylex-tokens": "workspace:^"
   },
   "devDependencies": {

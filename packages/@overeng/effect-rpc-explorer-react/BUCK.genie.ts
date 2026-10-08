@@ -15,6 +15,11 @@ export const buck2TypeScriptAdmission = {
       distTarget: '//packages/@overeng/effect-rpc-explorer:dist',
     },
     {
+      packageName: '@overeng/effect-rpc-observer',
+      packagePath: 'packages/@overeng/effect-rpc-observer',
+      distTarget: '//packages/@overeng/effect-rpc-observer:dist',
+    },
+    {
       packageName: '@overeng/stylex-tokens',
       packagePath: 'packages/@overeng/stylex-tokens',
       distTarget: '//packages/@overeng/stylex-tokens:dist',

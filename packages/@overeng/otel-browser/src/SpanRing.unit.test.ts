@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { make, type RingSpan } from './SpanRing.ts'
+import { make, type RingCompletion, type RingSpan } from './SpanRing.ts'
 
 const span = (name: string): RingSpan => ({
   name,
@@ -16,6 +16,58 @@ const span = (name: string): RingSpan => ({
 })
 
 describe('SpanRing', () => {
+  it('delivers content-free completions synchronously beyond ring capacity and removes hooks', () => {
+    vi.useFakeTimers()
+    try {
+      const ring = make({ capacity: 1 })
+      const completions: RingCompletion[] = []
+      ring.push(span('old history'))
+      const unsubscribe = ring.subscribeCompletions({
+        onComplete: (completion) => {
+          completions.push(completion)
+        },
+      })
+      ring.push({ ...span('content'), attributes: { secret: 'not delivered' } })
+      ring.push({ ...span('failure'), status: 'error', durationMs: 3 })
+      expect(completions).toEqual([
+        { atMs: 1, durationMs: 1, status: 'ok' },
+        { atMs: 3, durationMs: 3, status: 'error' },
+      ])
+      expect(ring.getSnapshot().spans).toHaveLength(1)
+      unsubscribe()
+      ring.push(span('after release'))
+      ring.updateVitals({ cls: 1 })
+      expect(completions).toHaveLength(2)
+      vi.runAllTimers()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reports subscriber faults without skipping other completion listeners', () => {
+    vi.useFakeTimers()
+    try {
+      const ring = make()
+      const failure = new Error('listener failure')
+      ring.subscribeCompletions({
+        onComplete: () => {
+          throw failure
+        },
+      })
+      const completions: RingCompletion[] = []
+      ring.subscribeCompletions({
+        onComplete: (completion) => {
+          completions.push(completion)
+        },
+      })
+      expect(() => ring.push(span('action'))).toThrow(failure)
+      expect(completions).toEqual([{ atMs: 1, durationMs: 1, status: 'ok' }])
+      vi.runAllTimers()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('retains the newest spans in chronological order across wraparound', () => {
     const ring = make({ capacity: 2 })
     ring.push(span('first'))

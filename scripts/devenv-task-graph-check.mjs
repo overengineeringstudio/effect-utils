@@ -430,8 +430,12 @@ const scopedPublisherContracts = {
     packagePaths: ['packages/@overeng/otel-contract'],
   },
   'buck2:editor:publish:playwright': {
-    consumers: ['test:pw:tui-react', 'test:pw:utils'],
-    packagePaths: ['packages/@overeng/tui-react', 'packages/@overeng/utils'],
+    consumers: ['test:pw:meters', 'test:pw:tui-react', 'test:pw:utils'],
+    packagePaths: [
+      'packages/@overeng/meters',
+      'packages/@overeng/tui-react',
+      'packages/@overeng/utils',
+    ],
   },
   'buck2:editor:publish:test': {
     // check:all's observability profile names the test publisher among its prerequisites.

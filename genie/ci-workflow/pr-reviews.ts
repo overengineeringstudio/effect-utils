@@ -47,9 +47,7 @@ export type PrReviewsResolvedStepOptions = {
  * Checkout-free step that fails while any review thread on the PR is unresolved.
  * Non-PR events succeed with a notice: there is no PR to gate.
  */
-export const prReviewsResolvedStep = (
-  opts: PrReviewsResolvedStepOptions = {},
-): WorkflowStep => ({
+export const prReviewsResolvedStep = (opts: PrReviewsResolvedStepOptions = {}): WorkflowStep => ({
   name: 'Check unresolved review threads',
   shell: 'bash',
   env: {
@@ -83,12 +81,12 @@ export const prReviewsResolvedStep = (
     '  else',
     '    page_json=$(gh api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number" -f cursor="$cursor")',
     '  fi',
-    '  page_unresolved=$(printf \'%s\\n\' "$page_json" | jq \'[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved == false)] | length\')',
+    "  page_unresolved=$(printf '%s\\n' \"$page_json\" | jq '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved == false)] | length')",
     '  unresolved=$((unresolved + page_unresolved))',
     '  if [ "$(printf \'%s\\n\' "$page_json" | jq -r \'.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage\')" != "true" ]; then',
     '    break',
     '  fi',
-    '  cursor=$(printf \'%s\\n\' "$page_json" | jq -r \'.data.repository.pullRequest.reviewThreads.pageInfo.endCursor\')',
+    "  cursor=$(printf '%s\\n' \"$page_json\" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')",
     'done',
     'if [ "$unresolved" -gt 0 ]; then',
     '  printf \'%s\\n\' "::error::pr-reviews-resolved found $unresolved unresolved review thread(s); resolve them before merge, then re-run this check (thread resolution does not retrigger workflows)."',
@@ -115,9 +113,7 @@ export type PrReviewsResolvedJobOptions = {
  * Review-thread resolution gate job. Wire it into the workflow jobs map under
  * {@link prReviewsResolvedJobId} and list that id as a required status check.
  */
-export const prReviewsResolvedJob = (
-  opts: PrReviewsResolvedJobOptions = {},
-): WorkflowJob => ({
+export const prReviewsResolvedJob = (opts: PrReviewsResolvedJobOptions = {}): WorkflowJob => ({
   if: opts.condition ?? "${{ github.event_name != 'schedule' }}",
   'runs-on': opts.runsOn ?? 'ubuntu-latest',
   'timeout-minutes': opts.timeoutMinutes ?? 5,

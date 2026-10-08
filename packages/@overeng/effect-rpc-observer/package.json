@@ -1,0 +1,44 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/effect-rpc-observer"
+    ]
+  },
+  "name": "@overeng/effect-rpc-observer",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Scoped, content-free Effect RPC protocol observation with opt-in capture sinks",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "package.json",
+    "dist",
+    "src",
+    "!dist/**/*.tsbuildinfo"
+  ],
+  "devDependencies": {
+    "@effect/vitest": "4.0.0",
+    "effect": "4.0.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "effect": "^4.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      }
+    }
+  }
+}

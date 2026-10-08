@@ -702,7 +702,9 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
     counts: decodeCounts(field({ value: value, key: 'counts' })),
     ...(field({ value, key: 'excludedByDesign' }) === undefined
       ? {}
-      : { excludedByDesign: decodeActionExclusionCounts(field({ value, key: 'excludedByDesign' })) }),
+      : {
+          excludedByDesign: decodeActionExclusionCounts(field({ value, key: 'excludedByDesign' })),
+        }),
     actionCount: count(field({ value: value, key: 'actionCount' })),
     droppedActionCount: count(field({ value: value, key: 'droppedActionCount' })),
     invocations,

@@ -25,6 +25,7 @@ import {
 } from 'react-aria-components'
 
 import type {
+  ExplorerClient,
   RecordState,
   RequestIdentity,
   RpcDescriptorWire,
@@ -35,7 +36,6 @@ import { spacing } from '@overeng/stylex-tokens/tokens.stylex'
 import {
   createExplorerProjectionStore,
   recordIdentityKey,
-  type ExplorerClient,
   type ExplorerProjection,
   type ExplorerProjectionStore,
 } from './projection.ts'

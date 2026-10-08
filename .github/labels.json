@@ -211,6 +211,11 @@
       "description": "@overeng/effect-rpc-explorer-react package · Set: manual"
     },
     {
+      "name": "system:effect-rpc-observer",
+      "color": "a371f7",
+      "description": "@overeng/effect-rpc-observer package · Set: manual"
+    },
+    {
       "name": "system:effect-rpc-tanstack",
       "color": "a371f7",
       "description": "@overeng/effect-rpc-tanstack package · Set: manual"
@@ -264,6 +269,11 @@
       "name": "system:megarepo",
       "color": "a371f7",
       "description": "@overeng/megarepo package · Set: manual"
+    },
+    {
+      "name": "system:meters",
+      "color": "a371f7",
+      "description": "@overeng/meters package · Set: manual"
     },
     {
       "name": "system:notion-cli",
@@ -354,6 +364,11 @@
       "name": "system:restate-effect",
       "color": "a371f7",
       "description": "@overeng/restate-effect package · Set: manual"
+    },
+    {
+      "name": "system:rpc-devtools",
+      "color": "a371f7",
+      "description": "@overeng/rpc-devtools package · Set: manual"
     },
     {
       "name": "system:stylex-tokens",

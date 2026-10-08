@@ -526,6 +526,12 @@ let
       port = 6018;
       playTests = true;
     }
+    {
+      path = "packages/@overeng/meters";
+      name = "meters";
+      port = 6019;
+      playTests = true;
+    }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
   # Repository-specific semantic inputs read by Genie sources. The shared
@@ -791,6 +797,10 @@ in
         {
           path = "packages/@overeng/tui-react";
           name = "tui-react";
+        }
+        {
+          path = "packages/@overeng/meters";
+          name = "meters";
         }
       ];
     })
@@ -1385,6 +1395,7 @@ in
   tasks."buck2:editor:publish:playwright" = scopedEditorViewPublisher {
     description = "Atomically publish the shared Playwright editor dependency views";
     packagePaths = [
+      "packages/@overeng/meters"
       "packages/@overeng/tui-react"
       "packages/@overeng/utils"
     ];

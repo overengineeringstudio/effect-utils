@@ -16,8 +16,6 @@ export {
 } from './projection.ts'
 export type {
   DeltaApplyResult,
-  ExplorerClient,
-  ExplorerWatchCursor,
   ExplorerConnection,
   ExplorerProjection,
   ExplorerProjectionStore,
