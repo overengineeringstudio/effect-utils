@@ -54,6 +54,8 @@ The downstream-flake regression copies source inputs, not transient `.editor-vie
 
 The inert-admission lane rejects tracked editor backing stores and product payloads under `nix/buck2-products`. Nix recipe admission derives from the same `rootNixSourceGlobs` that declares `//:nix_sources`; adding a Nix source does not require an independent filename exception. Non-Nix product metadata, generators, and contract scripts retain an exact allowlist.
 
+Nix candidates must be Git-classified text of at most 256 KiB. Admission rejects any path component matching `buck-out`, `.editor-view`, `result*`, `dist`, `node_modules`, `storybook-static`, `tmp`, `target`, or `.devenv`, regardless of filename suffix. Size and text checks read indexed blobs rather than mutable working-tree content.
+
 ## Checks and ruleset
 
 GitHub creates a check run for each materialized job and groups runs from one workflow execution in a check suite. Branch protection names required check-run contexts, not source-level job keys.
