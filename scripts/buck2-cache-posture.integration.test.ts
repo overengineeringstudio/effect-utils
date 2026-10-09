@@ -308,7 +308,7 @@ describe('REAPI probe diagnostics', () => {
           expect(failures).toHaveLength(1)
           expect(failures[0]).toEqual({
             errorClass: scenario,
-            phase: connected ? 'response' : connections.length > 0 ? 'tcp' : 'dns',
+            phase: connected === true ? 'response' : connections.length > 0 ? 'tcp' : 'dns',
             elapsedMs: expect.any(Number),
             deadlineMs: scenario === 'deadline' ? 50 : 1000,
           })
