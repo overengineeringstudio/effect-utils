@@ -3500,6 +3500,7 @@ cargo.rust_library(
         "napi3",
         "napi4",
         "napi5",
+        "napi6",
         "serde",
         "serde-json",
         "serde_json",
@@ -3552,6 +3553,7 @@ cargo.rust_binary(
         "napi3",
         "napi4",
         "napi5",
+        "napi6",
         "serde",
         "serde-json",
         "serde_json",
@@ -3585,6 +3587,7 @@ buildscript_run(
         "napi3",
         "napi4",
         "napi5",
+        "napi6",
         "serde",
         "serde-json",
         "serde_json",
@@ -3767,6 +3770,7 @@ cargo.rust_library(
         "napi3",
         "napi4",
         "napi5",
+        "napi6",
     ],
     visibility = [],
     deps = [":libloading-0.9"],
@@ -5215,6 +5219,46 @@ cargo.rust_library(
 )
 
 alias(
+    name = "ryu-js",
+    actual = ":ryu-js-1",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "ryu-js-1.0.3.crate",
+    sha256 = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714",
+    strip_prefix = "ryu-js-1.0.3",
+    urls = ["https://static.crates.io/crates/ryu-js/1.0.3/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ryu-js-1",
+    srcs = [":ryu-js-1.0.3.crate"],
+    crate = "ryu_js",
+    crate_root = "ryu-js-1.0.3.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "ryu_js",
+        "CARGO_CRATE_NAME": "ryu_js",
+        "CARGO_MANIFEST_DIR": "ryu-js-1.0.3.crate",
+        "CARGO_PKG_AUTHORS": "David Tolnay <dtolnay@gmail.com>:boa-dev",
+        "CARGO_PKG_DESCRIPTION": "Fast floating point to string conversion, ECMAScript compliant.",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "ryu-js",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/boa-dev/ryu-js",
+        "CARGO_PKG_RUST_VERSION": "1.71",
+        "CARGO_PKG_VERSION": "1.0.3",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "3",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+)
+
+alias(
     name = "schemars",
     actual = ":schemars-1",
     visibility = ["PUBLIC"],
@@ -5456,51 +5500,6 @@ buildscript_run(
         "std",
     ],
     version = "1.0.229",
-)
-
-alias(
-    name = "serde-wasm-bindgen",
-    actual = ":serde-wasm-bindgen-0.6",
-    visibility = ["PUBLIC"],
-)
-
-crate_archive(
-    name = "serde-wasm-bindgen-0.6.5.crate",
-    sha256 = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b",
-    strip_prefix = "serde-wasm-bindgen-0.6.5",
-    urls = ["https://static.crates.io/crates/serde-wasm-bindgen/0.6.5/download"],
-    visibility = [],
-)
-
-cargo.rust_library(
-    name = "serde-wasm-bindgen-0.6",
-    srcs = [":serde-wasm-bindgen-0.6.5.crate"],
-    crate = "serde_wasm_bindgen",
-    crate_root = "serde-wasm-bindgen-0.6.5.crate/src/lib.rs",
-    edition = "2018",
-    env = {
-        "CARGO_BIN_NAME": "serde_wasm_bindgen",
-        "CARGO_CRATE_NAME": "serde_wasm_bindgen",
-        "CARGO_MANIFEST_DIR": "serde-wasm-bindgen-0.6.5.crate",
-        "CARGO_PKG_AUTHORS": "Ingvar Stepanyan <me@rreverser.com>",
-        "CARGO_PKG_DESCRIPTION": "Native Serde adapter for wasm-bindgen",
-        "CARGO_PKG_HOMEPAGE": "",
-        "CARGO_PKG_NAME": "serde-wasm-bindgen",
-        "CARGO_PKG_README": "README.md",
-        "CARGO_PKG_REPOSITORY": "https://github.com/RReverser/serde-wasm-bindgen",
-        "CARGO_PKG_RUST_VERSION": "",
-        "CARGO_PKG_VERSION": "0.6.5",
-        "CARGO_PKG_VERSION_MAJOR": "0",
-        "CARGO_PKG_VERSION_MINOR": "6",
-        "CARGO_PKG_VERSION_PATCH": "5",
-        "CARGO_PKG_VERSION_PRE": "",
-    },
-    visibility = [],
-    deps = [
-        ":js-sys-0.3",
-        ":serde-1",
-        ":wasm-bindgen-0.2",
-    ],
 )
 
 crate_archive(

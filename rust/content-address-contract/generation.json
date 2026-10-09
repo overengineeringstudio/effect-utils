@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:b60a4933b78510c7afe557e8493885771a4d79472c5198e52a9a63d228c2ab6c",
-  "generatedAt": "2026-10-07T23:28:29.699Z",
+  "inputFingerprint": "sha256:1338eda000fc7996d57bd7f9d99aca7ee19a7f58cba56333708772ea38997532",
+  "generatedAt": "2026-10-08T11:52:24.653Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.2"
@@ -21,7 +21,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/fixtures/bounded-contracts.ts",
-      "sha256": "d6569e5165a9732d8e66a661f1c3129eaa687a47e6890d3659429c5e7b29fd4e"
+      "sha256": "22ee74896073e72cfbfb22111209de520bf82fcba2b7f13a0a7786d6705b9573"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/fixtures/contracts.ts",
@@ -29,23 +29,23 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/import-rust.ts",
-      "sha256": "ed634d254cba65bd6d57406f07ff778b305539981d0ad355ed188b428ab7972a"
+      "sha256": "d337679cce0ffedae0457fab14ab67f430df9825147976e3a2921a7a24c988b6"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/ir.ts",
-      "sha256": "180f3c87882c817093245a7fb75921e34d8d3e867387ba56df662e58d2adcc18"
+      "sha256": "6bb78bba55043d10512407f2484f12ba7893880fcf21b1490f74bba5b6375740"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/json-schema.ts",
-      "sha256": "ea99b3b7a74c8639085f6a1ad4c773612fdbfa907cdf3e81e4f83298a3444836"
+      "sha256": "8786526f1bc75596f3a5f43d5df45fcaf3b21fea5ebcaa15c401a0b8eed5e7d8"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/lower.ts",
-      "sha256": "fb28578373ac321e98561586de23a61d52ec9c738386a919aae349f68be125d5"
+      "sha256": "a2c442a0e73f85e5c73570bf24f8597faafc11b1bc4616be28512946029c2cbc"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/mod.ts",
-      "sha256": "2902a7d18f36d1f461c9619e84f29c20c61ce1fefb4d3eb37b1f50550007ba82"
+      "sha256": "ffa4840d34a4903d5054e3a2d32dd62f52152ec09d318c08f62ddf50e8c8a8ce"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/rust-metadata.ts",
@@ -53,27 +53,31 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/rust-template.ts",
-      "sha256": "695a68fe7c32e1b8b71ac6f4f0a8be88b7601c92d0ed0fc9dff15fae6b0785c7"
+      "sha256": "b8497d5f42be2a236052e1365d879d2c000597dceb8a6eeb85391ee3f49dd956"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/rust.ts",
-      "sha256": "0f1fd59fbf2c617c188805fc456f43c21a32a82673ffd98efa92b8ff97b85328"
+      "sha256": "0be5233285ea60ccfc39b18ee788e6c8bb5f948efdb8237cda667c9a31c166ea"
     },
     {
       "path": "packages/@overeng/effect-rust/src/mod.ts",
-      "sha256": "5c3cf255ace4c4fef1ba5f038a0cd6934bf54f3202b375d13d8d4426a675bb14"
+      "sha256": "75661abf2780aecb2db24649a6bcbff34f6dcff841e3e56f8b4d34d3fc6b19dd"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/borsh.ts",
-      "sha256": "e1991807d6586861efa7d92129f304ff1694c5f0fd5122f0856ca71c614c5d4d"
+      "sha256": "e535b9552757d92ceddc1da7f3c41e8057c1de75ad90d970e56169c45fdadbf8"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/columns.ts",
-      "sha256": "c7dd15d34673523e58674683da9cf724c174bc49a6b3db852c62d142b0841d68"
+      "sha256": "c8a525da681864e19372c45936bbe41901f0b14238dc6b5292b189164c84afb0"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/contract-json.ts",
-      "sha256": "148cf8b46c348baf6de5b57d56e5f339a32e427f559388166181d80288e06988"
+      "sha256": "db424d60d1a4880f83628acd58aade3a41ba44513dfdb74490e6baba78551c12"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/direct.ts",
+      "sha256": "012f4d479af4ac76d6f782ae42b7d6314c5f0d1221814a6d9938d7f0654ff443"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/discriminator.ts",
@@ -81,15 +85,15 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/effect-rust.ts",
-      "sha256": "35b2d7485009af0bb32f2c24fe794387bf7321de51f010ad533b51ba63ea9c62"
+      "sha256": "575abaa26b71f99a9ef4ce80e46480bf36006b93730da6f53971fafe50d6f0fe"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/json.ts",
-      "sha256": "cc335aa7e6be0fd7fd5d8ed6c0e127c34fe53383836aac4d1ea0d7c1968b25ba"
+      "sha256": "bc2cbd3846012c5cce5d3c3ef0259af1d901578570ffde88d66e2d5921460595"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/mod.ts",
-      "sha256": "7d721e2139a43088b8ecd33b587d906d5a07486fca38363276578c868af81153"
+      "sha256": "6cdd99aa259ceb39034fd934342850c66205444d66d8ec5482cfa61c6f541926"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/pattern.ts",
@@ -101,7 +105,11 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/validation.ts",
-      "sha256": "af0cb946c5026e0d08d0e09cff3ee77b14ce010456392df64cf83e81a6cb25b4"
+      "sha256": "14fdd8878602084bdfe721398392322be6e997d0f486716a281e794108ce5d6b"
+    },
+    {
+      "path": "packages/@overeng/effect-rust/src/schema/value-codec.ts",
+      "sha256": "ff439384b010fa0450c881bb034c69a9411d9f0f665870c8b38f3df6a0ae8a0a"
     },
     {
       "path": "pnpm-lock.yaml",
@@ -109,17 +117,17 @@
     },
     {
       "path": "rust/Cargo.lock",
-      "sha256": "10a236f676c11b4227e3d6cc048592202bdda5975d196132a04452f414af142b"
+      "sha256": "139b53bcd563c9b0a4441aa24765e7b84ba09459296f69eb961c319f6d606fe6"
     },
     {
       "path": "rust/Cargo.toml",
-      "sha256": "d516251d30f7b838a582af4b5fe47ec0b521c88e181c6b33b36a7c3bfbe2bcd7"
+      "sha256": "632790e87b07ca308d903ff698e508f70aae180e19144c5bd6599da7c7411f27"
     }
   ],
   "artifacts": [
     {
       "path": "Cargo.toml",
-      "sha256": "fc06c758b7d518e8ff784f1a7943bd077b2d1185b7647f21a27e819e3b7b9e93"
+      "sha256": "ba158c4034331211558c8608c00928ec10461b0194acbdbeab3aae3486034073"
     },
     {
       "path": "schema/Codec.json",
@@ -143,7 +151,7 @@
     },
     {
       "path": "src/lib.rs",
-      "sha256": "1c073d232980a37aa006f6c73511a95af6333ad06685360c62f80d03de141405"
+      "sha256": "ba0e56d8135ac4cdc6346bfc7a88f1be80d8de28ff3b569f51d88ea21592e99d"
     }
   ]
 }

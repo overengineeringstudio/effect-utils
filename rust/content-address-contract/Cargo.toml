@@ -1,8 +1,8 @@
 # Generated contract; DO NOT EDIT BY HAND.
 # Provenance: rust/content-address-contract/generation.json
 # Regenerate: bun packages/@overeng/content-address/src/generate-contract.ts
-# Input fingerprint: sha256:b60a4933b78510c7afe557e8493885771a4d79472c5198e52a9a63d228c2ab6c
-# Generated at: 2026-10-07T23:28:29.699Z
+# Input fingerprint: sha256:1338eda000fc7996d57bd7f9d99aca7ee19a7f58cba56333708772ea38997532
+# Generated at: 2026-10-08T11:52:24.653Z
 [package]
 name = "content-address-contract"
 version.workspace = true
@@ -13,7 +13,7 @@ publish = false
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["unbounded_depth"] }
+serde_json = { workspace = true, features = ["unbounded_depth", "raw_value"] }
 regex = { workspace = true, features = ["std", "unicode"] }
 serde_path_to_error = { workspace = true }
 borsh = { workspace = true, features = ["derive", "de_strict_order"] }

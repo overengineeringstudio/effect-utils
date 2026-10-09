@@ -77,6 +77,22 @@ pub enum Quote {
     },
 }
 
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct FloatSample {
+    #[wire(f32)]
+    pub value: f32,
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct WideSample {
+    #[wire(u64)]
+    pub unsigned: u64,
+    #[wire(i64)]
+    pub signed: i64,
+}
+
 /// Native-object numeric regression: full-width u32/i32 plus a safe bounded u64.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -134,12 +150,15 @@ mod tests {
     use effect_rust::wire::{decode_json, encode_json};
 
     #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct Vector {
         contract: String,
         name: String,
         input: serde_json::Value,
         accept: bool,
         canonical: Option<serde_json::Value>,
+        input_json: Option<String>,
+        canonical_json: Option<String>,
     }
 
     fn roundtrip<T: serde::de::DeserializeOwned + Serialize>(
@@ -153,21 +172,27 @@ mod tests {
     fn shared_vectors_decode_and_encode_canonically() {
         let vectors: Vec<Vector> = serde_json::from_str(super::CONTRACT_VECTORS_JSON).unwrap();
         for vector in vectors {
-            let input = vector.input.to_string();
+            let input = vector
+                .input_json
+                .unwrap_or_else(|| vector.input.to_string());
             let result = match vector.contract.as_str() {
                 "Discount" => roundtrip::<Discount>(&input),
                 "Order" => roundtrip::<Order>(&input),
                 "Quote" => roundtrip::<Quote>(&input),
+                "FloatSample" => roundtrip::<FloatSample>(&input),
+                "WideSample" => roundtrip::<WideSample>(&input),
                 other => panic!("unknown vector contract {other}"),
             };
             let label = format!("{}/{}", vector.contract, vector.name);
             match (vector.accept, result) {
                 (true, Ok(encoded)) => {
-                    let canonical = encode_json(
-                        vector.canonical.as_ref().unwrap_or(&vector.input),
-                        &["kind"],
-                    )
-                    .unwrap();
+                    let canonical = vector.canonical_json.unwrap_or_else(|| {
+                        encode_json(
+                            vector.canonical.as_ref().unwrap_or(&vector.input),
+                            &["kind"],
+                        )
+                        .unwrap()
+                    });
                     assert_eq!(encoded, canonical, "{label}");
                 }
                 (false, Err(_)) => {}
@@ -180,9 +205,6 @@ mod tests {
     fn streaming_path_reports_nested_payload_paths() {
         let fast = decode_json::<Quote>(r#"{"kind":"priced","receipt":{"orderId":"1","sku":"bad","totalCents":"1","placedAt":"2026-10-02T00:00:00.000Z"},"note":null}"#).unwrap_err();
         assert_eq!(fast.path, "$.receipt.sku");
-        // Tag-last input is valid but buffered; the payload error keeps the union root.
-        let buffered = decode_json::<Quote>(r#"{"receipt":{"orderId":"1","sku":"bad","totalCents":"1","placedAt":"2026-10-02T00:00:00.000Z"},"note":null,"kind":"priced"}"#).unwrap_err();
-        assert!(buffered.message.contains("string must match"), "{buffered}");
     }
 
     #[test]

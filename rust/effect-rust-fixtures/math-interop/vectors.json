@@ -244,5 +244,128 @@
     "name": "variant field from another variant",
     "input": { "kind": "free", "orderId": "0", "note": null },
     "accept": false
+  },
+  {
+    "contract": "FloatSample",
+    "name": "binary32 decimal rounding",
+    "input": { "value": 0.1 },
+    "accept": true,
+    "canonicalJson": "{\"value\":0.10000000149011612}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "binary32 subnormal",
+    "input": { "value": 1e-45 },
+    "accept": true,
+    "canonicalJson": "{\"value\":1.401298464324817e-45}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "binary32 maximum rounding",
+    "input": { "value": 3.4028235e38 },
+    "accept": true,
+    "canonicalJson": "{\"value\":3.4028234663852886e+38}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "binary32 overflow",
+    "input": { "value": 3.5e38 },
+    "accept": false
+  },
+  {
+    "contract": "FloatSample",
+    "name": "negative zero normalizes in JSON",
+    "input": { "value": 0 },
+    "inputJson": "{\"value\":-0}",
+    "accept": true,
+    "canonicalJson": "{\"value\":0}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "float field accepts integral fraction token",
+    "input": { "value": 1 },
+    "inputJson": "{\"value\":1.0}",
+    "accept": true,
+    "canonicalJson": "{\"value\":1}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "float field accepts exponent token",
+    "input": { "value": 1 },
+    "inputJson": "{\"value\":1e0}",
+    "accept": true,
+    "canonicalJson": "{\"value\":1}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "float integer token above safe-integer limit",
+    "input": { "value": 9007199254740992 },
+    "accept": true,
+    "canonicalJson": "{\"value\":9007199254740992}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "NaN rejected",
+    "input": { "value": "NaN" },
+    "inputJson": "{\"value\":NaN}",
+    "accept": false
+  },
+  {
+    "contract": "FloatSample",
+    "name": "Infinity rejected",
+    "input": { "value": "Infinity" },
+    "inputJson": "{\"value\":Infinity}",
+    "accept": false
+  },
+  {
+    "contract": "FloatSample",
+    "name": "negative Infinity rejected",
+    "input": { "value": "-Infinity" },
+    "inputJson": "{\"value\":-Infinity}",
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "integer field rejects fraction token",
+    "input": { "kind": "percent", "percent": 1 },
+    "inputJson": "{\"kind\":\"percent\",\"percent\":1.0}",
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "integer field rejects exponent token",
+    "input": { "kind": "percent", "percent": 1 },
+    "inputJson": "{\"kind\":\"percent\",\"percent\":1e0}",
+    "accept": false
+  },
+  {
+    "contract": "WideSample",
+    "name": "2^53 minus one",
+    "input": { "unsigned": "9007199254740991", "signed": "9007199254740991" },
+    "accept": true
+  },
+  {
+    "contract": "WideSample",
+    "name": "2^53",
+    "input": { "unsigned": "9007199254740992", "signed": "-9007199254740992" },
+    "accept": true
+  },
+  {
+    "contract": "WideSample",
+    "name": "2^53 plus one",
+    "input": { "unsigned": "9007199254740993", "signed": "-9007199254740993" },
+    "accept": true
+  },
+  {
+    "contract": "WideSample",
+    "name": "64-bit extrema",
+    "input": { "unsigned": "18446744073709551615", "signed": "-9223372036854775808" },
+    "accept": true
+  },
+  {
+    "contract": "WideSample",
+    "name": "signed overflow",
+    "input": { "unsigned": "0", "signed": "9223372036854775808" },
+    "accept": false
   }
 ]

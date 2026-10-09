@@ -74,6 +74,11 @@ export interface Runtime<TApi> {
     start: Start<TApi, T>,
     options?: CallOptions<TError>,
   ) => Effect.Effect<T, TError>
+  /** Synchronous exports cannot suspend or issue host calls; interruption is checked before entry. */
+  readonly callSync: <T, TError = never>(
+    start: (api: TApi) => T,
+    options?: CallOptions<TError>,
+  ) => Effect.Effect<T, TError>
   readonly resource: <THandle extends ResourceHandle>(
     open: Start<TApi, THandle>,
   ) => Effect.Effect<Resource<THandle>, never, Scope.Scope>
@@ -498,6 +503,33 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
       ),
   )
 
+  // A synchronous Rust call cannot interleave with scope release, poison, or
+  // interruption. It needs the same generation check, but no job, abort signal,
+  // callback fiber, or cancellation finalizer. Rebuilding still suspends.
+  // eslint-disable-next-line overeng/named-args -- Runtime.callSync follows Runtime.call's public positional (start, options) contract.
+  const callSync = <T, TError = never>(
+    start: (api: TApi) => T,
+    callOptions?: CallOptions<TError>,
+  ): Effect.Effect<T, TError> => {
+    const invoke = (generation: Generation<TApi>): Effect.Effect<T, TError> => {
+      if (closed === true || generation.state !== 'healthy')
+        return Effect.die(retiredDefect(generation.id))
+      try {
+        return Effect.succeed(start(generation.instance.api))
+      } catch (cause) {
+        if (isPanic(cause) === true) {
+          poison({ generation, defect: cause })
+          return Effect.die(cause)
+        }
+        return callOptions?.decodeError === undefined
+          ? Effect.die(cause)
+          : callOptions.decodeError(cause)
+      }
+    }
+    return Effect.suspend(() =>
+      current === undefined ? Effect.flatMap(generationEffect, invoke) : invoke(current),
+    )
+  }
   const resource = Effect.fn('effect-rust.resource')(
     <THandle extends ResourceHandle>(open: Start<TApi, THandle>) =>
       Effect.gen(function* () {
@@ -631,6 +663,6 @@ export const makeRuntime = Effect.fn('effect-rust.makeRuntime')(function* <TApi>
             ? ('rebuilding' as const)
             : ('retired' as const),
   }))
-  const runtime: Runtime<TApi> = { call, resource, inputSink, outputStream, snapshot }
+  const runtime: Runtime<TApi> = { call, callSync, resource, inputSink, outputStream, snapshot }
   return runtime
 })

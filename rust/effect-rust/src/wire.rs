@@ -43,7 +43,7 @@ fn canonical_unsigned(text: &str) -> bool {
 }
 
 macro_rules! decimal_module {
-    ($module:ident, $integer:ty, $canonical:expr, $expecting:literal) => {
+    ($module:ident, $integer:ty, $wide:ty, $decode:ident, $encode:ident, $visit:ident, $canonical:expr, $expecting:literal) => {
         pub mod $module {
             use super::*;
 
@@ -67,7 +67,11 @@ macro_rules! decimal_module {
                 value: &$integer,
                 serializer: S,
             ) -> Result<S::Ok, S::Error> {
-                serializer.collect_str(value)
+                if serializer.is_human_readable() {
+                    serializer.collect_str(value)
+                } else {
+                    serializer.$encode(<$wide>::from(*value))
+                }
             }
 
             /// # Errors
@@ -84,8 +88,15 @@ macro_rules! decimal_module {
                     fn visit_str<E: de::Error>(self, text: &str) -> Result<Self::Value, E> {
                         parse(text).map_err(E::custom)
                     }
+                    fn $visit<E: de::Error>(self, value: $wide) -> Result<Self::Value, E> {
+                        <$integer>::try_from(value).map_err(E::custom)
+                    }
                 }
-                deserializer.deserialize_str(DecimalVisitor)
+                if deserializer.is_human_readable() {
+                    deserializer.deserialize_str(DecimalVisitor)
+                } else {
+                    deserializer.$decode(DecimalVisitor)
+                }
             }
         }
     };
@@ -94,14 +105,22 @@ macro_rules! decimal_module {
 decimal_module!(
     u64_decimal,
     u64,
+    u128,
+    deserialize_u128,
+    serialize_u128,
+    visit_u128,
     canonical_unsigned,
-    "a canonical base-10 u64 string"
+    "a canonical base-10 u64 string or an in-process u64 bigint"
 );
 decimal_module!(
     i64_decimal,
     i64,
+    i128,
+    deserialize_i128,
+    serialize_i128,
+    visit_i128,
     |text: &str| canonical_unsigned(text.strip_prefix('-').unwrap_or(text)) && text != "-0",
-    "a canonical base-10 i64 string"
+    "a canonical base-10 i64 string or an in-process i64 bigint"
 );
 
 /// A UTC instant with millisecond precision and a four-digit wire year.
@@ -198,7 +217,13 @@ impl fmt::Display for TimestampMillis {
 
 impl Serialize for TimestampMillis {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_str(self)
+        if serializer.is_human_readable() {
+            serializer.collect_str(self)
+        } else {
+            #[allow(clippy::cast_precision_loss)]
+            // Four-digit RFC3339 years are inside the exact JS integer range.
+            serializer.serialize_f64(self.0 as f64)
+        }
     }
 }
 
@@ -213,8 +238,23 @@ impl<'de> Deserialize<'de> for TimestampMillis {
             fn visit_str<E: de::Error>(self, text: &str) -> Result<Self::Value, E> {
                 text.parse().map_err(E::custom)
             }
+            fn visit_f64<E: de::Error>(self, millis: f64) -> Result<Self::Value, E> {
+                if !millis.is_finite()
+                    || millis.fract() != 0.0
+                    || millis.abs() > 9_007_199_254_740_991.0
+                {
+                    return Err(E::custom("expected integral epoch milliseconds"));
+                }
+                #[allow(clippy::cast_possible_truncation)]
+                // Safe integral milliseconds fit i64 exactly.
+                TimestampMillis::from_unix_millis(millis as i64).map_err(E::custom)
+            }
         }
-        deserializer.deserialize_str(TimestampVisitor)
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_str(TimestampVisitor)
+        } else {
+            deserializer.deserialize_f64(TimestampVisitor)
+        }
     }
 }
 
@@ -321,136 +361,72 @@ pub mod timestamp_millis {
     }
 }
 
-const MAX_DEPTH: usize = 128;
-const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+mod json;
 
-/// Normalize JavaScript's number representation only at object transport boundaries.
-///
-/// Safe integral doubles become serde integers; fractional and unsafe numbers
-/// remain floats so integer contracts reject them. JSON-text admission is unchanged.
-pub fn normalize_js_numbers(value: &mut serde_json::Value) {
-    match value {
-        serde_json::Value::Number(number) if number.is_f64() => {
-            let value = number.as_f64().expect("f64 JSON number");
-            if value.is_finite()
-                && value.fract() == 0.0
-                && (-9_007_199_254_740_991.0..=9_007_199_254_740_991.0).contains(&value)
-            {
+/// Explicit IEEE binary32 contract field. JSON and direct transports both round
+/// finite numeric input to nearest binary32; overflow and non-finite values fail.
+pub mod f32 {
+    use serde::{de, Deserializer, Serializer};
+    /// # Errors
+    /// Rejects non-finite values instead of serializing JSON null.
+    pub fn serialize<S: Serializer>(value: &f32, serializer: S) -> Result<S::Ok, S::Error> {
+        if !value.is_finite() {
+            return Err(serde::ser::Error::custom("expected a finite f32"));
+        }
+        serializer.serialize_f64(f64::from(*value))
+    }
+    /// # Errors
+    /// Rejects non-numeric input, non-finite input and binary32 overflow.
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+        struct Visitor;
+        impl de::Visitor<'_> for Visitor {
+            type Value = f32;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a finite binary32 number")
+            }
+            #[allow(clippy::cast_precision_loss)] // Binary32 fields explicitly round numeric JSON, including integer tokens.
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<f32, E> {
+                self.visit_f64(value as f64)
+            }
+            #[allow(clippy::cast_precision_loss)] // Binary32 fields explicitly round numeric JSON, including integer tokens.
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<f32, E> {
+                self.visit_f64(value as f64)
+            }
+            fn visit_f64<E: de::Error>(self, value: f64) -> Result<f32, E> {
                 #[allow(clippy::cast_possible_truncation)]
-                // Finite integral safe doubles fit i64 exactly.
-                let integer = value as i64;
-                *number = serde_json::Number::from(integer);
+                // Rounding to binary32 is the explicit contract policy.
+                let rounded = value as f32;
+                if !value.is_finite() || !rounded.is_finite() {
+                    return Err(E::custom("f32 overflow or non-finite input"));
+                }
+                Ok(rounded)
             }
         }
-        serde_json::Value::Array(values) => values.iter_mut().for_each(normalize_js_numbers),
-        serde_json::Value::Object(values) => values.values_mut().for_each(normalize_js_numbers),
-        _ => {}
+        deserializer.deserialize_f64(Visitor)
     }
 }
 
-/// Strict I-JSON admission: unique keys, safe canonical integers, bounded depth.
-/// Validates without building values; typed decoding then streams separately.
-struct StrictSeed {
-    depth: usize,
-}
-
-impl<'de> de::DeserializeSeed<'de> for StrictSeed {
-    type Value = ();
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
-        deserializer.deserialize_any(self)
-    }
-}
-
-impl<'de> de::Visitor<'de> for StrictSeed {
-    type Value = ();
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("strict I-JSON")
-    }
-    fn visit_unit<E: de::Error>(self) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_bool<E: de::Error>(self, _: bool) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_str<E: de::Error>(self, _: &str) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_i64<E: de::Error>(self, value: i64) -> Result<(), E> {
-        if value.unsigned_abs() > MAX_SAFE_INTEGER {
-            return Err(E::custom(
-                "unsafe JSON integer; use a width-annotated decimal string",
-            ));
-        }
-        Ok(())
-    }
-    fn visit_u64<E: de::Error>(self, value: u64) -> Result<(), E> {
-        if value > MAX_SAFE_INTEGER {
-            return Err(E::custom(
-                "unsafe JSON integer; use a width-annotated decimal string",
-            ));
-        }
-        Ok(())
-    }
-    fn visit_f64<E: de::Error>(self, _: f64) -> Result<(), E> {
-        Err(E::custom("JSON numbers must be canonical integers"))
-    }
-    fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
-        if self.depth >= MAX_DEPTH {
-            return Err(de::Error::custom("JSON depth exceeds 128"));
-        }
-        while seq
-            .next_element_seed(StrictSeed {
-                depth: self.depth + 1,
-            })?
-            .is_some()
-        {}
-        Ok(())
-    }
-    fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
-        if self.depth >= MAX_DEPTH {
-            return Err(de::Error::custom("JSON depth exceeds 128"));
-        }
-        let mut keys = std::collections::BTreeSet::new();
-        while let Some(key) = map.next_key::<String>()? {
-            if !keys.insert(key) {
-                return Err(de::Error::custom("duplicate object key"));
-            }
-            map.next_value_seed(StrictSeed {
-                depth: self.depth + 1,
-            })?;
-        }
-        Ok(())
-    }
-}
-
-/// Decodes strict I-JSON text into a contract type, keeping nested error paths.
-///
-/// Objects may use any key order; tagged unions take a streaming fast path when
-/// their tag key comes first (see [`crate::tagged`]).
+/// Decodes unique-key JSON into a contract type, keeping nested error paths.
+/// Integer fields require canonical safe integer tokens. Explicit float fields
+/// admit fractions and exponents without weakening integer admission.
 ///
 /// # Errors
 /// Returns the `$`-rooted path and reason of the first violation.
 pub fn decode_json<T: de::DeserializeOwned>(input: &str) -> Result<T, ValidationError> {
-    use de::DeserializeSeed as _;
-    // serde_json's own nesting limit (128) coincides with the I-JSON profile's depth bound.
-    let mut strict = serde_json::Deserializer::from_str(input);
-    let mut track = serde_path_to_error::Track::new();
-    StrictSeed { depth: 0 }
-        .deserialize(serde_path_to_error::Deserializer::new(
-            &mut strict,
-            &mut track,
-        ))
-        .map_err(|error| ValidationError::new(rooted(&track.path()), error.to_string()))?;
-    strict
-        .end()
-        .map_err(|error| ValidationError::new("$", error.to_string()))?;
     let mut deserializer = serde_json::Deserializer::from_str(input);
-    let value = serde_path_to_error::deserialize(&mut deserializer)
+    let value: json::Value = serde_path_to_error::deserialize(&mut deserializer)
         .map_err(|error| ValidationError::new(rooted(error.path()), error.inner().to_string()))?;
     deserializer
         .end()
         .map_err(|error| ValidationError::new("$", error.to_string()))?;
-    Ok(value)
+    let json = &json::Json;
+    let decoder = crate::direct::Decoder {
+        backend: &json,
+        value: &value,
+        depth: 0,
+    };
+    serde_path_to_error::deserialize(decoder)
+        .map_err(|error| ValidationError::new(rooted(error.path()), error.inner().to_string()))
 }
 
 fn rooted(path: &serde_path_to_error::Path) -> String {
@@ -506,6 +482,13 @@ impl Serialize for Canonical<'_> {
                 }
                 seq.end()
             }
+            serde_json::Value::Number(number) if number.is_f64() => {
+                let value = number.as_f64().expect("finite serde number");
+                let text = ryu_js::Buffer::new().format_finite(value).to_owned();
+                let raw = serde_json::value::RawValue::from_string(text)
+                    .map_err(serde::ser::Error::custom)?;
+                raw.serialize(serializer)
+            }
             other => other.serialize(serializer),
         }
     }
@@ -536,42 +519,6 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn object_numbers_normalize_recursively_without_weakening_json_text() {
-        #[derive(Debug, PartialEq, Deserialize)]
-        struct Numbers {
-            unsigned: u32,
-            signed: i32,
-            safe: Vec<i64>,
-        }
-        let mut value = json!({
-            "unsigned": 4_294_967_295.0,
-            "signed": -2_147_483_648.0,
-            "safe": [9_007_199_254_740_991.0, -9_007_199_254_740_991.0, -0.0]
-        });
-        normalize_js_numbers(&mut value);
-        assert_eq!(
-            serde_json::from_value::<Numbers>(value).unwrap(),
-            Numbers {
-                unsigned: u32::MAX,
-                signed: i32::MIN,
-                safe: vec![9_007_199_254_740_991, -9_007_199_254_740_991, 0]
-            }
-        );
-        for number in [1.5, 9_007_199_254_740_992.0, -9_007_199_254_740_992.0] {
-            let mut value = json!(number);
-            normalize_js_numbers(&mut value);
-            assert!(serde_json::from_value::<i64>(value).is_err());
-        }
-        for text in ["1.0", "1e0", "-0.0"] {
-            assert!(
-                decode_json::<u32>(text).is_err(),
-                "accepted noncanonical text {text}"
-            );
-        }
-        assert_eq!(decode_json::<u32>("1").unwrap(), 1);
-    }
-
     #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Integers {
@@ -579,6 +526,46 @@ mod tests {
         unsigned: u64,
         #[serde(with = "i64_decimal")]
         signed: i64,
+    }
+    #[derive(Debug, Deserialize)]
+    struct FloatSample {
+        #[serde(with = "super::f32")]
+        value: f32,
+    }
+
+    #[test]
+    fn binary32_serde_accepts_integer_tokens_and_rejects_overflow() {
+        for (text, expected) in [
+            ("1", 1.0_f32),
+            ("-1", -1.0_f32),
+            ("9007199254740992", 9_007_199_254_740_992.0_f32),
+            ("0.1", 0.1_f32),
+        ] {
+            let json = format!("{{\"value\":{text}}}");
+            assert_eq!(
+                serde_json::from_str::<FloatSample>(&json).unwrap().value,
+                expected
+            );
+            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                serde_json::from_value::<FloatSample>(value).unwrap().value,
+                expected
+            );
+            assert_eq!(decode_json::<FloatSample>(&json).unwrap().value, expected);
+        }
+        assert!(serde_json::from_str::<FloatSample>("{\"value\":3.4028236e38}").is_err());
+    }
+
+    #[test]
+    fn fixed_sequences_reject_missing_and_trailing_elements() {
+        assert_eq!(decode_json::<[u32; 2]>("[1,2]").unwrap(), [1, 2]);
+        assert_eq!(decode_json::<(u32, u32)>("[1,2]").unwrap(), (1, 2));
+        assert_eq!(decode_json::<[u32; 0]>("[]").unwrap(), [0_u32; 0]);
+        for json in ["[1]", "[1,2,3]"] {
+            assert!(decode_json::<[u32; 2]>(json).is_err(), "accepted {json}");
+            assert!(decode_json::<(u32, u32)>(json).is_err(), "accepted {json}");
+        }
+        assert!(decode_json::<[u32; 0]>("[1]").is_err());
     }
 
     #[test]

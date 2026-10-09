@@ -43,6 +43,14 @@ export {
   type WorkerLayerOptions,
 } from './worker.ts'
 
+/** Generated services and the runtime must share one physical Effect cohort. */
+export const assertEffectCohort = (candidate: typeof Effect): void => {
+  if (candidate.succeed !== Effect.succeed || candidate.runSync !== Effect.runSync)
+    throw new Error(
+      'effect-rust requires one physical copy of effect; deduplicate generated service and runtime dependencies',
+    )
+}
+
 /** Instance lifetime policy and constructor for the generated Effect service. */
 export interface LayerOptions<TApi, TService> extends RuntimeOptions<TApi> {
   readonly make: (runtime: Runtime<TApi>) => TService

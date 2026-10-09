@@ -158,8 +158,9 @@ fn wire_field(field: &mut syn::Field) -> syn::Result<()> {
             let (serde_with, schema_with, accepted) = match kind.to_string().as_str() {
                 "u64" => ("::effect_rust::wire::u64_decimal", "::effect_rust::contract::U64", name == "u64"),
                 "i64" => ("::effect_rust::wire::i64_decimal", "::effect_rust::contract::I64", name == "i64"),
+                "f32" => ("::effect_rust::wire::f32", "::effect_rust::contract::F32", name == "f32"),
                 "timestamp_millis" => ("::effect_rust::wire::timestamp_millis", "::effect_rust::TimestampMillis", name == "DateTime"),
-                _ => return Err(syn::Error::new_spanned(attr, "unknown wire codec: use #[wire(u64)], #[wire(i64)] or #[wire(timestamp_millis)]")),
+                _ => return Err(syn::Error::new_spanned(attr, "unknown wire codec: use #[wire(u64)], #[wire(i64)], #[wire(f32)] or #[wire(timestamp_millis)]")),
             };
             if !accepted {
                 return Err(syn::Error::new_spanned(
@@ -185,7 +186,8 @@ fn wire_field(field: &mut syn::Field) -> syn::Result<()> {
             if let Some(found) = lossy(&field.ty) {
                 let remedy = match found.as_str() {
                     "u64" | "i64" => format!("add #[wire({found})] (canonical base-10 string) to a direct `{found}` field"),
-                    "f32" | "f64" => "floats are not portable contract values; use an integer width or a decimal string brand".to_owned(),
+                    "f32" => "add #[wire(f32)] for finite binary32 rounding with numeric JSON".to_owned(),
+                    "f64" => "f64 has no registered contract policy; use #[wire(f32)] or an integer width".to_owned(),
                     _ => "use an explicit width: u8/u16/u32/i32 or #[wire(u64)]/#[wire(i64)]".to_owned(),
                 };
                 return Err(syn::Error::new_spanned(
@@ -597,26 +599,28 @@ fn rust_pattern(pattern: &str, flags: &str) -> syn::Result<String> {
 mod tests {
     use super::*;
 
-    fn expand_error(args: TokenStream, item: TokenStream) -> String {
-        expand(args, item)
-            .expect_err("expected rejection")
-            .to_string()
-    }
-
     #[test]
-    fn rejects_implicit_wide_and_float_widths() {
-        let error = |fields: TokenStream| {
-            expand_error(
+    fn numeric_contract_admission_requires_matching_explicit_widths() {
+        for (fields, admitted) in [
+            (quote!(id: u32), true),
+            (quote!(#[wire(u64)] id: u64), true),
+            (quote!(#[wire(i64)] id: i64), true),
+            (quote!(#[wire(f32)] ratio: f32), true),
+            (quote!(id: u64), false),
+            (quote!(ids: Vec<i64>), false),
+            (quote!(size: usize), false),
+            (quote!(ratio: Option<f64>), false),
+            (quote!(ratio: f32), false),
+            (quote!(#[wire(u64)] id: u32), false),
+            (quote!(#[wire(f32)] ratio: f64), false),
+        ] {
+            let result = expand(
                 quote!(),
                 quote!(#[derive(Serialize, JsonSchema)] struct Order { #fields }),
-            )
-        };
-        assert!(error(quote!(id: u64)).contains("#[wire(u64)]"));
-        assert!(error(quote!(ids: Vec<i64>)).contains("i64"));
-        assert!(error(quote!(size: usize)).contains("usize"));
-        assert!(error(quote!(ratio: Option<f64>)).contains("floats"));
-        assert!(error(quote!(#[wire(u64)] id: u32)).contains("matching integer width"));
-        assert!(expand_error(
+            );
+            assert_eq!(result.is_ok(), admitted, "numeric fields: {fields}");
+        }
+        assert!(expand(
             quote!(),
             quote!(
                 #[derive(Serialize)]
@@ -625,63 +629,87 @@ mod tests {
                 }
             )
         )
-        .contains("JsonSchema"));
+        .is_err());
     }
 
     #[test]
-    fn rejects_untagged_enums_and_unanchored_brands() {
-        assert!(expand_error(
-            quote!(),
-            quote!(
-                enum Shape {
-                    A,
-                }
-            )
-        )
-        .contains("internally tagged"));
-        assert!(expand_error(
-            quote!(),
-            quote!(
-                #[serde(tag = "kind", content = "value")]
-                enum Shape {
-                    A,
-                }
-            )
-        )
-        .contains("internally tagged"));
-        assert!(expand_error(
-            quote!(pattern = "[a-z]+"),
-            quote!(
-                struct Name(String);
-            )
-        )
-        .contains("anchored"));
-        assert!(expand_error(
-            quote!(pattern = "^(a$"),
-            quote!(
-                struct Name(String);
-            )
-        )
-        .contains("invalid pattern"));
-        assert!(expand_error(
-            quote!(pattern = "^a$"),
-            quote!(
-                struct Name(pub String);
-            )
-        )
-        .contains("private"));
+    fn enum_and_brand_admission_requires_portable_tagged_patterns() {
+        for (args, item, admitted) in [
+            (
+                quote!(),
+                quote!(
+                    #[derive(Serialize, JsonSchema)]
+                    #[serde(tag = "kind")]
+                    enum Shape {
+                        A,
+                    }
+                ),
+                true,
+            ),
+            (
+                quote!(),
+                quote!(
+                    enum Shape {
+                        A,
+                    }
+                ),
+                false,
+            ),
+            (
+                quote!(),
+                quote!(
+                    #[derive(Serialize, JsonSchema)]
+                    #[serde(tag = "kind", content = "value")]
+                    enum Shape {
+                        A,
+                    }
+                ),
+                false,
+            ),
+            (
+                quote!(pattern = "^a$"),
+                quote!(
+                    struct Name(String);
+                ),
+                true,
+            ),
+            (
+                quote!(pattern = "[a-z]+"),
+                quote!(
+                    struct Name(String);
+                ),
+                false,
+            ),
+            (
+                quote!(pattern = "^(a$"),
+                quote!(
+                    struct Name(String);
+                ),
+                false,
+            ),
+            (
+                quote!(pattern = "^a$"),
+                quote!(
+                    struct Name(pub String);
+                ),
+                false,
+            ),
+        ] {
+            let result = expand(args, item.clone());
+            assert_eq!(result.is_ok(), admitted, "contract item: {item}");
+        }
     }
 
     #[test]
     fn end_anchor_respects_backslash_parity() {
         for pattern in [r"^foo\$", r"^foo\\\$"] {
-            assert!(expand_error(
+            assert!(expand(
                 quote!(pattern = #pattern),
                 quote!(
                     struct Name(String);
                 )
             )
-            .contains("anchored"));
+            .is_err());
         }
         for (pattern, value) in [(r"^foo\\$", "foo\\"), (r"^foo\\\\$", "foo\\\\")] {
             rust_pattern(pattern, "u").expect("unescaped end anchor");

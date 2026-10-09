@@ -1,6 +1,5 @@
 import { Context, Effect, Exit, Schema } from 'effect'
 
-import * as ContractJson from '../schema/contract-json.ts'
 import { Input, Transport } from './errors.ts'
 
 /** Whether cancellation interrupts host work or waits for it to settle. */
@@ -104,24 +103,24 @@ const sourceRequest = Schema.Union([
   }),
   Schema.Struct({ kind: Schema.Literal('yield') }),
 ])
-const decodeSourceRequest = Schema.decodeUnknownEffect(ContractJson.valueCodec(sourceRequest), {
+const decodeSourceRequest = Schema.decodeUnknownEffect(sourceRequest, {
   onExcessProperty: 'error',
 })
 
-/** Native and wasm use the same protocol, including canonical decimal u64 offsets. */
+/** Native and wasm use the same typed protocol, including exact u64 bigint offsets. */
 export type SourceRequest =
   | { readonly kind: 'read'; readonly path: string }
   | {
       readonly kind: 'readRange'
       readonly path: string
-      readonly offset: string
+      readonly offset: bigint
       readonly maxBytes: number
     }
   | { readonly kind: 'yield' }
 /** Request callback shared by Node-API and wasm adapter bridges. */
 export type SourceCallback = (request: SourceRequest) => Promise<Uint8Array>
 /** Scoped Source bridge with range reads and cooperative host task yielding. */
-export type HostSource = HostCapability<readonly [SourceRequest], Uint8Array>
+export type HostSource = HostCapability<readonly [unknown], Uint8Array>
 
 /** A cancellable event-loop task, not a microtask-only scheduler yield. */
 export const eventLoopYield: Effect.Effect<void> = Effect.callback<void>((resume) => {
@@ -136,7 +135,7 @@ export const hostSource = Effect.fn('effect-rust.hostSource')(function* <TError,
 ) {
   return yield* hostCapability(
     mode,
-    Effect.fn('effect-rust.Source.call')(function* (request: SourceRequest) {
+    Effect.fn('effect-rust.Source.call')(function* (request: unknown) {
       const decoded = yield* decodeSourceRequest(request).pipe(
         Effect.mapError(
           (cause) =>

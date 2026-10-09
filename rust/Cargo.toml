@@ -30,9 +30,10 @@ license = "MIT"
 # the request. Package-local requests remain explicit exceptions.
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
+ryu-js = "1.0.3"
 borsh = { version = "1.5", features = ["derive"] }
-chrono = { version = "0.4", default-features = false, features = ["std"] }
+chrono = { version = "0.4.32", default-features = false, features = ["std"] }
 serde_path_to_error = "0.1"
 schemars = "1"
 regex = { version = "1", default-features = false, features = ["std", "unicode"] }
@@ -40,7 +41,6 @@ regex-syntax = { version = "0.8", default-features = false, features = ["std", "
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
-serde-wasm-bindgen = "0.6"
 js-sys = "=0.3.104"
 wasm-bindgen-futures = "=0.4.77"
 sha2 = "0.11"

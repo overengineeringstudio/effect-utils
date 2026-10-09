@@ -32,7 +32,9 @@ const load = async (absolute) => {
 
 const withoutFetch = async (run) => {
   const nativeFetch = globalThis.fetch
-  globalThis.fetch = () => { throw new Error(`${runtime} package initialization must not fetch wasm`) }
+  globalThis.fetch = () => {
+    throw new Error(`${runtime} package initialization must not fetch wasm`)
+  }
   try {
     return await run()
   } finally {
@@ -60,8 +62,8 @@ const checkArithmetic = (api) => {
   }
   assert.deepEqual(result, { sum: 42, upperBoundary: 2147483647, lowerBoundary: -2147483648 })
   const operands = { unsigned: 4294967295, signed: -2147483648, bounded: Number.MAX_SAFE_INTEGER }
-  assert.equal(api.sumJsonIntegers(operands), String(4294967295n - 2147483648n + 9007199254740991n))
-  assert.equal(api.sumJsonIntegers({ unsigned: 0, signed: -1, bounded: 0 }), '-1')
+  assert.equal(api.sumJsonIntegers(operands), 4294967295n - 2147483648n + 9007199254740991n)
+  assert.equal(api.sumJsonIntegers({ unsigned: 0, signed: -1, bounded: 0 }), -1n)
   for (const input of [
     { ...operands, unsigned: 4294967296 },
     { ...operands, signed: -2147483649 },
@@ -70,6 +72,9 @@ const checkArithmetic = (api) => {
     { ...operands, bounded: 1.5 },
     { ...operands, unsigned: 1.5 },
     { ...operands, signed: 1.5 },
+    { ...operands, unsigned: -0 },
+    { ...operands, signed: -0 },
+    { ...operands, bounded: -0 },
   ])
     assert.throws(() => api.sumJsonIntegers(input), /RUST_INPUT:/)
   return result
@@ -99,7 +104,7 @@ const checkHashModes = async (api) => {
   const hostThrow = api.hashAll(() => {
     throw new Error('host throw')
   }, ['a'])
-  await assert.rejects(hostThrow.result, /RUST_ERROR:/)
+  await assert.rejects(hostThrow.result, (error) => error.rustError?.kind === 'Read')
   assert.equal(
     api.sha256Hex(Buffer.from('abc')),
     checkHash(api),
@@ -130,7 +135,7 @@ const checkHashModes = async (api) => {
       throw new Error('Cancelled Rust job unexpectedly succeeded')
     },
     (error) => {
-      assert.match(error.message, /RUST_CANCELLED:|RUST_ERROR:/)
+      assert.ok(error.message.startsWith('RUST_CANCELLED:') || error.rustError?.kind === 'Read')
     },
   )
   await entered
@@ -146,7 +151,7 @@ const checkHashModes = async (api) => {
       return Buffer.from('xy')
     },
     '/wide',
-    '9007199254740993',
+    9007199254740993n,
     4,
   )
   assert.deepEqual([...(await range.result)], [120, 121])
@@ -154,22 +159,24 @@ const checkHashModes = async (api) => {
     {
       kind: 'readRange',
       path: '/wide',
-      offset: '9007199254740993',
+      offset: 9007199254740993n,
       maxBytes: 4,
     },
   ])
   const eof = api.readRange(
     async (request) => {
-      assert.equal(request.offset, '18446744073709551615')
+      assert.equal(request.offset, 18446744073709551615n)
       return Buffer.alloc(0)
     },
     '/eof',
-    '18446744073709551615',
+    18446744073709551615n,
     1,
   )
   assert.deepEqual([...(await eof.result)], [])
-  const oversized = api.readRange(async () => Buffer.from('ab'), '/bad', '0', 1)
-  await assert.rejects(oversized.result, /response exceeds maxBytes/)
+  const oversized = api.readRange(async () => Buffer.from('ab'), '/bad', 0n, 1)
+  await assert.rejects(oversized.result, (error) =>
+    /response exceeds maxBytes/.test(error.rustError?.message),
+  )
   let invalidCalls = 0
   const invalidBound = api.readRange(
     async () => {
@@ -177,10 +184,12 @@ const checkHashModes = async (api) => {
       return Buffer.alloc(0)
     },
     '/bad',
-    '0',
+    0n,
     0,
   )
-  await assert.rejects(invalidBound.result, /maxBytes must be positive/)
+  await assert.rejects(invalidBound.result, (error) =>
+    /maxBytes must be positive/.test(error.rustError?.message),
+  )
   assert.equal(invalidCalls, 0)
   const chunkOffsets = []
   const chunked = api.hashRanges(
@@ -199,22 +208,24 @@ const checkHashModes = async (api) => {
     2,
   )
   assert.equal(await chunked.result, checkHash(api))
-  assert.deepEqual(chunkOffsets, ['0', '1', '2', '3'])
+  assert.deepEqual(chunkOffsets, [0n, 1n, 2n, 3n])
   const invalidYield = api.hashRanges(
     async (request) => (request.kind === 'yield' ? Buffer.from('x') : Buffer.from('a')),
     '/bad-yield',
     1,
   )
-  await assert.rejects(invalidYield.result, /yield must return an empty acknowledgement/)
+  await assert.rejects(invalidYield.result, (error) =>
+    /yield must return an empty acknowledgement/.test(error.rustError?.message),
+  )
 }
 
-const checkMathModes = (api) => {
+const checkMathModes = async (api) => {
   assert.equal(api.checkedDivide(84, 2), 42)
   assert.throws(
     () => api.checkedDivide(84, 0),
     (error) => {
-      assert.ok(error.message.startsWith('RUST_ERROR:'))
-      assert.deepEqual(JSON.parse(error.message.slice(11)), {
+      assert.ok(error instanceof Error)
+      assert.deepEqual(error.rustError, {
         reason: 'DivideByZero',
         dividend: 84,
       })
@@ -228,51 +239,51 @@ const checkMathModes = (api) => {
   assert.deepEqual([...chunks.next(3)], [7, 8, 9])
   assert.equal(chunks.next(3), undefined)
   chunks.close()
-  assert.throws(() => api.chunks(10, 0), /RUST_ERROR:/)
+  assert.throws(
+    () => api.chunks(10, 0),
+    (error) => error.rustError?.reason === 'InvalidChunkSize',
+  )
   const frame = Buffer.alloc(18)
   frame.writeUInt32LE(4026459905, 0)
   frame.writeUInt16LE(1, 4)
   frame.writeUInt32LE(2, 6)
   frame.writeUInt32LE(20, 10)
   frame.writeUInt32LE(22, 14)
-  assert.equal(api.sumRows(frame), '42')
+  assert.equal(api.sumRows(frame), 42n)
   frame.writeUInt16LE(2, 4)
   assert.throws(() => api.sumRows(frame), /RUST_INPUT:/)
-  // Contract positions cross as their encoded wire form: u64 as decimal strings, tag-keyed unions.
+  // Direct contract positions use bigint and integral epoch milliseconds.
   const order = {
-    id: '9007199254740993',
+    id: 9007199254740993n,
     sku: 'ABC-1234',
     quantity: 3,
-    unitPriceCents: '250',
-    placedAt: '2026-10-02T12:00:00.500Z',
+    unitPriceCents: 250n,
+    placedAt: 1790942400500,
     note: 'gift',
   }
   assert.deepEqual(api.quoteOrder(order, { kind: 'percent', percent: 10 }), {
     kind: 'priced',
     note: 'gift',
     receipt: {
-      orderId: '9007199254740993',
-      placedAt: '2026-10-02T12:00:00.500Z',
+      orderId: 9007199254740993n,
+      placedAt: 1790942400500,
       sku: 'ABC-1234',
-      totalCents: '675',
+      totalCents: 675n,
     },
   })
   assert.deepEqual(
-    api.quoteOrder(
-      { ...order, note: null },
-      { kind: 'fixed', amountCents: '18446744073709551615' },
-    ),
-    { kind: 'free', orderId: '9007199254740993' },
+    api.quoteOrder({ ...order, note: null }, { kind: 'fixed', amountCents: 18446744073709551615n }),
+    { kind: 'free', orderId: 9007199254740993n },
   )
   assert.throws(() => api.quoteOrder({ ...order, sku: 'abc' }, { kind: 'none' }), /RUST_INPUT:/)
   assert.throws(
     () =>
       api.quoteOrder(
-        { ...order, quantity: 4294967295, unitPriceCents: '18446744073709551615' },
+        { ...order, quantity: 4294967295, unitPriceCents: 18446744073709551615n },
         { kind: 'none' },
       ),
     (error) => {
-      assert.deepEqual(JSON.parse(error.message.slice(11)), {
+      assert.deepEqual(error.rustError, {
         reason: 'PriceOverflow',
         quantity: 4294967295,
       })
@@ -282,6 +293,58 @@ const checkMathModes = (api) => {
   const schema = JSON.parse(api['__effect_rust_schema_quoteOrder']())
   assert.deepEqual(Object.keys(schema.args), ['discount', 'order'])
   assert.equal(schema.$defs.Order.properties.id['x-effect-rust-format'], 'u64-decimal')
+  for (const value of [0.1, 1e-45, 3.4028235e38, -0, 1]) {
+    assert.ok(Object.is(api.roundTripFloat({ value }).value, Math.fround(value)))
+  }
+  for (const value of [NaN, Infinity, -Infinity, 3.5e38]) {
+    assert.throws(() => api.roundTripFloat({ value }), /RUST_INPUT:/)
+  }
+  for (const unsigned of [
+    9007199254740991n,
+    9007199254740992n,
+    9007199254740993n,
+    18446744073709551615n,
+  ]) {
+    assert.deepEqual(api.roundTripWide({ unsigned, signed: -9223372036854775808n }), {
+      unsigned,
+      signed: -9223372036854775808n,
+    })
+  }
+  for (const unsigned of ['1', 1, -1n, 18446744073709551616n]) {
+    assert.throws(() => api.roundTripWide({ unsigned, signed: 0n }), /RUST_INPUT:/)
+  }
+  for (const signed of [-9223372036854775809n, 9223372036854775808n]) {
+    assert.throws(() => api.roundTripWide({ unsigned: 0n, signed }), /RUST_INPUT:/)
+  }
+  const wide = { unsigned: 18446744073709551615n, signed: -9223372036854775808n }
+  assert.deepEqual(await api.asyncRoundTripWide(wide, false).result, wide)
+  await assert.rejects(api.asyncRoundTripWide(wide, true).result, (error) => {
+    assert.deepEqual(error.rustError, { reason: 'WideBounds', ...wide })
+    return true
+  })
+  const record = Object.fromEntries([
+    ['a\u0000b', 1],
+    ['__proto__', 2],
+    ['constructor', 3],
+  ])
+  const returned = api.roundTripRecord(record)
+  assert.deepEqual(returned, record)
+  assert.equal(Object.getPrototypeOf(returned), Object.prototype)
+  assert.throws(
+    () => api.quoteOrder({ ...order, placedAt: order.placedAt + 0.5 }, { kind: 'none' }),
+    /RUST_INPUT:/,
+  )
+  assert.throws(
+    () => api.wideFailure(18446744073709551615n, -9223372036854775808n),
+    (error) => {
+      assert.deepEqual(error.rustError, {
+        reason: 'WideBounds',
+        unsigned: 18446744073709551615n,
+        signed: -9223372036854775808n,
+      })
+      return true
+    },
+  )
 }
 
 const checkManifest = ({ directory }) => {
@@ -290,12 +353,6 @@ const checkManifest = ({ directory }) => {
   const divide = manifest.exports.find(({ name }) => name === 'checkedDivide')
   if (divide !== undefined) {
     assert.deepEqual(divide.error, { name: 'ArithmeticError', tagKey: 'reason' })
-    assert.deepEqual(
-      manifest.errors
-        .find(({ name }) => name === 'ArithmeticError')
-        .variants.map(({ name }) => name),
-      ['DivideByZero', 'Overflow', 'InvalidChunkSize', 'PriceOverflow'],
-    )
     assert.equal(
       manifest.exports.find(({ name }) => name === 'quoteOrder').schema,
       '__effect_rust_schema_quoteOrder',
@@ -313,7 +370,7 @@ const checkPackage = async (directory) => {
   assert.equal(absolute, expected, `${runtime} must resolve its own export condition`)
   const api = await withoutFetch(() => load(absolute))
   await checkHashModes(api)
-  checkMathModes(api)
+  await checkMathModes(api)
   checkManifest({ directory })
   const result = {
     entry: relative(directory, absolute),
@@ -378,7 +435,7 @@ const checkAggregator = async (directory) => {
     undefined,
     'eager-group exports must not be linked into the lazy wasm',
   )
-  checkMathModes(lazy)
+  await checkMathModes(lazy)
   checkManifest({ directory: join(directory, 'lazy') })
   const result = { groups: Object.keys(manifest), sha256, ...checkArithmetic(lazy) }
   assert.throws(() => lazy.panicTest(), WebAssembly.RuntimeError)

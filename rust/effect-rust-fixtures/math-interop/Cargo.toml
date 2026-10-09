@@ -10,8 +10,8 @@ name = "math_interop"
 
 [features]
 default = ["wasm", "napi"]
-wasm = []
-napi = []
+wasm = ["effect-rust/wasm"]
+napi = ["effect-rust/napi"]
 
 [dependencies]
 chrono.workspace = true
@@ -25,8 +25,7 @@ borsh.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 js-sys.workspace = true
-serde-wasm-bindgen.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-napi = { workspace = true, features = ["napi5", "serde-json", "tokio_rt"] }
+napi = { workspace = true, features = ["napi6", "tokio_rt"] }
 napi-derive.workspace = true

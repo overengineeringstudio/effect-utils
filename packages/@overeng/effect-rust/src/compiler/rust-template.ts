@@ -4,6 +4,7 @@ import type { Width } from './ir.ts'
 export interface RustSupportFeatures {
   readonly u64: boolean
   readonly i64: boolean
+  readonly f32: boolean
   readonly timestamp: boolean
   readonly patch: boolean
   readonly bounded: readonly (Width | 'number-u64' | 'number-i64')[]
@@ -34,6 +35,41 @@ impl std::fmt::Display for ValidationError {
 impl std::error::Error for ValidationError {}
 
 ${
+  features.f32 === true
+    ? String.raw`
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct F32(f32);
+impl Eq for F32 {}
+impl F32 {
+    pub fn new(value: f64) -> Result<Self, ValidationError> {
+        let rounded = value as f32;
+        if !value.is_finite() || !rounded.is_finite() { return Err(ValidationError::new("", "f32 overflow or non-finite input")); }
+        Ok(Self(rounded))
+    }
+    pub fn get(self) -> f32 { self.0 }
+}
+impl Serialize for F32 {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> { serializer.serialize_f64(f64::from(self.0)) }
+}
+impl<'de> Deserialize<'de> for F32 {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(<f64 as Deserialize>::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+impl borsh::BorshSerialize for F32 {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> { borsh::BorshSerialize::serialize(&self.0, writer) }
+}
+impl borsh::BorshDeserialize for F32 {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        Self::new(f64::from(<f32 as borsh::BorshDeserialize>::deserialize_reader(reader)?))
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    }
+}
+`
+    : ''
+}
+
+${
   features.u64 === true || features.i64 === true
     ? String.raw`
 macro_rules! decimal {
@@ -45,7 +81,9 @@ macro_rules! decimal {
         impl From<$name> for $native { fn from(value: $name) -> Self { value.0 } }
         impl Serialize for $name {
             fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                serializer.collect_str(&self.0)
+                if serializer.is_human_readable() { serializer.collect_str(&self.0) }
+                else if $signed { serializer.serialize_i128(self.0 as i128) }
+                else { serializer.serialize_u128(self.0 as u128) }
             }
         }
         impl<'de> Deserialize<'de> for $name {
@@ -64,8 +102,16 @@ macro_rules! decimal {
                         }
                         text.parse::<$native>().map($name).map_err(E::custom)
                     }
+                    fn visit_i128<E: serde::de::Error>(self, value: i128) -> Result<Self::Value, E> {
+                        <$native>::try_from(value).map($name).map_err(E::custom)
+                    }
+                    fn visit_u128<E: serde::de::Error>(self, value: u128) -> Result<Self::Value, E> {
+                        <$native>::try_from(value).map($name).map_err(E::custom)
+                    }
                 }
-                deserializer.deserialize_str(TextVisitor)
+                if deserializer.is_human_readable() { deserializer.deserialize_str(TextVisitor) }
+                else if $signed { deserializer.deserialize_i128(TextVisitor) }
+                else { deserializer.deserialize_u128(TextVisitor) }
             }
         }
     };
@@ -171,7 +217,9 @@ impl std::str::FromStr for TimestampMillis {
 }
 impl Serialize for TimestampMillis {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.0.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.0.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+        } else { serializer.serialize_f64(self.0.timestamp_millis() as f64) }
     }
 }
 impl<'de> Deserialize<'de> for TimestampMillis {
@@ -181,8 +229,16 @@ impl<'de> Deserialize<'de> for TimestampMillis {
             type Value = TimestampMillis;
             fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("an RFC3339 millisecond timestamp") }
             fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> { value.parse().map_err(E::custom) }
+            fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Self::Value, E> {
+                if !value.is_finite() || value.fract() != 0.0 || value.abs() > 9_007_199_254_740_991.0 {
+                    return Err(E::custom("expected integral epoch milliseconds"));
+                }
+                let date = chrono::DateTime::from_timestamp_millis(value as i64).ok_or_else(|| E::custom("unrepresentable timestamp"))?;
+                TimestampMillis::new(date).map_err(E::custom)
+            }
         }
-        deserializer.deserialize_str(TextVisitor)
+        if deserializer.is_human_readable() { deserializer.deserialize_str(TextVisitor) }
+        else { deserializer.deserialize_f64(TextVisitor) }
     }
 }
 impl borsh::BorshSerialize for TimestampMillis {
@@ -295,7 +351,7 @@ pub mod tagged {
         }
     }
     pub fn deserialize<'de, T: TaggedUnion, D: Deserializer<'de>>(deserializer: D) -> Result<T, D::Error> {
-        deserializer.deserialize_map(TaggedVisitor::<T>(PhantomData))
+        deserializer.deserialize_struct(T::NAME, &[T::TAG_FIELD], TaggedVisitor::<T>(PhantomData))
     }
 }
 
@@ -314,14 +370,17 @@ impl<'de> serde::de::Visitor<'de> for StrictSeed {
     fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<(), E> { Ok(()) }
     fn visit_str<E: serde::de::Error>(self, _: &str) -> Result<(), E> { Ok(()) }
     fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<(), E> {
-        if !(-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value) { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }
+        ${features.f32 === true ? 'let _ = value; // Typed integer fields enforce their own safe bounds; f32 admits numeric rounding.' : 'if !(-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value) { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }'}
         Ok(())
     }
     fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<(), E> {
-        if value > 9_007_199_254_740_991 { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }
+        ${features.f32 === true ? 'let _ = value; // Typed integer fields enforce their own safe bounds; f32 admits numeric rounding.' : 'if value > 9_007_199_254_740_991 { return Err(E::custom("unsafe JSON integer; use a width-annotated decimal string")); }'}
         Ok(())
     }
-    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<(), E> { Err(E::custom("JSON integers must use canonical base-10 notation")) }
+    fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<(), E> {
+        if !value.is_finite() { return Err(E::custom("non-finite JSON number")); }
+        ${features.f32 === true ? 'Ok(())' : 'Err(E::custom("JSON integers must use canonical base-10 notation"))'}
+    }
     fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
         if self.depth >= 128 { return Err(serde::de::Error::custom("JSON depth exceeds 128")); }
         while seq.next_element_seed(StrictSeed { depth: self.depth + 1 })?.is_some() {}
@@ -377,6 +436,14 @@ impl Serialize for Canonical<'_> {
                 let mut seq = serializer.serialize_seq(Some(array.len()))?;
                 for value in array { seq.serialize_element(&Canonical(value))?; }
                 seq.end()
+            }
+            ${
+              features.f32 === true
+                ? String.raw`serde_json::Value::Number(number) if number.is_f64() => {
+                let text = ryu_js::Buffer::new().format_finite(number.as_f64().expect("finite number")).to_owned();
+                serde_json::value::RawValue::from_string(text).map_err(serde::ser::Error::custom)?.serialize(serializer)
+            }`
+                : ''
             }
             other => other.serialize(serializer),
         }
