@@ -4,6 +4,10 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 
+# This native fixture exercises Genie's real formatter, not the interactive CLI
+# guard (which refuses the command and exits without consuming its stdin).
+export DEVENV_TASK_PASSTHROUGH=1
+
 echo "Running Genie compiled import staging cleanup test..."
 echo ""
 
