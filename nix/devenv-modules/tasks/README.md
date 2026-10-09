@@ -186,6 +186,158 @@ They assume the effect-utils repo structure and are not exported in flake.nix.
 
 - `devenv-module-tests.nix` - CI task that runs shell tests for reusable task modules
 
+### Module shell-test scheduling
+
+`devenv-modules:test` discovers every `shared/tests/*.test.sh`; it does not
+filter the suite. `local/devenv-module-tests.sh` runs unaudited and shared-checkout
+state scripts serially before starting a fixed two-worker pool for explicitly
+admitted scripts. Both phases keep running after failures. The aggregate fails
+if any script fails, and stderr records each script's UTC start/end timestamp,
+scheduling class, and original exit status. Stdout and stderr are not discarded.
+The Nix task pins Bash, GNU date, and xargs; the runner uses the GNU/BSD common
+`xargs -0 -n 1 -P 2` interface rather than Bash-version-specific `wait -n`.
+Worker failures, including exit 255, are normalized only at the xargs boundary
+so xargs cannot stop dispatching the remaining scripts. The supervisor waits
+for the complete pool on ordinary failures and on INT/TERM to the supervisor.
+
+#### Isolation admission audit
+
+The admission list is fail-closed: a new script still runs, but runs serially
+until its side effects have been reviewed. The audit at
+[`1f4b2947`](https://github.com/overengineeringstudio/effect-utils/commit/1f4b2947b8cfe2617e34ade8e5fafb63fd2c5587)
+admitted 42 of the original 43 scripts. Every admitted script runs in a
+separate Bash process, preserving cwd/environment isolation. Their ownership
+boundaries are:
+
+- **Read-only checkout policy/inventory:** `buck2-no-python-actions`,
+  `buck2-stage0-source-inputs`, `devenv-eval-source-roots`,
+  `devenv-task-env-boundary`, `nix-cli-no-hash-refresh`, and
+  `observability-capture`. Negative controls, when present, write only mktemp
+  fixtures; none starts a checkout-owned Buck daemon.
+- **Nix evaluation/copied sources:** `buck2-capability-source`,
+  `buck2-rules-source`, `check-module-options`, `setup-module-options`, and
+  `workflow-report-module-source`. Source mutations affect copies under
+  mktemp, not the checkout. Store realization uses `--no-link`; concurrent Nix
+  store access remains Nix-daemon-owned, with no store GC or checkout result link.
+- **Private state/fixtures:** `buck2-rust-deps`, `changeset-check-bodies`,
+  `devenv-eval-input-budget`, `megarepo-lock-sync`, `megarepo-status`,
+  `pnpm-source-input-staging`, and `setup-cache`. Generated graphs, fake Cargo
+  homes, SQLite databases, manifests, caches, and source staging all live below
+  each script's mktemp root.
+- **pnpm behavior:** `pnpm-gvs`, `pnpm-nested-roots-and-source-inputs`,
+  `pnpm-shared-store-reuse`, `pnpm-source-input-refresh.integration`,
+  `pnpm-task-smoke`, `pnpm`, and `test-task-smoke`. Stores and projections are
+  fixture-local, including the deliberately shared/concurrent pnpm store:
+  "shared" means shared between that script's fixtures, not between scripts.
+  Smoke installs use private homes and fake providers; no repository install
+  or repository node_modules mutation is scheduled.
+- **Genie:** `genie-compiled-staging` and `genie-module-options`. Compiled output,
+  generated JSON, task receipts, and scratch Git repositories are private.
+  The compiled fixture reads repository node_modules through a symlink but
+  writes its compilation/import staging into mktemp.
+- **Lint/plugin fixtures:** `lint-no-tailwind`, `lint-oxc-file-list`,
+  `oxlint-plugin-injection`, and `oxlint-rule-policy`. Repository policies and
+  immutable plugin products are read; malformed inputs, generated task code,
+  argument captures, and plugin overrides are private fixture files.
+- **Trace adapters:** `otel-instr-gating`, `otel-run`, and
+  `otel-scrape-oxfmt-wrap`. Adapters/providers are fixture stubs; capture files,
+  homes, spools, and summaries are private, not the live observability backend.
+- **Lock checking:** `flake-lock-duplicates` builds a no-output-link task wrapper
+  and checks lockfiles inside its private workspace.
+- **Pipeline/report/provider fixtures:** `pipeline-run`,
+  `workflow-report-task-e2e`, and `deploy-task-e2e`. Git state, OTLP spools,
+  GitHub outputs, summaries, and provider logs are private. The deploy fixture
+  binds its local API to port 0 and stops its owned API process; it does not
+  claim a fixed port or call a live deploy provider.
+- **SecretSpec:** `secretspec-native-tasks` realizes a no-output-link stub
+  package environment and uses a private home/repository/capture per fixture;
+  it does not call a real provider or fetch secrets.
+
+The three native lifecycle fixtures are also admitted. Starting daemons is not
+itself shared-state access; ownership of their mutations is what matters:
+
+- `buck2-capability-daemon.test.sh` owns a private HOME, temporary Buck roots,
+  explicit isolation names, and a short private Watchman socket. Every Buck
+  startup, migration stop, and cleanup names that private HOME/root/isolation.
+  Every Watchman operation names its private socket; startup, state, config,
+  log, PID file, and native shutdown are fixture-owned.
+- `buck2-capability-publish.test.sh` owns its publication roots, lock files,
+  synthetic Buck state, and HOME. The five competing publishers and crash
+  victim all use those roots; signals/cleanup address only captured fixture
+  PIDs. Failure diagnostics read native process metadata without mutating
+  other processes. Retention writes/prunes only `capability-publisher.*`
+  evidence directories, not any other suite script's fixtures or evidence.
+  Nix GC-root queries/registrations name that fixture's own absolute root links.
+- `worktree-teardown.test.sh` has a unique canonical mktemp parent for all Git
+  worktrees, editor publications, and nested-checkout/collision probes. Although
+  Buck state is under the caller's `$HOME/.buck/buckd`, its keys include those
+  unique absolute checkout paths. The production teardown kills only the
+  selected root's direct isolations and deletes only their shallow files/root
+  leaf, never a shared ancestor directory. Cache entries use fixture-specific
+  root hashes below its private `XDG_CACHE_HOME`. Watchman startup/shutdown uses
+  the fixture's private socket; production release performs only `watch-del`
+  for the selected fixture root, even if its no-spawn client reaches an ambient
+  service in the fixture's no-Watchman branch. No whole-service/global watch
+  deletion is issued.
+
+The remaining original serial script is `devenv-task-graph.test.sh`: it invokes
+`devenv tasks list --json` at the real checkout, using that checkout's Devenv
+evaluation/cache state. All unaudited additions also remain serial.
+
+`devenv-module-tests-runner.test.sh` is also serial. Its FIFO-gated fixtures
+exercise the actual runner, including explicit daemon/publisher/teardown
+admission and the graph-check serial barrier: two-worker bounds, continued
+dispatch after either worker or the serial phase fails, exit-255 coverage,
+per-script verdicts, cwd/environment isolation, complete child cleanup/reaping,
+unknown filenames with spaces, empty/missing suites, and draining after
+supervisor TERM.
+
+#### Baseline scheduling prediction
+
+The per-script start/end records in
+[run 37861666259](https://github.com/overengineeringstudio/effect-utils/actions/runs/37861666259)
+give these durations in seconds, rather than evaluator-site counts:
+
+| Script | Linux | Darwin |
+| --- | ---: | ---: |
+| `pnpm-task-smoke` | 39.790 | 34.170 |
+| `worktree-teardown` | 35.891 | 54.246 |
+| `pnpm-gvs` | 20.290 | 24.512 |
+| `pipeline-run` | 15.017 | 17.427 |
+| `buck2-capability-daemon` | 13.052 | 19.594 |
+| `buck2-capability-publish` | 11.391 | 25.661 |
+| `devenv-task-graph` (serial) | 0.256 | 0.253 |
+| One serial script | 0.256 | 0.253 |
+| All 42 admitted scripts | 206.586 | 247.414 |
+
+**[INFERENCE]** Replaying the admitted scripts in lexical order onto the next
+available of two workers, holding each observed duration fixed, gives worker
+loads of 98.461/108.125 s on Linux and 105.439/141.974 s on Darwin. Adding the
+serial barrier and retaining the original task overhead predicts module tasks
+of 108.642/142.497 s versus the observed 207.103/247.936 s: about 98.461/105.439 s
+of module-duration saving. This is a scheduling model, not an exercised speedup;
+it excludes the newly added runner test's duration and extra dispatch cost,
+and does not model Nix/store/CPU contention or changed cold/warm ordering.
+
+Both baseline module tasks were critical. Source batches finished only
+16.114 s earlier on Linux and 68.556 s earlier on Darwin, so this lever alone
+has predicted job savings capped at 16.114/68.556 s, not the full module saving.
+Both source branches become critical. Accelerating them separately can unlock
+more of the module saving.
+The final collector's 38.643/39.080 s is unchanged.
+
+Focused verification (inside the pinned development shell):
+
+```sh
+bash nix/devenv-modules/tasks/shared/tests/devenv-module-tests-runner.test.sh
+devenv tasks run devenv-modules:test --mode single
+```
+
+The aggregate command also retains all real Buck daemon, publisher, and
+worktree-teardown scenarios. Compare complete start/end verdict records and
+the task duration on both Linux and Darwin; do not infer performance from the
+focused scheduler fixture alone.
+
 ## `lib/` - Shared Utilities
 
 Helper functions used by task modules:
