@@ -2,7 +2,8 @@ import { defineConfig } from 'vitest/config'
 
 /** Focused real-key/loopback auth tests plus existing gh-cli and log redirect regressions. */
 export default defineConfig({
-  resolve: { alias: { '@overeng/utils/node/github-app': new URL('./packages/@overeng/utils/src/node/github-app.ts', import.meta.url).pathname } },
+  root: new URL('../../../', import.meta.url).pathname,
+  resolve: { alias: { '@overeng/utils/node/github-app': new URL('./src/node/github-app.ts', import.meta.url).pathname } },
   test: {
     include: [
       'packages/@overeng/utils/src/node/github-app.integration.test.ts',
