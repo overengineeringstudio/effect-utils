@@ -1,11 +1,13 @@
 //! Canonical editor-view tree fingerprints. Framing is `effect-utils/tree-digest/v1`.
+//! Instability errors include changed-field names and full before/after metadata;
+//! mode and link count are diagnostic context, not additional stability checks.
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fs::{self, File, Metadata};
 use std::io::{self, Read};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
 
 const SCHEMA: &[u8] = b"effect-utils/tree-digest/v1\0";
@@ -76,6 +78,104 @@ fn same(before: &Metadata, after: &Metadata, file: bool) -> bool {
         && (!file || before.size() == after.size())
 }
 
+fn entry_type(metadata: &Metadata) -> &'static str {
+    let kind = metadata.file_type();
+    if kind.is_file() {
+        "file"
+    } else if kind.is_dir() {
+        "directory"
+    } else if kind.is_symlink() {
+        "symlink"
+    } else if kind.is_block_device() {
+        "block-device"
+    } else if kind.is_char_device() {
+        "character-device"
+    } else if kind.is_fifo() {
+        "fifo"
+    } else if kind.is_socket() {
+        "socket"
+    } else {
+        "unknown"
+    }
+}
+
+fn metadata_snapshot(metadata: &Metadata) -> String {
+    format!(
+        "{{type={}, dev={}, ino={}, mtime=({}, {}), ctime=({}, {}), size={}, mode={:#o}, nlink={}}}",
+        entry_type(metadata),
+        metadata.dev(),
+        metadata.ino(),
+        metadata.mtime(),
+        metadata.mtime_nsec(),
+        metadata.ctime(),
+        metadata.ctime_nsec(),
+        metadata.size(),
+        metadata.mode(),
+        metadata.nlink(),
+    )
+}
+
+fn changed_metadata_fields(before: &Metadata, after: &Metadata) -> String {
+    let mut changed = String::new();
+    for (field, differs) in [
+        ("type", before.file_type() != after.file_type()),
+        ("dev", before.dev() != after.dev()),
+        ("ino", before.ino() != after.ino()),
+        (
+            "mtime",
+            (before.mtime(), before.mtime_nsec()) != (after.mtime(), after.mtime_nsec()),
+        ),
+        (
+            "ctime",
+            (before.ctime(), before.ctime_nsec()) != (after.ctime(), after.ctime_nsec()),
+        ),
+        ("size", before.size() != after.size()),
+        ("mode", before.mode() != after.mode()),
+        ("nlink", before.nlink() != after.nlink()),
+    ] {
+        if differs {
+            if !changed.is_empty() {
+                changed.push_str(", ");
+            }
+            changed.push_str(field);
+        }
+    }
+    changed
+}
+
+// Only called after the existing stability checks fail. Include observational
+// fields such as mode/nlink without adding them to the acceptance predicate.
+fn tree_changed(
+    path: &Path,
+    before: &Metadata,
+    after: Result<&Metadata, &io::Error>,
+    targets: Option<(&Path, &Path)>,
+) -> io::Error {
+    let (mut changed, after) = match after {
+        Ok(after) => (
+            changed_metadata_fields(before, after),
+            metadata_snapshot(after),
+        ),
+        Err(error) => ("unknown".to_owned(), format!("unavailable ({error})")),
+    };
+    if targets.is_some_and(|(before, after)| before != after) {
+        if !changed.is_empty() {
+            changed.push_str(", ");
+        }
+        changed.push_str("target");
+    }
+    let mut message = format!(
+        "tree changed while hashing: {}; changed=[{changed}]; before={}; after={}",
+        path.display(),
+        metadata_snapshot(before),
+        after,
+    );
+    if let Some((before, after)) = targets {
+        message.push_str(&format!("; target before={before:?}, after={after:?}"));
+    }
+    fail(message)
+}
+
 struct Walker {
     root: PathBuf,
     backing: Vec<PathBuf>,
@@ -109,12 +209,26 @@ impl Walker {
                 )));
             }
             self.visit(&resolved, name)?;
-            if !same(&before, &fs::symlink_metadata(path)?, false) || fs::read_link(path)? != target
-            {
-                return Err(fail(format!(
-                    "tree changed while hashing: {}",
-                    path.display()
-                )));
+            let after = fs::symlink_metadata(path)?;
+            if !same(&before, &after, false) {
+                let target_after = fs::read_link(path).ok();
+                return Err(tree_changed(
+                    path,
+                    &before,
+                    Ok(&after),
+                    target_after
+                        .as_deref()
+                        .map(|after| (target.as_path(), after)),
+                ));
+            }
+            let target_after = fs::read_link(path)?;
+            if target_after != target {
+                return Err(tree_changed(
+                    path,
+                    &before,
+                    Ok(&after),
+                    Some((&target, &target_after)),
+                ));
             }
             return Ok(());
         }
@@ -170,11 +284,15 @@ impl Walker {
                 frame(hash, owner.identity.as_bytes());
                 frame(hash, &relative(&owner.source, &resolved));
             }
-            if fs::read_link(path)? != target {
-                return Err(fail(format!(
-                    "tree changed while hashing: {}",
-                    path.display()
-                )));
+            let target_after = fs::read_link(path)?;
+            if target_after != target {
+                let after = fs::symlink_metadata(path);
+                return Err(tree_changed(
+                    path,
+                    &before,
+                    after.as_ref(),
+                    Some((&target, &target_after)),
+                ));
             }
         } else if before.is_file() {
             self.hash.update(b"F");
@@ -202,11 +320,9 @@ impl Walker {
                 path.display()
             )));
         }
-        if !same(&before, &fs::symlink_metadata(path)?, before.is_file()) {
-            return Err(fail(format!(
-                "tree changed while hashing: {}",
-                path.display()
-            )));
+        let after = fs::symlink_metadata(path)?;
+        if !same(&before, &after, before.is_file()) {
+            return Err(tree_changed(path, &before, Ok(&after), None));
         }
         Ok(())
     }
@@ -267,11 +383,9 @@ pub fn fingerprint(
     for name in sorted_names(tree)? {
         walker.visit(&tree.join(&name), name.as_bytes())?;
     }
-    if !same(&before, &fs::symlink_metadata(tree)?, false) {
-        return Err(fail(format!(
-            "tree changed while hashing: {}",
-            tree.display()
-        )));
+    let after = fs::symlink_metadata(tree)?;
+    if !same(&before, &after, false) {
+        return Err(tree_changed(tree, &before, Ok(&after), None));
     }
     let literal_links_digest = walker.resolved.as_ref().map(|_| {
         walker.links.sort_unstable_by(|a, b| a.0.cmp(&b.0));
@@ -362,4 +476,222 @@ pub fn fingerprint_input_root(root: &Path) -> io::Result<String> {
     let mut buffer = Box::new([0u8; 131072]);
     visit_input(root, root, &mut hash, &mut *buffer)?;
     Ok(hex(hash))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{same, tree_changed};
+    use std::fs::{self, File, FileTimes, Metadata, Permissions};
+    use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
+    use std::path::Path;
+    use std::time::{Duration, SystemTime};
+
+    fn diagnostic(path: &Path, before: &Metadata, after: &Metadata) -> String {
+        let error = tree_changed(path, before, Ok(after), None);
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        let message = error.to_string();
+        assert!(
+            message.starts_with(&format!(
+                "editor view: tree changed while hashing: {};",
+                path.display()
+            )),
+            "{message}"
+        );
+        for (label, metadata) in [("before", before), ("after", after)] {
+            // Assert every snapshot value independently of the formatter.
+            let snapshot = message
+                .split(&format!("; {label}="))
+                .nth(1)
+                .unwrap()
+                .split('}')
+                .next()
+                .unwrap();
+            for expected in [
+                format!("dev={}", metadata.dev()),
+                format!("ino={}", metadata.ino()),
+                format!("mtime=({}, {})", metadata.mtime(), metadata.mtime_nsec()),
+                format!("ctime=({}, {})", metadata.ctime(), metadata.ctime_nsec()),
+                format!("size={}", metadata.size()),
+                format!("mode={:#o}", metadata.mode()),
+                format!("nlink={}", metadata.nlink()),
+            ] {
+                assert!(
+                    snapshot.contains(&expected),
+                    "{message}: missing {expected}"
+                );
+            }
+        }
+        message
+    }
+
+    fn changed_fields(message: &str) -> Vec<&str> {
+        message
+            .split("; changed=[")
+            .nth(1)
+            .unwrap()
+            .split(']')
+            .next()
+            .unwrap()
+            .split(", ")
+            .collect()
+    }
+
+    #[test]
+    fn instability_diagnostic_reports_chmod_without_replacement() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("chmod");
+        fs::write(&path, b"same content").unwrap();
+        fs::set_permissions(&path, Permissions::from_mode(0o640)).unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap();
+        let after = fs::symlink_metadata(&path).unwrap();
+
+        let message = diagnostic(&path, &before, &after);
+        let fields = changed_fields(&message);
+        assert!(fields.contains(&"mode"), "{message}");
+        for unchanged in ["type", "dev", "ino", "size", "nlink", "mtime"] {
+            assert!(!fields.contains(&unchanged), "{message}");
+        }
+        assert!(message.contains("before={type=file"), "{message}");
+        assert!(message.contains("after={type=file"), "{message}");
+        assert!(message.contains("mode=0o100640"), "{message}");
+        assert!(message.contains("mode=0o100600"), "{message}");
+    }
+
+    #[test]
+    fn instability_diagnostic_reports_resize_and_timestamp_values() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("resize");
+        let file = File::create(&path).unwrap();
+        file.set_len(3).unwrap();
+        file.set_times(
+            FileTimes::new().set_modified(SystemTime::UNIX_EPOCH + Duration::new(10, 111)),
+        )
+        .unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        file.set_len(17).unwrap();
+        file.set_times(
+            FileTimes::new().set_modified(SystemTime::UNIX_EPOCH + Duration::new(20, 222)),
+        )
+        .unwrap();
+        let after = fs::symlink_metadata(&path).unwrap();
+
+        assert!(!same(&before, &after, true));
+        let message = diagnostic(&path, &before, &after);
+        let fields = changed_fields(&message);
+        assert!(fields.contains(&"size"), "{message}");
+        assert!(fields.contains(&"mtime"), "{message}");
+        assert!(!fields.contains(&"ino"), "{message}");
+        assert!(message.contains("size=3"), "{message}");
+        assert!(message.contains("size=17"), "{message}");
+    }
+
+    #[test]
+    fn instability_diagnostic_reports_same_size_inode_replacement() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("original");
+        let replacement = scratch.path().join("replacement");
+        fs::write(&path, b"first").unwrap();
+        fs::write(&replacement, b"other").unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::rename(&replacement, &path).unwrap();
+        let after = fs::symlink_metadata(&path).unwrap();
+
+        assert!(!same(&before, &after, true));
+        let message = diagnostic(&path, &before, &after);
+        let fields = changed_fields(&message);
+        assert!(fields.contains(&"ino"), "{message}");
+        assert!(!fields.contains(&"size"), "{message}");
+        assert!(!fields.contains(&"type"), "{message}");
+        assert!(message.contains("before={type=file"), "{message}");
+        assert!(message.contains("after={type=file"), "{message}");
+    }
+
+    #[test]
+    fn instability_diagnostic_reports_directory_replaced_by_symlink() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("entry");
+        fs::create_dir(&path).unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::rename(&path, scratch.path().join("retained-directory")).unwrap();
+        symlink("target", &path).unwrap();
+        let after = fs::symlink_metadata(&path).unwrap();
+
+        assert!(!same(&before, &after, false));
+        let message = diagnostic(&path, &before, &after);
+        let fields = changed_fields(&message);
+        for changed in ["type", "ino", "mode"] {
+            assert!(fields.contains(&changed), "{message}");
+        }
+        assert!(message.contains("before={type=directory"), "{message}");
+        assert!(message.contains("after={type=symlink"), "{message}");
+    }
+
+    #[test]
+    fn instability_diagnostic_reports_link_count_context() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("original");
+        fs::write(&path, b"content").unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::hard_link(&path, scratch.path().join("hard-link")).unwrap();
+        let after = fs::symlink_metadata(&path).unwrap();
+
+        let message = diagnostic(&path, &before, &after);
+        let fields = changed_fields(&message);
+        assert!(fields.contains(&"nlink"), "{message}");
+        assert!(!fields.contains(&"ino"), "{message}");
+        assert_eq!(after.nlink(), before.nlink() + 1);
+    }
+
+    #[test]
+    fn instability_diagnostic_reports_target_only_change() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("link");
+        symlink("old-target", &path).unwrap();
+        let metadata = fs::symlink_metadata(&path).unwrap();
+        assert!(same(&metadata, &metadata, false));
+
+        // Reuse one real metadata snapshot to deterministically exercise the
+        // target-only branch without relying on racing a filesystem walk.
+        let message = tree_changed(
+            &path,
+            &metadata,
+            Ok(&metadata),
+            Some((Path::new("old-target"), Path::new("new-target"))),
+        )
+        .to_string();
+        assert!(message.contains("changed=[target]"), "{message}");
+        assert!(message.contains("before={type=symlink"), "{message}");
+        assert!(message.contains("after={type=symlink"), "{message}");
+        assert!(
+            message.contains("target before=\"old-target\", after=\"new-target\""),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn instability_diagnostic_preserves_target_change_when_entry_disappears() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("link");
+        symlink("old-target", &path).unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        let after = fs::symlink_metadata(&path);
+
+        let message = tree_changed(
+            &path,
+            &before,
+            after.as_ref(),
+            Some((Path::new("old-target"), Path::new("new-target"))),
+        )
+        .to_string();
+        assert!(message.contains("tree changed while hashing:"), "{message}");
+        assert!(message.contains("changed=[unknown, target]"), "{message}");
+        assert!(message.contains("before={type=symlink"), "{message}");
+        assert!(message.contains("after=unavailable ("), "{message}");
+        assert!(
+            message.contains("target before=\"old-target\", after=\"new-target\""),
+            "{message}"
+        );
+    }
 }

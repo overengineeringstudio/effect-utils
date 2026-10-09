@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   canonicalTreeFingerprint,
@@ -31,6 +31,7 @@ import {
   verifyEditorViewSnapshot,
   type EditorViewOptions,
 } from './editor-view.ts'
+import * as fingerprintRunner from './typescript-runner.ts'
 
 /** Reads one Buck-declared immutable tool path; nothing resolves through an ambient PATH. */
 const requireTool = (name: string): string => {
@@ -699,6 +700,230 @@ describe('editor view publisher', () => {
     }
   })
 
+  it.each(['.backing', '.backing/0001'])(
+    'settles every payload fingerprint before cleaning a candidate after %s fails',
+    async (failedRoot) => {
+      const fixture = makeFixture()
+      const entered = Promise.withResolvers<string>()
+      const failPayload = Promise.withResolvers<void>()
+      const proceed = Promise.withResolvers<void>()
+      const runFingerprintTool = fingerprintRunner.runFingerprintTool
+      let publication: Promise<unknown> | undefined
+      let failure: unknown
+      const spy = vi
+        .spyOn(fingerprintRunner, 'runFingerprintTool')
+        .mockImplementation(async (request) => {
+          const tree = request.args[0] ?? ''
+          if (tree.includes('/.candidate-') === true) {
+            if (tree.endsWith(`/${failedRoot}`) === true) {
+              await failPayload.promise
+              throw new Error('payload fingerprint failed')
+            }
+            if (tree.endsWith('/.backing/0000') === true) {
+              entered.resolve(tree)
+              await proceed.promise
+              throw new Error('later payload fingerprint failed')
+            }
+          }
+          return runFingerprintTool(request)
+        })
+      try {
+        const backing = join(fixture.root, 'inputs', 'backing')
+        mkdirSync(join(backing, 'node_modules'), { recursive: true })
+        writeFileSync(join(backing, 'node_modules', 'dep.js'), 'export default 1\n')
+        const secondBacking = join(fixture.root, 'inputs', 'second-backing')
+        mkdirSync(secondBacking)
+        writeFileSync(join(secondBacking, 'dep.js'), 'export default 2\n')
+        publication = publishEditorView({
+          ...fixture.options,
+          backingRoots: [backing, secondBacking],
+        }).catch((error: unknown) => {
+          failure = error
+        })
+        const pendingTree = await entered.promise
+        const before = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
+        failPayload.resolve()
+        // Drain the rejection and cleanup microtasks while the other root walk stays gated.
+        await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
+        expect(failure).toBeUndefined()
+        const after = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
+        expect(after.ctimeNs).toBe(before.ctimeNs)
+        expect(after.mode).toBe(before.mode)
+        expect(readdirSync(fixture.editorRoot)).toContain('.publish.lock')
+        proceed.resolve()
+        await publication
+        expect(failure).toBeInstanceOf(Error)
+        expect(failure instanceof Error ? failure.cause : undefined).toEqual(
+          new Error('payload fingerprint failed'),
+        )
+        expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+        expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
+      } finally {
+        failPayload.resolve()
+        proceed.resolve()
+        await publication
+        spy.mockRestore()
+        cleanup(fixture)
+      }
+    },
+  )
+
+  it('keeps a queued sibling from preparing while a candidate payload walk is active', async () => {
+    const fixture = makeFixture()
+    const entered = Promise.withResolvers<string>()
+    let siblingStarted = false
+    const proceed = Promise.withResolvers<void>()
+    const runFingerprintTool = fingerprintRunner.runFingerprintTool
+    let pausedTree: string | undefined
+    let publication: Promise<readonly unknown[]> | undefined
+    const spy = vi
+      .spyOn(fingerprintRunner, 'runFingerprintTool')
+      .mockImplementation(async (request) => {
+        const tree = request.args[0] ?? ''
+        if (
+          pausedTree === undefined &&
+          tree.includes('/.candidate-') === true &&
+          tree.endsWith('/.backing/0000') === true
+        ) {
+          pausedTree = tree
+          entered.resolve(tree)
+          await proceed.promise
+        }
+        return runFingerprintTool(request)
+      })
+    try {
+      const sibling = makeSiblingView({ fixture, packageName: 'genie' })
+      const backing = join(fixture.root, 'inputs', 'shared-backing')
+      mkdirSync(join(backing, 'node_modules', 'dep'), { recursive: true })
+      writeFileSync(join(backing, 'node_modules', 'dep', 'index.js'), 'export default 1\n')
+      const options = [fixture.options, sibling.options].map((option, index) => {
+        symlinkSync(join(backing, 'node_modules', 'dep'), join(option.nodeModules, 'shared'))
+        if (index === 1)
+          Object.assign(option, {
+            beforeMaterialize: async () => {
+              siblingStarted = true
+            },
+          })
+        return Object.assign(option, { backingRoots: [backing] })
+      })
+      const source = lstatSync(join(backing, 'node_modules'), { bigint: true })
+      publication = publishEditorViews({
+        options,
+        onPublished: (record) => {
+          if (record.package === fixture.options.package) {
+            const copied = lstatSync(join(backing, 'node_modules'), { bigint: true })
+            expect(copied.ctimeNs).toBe(source.ctimeNs)
+            expect(copied.mode).toBe(source.mode)
+          }
+        },
+      })
+      const pendingTree = await entered.promise
+      const before = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
+      await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
+      expect(editorViewPublicationWorkers).toBe(1)
+      expect(siblingStarted).toBe(false)
+      const after = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
+      expect(after.ctimeNs).toBe(before.ctimeNs)
+      expect(after.mode).toBe(before.mode)
+      expect([after.dev, after.ino]).not.toEqual([source.dev, source.ino])
+      const unchangedSource = lstatSync(join(backing, 'node_modules'), { bigint: true })
+      expect(unchangedSource.ctimeNs).toBe(source.ctimeNs)
+      expect(unchangedSource.mode).toBe(source.mode)
+      expect(readdirSync(fixture.editorRoot)).toContain('.publish.lock')
+      proceed.resolve()
+      await publication
+      expect(siblingStarted).toBe(true)
+      for (const option of options)
+        await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
+      expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
+    } finally {
+      proceed.resolve()
+      await publication?.catch(() => undefined)
+      spy.mockRestore()
+      cleanup(fixture)
+    }
+  })
+
+  it('captures the failed worker before a queued sibling begins preparing', async () => {
+    const fixture = makeFixture()
+    const entered = Promise.withResolvers<string>()
+    const failPayload = Promise.withResolvers<void>()
+    let siblingStarted = false
+    const proceed = Promise.withResolvers<void>()
+    const original = Object.assign(new Error('payload fingerprint failed'), { exitCode: 17 })
+    const runFingerprintTool = fingerprintRunner.runFingerprintTool
+    let pausedTree: string | undefined
+    let publication: Promise<unknown> | undefined
+    let failure: unknown
+    const spy = vi
+      .spyOn(fingerprintRunner, 'runFingerprintTool')
+      .mockImplementation(async (request) => {
+        const tree = request.args[0] ?? ''
+        if (tree.includes('/.candidate-') === true) {
+          if (tree.endsWith('/.backing') === true && tree === dirname(await entered.promise)) {
+            await failPayload.promise
+            throw original
+          }
+          if (tree.endsWith('/.backing/0000') === true && pausedTree === undefined) {
+            pausedTree = tree
+            entered.resolve(tree)
+            await proceed.promise
+          }
+        }
+        return runFingerprintTool(request)
+      })
+    try {
+      const sibling = makeSiblingView({ fixture, packageName: 'genie' })
+      const backing = join(fixture.root, 'inputs', 'shared-backing')
+      mkdirSync(backing)
+      writeFileSync(join(backing, 'dep.js'), 'export default 1\n')
+      publication = publishEditorViews({
+        options: [
+          { ...fixture.options, backingRoots: [backing] },
+          {
+            ...sibling.options,
+            backingRoots: [backing],
+            beforeMaterialize: async () => {
+              siblingStarted = true
+            },
+          },
+        ],
+      }).catch((error: unknown) => {
+        failure = error
+      })
+      await entered.promise
+      failPayload.resolve()
+      await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
+      expect(siblingStarted).toBe(false)
+      expect(failure).toBeUndefined()
+      proceed.resolve()
+      await publication
+      expect(siblingStarted).toBe(true)
+      expect(failure).toBeInstanceOf(Error)
+      if (!(failure instanceof Error)) throw new Error('publication did not fail')
+      expect(failure.cause).toBe(original)
+      expect('exitCode' in failure ? failure.exitCode : undefined).toBe(17)
+      const states: unknown = JSON.parse(
+        failure.message.split('; publication workers=')[1] ?? 'null',
+      )
+      expect(states).toEqual([
+        {
+          package: fixture.options.package,
+          viewName: fixture.options.viewName,
+          editorRoot: realpathSync(fixture.editorRoot),
+          phase: 'payload',
+          candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
+        },
+      ])
+    } finally {
+      failPayload.resolve()
+      proceed.resolve()
+      await publication
+      spy.mockRestore()
+      cleanup(fixture)
+    }
+  })
+
   it('promotes hardened payloads with a writable rename root before publishing immutable views', async () => {
     const fixture = makeFixture()
     try {
@@ -1127,9 +1352,14 @@ describe('editor view publisher', () => {
       await expect(checkEditorView(first.options)).rejects.toThrow(
         'snapshot immutability violation',
       )
-      await expect(publishEditorView(first.options)).rejects.toThrow(
-        /snapshot file is writable: .*\/node_modules\/dep\/index\.js$/,
-      )
+      await expect(publishEditorView(first.options)).rejects.toMatchObject({
+        message: expect.stringContaining('; publication workers='),
+        cause: expect.objectContaining({
+          message: expect.stringMatching(
+            /^editor view: snapshot file is writable: .*\/node_modules\/dep\/index\.js$/u,
+          ),
+        }),
+      })
     } finally {
       cleanup(first)
     }

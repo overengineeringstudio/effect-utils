@@ -1,6 +1,6 @@
-use buck2_tool_core::fingerprint::{fingerprint, LinkOwner};
+use buck2_tool_core::fingerprint::{fingerprint, fingerprint_input_root, LinkOwner};
 use std::fs;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::PathBuf;
 
 #[test]
@@ -61,4 +61,33 @@ fn canonical_tree_modes_and_owner_root_links() {
         .unwrap()
         .digest
     );
+}
+
+#[test]
+fn canonical_tree_digest_remains_mode_independent() {
+    let scratch = tempfile::tempdir().unwrap();
+    let source = scratch.path().join("tree");
+    let directory = source.join("directory");
+    let file = directory.join("file");
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(&file, b"unchanged content").unwrap();
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+    let canonical_before = fingerprint(&source, false, &[], &[]).unwrap();
+    let input_before = fingerprint_input_root(&source).unwrap();
+
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+
+    let canonical_after = fingerprint(&source, false, &[], &[]).unwrap();
+    assert_eq!(canonical_before.digest, canonical_after.digest);
+    assert_eq!(
+        canonical_before.literal_links_digest,
+        canonical_after.literal_links_digest
+    );
+    assert_eq!(
+        canonical_before.resolved_links_digest,
+        canonical_after.resolved_links_digest
+    );
+    assert_ne!(input_before, fingerprint_input_root(&source).unwrap());
 }

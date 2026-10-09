@@ -28,6 +28,20 @@ store entry without writing its payload. Literal symlink targets participate in
 the input hash: a Buck artifact-path change is a new admission even when package
 file bytes are unchanged, and therefore materializes a new byte-owned snapshot.
 
+Batch publication prepares one private candidate at a time and serializes
+commits within each editor state root. Independent root fingerprints within
+that candidate still run concurrently. All fingerprint subprocesses
+for a candidate settle before hardening, promotion, or failure cleanup can
+change it. A failed fingerprint does not release the candidate or its state-root
+lock while another payload walk remains active.
+
+Unstable native fingerprints report the entry type, changed metadata fields,
+and before/after metadata and link targets. Publication errors also report the
+active workers' package, view, state root, phase, and private candidate. Payload
+failures capture these states when the first fingerprint child fails, before
+waiting for the remaining children; the original error remains available as
+the cause.
+
 Repository tasks retain **current plus previous (two snapshots per view)**,
 not two snapshots for the entire shared store. With `N` package views the bound
 is `2 × N` completed snapshots, plus in-flight candidates. After the atomic
