@@ -6,6 +6,7 @@ import { appendFile, readFile, readdir } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 
 import {
+  collectionBuildPlan,
   compareAuthorityStrings,
   countCollectedTests,
   decodeCollectionArtifact,
@@ -100,7 +101,6 @@ if (buck2Bin === undefined) {
 }
 // Buck runs from the composed workspace root and reports project-relative artifact paths.
 const buck2Cwd = resolve(argumentValue('--buck2-cwd') ?? resolve(root, '..', '..'))
-const targetPlatform = 'effect_utils//buck2/platforms:host_platform'
 
 if (existsSync(authorityPath) === false) {
   throw new Error(`${authorityPath} is missing; run \`devenv tasks run genie:run\``)
@@ -109,6 +109,56 @@ const lanes = decodeTestAuthority({
   decoded: await readJson(authorityPath),
   sourceLabel: authorityPath,
 })
+
+const buildPlan = collectionBuildPlan({ lanes })
+const collectionTargets = buildPlan.targets
+
+/** Builds every needed collection target in ONE Buck invocation. */
+const buildCollectionArtifacts = async (): Promise<
+  { readonly artifacts: ReadonlyMap<string, string> } | { readonly error: string }
+> => {
+  const proc = spawn(buck2Bin, buildPlan.args, {
+    cwd: buck2Cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  proc.stdout.setEncoding('utf8')
+  proc.stderr.setEncoding('utf8')
+  let stdout = ''
+  let stderr = ''
+  proc.stdout.on('data', (chunk: string) => {
+    stdout += chunk
+  })
+  proc.stderr.on('data', (chunk: string) => {
+    stderr += chunk
+  })
+  const exitCode = await new Promise<number>((resolveExit, reject) => {
+    proc.once('error', reject)
+    proc.once('close', (code) => resolveExit(code ?? 1))
+  })
+  if (exitCode !== 0) {
+    const tail = stderr.trimEnd().split('\n').slice(-20).join(' | ')
+    return { error: `buck2 build exited ${exitCode}: ${tail}` }
+  }
+  return parseShowOutput(stdout)
+}
+
+// Populate only Buck's current-input collection products before the source suites finish.
+// No source reports, coverage decisions, or verdicts are cached here. The final invocation
+// still builds this exact plan (normally warm) and validates every inventory and source report.
+if (process.argv.includes('--prebuild-only') === true) {
+  if (collectionTargets.length > 0) {
+    const built = await buildCollectionArtifacts()
+    if ('error' in built) {
+      console.error(`FAIL collection prebuild: ${built.error}`)
+      process.exit(1)
+    }
+  }
+  console.log(
+    `Prebuilt ${collectionTargets.length} Buck collection products; final coverage aggregation remains required.`,
+  )
+  process.exit(0)
+}
+
 const sourceTasksPath = argumentValue('--source-tasks-file')
 const sourceScope =
   sourceTasksPath === undefined
@@ -165,53 +215,6 @@ const buckFiles = baselineFiles.filter(
   ): entry is BaselineFile & { readonly ownership: Extract<FileOwnership, { kind: 'buck' }> } =>
     entry.ownership.kind === 'buck',
 )
-// EVERY declared collection target, not just the ones a baseline file happens to need: a lane
-// whose inventory stopped building or started emitting garbage is a hole in the bounded
-// evidence even while no baseline file sits in it today.
-const collectionTargets = [
-  ...new Set(
-    lanes.flatMap(({ collectionTarget }) =>
-      collectionTarget === undefined ? [] : [collectionTarget],
-    ),
-  ),
-].toSorted(compareAuthorityStrings)
-
-/** Builds every needed collection target in ONE Buck invocation. */
-const buildCollectionArtifacts = async (): Promise<
-  { readonly artifacts: ReadonlyMap<string, string> } | { readonly error: string }
-> => {
-  const proc = spawn(
-    buck2Bin,
-    [
-      'build',
-      '--show-output',
-      '--target-platforms',
-      targetPlatform,
-      '--local-only',
-      ...collectionTargets,
-    ],
-    { cwd: buck2Cwd, stdio: ['ignore', 'pipe', 'pipe'] },
-  )
-  proc.stdout.setEncoding('utf8')
-  proc.stderr.setEncoding('utf8')
-  let stdout = ''
-  let stderr = ''
-  proc.stdout.on('data', (chunk: string) => {
-    stdout += chunk
-  })
-  proc.stderr.on('data', (chunk: string) => {
-    stderr += chunk
-  })
-  const exitCode = await new Promise<number>((resolveExit, reject) => {
-    proc.once('error', reject)
-    proc.once('close', (code) => resolveExit(code ?? 1))
-  })
-  if (exitCode !== 0) {
-    const tail = stderr.trimEnd().split('\n').slice(-20).join(' | ')
-    return { error: `buck2 build exited ${exitCode}: ${tail}` }
-  }
-  return parseShowOutput(stdout)
-}
 
 /** Per collection target: the per-file counts, or the reason there are none. */
 const countsByTarget = new Map<string, ReadonlyMap<string, number> | string>()
