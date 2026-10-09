@@ -15,7 +15,10 @@ type WorkflowStep = {
 }
 type GeneratedWorkflow = { jobs: Record<string, { steps: readonly WorkflowStep[] }> }
 
-const runFixture = async ({ missing = false }: { missing?: boolean } = {}) => {
+const runFixture = async ({
+  missing = false,
+  forceKill = false,
+}: { missing?: boolean; forceKill?: boolean } = {}) => {
   const root = await mkdtemp(join(tmpdir(), 'test-resource-sampler-'))
   const output = join(root, 'resources.json')
   const scripts = {
@@ -24,7 +27,7 @@ const runFixture = async ({ missing = false }: { missing?: boolean } = {}) => {
     ps: missing === true ? 'exit 1' : "printf '1024 100.5\n2048 25.0\n'",
     vm_stat:
       "printf 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages occupied by compressor: 3.\nPageouts: 7.\n'",
-    sleep: 'echo sample-complete; exec /bin/sleep "$@"',
+    sleep: 'echo "sample-complete:$BASHPID"; exec /bin/sleep "$@"',
   }
   try {
     for (const [name, body] of Object.entries(scripts)) {
@@ -37,12 +40,17 @@ const runFixture = async ({ missing = false }: { missing?: boolean } = {}) => {
       stdout: 'pipe',
       stderr: 'pipe',
     })
+    let sleeperPid: number | undefined
     try {
       const reader = proc.stdout.getReader()
       const signal = await reader.read()
       reader.releaseLock()
-      expect(new TextDecoder().decode(signal.value)).toContain('sample-complete')
-      proc.kill('SIGTERM')
+      const message = new TextDecoder().decode(signal.value)
+      expect(message).toContain('sample-complete')
+      const pid = message.match(/sample-complete:(\d+)/)?.[1]
+      if (pid === undefined) throw new Error('sampler sleep ownership is missing')
+      sleeperPid = Number(pid)
+      proc.kill(forceKill === true ? 'SIGKILL' : 'SIGTERM')
       const status = await proc.exited
       return {
         status,
@@ -51,6 +59,13 @@ const runFixture = async ({ missing = false }: { missing?: boolean } = {}) => {
           : undefined,
       }
     } finally {
+      if (sleeperPid !== undefined) {
+        try {
+          process.kill(sleeperPid, 'SIGKILL')
+        } catch {
+          // TERM normally reaps the sleep first.
+        }
+      }
       proc.kill('SIGTERM')
       await proc.exited
     }
@@ -81,6 +96,12 @@ describe('non-gating resource sampling', () => {
     expect(report.cpuSemantics).toContain('lifetime-average')
   })
 
+  it('retains completed native samples when forcibly killed without an exit flush', async () => {
+    const { status, report } = await runFixture({ forceKill: true })
+    expect(status).not.toBe(0)
+    expect(report).toMatchObject({ sampleCount: 1, peakSummedProcessRssBytes: 3_145_728 })
+  })
+
   it('does not fabricate peaks when native sampling fails', async () => {
     const { status, report } = await runFixture({ missing: true })
     expect(status).toBe(1)
@@ -98,13 +119,58 @@ describe('non-gating resource sampling', () => {
       if (unit === undefined) throw new Error(`unit-test step is missing: ${name}`)
       expect(unit.run).toContain('test-resource-sampler.sh')
       expect(unit.run).toContain('status=$?; trap - EXIT;')
-      expect(unit.run).toContain('wait "$resource_sampler" || :; exit "$status"')
+      expect(unit.run).toContain('kill -TERM -- "-$resource_sampler"')
+      expect(unit.run).toContain('kill -KILL -- "-$resource_sampler"')
+      expect(unit.run).not.toContain('wait "$resource_sampler"')
+      expect(unit.run).toContain('exit "$status"')
       expect(unit.run).toContain('tasks run test:run')
       const artifact = steps.find((step) => step.name === 'Upload test resource samples')
       if (artifact === undefined) throw new Error(`resource artifact is missing: ${name}`)
       expect(artifact.if).toBe('${{ always() }}')
       expect(artifact['continue-on-error']).toBe(true)
       expect(artifact.with?.['if-no-files-found']).toBe('ignore')
+    }
+  })
+
+  it('finishes the generated test step while a native sampler child is stalled', async () => {
+    const workflow = Bun.YAML.parse(
+      await Bun.file(new URL('../../.github/workflows/ci.yml', import.meta.url)).text(),
+    ) as GeneratedWorkflow
+    const unit = workflow.jobs.test?.steps.find((step) => step.name === 'Unit tests')?.run
+    if (unit === undefined) throw new Error('unit-test command is missing')
+    const start = unit.indexOf('set -m\n')
+    if (start === -1) throw new Error('private sampler process group is missing')
+    const lifecycle = unit.slice(start).split('\n').slice(0, 5).join('\n')
+    const root = await mkdtemp(join(tmpdir(), 'test-resource-stalled-'))
+    try {
+      const mockPs = join(root, 'ps')
+      await writeFile(
+        mockPs,
+        '#!/usr/bin/env bash\necho native-sampler-stalled >&2\nexec /bin/sleep 3600\n',
+      )
+      await chmod(mockPs, 0o755)
+      const proc = Bun.spawn(['bash', '-c', `${lifecycle}\nread -r release\nexit 19`], {
+        cwd: new URL('../../', import.meta.url).pathname,
+        env: { ...process.env, PATH: `${root}:${process.env.PATH}` },
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      try {
+        const reader = proc.stderr.getReader()
+        const signal = await reader.read()
+        reader.releaseLock()
+        expect(new TextDecoder().decode(signal.value)).toContain('native-sampler-stalled')
+        proc.stdin.end('release\n')
+        expect(await proc.exited).toBe(19)
+        // EOF requires the stalled native child to release its inherited pipe.
+        await proc.stderr.pipeTo(new WritableStream())
+      } finally {
+        if (proc.exitCode === null) proc.stdin.end('release\n')
+        await proc.exited
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
     }
   })
 })

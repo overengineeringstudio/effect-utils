@@ -483,10 +483,15 @@ const unitTestJob = (runner: RunnerProfile) => ({
       name: 'Unit tests',
       env: githubTokenEnv(),
       run: [
+        // Bash job control gives the sampler and its native children a private
+        // process group on both runner platforms, without a setsid dependency.
+        'set -m',
         'bash genie/ci-scripts/test-resource-sampler.sh tmp/ci-resources/test-resources.json &',
         'resource_sampler=$!',
-        // Diagnostic failures must not replace the task exit status.
-        'trap \'status=$?; trap - EXIT; kill "$resource_sampler" 2>/dev/null || :; wait "$resource_sampler" || :; exit "$status"\' EXIT',
+        'set +m',
+        // Diagnostics cannot gate completion, even if a native sampler command
+        // stalls. Completed samples are persisted before the next command.
+        'trap \'status=$?; trap - EXIT; kill -TERM -- "-$resource_sampler" 2>/dev/null || :; kill -KILL -- "-$resource_sampler" 2>/dev/null || :; exit "$status"\' EXIT',
         runDevenvTasksBefore('test:run'),
       ].join('\n'),
     }),

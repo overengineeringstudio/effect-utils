@@ -85,8 +85,11 @@ high-water mark: summed process RSS may double-count shared pages, and summed
 `ps` CPU percentages are process lifetime averages (100% means one CPU), not
 interval host utilization. Total physical memory, compressor peak on Darwin,
 and native pageout-counter deltas contextualize these peaks; none alone proves
-memory pressure. Sampling failures never replace the test verdict and missing
-samples remain missing evidence.
+memory pressure. Each completed sampling attempt atomically replaces the JSON
+snapshot before another native command starts. Test completion sends TERM then
+KILL to the sampler's private process group without waiting, so a stalled
+diagnostic cannot delay the job. Sampling failures never replace the test
+verdict and missing samples remain missing evidence.
 
 ## Storybook previews
 

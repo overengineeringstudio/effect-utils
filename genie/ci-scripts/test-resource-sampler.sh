@@ -11,7 +11,12 @@ case "$platform" in
 esac
 [[ "$total" =~ ^[0-9]+$ ]] && (( total > 0 ))
 mkdir -p "$(dirname "$output")"
-samples=$(mktemp)
+sample_count=0
+peak_rss=0
+peak_cpu=0
+peak_compressor=0
+first_pageouts=0
+last_pageouts=0
 stopping=0
 sleeper=''
 stop() {
@@ -19,7 +24,7 @@ stop() {
   if [[ -n "$sleeper" ]]; then kill "$sleeper" 2>/dev/null || :; fi
 }
 trap stop TERM INT
-trap 'rm -f "$samples"' EXIT
+trap 'rm -f "$output.partial"' EXIT
 failures=0
 while (( stopping == 0 )); do
   # ps %cpu is each process's lifetime-average CPU percentage, not an interval
@@ -40,12 +45,28 @@ while (( stopping == 0 )); do
       counters=$(awk '$1 == "pswpout" { printf "%.0f 0", $2; found=1 } END { if (!found) exit 1 }' /proc/vmstat) || counters=''
     fi
     if [[ -n "$counters" ]]; then
-      printf '%s %s\n' "$metrics" "$counters" >> "$samples"
+      read -r rss cpu pageouts compressor <<< "$metrics $counters"
+      if (( sample_count == 0 )); then first_pageouts=$pageouts; fi
+      sample_count=$((sample_count + 1))
+      (( rss <= peak_rss )) || peak_rss=$rss
+      (( compressor <= peak_compressor )) || peak_compressor=$compressor
+      peak_cpu=$(awk -v candidate="$cpu" -v peak="$peak_cpu" 'BEGIN { printf "%.3f", (candidate > peak ? candidate : peak) }')
+      last_pageouts=$pageouts
     else
       failures=$((failures + 1))
     fi
   else
     failures=$((failures + 1))
+  fi
+  # Persist a complete snapshot after each attempt, before any sleep or next
+  # native command. Forced group shutdown therefore retains completed samples.
+  if (( sample_count > 0 )); then
+    compressor_json=null
+    if [[ "$platform" == Darwin ]]; then compressor_json=$peak_compressor; fi
+    printf '{"schemaVersion":1,"platform":"%s","scope":"host","sampleIntervalSeconds":%d,"sampleCount":%d,"failedSampleCount":%d,"totalMemoryBytes":%s,"peakSummedProcessRssBytes":%s,"peakSummedProcessLifetimeCpuPercent":%s,"peakCompressorBytes":%s,"pageoutsDuringSampling":%d,"rssSemantics":"sum of process RSS; shared pages may be counted repeatedly","cpuSemantics":"sum of ps process lifetime-average percentages; 100 means one CPU","pageoutSemantics":"Darwin Pageouts or Linux pswpout counter delta; units are native pages"}\n' \
+      "$platform" "$interval" "$sample_count" "$failures" "$total" "$peak_rss" "$peak_cpu" \
+      "$compressor_json" "$((last_pageouts - first_pageouts))" > "$output.partial"
+    mv "$output.partial" "$output"
   fi
   (( stopping == 0 )) || break
   sleep "$interval" &
@@ -55,19 +76,4 @@ while (( stopping == 0 )); do
   sleeper=''
 done
 # Missing evidence remains missing rather than reporting fabricated zero peaks.
-report=$(awk -v platform="$platform" -v total="$total" -v interval="$interval" -v failures="$failures" '
-  NF == 4 {
-    if (!count) firstPageouts=$3
-    if ($1 > rss) rss=$1
-    if ($2 > cpu) cpu=$2
-    if ($4 > compressor) compressor=$4
-    lastPageouts=$3
-    count++
-  }
-  END {
-    if (!count) exit 1
-    compressorJson = platform == "Darwin" ? sprintf("%.0f", compressor) : "null"
-    printf "{\"schemaVersion\":1,\"platform\":\"%s\",\"scope\":\"host\",\"sampleIntervalSeconds\":%d,\"sampleCount\":%d,\"failedSampleCount\":%d,\"totalMemoryBytes\":%.0f,\"peakSummedProcessRssBytes\":%.0f,\"peakSummedProcessLifetimeCpuPercent\":%.3f,\"peakCompressorBytes\":%s,\"pageoutsDuringSampling\":%.0f,\"rssSemantics\":\"sum of process RSS; shared pages may be counted repeatedly\",\"cpuSemantics\":\"sum of ps process lifetime-average percentages; 100 means one CPU\",\"pageoutSemantics\":\"Darwin Pageouts or Linux pswpout counter delta; units are native pages\"}\n", platform, interval, count, failures, total, rss, cpu, compressorJson, lastPageouts-firstPageouts
-  }
-' "$samples")
-printf '%s\n' "$report" > "$output"
+(( sample_count > 0 ))
