@@ -16,6 +16,7 @@
     "packages/@overeng/effect-ai-claude-cli",
     "packages/@overeng/effect-ai-gateway",
     "packages/@overeng/effect-distributed-lock",
+    "packages/@overeng/effect-iroh",
     "packages/@overeng/effect-path",
     "packages/@overeng/effect-react",
     "packages/@overeng/effect-rpc-explorer",
