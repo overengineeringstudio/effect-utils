@@ -20,7 +20,6 @@
         },
         {
           "role": "assistant",
-          "content": null,
           "tool_calls": [
             {
               "id": "call_1",
