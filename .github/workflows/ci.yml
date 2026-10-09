@@ -1,6 +1,3 @@
-# Generated file - DO NOT EDIT
-# Source: ci.yml.genie.ts
-
 name: CI
 
 permissions:
@@ -1061,6 +1058,9 @@ jobs:
             export BUCK2_CACHE_WRITE_BASIC_AUTH
           fi
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          bash genie/ci-scripts/test-resource-sampler.sh tmp/ci-resources/test-resources.json &
+          resource_sampler=$!
+          trap 'status=$?; trap - EXIT; kill "$resource_sampler" 2>/dev/null || :; wait "$resource_sampler" || :; exit "$status"' EXIT
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
       - name: Nix diagnostics summary
@@ -1120,6 +1120,15 @@ jobs:
         with:
           name: 'vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
           path: tmp/otel-scrape/summaries/*.vitest.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload test resource samples
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
+          path: tmp/ci-resources/test-resources.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Summarize CI OpenTelemetry spans
@@ -1367,6 +1376,9 @@ jobs:
             export BUCK2_CACHE_WRITE_BASIC_AUTH
           fi
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          bash genie/ci-scripts/test-resource-sampler.sh tmp/ci-resources/test-resources.json &
+          resource_sampler=$!
+          trap 'status=$?; trap - EXIT; kill "$resource_sampler" 2>/dev/null || :; wait "$resource_sampler" || :; exit "$status"' EXIT
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
       - name: Build and smoke native and compiled products
@@ -1449,6 +1461,15 @@ jobs:
         with:
           name: 'vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
           path: tmp/otel-scrape/summaries/*.vitest.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload test resource samples
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
+          path: tmp/ci-resources/test-resources.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Summarize CI OpenTelemetry spans
