@@ -8,7 +8,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import {
   agent,
-  AgentSchema,
+  type AgentSchema,
   emit,
   mission,
   MissionSchema,
