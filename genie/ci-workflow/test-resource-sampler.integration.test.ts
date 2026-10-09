@@ -5,6 +5,16 @@ import { join } from 'node:path'
 
 const sampler = new URL('../ci-scripts/test-resource-sampler.sh', import.meta.url).pathname
 
+type ResourceReport = { rssSemantics: string; cpuSemantics: string }
+type WorkflowStep = {
+  name?: string
+  run?: string
+  if?: string
+  'continue-on-error'?: boolean
+  with?: Record<string, string>
+}
+type GeneratedWorkflow = { jobs: Record<string, { steps: readonly WorkflowStep[] }> }
+
 const runFixture = async ({ missing = false }: { missing?: boolean } = {}) => {
   const root = await mkdtemp(join(tmpdir(), 'test-resource-sampler-'))
   const output = join(root, 'resources.json')
@@ -36,7 +46,9 @@ const runFixture = async ({ missing = false }: { missing?: boolean } = {}) => {
       const status = await proc.exited
       return {
         status,
-        report: (await Bun.file(output).exists()) ? await Bun.file(output).json() : undefined,
+        report: (await Bun.file(output).exists())
+          ? ((await Bun.file(output).json()) as ResourceReport)
+          : undefined,
       }
     } finally {
       proc.kill('SIGTERM')
@@ -51,6 +63,7 @@ describe('non-gating resource sampling', () => {
   it('retains native Darwin metrics and truthful CPU/RSS semantics on stop', async () => {
     const { status, report } = await runFixture()
     expect(status).toBe(0)
+    if (report === undefined) throw new Error('native resource report is missing')
     expect(report).toMatchObject({
       schemaVersion: 1,
       platform: 'Darwin',
@@ -77,20 +90,21 @@ describe('non-gating resource sampling', () => {
   it('keeps both generated test lanes diagnostic-only and preserves test exit status', async () => {
     const workflow = Bun.YAML.parse(
       await Bun.file(new URL('../../.github/workflows/ci.yml', import.meta.url)).text(),
-    )
+    ) as GeneratedWorkflow
     for (const name of ['test', 'test-macos']) {
-      const steps = workflow.jobs[name].steps
-      const unit = steps.find((step: { name?: string }) => step.name === 'Unit tests')
+      const steps = workflow.jobs[name]?.steps
+      if (steps === undefined) throw new Error(`required test job is missing: ${name}`)
+      const unit = steps.find((step) => step.name === 'Unit tests')
+      if (unit === undefined) throw new Error(`unit-test step is missing: ${name}`)
       expect(unit.run).toContain('test-resource-sampler.sh')
       expect(unit.run).toContain('status=$?; trap - EXIT;')
       expect(unit.run).toContain('wait "$resource_sampler" || :; exit "$status"')
       expect(unit.run).toContain('tasks run test:run')
-      const artifact = steps.find(
-        (step: { name?: string }) => step.name === 'Upload test resource samples',
-      )
+      const artifact = steps.find((step) => step.name === 'Upload test resource samples')
+      if (artifact === undefined) throw new Error(`resource artifact is missing: ${name}`)
       expect(artifact.if).toBe('${{ always() }}')
       expect(artifact['continue-on-error']).toBe(true)
-      expect(artifact.with['if-no-files-found']).toBe('ignore')
+      expect(artifact.with?.['if-no-files-found']).toBe('ignore')
     }
   })
 })
