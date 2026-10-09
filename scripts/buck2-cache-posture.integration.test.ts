@@ -256,7 +256,7 @@ describe('REAPI probe diagnostics', () => {
       expect(publicProbeAddress(address)).toBe('redacted')
   })
 
-  it('reports bounded response failures once, without server messages or credentials', async () => {
+  it('reports bounded probe failures once, without server messages or credentials', async () => {
     let response: 'healthy' | 'auth' | 'http' | 'grpc' | 'protocol' | 'deadline' = 'healthy'
     const grpc = createServer()
     grpc.on('stream', (stream: ServerHttp2Stream) => {
@@ -293,8 +293,12 @@ describe('REAPI probe diagnostics', () => {
           onConnectionEvent: (event) => connections.push(event),
         })
         expect(available).toBe(scenario === 'healthy')
-        expect(connections.some(({ event }) => event === 'dns-resolved')).toBeTrue()
-        expect(connections.some(({ event }) => event === 'tcp-connected')).toBeTrue()
+        const connected = connections.some(({ event }) => event === 'tcp-connected')
+        // The deadline bounds DNS and connection setup too; it may expire before either completes.
+        if (scenario !== 'deadline') {
+          expect(connections.some(({ event }) => event === 'dns-resolved')).toBeTrue()
+          expect(connected).toBeTrue()
+        }
         expect(connections.every(({ address }) => address === 'redacted')).toBeTrue()
         expect(connections.every(({ family }) => family === 'IPv4' || family === 'IPv6')).toBeTrue()
         expect(connections.every(({ elapsedMs }) => elapsedMs >= 0)).toBeTrue()
@@ -304,7 +308,7 @@ describe('REAPI probe diagnostics', () => {
           expect(failures).toHaveLength(1)
           expect(failures[0]).toEqual({
             errorClass: scenario,
-            phase: 'response',
+            phase: connected ? 'response' : connections.length > 0 ? 'tcp' : 'dns',
             elapsedMs: expect.any(Number),
             deadlineMs: scenario === 'deadline' ? 50 : 1000,
           })
