@@ -145,6 +145,21 @@ the lock, the publisher:
    Pointer helpers validate their exact writes; a separate
    `buck2:editor:check` performs the full admitted-state traversal.
 
+Bootstrap and publication commands submit all selected views in one
+`publish-batch --requests <JSON array of publish argument lists>` operation.
+The batch acquires each distinct state-root lock before preparing any view and
+holds every lock until all workers have settled. `editorViewPublicationWorkers`
+in the publisher is the single declared resource bound (four); bootstrap and
+source-test publication both use it. Workers overlap independent fingerprint,
+materialization, and private-candidate validation work. Candidate
+names are unique per view operation; promotion, retention, pointer writes, and GC
+are serialized per state root, so sibling inventory validation cannot race
+promotion or deletion. Duplicate root/view identities are rejected. Every view
+is attempted after a preparation failure, and the first failure in request order
+is reported only after workers settle and locks are released. Each successful
+view retains its stderr timing record. Snapshot/retention formats, lock ownership,
+explicit recovery, and whole-workspace authority checks are unchanged.
+
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip

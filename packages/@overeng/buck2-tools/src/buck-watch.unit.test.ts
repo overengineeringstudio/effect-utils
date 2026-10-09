@@ -340,6 +340,44 @@ describe('Buck watch reconciliation', () => {
         ]),
       )
 
+      const batchInvocations: { command: string; args: readonly string[] }[] = []
+      await reconcileBuckViews({
+        request: {
+          packagePaths: ['packages/app'],
+          changedPaths: [],
+          buildTargets: ['//packages/app:editor_view_inputs'],
+        },
+        options: {
+          plan,
+          mode: 'publish',
+          batchPublication: true,
+          repoRoot: root,
+          workspaceRoot: root,
+          buck2: '/tools/buck2',
+          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
+          workspaceAuthority: '/repo/authority.json',
+          cp: '/tools/cp',
+          mv: '/tools/mv',
+          fingerprintTool: '/tools/buck2-fingerprint',
+          snapshotRetention: 3,
+          run: async ({ command, args }) => {
+            batchInvocations.push({ command, args })
+            return command === '/tools/buck2'
+              ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+              : { stdout: '', stderr: '' }
+          },
+        },
+      })
+      expect(batchInvocations).toHaveLength(2)
+      expect(batchInvocations[1]?.args.slice(0, 3)).toEqual([
+        '/tools/editor-view',
+        'publish-batch',
+        '--requests',
+      ])
+      expect(JSON.parse(batchInvocations[1]?.args[3] ?? '')).toEqual([
+        invocations[1]?.args.slice(1),
+      ])
+
       const failedInvocations: string[] = []
       await expect(
         reconcileBuckViews({

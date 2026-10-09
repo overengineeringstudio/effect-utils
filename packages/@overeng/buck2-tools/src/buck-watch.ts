@@ -547,8 +547,8 @@ export type BuckReconcilerOptions = {
   readonly run?: RunCommand
   readonly signal?: AbortSignal
   readonly onTiming?: (timing: BuckReconcileTiming) => void
-  /** Publish disjoint editor-root groups concurrently while preserving ordering within each lock. */
-  readonly parallelEditorRoots?: boolean
+  /** Prepare views within one exclusive-lock batch using the publisher's declared worker bound. */
+  readonly batchPublication?: boolean
 }
 
 /** Build the affected product set, then publish each affected editor view from provider roots. */
@@ -596,8 +596,7 @@ export const reconcileBuckViews = async ({
   type EditorEntry = BuckWatchPackage & {
     readonly editor: NonNullable<BuckWatchPackage['editor']>
   }
-  const publish = async (entry: EditorEntry): Promise<void> => {
-    const publicationStartedAt = performance.now()
+  const publicationArgs = async (entry: EditorEntry): Promise<readonly string[]> => {
     const manifestOutput = outputForTarget({
       outputs,
       target: entry.editor.inputsManifestTarget,
@@ -606,6 +605,39 @@ export const reconcileBuckViews = async ({
       path: manifestOutput,
       workspaceRoot: options.workspaceRoot,
     })
+    return [
+      options.mode,
+      '--repo-root',
+      options.repoRoot,
+      '--package',
+      entry.packagePath,
+      '--view-name',
+      entry.editor.viewName,
+      '--cell',
+      entry.editor.cell,
+      '--target',
+      entry.editor.target,
+      '--editor-inputs',
+      absoluteArtifact(manifest.editorInputs),
+      '--node-modules',
+      absoluteArtifact(manifest.editorInputs),
+      ...manifest.readRoots.flatMap((root) => ['--backing-root', absoluteArtifact(root)]),
+      '--cp',
+      options.cp,
+      '--mv',
+      options.mv,
+      '--fingerprint-tool',
+      options.fingerprintTool,
+      '--workspace-authority',
+      options.workspaceAuthority,
+      '--consumer-cache',
+      resolve(options.repoRoot, entry.editor.consumerCache),
+      '--snapshot-retention',
+      String(options.snapshotRetention),
+    ]
+  }
+  const publish = async (entry: EditorEntry): Promise<void> => {
+    const publicationStartedAt = performance.now()
     // Telemetry is best effort here too: a publication span that cannot be
     // delivered never changes the publisher's own exit status.
     const emitPublicationSpan = (exitCode: number): void =>
@@ -620,37 +652,7 @@ export const reconcileBuckViews = async ({
     try {
       await execute({
         command: options.editorViewCommand[0],
-        args: [
-          ...options.editorViewCommand.slice(1),
-          options.mode,
-          '--repo-root',
-          options.repoRoot,
-          '--package',
-          entry.packagePath,
-          '--view-name',
-          entry.editor.viewName,
-          '--cell',
-          entry.editor.cell,
-          '--target',
-          entry.editor.target,
-          '--editor-inputs',
-          absoluteArtifact(manifest.editorInputs),
-          '--node-modules',
-          absoluteArtifact(manifest.editorInputs),
-          ...manifest.readRoots.flatMap((root) => ['--backing-root', absoluteArtifact(root)]),
-          '--cp',
-          options.cp,
-          '--mv',
-          options.mv,
-          '--fingerprint-tool',
-          options.fingerprintTool,
-          '--workspace-authority',
-          options.workspaceAuthority,
-          '--consumer-cache',
-          resolve(options.repoRoot, entry.editor.consumerCache),
-          '--snapshot-retention',
-          String(options.snapshotRetention),
-        ],
+        args: [...options.editorViewCommand.slice(1), ...(await publicationArgs(entry))],
         detached: true,
         cwd: options.repoRoot,
       })
@@ -669,30 +671,54 @@ export const reconcileBuckViews = async ({
     (entry): entry is EditorEntry =>
       selected.has(entry.packagePath) === true && entry.editor !== undefined,
   )
-  const publishOrdered = async (group: readonly (typeof entries)[number][]): Promise<void> => {
-    for (const entry of group) {
-      // Each group shares one publication lock, so preserve deterministic package order.
-      // eslint-disable-next-line no-await-in-loop
-      await publish(entry)
+  if (options.batchPublication === true && options.mode === 'publish') {
+    const requests = await Promise.all(entries.map(publicationArgs))
+    const result = await execute({
+      command: options.editorViewCommand[0],
+      args: [
+        ...options.editorViewCommand.slice(1),
+        'publish-batch',
+        '--requests',
+        JSON.stringify(requests),
+      ],
+      detached: true,
+      cwd: options.repoRoot,
+    })
+    // Preserve the existing per-view callback as well as successful-task stderr evidence.
+    for (const line of result.stderr.split('\n')) {
+      if (line === '') continue
+      const prefix = '[editor-view-timing] '
+      if (options.onTiming === undefined || line.startsWith(prefix) === false) {
+        process.stderr.write(`${line}\n`)
+        continue
+      }
+      const timing: unknown = JSON.parse(line.slice(prefix.length))
+      if (
+        timing === null ||
+        typeof timing !== 'object' ||
+        !('phase' in timing) ||
+        timing.phase !== 'editor-view' ||
+        !('packagePath' in timing) ||
+        typeof timing.packagePath !== 'string' ||
+        selected.has(timing.packagePath) === false ||
+        !('durationMs' in timing) ||
+        typeof timing.durationMs !== 'number' ||
+        Number.isFinite(timing.durationMs) === false ||
+        timing.durationMs < 0
+      )
+        fail('batch publisher returned invalid per-view timing evidence')
+      options.onTiming({
+        phase: 'editor-view',
+        packagePath: timing.packagePath,
+        durationMs: timing.durationMs,
+      })
     }
-  }
-  if (options.parallelEditorRoots !== true) {
-    await publishOrdered(entries)
     return
   }
-
-  const groups = new Map<string, (typeof entries)[number][]>()
   for (const entry of entries) {
-    const editorRoot =
-      entry.packagePath === '.'
-        ? resolve(options.repoRoot, '.editor-view')
-        : resolve(options.repoRoot, entry.packagePath, '..', '..', '.editor-view')
-    const group = groups.get(editorRoot) ?? []
-    group.push(entry)
-    groups.set(editorRoot, group)
+    // eslint-disable-next-line no-await-in-loop
+    await publish(entry)
   }
-  const settled = await Promise.allSettled([...groups.values()].map(publishOrdered))
-  for (const result of settled) if (result.status === 'rejected') throw result.reason
 }
 
 /** Atomically replace a machine-readable status file. */

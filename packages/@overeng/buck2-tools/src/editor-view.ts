@@ -1904,8 +1904,16 @@ const signalEditorResolution = ({ paths, token }: { paths: ViewPaths; token: str
   }
 }
 
+type PublicationCoordinator = {
+  readonly lock: { readonly path: string; readonly token: string }
+  readonly commit: <T>(operation: () => T) => Promise<T>
+}
+
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
-export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
+const publishEditorViewCoordinated = async (
+  options: EditorViewOptions,
+  coordinator?: PublicationCoordinator,
+): Promise<EditorViewRecord> => {
   const startedAtMs = performance.timeOrigin + performance.now()
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
@@ -1945,11 +1953,14 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
   ensureConsumerCache(paths)
   ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
   ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
-  const lock = acquireLock({
-    editorRoot: paths.editorRoot,
-    recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
-  })
-  const token = tokenSafe(lock.token)
+  const lock =
+    coordinator?.lock ??
+    acquireLock({
+      editorRoot: paths.editorRoot,
+      recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
+    })
+  // A batch shares its exclusive state-root lock, not its private candidate/pointer names.
+  const token = tokenSafe(coordinator === undefined ? lock.token : randomUUID())
   let candidate: string | undefined
   try {
     enterPhase('fingerprint')
@@ -2158,40 +2169,44 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         byteSnapshotDigest: candidateDigest,
       })
       writeRecord({ path: join(candidate, 'editor-view.json'), record })
-      renameSync(candidate, snapshotDir)
-      candidate = undefined
       created = true
     }
     if (created === true) {
       enterPhase('harden')
-      hardenSnapshot(snapshotDir)
-      requireReadOnlySnapshot(snapshotDir)
+      const prepared = candidate ?? fail('prepared snapshot candidate is absent')
+      hardenSnapshot(prepared)
+      requireReadOnlySnapshot(prepared)
     }
-    enterPhase('retention')
-    // `snapshotName` is derived above from the same identity the record carries.
-    const retention = prepareSnapshotRetention({
-      paths,
-      options,
-      current: snapshotName,
-      token,
-    })
-    enterPhase('pointers')
-    publishCurrentPointer({ paths, identity, token })
-    adoptFirstHop({ paths, mv: options.mv, token })
-    signalEditorResolution({ paths, token })
-    // Publication computed every admitted digest and validated (or created) the snapshot while
-    // holding the view lock. The pointer helpers verify their own exact writes, so rerunning the
-    // full external-input and snapshot traversal here would add no freshness evidence.
-    enterPhase('gc')
-    garbageCollectSnapshots({
-      paths,
-      options,
-      ordered: retention,
-      current: snapshotName,
-      token,
-    })
-    emitPhaseSpan({ created })
-    return record
+    const commit = (): EditorViewRecord => {
+      if (created === true) {
+        renameSync(candidate ?? fail('prepared snapshot candidate is absent'), snapshotDir)
+        candidate = undefined
+      }
+      enterPhase('retention')
+      // Sibling views share the store inventory. Promotion, retention, pointers and GC
+      // stay ordered under the exclusive root lock while private preparation overlaps.
+      const retention = prepareSnapshotRetention({
+        paths,
+        options,
+        current: snapshotName,
+        token,
+      })
+      enterPhase('pointers')
+      publishCurrentPointer({ paths, identity, token })
+      adoptFirstHop({ paths, mv: options.mv, token })
+      signalEditorResolution({ paths, token })
+      enterPhase('gc')
+      garbageCollectSnapshots({
+        paths,
+        options,
+        ordered: retention,
+        current: snapshotName,
+        token,
+      })
+      emitPhaseSpan({ created })
+      return record
+    }
+    return coordinator === undefined ? commit() : await coordinator.commit(commit)
   } finally {
     if (candidate !== undefined && pathExists(candidate) === true) {
       // A dereferencing copy reproduces read-only source directories, so the
@@ -2199,7 +2214,99 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       makeDirectoriesWritable(candidate)
       rmSync(candidate, { recursive: true, force: true })
     }
-    releaseLock(lock)
+    if (coordinator === undefined) releaseLock(lock)
+  }
+}
+
+/** Publish one view while holding the exclusive state-root lock through every proof and write. */
+export const publishEditorView = (options: EditorViewOptions): Promise<EditorViewRecord> =>
+  publishEditorViewCoordinated(options)
+
+/** One resource bound shared by bootstrap and source-test dependency publication. */
+export const editorViewPublicationWorkers = 4
+
+/**
+ * Prepare a bounded set of independent views concurrently under exclusive state-root locks.
+ * Every byte/link/ownership proof remains intact; shared inventory and pointer commits are ordered.
+ */
+export const publishEditorViews = async (
+  options: readonly EditorViewOptions[],
+  onPublished?: (record: EditorViewRecord, durationMs: number) => void,
+): Promise<readonly EditorViewRecord[]> => {
+  const coordinators = new Map<string, PublicationCoordinator>()
+  const identities = new Set<string>()
+  const results: PromiseSettledResult<EditorViewRecord>[] = []
+  let next = 0
+  try {
+    for (const option of options) {
+      const paths = makePaths(option)
+      const identity = join(paths.editorRoot, paths.viewName)
+      if (identities.has(identity)) fail(`duplicate batch publication identity: ${identity}`)
+      identities.add(identity)
+      if (coordinators.has(paths.editorRoot)) continue
+      ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
+      ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
+      const lock = acquireLock({
+        editorRoot: paths.editorRoot,
+        recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${option.package}`,
+      })
+      let committed = Promise.resolve()
+      coordinators.set(paths.editorRoot, {
+        lock,
+        commit: (operation) => {
+          const result = committed.then(operation)
+          committed = result.then(
+            () => undefined,
+            () => undefined,
+          )
+          return result
+        },
+      })
+    }
+    const worker = async (): Promise<void> => {
+      while (next < options.length) {
+        const index = next++
+        const option = options[index] ?? fail('batch publication option is absent')
+        const startedAt = performance.now()
+        const emitPublicationSpan = (exitCode: number): void =>
+          emitCompletedSpan({
+            name: 'editor-view.publish',
+            label: `publish ${option.viewName}`,
+            attributes: [['package.path', option.package]],
+            startedAtMs: performance.timeOrigin + startedAt,
+            endedAtMs: performance.timeOrigin + performance.now(),
+            exitCode,
+          })
+        try {
+          const coordinator =
+            coordinators.get(makePaths(option).editorRoot) ?? fail('batch root lock is absent')
+          const record = await publishEditorViewCoordinated(option, coordinator)
+          results[index] = { status: 'fulfilled', value: record }
+          onPublished?.(record, performance.now() - startedAt)
+          emitPublicationSpan(0)
+        } catch (reason) {
+          results[index] = { status: 'rejected', reason }
+          emitPublicationSpan(
+            reason !== null &&
+              typeof reason === 'object' &&
+              'exitCode' in reason &&
+              typeof reason.exitCode === 'number'
+              ? reason.exitCode
+              : 1,
+          )
+        }
+      }
+    }
+    // Settle every view before releasing any lock, including when an earlier view fails.
+    await Promise.all(
+      Array.from({ length: Math.min(editorViewPublicationWorkers, options.length) }, worker),
+    )
+    return results.map((result) => {
+      if (result.status === 'rejected') throw result.reason
+      return result.value
+    })
+  } finally {
+    for (const { lock } of coordinators.values()) releaseLock(lock)
   }
 }
 
@@ -2520,6 +2627,36 @@ const parseCli = (args: readonly string[]): ParsedCli => {
 }
 
 const main = async (): Promise<void> => {
+  const args = process.argv.slice(2)
+  if (args[0] === 'publish-batch') {
+    if (args.length !== 3 || args[1] !== '--requests')
+      fail('expected publish-batch --requests <JSON array of publish arguments>')
+    const raw: unknown = JSON.parse(args[2] ?? fail('batch requests are absent'))
+    if (isUnknownArray(raw) === false) fail('batch requests must be an array')
+    const requests = raw.map((request) => {
+      if (
+        isUnknownArray(request) === false ||
+        request.every((value): value is string => typeof value === 'string') === false
+      )
+        return fail('each batch request must be an array of publish arguments')
+      const parsed = parseCli(request)
+      if (parsed.command !== 'publish') fail('batch requests may only publish views')
+      return parsed.options
+    })
+    await publishEditorViews(requests, (record, durationMs) => {
+      process.stderr.write(
+        `[editor-view-timing] ${JSON.stringify({
+          phase: 'editor-view',
+          packagePath: record.package,
+          durationMs,
+        })}\n`,
+      )
+      process.stdout.write(
+        `published ${record.package} editor view ${record.editorInputsFingerprint}\n`,
+      )
+    })
+    return
+  }
   const parsed = parseCli(process.argv.slice(2))
   if (parsed.command === 'publish') {
     const record = await publishEditorView(parsed.options)

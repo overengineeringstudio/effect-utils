@@ -23,7 +23,9 @@ import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
+  editorViewPublicationWorkers,
   publishEditorView,
+  publishEditorViews,
   recoverEditorViewLock,
   releaseEditorViewRoot,
   verifyEditorViewSnapshot,
@@ -606,6 +608,90 @@ describe('editor view publisher', () => {
         }
         expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(revision === 1 ? 2 : 4)
       }
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('bounds shared-root preparation and retains exclusive teardown fencing', async () => {
+    const fixture = makeFixture()
+    const entered = Promise.withResolvers<void>()
+    const proceed = Promise.withResolvers<void>()
+    const started: string[] = []
+    let active = 0
+    let peak = 0
+    let batch: Promise<readonly unknown[]> | undefined
+    try {
+      const options = [
+        fixture.options,
+        ...['genie', 'utils', 'restate-effect', 'ci-tools', 'buck2-tools'].map(
+          (packageName) => makeSiblingView({ fixture, packageName }).options,
+        ),
+      ].map((option) => ({
+        ...option,
+        backingRoots: [option.nodeModules],
+        beforeMaterialize: async () => {
+          active += 1
+          peak = Math.max(peak, active)
+          started.push(option.viewName)
+          if (started.length === editorViewPublicationWorkers) entered.resolve()
+          await proceed.promise
+          active -= 1
+        },
+      }))
+      batch = publishEditorViews(options)
+      await entered.promise
+      expect(started.toSorted()).toEqual(
+        options
+          .slice(0, editorViewPublicationWorkers)
+          .map((option) => option.viewName)
+          .toSorted(),
+      )
+      expect(() => releaseEditorViewRoot(fixture.options)).toThrow('publication lock exists')
+      await expect(publishEditorView(fixture.options)).rejects.toThrow('publication lock exists')
+      proceed.resolve()
+      const records = await batch
+      expect(records).toHaveLength(options.length)
+      expect(peak).toBe(editorViewPublicationWorkers)
+      expect(started.toSorted()).toEqual(options.map((option) => option.viewName).toSorted())
+      for (const option of options)
+        await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
+      expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(options.length)
+    } finally {
+      proceed.resolve()
+      await batch?.catch(() => undefined)
+      cleanup(fixture)
+    }
+  })
+
+  it('settles every batch view after failure and releases locks and private candidates', async () => {
+    const fixture = makeFixture()
+    const visited: string[] = []
+    try {
+      const options = [
+        fixture.options,
+        ...['genie', 'utils'].map(
+          (packageName) => makeSiblingView({ fixture, packageName }).options,
+        ),
+      ].map((option) => ({
+        ...option,
+        backingRoots: [option.nodeModules],
+        beforeMaterialize: () => {
+          visited.push(option.viewName)
+          if (option.viewName === 'tui-core') throw new Error('first view preparation failed')
+        },
+      }))
+      await expect(publishEditorViews(options)).rejects.toThrow('first view preparation failed')
+      expect(visited.toSorted()).toEqual(['genie', 'tui-core', 'utils'])
+      for (const option of options.slice(1))
+        await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
+      expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(2)
+      await expect(publishEditorViews([fixture.options, fixture.options])).rejects.toThrow(
+        'duplicate batch publication identity',
+      )
+      expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
     } finally {
       cleanup(fixture)
     }

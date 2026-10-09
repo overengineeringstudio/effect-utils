@@ -227,7 +227,7 @@ const main = async (): Promise<void> => {
       fingerprintTool: options.fingerprintTool,
       snapshotRetention: options.snapshotRetention,
       onTiming: reportTiming,
-      parallelEditorRoots: options.command === 'bootstrap',
+      batchPublication: options.command !== 'check',
     },
   })
   const action =
