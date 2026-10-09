@@ -337,7 +337,12 @@ export const ScheduleSchema = Schema.Struct({
  */
 export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(
   Schema.is(AgentSchema),
-).annotate({ identifier: 'St.ReportTo' })
+).pipe(
+  Schema.refine((a): a is typeof a => a.id.includes('//') === false, {
+    message: 'report-to agent ID must not contain empty path segments',
+  }),
+  Schema.annotate({ identifier: 'St.ReportTo' }),
+)
 
 /** A ready mission with a required reporting agent and unique, valid step dependencies. */
 export const MissionSchema = Schema.Struct({
