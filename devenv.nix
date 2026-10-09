@@ -43,10 +43,6 @@ let
   selectedTestTask = task: testPlatform != "darwin" || builtins.elem task darwinTestTasks;
   buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
-  # The flake wires the source recipes that cache-native manifest rows require;
-  # re-importing the loader here without them fails on every cache-native product.
-  trackedBuck2Products = repoFlake.buckProducts.${currentSystem};
-  pnpmArchives = import ./nix/buck2-products/pnpm-archives.nix { pkgs = flakePkgs; };
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
   restatePkgs = import repoFlake.inputs.nixpkgs {
@@ -55,16 +51,8 @@ let
   };
   restate = import ./nix/restate.nix { pkgs = restatePkgs; };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
-  # Use npm oxlint with NAPI bindings and the two tracked Buck plugin modules.
-  oxlintNpm = import ./nix/oxlint-npm.nix {
-    pkgs = flakePkgs;
-    bun = flakePkgs.bun;
-    inherit pnpmArchives;
-    products = trackedBuck2Products.products;
-  };
-  oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
-    inherit pkgs oxlintNpm;
-  };
+  # Share the publisher's pinned tools and immutable Buck plugin modules.
+  oxlintWithPlugins = repoPackages.oxlint-with-plugins;
   nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
@@ -132,7 +120,7 @@ let
   # and exec these via absolute store path under passthrough, so they are passed
   # as `*Pkg` reals to the task modules instead of also being top-level profile
   # providers (which would collide with the guards in buildEnv). See cli-guard.nix.
-  pnpmPkg = import ./nix/pnpm.nix { inherit pkgs; };
+  pnpmPkg = repoPackages.pnpm;
   genieCli = repoPackages.genie;
   mrCli = repoPackages.megarepo;
   ciToolsCli = repoPackages.ci-tools;
@@ -859,6 +847,7 @@ in
       siteName = "overeng-utils";
       siteId = "462d2440-fb38-4e69-8023-9c425d1e2132";
       ciToolsBin = "${ciToolsCli}/bin/ci-tools";
+      netlifyCliPkg = repoPackages.netlify-cli;
       deployments = map (pkg: {
         name = pkg.name;
         staticDir = "${pkg.path}/storybook-static";
