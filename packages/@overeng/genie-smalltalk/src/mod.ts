@@ -330,10 +330,20 @@ export const ScheduleSchema = Schema.Struct({
   work: WorkSchema,
 }).annotate({ identifier: 'St.Schedule' })
 
-/** A ready mission with unique steps whose dependencies exist. */
+/**
+ * Reference an imported agent declaration without copying its launch configuration.
+ * Native st reports only to agents; people must be reached through their own agent.
+ * Kit metadata on the declaration is not part of the reference.
+ */
+export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(
+  Schema.is(AgentSchema),
+).annotate({ identifier: 'St.ReportTo' })
+
+/** A ready mission with a required reporting agent and unique, valid step dependencies. */
 export const MissionSchema = Schema.Struct({
   id: MissionId,
   state: Schema.Literal('ready'),
+  reportTo: ReportToSchema,
   timeout: Schema.optionalKey(Duration),
   goal: Text,
   constraints: Schema.optionalKey(Schema.Array(Text)),
@@ -470,7 +480,11 @@ export const mission = (input: typeof MissionSchema.Encoded): Node => {
   return node({
     name: 'mission',
     args: [m.id],
-    props: { state: m.state, ...(m.timeout === undefined ? {} : { timeout: m.timeout }) },
+    props: {
+      state: m.state,
+      'report-to': `agent/${m.reportTo.id}`,
+      ...(m.timeout === undefined ? {} : { timeout: m.timeout }),
+    },
     children: [
       child({ name: 'goal', value: m.goal }),
       ...(m.constraints ?? []).map((constraint) =>
