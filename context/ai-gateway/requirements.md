@@ -4,8 +4,8 @@
 
 This language-neutral consumer contract refines [the vision](./vision.md).
 [The public wire specification](./spec.md) is realized by the
-[Effect client](./01-effect/requirements.md) and [Rust client](./02-rust/requirements.md).
-A gateway realization owns deployment, credential custody, and server accounting outside this public tree.
+[Effect client](./01-effect/requirements.md), [Rust client](./02-rust/requirements.md), and `03-edge` edge realization.
+The root owns the consumer-observable wire. The `03-edge` realization, implemented by `@overeng/ai-gateway-edge`, owns source-level authentication, forwarding, and per-consumer accounting. Deployment facts (hosts, network, consumer table values, fork pin, and dashboards) remain in the private deployment VRS.
 
 ## Assumptions
 

@@ -18,11 +18,11 @@ harness.
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
+| Option                                            | Tradeoff                                                                                       |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
 | Data-only JSON cases with local replay (selected) | Shares contract evidence without a runtime dependency; each realization maintains its adapter. |
-| Shared fake-gateway binary | Centralizes serving logic but adds a runtime and couples every replay to one implementation. |
-| Independent language fixtures | Keeps harnesses local but allows contract expectations to drift. |
+| Shared fake-gateway binary                        | Centralizes serving logic but adds a runtime and couples every replay to one implementation.   |
+| Independent language fixtures                     | Keeps harnesses local but allows contract expectations to drift.                               |
 
 ## Decision
 
@@ -31,7 +31,7 @@ The package at `packages/@overeng/ai-gateway-conformance` owns
 request expectations, controlled HTTP/JSON/SSE responses, expected outcomes,
 and the original caller schema where relevant. They contain no executable code.
 
-The Effect, Rust, and edge realizations replay all shared cases using local
+The `01-effect`, `02-rust`, and `03-edge` realizations replay all shared cases using local
 adapters. The [root specification](../spec.md#conformance-cases-aig-r01aig-r12)
 defines the shared coverage and replay responsibilities; language-specific API
 composition and harness implementation remain local.

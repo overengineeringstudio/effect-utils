@@ -8,7 +8,7 @@ Active for the documented wire. Client realizations refine this contract separat
 
 ## Scope
 
-Defines program-facing HTTP routes, authentication, payloads, SSE, schema adaptation, native decisions, and client telemetry. Does not define gateway topology, credential custody, server accounting, account-pinned routing, or provider-native endpoints. [Effect](./01-effect/spec.md) and [Rust](./02-rust/spec.md) own their language APIs (AIG-R09).
+Defines the consumer-observable HTTP wire: routes, authentication, payloads, SSE, schema adaptation, native decisions, and client telemetry. [Effect](./01-effect/spec.md) and [Rust](./02-rust/spec.md) own their language APIs; `03-edge`, implemented by `@overeng/ai-gateway-edge`, owns source-level authentication, forwarding, and per-consumer accounting (AIG-R09). Deployment facts (hosts, network, consumer table values, fork pin, and dashboards) remain in the private deployment VRS. Provider credential custody, account-pinned routing, and provider-native endpoints are not defined by the root contract.
 
 ## Connection and authentication (AIG-R02, AIG-R04)
 
@@ -255,7 +255,7 @@ A streaming span lasts until consumption ends and captures final usage before en
 @overeng/ai-gateway-conformance: case.schema.json + cases/<id>.json
     +-> 01-effect: language-local replay
     +-> 02-rust: language-local replay
-    +-> edge: gateway-local replay
+    +-> 03-edge: gateway-local replay
 ```
 
 The public package `@overeng/ai-gateway-conformance` owns data-only JSON cases at
@@ -283,7 +283,7 @@ Structured cases also retain the caller's original JSON Schema for validation.
 | `decision.triage`, `decision.invalid-422`                           | Native decisions and rejected requests.                             |
 | `errors.upstream-404`, `errors.rate-limited-429`, `errors.edge-502` | Distinguishable unsuccessful HTTP outcomes.                         |
 
-The `01-effect`, `02-rust`, and edge realizations must replay every case. Each
+The `01-effect`, `02-rust`, and `03-edge` realizations must replay every case. Each
 realization owns its replay adapter and local controlled transport or server
 harness; no case embeds executable code or a language-specific client API.
 Client adapters assert outgoing request expectations and decoded outcomes;

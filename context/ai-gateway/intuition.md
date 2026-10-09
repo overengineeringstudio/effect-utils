@@ -14,7 +14,7 @@ client realizations
 public wire: models + chat/SSE + native decisions
     |
     v
-gateway realization (private)
+03-edge: public authentication, forwarding, and per-consumer accounting
     |
     v
 provider access and credential custody
