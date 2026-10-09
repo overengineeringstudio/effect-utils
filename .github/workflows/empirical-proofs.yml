@@ -40,70 +40,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          extra-conf: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
-            access-tokens = github.com=${{ github.token }}
-          summarize: true
-      - name: Provide cachix CLI from nixpkgs
-        shell: bash
+      - name: Probe workspace directory identity across explicit cache eviction
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
-          echo "$out/bin" >> "$GITHUB_PATH"
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
-        with:
-          name: overeng-effect-utils
-          skipPush: true
-      - name: Prepare CI helper scripts
-        shell: bash
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
-          scripts_src='genie/ci-scripts'
-          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
-          if [ ! -d "$scripts_src" ]; then
-            echo "::error::CI helper script directory is missing: $scripts_src"
-            exit 1
-          fi
-          rm -rf "$scripts_dst"
-          mkdir -p "$scripts_dst"
-          cp -R "$scripts_src/." "$scripts_dst/"
-          rm -f "$scripts_dst"/*.genie.ts
-          chmod +x "$scripts_dst"/*.sh
-      - name: Use pinned devenv from lock
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
-          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
-            exit 1
-          fi
-          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
-          echo "Pinned devenv rev: $DEVENV_REV"
-        shell: bash
-      - name: Resolve devenv
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
-        shell: bash
-      - name: Run bounded four-worker publication from cold editor stores
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          node scripts/editor-view-hash-experiment.mjs
-      - name: Upload publication diagnostics and store lifecycle evidence
+          node scripts/editor-view-inode-probe.mjs
+      - name: Upload filesystem identity proof and mount options
         if: always()
         uses: actions/upload-artifact@v4
         with:

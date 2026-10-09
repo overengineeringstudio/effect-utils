@@ -8,7 +8,7 @@ import {
   githubTokenEnv,
 } from '../../genie/ci-workflow.ts'
 import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
-import { storybookPreviewRunner, storybookPreviewSetupSteps } from '../../genie/storybook-preview.ts'
+import { storybookPreviewRunner } from '../../genie/storybook-preview.ts'
 
 export default ciWorkflow({
   trustTier: 'public',
@@ -41,14 +41,13 @@ export default ciWorkflow({
       },
       steps: [
         checkoutStep(),
-        ...storybookPreviewSetupSteps,
         {
-          name: 'Run bounded four-worker publication from cold editor stores',
+          name: 'Probe workspace directory identity across explicit cache eviction',
           env: githubTokenEnv(),
-          run: 'set -euo pipefail\nnode scripts/editor-view-hash-experiment.mjs',
+          run: 'set -euo pipefail\nnode scripts/editor-view-inode-probe.mjs',
         },
         {
-          name: 'Upload publication diagnostics and store lifecycle evidence',
+          name: 'Upload filesystem identity proof and mount options',
           if: 'always()',
           uses: 'actions/upload-artifact@v4',
           with: {
