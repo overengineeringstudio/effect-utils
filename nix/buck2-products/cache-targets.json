@@ -83,6 +83,15 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/effect-rust",
+      "outputName": "overeng-effect-rust.tgz",
+      "packagePath": "packages/@overeng/effect-rust",
+      "packageTreePath": "packages/@overeng/effect-rust",
+      "target": "effect_utils//packages/@overeng/effect-rust:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/genie",
       "outputName": "overeng-genie.tgz",
       "packagePath": "packages/@overeng/genie",
