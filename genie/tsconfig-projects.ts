@@ -11,6 +11,7 @@ import devbarTsconfig from '../packages/@overeng/devbar/tsconfig.json.genie.ts'
 import effectAiClaudeCliTsconfig from '../packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts'
 import effectAiGatewayTsconfig from '../packages/@overeng/effect-ai-gateway/tsconfig.json.genie.ts'
 import effectDistributedLockTsconfig from '../packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts'
+import effectIrohTsconfig from '../packages/@overeng/effect-iroh/tsconfig.json.genie.ts'
 import effectPathTsconfig from '../packages/@overeng/effect-path/tsconfig.json.genie.ts'
 import effectReactTsconfig from '../packages/@overeng/effect-react/tsconfig.json.genie.ts'
 import effectRpcExplorerReactTsconfig from '../packages/@overeng/effect-rpc-explorer-react/tsconfig.json.genie.ts'
@@ -121,6 +122,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/effect-ai-claude-cli': { tsconfig: effectAiClaudeCliTsconfig },
     'packages/@overeng/effect-ai-gateway': { tsconfig: effectAiGatewayTsconfig },
     'packages/@overeng/effect-distributed-lock': { tsconfig: effectDistributedLockTsconfig },
+    'packages/@overeng/effect-iroh': { tsconfig: effectIrohTsconfig },
     'packages/@overeng/effect-path': { tsconfig: effectPathTsconfig },
     'packages/@overeng/effect-react': { tsconfig: effectReactTsconfig },
     'packages/@overeng/effect-rpc-explorer': { tsconfig: effectRpcExplorerTsconfig },
