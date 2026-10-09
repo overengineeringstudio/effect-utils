@@ -167,12 +167,16 @@ it.effect('records safe per-consumer mint/failure, expiry, and bucket metrics', 
     yield* app.token(scope).pipe(Effect.flip)
     state.mintStatus = 201
     yield* app.client(scope).get(new URL('/probe', apiBase))
-    expect((yield* Metric.value(Metric.withAttributes(Metric.counter('github_app_mints_total'), attributes))).count).toBe(2)
-    expect((yield* Metric.value(Metric.withAttributes(Metric.counter('github_app_mint_failures_total'), attributes))).count).toBe(1)
-    expect((yield* Metric.value(Metric.withAttributes(Metric.gauge('github_app_token_expiry_seconds'), attributes))).value).toBe((state.now + 3_600_000) / 1000)
-    expect((yield* Metric.value(Metric.withAttributes(Metric.gauge('github_app_rate_limit_remaining'), { ...attributes, 'github.resource': 'core' }))).value).toBe(4998)
+    // Effect's registry identity includes the descriptor: inspect emitted snapshots,
+    // rather than accidentally constructing another same-name metric without its description.
+    const metrics = yield* Metric.snapshot
+    expect(metrics).toHaveLength(4)
+    expect(metrics.find((metric) => metric.id === 'github_app_mints_total')).toMatchObject({ type: 'Counter', attributes, state: { count: 2 } })
+    expect(metrics.find((metric) => metric.id === 'github_app_mint_failures_total')).toMatchObject({ type: 'Counter', attributes, state: { count: 1 } })
+    expect(metrics.find((metric) => metric.id === 'github_app_token_expiry_seconds')).toMatchObject({ type: 'Gauge', attributes, state: { value: (state.now + 3_600_000) / 1000 } })
+    expect(metrics.find((metric) => metric.id === 'github_app_rate_limit_remaining')).toMatchObject({ type: 'Gauge', attributes: { ...attributes, 'github.resource': 'core' }, state: { value: 4998 } })
     state.unauthorized = true
     yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip)
-    expect((yield* Metric.value(Metric.withAttributes(Metric.gauge('github_app_token_expiry_seconds'), attributes))).value).toBe(0)
+    expect((yield* Metric.snapshot).find((metric) => metric.id === 'github_app_token_expiry_seconds')).toMatchObject({ state: { value: 0 } })
   }).pipe(Effect.provideService(Metric.MetricRegistry, new Map())),
 )

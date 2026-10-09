@@ -25,7 +25,9 @@ import type { GitHubAppAuthConfig } from './Config.ts'
 import { withGitHubSpan } from './observability.ts'
 
 /** One client contract regardless of CLI or App authentication source. */
-type AuthenticatedClient = HttpClient.HttpClient.With<GitHubAppError | HttpClientError, Scope.Scope>
+type AuthenticatedClient = HttpClient.HttpClient.With<GitHubApiError, Scope.Scope>
+const transportFailure = (cause: GitHubAppError | HttpClientError) =>
+  new GitHubApiError({ message: 'Authenticated GitHub transport failed', cause })
 const GITHUB_API_BASE = 'https://api.github.com'
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
 
@@ -267,7 +269,7 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
   const getClientForRepo = Effect.fn('github-client.get-client-for-repo')(function* (repo: string) {
     if (auth._tag === 'gh-cli') {
       const token = yield* getCliToken
-      const client: AuthenticatedClient = httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token)))
+      const client: AuthenticatedClient = HttpClient.mapError(httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))), transportFailure)
       return client
     }
 
@@ -275,11 +277,11 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
     if (source._tag === 'app-installation') {
       const app = yield* getApp
       const repository = repo.slice(repo.indexOf('/') + 1)
-      const client: AuthenticatedClient = app.client({
+      const client: AuthenticatedClient = HttpClient.mapError(app.client({
         installationID: source.installationID,
         repositories: [repository],
         permissions: options.permissions,
-      }).pipe(HttpClient.withScope)
+      }).pipe(HttpClient.withScope), transportFailure)
       return client
     }
 
@@ -304,7 +306,7 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
           }),
       ),
     )
-    const client: AuthenticatedClient = httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token)))
+    const client: AuthenticatedClient = HttpClient.mapError(httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))), transportFailure)
     return client
   })
 
