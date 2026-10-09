@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { spawnSync } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
@@ -949,6 +949,32 @@ const runTool = ({
     )
 }
 
+/** Keep private payload copies off the event loop so bounded views can overlap. */
+const copyWithTool = ({
+  tool,
+  args,
+  label,
+}: {
+  tool: string
+  args: readonly string[]
+  label: string
+}): Promise<void> => {
+  requireImmutableTool({ tool, label })
+  const { promise, resolve: resolveCopy, reject: rejectCopy } = Promise.withResolvers<void>()
+  execFile(tool, args, { cwd: '/', env: { PATH: '' } }, (error, stdout, stderr) => {
+    if (error !== null) {
+      rejectCopy(
+        new Error(
+          `editor view: ${label} failed with exit ${error.code ?? 'unknown'}: ${stderr.trim() || stdout.trim() || error.message}`,
+        ),
+      )
+      return
+    }
+    resolveCopy()
+  })
+  return promise
+}
+
 const collectFileIdentities = (tree: string): ReadonlySet<string> => {
   const identities = new Set<string>()
   const visit = (directory: string): void => {
@@ -1315,7 +1341,7 @@ const rewriteSnapshotLinks = ({
   return inventories
 }
 
-const materializeDeclaredRoots = ({
+const materializeDeclaredRoots = async ({
   candidate,
   roots,
   cp,
@@ -1323,12 +1349,12 @@ const materializeDeclaredRoots = ({
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
   cp: string
-}): Map<string, (readonly [path: string, target: string])[]> => {
+}): Promise<Map<string, (readonly [path: string, target: string])[]>> => {
   mkdirSync(join(candidate, '.backing'))
   for (const root of roots) {
     const destination = join(candidate, root.destination)
     mkdirSync(destination, { recursive: true })
-    runTool({
+    await copyWithTool({
       tool: cp,
       args: [
         '--recursive',
@@ -2103,7 +2129,7 @@ const publishEditorViewCoordinated = async (
       let materializedLinks: Map<string, (readonly [path: string, target: string])[]> | undefined
       if (finite === true) {
         await options.beforeMaterialize?.()
-        materializedLinks = materializeDeclaredRoots({ candidate, roots, cp: options.cp })
+        materializedLinks = await materializeDeclaredRoots({ candidate, roots, cp: options.cp })
         assertByteOwnedFiniteSnapshot({
           sources: roots.map((root) => root.source),
           snapshot: candidate,
@@ -2112,7 +2138,7 @@ const publishEditorViewCoordinated = async (
       } else {
         const candidateNodeModules = join(candidate, 'node_modules')
         mkdirSync(candidateNodeModules)
-        runTool({
+        await copyWithTool({
           tool: options.cp,
           args: [
             '--recursive',

@@ -151,8 +151,10 @@ The batch acquires each distinct state-root lock before preparing any view and
 holds every lock until all workers have settled. `editorViewPublicationWorkers`
 in the publisher is the single declared resource bound (four); bootstrap and
 source-test publication both use it. Workers overlap independent fingerprint,
-materialization, and private-candidate validation work. Candidate
-names are unique per view operation; promotion, retention, pointer writes, and GC
+materialization, and private-candidate validation work. Native copy children are
+awaited asynchronously, with at most one per active view, rather than blocking
+other workers on the event loop. Candidate names are unique per view operation;
+promotion, retention, pointer writes, and GC
 are serialized per state root, so sibling inventory validation cannot race
 promotion or deletion. Duplicate root/view identities are rejected. Every view
 is attempted after a preparation failure, and the first failure in request order
