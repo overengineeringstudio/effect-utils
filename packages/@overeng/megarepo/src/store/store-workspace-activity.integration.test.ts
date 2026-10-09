@@ -138,12 +138,7 @@ const runActivityFixture = ({
       '--eval',
       `
         import { spawn } from 'node:child_process'
-        import { NodeServices } from ${encodeJson(import.meta.resolve('@effect/platform-node'))}
-        import { Effect } from ${encodeJson(import.meta.resolve('effect'))}
-        import * as FileSystem from ${encodeJson(import.meta.resolve('effect/FileSystem'))}
-        import { parseProcStat, parseProcUids, readWorktreeReferencesInUse } from ${encodeJson(inUseModule)}
-        import { PROCESS_SNAPSHOT_PRODUCER, captureProcessActivityManifest, isWorkspaceActive, readBudgetWorkspaceActivity, readBudgetWorktreeInUse, writeWorkspaceActivityManifest } from ${encodeJson(activityModule)}
-        import { decodeJson, encodeJson } from ${encodeJson(jsonModule)}
+        import { NodeServices, Effect, FileSystem, parseProcStat, parseProcUids, readWorktreeReferencesInUse, PROCESS_SNAPSHOT_PRODUCER, captureProcessActivityManifest, isWorkspaceActive, readBudgetWorkspaceActivity, readBudgetWorktreeInUse, writeWorkspaceActivityManifest, decodeJson, encodeJson } from ${encodeJson(`${root}/activity-runtime.mjs`)}
         ${code}
       `,
     ],
@@ -167,6 +162,27 @@ const trustedFixture = Effect.gen(function* () {
     yield* f.fs.makeDirectory(directory, { recursive: true })
     yield* f.fs.chmod(directory, 0o755)
   }
+  // Export the actual implementation and dependencies from a scoped readable
+  // bundle; nobody never needs access to the private checkout's ancestors.
+  const entry = `${f.root}/activity-runtime.ts`
+  const runtime = `${f.root}/activity-runtime.mjs`
+  yield* f.fs.writeFileString(
+    entry,
+    `
+      export { NodeServices } from ${encodeJson(import.meta.resolve('@effect/platform-node'))}
+      export { Effect } from ${encodeJson(import.meta.resolve('effect'))}
+      export * as FileSystem from ${encodeJson(import.meta.resolve('effect/FileSystem'))}
+      export { parseProcStat, parseProcUids, readWorktreeReferencesInUse } from ${encodeJson(inUseModule)}
+      export { PROCESS_SNAPSHOT_PRODUCER, captureProcessActivityManifest, isWorkspaceActive, readBudgetWorkspaceActivity, readBudgetWorktreeInUse, writeWorkspaceActivityManifest } from ${encodeJson(activityModule)}
+      export { decodeJson, encodeJson } from ${encodeJson(jsonModule)}
+    `,
+  )
+  const bundled = spawnSync('bun', ['build', entry, '--target=bun', '--outfile', runtime], {
+    encoding: 'utf8',
+    timeout: 120_000,
+  })
+  expect(bundled.status, `activity fixture bundle failed: ${bundled.stderr}`).toBe(0)
+  yield* f.fs.chmod(runtime, 0o644)
   yield* Effect.acquireRelease(Effect.void, () =>
     Effect.sync(() =>
       runPrivilegedFixture(['chown', '-R', `${process.getuid!()}:${process.getgid!()}`, f.root]),

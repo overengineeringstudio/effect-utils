@@ -98,11 +98,7 @@ const runReferenceFixture = ({
       'bun',
       '--eval',
       `
-        import { NodeServices } from ${encodeJson(import.meta.resolve('@effect/platform-node'))}
-        import { Effect } from ${encodeJson(import.meta.resolve('effect'))}
-        import * as FileSystem from ${encodeJson(import.meta.resolve('effect/FileSystem'))}
-        import { parseProcStat, parseProcUids, readProcessReferences, readWorktreeReferencesInUse } from ${encodeJson(referenceModule)}
-        import { encodeJson } from ${encodeJson(jsonModule)}
+        import { NodeServices, Effect, FileSystem, parseProcStat, parseProcUids, readProcessReferences, readWorktreeReferencesInUse, encodeJson } from ${encodeJson(`${cwd}/../reference-runtime.mjs`)}
         ${code}
       `,
     ],
@@ -369,6 +365,26 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
           yield* fs.makeDirectory(directory, { recursive: true })
           yield* fs.chmod(directory, 0o755)
         }
+        // The isolated UID must not depend on access to private checkout ancestors.
+        // Bundle the real runtime and its dependencies into this readable fixture.
+        const entry = `${root}/reference-runtime.ts`
+        const runtime = `${root}/reference-runtime.mjs`
+        yield* fs.writeFileString(
+          entry,
+          `
+            export { NodeServices } from ${encodeJson(import.meta.resolve('@effect/platform-node'))}
+            export { Effect } from ${encodeJson(import.meta.resolve('effect'))}
+            export * as FileSystem from ${encodeJson(import.meta.resolve('effect/FileSystem'))}
+            export { parseProcStat, parseProcUids, readProcessReferences, readWorktreeReferencesInUse } from ${encodeJson(referenceModule)}
+            export { encodeJson } from ${encodeJson(jsonModule)}
+          `,
+        )
+        const bundled = spawnSync('bun', ['build', entry, '--target=bun', '--outfile', runtime], {
+          encoding: 'utf8',
+          timeout: 120_000,
+        })
+        expect(bundled.status, `reference fixture bundle failed: ${bundled.stderr}`).toBe(0)
+        yield* fs.chmod(runtime, 0o644)
         const hidden = yield* Effect.acquireRelease(
           Effect.promise(() => spawnIdentityHolder({ cwd: outside })),
           ({ child }) => Effect.promise(() => stopIdentityHolder(child)),

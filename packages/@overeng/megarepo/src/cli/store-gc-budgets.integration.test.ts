@@ -21,7 +21,7 @@
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { link, lstat, mkdir, readdir, symlink, utimes, writeFile } from 'node:fs/promises'
+import { link, lstat, mkdir, open, readdir, symlink, utimes, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -72,6 +72,7 @@ type Fixture = {
   readonly policyPath: string
   readonly manifestPath: string
   readonly isolatedOwner?: boolean
+  readonly cliBin?: string
 }
 
 /** Fail loudly (never skip) when the root process probe cannot be exercised. */
@@ -118,24 +119,21 @@ const runCli = (
   { asRoot = true }: { asRoot?: boolean } = {},
 ) => {
   const env = cliEnv(f)
+  const mrBin = f.cliBin ?? MR_BIN
   const result =
     asRoot === true
-      ? spawnSync('sudo', ['-n', '/usr/bin/env', ...env, 'bun', MR_BIN, ...argv], {
+      ? spawnSync('sudo', ['-n', '/usr/bin/env', ...env, 'bun', mrBin, ...argv], {
           cwd: f.outside,
           encoding: 'utf8',
           timeout: 120_000,
         })
       : f.isolatedOwner === true
-        ? spawnSync(
-            'sudo',
-            ['-n', '-u', 'nobody', '/usr/bin/env', ...env, 'bun', MR_BIN, ...argv],
-            {
-              cwd: f.outside,
-              encoding: 'utf8',
-              timeout: 120_000,
-            },
-          )
-        : spawnSync('bun', [MR_BIN, ...argv], {
+        ? spawnSync('sudo', ['-n', '-u', 'nobody', '/usr/bin/env', ...env, 'bun', mrBin, ...argv], {
+            cwd: f.outside,
+            encoding: 'utf8',
+            timeout: 120_000,
+          })
+        : spawnSync('bun', [mrBin, ...argv], {
             cwd: f.outside,
             encoding: 'utf8',
             timeout: 120_000,
@@ -339,8 +337,29 @@ const backdate = async (path: string, at: Date): Promise<void> => {
   await utimes(path, at, at)
 }
 
-/** Flush so allocated blocks are visible through `st_blocks` (ZFS allocates at txg sync). */
-const flush = () => spawnSync('sync')
+/** Persist only fixture entries before querying allocated blocks on delayed-allocation filesystems. */
+const flush = async (roots: ReadonlyArray<string>): Promise<void> => {
+  const persist = async (path: string): Promise<void> => {
+    const info = await lstat(path)
+    if (info.isSymbolicLink() === true) return
+    if (info.isDirectory() === true) {
+      for (const entry of await readdir(path)) await persist(join(path, entry))
+    }
+    const handle = await open(path, 'r')
+    try {
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+  }
+  for (const root of roots) {
+    await persist(root)
+    // ZFS's allocated-block metadata is committed by filesystem sync, not
+    // merely by writing the file's intent log.
+    const synced = spawnSync('sync', ['-f', root], { encoding: 'utf8' })
+    expect(synced.status, synced.stderr).toBe(0)
+  }
+}
 
 /**
  * Write incompressible bytes (zeros would compress away on ZFS and allocate
@@ -357,7 +376,7 @@ const makeArtifact = (
       await writeFile(path, randomBytes(bytes))
     }
     await backdate(root, new Date(Date.now() - ageMs))
-    flush()
+    await flush([root])
   })
 
 const ensureParent = (filePath: string) =>
@@ -369,7 +388,7 @@ const ensureParent = (filePath: string) =>
  */
 const allocatedBytes = (roots: ReadonlyArray<string>) =>
   Effect.promise(async () => {
-    flush()
+    await flush(roots)
     const inodes = new Map<string, number>()
     const walk = async (path: string): Promise<void> => {
       const info = await lstat(path, { bigint: true })
@@ -908,7 +927,7 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
           await backdate(a, new Date(Date.now() - 3 * DAY_MS))
           await backdate(b, new Date(Date.now() - 3 * DAY_MS))
         })
-        flush()
+        yield* Effect.promise(() => flush([targetA, targetB]))
         yield* writePolicy(f, { budgetBytes: 64 * MiB })
 
         const plan = planOk(f)
@@ -950,7 +969,16 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
       function* () {
         const created = yield* twoTargets()
         const { a, targetA, targetB } = created
-        const f: Fixture = { ...created.f, isolatedOwner: true }
+        // Bundle the real CLI into the fixture: a distinct owner UID cannot
+        // traverse the checkout's private home-directory ancestry.
+        const outdir = `${created.f.state}/fixture-cli`
+        const bundle = spawnSync(
+          'bun',
+          ['build', MR_BIN, '--target=bun', '--external=@opentui/core-*', '--outdir', outdir],
+          { encoding: 'utf8' },
+        )
+        expect(bundle.status, bundle.stderr).toBe(0)
+        const f: Fixture = { ...created.f, isolatedOwner: true, cliBin: `${outdir}/mr.js` }
         // Trusted coverage requires the manifest AND its whole parent ancestry to be
         // root-controlled (root-owned, not group/world-writable unless sticky like /tmp).
         // Hand the fixture temp root to root; store/.state/outside stay user-owned and
