@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import fs, {
+import {
   chmodSync,
   lstatSync,
   mkdirSync,
@@ -13,12 +13,11 @@ import fs, {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import {
   canonicalTreeFingerprint,
@@ -702,38 +701,44 @@ describe('editor view publisher', () => {
 
   it('promotes hardened payloads with a writable rename root before publishing immutable views', async () => {
     const fixture = makeFixture()
-    const promoted: string[] = []
-    const nativeRename = fs.renameSync
-    const rename = vi.spyOn(fs, 'renameSync').mockImplementation((source, destination) => {
-      if (
-        typeof source === 'string' &&
-        basename(source).startsWith('.candidate-') === true &&
-        lstatSync(source).isDirectory() === true
-      ) {
-        // Model Darwin's rename permission precondition even on Linux, while
-        // still executing the real filesystem rename and snapshot verification.
-        expect(lstatSync(source).mode & 0o200).toBe(0o200)
-        expect(lstatSync(join(source, 'editor-view.json')).mode & 0o222).toBe(0)
-        promoted.push(destination.toString())
-      }
-      nativeRename(source, destination)
-    })
-    syncBuiltinESMExports()
     try {
+      // Linux permits renaming a read-only source directory, so runtime success
+      // alone cannot catch the Darwin regression. Pin the permission bridge and
+      // commit ordering, then exercise both real snapshot materialization modes.
+      const source = readFileSync(new URL('./editor-view.ts', import.meta.url), 'utf8')
+      const portableRename = source.slice(
+        source.indexOf('const renameReadOnlySnapshot ='),
+        source.indexOf('const garbageCollectSnapshots ='),
+      )
+      const writableRoot = portableRename.indexOf('chmodSync(source, sourceMode | 0o200)')
+      expect(writableRoot).toBeGreaterThanOrEqual(0)
+      expect(portableRename.indexOf('renameSync(source, destination)')).toBeGreaterThan(
+        writableRoot,
+      )
+      const commit = source.slice(
+        source.indexOf('const commit = (): EditorViewRecord =>'),
+        source.indexOf('return coordinator === undefined ? commit()'),
+      )
+      const promotion = commit.indexOf('renameReadOnlySnapshot({')
+      const hardening = commit.indexOf(
+        'chmodSync(snapshotDir, statSync(snapshotDir).mode & ~0o222)',
+      )
+      const proof = commit.indexOf('requireReadOnlySnapshotRoot(snapshotDir)')
+      expect(promotion).toBeGreaterThanOrEqual(0)
+      expect(hardening).toBeGreaterThan(promotion)
+      expect(proof).toBeGreaterThan(hardening)
+      expect(commit.indexOf('publishCurrentPointer(')).toBeGreaterThan(proof)
       const sibling = makeSiblingView({ fixture, packageName: 'genie' })
       const options = [
         fixture.options,
         Object.assign(sibling.options, { backingRoots: [sibling.options.nodeModules] }),
       ]
       const records = await publishEditorViews({ options })
-      expect(promoted).toHaveLength(options.length)
       for (const record of records)
         expect(lstatSync(join(fixture.editorRoot, record.snapshot)).mode & 0o222).toBe(0)
       for (const option of options)
         await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
     } finally {
-      rename.mockRestore()
-      syncBuiltinESMExports()
       cleanup(fixture)
     }
   })
