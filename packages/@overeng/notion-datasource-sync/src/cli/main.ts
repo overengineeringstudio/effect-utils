@@ -2820,7 +2820,7 @@ const cliGatewayConfigurationError = (operation: GatewayOperation) =>
     operation,
     guard: 'CapabilityPreflightFailed',
     message:
-      'Missing Notion API token for the live CLI gateway; set NOTION_API_TOKEN or NOTION_TOKEN, or use the library runner with an injected gateway client.',
+      'Missing Notion API token for the live CLI gateway; set NOTION_API_TOKEN or NOTION_TOKEN, run secrets-run --reason "access Notion" -- <command> in a devenv shell using the repo secretspec.toml, or use the library runner with an injected gateway client.',
   })
 
 const tokenFromEnv = (env: CliRuntimeEnv): string | undefined => {

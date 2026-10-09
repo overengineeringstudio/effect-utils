@@ -113,6 +113,21 @@ let
   # cannot pass locally against a source tree and fail against the product.
   repoPackages = repoFlake.packages.${currentSystem};
 
+  # Keep library configuration environment-driven; resolve local credentials at
+  # the devenv executable boundary, without changing packaged/CI entrypoints.
+  notionWithSecrets =
+    name: package:
+    pkgs.writeShellApplication {
+      inherit name;
+      text = ''
+        if [ -n "''${NOTION_API_TOKEN:-}" ] || [ -n "''${NOTION_TOKEN:-}" ]; then
+          exec ${package}/bin/${name} "$@"
+        fi
+        export SECRETSPEC_FILE="''${SECRETSPEC_FILE:-${config.devenv.root}/secretspec.toml}"
+        exec secrets-run --reason "run ${name}" -- ${package}/bin/${name} "$@"
+      '';
+    };
+
   # Real packages backing guarded command names. The cli-guards own bin/<name>
   # and exec these via absolute store path under passthrough, so they are passed
   # as `*Pkg` reals to the task modules instead of also being top-level profile
@@ -1017,7 +1032,8 @@ in
     # restate-server (+ restate CLI) on $PATH for restate-effect integration tests.
     restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
-    repoPackages.notion-cli
+    (notionWithSecrets "notion" repoPackages.notion-cli)
+    (notionWithSecrets "notion-md" repoPackages.notion-md)
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
     # Retained source suites execute this native capture binary on both platforms.
     # The protected-main publisher retains this exact import (and the other
