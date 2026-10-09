@@ -1176,16 +1176,25 @@ const fingerprintSnapshotPayload = async ({
   snapshotDir,
   roots = [],
   fingerprintTool,
+  onFailure,
 }: {
   readonly snapshotDir: string
   readonly fingerprintTool: string
   readonly roots?: readonly DeclaredSnapshotRoot[]
+  readonly onFailure?: () => void
 }): Promise<SnapshotPayloadFingerprints> => {
+  const diagnose = <T>(operation: Promise<T>): Promise<T> =>
+    onFailure === undefined
+      ? operation
+      : operation.catch((error: unknown) => {
+          onFailure()
+          throw error
+        })
   const backing = join(snapshotDir, '.backing')
   const nodeModules = join(snapshotDir, 'node_modules')
   if (pathExists(backing) === false)
     return {
-      digest: await canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool }),
+      digest: await diagnose(canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool })),
       resolvedRootsDigest: undefined,
     }
   const extraRoots = roots.filter((root) => root.identity !== 'node_modules')
@@ -1198,33 +1207,46 @@ const fingerprintSnapshotPayload = async ({
       source: join(snapshotDir, root.destination),
     })),
   ]
-  // These disjoint immutable roots can be fingerprinted concurrently. Preserve their fixed order
-  // when framing the resulting payload digest so scheduling cannot affect the record identity.
-  const [backingDigest, extraResolved, nodeModulesFingerprints] = await Promise.all([
-    canonicalTreeFingerprint({ tree: backing, fingerprintTool }),
-    Promise.all(
+  // Keep the candidate alive and unchanged until every fingerprint child has settled,
+  // even after a failure: cleanup chmods directories before removing the payload.
+  const [backingResult, extraResult, nodeModulesResult] = await Promise.allSettled([
+    diagnose(canonicalTreeFingerprint({ tree: backing, fingerprintTool })),
+    Promise.allSettled(
       extraRoots.map(async (root) => ({
         digest: (
-          await canonicalTreeFingerprintWithResolvedLinks({
-            tree: join(snapshotDir, root.destination),
-            linkOwners: candidateOwners,
-            fingerprintTool,
-          })
+          await diagnose(
+            canonicalTreeFingerprintWithResolvedLinks({
+              tree: join(snapshotDir, root.destination),
+              linkOwners: candidateOwners,
+              fingerprintTool,
+            }),
+          )
         ).resolvedLinksDigest,
         identity: root.identity,
       })),
     ),
     roots.length === 0
       ? Promise.resolve(undefined)
-      : canonicalTreeFingerprintWithResolvedLinks({
-          tree: nodeModules,
-          linkOwners: candidateOwners,
-          fingerprintTool,
-        }),
+      : diagnose(
+          canonicalTreeFingerprintWithResolvedLinks({
+            tree: nodeModules,
+            linkOwners: candidateOwners,
+            fingerprintTool,
+          }),
+        ),
   ])
+  if (backingResult.status === 'rejected') throw backingResult.reason
+  if (extraResult.status === 'rejected') throw extraResult.reason
+  if (nodeModulesResult.status === 'rejected') throw nodeModulesResult.reason
+  const backingDigest = backingResult.value
+  const extraResolved = extraResult.value.map((result) => {
+    if (result.status === 'rejected') throw result.reason
+    return result.value
+  })
+  const nodeModulesFingerprints = nodeModulesResult.value
   const nodeModulesDigest =
     nodeModulesFingerprints?.digest ??
-    (await canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool }))
+    (await diagnose(canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool })))
   const entries = [
     ['.backing', backingDigest],
     ['node_modules', nodeModulesDigest],
@@ -1931,9 +1953,18 @@ const signalEditorResolution = ({ paths, token }: { paths: ViewPaths; token: str
   }
 }
 
+type PublicationWorkerState = {
+  readonly package: string
+  readonly viewName: string
+  readonly editorRoot: string
+  readonly phase: string
+  readonly candidate: string | undefined
+}
+
 type PublicationCoordinator = {
   readonly lock: { readonly path: string; readonly token: string }
   readonly commit: <T>(operation: () => T) => Promise<T>
+  readonly workers: Map<string, PublicationWorkerState>
 }
 
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
@@ -1992,6 +2023,25 @@ const publishEditorViewCoordinated = async ({
   // A batch shares its exclusive state-root lock, not its private candidate/pointer names.
   const token = tokenSafe(coordinator === undefined ? lock.token : randomUUID())
   let candidate: string | undefined
+  const workers = coordinator?.workers ?? new Map<string, PublicationWorkerState>()
+  workers.set(token, {
+    package: options.package,
+    viewName: paths.viewName,
+    editorRoot: paths.editorRoot,
+    get phase() {
+      return phaseName
+    },
+    get candidate() {
+      return candidate
+    },
+  })
+  let failureStates: readonly PublicationWorkerState[] | undefined
+  const captureFailure = (): void => {
+    failureStates ??= [...workers.values()].map((state) => ({
+      ...state,
+      candidate: state.candidate ?? '<none>',
+    }))
+  }
   try {
     enterPhase('fingerprint')
     const editorInputsPath = realpathSync(resolve(options.editorInputs))
@@ -2163,6 +2213,7 @@ const publishEditorViewCoordinated = async ({
       const payload = await fingerprintSnapshotPayload({
         snapshotDir: candidate,
         fingerprintTool: options.fingerprintTool,
+        onFailure: captureFailure,
         ...(finite === true ? { roots } : {}),
       })
       if (materialized === true && declaredRoots !== undefined) {
@@ -2245,6 +2296,22 @@ const publishEditorViewCoordinated = async ({
       return record
     }
     return coordinator === undefined ? commit() : await coordinator.commit(commit)
+  } catch (error) {
+    // Payload failures capture siblings immediately, before waiting for other children to settle.
+    // Other failures are captured here, before cleanup can mutate the candidate's metadata.
+    captureFailure()
+    const contextual = new Error(
+      `${error instanceof Error ? error.message : String(error)}; publication workers=${JSON.stringify(failureStates)}`,
+      { cause: error },
+    )
+    if (
+      error !== null &&
+      typeof error === 'object' &&
+      'exitCode' in error &&
+      typeof error.exitCode === 'number'
+    )
+      Object.assign(contextual, { exitCode: error.exitCode })
+    throw contextual
   } finally {
     if (candidate !== undefined && pathExists(candidate) === true) {
       // A dereferencing copy reproduces read-only source directories, so the
@@ -2252,6 +2319,7 @@ const publishEditorViewCoordinated = async ({
       makeDirectoriesWritable(candidate)
       rmSync(candidate, { recursive: true, force: true })
     }
+    workers.delete(token)
     if (coordinator === undefined) releaseLock(lock)
   }
 }
@@ -2275,6 +2343,7 @@ export const publishEditorViews = async ({
   onPublished?: (record: EditorViewRecord, durationMs: number) => void
 }): Promise<readonly EditorViewRecord[]> => {
   const coordinators = new Map<string, PublicationCoordinator>()
+  const workers = new Map<string, PublicationWorkerState>()
   const identities = new Set<string>()
   const results: PromiseSettledResult<EditorViewRecord>[] = []
   let next = 0
@@ -2295,6 +2364,7 @@ export const publishEditorViews = async ({
       let committed = Promise.resolve()
       coordinators.set(paths.editorRoot, {
         lock,
+        workers,
         commit: (operation) => {
           const result = committed.then(operation)
           committed = result.then(
