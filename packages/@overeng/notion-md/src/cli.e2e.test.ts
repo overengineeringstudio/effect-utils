@@ -42,6 +42,7 @@ const runCli = (args: readonly string[]) =>
     env: {
       ...process.env,
       NOTION_API_TOKEN: '',
+      NOTION_TOKEN: '',
       OTEL_EXPORTER_OTLP_ENDPOINT: '',
     },
   })
@@ -185,11 +186,17 @@ describe('notion-md CLI boundary', () => {
   it(
     'surfaces missing Notion credentials as a typed CLI failure after argument validation',
     async () => {
-      await expect(runCli(['status', 'page.nmd'])).rejects.toMatchObject({
+      const result = runCli(['status', 'page.nmd'])
+      await expect(result).rejects.toMatchObject({
         stdout: expect.stringContaining('NmdTokenMissingError'),
       })
-      await expect(runCli(['status', 'page.nmd'])).rejects.toMatchObject({
-        stdout: expect.stringContaining('NOTION_API_TOKEN is required'),
+      await expect(result).rejects.toMatchObject({
+        stdout: expect.stringContaining(
+          'Missing Notion API token; set one of: NOTION_API_TOKEN, NOTION_TOKEN',
+        ),
+      })
+      await expect(result).rejects.toMatchObject({
+        stdout: expect.stringContaining('secrets-run --reason \\"access Notion\\" -- <command>'),
       })
     },
     cliTestTimeoutMs,
