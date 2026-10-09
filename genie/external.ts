@@ -869,6 +869,8 @@ export const baseTsconfigCompilerOptions = {
   noFallthroughCasesInSwitch: true,
   noImplicitOverride: true,
   isolatedModules: true,
+  // Source exports must not need TypeScript runtime lowering in Node strip-only mode.
+  erasableSyntaxOnly: true,
   verbatimModuleSyntax: true,
   skipLibCheck: true,
   forceConsistentCasingInFileNames: true,

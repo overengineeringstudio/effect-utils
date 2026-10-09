@@ -34,7 +34,7 @@ Config files like `package.json`, `tsconfig.base.json`, and `.github/workflows/c
 
 - **Never edit generated files directly** - they are read-only and will be overwritten
 - **Edit the `.genie.ts` source file** and run `devenv tasks run genie:run` to regenerate
-- Shared constants (catalog versions, tsconfig options) live in `genie/repo.ts`
+- Shared constants and compiler options live in `genie/external.ts`, re-exported by `genie/internal.ts`
 - `devenv tasks run check:quick` verifies generated files are up to date via `devenv tasks run genie:check`
 
 # Breaking Changes

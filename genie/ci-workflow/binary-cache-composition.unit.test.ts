@@ -57,6 +57,24 @@ const privateCache: Cache = {
 const protectedIf = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
 
 describe('build cache composition', () => {
+  it('preserves structured cache error fields and messages', () => {
+    const conflict = new ConflictingBinaryCacheError('cache')
+    expect(conflict).toBeInstanceOf(Error)
+    expect(conflict.cacheName).toBe('cache')
+    expect(conflict._tag).toBe('ConflictingBinaryCacheError')
+    expect(conflict.name).toBe('ConflictingBinaryCacheError')
+    expect(conflict.message).toBe('Conflicting build cache descriptor: cache')
+
+    const publisher = new CachePublisherJobError('publish')
+    expect(publisher).toBeInstanceOf(Error)
+    expect(publisher.jobName).toBe('publish')
+    expect(publisher._tag).toBe('CachePublisherJobError')
+    expect(publisher.name).toBe('CachePublisherJobError')
+    expect(publisher.message).toBe(
+      'Cache publisher job publish requires protected main-branch publication or an exact main-push Buck2 secret guard; write secrets are step-local',
+    )
+  })
+
   it('accepts public cache on non-fleet and private cache only on static fleet labels', () => {
     expect(binaryCachesExtraConfForJob({ runner: 'ubuntu-latest', caches: [publicCache] })).toBe(
       `extra-substituters = ${publicCache.kind === 'nix-binary' ? publicCache.uri : ''}\nextra-trusted-public-keys = ${publicCache.kind === 'nix-binary' ? publicCache.publicKey : ''}`,

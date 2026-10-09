@@ -27,10 +27,12 @@ export class PrivateBinaryCacheRunnerError extends Error {
 /** Publisher credential or write action outside a protected, step-local scope. */
 export class CachePublisherJobError extends Error {
   readonly _tag = 'CachePublisherJobError'
-  constructor(readonly jobName: string) {
+  readonly jobName: string
+  constructor(jobName: string) {
     super(
       `Cache publisher job ${jobName} requires protected main-branch publication or an exact main-push Buck2 secret guard; write secrets are step-local`,
     )
+    this.jobName = jobName
     this.name = 'CachePublisherJobError'
   }
 }

@@ -2,9 +2,37 @@
 # Source: BUCK.genie.ts
 
 # Projection source: rust/effect-rust-fixtures/BUCK.genie.ts
-# Semantic fingerprint: sha256:252ea97ef7df2be97b2b3f9eb1eac3cd6f58e450188d6f26101f8df5fbc51547
+# Semantic fingerprint: sha256:6eff648f804dc1cc0c04edc297733510ccea9a25f19333e572ded6bbd04122a4
 # Semantic inputs: rust/effect-rust-fixtures/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "package_view")
+load("//buck2:typescript.bzl", "tsgo_typecheck")
+
+package_view(
+    name = "package_tree",
+    dependency_view = "//packages/@overeng/effect-rust:node_modules",
+    files = {source: source for source in glob(["**/*.ts"], exclude = ["**/*.genie.ts"]) + ["tsconfig.json"]},
+    workspace_dist = {
+        "node_modules/@overeng/effect-rust/dist": "//packages/@overeng/effect-rust:dist",
+        "node_modules/@overeng/effect-rust/package.json": "//packages/@overeng/effect-rust:package.json",
+    },
+    generated_dependencies = {
+        "effect-rust-fixture": "//rust/effect-rust-fixtures/service:service",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/effect-rust/node_modules": "//packages/@overeng/effect-rust:package_tree",
+    },
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
 
 export_file(
     name = "smoke",

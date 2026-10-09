@@ -1,4 +1,9 @@
-import { domLib, nodeTypes, reactJsx } from '../../../../../genie/internal.ts'
+import {
+  baseTsconfigCompilerOptions,
+  domLib,
+  nodeTypes,
+  reactJsx,
+} from '../../../../../genie/internal.ts'
 import { tsconfigJson, type TSConfigArgs } from '../../../genie/src/runtime/mod.ts'
 
 export default tsconfigJson({
@@ -17,6 +22,7 @@ export default tsconfigJson({
     skipLibCheck: true,
     forceConsistentCasingInFileNames: true,
     isolatedModules: true,
+    erasableSyntaxOnly: baseTsconfigCompilerOptions.erasableSyntaxOnly,
     noEmit: true,
   },
   include: ['src/**/*', 'vite.config.ts'],

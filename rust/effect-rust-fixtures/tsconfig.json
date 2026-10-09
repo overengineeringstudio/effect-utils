@@ -1,14 +1,15 @@
 // Generated file - DO NOT EDIT
-// Source: tsconfig.strict-consumer.json.genie.ts
+// Source: tsconfig.json.genie.ts
 {
   "compilerOptions": {
     "target": "ES2024",
     "lib": [
-      "ES2023",
+      "ES2024",
+      "ESNext.Disposable",
       "DOM"
     ],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "resolveJsonModule": true,
@@ -45,15 +46,15 @@
         }
       }
     ],
-    "rootDir": ".",
-    "jsx": "react-jsx",
-    "composite": true,
+    "types": [
+      "node"
+    ],
     "noEmit": true
   },
   "include": [
-    "src/schema/effectSchema.tsx",
-    "src/schema/lineage.ts",
-    "test-d/**/*"
+    "**/*.ts"
   ],
-  "references": []
+  "exclude": [
+    "**/*.genie.ts"
+  ]
 }

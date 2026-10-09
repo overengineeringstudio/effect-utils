@@ -77,6 +77,7 @@ let
   extraDesc = if descParts != [ ] then ", ${lib.concatStringsSep ", " descParts}" else "";
 in
 {
+  imports = [ ./worktree-teardown.nix ];
   tasks = {
     "check:quick" = {
       description = "Fast checks for development (${
