@@ -152,11 +152,10 @@ Bootstrap and publication commands submit all selected views in one
 stdin. Request size is not limited by the operating system's per-argument cap.
 The batch acquires each distinct state-root lock before preparing any view and
 holds every lock until all workers have settled. `editorViewPublicationWorkers`
-in the publisher is the single declared resource bound (four); bootstrap and
-source-test publication both use it. Workers overlap independent fingerprint,
-materialization, and private-candidate validation work. Native copy children are
-awaited asynchronously, with at most one per active view, rather than blocking
-other workers on the event loop. Candidate names are unique per view operation;
+in the publisher is the single declared resource bound (one); bootstrap and
+source-test publication both use it. Independent root fingerprints within a
+candidate remain concurrent. Native copy children are awaited asynchronously,
+with at most one per active view. Candidate names are unique per view operation;
 promotion, retention, pointer writes, and GC
 are serialized per state root, so sibling inventory validation cannot race
 promotion or deletion. Duplicate root/view identities are rejected. Every view
