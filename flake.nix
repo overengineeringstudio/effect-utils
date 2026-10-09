@@ -66,7 +66,6 @@ rec {
             pnpmArchives
             ;
           capabilities = buck2Capabilities;
-          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           repositoryRoot = ./.;
         };
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
@@ -239,6 +238,30 @@ rec {
           nativeProducts = nativeProductPackages;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
         };
+        # Exact retained repository products used by required shell activation,
+        # task exec strings and capabilities. Publishing this closure also
+        # publishes the source bridge and validator outputs behind each import.
+        ciTestShellProducts = {
+          buck2-capabilities = buck2Capabilities;
+          inherit (capabilityPackages)
+            buck2
+            buck2-archive-tool
+            buck2-events
+            buck2-fingerprint
+            buck2-product
+            ;
+          inherit (nativeProductPackages) otelite otel-scrape typescript-api-server;
+          inherit (cliPackages)
+            genie
+            megarepo
+            ci-tools
+            gh-ci-utils
+            notion-cli
+            tui-stories
+            ;
+          cli-build-stamp = cliBuildStamp.package;
+          otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+        };
 
       in
       {
@@ -252,6 +275,9 @@ rec {
           // {
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
+            ci-test-shell-products = pkgs.linkFarm "ci-test-shell-products" (
+              pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) ciTestShellProducts
+            );
             buck2-pnpm-archives = pnpmArchives;
             cli-build-stamp = cliBuildStamp.package;
             otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };

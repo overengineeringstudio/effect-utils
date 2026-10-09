@@ -35,7 +35,9 @@
 let
   lib = pkgs.lib;
   scan = import ./buck2-artifact-scan.nix { inherit pkgs; };
-  contractFile = ./buck2-build-product-contract.nix;
+  contractFile = pkgs.writeText "buck2-build-product-contract.nix" (
+    builtins.readFile ./buck2-build-product-contract.nix
+  );
   runtimeKinds = [
     "elf-dynamic"
     "elf-static"

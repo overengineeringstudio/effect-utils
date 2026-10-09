@@ -443,6 +443,7 @@ const checkWorkspaceContract = ({
         'kind',
         'name',
         'outputName',
+        'sourcePaths',
         'target',
         'version',
         ...(rust === true ? ['cargoWorkspaceRoot'] : []),
@@ -451,6 +452,18 @@ const checkWorkspaceContract = ({
     })
     const target = requireString(entry.target, `native products[${index}].target`)
     const packagePath = rust === true ? name : 'genie'
+    const sourcePaths = requireStrings(entry.sourcePaths, `native products[${index}].sourcePaths`)
+    requireUnique(sourcePaths, `native products[${index}].sourcePaths`)
+    if (
+      sourcePaths.includes(`packages/@overeng/${packagePath}`) === false ||
+      sourcePaths.some(
+        (source) =>
+          /^[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@-]+)*$/u.test(source) === false ||
+          source.split('/').some((segment) => segment === '.' || segment === '..'),
+      ) === true
+    ) {
+      throw new Error(`native products[${index}] must declare safe package-scoped source paths`)
+    }
     if (
       entry.kind !== 'native' ||
       entry.outputName !== 'artifact.tar' ||

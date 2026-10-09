@@ -5,6 +5,12 @@
       "kind": "native",
       "name": "otel-scrape",
       "outputName": "artifact.tar",
+      "sourcePaths": [
+        "packages/@overeng/otel-scrape",
+        "rust/Cargo.lock",
+        "rust/Cargo.toml",
+        "rust/third-party"
+      ],
       "target": "effect_utils//packages/@overeng/otel-scrape:otel-scrape-product",
       "version": "0.0.0"
     },
@@ -13,6 +19,12 @@
       "kind": "native",
       "name": "otelite",
       "outputName": "artifact.tar",
+      "sourcePaths": [
+        "packages/@overeng/otelite",
+        "rust/Cargo.lock",
+        "rust/Cargo.toml",
+        "rust/third-party"
+      ],
       "target": "effect_utils//packages/@overeng/otelite:otelite-product",
       "version": "0.0.0"
     },
@@ -20,6 +32,22 @@
       "kind": "native",
       "name": "typescript-api-server",
       "outputName": "artifact.tar",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/genie",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/tui-react",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/genie:typescript-api-server-product",
       "version": "0.0.0"
     }
