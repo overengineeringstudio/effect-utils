@@ -268,7 +268,7 @@ for (const checkTask of ['check:quick', 'check:all']) {
     name: `${checkTask} does not reach mr:apply`,
   })
 }
-// `test:run` must schedule the one Buck aggregate and the source-side batches which own
+// `test:run` must schedule the one Buck aggregate and the source-side chains which own
 // packages absent from the authority plus admitted lanes' exact unbounded complements. Either
 // edge going missing would silently omit a disjoint side of the test partition.
 const testRunDependencies = [...(dependencies.get('test:run') ?? [])]
@@ -277,7 +277,7 @@ ok({
   name: 'test:run executes the Buck-owned bounded partition',
 })
 ok({
-  condition: testRunDependencies.some((name) => name.startsWith('test:run:batch:') === true),
+  condition: testRunDependencies.some((name) => name.startsWith('test:run:chain:') === true),
   name: 'test:run executes the source-owned complement partition',
 })
 ok({
@@ -307,6 +307,19 @@ if (typeof boundedTestCommand === 'string') {
         ),
     name: 'the bounded aggregate prebuilds collection once before its single test invocation',
     detail: boundedTestCommand,
+  })
+}
+const genieBuckTestCommand = requireTask('genie:buck2:test').command
+if (typeof genieBuckTestCommand === 'string') {
+  const commandBody =
+    existsSync(genieBuckTestCommand) === true ? readFileSync(genieBuckTestCommand, 'utf8') : ''
+  ok({
+    condition:
+      commandBody.includes(' test ./genie/buck2/') &&
+      commandBody.includes(' ./scripts/editor-view-authority.unit.test.ts') &&
+      commandBody.includes(' test genie/buck2/') === false,
+    name: 'Genie Buck tests use an explicit source directory, not a staged-copy substring filter',
+    detail: genieBuckTestCommand,
   })
 }
 const collectionGateCommand = requireTask('test:run').command
@@ -403,12 +416,26 @@ ok({
 // only their own execution view and the generator bootstrap closure.
 const sourceTestAggregate = 'test:run'
 const sourceTestExtraSuites = ['devenv-modules:test', 'genie:buck2:test']
-const sourceTestBatchPrefix = `${sourceTestAggregate}:batch:`
-const batchExecutionPattern = /^test:run:batch:\d+:/
-const sourceTestTasks = [...dependencies.keys()].filter((name) => batchExecutionPattern.test(name))
+const sourceTestChainPrefix = `${sourceTestAggregate}:chain:`
+const chainExecutionPattern = /^test:run:chain:(\d+):/
+const sourceTestTasks = [...dependencies.keys()].filter((name) => chainExecutionPattern.test(name))
 const directSourceTestTasks = sourceTestTasks.map((name) =>
-  name.replace(batchExecutionPattern, 'test:'),
+  name.replace(chainExecutionPattern, 'test:'),
 )
+const scheduling = JSON.parse(
+  readFileSync(`${root}/genie/ci-workflow/test-scheduling.json`, 'utf8'),
+)
+const chainIds = new Set(
+  sourceTestTasks.map((name) => Number(chainExecutionPattern.exec(name)?.[1])),
+)
+ok({
+  condition:
+    Number.isInteger(scheduling.workers) &&
+    scheduling.workers > 0 &&
+    chainIds.size <= scheduling.workers &&
+    [...chainIds].every((index) => index >= 0 && index < scheduling.workers),
+  name: 'source execution chains respect the declared worker count',
+})
 const platformSuites = JSON.parse(
   readFileSync(`${root}/genie/ci-workflow/test-platforms.json`, 'utf8'),
 )
@@ -421,7 +448,7 @@ const allDirectSourceTestTasks = [
 const bootstrapPackagePaths = ['.', 'packages/@overeng/otel-contract']
 ok({
   condition: sourceTestTasks.length > 0,
-  name: `${sourceTestAggregate} schedules source test tasks through its batches`,
+  name: `${sourceTestAggregate} schedules source test tasks through independent chains`,
 })
 for (const name of buck2UnboundedTaskNames) {
   ok({
@@ -442,17 +469,31 @@ for (const name of allDirectSourceTestTasks) {
   })
   ok({
     condition: [...(dependencies.get(name) ?? [])].every(
-      (dependency) => dependency.startsWith(sourceTestBatchPrefix) === false,
+      (dependency) => dependency.startsWith(sourceTestChainPrefix) === false,
     ),
-    name: `${name} never pulls an earlier aggregate batch into direct execution`,
+    name: `${name} never pulls an aggregate chain into direct execution`,
   })
 }
 for (const name of sourceTestTasks) {
-  const batchIndex = Number(/^test:run:batch:(\d+):/.exec(name)?.[1])
+  const chainIndex = Number(chainExecutionPattern.exec(name)?.[1])
+  const predecessors = [...(dependencies.get(name) ?? [])].filter((dependency) =>
+    dependency.startsWith(sourceTestChainPrefix),
+  )
   ok({
     condition:
-      batchIndex === 0 || dependencies.get(name).has(`${sourceTestBatchPrefix}${batchIndex - 1}`),
-    name: `${name} preserves aggregate-only batch ordering`,
+      predecessors.length <= 1 &&
+      predecessors.every(
+        (dependency) => Number(chainExecutionPattern.exec(dependency)?.[1]) === chainIndex,
+      ) &&
+      reaches({ start: sourceTestAggregate, target: name }),
+    name: `${name} advances only its own chain and remains in aggregate coverage`,
+  })
+}
+for (const name of sourceTestTasks) {
+  const isTail = sourceTestTasks.every((other) => dependencies.get(other)?.has(name) !== true)
+  ok({
+    condition: testRunDependencies.includes(name) === isTail,
+    name: `${name} is awaited directly exactly when it is a chain tail`,
   })
 }
 const packagePublisherContracts = Object.fromEntries(

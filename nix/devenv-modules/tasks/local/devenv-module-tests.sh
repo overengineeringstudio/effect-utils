@@ -4,6 +4,8 @@ set -euo pipefail
 TEST_BASH="${BASH_BIN:-$BASH}"
 TEST_DATE="${DATE_BIN:-date}"
 TEST_XARGS="${XARGS_BIN:-xargs}"
+TEST_JQ="${JQ_BIN:-jq}"
+worker_count="${MODULE_TEST_WORKERS:-4}"
 
 run_test() {
   local test_file="$1" scheduling="$2" status=0
@@ -29,6 +31,10 @@ if [ "$#" -ne 1 ] || [ ! -d "$1" ]; then
 fi
 test_dir="$1"
 runner="${BASH_SOURCE[0]}"
+if [[ ! "$worker_count" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'Expected a positive integer MODULE_TEST_WORKERS: %s\n' "$worker_count" >&2
+  exit 1
+fi
 
 parallel_safe() {
   # Explicitly audited admission, not a default assumption about future scripts.
@@ -78,6 +84,28 @@ if [ "$serial_count" -eq 0 ] && [ "$isolated_count" -eq 0 ]; then
   exit 1
 fi
 
+# Only admitted names enter the weighted queue; future scripts remain serial.
+# Capture jq's exit status before dispatch, rather than hiding it in a process
+# substitution. Admitted basenames cannot contain newlines.
+if [ "$isolated_count" -gt 0 ]; then
+  isolated_names=()
+  for test_file in "${isolated_tests[@]}"; do
+    isolated_names+=("${test_file##*/}")
+  done
+  ordered_names="$(printf '%s\0' "${isolated_names[@]}" |
+    "$TEST_JQ" -Rrs --slurpfile weights "${MODULE_TEST_WEIGHTS:-/dev/null}" '
+      ($weights[0] // {}) as $weights |
+      if ($weights | type) != "object" or
+        ($weights | all(.[]; type == "number" and . > 0 and floor == .) | not)
+      then error("Expected positive integer script weights")
+      else split("\u0000") | map(select(length > 0)) |
+        sort_by([-($weights[.] // 1), .]) | .[]
+      end
+    ')"
+  isolated_tests=()
+  while IFS= read -r name; do isolated_tests+=("$test_dir/$name"); done <<<"$ordered_names"
+fi
+
 failed=0
 pool_pid=""
 reap_pool() {
@@ -100,16 +128,16 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # Shared-checkout state scripts and all unaudited additions run alone before
-# either worker starts. Their failures must not suppress isolated tests.
+# any pool worker starts. Their failures must not suppress isolated tests.
 for ((index=0; index<serial_count; index++)); do
   run_test "${serial_tests[$index]}" serial || failed=1
 done
 
 if [ "$isolated_count" -gt 0 ]; then
   # GNU and BSD xargs both support NUL-delimited input and -P. Unlike wait -n,
-  # this also works with Darwin's system Bash. The worker limit is fixed at two.
+  # this also works with Darwin's system Bash.
   printf '%s\0' "${isolated_tests[@]}" | \
-    "$TEST_XARGS" -0 -n 1 -P 2 "$TEST_BASH" "$runner" --run &
+    "$TEST_XARGS" -0 -n 1 -P "$worker_count" "$TEST_BASH" "$runner" --run &
   pool_pid=$!
   reap_pool
 fi
