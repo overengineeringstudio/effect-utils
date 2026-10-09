@@ -304,7 +304,7 @@ describe('generated CI cache trust behavior', () => {
       SMOKE_LOG: join(work, 'smoke.log'),
       CACHE_LOG: join(work, 'cache.log'),
     }
-    const executable = (path: string, content: string) => {
+    const executable = ({ path, content }: { path: string; content: string }) => {
       writeFileSync(path, `#!/usr/bin/env bash\nset -euo pipefail\n${content}\n`)
       chmodSync(path, 0o755)
     }
@@ -323,18 +323,29 @@ describe('generated CI cache trust behavior', () => {
       names.forEach((name, index) => {
         const bin = join(outputPaths[index]!, 'bin')
         mkdirSync(bin, { recursive: true })
-        executable(
-          join(bin, name),
-          `printf '%s %s\\n' '${name}' "$*" >> "$SMOKE_LOG"\n[ "$*" = --help ]\n[ "\${FAIL_PRODUCT:-}" != '${name}' ]`,
-        )
+        executable({
+          path: join(bin, name),
+          content: `printf '%s %s\\n' '${name}' "$*" >> "$SMOKE_LOG"\n[ "$*" = --help ]\n[ "\${FAIL_PRODUCT:-}" != '${name}' ]`,
+        })
       })
-      executable(
-        join(work, 'tools/nix'),
-        'printf \'%s\\n\' "$*" >> "$NIX_LOG"\nprintf \'%s\\n\' "$BUILD_JSON"',
-      )
-      executable(join(work, 'tools/cachix'), 'printf \'%s\\n\' "$*" >> "$CACHE_LOG"')
+      executable({
+        path: join(work, 'tools/nix'),
+        content: 'printf \'%s\\n\' "$*" >> "$NIX_LOG"\nprintf \'%s\\n\' "$BUILD_JSON"',
+      })
+      executable({
+        path: join(work, 'tools/cachix'),
+        content: 'printf \'%s\\n\' "$*" >> "$CACHE_LOG"',
+      })
       const outputs = [outputPaths[2]!, shellOutput, outputPaths[1]!, outputPaths[0]!]
-      const run = (args: string[], selectedOutputs = outputs, failProduct = '') => {
+      const run = ({
+        args,
+        selectedOutputs = outputs,
+        failProduct = '',
+      }: {
+        args: string[]
+        selectedOutputs?: string[]
+        failProduct?: string
+      }) => {
         for (const path of Object.values(logs)) writeFileSync(path, '')
         return Bun.spawnSync({
           cmd: ['bash', script, ...args],
@@ -353,7 +364,7 @@ describe('generated CI cache trust behavior', () => {
         })
       }
       for (const args of [[], ['--push']]) {
-        expect(run(args).exitCode).toBe(0)
+        expect(run({ args }).exitCode).toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
           'build --no-link --print-build-logs --json .#ci-test-shell-products .#compiled-one-compiled .#compiled-two-compiled .#native-one',
         ])
@@ -365,18 +376,20 @@ describe('generated CI cache trust behavior', () => {
         )
       }
       expect(
-        run(
-          ['--push'],
-          outputs.filter((out) => out !== outputPaths[2]),
-        ).exitCode,
+        run({
+          args: ['--push'],
+          selectedOutputs: outputs.filter((out) => out !== outputPaths[2]),
+        }).exitCode,
       ).not.toBe(0)
       expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
       const duplicate = join(work, 'output-duplicate')
       mkdirSync(join(duplicate, 'bin'), { recursive: true })
-      executable(join(duplicate, 'bin/native-one'), 'exit 0')
-      expect(run(['--push'], [...outputs, duplicate]).exitCode).not.toBe(0)
+      executable({ path: join(duplicate, 'bin/native-one'), content: 'exit 0' })
+      expect(run({ args: ['--push'], selectedOutputs: [...outputs, duplicate] }).exitCode).not.toBe(
+        0,
+      )
       expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
-      expect(run(['--push'], outputs, 'compiled-two').exitCode).not.toBe(0)
+      expect(run({ args: ['--push'], failProduct: 'compiled-two' }).exitCode).not.toBe(0)
       expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
     } finally {
       rmSync(work, { recursive: true, force: true })
