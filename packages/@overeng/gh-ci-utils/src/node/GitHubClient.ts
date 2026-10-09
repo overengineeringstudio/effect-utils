@@ -1331,6 +1331,7 @@ const defaultGitHubClient = makeGitHubClient({
 
 /** Runtime shape of the GitHub CI client. */
 export type GitHubClientShape = Effect.Success<typeof defaultGitHubClient>
+export type GitHubClientError = GitHubApiError | GitHubAuthError | LogsUnavailableError
 /** Context service providing authenticated GitHub CI operations. */
 export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShape>()(
   'gh-ci-utils/GitHubClient',

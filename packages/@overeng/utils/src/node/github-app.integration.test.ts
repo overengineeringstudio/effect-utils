@@ -27,6 +27,7 @@ const fixture = Effect.gen(function* () {
     bodies: [] as unknown[],
     jwts: [] as Array<{ iat: number; exp: number; iss: string; verified: boolean }>,
     delayMint: false,
+    delayResponse: false,
   }
   const server = createServer(async (request, response) => {
     if (request.url === '/app/installations/123/access_tokens') {
@@ -48,6 +49,10 @@ const fixture = Effect.gen(function* () {
       response.end(Schema.encodeSync(Json)({ token: `installation-${state.exchanges}`, expires_at: new Date(state.now + 3_600_000).toISOString() }))
     } else {
       state.calls++
+      if (state.delayResponse) {
+        await Effect.runPromiseWith(delay)(Deferred.succeed(started, undefined))
+        await Effect.runPromiseWith(delay)(Deferred.await(release))
+      }
       response.writeHead(state.unauthorized ? 401 : 200, { 'content-type': 'application/json', 'x-ratelimit-remaining': '4998', 'x-ratelimit-resource': 'core' })
       response.end('{}')
     }
@@ -179,4 +184,21 @@ it.effect('records safe per-consumer mint/failure, expiry, and bucket metrics', 
     yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip)
     expect((yield* Metric.snapshot).find((metric) => metric.id === 'github_app_token_expiry_seconds')).toMatchObject({ state: { value: 0 } })
   }).pipe(Effect.provideService(Metric.MetricRegistry, new Map())),
+)
+
+it.effect('a late 401 cannot evict the replacement minted during the old request', () =>
+  Effect.gen(function* () {
+    const { state, app, apiBase, started, release } = yield* fixture
+    state.delayResponse = true
+    const pending = yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip, Effect.forkChild)
+    yield* Deferred.await(started)
+    state.now += 3_540_000
+    yield* TestClock.adjust('3540 seconds')
+    expect(Redacted.value(yield* app.token(scope))).toBe('installation-2')
+    state.unauthorized = true
+    yield* Deferred.succeed(release, undefined)
+    expect(yield* Fiber.join(pending)).toMatchObject({ operation: 'authorize', status: 401 })
+    expect(Redacted.value(yield* app.token(scope))).toBe('installation-2')
+    expect(state.exchanges).toBe(2)
+  }),
 )
