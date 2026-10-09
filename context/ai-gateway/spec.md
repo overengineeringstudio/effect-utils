@@ -226,14 +226,45 @@ Retain `gen_ai.request.model`, available `gen_ai.response.model`, `gen_ai.respon
 
 A streaming span lasts until consumption ends and captures final usage before ending; output validation is inside the operation lifetime. HTTP/stream/provider/local validation failures set error status and available `error.type`; cancellation ends the span without reporting successful completed inference. Credentials, raw prompts, response text, tool arguments, and provider cost are excluded from default spans. Applications own exporters and process resource attributes; model identities are trace data, not automatically approved metric labels.
 
-## Conformance fixtures
+## Conformance cases (AIG-R01–AIG-R12)
 
-The shared public conformance fixture set and fake gateway are reserved as one
-future evidence surface for all client and gateway realizations. No repository
-path or published fixture API is assigned here. Required cases cover catalog
-rows without `created`, bearer omission/presence/revocation, exact model IDs,
-JSON and SSE usage (including `choices: []`), in-stream errors, supported and
-refused response formats, original-schema violations after strict relaxation,
-tool-call continuations, native answer integrity, raw error bodies/statuses,
-and client telemetry lifetimes. Existing prototype evidence is not a published
-shared fixture set.
+```text
+@overeng/ai-gateway-conformance: case.schema.json + cases/<id>.json
+    +-> 01-effect: language-local replay
+    +-> 02-rust: language-local replay
+    +-> edge: gateway-local replay
+```
+
+The public package `@overeng/ai-gateway-conformance` owns data-only JSON cases at
+`packages/@overeng/ai-gateway-conformance/cases`.
+Its [`case.schema.json`](https://github.com/overengineeringstudio/effect-utils/blob/main/packages/%40overeng/ai-gateway-conformance/case.schema.json)
+is the machine-readable case contract. [Decision 0003](./.decisions/0003-data-only-conformance-cases.md)
+selects shared data and per-language replay, not a shared fake-gateway binary.
+
+Each case supplies an ID, summary, requirement references, a request expectation,
+a controlled response, and the expected consumer outcome. Request expectations
+identify method, path, bearer presence, operation selectors, and any required
+request-body subset. Responses carry an HTTP status, optional headers, and either
+JSON or ordered SSE `data:` payloads (including `[DONE]`). Outcomes distinguish
+success, HTTP failure, stream failure, and local validation failure, with
+applicable text, object, usage, tool calls, error status/type, or decision answers.
+Structured cases also retain the caller's original JSON Schema for validation.
+
+| Case IDs | Contract exercised |
+| --- | --- |
+| `models.list`, `chat.text` | Model catalog and ordinary generation. |
+| `chat.stream.usage`, `chat.stream.error-after-200` | Usage-only SSE chunks and errors after HTTP success. |
+| `chat.auth.none-401` | Absent bearer and authentication rejection. |
+| `structured.valid`, `structured.invalid`, `structured.rejected-400` | Structured success, original-schema validation, and format refusal. |
+| `tools.call`, `tools.result` | Tool-call preservation and result continuation. |
+| `decision.triage`, `decision.invalid-422` | Native decisions and rejected requests. |
+| `errors.upstream-404`, `errors.rate-limited-429`, `errors.edge-502` | Distinguishable unsuccessful HTTP outcomes. |
+
+The `01-effect`, `02-rust`, and edge realizations must replay every case. Each
+realization owns its replay adapter and local controlled transport or server
+harness; no case embeds executable code or a language-specific client API.
+Client adapters assert outgoing request expectations and decoded outcomes;
+the edge adapter supplies controlled upstream behavior and asserts the public
+wire response and request acceptance. Language-specific tests additionally cover
+telemetry lifetimes, cancellation, and other obligations not represented by
+these data-only exchanges; passing the case set does not waive those requirements.

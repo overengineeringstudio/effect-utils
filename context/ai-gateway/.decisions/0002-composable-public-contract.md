@@ -61,5 +61,6 @@ identifies the prior Effect-client requirements.
 The [public requirements](../requirements.md) are the active ID authority.
 Realizations reference them with `refines:` rather than repeating them.
 Private deployment IDs remain owned by gateway realizations; they are not public
-configuration names. One shared public fixture set is reserved by
-[the specification](../spec.md#conformance-fixtures), with no assigned path.
+configuration names. The shared public case package is owned by
+[the specification](../spec.md#conformance-cases-aig-r01aig-r12) and
+[Decision 0003](./0003-data-only-conformance-cases.md).

@@ -4,7 +4,7 @@ This document specifies the Rust client realization. It builds on [requirements.
 
 ## Status
 
-Draft. Crate name and path are TBD; this node specifies the selected design, not an assertion of released implementation.
+Draft. The crate is `ai-gateway` at `rust/ai-gateway`, with library import name `ai_gateway` (naming decision q7). This node specifies the selected design, not an assertion of released implementation.
 
 ## Scope
 
@@ -25,7 +25,7 @@ The connection builder accepts an origin and an optional secret bearer and has a
 
 The wrapper replaces the foundation's default retrying Tower stack with a plain `ReqwestService` through `with_http_service`, with transport retries disabled. HTTP 429, 5xx, transport failure, and stream errors return to the caller; no wrapper retry loop replays requests. Error-body middleware retains raw unsuccessful response bodies that the SDK otherwise discards. Caller cancellation drops the in-flight operation or stream.
 
-Model discovery and `/v1/systemone` use async-openai's BYOT (Bring Your Own Types) request/response transport on the same configured client. The wrapper defines catalog and decision wire types following the parent spec; it does not build a second reqwest client or introduce a provider SDK. The public Rust method and type names remain unspecified until crate naming is resolved.
+Model discovery and `/v1/systemone` use async-openai's BYOT (Bring Your Own Types) request/response transport on the same configured client. The wrapper defines catalog and decision wire types following the parent spec; it does not build a second reqwest client or introduce a provider SDK.
 
 ## Structured values (AIG.RS-R06, AIG.RS-R08)
 
@@ -76,6 +76,3 @@ The wrapper owns the semantic operation span, not async-openai internals. Follow
 
 Consumers supply OpenTelemetry subscribers/providers and exporters; the wrapper does not install process-global telemetry. No bearer, raw prompt, response text, or tool arguments are captured by default.
 
-## Open design questions
-
-- **AIG.RS-DQ1 Crate identity:** Crate name and repository path are TBD. Resolve with the package-placement decision before publishing a Rust API or adding links to a crate path.

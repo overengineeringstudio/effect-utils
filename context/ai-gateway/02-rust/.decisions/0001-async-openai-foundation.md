@@ -54,6 +54,7 @@ rustls with ring.
 
 The wrapper owns the gateway-specific correctness gaps, not provider routing
 or credential custody. [The specification](../spec.md) defines this boundary.
-Crate name/path remain TBD; publishing an API does not follow from the offline
-bakeoff alone. Prototype size/build timings are not a production performance
-claim or a shared public conformance fixture set.
+The naming decision q7 selects crate `ai-gateway` at `rust/ai-gateway`, with
+library import name `ai_gateway`; publishing an API does not follow from the
+offline bakeoff alone. Prototype size/build timings are not a production
+performance claim or a shared public conformance case set.
