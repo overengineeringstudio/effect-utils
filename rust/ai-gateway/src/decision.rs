@@ -54,7 +54,7 @@ pub struct DecisionResponse {
 }
 
 fn invalid(message: impl Into<String>) -> Error {
-    Error::Validation { errors: vec![message.into()] }
+    Error::Validation { errors: vec![message.into()], usage: None }
 }
 
 impl DecisionSpec {
@@ -101,7 +101,7 @@ impl DecisionSpec {
                 errors.push(format!("Question {name}: instructions must be a string or object"));
             }
         }
-        if errors.is_empty() { Ok(()) } else { Err(Error::Validation { errors }) }
+        if errors.is_empty() { Ok(()) } else { Err(Error::Validation { errors, usage: None }) }
     }
 }
 
@@ -153,6 +153,18 @@ fn distribution(probabilities: &BTreeMap<String, f64>, labels: &BTreeSet<String>
 
 /// Decode native wire answers, never filling absent answers or normalizing probabilities.
 pub(crate) fn decode(spec: &DecisionSpec, wire: Value) -> Result<DecisionResponse> {
+    let usage = wire.get("usage").and_then(|usage| WireUsage::deserialize(usage).ok()).map(|usage| Usage {
+        input: usage.input_tokens,
+        output: usage.output_tokens,
+        total: usage.total_tokens,
+        cached: usage.cached_tokens,
+        reasoning: usage.reasoning_tokens,
+        cost: usage.cost,
+    });
+    decode_response(spec, wire).map_err(|error| error.with_usage(usage))
+}
+
+fn decode_response(spec: &DecisionSpec, wire: Value) -> Result<DecisionResponse> {
     spec.validate()?;
     let mut wire: WireResponse = serde_json::from_value(wire)
         .map_err(|error| invalid(format!("Invalid decision response: {error}")))?;

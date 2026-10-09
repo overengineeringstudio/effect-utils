@@ -2,6 +2,7 @@ use std::fmt;
 
 use async_openai::error::OpenAIError;
 use serde_json::Value;
+use crate::Usage;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -15,7 +16,8 @@ pub enum Error {
         retry_after: Option<String>,
     },
     Stream { message: String, raw_body: Option<String> },
-    Validation { errors: Vec<String> },
+    /// Local rejection; usage is retained when the provider already billed a response.
+    Validation { errors: Vec<String>, usage: Option<Usage> },
     Transport { message: String },
     Config { message: String },
 }
@@ -27,7 +29,14 @@ impl Error {
     }
 
     pub(crate) fn validation(message: impl Into<String>) -> Self {
-        Self::Validation { errors: vec![message.into()] }
+        Self::Validation { errors: vec![message.into()], usage: None }
+    }
+
+    pub(crate) fn with_usage(mut self, usage: Option<Usage>) -> Self {
+        if let Self::Validation { usage: billed, .. } = &mut self {
+            *billed = usage;
+        }
+        self
     }
 
     pub(crate) fn http(status: u16, raw_body: String, retry_after: Option<String>) -> Self {
@@ -68,7 +77,7 @@ impl fmt::Display for Error {
         match self {
             Self::Http { status, message, .. } => write!(formatter, "HTTP {status}: {message}"),
             Self::Stream { message, .. } => write!(formatter, "stream: {message}"),
-            Self::Validation { errors } => write!(formatter, "validation: {}", errors.join("; ")),
+            Self::Validation { errors, .. } => write!(formatter, "validation: {}", errors.join("; ")),
             Self::Transport { message } => write!(formatter, "transport: {message}"),
             Self::Config { message } => write!(formatter, "configuration: {message}"),
         }

@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 use crate::{Error, Result};
 
 fn invalid(message: impl Into<String>) -> Error {
-    Error::Validation { errors: vec![message.into()] }
+    Error::Validation { errors: vec![message.into()], usage: None }
 }
 
 /// Resolve local references and close strict objects without changing `original`.
@@ -123,7 +123,7 @@ pub(crate) fn validate(schema: &Value, value: &Value) -> Result<()> {
     let validator = jsonschema::validator_for(schema)
         .map_err(|error| invalid(format!("Invalid original JSON Schema: {error}")))?;
     let errors: Vec<String> = validator.iter_errors(value).map(|error| error.to_string()).collect();
-    if errors.is_empty() { Ok(()) } else { Err(Error::Validation { errors }) }
+    if errors.is_empty() { Ok(()) } else { Err(Error::Validation { errors, usage: None }) }
 }
 
 #[cfg(test)]

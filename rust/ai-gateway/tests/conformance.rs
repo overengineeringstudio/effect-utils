@@ -350,7 +350,7 @@ fn assert_outcome(case: &Value, result: ai_gateway::Result<Value>) {
     let expected = &case["expect"];
     if expected["outcome"] != "success" {
         for key in expected.as_object().expect("expect object").keys() {
-            assert!(matches!(key.as_str(), "outcome" | "error"), "unsupported failure expectation: {key}");
+            assert!(matches!(key.as_str(), "outcome" | "error" | "usage"), "unsupported failure expectation: {key}");
         }
     }
     match string(&expected["outcome"]) {
@@ -409,12 +409,15 @@ fn assert_outcome(case: &Value, result: ai_gateway::Result<Value>) {
         }
         "validation-error" => {
             let error = result.expect_err("expected local validation failure");
-            let Error::Validation { errors } = error else {
+            let Error::Validation { errors, usage } = error else {
                 panic!("expected validation error, got {error:?}");
             };
             assert!(!errors.is_empty(), "validation errors must explain the rejection");
             assert!(errors.iter().all(|error| !error.is_empty()), "empty validation diagnosis");
-            assert_eq!(expected.as_object().expect("expect object").len(), 1, "unsupported validation expectations");
+            if let Some(expected_usage) = expected.get("usage") {
+                assert_subset(&json!(usage), expected_usage, "expect.usage");
+            }
+            assert!(expected.get("error").is_none(), "unsupported validation error expectation");
         }
         outcome => panic!("unsupported conformance outcome: {outcome}"),
     }
@@ -441,6 +444,35 @@ async fn every_shared_json_case() {
     for case in load_cases() {
         run_case(&case).await;
     }
+}
+
+#[tokio::test]
+async fn structured_invalid_retains_billed_usage() {
+    let case = load_cases().into_iter().find(|case| case["id"] == "structured.invalid").unwrap();
+    let replay = Replay::start(&case).await;
+    let client = Client::builder(&replay.origin).token("fixture-token").build().unwrap();
+    let error = operate(&client, &case).await.unwrap_err();
+    let Error::Validation { usage: Some(usage), .. } = error else { panic!("missing billed usage: {error:?}"); };
+    let wire = &case["response"]["json"]["usage"];
+    assert_eq!(usage.input, wire["prompt_tokens"].as_u64());
+    assert_eq!(usage.output, wire["completion_tokens"].as_u64());
+    assert_eq!(usage.total, wire["total_tokens"].as_u64());
+    assert_eq!(usage.cached, wire["prompt_tokens_details"]["cached_tokens"].as_u64());
+    replay.assert_request(&case);
+}
+
+#[tokio::test]
+async fn decision_invalid_label_retains_billed_usage() {
+    let case = load_cases().into_iter().find(|case| case["id"] == "decision.invalid-label").unwrap();
+    let replay = Replay::start(&case).await;
+    let client = Client::builder(&replay.origin).build().unwrap();
+    let error = operate(&client, &case).await.unwrap_err();
+    let Error::Validation { usage: Some(usage), .. } = error else { panic!("missing billed usage: {error:?}"); };
+    let wire = &case["response"]["json"]["usage"];
+    assert_eq!(usage.input, wire["input_tokens"].as_u64());
+    assert_eq!(usage.output, wire["output_tokens"].as_u64());
+    assert_eq!(usage.total, wire["total_tokens"].as_u64());
+    replay.assert_request(&case);
 }
 
 #[tokio::test]

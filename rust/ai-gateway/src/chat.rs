@@ -71,14 +71,14 @@ impl<'a> ChatBuilder<'a> {
     async fn send_in(&self, format: Option<Value>, operation: &Operation) -> Result<ChatResponse> {
         let response: CreateChatCompletionResponse = self.client.inner.chat().create(self.request(format, false)?).await.map_err(Error::from_sdk)?;
         let usage = response.usage.map(Usage::from_chat);
-        let choice = response.choices.into_iter().next().ok_or_else(|| Error::validation("chat response has no choices"))?;
+        let choice = response.choices.into_iter().next().ok_or_else(|| Error::validation("chat response has no choices").with_usage(usage.clone()))?;
         let finish_reason = choice.finish_reason.map(finish_reason);
         operation.metadata(Some(&response.model), Some(&response.id), finish_reason.as_deref(), usage.as_ref());
-        if choice.message.refusal.is_some() { return Err(Error::validation("provider refused the request")); }
+        if choice.message.refusal.is_some() { return Err(Error::validation("provider refused the request").with_usage(usage)); }
         let tool_calls = choice.message.tool_calls.unwrap_or_default().into_iter().map(|call| match call {
             ChatCompletionMessageToolCalls::Function(call) => Ok(ToolCall { id: call.id, name: call.function.name, arguments: call.function.arguments }),
             ChatCompletionMessageToolCalls::Custom(_) => Err(Error::validation("custom tools are outside the function-tool contract")),
-        }).collect::<Result<Vec<_>>>()?;
+        }).collect::<Result<Vec<_>>>().map_err(|error| error.with_usage(usage.clone()))?;
         Ok(ChatResponse { text: choice.message.content.unwrap_or_default(), tool_calls, usage, finish_reason })
     }
 
@@ -94,9 +94,9 @@ impl<'a> ChatBuilder<'a> {
         let validator = jsonschema::validator_for(original).map_err(|error| Error::validation(error.to_string()))?;
         let projected = schema::project(original)?;
         let response = self.send_in(Some(json!({"type":"json_schema","json_schema":{"name":"response","strict":true,"schema":projected}})), operation).await?;
-        let value: Value = serde_json::from_str(&response.text).map_err(|error| Error::validation(error.to_string()))?;
+        let value: Value = serde_json::from_str(&response.text).map_err(|error| Error::validation(error.to_string()).with_usage(response.usage.clone()))?;
         let errors: Vec<String> = validator.iter_errors(&value).map(|error| error.to_string()).collect();
-        if !errors.is_empty() { return Err(Error::Validation { errors }); }
+        if !errors.is_empty() { return Err(Error::Validation { errors, usage: response.usage }); }
         Ok(StructuredResponse { value, usage: response.usage, finish_reason: response.finish_reason })
     }
 
@@ -113,7 +113,7 @@ impl<'a> ChatBuilder<'a> {
         let result = async {
             let original = serde_json::to_value(schemars::schema_for!(T)).map_err(|error| Error::validation(error.to_string()))?;
             let response = self.structured_in(&original, &operation).await?;
-            let value = serde_json::from_value(response.value).map_err(|error| Error::validation(error.to_string()))?;
+            let value = serde_json::from_value(response.value).map_err(|error| Error::validation(error.to_string()).with_usage(response.usage.clone()))?;
             Ok(StructuredResponse { value, usage: response.usage, finish_reason: response.finish_reason })
         }.instrument(operation.span.clone()).await;
         operation.finish(&result);

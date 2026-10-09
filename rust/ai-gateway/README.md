@@ -199,12 +199,12 @@ async fn tools_chat(client: &Client) -> Result<()> {
         }])
         .run_tools(4, |call: ToolCall| async move {
             if call.name != "add" {
-                return Err(Error::Validation { errors: vec!["Tool is not allowed".into()] });
+                return Err(Error::Validation { errors: vec!["Tool is not allowed".into()], usage: None });
             }
             let args: AddArguments = serde_json::from_str(&call.arguments)
-                .map_err(|error| Error::Validation { errors: vec![error.to_string()] })?;
+                .map_err(|error| Error::Validation { errors: vec![error.to_string()], usage: None })?;
             let sum = args.left.checked_add(args.right)
-                .ok_or_else(|| Error::Validation { errors: vec!["Integer overflow".into()] })?;
+                .ok_or_else(|| Error::Validation { errors: vec!["Integer overflow".into()], usage: None })?;
             Ok(json!({ "sum": sum }).to_string())
         })
         .await?;
@@ -248,7 +248,9 @@ original-schema validation, decision integrity checks, or operation telemetry.
 - `Error::Http` preserves status, optional wire error type, message, exact raw
   response body, and optional `Retry-After` header.
 - `Error::Stream` preserves a diagnosis and the raw error payload when available.
-- `Error::Validation` reports local schema or decision integrity failures.
+- `Error::Validation { errors, usage }` reports local schema or decision integrity
+  failures. If a successful provider response was rejected locally, its billed
+  usage is retained in the error; pre-request validation has `usage: None`.
 - `Error::Transport` and `Error::Config` distinguish transport/configuration failures.
 
 The client never automatically retries HTTP refusals, transport failures, or
