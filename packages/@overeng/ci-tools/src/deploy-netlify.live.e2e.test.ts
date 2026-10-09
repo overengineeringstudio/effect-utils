@@ -129,7 +129,7 @@ describe('ci-tools deploy netlify live E2E', () => {
         })
         const token = process.env.NETLIFY_AUTH_TOKEN
         const redactionOptions = { secretValues: token === undefined ? [] : [token] }
-        if (existsSync(reportFile)) {
+        if (existsSync(reportFile) === true) {
           writeFileSync(
             reportFile,
             redactDeployDiagnosticText(readFileSync(reportFile, 'utf8'), redactionOptions),
@@ -164,7 +164,7 @@ describe('ci-tools deploy netlify live E2E', () => {
         console.error(`Live Netlify E2E failed; retained sanitized report at ${reportFile}`)
         throw cause
       } finally {
-        if (succeeded) rmSync(workspace, { recursive: true, force: true })
+        if (succeeded === true) rmSync(workspace, { recursive: true, force: true })
       }
     },
     180_000,
