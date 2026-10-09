@@ -340,6 +340,42 @@ describe('Buck watch reconciliation', () => {
         ]),
       )
 
+      const batchInvocations: {
+        command: string
+        args: readonly string[]
+        input: string | undefined
+      }[] = []
+      await reconcileBuckViews({
+        request: {
+          packagePaths: ['packages/app'],
+          changedPaths: [],
+          buildTargets: ['//packages/app:editor_view_inputs'],
+        },
+        options: {
+          plan,
+          mode: 'publish',
+          batchPublication: true,
+          repoRoot: root,
+          workspaceRoot: root,
+          buck2: '/tools/buck2',
+          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
+          workspaceAuthority: '/repo/authority.json',
+          cp: '/tools/cp',
+          mv: '/tools/mv',
+          fingerprintTool: '/tools/buck2-fingerprint',
+          snapshotRetention: 3,
+          run: async ({ command, args, input }) => {
+            batchInvocations.push({ command, args, input })
+            return command === '/tools/buck2'
+              ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+              : { stdout: '', stderr: '' }
+          },
+        },
+      })
+      expect(batchInvocations).toHaveLength(2)
+      expect(batchInvocations[1]?.args).toEqual(['/tools/editor-view', 'publish-batch'])
+      expect(JSON.parse(batchInvocations[1]?.input ?? '')).toEqual([invocations[1]?.args.slice(1)])
+
       const failedInvocations: string[] = []
       await expect(
         reconcileBuckViews({
@@ -507,6 +543,17 @@ describe('Buck watch reconciliation', () => {
       rmSync(otelDirectory, { recursive: true, force: true })
       await rm(root, { recursive: true })
     }
+  })
+
+  it('streams request bodies larger than the single-argument limit without argv payloads', async () => {
+    const input = 'x'.repeat(256 * 1024)
+    const result = await runCommand({
+      command: process.execPath,
+      args: ['-e', 'console.log((await Bun.stdin.text()).length)'],
+      cwd: tmpdir(),
+      input,
+    })
+    expect(result.stdout.trim()).toBe(String(input.length))
   })
 
   it('records signaled command termination as a failed nonzero exit', async () => {

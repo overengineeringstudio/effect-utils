@@ -78,6 +78,19 @@ The main-only exclusion is deliberate and fixes the absent-check failure mode: r
 
 Linux `test` and Darwin `test-macos` are physical workflow jobs with static check names `test (namespace-profile-linux-x86-64)` and `test (namespace-profile-macos-arm64)`. Both retain canonical pipeline job `test` with their respective runner dimension, so queue validation and historical trace identities agree. Darwin retains its native/compiled product smoke after unit tests.
 
+The unit-test step retains non-gating host resource evidence sampled every five
+seconds in `test-resources-*` JSON artifacts. Linux reads `/proc`; Darwin uses
+native `vm_stat`, `sysctl`, and `ps`. Peaks are sampled, not an exhaustive
+high-water mark: summed process RSS may double-count shared pages, and summed
+`ps` CPU percentages are process lifetime averages (100% means one CPU), not
+interval host utilization. Total physical memory, compressor peak on Darwin,
+and native pageout-counter deltas contextualize these peaks; none alone proves
+memory pressure. Each completed sampling attempt atomically replaces the JSON
+snapshot before another native command starts. Test completion sends TERM then
+KILL to the sampler's private process group without waiting, so a stalled
+diagnostic cannot delay the job. Sampling failures never replace the test
+verdict and missing samples remain missing evidence.
+
 ## Storybook previews
 
 Storybook deploys split by trust. `deploy-storybooks` in the CI workflow is main-only and deploys production with `NETLIFY_AUTH_TOKEN`. PR previews use two workflows outside CI, so preview latency and CI conclusions stay independent:

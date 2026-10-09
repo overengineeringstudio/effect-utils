@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { spawnSync } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
@@ -949,6 +949,32 @@ const runTool = ({
     )
 }
 
+/** Keep private payload copies off the event loop so bounded views can overlap. */
+const copyWithTool = ({
+  tool,
+  args,
+  label,
+}: {
+  tool: string
+  args: readonly string[]
+  label: string
+}): Promise<void> => {
+  requireImmutableTool({ tool, label })
+  const { promise, resolve: resolveCopy, reject: rejectCopy } = Promise.withResolvers<void>()
+  execFile(tool, args, { cwd: '/', env: { PATH: '' } }, (error, stdout, stderr) => {
+    if (error !== null) {
+      rejectCopy(
+        new Error(
+          `editor view: ${label} failed with exit ${error.code ?? 'unknown'}: ${stderr.trim() || stdout.trim() || error.message}`,
+        ),
+      )
+      return
+    }
+    resolveCopy()
+  })
+  return promise
+}
+
 const collectFileIdentities = (tree: string): ReadonlySet<string> => {
   const identities = new Set<string>()
   const visit = (directory: string): void => {
@@ -1315,7 +1341,7 @@ const rewriteSnapshotLinks = ({
   return inventories
 }
 
-const materializeDeclaredRoots = ({
+const materializeDeclaredRoots = async ({
   candidate,
   roots,
   cp,
@@ -1323,12 +1349,13 @@ const materializeDeclaredRoots = ({
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
   cp: string
-}): Map<string, (readonly [path: string, target: string])[]> => {
+}): Promise<Map<string, (readonly [path: string, target: string])[]>> => {
   mkdirSync(join(candidate, '.backing'))
   for (const root of roots) {
     const destination = join(candidate, root.destination)
     mkdirSync(destination, { recursive: true })
-    runTool({
+    // eslint-disable-next-line no-await-in-loop -- One copy child per active view preserves the shared resource bound.
+    await copyWithTool({
       tool: cp,
       args: [
         '--recursive',
@@ -1904,8 +1931,19 @@ const signalEditorResolution = ({ paths, token }: { paths: ViewPaths; token: str
   }
 }
 
+type PublicationCoordinator = {
+  readonly lock: { readonly path: string; readonly token: string }
+  readonly commit: <T>(operation: () => T) => Promise<T>
+}
+
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
-export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
+const publishEditorViewCoordinated = async ({
+  options,
+  coordinator,
+}: {
+  options: EditorViewOptions
+  coordinator?: PublicationCoordinator
+}): Promise<EditorViewRecord> => {
   const startedAtMs = performance.timeOrigin + performance.now()
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
@@ -1945,11 +1983,14 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
   ensureConsumerCache(paths)
   ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
   ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
-  const lock = acquireLock({
-    editorRoot: paths.editorRoot,
-    recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
-  })
-  const token = tokenSafe(lock.token)
+  const lock =
+    coordinator?.lock ??
+    acquireLock({
+      editorRoot: paths.editorRoot,
+      recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
+    })
+  // A batch shares its exclusive state-root lock, not its private candidate/pointer names.
+  const token = tokenSafe(coordinator === undefined ? lock.token : randomUUID())
   let candidate: string | undefined
   try {
     enterPhase('fingerprint')
@@ -2092,7 +2133,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       let materializedLinks: Map<string, (readonly [path: string, target: string])[]> | undefined
       if (finite === true) {
         await options.beforeMaterialize?.()
-        materializedLinks = materializeDeclaredRoots({ candidate, roots, cp: options.cp })
+        materializedLinks = await materializeDeclaredRoots({ candidate, roots, cp: options.cp })
         assertByteOwnedFiniteSnapshot({
           sources: roots.map((root) => root.source),
           snapshot: candidate,
@@ -2101,7 +2142,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       } else {
         const candidateNodeModules = join(candidate, 'node_modules')
         mkdirSync(candidateNodeModules)
-        runTool({
+        await copyWithTool({
           tool: options.cp,
           args: [
             '--recursive',
@@ -2158,40 +2199,52 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         byteSnapshotDigest: candidateDigest,
       })
       writeRecord({ path: join(candidate, 'editor-view.json'), record })
-      renameSync(candidate, snapshotDir)
-      candidate = undefined
       created = true
     }
     if (created === true) {
       enterPhase('harden')
-      hardenSnapshot(snapshotDir)
-      requireReadOnlySnapshot(snapshotDir)
+      const prepared = candidate ?? fail('prepared snapshot candidate is absent')
+      hardenSnapshot(prepared)
+      requireReadOnlySnapshot(prepared)
     }
-    enterPhase('retention')
-    // `snapshotName` is derived above from the same identity the record carries.
-    const retention = prepareSnapshotRetention({
-      paths,
-      options,
-      current: snapshotName,
-      token,
-    })
-    enterPhase('pointers')
-    publishCurrentPointer({ paths, identity, token })
-    adoptFirstHop({ paths, mv: options.mv, token })
-    signalEditorResolution({ paths, token })
-    // Publication computed every admitted digest and validated (or created) the snapshot while
-    // holding the view lock. The pointer helpers verify their own exact writes, so rerunning the
-    // full external-input and snapshot traversal here would add no freshness evidence.
-    enterPhase('gc')
-    garbageCollectSnapshots({
-      paths,
-      options,
-      ordered: retention,
-      current: snapshotName,
-      token,
-    })
-    emitPhaseSpan({ created })
-    return record
+    const commit = (): EditorViewRecord => {
+      if (created === true) {
+        // Darwin directory rename updates the source's `..` entry and therefore
+        // needs owner-write on the directory itself. Keep its payload hardened,
+        // then restore the root's immutability before publishing any pointer.
+        renameReadOnlySnapshot({
+          source: candidate ?? fail('prepared snapshot candidate is absent'),
+          destination: snapshotDir,
+        })
+        candidate = undefined
+        chmodSync(snapshotDir, statSync(snapshotDir).mode & ~0o222)
+        requireReadOnlySnapshotRoot(snapshotDir)
+      }
+      enterPhase('retention')
+      // Sibling views share the store inventory. Promotion, retention, pointers and GC
+      // stay ordered under the exclusive root lock while private preparation overlaps.
+      const retention = prepareSnapshotRetention({
+        paths,
+        options,
+        current: snapshotName,
+        token,
+      })
+      enterPhase('pointers')
+      publishCurrentPointer({ paths, identity, token })
+      adoptFirstHop({ paths, mv: options.mv, token })
+      signalEditorResolution({ paths, token })
+      enterPhase('gc')
+      garbageCollectSnapshots({
+        paths,
+        options,
+        ordered: retention,
+        current: snapshotName,
+        token,
+      })
+      emitPhaseSpan({ created })
+      return record
+    }
+    return coordinator === undefined ? commit() : await coordinator.commit(commit)
   } finally {
     if (candidate !== undefined && pathExists(candidate) === true) {
       // A dereferencing copy reproduces read-only source directories, so the
@@ -2199,7 +2252,104 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       makeDirectoriesWritable(candidate)
       rmSync(candidate, { recursive: true, force: true })
     }
-    releaseLock(lock)
+    if (coordinator === undefined) releaseLock(lock)
+  }
+}
+
+/** Publish one view while holding the exclusive state-root lock through every proof and write. */
+export const publishEditorView = (options: EditorViewOptions): Promise<EditorViewRecord> =>
+  publishEditorViewCoordinated({ options })
+
+/** One resource bound shared by bootstrap and source-test dependency publication. */
+export const editorViewPublicationWorkers = 4
+
+/**
+ * Prepare a bounded set of independent views concurrently under exclusive state-root locks.
+ * Every byte/link/ownership proof remains intact; shared inventory and pointer commits are ordered.
+ */
+export const publishEditorViews = async ({
+  options,
+  onPublished,
+}: {
+  options: readonly EditorViewOptions[]
+  onPublished?: (record: EditorViewRecord, durationMs: number) => void
+}): Promise<readonly EditorViewRecord[]> => {
+  const coordinators = new Map<string, PublicationCoordinator>()
+  const identities = new Set<string>()
+  const results: PromiseSettledResult<EditorViewRecord>[] = []
+  let next = 0
+  try {
+    for (const option of options) {
+      const paths = makePaths(option)
+      const identity = join(paths.editorRoot, paths.viewName)
+      if (identities.has(identity) === true)
+        fail(`duplicate batch publication identity: ${identity}`)
+      identities.add(identity)
+      if (coordinators.has(paths.editorRoot) === true) continue
+      ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
+      ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
+      const lock = acquireLock({
+        editorRoot: paths.editorRoot,
+        recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${option.package}`,
+      })
+      let committed = Promise.resolve()
+      coordinators.set(paths.editorRoot, {
+        lock,
+        commit: (operation) => {
+          const result = committed.then(operation)
+          committed = result.then(
+            () => undefined,
+            () => undefined,
+          )
+          return result
+        },
+      })
+    }
+    const worker = async (): Promise<void> => {
+      while (next < options.length) {
+        const index = next++
+        const option = options[index] ?? fail('batch publication option is absent')
+        const startedAt = performance.now()
+        const emitPublicationSpan = (exitCode: number): void =>
+          emitCompletedSpan({
+            name: 'editor-view.publish',
+            label: `publish ${option.viewName}`,
+            attributes: [['package.path', option.package]],
+            startedAtMs: performance.timeOrigin + startedAt,
+            endedAtMs: performance.timeOrigin + performance.now(),
+            exitCode,
+          })
+        try {
+          const coordinator =
+            coordinators.get(makePaths(option).editorRoot) ?? fail('batch root lock is absent')
+          // eslint-disable-next-line no-await-in-loop -- Each worker must finish before claiming its next view.
+          const record = await publishEditorViewCoordinated({ options: option, coordinator })
+          results[index] = { status: 'fulfilled', value: record }
+          onPublished?.(record, performance.now() - startedAt)
+          emitPublicationSpan(0)
+        } catch (reason) {
+          results[index] = { status: 'rejected', reason }
+          emitPublicationSpan(
+            reason !== null &&
+              typeof reason === 'object' &&
+              'exitCode' in reason &&
+              typeof reason.exitCode === 'number'
+              ? reason.exitCode
+              : 1,
+          )
+        }
+      }
+    }
+    // Settle every view before releasing any lock, including when an earlier view fails.
+    await Promise.all(
+      Array.from({ length: Math.min(editorViewPublicationWorkers, options.length) }, worker),
+    )
+    return results.map((result) => {
+      if (result.status === 'rejected') throw result.reason
+      return result.value
+    })
+  } finally {
+    for (const { lock } of coordinators.values()) releaseLock(lock)
   }
 }
 
@@ -2520,6 +2670,38 @@ const parseCli = (args: readonly string[]): ParsedCli => {
 }
 
 const main = async (): Promise<void> => {
+  const args = process.argv.slice(2)
+  if (args[0] === 'publish-batch') {
+    if (args.length !== 1) fail('expected publish-batch with a JSON request array on stdin')
+    const raw: unknown = JSON.parse(readFileSync(0, 'utf8'))
+    if (isUnknownArray(raw) === false) fail('batch requests must be an array')
+    const requests = raw.map((request) => {
+      if (
+        isUnknownArray(request) === false ||
+        request.every((value): value is string => typeof value === 'string') === false
+      )
+        return fail('each batch request must be an array of publish arguments')
+      const parsed = parseCli(request)
+      if (parsed.command !== 'publish') fail('batch requests may only publish views')
+      return parsed.options
+    })
+    await publishEditorViews({
+      options: requests,
+      onPublished: (record, durationMs) => {
+        process.stderr.write(
+          `[editor-view-timing] ${JSON.stringify({
+            phase: 'editor-view',
+            packagePath: record.package,
+            durationMs,
+          })}\n`,
+        )
+        process.stdout.write(
+          `published ${record.package} editor view ${record.editorInputsFingerprint}\n`,
+        )
+      },
+    })
+    return
+  }
   const parsed = parseCli(process.argv.slice(2))
   if (parsed.command === 'publish') {
     const record = await publishEditorView(parsed.options)

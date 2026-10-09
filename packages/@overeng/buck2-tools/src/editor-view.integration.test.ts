@@ -23,7 +23,9 @@ import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
+  editorViewPublicationWorkers,
   publishEditorView,
+  publishEditorViews,
   recoverEditorViewLock,
   releaseEditorViewRoot,
   verifyEditorViewSnapshot,
@@ -606,6 +608,136 @@ describe('editor view publisher', () => {
         }
         expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(revision === 1 ? 2 : 4)
       }
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('bounds shared-root preparation and retains exclusive teardown fencing', async () => {
+    const fixture = makeFixture()
+    const entered = Promise.withResolvers<void>()
+    const proceed = Promise.withResolvers<void>()
+    const started: string[] = []
+    let active = 0
+    let peak = 0
+    let batch: Promise<readonly unknown[]> | undefined
+    try {
+      const options = [
+        fixture.options,
+        ...['genie', 'utils', 'restate-effect', 'ci-tools', 'buck2-tools'].map(
+          (packageName) => makeSiblingView({ fixture, packageName }).options,
+        ),
+      ].map((option) =>
+        Object.assign(option, {
+          backingRoots: [option.nodeModules],
+          beforeMaterialize: async () => {
+            active += 1
+            peak = Math.max(peak, active)
+            started.push(option.viewName)
+            if (started.length === editorViewPublicationWorkers) entered.resolve()
+            await proceed.promise
+            active -= 1
+          },
+        }),
+      )
+      batch = publishEditorViews({ options })
+      await entered.promise
+      expect(started.toSorted()).toEqual(
+        options
+          .slice(0, editorViewPublicationWorkers)
+          .map((option) => option.viewName)
+          .toSorted(),
+      )
+      expect(() => releaseEditorViewRoot(fixture.options)).toThrow('publication lock exists')
+      await expect(publishEditorView(fixture.options)).rejects.toThrow('publication lock exists')
+      proceed.resolve()
+      const records = await batch
+      expect(records).toHaveLength(options.length)
+      expect(peak).toBe(editorViewPublicationWorkers)
+      expect(started.toSorted()).toEqual(options.map((option) => option.viewName).toSorted())
+      for (const option of options)
+        await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
+      expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(options.length)
+    } finally {
+      proceed.resolve()
+      await batch?.catch(() => undefined)
+      cleanup(fixture)
+    }
+  })
+
+  it('settles every batch view after failure and releases locks and private candidates', async () => {
+    const fixture = makeFixture()
+    const visited: string[] = []
+    try {
+      const options = [
+        fixture.options,
+        ...['genie', 'utils'].map(
+          (packageName) => makeSiblingView({ fixture, packageName }).options,
+        ),
+      ].map((option) =>
+        Object.assign(option, {
+          backingRoots: [option.nodeModules],
+          beforeMaterialize: () => {
+            visited.push(option.viewName)
+            if (option.viewName === 'tui-core') throw new Error('first view preparation failed')
+          },
+        }),
+      )
+      await expect(publishEditorViews({ options })).rejects.toThrow('first view preparation failed')
+      expect(visited.toSorted()).toEqual(['genie', 'tui-core', 'utils'])
+      for (const option of options.slice(1))
+        await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
+      expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(2)
+      await expect(
+        publishEditorViews({ options: [fixture.options, fixture.options] }),
+      ).rejects.toThrow('duplicate batch publication identity')
+      expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('promotes hardened payloads with a writable rename root before publishing immutable views', async () => {
+    const fixture = makeFixture()
+    try {
+      // Linux permits renaming a read-only source directory, so runtime success
+      // alone cannot catch the Darwin regression. Pin the permission bridge and
+      // commit ordering, then exercise both real snapshot materialization modes.
+      const source = readFileSync(new URL('./editor-view.ts', import.meta.url), 'utf8')
+      const portableRename = source.slice(
+        source.indexOf('const renameReadOnlySnapshot ='),
+        source.indexOf('const garbageCollectSnapshots ='),
+      )
+      const writableRoot = portableRename.indexOf('chmodSync(source, sourceMode | 0o200)')
+      expect(writableRoot).toBeGreaterThanOrEqual(0)
+      expect(portableRename.indexOf('renameSync(source, destination)')).toBeGreaterThan(
+        writableRoot,
+      )
+      const commit = source.slice(
+        source.indexOf('const commit = (): EditorViewRecord =>'),
+        source.indexOf('return coordinator === undefined ? commit()'),
+      )
+      const promotion = commit.indexOf('renameReadOnlySnapshot({')
+      const hardening = commit.indexOf(
+        'chmodSync(snapshotDir, statSync(snapshotDir).mode & ~0o222)',
+      )
+      const proof = commit.indexOf('requireReadOnlySnapshotRoot(snapshotDir)')
+      expect(promotion).toBeGreaterThanOrEqual(0)
+      expect(hardening).toBeGreaterThan(promotion)
+      expect(proof).toBeGreaterThan(hardening)
+      expect(commit.indexOf('publishCurrentPointer(')).toBeGreaterThan(proof)
+      const sibling = makeSiblingView({ fixture, packageName: 'genie' })
+      const options = [
+        fixture.options,
+        Object.assign(sibling.options, { backingRoots: [sibling.options.nodeModules] }),
+      ]
+      const records = await publishEditorViews({ options })
+      for (const record of records)
+        expect(lstatSync(join(fixture.editorRoot, record.snapshot)).mode & 0o222).toBe(0)
+      for (const option of options)
+        await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
     } finally {
       cleanup(fixture)
     }

@@ -482,7 +482,18 @@ const unitTestJob = (runner: RunnerProfile) => ({
     buck2TrustedCacheWriterStep({
       name: 'Unit tests',
       env: githubTokenEnv(),
-      run: runDevenvTasksBefore('test:run'),
+      run: [
+        // Bash job control gives the sampler and its native children a private
+        // process group on both runner platforms, without a setsid dependency.
+        'set -m',
+        'bash genie/ci-scripts/test-resource-sampler.sh tmp/ci-resources/test-resources.json &',
+        'resource_sampler=$!',
+        'set +m',
+        // Diagnostics cannot gate completion, even if a native sampler command
+        // stalls. Completed samples are persisted before the next command.
+        'trap \'status=$?; trap - EXIT; kill -TERM -- "-$resource_sampler" 2>/dev/null || :; kill -KILL -- "-$resource_sampler" 2>/dev/null || :; exit "$status"\' EXIT',
+        runDevenvTasksBefore('test:run'),
+      ].join('\n'),
     }),
     ...(runner === 'namespace-profile-macos-arm64'
       ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep), macosNixSubstituterSaveStep]
@@ -498,6 +509,18 @@ const unitTestJob = (runner: RunnerProfile) => ({
       with: {
         name: 'vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}',
         path: 'tmp/otel-scrape/summaries/*.vitest.json',
+        'if-no-files-found': 'ignore',
+        'retention-days': 14,
+      },
+    },
+    {
+      name: 'Upload test resource samples',
+      if: '${{ always() }}',
+      'continue-on-error': true,
+      uses: 'actions/upload-artifact@v4',
+      with: {
+        name: 'test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}',
+        path: 'tmp/ci-resources/test-resources.json',
         'if-no-files-found': 'ignore',
         'retention-days': 14,
       },

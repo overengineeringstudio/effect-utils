@@ -131,8 +131,10 @@ the lock, the publisher:
    rejects links outside declared roots, and proves no snapshot file shares an
    inode with a disposable source;
 4. verifies the complete payload digest and writes `editor-view.json`;
-5. hardens the new candidate read-only and renames it to the deterministic
-   snapshot;
+5. hardens the private candidate read-only, then promotes it with owner-write
+   temporarily enabled only on the top directory for Darwin's rename semantics;
+   the payload stays read-only, and the final root is hardened and checked
+   before any current pointer is published;
 6. atomically renames the current pointer, installs or validates the package
    first hop, and emits the package-manifest settle signal required by live
    language servers;
@@ -144,6 +146,24 @@ the lock, the publisher:
    whole-workspace publication therefore stays linear in total snapshot size.
    Pointer helpers validate their exact writes; a separate
    `buck2:editor:check` performs the full admitted-state traversal.
+
+Bootstrap and publication commands submit all selected views in one
+`publish-batch` operation, with the JSON array of publish argument lists on
+stdin. Request size is not limited by the operating system's per-argument cap.
+The batch acquires each distinct state-root lock before preparing any view and
+holds every lock until all workers have settled. `editorViewPublicationWorkers`
+in the publisher is the single declared resource bound (four); bootstrap and
+source-test publication both use it. Workers overlap independent fingerprint,
+materialization, and private-candidate validation work. Native copy children are
+awaited asynchronously, with at most one per active view, rather than blocking
+other workers on the event loop. Candidate names are unique per view operation;
+promotion, retention, pointer writes, and GC
+are serialized per state root, so sibling inventory validation cannot race
+promotion or deletion. Duplicate root/view identities are rejected. Every view
+is attempted after a preparation failure, and the first failure in request order
+is reported only after workers settle and locks are released. Each successful
+view retains its stderr timing record. Snapshot/retention formats, lock ownership,
+explicit recovery, and whole-workspace authority checks are unchanged.
 
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and
