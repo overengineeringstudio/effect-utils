@@ -83,6 +83,7 @@ let
     "buck2" "buck2-capabilities" "buck2-archive-tool" "buck2-events"
     "buck2-fingerprint" "buck2-product" "otelite" "otel-scrape"
     "typescript-api-server"
+    "netlify-cli" "vercel-cli" "pnpm" "oxlint-with-plugins"
   ];
 in builtins.listToAttrs (map (name: {
   inherit name;

@@ -169,9 +169,14 @@ root context and defeat substitution across unrelated commits.
 Protected main publishes `ci-test-shell-products` alongside the compiled
 imports from native Linux x86_64 and Darwin arm64 runners to the public
 `overeng-effect-utils` Cachix cache. This aggregate references the exact retained
-shell products, capabilities, Rust support tools, native imports, and CLI
-wrappers consumed by `devenv.nix`; Cachix publishes their transitive store
-closures, including source bridge and validator outputs. The publisher and PR
+shell products, capabilities, Rust support tools, native imports, provider CLIs
+(`netlify-cli` and `vercel-cli`), pinned pnpm, and the oxlint plugin wrapper.
+The repository shell selects Netlify, pnpm and oxlint from these same flake
+packages rather than rebuilding them against devenv's independently locked
+nixpkgs. Cachix publishes their transitive store closures, including source
+bridge and validator outputs. Source recipes and license policy remain
+unchanged; a missing substitute builds the same derivation from source.
+The publisher and PR
 smoke lanes share `genie/ci-scripts/compiled-products.sh`; only the protected
 publisher invokes `--push` with a cache write credential. Linux arm64 is
 admitted but has no publisher: consumers build its import from source on a

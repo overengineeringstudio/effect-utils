@@ -243,12 +243,15 @@ rec {
         # publishes the source bridge and validator outputs behind each import.
         ciTestShellProducts = {
           buck2-capabilities = buck2Capabilities;
+          inherit (providerCliPackages) netlify-cli vercel-cli;
           inherit (capabilityPackages)
             buck2
             buck2-archive-tool
             buck2-events
             buck2-fingerprint
             buck2-product
+            pnpm
+            oxlint-with-plugins
             ;
           inherit (nativeProductPackages) otelite otel-scrape typescript-api-server;
           inherit (cliPackages)
