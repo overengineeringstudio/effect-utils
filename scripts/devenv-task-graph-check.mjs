@@ -298,11 +298,13 @@ if (typeof boundedTestCommand === 'string') {
     condition:
       verdictBranches.length > 1 &&
       verdictBranches.at(-1).includes('--prebuild-only') === false &&
-      verdictBranches.slice(0, -1).every(
-        (branch) =>
-          branch.includes('packages/@overeng/utils-dev/src/check-baseline-test-collection.ts') &&
-          branch.split('--prebuild-only').length === 2,
-      ),
+      verdictBranches
+        .slice(0, -1)
+        .every(
+          (branch) =>
+            branch.includes('packages/@overeng/utils-dev/src/check-baseline-test-collection.ts') &&
+            branch.split('--prebuild-only').length === 2,
+        ),
     name: 'the bounded aggregate prebuilds collection once before its single test invocation',
     detail: boundedTestCommand,
   })
