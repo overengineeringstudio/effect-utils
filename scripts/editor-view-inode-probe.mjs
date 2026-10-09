@@ -20,6 +20,18 @@ const command = (binary, args, options = {}) => {
   }
 }
 const mounts = [command('findmnt', ['-T', workspace, '-J']), command('stat', ['-f', workspace]), command('findmnt', ['-t', 'overlay', '-o', 'TARGET,SOURCE,FSTYPE,OPTIONS'])]
+const parameters = Object.fromEntries(['xino_auto', 'index', 'redirect_dir'].map(name => {
+  const path = `/sys/module/overlay/parameters/${name}`
+  try { return [name, readFileSync(path, 'utf8').trim()] }
+  catch (error) { return [name, String(error)] }
+}))
+const mountOptions = JSON.parse(mounts[0].stdout).filesystems[0].options
+const layers = mountOptions.split(',').filter(option => option.startsWith('lowerdir=') || option.startsWith('upperdir=')).flatMap(option => option.slice(option.indexOf('=') + 1).split(':'))
+const layerDevices = command('stat', ['-c', '%d %i %n', ...layers])
+const reclaimPath = '/sys/fs/cgroup/memory.reclaim'
+const environment = { kernel: command('uname', ['-a']), parameters, layerDevices, cgroup: readFileSync('/proc/self/cgroup', 'utf8'), reclaimExists: existsSync(reclaimPath), reclaimMount: command('findmnt', ['-T', '/sys/fs/cgroup', '-J']) }
+console.log(JSON.stringify(environment))
+writeFileSync(join(output, 'overlay-environment.json'), JSON.stringify(environment, null, 2))
 writeFileSync(join(output, 'mountinfo.txt'), readFileSync('/proc/self/mountinfo'))
 writeFileSync(join(output, 'mounts.json'), JSON.stringify(mounts, null, 2))
 mkdirSync(join(workspace, 'tmp'), { recursive: true })
@@ -47,10 +59,12 @@ const digest = ({ root }) => {
 }
 const rounds = []
 try {
-  for (let round = 1; round <= 3; round++) {
+  for (let round = 1; round <= 1; round++) {
     const before = probes.map(probe => ({ label: probe.label, inventory: inventory(probe), digest: digest(probe) }))
     command('sync', [])
-    const eviction = command('sudo', ['tee', '/proc/sys/vm/drop_caches'], { input: '2\n' })
+    const eviction = existsSync(reclaimPath)
+      ? command('sudo', ['tee', reclaimPath], { input: '64M\n' })
+      : { code: null, stderr: 'memory.reclaim is unavailable; no workaround attempted' }
     const after = probes.map(probe => ({ label: probe.label, inventory: inventory(probe), digest: digest(probe) }))
     const changes = before.map((probe, index) => ({
       label: probe.label,
