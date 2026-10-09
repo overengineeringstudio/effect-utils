@@ -2037,8 +2037,11 @@ const publishEditorViewCoordinated = async ({
   })
   let failureStates: readonly PublicationWorkerState[] | undefined
   const captureFailure = (): void => {
-    failureStates ??= [...workers.values()].map((state) => ({
-      ...state,
+    failureStates ??= Array.from(workers.values(), (state) => ({
+      package: state.package,
+      viewName: state.viewName,
+      editorRoot: state.editorRoot,
+      phase: state.phase,
       candidate: state.candidate ?? '<none>',
     }))
   }

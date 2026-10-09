@@ -797,17 +797,13 @@ describe('editor view publisher', () => {
       writeFileSync(join(backing, 'node_modules', 'dep', 'index.js'), 'export default 1\n')
       const options = [fixture.options, sibling.options].map((option, index) => {
         symlinkSync(join(backing, 'node_modules', 'dep'), join(option.nodeModules, 'shared'))
-        return {
-          ...option,
-          backingRoots: [backing],
-          ...(index === 1
-            ? {
-                beforeMaterialize: async () => {
-                  await entered.promise
-                },
-              }
-            : {}),
-        }
+        if (index === 1)
+          Object.assign(option, {
+            beforeMaterialize: async () => {
+              await entered.promise
+            },
+          })
+        return Object.assign(option, { backingRoots: [backing] })
       })
       const source = lstatSync(join(backing, 'node_modules'), { bigint: true })
       publication = publishEditorViews({
