@@ -327,6 +327,7 @@ const budgetFixture = (
         }),
       )
     const state = `${created.storePath}.state`
+    yield* fs.makeDirectory(state, { recursive: true })
     const outside = EffectPath.unsafe.absoluteDir(`${tmpRoot}/outside/`)
     const home = `${tmpRoot}/home`
     // Executable command fixtures must not inherit /dev/shm's noexec flag.
