@@ -169,9 +169,9 @@ const trustedFixture = Effect.gen(function* () {
   yield* f.fs.writeFileString(
     entry,
     `
-      export { NodeServices } from ${encodeJson(import.meta.resolve('@effect/platform-node'))}
-      export { Effect } from ${encodeJson(import.meta.resolve('effect'))}
-      export * as FileSystem from ${encodeJson(import.meta.resolve('effect/FileSystem'))}
+      export { NodeServices } from ${encodeJson(fileURLToPath(import.meta.resolve('@effect/platform-node')))}
+      export { Effect } from ${encodeJson(fileURLToPath(import.meta.resolve('effect')))}
+      export * as FileSystem from ${encodeJson(fileURLToPath(import.meta.resolve('effect/FileSystem')))}
       export { parseProcStat, parseProcUids, readWorktreeReferencesInUse } from ${encodeJson(inUseModule)}
       export { PROCESS_SNAPSHOT_PRODUCER, captureProcessActivityManifest, isWorkspaceActive, readBudgetWorkspaceActivity, readBudgetWorktreeInUse, writeWorkspaceActivityManifest } from ${encodeJson(activityModule)}
       export { decodeJson, encodeJson } from ${encodeJson(jsonModule)}

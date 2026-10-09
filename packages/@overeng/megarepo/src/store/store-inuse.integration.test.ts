@@ -372,9 +372,9 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
         yield* fs.writeFileString(
           entry,
           `
-            export { NodeServices } from ${encodeJson(import.meta.resolve('@effect/platform-node'))}
-            export { Effect } from ${encodeJson(import.meta.resolve('effect'))}
-            export * as FileSystem from ${encodeJson(import.meta.resolve('effect/FileSystem'))}
+            export { NodeServices } from ${encodeJson(fileURLToPath(import.meta.resolve('@effect/platform-node')))}
+            export { Effect } from ${encodeJson(fileURLToPath(import.meta.resolve('effect')))}
+            export * as FileSystem from ${encodeJson(fileURLToPath(import.meta.resolve('effect/FileSystem')))}
             export { parseProcStat, parseProcUids, readProcessReferences, readWorktreeReferencesInUse } from ${encodeJson(referenceModule)}
             export { encodeJson } from ${encodeJson(jsonModule)}
           `,

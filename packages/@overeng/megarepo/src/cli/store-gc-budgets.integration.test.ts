@@ -21,7 +21,7 @@
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { link, lstat, mkdir, open, readdir, symlink, utimes, writeFile } from 'node:fs/promises'
+import { link, lstat, mkdir, readdir, symlink, utimes, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -283,7 +283,49 @@ const budgetFixture = (branches: ReadonlyArray<string>, { withRemote = false } =
   Effect.gen(function* () {
     requireRoot()
     const fs = yield* FileSystem.FileSystem
-    const created = yield* createStoreFixture([{ ...REPO, branches, withRemote }])
+    // Isolate allocation fixtures on a real synchronous-accounting filesystem.
+    // ZFS st_blocks can remain zero until a later txg even after fsync/syncfs;
+    // the acceptance setup requires already-allocated 3 MiB roots, not sleeps.
+    const allocationRoot = yield* fs.makeTempDirectoryScoped()
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const mounted = spawnSync(
+          'sudo',
+          [
+            '-n',
+            'mount',
+            '-t',
+            'tmpfs',
+            '-o',
+            'size=128M,mode=1777,nosuid,nodev',
+            'tmpfs',
+            allocationRoot,
+          ],
+          { encoding: 'utf8' },
+        )
+        expect(mounted.status, mounted.stderr).toBe(0)
+      }),
+      () =>
+        Effect.sync(() => {
+          const unmounted = spawnSync('sudo', ['-n', 'umount', allocationRoot], {
+            encoding: 'utf8',
+          })
+          expect(unmounted.status, unmounted.stderr).toBe(0)
+        }),
+    )
+    const created = yield* Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const previous = process.env['TMPDIR']
+        process.env['TMPDIR'] = allocationRoot
+        return previous
+      }),
+      () => createStoreFixture([{ ...REPO, branches, withRemote }]),
+      (previous) =>
+        Effect.sync(() => {
+          if (previous === undefined) delete process.env['TMPDIR']
+          else process.env['TMPDIR'] = previous
+        }),
+    )
     const tmpRoot = created.storePath.replace(/\/\.megarepo\/$/u, '')
     // Root-run CLI writes leases/locks/archives; hand them back before scoped temp removal.
     yield* Effect.addFinalizer(() =>
@@ -337,30 +379,6 @@ const backdate = async (path: string, at: Date): Promise<void> => {
   await utimes(path, at, at)
 }
 
-/** Persist only fixture entries before querying allocated blocks on delayed-allocation filesystems. */
-const flush = async (roots: ReadonlyArray<string>): Promise<void> => {
-  const persist = async (path: string): Promise<void> => {
-    const info = await lstat(path)
-    if (info.isSymbolicLink() === true) return
-    if (info.isDirectory() === true) {
-      for (const entry of await readdir(path)) await persist(join(path, entry))
-    }
-    const handle = await open(path, 'r')
-    try {
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
-  }
-  for (const root of roots) {
-    await persist(root)
-    // ZFS's allocated-block metadata is committed by filesystem sync, not
-    // merely by writing the file's intent log.
-    const synced = spawnSync('sync', ['-f', root], { encoding: 'utf8' })
-    expect(synced.status, synced.stderr).toBe(0)
-  }
-}
-
 /**
  * Write incompressible bytes (zeros would compress away on ZFS and allocate
  * nothing) and backdate the whole root.
@@ -376,7 +394,6 @@ const makeArtifact = (
       await writeFile(path, randomBytes(bytes))
     }
     await backdate(root, new Date(Date.now() - ageMs))
-    await flush([root])
   })
 
 const ensureParent = (filePath: string) =>
@@ -388,7 +405,6 @@ const ensureParent = (filePath: string) =>
  */
 const allocatedBytes = (roots: ReadonlyArray<string>) =>
   Effect.promise(async () => {
-    await flush(roots)
     const inodes = new Map<string, number>()
     const walk = async (path: string): Promise<void> => {
       const info = await lstat(path, { bigint: true })
@@ -927,7 +943,6 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
           await backdate(a, new Date(Date.now() - 3 * DAY_MS))
           await backdate(b, new Date(Date.now() - 3 * DAY_MS))
         })
-        yield* Effect.promise(() => flush([targetA, targetB]))
         yield* writePolicy(f, { budgetBytes: 64 * MiB })
 
         const plan = planOk(f)
