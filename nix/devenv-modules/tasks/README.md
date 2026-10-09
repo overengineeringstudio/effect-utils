@@ -298,17 +298,17 @@ The per-script start/end records in
 [run 37861666259](https://github.com/overengineeringstudio/effect-utils/actions/runs/37861666259)
 give these durations in seconds, rather than evaluator-site counts:
 
-| Script | Linux | Darwin |
-| --- | ---: | ---: |
-| `pnpm-task-smoke` | 39.790 | 34.170 |
-| `worktree-teardown` | 35.891 | 54.246 |
-| `pnpm-gvs` | 20.290 | 24.512 |
-| `pipeline-run` | 15.017 | 17.427 |
-| `buck2-capability-daemon` | 13.052 | 19.594 |
-| `buck2-capability-publish` | 11.391 | 25.661 |
-| `devenv-task-graph` (serial) | 0.256 | 0.253 |
-| One serial script | 0.256 | 0.253 |
-| All 42 admitted scripts | 206.586 | 247.414 |
+| Script                       |   Linux |  Darwin |
+| ---------------------------- | ------: | ------: |
+| `pnpm-task-smoke`            |  39.790 |  34.170 |
+| `worktree-teardown`          |  35.891 |  54.246 |
+| `pnpm-gvs`                   |  20.290 |  24.512 |
+| `pipeline-run`               |  15.017 |  17.427 |
+| `buck2-capability-daemon`    |  13.052 |  19.594 |
+| `buck2-capability-publish`   |  11.391 |  25.661 |
+| `devenv-task-graph` (serial) |   0.256 |   0.253 |
+| One serial script            |   0.256 |   0.253 |
+| All 42 admitted scripts      | 206.586 | 247.414 |
 
 **[INFERENCE]** Replaying the admitted scripts in lexical order onto the next
 available of two workers, holding each observed duration fixed, gives worker
