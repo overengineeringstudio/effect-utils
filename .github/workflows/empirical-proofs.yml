@@ -102,8 +102,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          "$DEVENV_BIN" shell -- node scripts/editor-view-hash-experiment.mjs
-      - name: Upload first failure diagnostics and syscall writer trace
+          node scripts/editor-view-hash-experiment.mjs
+      - name: Upload publication diagnostics and store lifecycle evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:

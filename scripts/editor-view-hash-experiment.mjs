@@ -1,10 +1,9 @@
 // Temporary #1743 experiment branch only; never merge into main.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { createReadStream, createWriteStream, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createWriteStream, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { finished, pipeline } from 'node:stream/promises'
-import { createGzip } from 'node:zlib'
+import { finished } from 'node:stream/promises'
 
 const iterations = Number(process.env.EDITOR_HASH_ITERATIONS ?? 15)
 assert.ok(Number.isSafeInteger(iterations) && iterations >= 1 && iterations <= 15)
@@ -37,40 +36,69 @@ const coldViews = () => {
   return removed
 }
 const results = []
-const save = (reason) => writeFileSync(join(output, 'result.json'), JSON.stringify({ reason, iterations, workers: 4, completed: results.length, results }, null, 2) + '\n')
+let active = null
+const save = (reason) => writeFileSync(join(output, 'result.json'), JSON.stringify({ reason, iterations, workers: 4, instrumentation: 'untraced publisher; nonrecursive Linux inotify store lifecycle only (no PID attribution)', active, completed: results.length, results }, null, 2) + '\n')
+const observeStores = (iteration) => {
+  const lifecycle = createWriteStream(join(output, `store-lifecycle-${iteration}.log`))
+  const attached = new Map()
+  const stores = ['.', 'context', 'packages', 'packages/@overeng/effect-rpc-tanstack'].map(path => join(root, path, '.editor-view', '.store'))
+  const attach = () => {
+    for (const store of stores) {
+      if (attached.has(store) || !existsSync(store)) continue
+      const observer = watch(store, { persistent: false }, (event, name) => {
+        lifecycle.write(JSON.stringify({ timestamp: new Date().toISOString(), store, event, name: name?.toString(), pid: null }) + '\n')
+      })
+      observer.on('error', error => lifecycle.write(JSON.stringify({ timestamp: new Date().toISOString(), store, error: String(error) }) + '\n'))
+      attached.set(store, observer)
+      lifecycle.write(JSON.stringify({ timestamp: new Date().toISOString(), store, watching: true }) + '\n')
+    }
+  }
+  attach()
+  const discover = setInterval(attach, 1000)
+  discover.unref()
+  return async () => {
+    clearInterval(discover)
+    for (const observer of attached.values()) observer.close()
+    lifecycle.end()
+    await finished(lifecycle)
+  }
+}
 for (let iteration = 1; iteration <= iterations; iteration++) {
   const removed = coldViews()
   const logPath = join(output, `publication-${iteration}.log`)
-  const tracePath = join(output, `syscalls-${iteration}.log`)
+  const stopObserving = observeStores(iteration)
   const log = createWriteStream(logPath)
   const start = Date.now()
-  process.stdout.write(`Experiment iteration ${iteration}/${iterations}: four workers, ${removed.length} removed state roots\n`)
-  const child = spawn(process.env.DEVENV_BIN, ['tasks', 'run', 'buck2:editor:publish'], { cwd: root, env: { ...process.env, EDITOR_VIEW_TEST_SYSCALL_TRACE: tracePath }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const startedAt = new Date(start).toISOString()
+  active = { iteration, startedAt, removed, phase: 'devenv tasks run buck2:editor:publish' }
+  save('iteration started')
+  process.stdout.write(`[${startedAt}] Experiment iteration ${iteration}/${iterations} START: four workers, ${removed.length} removed state roots, no syscall tracing\n`)
+  const childEnv = { ...process.env, DEVENV_TASK_PASSTHROUGH: '1', DEVENV_TUI: 'false' }
+  delete childEnv.EDITOR_VIEW_TEST_SYSCALL_TRACE
+  const child = spawn(process.env.DEVENV_BIN, ['tasks', 'run', 'buck2:editor:publish'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.pipe(log, { end: false })
   child.stderr.pipe(log, { end: false })
+  child.stdout.pipe(process.stdout, { end: false })
+  child.stderr.pipe(process.stderr, { end: false })
   const { code, signal } = await new Promise((resolveExit, reject) => {
     child.on('error', reject)
     child.on('close', (code, signal) => resolveExit({ code, signal }))
   })
   log.end()
   await finished(log)
+  await stopObserving()
   const text = readFileSync(logPath, 'utf8')
   const errors = text.split('\n').filter(line => line.includes('tree changed while hashing') || line.includes('; publication workers='))
   const hit = text.includes('tree changed while hashing')
-  const result = { iteration, code, signal, durationMs: Date.now() - start, removed, hit, errors }
+  const result = { iteration, startedAt, completedAt: new Date().toISOString(), code, signal, durationMs: Date.now() - start, removed, hit, errors }
   results.push(result)
-  process.stdout.write(JSON.stringify(result) + '\n')
+  active = null
+  process.stdout.write(`[${result.completedAt}] Experiment iteration ${iteration}/${iterations} END ${JSON.stringify(result)}\n`)
   save(hit ? 'first hash instability captured' : code === 0 ? 'continuing' : 'unrelated publication failure')
   if (hit || code !== 0) {
-    if (existsSync(tracePath)) {
-      await pipeline(createReadStream(tracePath), createGzip({ level: 9 }), createWriteStream(`${tracePath}.gz`))
-      rmSync(tracePath)
-    }
     process.stdout.write(text.slice(-32000))
     process.exitCode = code === 0 ? 1 : code ?? 1
     break
   }
-  // Preserve compact successful logs, not millions of irrelevant read/open syscalls.
-  if (existsSync(tracePath)) rmSync(tracePath)
 }
 if (results.length === iterations && results.every(result => result.code === 0)) save('iteration bound reached without hash instability')

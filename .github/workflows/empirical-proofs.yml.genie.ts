@@ -45,10 +45,10 @@ export default ciWorkflow({
         {
           name: 'Run bounded four-worker publication from cold editor stores',
           env: githubTokenEnv(),
-          run: 'set -euo pipefail\n"$DEVENV_BIN" shell -- node scripts/editor-view-hash-experiment.mjs',
+          run: 'set -euo pipefail\nnode scripts/editor-view-hash-experiment.mjs',
         },
         {
-          name: 'Upload first failure diagnostics and syscall writer trace',
+          name: 'Upload publication diagnostics and store lifecycle evidence',
           if: 'always()',
           uses: 'actions/upload-artifact@v4',
           with: {
