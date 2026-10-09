@@ -1,5 +1,7 @@
 # Architecture A: in-process Effect GitHub App auth
 
+This document contains the original architecture bakeoff and its historical evidence. The consolidation hardening below supersedes its global semaphore and token-only gh-ci-utils integration; no Ulrike deployment or code is changed by this branch.
+
 This is a tested architecture candidate, not an activated GitHub App or a control-service rollout.
 
 ## Composition
@@ -65,7 +67,7 @@ The existing Nix/op-proxy/secretspec pattern stays declarative. App/key provisio
    const app = yield* makeGitHubApp({
      identity: { clientID: auth.clientID },
      privateKey: Redacted.make(yield* fs.readFileString(auth.privateKeyPath)),
-   })
+   }, { consumer: 'gh-ci-exporter' })
    const token = yield* app.token({
      installationID: auth.installationIDs[owner],
      repositories: [repoName], permissions: { actions: 'read' },
@@ -102,10 +104,29 @@ The focused dependency environment is a scratch `/tmp/github-app-effect-a` packa
 
 - Every process owns an App private key. It can ignore requested policy and mint the full App/installation ceiling. This library improves reuse and correct composition, not central security enforcement; a broker has a stronger key-isolation story but adds fleet availability/auth/protocol operations.
 - No cross-process token sharing. Each service may exchange hourly, and each key rotation needs all recipients restarted. Failures are local rather than fleet-wide, but startup/exchange traffic is duplicated.
-- One cache semaphore serializes different scope refreshes. This is simple and sufficient for these low-volume consumers; a high-fan-out CI client may prefer per-scope single-flight. Cache scope count is bounded by trusted consumer configuration, not an enforced library limit.
+- Per-scope single-flight now shares concurrent successes and failures without serializing unrelated scopes. Refresh time is sampled after lock acquisition and after HTTP completion. Cache scope count is bounded by trusted consumer configuration, not an enforced library limit.
 - The utils install closure is broader than this module needs. Decide whether a dedicated publishable package is worth the package/generator/versioning work.
-- gh-ci-utils remains a token-only integration and retains its established HTTP behavior; its 401 failures do not get the new wrapper's invalidation until its transport composition is migrated. New Ulrike uses the wrapper end to end. The direct token API must not promise automatic HTTP behavior it cannot observe.
+- gh-ci-utils now uses `app.client(scope)` end to end for REST reads/writes, GraphQL and GitHub log redirects. Its 401s invalidate the rejected token without replaying writes; the off-origin storage fetch remains unauthenticated. The explicit CLI fallback for owners lacking installations is unchanged.
 - A private-repository preflight cannot atomically guarantee privacy if an administrator makes the repo public between lookup and creation. Repository administrative policy must prohibit that race; for stronger segregation use a dedicated permanently private support repository. Existing repo readership and notification/email copies also govern who can see family request text.
 - The poll cursor is comment-ID based; editing an old comment after the cursor will not deliver it as a new reply. Decide whether replies are append-only or edited-comment detection is required. Login matching is suitable for this prototype; production can pin Johannes's immutable user ID.
 - Issue creation is not exactly-once. A network failure after GitHub accepts a POST is ambiguous; the real control integration must store a stable request marker and reconcile before retries. This candidate intentionally proves the transport, not an invented state protocol.
 - Real Ulrike App identity/installation/key binding is not provided. Johannes must create/install/grant it and approve the dedicated App ceiling, retention/readership policy, operational rotation/revocation ownership, and whether this in-process design or a central broker wins. Existing caller policy permissions must be aligned before the gh-ci cutover.
+
+## Consolidation hardening contract
+
+`makeGitHubApp` and `GitHubApp.layer` require a stable `consumer` option. Installation ID, normalized repository set and normalized permission set identify each cache entry; App identity and key are isolated by service instance. The default early-refresh window is 60 seconds (`refreshMarginSeconds` is a positive integer). Failed/interrupted flights are removed so the next explicit operation can recover. A late 401 only evicts entries containing the rejected token value, not a replacement.
+
+Spans `github-app.make`, `github-app.token`, `github-app.mint`, `github-app.request`, `github-app.invalidate` and `github-app.rate-limit` model the meaningful boundaries. App client ID, installation ID, stable consumer and concise `span.label` identify operations. No credentials, response body or PEM exception is retained in auth errors or auth telemetry. The process owns OTel export/layer configuration.
+
+Metrics use bounded App/installation/consumer attributes, never repository/scope/token labels:
+
+- `github_app_mints_total`: counter of attempted installation token mints.
+- `github_app_mint_failures_total`: counter of typed mint failures (interruption is not an auth failure).
+- `github_app_token_expiry_seconds`: gauge of earliest cached expiry for the installation, Unix seconds; zero when its cache is empty.
+- `github_app_rate_limit_remaining`: gauge of last observed remaining budget, separately labeled by GitHub resource (`core`, `search`, `graphql`, `integration_manifest`, `code_search`). Missing/invalid headers leave the last observation unchanged.
+
+`GitHubClient.layer({ consumer, permissions })` lets gh-ci-exporter reuse the upstream API with only `actions:read`; interactive gh-ci-utils keeps its actions-write policy. The exporter adds date-bound completed-run paging; shared job schemas retain optional `created_at`, and the exporter validates that its queue-wait field is present. The entire vendored exporter API/auth client is removed in the paired dotfiles prototype, not just its signer.
+
+LiveStore's `scripts/src/commands/github.ts:331-364` signs an **App JWT** for `GET /app`, not an installation token. Its `check` command consumes it at lines 415-416. Installation clients are therefore not a drop-in: reuse would need an App-authenticated read client/JWT API with the same safe origin, typed-error and observability contract, then remove its signer/fetch wrappers. No LiveStore file is modified.
+
+The Ulrike transport at dotfiles `b4c800ff0c`, `flakes/ulrike-it/src/github-issues.ts:4,21-24`, already consumes `GitHubAppHttpClient`. Later adoption only needs the accepted package pin, a stable `consumer: 'ulrike-it'` on its `GitHubApp.layer` composition, dedicated App identity/redacted key and existing dotfiles/issues-write scope, plus its existing test/layer wiring. This does not unblock or alter Ulrike's minimal delivery path.

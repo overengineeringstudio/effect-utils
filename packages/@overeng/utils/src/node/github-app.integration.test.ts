@@ -2,7 +2,7 @@ import { generateKeyPairSync, verify } from 'node:crypto'
 import { createServer } from 'node:http'
 
 import { it } from '@effect/vitest'
-import { Clock, Effect, Redacted, Schema } from 'effect'
+import { Clock, Deferred, Effect, Fiber, Metric, Redacted, Schema } from 'effect'
 import { FetchHttpClient } from 'effect/http'
 import { TestClock } from 'effect/testing'
 import { expect } from 'vitest'
@@ -15,6 +15,9 @@ const scope: InstallationScope = { installationID: 123, repositories: ['dotfiles
 
 const fixture = Effect.gen(function* () {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+  const started = yield* Deferred.make<void>()
+  const release = yield* Deferred.make<void>()
+  const delay = yield* Effect.context<never>()
   const state = {
     now: yield* Clock.currentTimeMillis,
     exchanges: 0,
@@ -23,6 +26,7 @@ const fixture = Effect.gen(function* () {
     unauthorized: false,
     bodies: [] as unknown[],
     jwts: [] as Array<{ iat: number; exp: number; iss: string; verified: boolean }>,
+    delayMint: false,
   }
   const server = createServer(async (request, response) => {
     if (request.url === '/app/installations/123/access_tokens') {
@@ -30,17 +34,21 @@ const fixture = Effect.gen(function* () {
       const chunks: Buffer[] = []
       for await (const chunk of request) chunks.push(Buffer.from(chunk))
       state.bodies.push(Schema.decodeUnknownSync(Json)(Buffer.concat(chunks).toString()))
+      if (state.delayMint) {
+        await Effect.runPromiseWith(delay)(Deferred.succeed(started, undefined))
+        await Effect.runPromiseWith(delay)(Deferred.await(release))
+      }
       const jwt = request.headers.authorization?.slice('Bearer '.length) ?? ''
       const [header = '', claims = '', signature = ''] = jwt.split('.')
       state.jwts.push({
         ...Schema.decodeUnknownSync(Claims)(Buffer.from(claims, 'base64url').toString()),
         verified: verify('RSA-SHA256', Buffer.from(`${header}.${claims}`), publicKey, Buffer.from(signature, 'base64url')),
       })
-      response.writeHead(state.mintStatus, { 'content-type': 'application/json' })
+      response.writeHead(state.mintStatus, { 'content-type': 'application/json', 'x-ratelimit-remaining': '4999', 'x-ratelimit-resource': 'core' })
       response.end(Schema.encodeSync(Json)({ token: `installation-${state.exchanges}`, expires_at: new Date(state.now + 3_600_000).toISOString() }))
     } else {
       state.calls++
-      response.writeHead(state.unauthorized ? 401 : 200, { 'content-type': 'application/json' })
+      response.writeHead(state.unauthorized ? 401 : 200, { 'content-type': 'application/json', 'x-ratelimit-remaining': '4998', 'x-ratelimit-resource': 'core' })
       response.end('{}')
     }
   })
@@ -54,8 +62,8 @@ const fixture = Effect.gen(function* () {
   const app = yield* makeGitHubApp({
     identity: { clientID: 'Iv1.fixture' },
     privateKey: Redacted.make(privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()),
-  }, { apiBase }).pipe(Effect.provide(FetchHttpClient.layer))
-  return { state, app, apiBase }
+  }, { apiBase, consumer: 'fixture' }).pipe(Effect.provide(FetchHttpClient.layer))
+  return { state, app, apiBase, started, release }
 })
 
 it.effect('signs real JWTs, caches concurrent requests, refreshes early, and isolates scope', () =>
@@ -108,4 +116,63 @@ it.effect('types mint 401, rejects empty permission scopes, and never sends cred
     expect(yield* app.client(scope).get('https://not-github.invalid/').pipe(Effect.flip)).toMatchObject({ operation: 'authorize' })
     expect(state.exchanges).toBe(1)
   }),
+)
+
+it.effect('shares a failed mint across concurrent callers and allows the next call to recover', () =>
+  Effect.gen(function* () {
+    const { state, app, started, release } = yield* fixture
+    state.delayMint = true
+    state.mintStatus = 403
+    const fibers = yield* Effect.forEach([1, 2, 3, 4], () => app.token(scope).pipe(Effect.flip, Effect.forkChild))
+    yield* Deferred.await(started)
+    yield* Deferred.succeed(release, undefined)
+    const failures = yield* Effect.forEach(fibers, Fiber.join)
+    expect(failures.every((failure) => failure.status === 403)).toBe(true)
+    expect(state.exchanges).toBe(1)
+    state.mintStatus = 201
+    yield* app.token(scope)
+    expect(state.exchanges).toBe(2)
+  }),
+)
+
+it.effect('does not serialize independent scopes behind a stalled exchange', () =>
+  Effect.gen(function* () {
+    const { state, app, started, release } = yield* fixture
+    state.delayMint = true
+    const pending = yield* app.token(scope).pipe(Effect.forkChild)
+    yield* Deferred.await(started)
+    state.delayMint = false
+    yield* app.token({ ...scope, repositories: ['independent'] })
+    expect(state.exchanges).toBe(2)
+    yield* Deferred.succeed(release, undefined)
+    yield* Fiber.join(pending)
+  }),
+)
+
+it.effect('canonicalizes repository and permission ordering without widening authority', () =>
+  Effect.gen(function* () {
+    const { state, app } = yield* fixture
+    yield* app.token({ ...scope, repositories: ['b', 'a', 'a'], permissions: { issues: 'write', contents: 'read' } })
+    yield* app.token({ ...scope, repositories: ['a', 'b'], permissions: { contents: 'read', issues: 'write' } })
+    expect(state.exchanges).toBe(1)
+    expect(state.bodies).toEqual([{ repositories: ['a', 'b'], permissions: { contents: 'read', issues: 'write' } }])
+  }),
+)
+
+it.effect('records safe per-consumer mint/failure, expiry, and bucket metrics', () =>
+  Effect.gen(function* () {
+    const { state, app, apiBase } = yield* fixture
+    const attributes = { 'github.app.client_id': 'Iv1.fixture', 'github.installation.id': '123', 'github.consumer': 'fixture' }
+    state.mintStatus = 403
+    yield* app.token(scope).pipe(Effect.flip)
+    state.mintStatus = 201
+    yield* app.client(scope).get(new URL('/probe', apiBase))
+    expect((yield* Metric.value(Metric.withAttributes(Metric.counter('github_app_mints_total'), attributes))).count).toBe(2)
+    expect((yield* Metric.value(Metric.withAttributes(Metric.counter('github_app_mint_failures_total'), attributes))).count).toBe(1)
+    expect((yield* Metric.value(Metric.withAttributes(Metric.gauge('github_app_token_expiry_seconds'), attributes))).value).toBe((state.now + 3_600_000) / 1000)
+    expect((yield* Metric.value(Metric.withAttributes(Metric.gauge('github_app_rate_limit_remaining'), { ...attributes, 'github.resource': 'core' }))).value).toBe(4998)
+    state.unauthorized = true
+    yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip)
+    expect((yield* Metric.value(Metric.withAttributes(Metric.gauge('github_app_token_expiry_seconds'), attributes))).value).toBe(0)
+  }).pipe(Effect.provideService(Metric.MetricRegistry, new Map())),
 )

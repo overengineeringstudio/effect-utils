@@ -105,6 +105,8 @@ export const WorkflowJob = Schema.Struct({
     'pending',
   ]),
   conclusion: Schema.NullOr(WorkflowConclusion),
+  /** Present in Actions job responses; retained for queue-wait consumers. */
+  created_at: Schema.optional(DateFromISO),
   started_at: Schema.NullOr(DateFromISO),
   completed_at: Schema.NullOr(DateFromISO),
   runner_name: Schema.NullOr(Schema.String),

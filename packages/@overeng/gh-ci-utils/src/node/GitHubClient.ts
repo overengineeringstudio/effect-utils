@@ -10,7 +10,7 @@ import { HttpClient, HttpClientRequest } from 'effect/http'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
-import { makeGitHubApp } from '@overeng/utils/node/github-app'
+import { makeGitHubApp, type InstallationScope } from '@overeng/utils/node/github-app'
 import { NodeFileSystem } from '@effect/platform-node'
 
 import { GitHubApiError, GitHubAuthError, LogsUnavailableError } from '../isomorphic/Errors.ts'
@@ -167,9 +167,14 @@ export const selectRunForVerdict = ({
     : { run: fallback, expectedWorkflow: preferWorkflow, matchedExpectedWorkflow: false }
 }
 
+export interface GitHubClientOptions {
+  readonly consumer: string
+  readonly permissions: InstallationScope['permissions']
+}
+
 
 /** Service wrapping the GitHub REST API with rate-limit tracking */
-const makeGitHubClient = Effect.gen(function* () {
+const makeGitHubClient = Effect.fn('github-client.make')(function* (options: GitHubClientOptions) {
   const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.withScope)
   const spawner = yield* ChildProcessSpawner
   const auth = yield* GitHubAuthConfigTag
@@ -235,11 +240,11 @@ const makeGitHubClient = Effect.gen(function* () {
       )
       return yield* makeGitHubApp({
         identity: { clientID: auth.clientID }, privateKey: Redacted.make(privateKey),
-      }, { userAgent: GITHUB_USER_AGENT }).pipe(
+      }, { userAgent: GITHUB_USER_AGENT, consumer: options.consumer }).pipe(
         Effect.provideService(HttpClient.HttpClient, rawHttpClient.pipe(
-          HttpClient.transform((response) => Ref.update(requestCountRef, (count) => count + 1).pipe(
-            Effect.andThen(response),
-          )),
+          HttpClient.transform((response) => response.pipe(Effect.tap((value) =>
+            value.request.url.endsWith('/access_tokens') ? Ref.update(requestCountRef, (count) => count + 1) : Effect.void,
+          ))),
         )),
         Effect.mapError((cause) => new GitHubAuthError({ message: cause.message, cause })),
       )
@@ -256,21 +261,21 @@ const makeGitHubClient = Effect.gen(function* () {
    * installation token and is already on the agent's PATH as `gh`, so it grants
    * no new authority.
    */
-  const getTokenForRepo = Effect.fn('github-client.get-token-for-repo')(function* (repo: string) {
-    if (auth._tag === 'gh-cli') return yield* getCliToken
+  const getClientForRepo = Effect.fn('github-client.get-client-for-repo')(function* (repo: string) {
+    if (auth._tag === 'gh-cli') {
+      const token = yield* getCliToken
+      return httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token)))
+    }
 
     const source = selectAppAuthSource({ auth, repo })
     if (source._tag === 'app-installation') {
       const app = yield* getApp
       const repository = repo.slice(repo.indexOf('/') + 1)
-      return yield* app.token({
+      return app.client({
         installationID: source.installationID,
         repositories: [repository],
-        permissions: { actions: 'write', checks: 'read', contents: 'read', pull_requests: 'read' },
-      }).pipe(
-        Effect.map(Redacted.value),
-        Effect.mapError((cause) => new GitHubAuthError({ message: cause.message, cause })),
-      )
+        permissions: options.permissions,
+      })
     }
 
     // `Ref.modify` claims the owner and reports whether this fiber is the one
@@ -285,7 +290,7 @@ const makeGitHubClient = Effect.gen(function* () {
       )
     }
 
-    return yield* getCliToken.pipe(
+    const token = yield* getCliToken.pipe(
       Effect.mapError(
         (cause) =>
           new GitHubAuthError({
@@ -294,6 +299,7 @@ const makeGitHubClient = Effect.gen(function* () {
           }),
       ),
     )
+    return httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token)))
   })
 
   /**
@@ -371,15 +377,14 @@ const makeGitHubClient = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       yield* awaitBudget('rest')
-      const token = yield* getTokenForRepo(repo)
+      const client = yield* getClientForRepo(repo)
       const cache = yield* Ref.get(etagCache)
       const cached = useETag ? cache.get(path) : undefined
 
-      const response = yield* httpClient
+      const response = yield* client
         .execute(
           HttpClientRequest.get(`${GITHUB_API_BASE}${path}`).pipe(
             HttpClientRequest.setHeaders({
-              Authorization: `Bearer ${token}`,
               Accept: 'application/vnd.github+json',
               'User-Agent': GITHUB_USER_AGENT,
               'X-GitHub-Api-Version': '2022-11-28',
@@ -463,10 +468,9 @@ const makeGitHubClient = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       yield* awaitBudget('rest')
-      const token = yield* getTokenForRepo(repo)
+      const client = yield* getClientForRepo(repo)
       const baseRequest = HttpClientRequest.post(`${GITHUB_API_BASE}${path}`).pipe(
         HttpClientRequest.setHeaders({
-          Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
           'User-Agent': GITHUB_USER_AGENT,
           'X-GitHub-Api-Version': '2022-11-28',
@@ -475,7 +479,7 @@ const makeGitHubClient = Effect.gen(function* () {
       const request =
         body === undefined ? baseRequest : HttpClientRequest.bodyJsonUnsafe(body)(baseRequest)
 
-      const response = yield* httpClient.execute(request).pipe(
+      const response = yield* client.execute(request).pipe(
         Effect.mapError(
           (cause) =>
             new GitHubApiError({
@@ -549,14 +553,13 @@ const makeGitHubClient = Effect.gen(function* () {
   const apiGetText = ({ repo, path }: { repo: string; path: string }) =>
     Effect.gen(function* () {
       yield* awaitBudget('rest')
-      const token = yield* getTokenForRepo(repo)
+      const client = yield* getClientForRepo(repo)
       const requestUrl = `${GITHUB_API_BASE}${path}`
 
-      const response = yield* httpClient
+      const response = yield* client
         .execute(
           HttpClientRequest.get(requestUrl).pipe(
             HttpClientRequest.setHeaders({
-              Authorization: `Bearer ${token}`,
               Accept: 'application/vnd.github+json',
               'User-Agent': GITHUB_USER_AGENT,
               'X-GitHub-Api-Version': '2022-11-28',
@@ -700,6 +703,20 @@ const makeGitHubClient = Effect.gen(function* () {
         attributes: { repo, status },
       }),
     )
+
+  /** Completed history page, optionally bounded by GitHub's inclusive created-date range. */
+  const listWorkflowRunsPage = ({ repo, perPage, page, created }: {
+    repo: string
+    perPage: number
+    page: number
+    created?: { readonly from: string; readonly to: string }
+  }) => {
+    const query = new URLSearchParams({ status: 'completed', per_page: String(perPage), page: String(page) })
+    if (created !== undefined) query.set('created', `${created.from}..${created.to}`)
+    return apiGet({ repo, path: `/repos/${repo}/actions/runs?${query}`, schema: GH.WorkflowRunsResponse }).pipe(
+      withGitHubSpan({ name: 'github-client.listWorkflowRunsPage', attributes: { repo, page } }),
+    )
+  }
 
   /** Get a single workflow run by ID. */
   const getWorkflowRun = ({ repo, runId }: { repo: string; runId: number }) =>
@@ -1048,13 +1065,12 @@ const makeGitHubClient = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       yield* awaitBudget('graphql')
-      const token = yield* getTokenForRepo(repo)
+      const client = yield* getClientForRepo(repo)
 
-      const response = yield* httpClient
+      const response = yield* client
         .execute(
           HttpClientRequest.post(GITHUB_GRAPHQL_URL).pipe(
             HttpClientRequest.setHeaders({
-              Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
               'User-Agent': GITHUB_USER_AGENT,
             }),
@@ -1275,6 +1291,7 @@ const makeGitHubClient = Effect.gen(function* () {
   return {
     listActiveRuns,
     listWorkflowRunsByStatus,
+    listWorkflowRunsPage,
     getWorkflowRun,
     getWorkflowJob,
     listWorkflowJobs,
@@ -1299,11 +1316,18 @@ const makeGitHubClient = Effect.gen(function* () {
   } as const
 })
 
+const defaultGitHubClient = makeGitHubClient({
+  consumer: 'gh-ci-utils',
+  permissions: { actions: 'write', checks: 'read', contents: 'read', pull_requests: 'read' },
+})
+
 /** Runtime shape of the GitHub CI client. */
-export type GitHubClientShape = Effect.Success<typeof makeGitHubClient>
+export type GitHubClientShape = Effect.Success<typeof defaultGitHubClient>
 /** Context service providing authenticated GitHub CI operations. */
 export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShape>()(
   'gh-ci-utils/GitHubClient',
 ) {
-  static readonly Default = Layer.effect(GitHubClient, makeGitHubClient).pipe(Layer.provide(NodeFileSystem.layer))
+  static readonly layer = (options: GitHubClientOptions) =>
+    Layer.effect(GitHubClient, makeGitHubClient(options)).pipe(Layer.provide(NodeFileSystem.layer))
+  static readonly Default = Layer.effect(GitHubClient, defaultGitHubClient).pipe(Layer.provide(NodeFileSystem.layer))
 }
