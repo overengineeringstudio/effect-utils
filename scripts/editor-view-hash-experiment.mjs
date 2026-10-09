@@ -37,7 +37,7 @@ const coldViews = () => {
 }
 const results = []
 let active = null
-const save = (reason) => writeFileSync(join(output, 'result.json'), JSON.stringify({ reason, iterations, workers: 4, instrumentation: 'untraced publisher; nonrecursive Linux inotify store lifecycle only (no PID attribution)', active, completed: results.length, results }, null, 2) + '\n')
+const save = (reason) => writeFileSync(join(output, 'result.json'), JSON.stringify({ reason, iterations, workers: 4, fixHead: process.env.EDITOR_HASH_FIX_HEAD, instrumentation: 'untraced publisher; nonrecursive Linux inotify store lifecycle only (no PID attribution)', active, completed: results.length, results }, null, 2) + '\n')
 const observeStores = (iteration) => {
   const lifecycle = createWriteStream(join(output, `store-lifecycle-${iteration}.log`))
   const attached = new Map()
