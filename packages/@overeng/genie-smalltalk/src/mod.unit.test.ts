@@ -73,14 +73,12 @@ describe('Smalltalk declarations', () => {
     { id: '../bad' },
     { id: 'ops//watcher' },
   ])('rejects invalid reporting references %j', (reportTo) => {
-    expect(() =>
-      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo }),
-    ).toThrow()
+    expect(() => Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo })).toThrow()
   })
   it('renders only the native mission-level report property and retains imported kit metadata', () => {
     const importedSeat = { ...reporter, hold: { reason: 'Not deployed yet.' } }
     const input = { ...fanInMission(), reportTo: importedSeat }
-    const decoded = Schema.decodeUnknownSync(MissionSchema)(input)
+    const decoded = Schema.decodeSync(MissionSchema)(input)
     expect(decoded.reportTo).toBe(importedSeat)
     const declaration = mission(input)
     expect(declaration.props['report-to']).toBe('agent/ops/watcher')
