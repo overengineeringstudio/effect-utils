@@ -5,12 +5,13 @@
  * uses Effect's HTTP client for data fetching with schema validation.
  */
 
-import { Context, Duration, Effect, FileSystem, Layer, Option, Redacted, Ref, Schema } from 'effect'
+import { Context, Duration, Effect, FileSystem, Layer, Option, Redacted, Ref, Schema, type Scope } from 'effect'
 import { HttpClient, HttpClientRequest } from 'effect/http'
+import type { HttpClientError } from 'effect/http/HttpClientError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
-import { makeGitHubApp, type InstallationScope } from '@overeng/utils/node/github-app'
+import { makeGitHubApp, type GitHubAppError, type InstallationScope } from '@overeng/utils/node/github-app'
 import { NodeFileSystem } from '@effect/platform-node'
 
 import { GitHubApiError, GitHubAuthError, LogsUnavailableError } from '../isomorphic/Errors.ts'
@@ -23,6 +24,8 @@ import { GitHubAuthConfigTag } from './Config.ts'
 import type { GitHubAppAuthConfig } from './Config.ts'
 import { withGitHubSpan } from './observability.ts'
 
+/** One client contract regardless of CLI or App authentication source. */
+type AuthenticatedClient = HttpClient.HttpClient.With<GitHubAppError | HttpClientError, Scope.Scope>
 const GITHUB_API_BASE = 'https://api.github.com'
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
 
@@ -264,18 +267,20 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
   const getClientForRepo = Effect.fn('github-client.get-client-for-repo')(function* (repo: string) {
     if (auth._tag === 'gh-cli') {
       const token = yield* getCliToken
-      return httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token)))
+      const client: AuthenticatedClient = httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token)))
+      return client
     }
 
     const source = selectAppAuthSource({ auth, repo })
     if (source._tag === 'app-installation') {
       const app = yield* getApp
       const repository = repo.slice(repo.indexOf('/') + 1)
-      return app.client({
+      const client: AuthenticatedClient = app.client({
         installationID: source.installationID,
         repositories: [repository],
         permissions: options.permissions,
-      })
+      }).pipe(HttpClient.withScope)
+      return client
     }
 
     // `Ref.modify` claims the owner and reports whether this fiber is the one
@@ -299,7 +304,8 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
           }),
       ),
     )
-    return httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token)))
+    const client: AuthenticatedClient = httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token)))
+    return client
   })
 
   /**
@@ -714,7 +720,7 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
     const query = new URLSearchParams({ status: 'completed', per_page: String(perPage), page: String(page) })
     if (created !== undefined) query.set('created', `${created.from}..${created.to}`)
     return apiGet({ repo, path: `/repos/${repo}/actions/runs?${query}`, schema: GH.WorkflowRunsResponse }).pipe(
-      withGitHubSpan({ name: 'github-client.listWorkflowRunsPage', attributes: { repo, page } }),
+      withGitHubSpan({ name: 'github-client.listWorkflowRunsPage', attributes: { repo } }),
     )
   }
 
