@@ -269,7 +269,7 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
   const getClientForRepo = Effect.fn('github-client.get-client-for-repo')(function* (repo: string) {
     if (auth._tag === 'gh-cli') {
       const token = yield* getCliToken
-      const client: AuthenticatedClient = HttpClient.mapError(httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))), transportFailure)
+      const client: AuthenticatedClient = HttpClient.transformResponse(httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))), (response) => response.pipe(Effect.mapError(transportFailure)))
       return client
     }
 
@@ -277,11 +277,11 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
     if (source._tag === 'app-installation') {
       const app = yield* getApp
       const repository = repo.slice(repo.indexOf('/') + 1)
-      const client: AuthenticatedClient = HttpClient.mapError(app.client({
+      const client: AuthenticatedClient = HttpClient.transformResponse(app.client({
         installationID: source.installationID,
         repositories: [repository],
         permissions: options.permissions,
-      }).pipe(HttpClient.withScope), transportFailure)
+      }).pipe(HttpClient.withScope), (response) => response.pipe(Effect.mapError(transportFailure)))
       return client
     }
 
@@ -306,7 +306,7 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
           }),
       ),
     )
-    const client: AuthenticatedClient = HttpClient.mapError(httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))), transportFailure)
+    const client: AuthenticatedClient = HttpClient.transformResponse(httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))), (response) => response.pipe(Effect.mapError(transportFailure)))
     return client
   })
 
