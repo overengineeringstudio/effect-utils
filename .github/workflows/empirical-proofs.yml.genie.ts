@@ -45,7 +45,7 @@ export default ciWorkflow({
         {
           name: 'Run bounded four-worker publication from cold editor stores',
           env: githubTokenEnv(),
-          run: 'devenv shell -- node scripts/editor-view-hash-experiment.mjs',
+          run: '"$DEVENV_BIN" shell -- node scripts/editor-view-hash-experiment.mjs',
         },
         {
           name: 'Upload first failure diagnostics and syscall writer trace',

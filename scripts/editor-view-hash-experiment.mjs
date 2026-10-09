@@ -9,6 +9,7 @@ import { createGzip } from 'node:zlib'
 const iterations = Number(process.env.EDITOR_HASH_ITERATIONS ?? 15)
 assert.ok(Number.isSafeInteger(iterations) && iterations >= 1 && iterations <= 15)
 assert.equal(process.env.EDITOR_VIEW_TEST_PUBLICATION_WORKERS, '4')
+assert.ok(process.env.DEVENV_BIN, 'use the CI devenv binary resolved from devenv.lock')
 const root = process.cwd()
 const output = resolve(process.env.RUNNER_TEMP ?? 'tmp', 'editor-view-hash-experiment')
 mkdirSync(output, { recursive: true })
@@ -44,7 +45,7 @@ for (let iteration = 1; iteration <= iterations; iteration++) {
   const log = createWriteStream(logPath)
   const start = Date.now()
   process.stdout.write(`Experiment iteration ${iteration}/${iterations}: four workers, ${removed.length} removed state roots\n`)
-  const child = spawn('devenv', ['tasks', 'run', 'buck2:editor:publish'], { cwd: root, env: { ...process.env, EDITOR_VIEW_TEST_SYSCALL_TRACE: tracePath }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(process.env.DEVENV_BIN, ['tasks', 'run', 'buck2:editor:publish'], { cwd: root, env: { ...process.env, EDITOR_VIEW_TEST_SYSCALL_TRACE: tracePath }, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.pipe(log, { end: false })
   child.stderr.pipe(log, { end: false })
   const { code, signal } = await new Promise((resolveExit, reject) => {

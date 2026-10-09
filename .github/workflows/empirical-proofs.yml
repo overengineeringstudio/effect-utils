@@ -100,7 +100,7 @@ jobs:
       - name: Run bounded four-worker publication from cold editor stores
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: devenv shell -- node scripts/editor-view-hash-experiment.mjs
+        run: "$DEVENV_BIN" shell -- node scripts/editor-view-hash-experiment.mjs
       - name: Upload first failure diagnostics and syscall writer trace
         if: always()
         uses: actions/upload-artifact@v4
