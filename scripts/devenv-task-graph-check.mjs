@@ -291,14 +291,18 @@ const boundedTestCommand = requireTask('test:buck2:unit').command
 if (typeof boundedTestCommand === 'string') {
   const commandBody =
     existsSync(boundedTestCommand) === true ? readFileSync(boundedTestCommand, 'utf8') : ''
-  const prebuildOffset = commandBody.indexOf('--prebuild-only')
-  const verdictOffset = commandBody.indexOf('exec "$BUCK2_BIN" test')
+  // trace.exec emits mutually exclusive traced and untraced copies of the task.
+  // Require exactly one prebuild before each copy's verdict, not one in the wrapper.
+  const verdictBranches = commandBody.split('exec "$BUCK2_BIN" test')
   ok({
     condition:
-      commandBody.includes('packages/@overeng/utils-dev/src/check-baseline-test-collection.ts') &&
-      prebuildOffset !== -1 &&
-      verdictOffset > prebuildOffset &&
-      commandBody.split('--prebuild-only').length === 2,
+      verdictBranches.length > 1 &&
+      verdictBranches.at(-1).includes('--prebuild-only') === false &&
+      verdictBranches.slice(0, -1).every(
+        (branch) =>
+          branch.includes('packages/@overeng/utils-dev/src/check-baseline-test-collection.ts') &&
+          branch.split('--prebuild-only').length === 2,
+      ),
     name: 'the bounded aggregate prebuilds collection once before its single test invocation',
     detail: boundedTestCommand,
   })
