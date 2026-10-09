@@ -666,36 +666,37 @@ describe.skipIf(process.platform !== 'linux')('readBudgetWorkspaceActivity built
 })
 
 describe.skipIf(process.platform !== 'linux')('all-uid process coverage', () => {
-  it.live(
-    'a root-controlled snapshot admits exact unreadable own-UID lifetimes, preserves every kernel claim and rejects uncovered lifetimes',
-    Effect.fnUntraced(
-      function* () {
-        const { fs, root, workspace, manifestPath } = yield* trustedFixture
-        const fdWorkspace = `${root}/fd-workspace`
-        const mapWorkspace = `${root}/map-workspace`
-        const rootWorkspace = `${root}/root-workspace`
-        const idle = `${root}/idle`
-        const file = `${fdWorkspace}/target/artifact`
-        const mappedFile = `${mapWorkspace}/target/artifact`
-        yield* fs.writeFileString(file, 'open fd bytes')
-        yield* fs.writeFileString(mappedFile, 'mapped bytes')
-        const hidden = yield* Effect.acquireRelease(
-          Effect.promise(() => spawnCoveredHolder({ cwd: workspace, file, mappedFile })),
-          ({ child }) => Effect.promise(() => stopCoveredHolder(child)),
-        )
-        const rooted = yield* Effect.acquireRelease(
-          Effect.promise(() => spawnCoveredHolder({ cwd: '/', processRoot: rootWorkspace })),
-          ({ child }) => Effect.promise(() => stopCoveredHolder(child)),
-        )
-        const unrelated = yield* Effect.acquireRelease(
-          Effect.promise(() => spawnCoveredHolder({ cwd: '/' })),
-          ({ child }) => Effect.promise(() => stopCoveredHolder(child)),
-        )
-        expect(
-          runActivityFixture({
-            root,
-            asRoot: true,
-            code: `
+  if (process.env['MEGAREPO_TEST_PRIVILEGED'] === '1') {
+    it.live(
+      'privileged: a root-controlled snapshot admits exact unreadable own-UID lifetimes, preserves every kernel claim and rejects uncovered lifetimes',
+      Effect.fnUntraced(
+        function* () {
+          const { fs, root, workspace, manifestPath } = yield* trustedFixture
+          const fdWorkspace = `${root}/fd-workspace`
+          const mapWorkspace = `${root}/map-workspace`
+          const rootWorkspace = `${root}/root-workspace`
+          const idle = `${root}/idle`
+          const file = `${fdWorkspace}/target/artifact`
+          const mappedFile = `${mapWorkspace}/target/artifact`
+          yield* fs.writeFileString(file, 'open fd bytes')
+          yield* fs.writeFileString(mappedFile, 'mapped bytes')
+          const hidden = yield* Effect.acquireRelease(
+            Effect.promise(() => spawnCoveredHolder({ cwd: workspace, file, mappedFile })),
+            ({ child }) => Effect.promise(() => stopCoveredHolder(child)),
+          )
+          const rooted = yield* Effect.acquireRelease(
+            Effect.promise(() => spawnCoveredHolder({ cwd: '/', processRoot: rootWorkspace })),
+            ({ child }) => Effect.promise(() => stopCoveredHolder(child)),
+          )
+          const unrelated = yield* Effect.acquireRelease(
+            Effect.promise(() => spawnCoveredHolder({ cwd: '/' })),
+            ({ child }) => Effect.promise(() => stopCoveredHolder(child)),
+          )
+          expect(
+            runActivityFixture({
+              root,
+              asRoot: true,
+              code: `
               await Effect.runPromise(Effect.gen(function* () {
                 const fs = yield* FileSystem.FileSystem
                 const snapshot = yield* captureProcessActivityManifest({
@@ -707,78 +708,78 @@ describe.skipIf(process.platform !== 'linux')('all-uid process coverage', () => 
               }).pipe(Effect.provide(NodeServices.layer)))
               console.log(encodeJson(true))
             `,
-          }),
-        ).toBe(true)
-        const snapshot = yield* fs.readFileString(manifestPath)
-        expect(decodeJson(snapshot)).toMatchObject({
-          complete: true,
-          errors: [],
-          processCoverage: 'all-uids',
-          processRoots: [root],
-          // No store reference is required for an identity to be covered.
-          processIdentities: expect.arrayContaining([
-            hidden.identity,
-            rooted.identity,
-            unrelated.identity,
-          ]),
-          claims: expect.arrayContaining(
-            [workspace, `${fdWorkspace}/target`, `${mapWorkspace}/target`, rootWorkspace].map(
-              (path) => ({
-                workspace: path,
-                sources: ['process'],
-                agents: [],
-                activeRuntimeIds: [],
-                active: true,
-              }),
-            ),
-          ),
-        })
-        const candidates = [workspace, fdWorkspace, mapWorkspace, rootWorkspace, idle]
-        const admitted = readOwnerFixture({
-          root,
-          manifestPath,
-          candidates,
-          hiddenPid: hidden.identity.pid,
-        })
-        expect(admitted).toMatchObject({
-          admitted: true,
-          identity: hidden.identity,
-          ownUid: true,
-          denied: [true, true, true, true],
-          coverage: {
-            roots: [root],
+            }),
+          ).toBe(true)
+          const snapshot = yield* fs.readFileString(manifestPath)
+          expect(decodeJson(snapshot)).toMatchObject({
+            complete: true,
+            errors: [],
+            processCoverage: 'all-uids',
+            processRoots: [root],
+            // No store reference is required for an identity to be covered.
             processIdentities: expect.arrayContaining([
               hidden.identity,
               rooted.identity,
               unrelated.identity,
             ]),
-          },
-          candidates: [
-            ...[workspace, fdWorkspace, mapWorkspace, rootWorkspace].map((path) => ({
-              path,
-              active: true,
-              inUse: { _tag: 'free' },
-            })),
-            { path: idle, active: false, inUse: { _tag: 'free' } },
-          ],
-        })
+            claims: expect.arrayContaining(
+              [workspace, `${fdWorkspace}/target`, `${mapWorkspace}/target`, rootWorkspace].map(
+                (path) => ({
+                  workspace: path,
+                  sources: ['process'],
+                  agents: [],
+                  activeRuntimeIds: [],
+                  active: true,
+                }),
+              ),
+            ),
+          })
+          const candidates = [workspace, fdWorkspace, mapWorkspace, rootWorkspace, idle]
+          const admitted = readOwnerFixture({
+            root,
+            manifestPath,
+            candidates,
+            hiddenPid: hidden.identity.pid,
+          })
+          expect(admitted).toMatchObject({
+            admitted: true,
+            identity: hidden.identity,
+            ownUid: true,
+            denied: [true, true, true, true],
+            coverage: {
+              roots: [root],
+              processIdentities: expect.arrayContaining([
+                hidden.identity,
+                rooted.identity,
+                unrelated.identity,
+              ]),
+            },
+            candidates: [
+              ...[workspace, fdWorkspace, mapWorkspace, rootWorkspace].map((path) => ({
+                path,
+                active: true,
+                inUse: { _tag: 'free' },
+              })),
+              { path: idle, active: false, inUse: { _tag: 'free' } },
+            ],
+          })
 
-        // Root ownership and freshness do not waive an absent or mismatched lifetime.
-        for (const mutation of [
-          'delete value.processIdentities',
-          'value.processIdentities = []',
-          `value.processIdentities = value.processIdentities.filter((identity) => identity.pid !== ${hidden.identity.pid})`,
-          `value.processIdentities = value.processIdentities.map((identity) => identity.pid === ${hidden.identity.pid} ? { ...identity, startTime: String(BigInt(identity.startTime) + 1n) } : identity)`,
-          `value.processIdentities.push(${encodeJson(hidden.identity)})`,
-          `value.processIdentities.push({ ...${encodeJson(hidden.identity)}, startTime: String(BigInt(${encodeJson(hidden.identity.startTime)}) + 1n) })`,
-          "value.processIdentities.push({ pid: 1, startTime: 'not-ticks' })",
-          'value.capturedAt = new Date(Date.now() - 2000).toISOString(); value.expiresAt = new Date(Date.now() - 1000).toISOString()',
-        ]) {
-          expect(
-            runActivityFixture({
-              root,
-              asRoot: true,
-              code: `
+          // Root ownership and freshness do not waive an absent or mismatched lifetime.
+          for (const mutation of [
+            'delete value.processIdentities',
+            'value.processIdentities = []',
+            `value.processIdentities = value.processIdentities.filter((identity) => identity.pid !== ${hidden.identity.pid})`,
+            `value.processIdentities = value.processIdentities.map((identity) => identity.pid === ${hidden.identity.pid} ? { ...identity, startTime: String(BigInt(identity.startTime) + 1n) } : identity)`,
+            `value.processIdentities.push(${encodeJson(hidden.identity)})`,
+            `value.processIdentities.push({ ...${encodeJson(hidden.identity)}, startTime: String(BigInt(${encodeJson(hidden.identity.startTime)}) + 1n) })`,
+            "value.processIdentities.push({ pid: 1, startTime: 'not-ticks' })",
+            'value.capturedAt = new Date(Date.now() - 2000).toISOString(); value.expiresAt = new Date(Date.now() - 1000).toISOString()',
+          ]) {
+            expect(
+              runActivityFixture({
+                root,
+                asRoot: true,
+                code: `
                 const value = decodeJson(${encodeJson(snapshot)})
                 ${mutation}
                 await Effect.runPromise(Effect.gen(function* () {
@@ -787,44 +788,44 @@ describe.skipIf(process.platform !== 'linux')('all-uid process coverage', () => 
                 }).pipe(Effect.provide(NodeServices.layer)))
                 console.log(encodeJson(true))
               `,
-            }),
-          ).toBe(true)
+              }),
+            ).toBe(true)
+            expect(
+              readOwnerFixture({
+                root,
+                manifestPath,
+                candidates: [idle],
+                hiddenPid: hidden.identity.pid,
+              }),
+            ).toMatchObject({
+              admitted: false,
+              candidates: [
+                {
+                  path: idle,
+                  inUse: { _tag: 'unknown', reason: 'inaccessible-process' },
+                },
+              ],
+            })
+          }
           expect(
-            readOwnerFixture({
+            runActivityFixture({
               root,
-              manifestPath,
-              candidates: [idle],
-              hiddenPid: hidden.identity.pid,
-            }),
-          ).toMatchObject({
-            admitted: false,
-            candidates: [
-              {
-                path: idle,
-                inUse: { _tag: 'unknown', reason: 'inaccessible-process' },
-              },
-            ],
-          })
-        }
-        expect(
-          runActivityFixture({
-            root,
-            asRoot: true,
-            code: `
+              asRoot: true,
+              code: `
               await Effect.runPromise(Effect.gen(function* () {
                 const fs = yield* FileSystem.FileSystem
                 yield* fs.writeFileString(${encodeJson(manifestPath)}, ${encodeJson(snapshot)})
               }).pipe(Effect.provide(NodeServices.layer)))
               console.log(encodeJson(true))
             `,
-          }),
-        ).toBe(true)
+            }),
+          ).toBe(true)
 
-        // Admit first, then start a new same-UID non-dumpable process. Both fresh
-        // owner capture and deletion-time rechecks must fail closed on its identity.
-        const late = runActivityFixture({
-          root,
-          code: `
+          // Admit first, then start a new same-UID non-dumpable process. Both fresh
+          // owner capture and deletion-time rechecks must fail closed on its identity.
+          const late = runActivityFixture({
+            root,
+            code: `
             const report = await Effect.runPromise(Effect.gen(function* () {
               const fs = yield* FileSystem.FileSystem
               const config = {
@@ -873,31 +874,32 @@ signal.pause()
             }).pipe(Effect.provide(NodeServices.layer), Effect.scoped))
             console.log(encodeJson(report))
           `,
-        })
-        expect(late).toMatchObject({
-          admittedBeforeLate: true,
-          coveredLate: false,
-          admittedAfterLate: false,
-          deletionRecheck: { _tag: 'unknown', reason: 'inaccessible-process' },
-        })
-        // Once only the covered lifetimes remain, the same snapshot is usable again.
-        expect(
-          readOwnerFixture({
-            root,
-            manifestPath,
-            candidates: [idle],
-            hiddenPid: hidden.identity.pid,
-          }),
-        ).toMatchObject({
-          admitted: true,
-          candidates: [{ path: idle, active: false, inUse: { _tag: 'free' } }],
-        })
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-    { timeout: 120_000 },
-  )
+          })
+          expect(late).toMatchObject({
+            admittedBeforeLate: true,
+            coveredLate: false,
+            admittedAfterLate: false,
+            deletionRecheck: { _tag: 'unknown', reason: 'inaccessible-process' },
+          })
+          // Once only the covered lifetimes remain, the same snapshot is usable again.
+          expect(
+            readOwnerFixture({
+              root,
+              manifestPath,
+              candidates: [idle],
+              hiddenPid: hidden.identity.pid,
+            }),
+          ).toMatchObject({
+            admitted: true,
+            candidates: [{ path: idle, active: false, inUse: { _tag: 'free' } }],
+          })
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+      { timeout: 120_000 },
+    )
+  }
 
   it.live.skipIf(runsAsRoot === true)(
     'an all-uid manifest the owner could have written is rejected; strict probe stays unknown',

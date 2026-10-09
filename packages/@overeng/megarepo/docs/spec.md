@@ -758,8 +758,10 @@ deleted). Each class lists root patterns (`name` at the worktree root,
 `**/name` nested, never crossing symlinks, mounts, `.git`, another class root,
 or `tmp/worklog`). Accounting is allocated bytes (`st_blocks * 512`) over unique
 `(dev, ino)` without following symlinks; reflinked/cloned blocks are counted
-per file, so ZFS block-cloning savings are invisible to it and to `du`. While a
-class exceeds `budgetBytes`, proven-idle roots are planned for eviction oldest
+per file, so ZFS block-cloning savings are invisible to it and to `du`. ZFS
+allocates lazily per transaction group: fresh writes can under-count until the
+next txg commits, even after file synchronization, so eviction can lag one
+hygiene cycle. While a class exceeds `budgetBytes`, proven-idle roots are planned for eviction oldest
 newest-write first until the projection fits; a class that cannot get under
 budget reports `over-budget-no-idle-candidate`. Proven idle requires no process
 reference, no deletion lease, no agent claim on the admitted activity epoch,

@@ -154,7 +154,9 @@ Accounting sums allocated bytes (`st_blocks * 512`) over unique `(dev, ino)` pai
 following symlinks, so hardlinked files count once. Reflinked or deduplicated blocks still count
 as allocated per file: on ZFS or other copy-on-write filesystems, the physical savings of block
 cloning are not visible to `du` or to this accounting, and evicting a reflinked root can free fewer
-bytes than reported. Per class, roots are evicted in ascending newest-write order until the
+bytes than reported. ZFS also allocates lazily per transaction group: fresh writes can under-count
+until the next txg commits, even after file synchronization, so budget eviction can lag one hygiene
+cycle. Per class, roots are evicted in ascending newest-write order until the
 projected total fits the budget. Only proven-idle roots are candidates: no live process
 cwd/root/fd/maps inside the worktree, no held `mr store lease`, no active agent claim, newest write
 older than `idleRetentionMs`, Git-ignored with no tracked file, and canonically contained in the

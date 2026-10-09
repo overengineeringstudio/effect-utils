@@ -353,47 +353,48 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
     ),
   )
 
-  it.live(
-    'only exact root-scanned identities cover unreadable own-UID processes; new readable references are still scanned',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
-        const worktree = `${root}/worktree`
-        const outside = `${root}/outside`
-        for (const directory of [root, worktree, outside]) {
-          yield* fs.makeDirectory(directory, { recursive: true })
-          yield* fs.chmod(directory, 0o755)
-        }
-        // The isolated UID must not depend on access to private checkout ancestors.
-        // Bundle the real runtime and its dependencies into this readable fixture.
-        const entry = `${root}/reference-runtime.ts`
-        const runtime = `${root}/reference-runtime.mjs`
-        yield* fs.writeFileString(
-          entry,
-          `
+  if (process.env['MEGAREPO_TEST_PRIVILEGED'] === '1') {
+    it.live(
+      'privileged: only exact root-scanned identities cover unreadable own-UID processes; new readable references are still scanned',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+          const worktree = `${root}/worktree`
+          const outside = `${root}/outside`
+          for (const directory of [root, worktree, outside]) {
+            yield* fs.makeDirectory(directory, { recursive: true })
+            yield* fs.chmod(directory, 0o755)
+          }
+          // The isolated UID must not depend on access to private checkout ancestors.
+          // Bundle the real runtime and its dependencies into this readable fixture.
+          const entry = `${root}/reference-runtime.ts`
+          const runtime = `${root}/reference-runtime.mjs`
+          yield* fs.writeFileString(
+            entry,
+            `
             export { NodeServices } from ${encodeJson(fileURLToPath(import.meta.resolve('@effect/platform-node')))}
             export { Effect } from ${encodeJson(fileURLToPath(import.meta.resolve('effect')))}
             export * as FileSystem from ${encodeJson(fileURLToPath(import.meta.resolve('effect/FileSystem')))}
             export { parseProcStat, parseProcUids, readProcessReferences, readWorktreeReferencesInUse } from ${encodeJson(referenceModule)}
             export { encodeJson } from ${encodeJson(jsonModule)}
           `,
-        )
-        const bundled = spawnSync('bun', ['build', entry, '--target=bun', '--outfile', runtime], {
-          encoding: 'utf8',
-          timeout: 120_000,
-        })
-        expect(bundled.status, `reference fixture bundle failed: ${bundled.stderr}`).toBe(0)
-        yield* fs.chmod(runtime, 0o644)
-        const hidden = yield* Effect.acquireRelease(
-          Effect.promise(() => spawnIdentityHolder({ cwd: outside })),
-          ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
-        )
-        const coveredProcesses = Schema.decodeUnknownSync(ProcessIdentities)(
-          runReferenceFixture({
-            cwd: outside,
-            asRoot: true,
-            code: `
+          )
+          const bundled = spawnSync('bun', ['build', entry, '--target=bun', '--outfile', runtime], {
+            encoding: 'utf8',
+            timeout: 120_000,
+          })
+          expect(bundled.status, `reference fixture bundle failed: ${bundled.stderr}`).toBe(0)
+          yield* fs.chmod(runtime, 0o644)
+          const hidden = yield* Effect.acquireRelease(
+            Effect.promise(() => spawnIdentityHolder({ cwd: outside })),
+            ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
+          )
+          const coveredProcesses = Schema.decodeUnknownSync(ProcessIdentities)(
+            runReferenceFixture({
+              cwd: outside,
+              asRoot: true,
+              code: `
               const identities = await Effect.runPromise(Effect.gen(function* () {
                 const fs = yield* FileSystem.FileSystem
                 const scan = yield* readProcessReferences({ fs, selfPid: process.pid })
@@ -402,18 +403,18 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
               }).pipe(Effect.provide(NodeServices.layer)))
               console.log(encodeJson(identities))
             `,
-          }),
-        )
-        // Capture must include a process with no path under the candidate worktree.
-        expect(coveredProcesses).toContainEqual(hidden.identity)
-        const wrongStartTime = coveredProcesses.map((identity) =>
-          identity.pid === hidden.identity.pid
-            ? { ...identity, startTime: String(BigInt(identity.startTime) + 1n) }
-            : identity,
-        )
-        const report = runReferenceFixture({
-          cwd: outside,
-          code: `
+            }),
+          )
+          // Capture must include a process with no path under the candidate worktree.
+          expect(coveredProcesses).toContainEqual(hidden.identity)
+          const wrongStartTime = coveredProcesses.map((identity) =>
+            identity.pid === hidden.identity.pid
+              ? { ...identity, startTime: String(BigInt(identity.startTime) + 1n) }
+              : identity,
+          )
+          const report = runReferenceFixture({
+            cwd: outside,
+            code: `
             const report = await Effect.runPromise(Effect.gen(function* () {
               const fs = yield* FileSystem.FileSystem
               const pid = ${hidden.identity.pid}
@@ -450,53 +451,60 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
             }).pipe(Effect.provide(NodeServices.layer)))
             console.log(encodeJson(report))
           `,
-        })
-        expect(report).toMatchObject({
-          identity: hidden.identity,
-          ownUid: true,
-          denied: [true, true, true, true],
-          uncovered: { _tag: 'unknown', reason: 'inaccessible-process', pid: hidden.identity.pid },
-          wrongStartTime: {
-            _tag: 'unknown',
-            reason: 'inaccessible-process',
-            pid: hidden.identity.pid,
-          },
-          exact: 'complete',
-          identities: expect.arrayContaining([hidden.identity]),
-          candidate: { _tag: 'free' },
-          // Identity proof never permits all-UID scans to skip foreign owners.
-          strictForeign: { _tag: 'unknown', reason: 'inaccessible-process' },
-        })
+          })
+          expect(report).toMatchObject({
+            identity: hidden.identity,
+            ownUid: true,
+            denied: [true, true, true, true],
+            uncovered: {
+              _tag: 'unknown',
+              reason: 'inaccessible-process',
+              pid: hidden.identity.pid,
+            },
+            wrongStartTime: {
+              _tag: 'unknown',
+              reason: 'inaccessible-process',
+              pid: hidden.identity.pid,
+            },
+            exact: 'complete',
+            identities: expect.arrayContaining([hidden.identity]),
+            candidate: { _tag: 'free' },
+            // Identity proof never permits all-UID scans to skip foreign owners.
+            strictForeign: { _tag: 'unknown', reason: 'inaccessible-process' },
+          })
 
-        const readable = yield* Effect.acquireRelease(
-          Effect.promise(() => spawnIdentityHolder({ cwd: worktree, nonDumpable: false })),
-          ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
-        )
-        expect(coveredProcesses).not.toContainEqual(readable.identity)
-        expect(
-          runReferenceFixture({
-            cwd: outside,
-            code: `
+          const readable = yield* Effect.acquireRelease(
+            Effect.promise(() => spawnIdentityHolder({ cwd: worktree, nonDumpable: false })),
+            ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
+          )
+          expect(coveredProcesses).not.toContainEqual(readable.identity)
+          expect(
+            runReferenceFixture({
+              cwd: outside,
+              code: `
               const result = await Effect.runPromise(readWorktreeReferencesInUse({
                 worktreePath: ${encodeJson(worktree)}, scope: 'own-uid',
                 coveredProcesses: ${encodeJson(coveredProcesses)},
               }).pipe(Effect.provide(NodeServices.layer)))
               console.log(encodeJson(result))
             `,
-          }),
-        ).toMatchObject({ _tag: 'in-use', holder: { pid: readable.identity.pid, path: worktree } })
-        yield* Effect.promise(() => stopIdentityHolder(readable.child))
+            }),
+          ).toMatchObject({
+            _tag: 'in-use',
+            holder: { pid: readable.identity.pid, path: worktree },
+          })
+          yield* Effect.promise(() => stopIdentityHolder(readable.child))
 
-        // This process did not exist at capture; a still-fresh identity list cannot waive it.
-        const late = yield* Effect.acquireRelease(
-          Effect.promise(() => spawnIdentityHolder({ cwd: outside })),
-          ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
-        )
-        expect(coveredProcesses).not.toContainEqual(late.identity)
-        expect(
-          runReferenceFixture({
-            cwd: outside,
-            code: `
+          // This process did not exist at capture; a still-fresh identity list cannot waive it.
+          const late = yield* Effect.acquireRelease(
+            Effect.promise(() => spawnIdentityHolder({ cwd: outside })),
+            ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
+          )
+          expect(coveredProcesses).not.toContainEqual(late.identity)
+          expect(
+            runReferenceFixture({
+              cwd: outside,
+              code: `
               const result = await Effect.runPromise(Effect.gen(function* () {
                 const fs = yield* FileSystem.FileSystem
                 return yield* readProcessReferences({
@@ -506,14 +514,19 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
               }).pipe(Effect.provide(NodeServices.layer)))
               console.log(encodeJson(result))
             `,
-          }),
-        ).toMatchObject({ _tag: 'unknown', reason: 'inaccessible-process', pid: late.identity.pid })
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-    { timeout: 120_000 },
-  )
+            }),
+          ).toMatchObject({
+            _tag: 'unknown',
+            reason: 'inaccessible-process',
+            pid: late.identity.pid,
+          })
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+      { timeout: 120_000 },
+    )
+  }
 
   it.effect.skipIf(runsAsRoot === false)(
     'sees cwd and open-file holders, excludes descendants, and frees after exit',
