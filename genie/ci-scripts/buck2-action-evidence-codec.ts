@@ -13,6 +13,11 @@ import {
   type CacheLane,
 } from './buck2-action-evidence.ts'
 import type { CacheOutcome } from './buck2-cache-evidence.ts'
+import { decodeEvidenceProducer, encodeEvidenceProducer } from './buck2-evidence-producer.ts'
+
+/** Preserve legacy Actions metadata bytes while encoding the explicit host producer variant. */
+export const encodeActionArtifact = (artifact: ActionArtifact): string =>
+  `${JSON.stringify({ ...artifact.header, metadata: encodeEvidenceProducer(artifact.header.metadata) })}\n${artifact.actions.map((action) => `${JSON.stringify(action)}\n`).join('')}`
 
 /** Local cache hits are reuse, never avoidable local-execution candidates. */
 export const classifyCacheAction = (
@@ -94,7 +99,9 @@ const decodeAction = (value: unknown): ActionRecord => {
     buildId: nullableText(field(value, 'buildId'), /^[a-zA-Z0-9_.-]+$/),
     context: nullableText(field(value, 'context')),
     category: nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/),
-    exclusionReason: actionExclusionReason(nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/)),
+    exclusionReason: actionExclusionReason(
+      nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/),
+    ),
     target: nullableText(
       field(value, 'target'),
       /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/,
@@ -159,10 +166,6 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
     field(value, 'cacheOutcomeMapping') !== cacheOutcomeMapping
   )
     return invalid()
-  const metadata = field(value, 'metadata')
-  const posture = field(metadata, 'posture')
-  if (posture !== 'read-only' && posture !== 'writer' && posture !== 'disabled-by-design')
-    return invalid()
   const status = field(value, 'status')
   if (
     status !== 'collected' &&
@@ -170,22 +173,11 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
     status !== 'remote-cache-disabled-by-design'
   )
     return invalid()
-  const rawLane = field(metadata, 'lane')
   const header: ActionArtifactHeader = {
     type: 'header',
     schemaVersion: 1,
     cacheOutcomeMapping,
-    metadata: {
-      repo: nullableText(field(metadata, 'repo'), /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/),
-      runId: nullableText(field(metadata, 'runId'), /^[0-9]+$/),
-      runAttempt: nullableText(field(metadata, 'runAttempt'), /^[0-9]+$/),
-      job: nullableText(field(metadata, 'job'), /^[a-zA-Z0-9_.-]+$/),
-      lane: rawLane === null ? null : lane(rawLane),
-      headSha: nullableText(field(metadata, 'headSha'), /^[a-fA-F0-9]{40}$/),
-      posture,
-      startedAt: timestamp(field(metadata, 'startedAt')),
-      finishedAt: timestamp(field(metadata, 'finishedAt')),
-    },
+    metadata: decodeEvidenceProducer(field(value, 'metadata')),
     status,
     complete: boolean(field(value, 'complete')),
     actionCount: integer(field(value, 'actionCount')),

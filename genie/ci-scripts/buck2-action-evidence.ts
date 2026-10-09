@@ -1,4 +1,5 @@
 import type { CacheOutcome } from './buck2-cache-evidence.ts'
+import type { CacheEvidenceProducer } from './buck2-evidence-producer.ts'
 
 /** Repository-owned wire mapping; raw enums remain authoritative for alternate consumers. */
 export const cacheOutcomeMapping = 'effect-utils/compact-cache-outcome/v1' as const
@@ -6,6 +7,8 @@ export const actionsArtifactName = 'buck2-cache-actions.jsonl.gz'
 /** Hard action-payload ceiling, independent of compression ratio. Overflow is invalid evidence. */
 export const maxActionArtifactBytes = 64 * 1024 * 1024
 export type CacheLane = 'main-writer' | 'main-reader' | 'merge_group' | 'pr'
+export const isCacheLane = (value: unknown): value is CacheLane =>
+  value === 'main-writer' || value === 'main-reader' || value === 'merge_group' || value === 'pr'
 /** Cheap local materialization deliberately bypasses remote-cache reads and writes. */
 export const localMaterializationCategories = [
   'pnpm_extract',
@@ -70,17 +73,7 @@ export type ActionArtifactHeader = {
   type: 'header'
   schemaVersion: 1
   cacheOutcomeMapping: typeof cacheOutcomeMapping
-  metadata: {
-    repo: string | null
-    runId: string | null
-    runAttempt: string | null
-    job: string | null
-    lane: CacheLane | null
-    headSha: string | null
-    posture: 'read-only' | 'writer' | 'disabled-by-design'
-    startedAt: number | null
-    finishedAt: number | null
-  }
+  metadata: CacheEvidenceProducer
   status: 'collected' | 'no-native-logs' | 'remote-cache-disabled-by-design'
   complete: boolean
   actionCount: number

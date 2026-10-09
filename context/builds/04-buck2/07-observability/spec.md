@@ -83,6 +83,37 @@ In-Nix product jobs report `remote-cache-disabled-by-design` with no action rows
 their reuse measure is Nix output substitution, not shared Buck AC. Failed evidence
 collection is visible in job logs and does not change the product result.
 
+The complete `buck2-cache-actions.jsonl.gz` header owns one producer discriminator
+in its canonical TypeScript model: `github-actions` or `host-service`. Legacy
+Actions wire metadata remains byte-identical and untagged; its decoder restores
+`github-actions`. Host wire metadata carries `_tag: "host-service"` and only
+`host`, `unit`, `invocationId`, `fetchedCommit`, `posture`, `startedAt`, and
+`finishedAt`. Both encoders reconstruct that allowlist; unrelated fields cannot
+enter the sanitized artifact. Unknown tags are rejected. The Actions-only warm99
+reader rejects host receipts instead of assigning them a repository, run or lane.
+
+Host collection explicitly sets `BUCK2_CACHE_EVIDENCE_PRODUCER=host-service`.
+`BUCK2_CACHE_EVIDENCE_HOST` is an ASCII hostname-like identifier (1–253 characters,
+leading alphanumeric, then alphanumeric, underscore, dot or hyphen);
+`BUCK2_CACHE_EVIDENCE_UNIT` is a service basename (at most 255 characters, composed
+of alphanumeric, underscore, dot, at-sign or hyphen, ending in `.service`).
+`BUCK2_CACHE_EVIDENCE_INVOCATION_ID` is the real systemd invocation ID (32 lowercase
+hex characters), and `BUCK2_CACHE_EVIDENCE_COMMIT` is the fetched 40-hex revision.
+`BUCK2_CACHE_EVIDENCE_POSTURE` is `writer`, `read-only` or `disabled-by-design`.
+`BUCK2_CACHE_EVIDENCE_STARTED_AT` and `BUCK2_CACHE_EVIDENCE_FINISHED_AT` are safe,
+nonnegative integer epoch milliseconds; finish is required at finalization and
+never synthesized from wall-clock time. These repository-owned environment keys
+do not inherit Actions identity variables.
+
+For example, `fixture-host`, `fixture-seeder.service`, and a 32-lowercase-hex
+invocation are accepted; `../unsafe host`, filesystem paths, and a dashed UUID
+invocation are rejected. Initialization and each append retain host identity
+through finalization. Changing producer, host, unit, invocation, revision,
+posture or start permanently records an evidence gap, even if later restored.
+Missing or malformed metadata and reversed/out-of-native-bound windows leave the
+retained native rows incomplete and make finalization fail. The declared
+`genie:cache-evidence:test` task covers both producer variants and legacy bytes.
+
 ## Children
 
 | Child                                                  | Owns                                                      |
