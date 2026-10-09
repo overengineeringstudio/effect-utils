@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs'
 
+import {
+  assertPublishedPackageClosure,
+  type PublishedPackageManifest,
+} from '../../genie/buck2/package-product-inventory.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const javascriptProducts = [
@@ -43,6 +47,7 @@ const packageProducts = [
   '@overeng/effect-react',
   '@overeng/effect-rpc-explorer',
   '@overeng/effect-rpc-explorer-react',
+  '@overeng/effect-rust',
   '@overeng/genie',
   '@overeng/notion-core',
   '@overeng/notion-effect-client',
@@ -61,11 +66,36 @@ const packageProducts = [
   '@overeng/utils-storybook',
 ] as const
 
-const packageEntries = packageProducts.map((name) => {
+const packageManifests = packageProducts.map(
+  (name) =>
+    JSON.parse(readFileSync(`packages/${name}/package.json`, 'utf8')) as PublishedPackageManifest & {
+      readonly version: string
+    },
+)
+const rootPackage = JSON.parse(readFileSync('package.json', 'utf8')) as {
+  readonly workspaces: readonly string[]
+}
+const workspaceNames = new Set(
+  rootPackage.workspaces.map(
+    (path) => {
+      const packageJson: unknown = JSON.parse(readFileSync(`${path}/package.json`, 'utf8'))
+      if (
+        packageJson === null ||
+        typeof packageJson !== 'object' ||
+        'name' in packageJson === false ||
+        typeof packageJson.name !== 'string'
+      ) {
+        throw new Error(`Invalid workspace package name in ${path}/package.json`)
+      }
+      return packageJson.name
+    },
+  ),
+)
+assertPublishedPackageClosure({ packages: packageManifests, workspaceNames })
+
+const packageEntries = packageManifests.map((packageJson) => {
+  const name = packageJson.name
   const packagePath = `packages/${name}`
-  const packageJson = JSON.parse(readFileSync(`${packagePath}/package.json`, 'utf8')) as {
-    readonly version: string
-  }
   return {
     kind: 'package',
     name,
@@ -80,7 +110,9 @@ const packageEntries = packageProducts.map((name) => {
 /**
  * Single inventory of every cache product. `cache.nix` reads it as the target
  * set and `source-recipes.nix` derives the from-source recipe for each entry, so
- * the two cannot drift. It is a header-free JSON projection on purpose: the
+ * the two cannot drift. Runtime workspace dependencies must also be products;
+ * generation rejects an unpublished dependency before publishing a broken closure.
+ * It is a header-free JSON projection on purpose: the
  * `genie` that checks it in CI is the pinned product of an earlier commit, so
  * the output must not depend on header rules introduced by the same change.
  */
