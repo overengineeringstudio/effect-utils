@@ -135,6 +135,12 @@ This configuration excludes the interactive OTEL Collector/Tempo/Grafana stack
 and its local trace-capture verifier task, which the test graph does not execute.
 It retains the `otelite` native binary used by source tests, `otel-span`,
 `otel-scrape`, native devenv tracing and pipeline evidence.
+The retained repository shell products are prepublished per platform by the
+protected-main native/compiled publisher. Its `ci-test-shell-products` flake
+aggregate contains the exact shell imports and capability outputs, including
+their source bridges and validators. Native recipe identity is scoped to
+declared sources and pinned tools rather than repository HEAD; see the
+[native Nix bridge contract](../builds/05-product-distribution/02-nix-bridge/spec.md#native-products).
 Developer shells keep the local observability surface. Execution
 latency is measured from job `startedAt` to `completedAt`; runner queue wait is
 reported separately and is not part of the execution budget.

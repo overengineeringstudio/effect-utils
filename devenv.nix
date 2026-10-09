@@ -1020,6 +1020,8 @@ in
     repoPackages.notion-cli
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
     # Retained source suites execute this native capture binary on both platforms.
+    # The protected-main publisher retains this exact import (and the other
+    # repository shell tools) through .#ci-test-shell-products on each platform.
     repoPackages.otelite
     repoPackages.otel-scrape
     repoPackages.buck2-events

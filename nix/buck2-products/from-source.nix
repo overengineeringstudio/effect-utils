@@ -36,7 +36,9 @@ let
   # Cargo manifests in consumer roots live in repositorySource, which can be a
   # derivation. Read the staged workspace at build time, not repositoryRoot at
   # evaluation time: the latter belongs to this rules package.
-  releaseProfileScript = ../workspace-tools/lib/cargo-release-profile.py;
+  releaseProfileScript = pkgs.writeText "cargo-release-profile.py" (
+    builtins.readFile ../workspace-tools/lib/cargo-release-profile.py
+  );
   # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
   # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
   cliBuildStamp = product.cliBuildStamp or null;
@@ -116,9 +118,8 @@ in
 assert lib.assertMsg (
   producerCommit == null || builtins.match "[0-9a-f]{40}" producerCommit != null
 ) "buck2-products: producerCommit must be a full lowercase Git commit";
-assert lib.assertMsg (
-  (producerCommit == null) == (sourcePaths != null)
-) "buck2-products: published recipes require producerCommit; scoped consumer recipes must omit it";
+assert lib.assertMsg ((producerCommit == null) == (sourcePaths != null))
+  "buck2-products: revision-bound recipes require producerCommit; scoped source recipes must omit it";
 assert lib.assertMsg
   (
     sourcePaths == null
@@ -188,6 +189,7 @@ let
       export XDG_CACHE_HOME="$TMPDIR/cache"
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      mkdir -p .buck2
       ${lib.optionalString (rootProjection != null) ''
         cp -R ${rootProjection}/. .
         chmod -R u+w .buck2 buck2 BUCK .buckconfig .buckroot

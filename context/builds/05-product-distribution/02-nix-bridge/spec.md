@@ -131,9 +131,8 @@ as `--config build_identity.cli_build_stamp=...` before the Buck build
 input: unrelated commits preserve it; relevant closure changes require an
 in-PR generated refresh and freshness proof. This describes the required
 injection contract, not a claim that every consumer already implements C.
-Published effect-utils products keep their manifest-bound
-`producerCommit` and `effect-utils/buck-product-provenance/v1` unchanged
-(decision 0037).
+Manifest-bound effect-utils JavaScript products keep their `producerCommit`
+and `effect-utils/buck-product-provenance/v1` unchanged (decision 0037).
 
 ### Native products
 
@@ -151,13 +150,40 @@ products have dynamic runtimes. Genie wrappers bind
 `GENIE_TYPESCRIPT_API_SERVER` to that same imported package; the reusable
 observability module uses the imported `otelite` for capture.
 
-Protected main publishes the three native imports alongside the compiled
+Native shell imports instead use the source-addressed provenance contract
+above. Their generated `sourcePaths` declare the Rust crate, workspace profile
+and lock, and Reindeer graph; the TypeScript server derives its recursive pnpm
+workspace package closure. The ordinary Buck root configuration and shared
+rules/runtime files form a separate `rootProjection` input. Rule tests and
+generators are excluded from that input. Neither the checkout's store root nor
+its Git revision is part of these recipes' identity. Unrelated commits retain
+the same per-platform derivation; edits to declared sources, pinned toolchains,
+archives or validation contracts invalidate it.
+
+Files passed to build-time helpers must be content-scoped too. The stage-zero
+root metadata, Cargo profile reader and descriptor contract are materialized
+from their bytes; the Buck launcher has its own scripts fileset. Interpolating
+an unchanged file directly below a flake store root would retain the whole
+root context and defeat substitution across unrelated commits.
+
+Protected main publishes `ci-test-shell-products` alongside the compiled
 imports from native Linux x86_64 and Darwin arm64 runners to the public
-`overeng-effect-utils` Cachix cache. PR CI builds and `--help`-smokes them
-without a write credential. Linux arm64 is admitted but has no publisher:
-consumers build its import from source on a cache miss. Neither native
-product lookup nor publication uses GitHub release assets or a release
-manifest; the derivation itself is the substitution identity.
+`overeng-effect-utils` Cachix cache. This aggregate references the exact retained
+shell products, capabilities, Rust support tools, native imports, and CLI
+wrappers consumed by `devenv.nix`; Cachix publishes their transitive store
+closures, including source bridge and validator outputs. The publisher and PR
+smoke lanes share `genie/ci-scripts/compiled-products.sh`; only the protected
+publisher invokes `--push` with a cache write credential. Linux arm64 is
+admitted but has no publisher: consumers build its import from source on a
+cache miss. Neither native product lookup nor publication uses GitHub release
+assets or a release manifest; the derivation itself is the substitution identity.
+
+The script realizes all inventoried native and compiled imports plus the shell
+aggregate in one `nix build --json` invocation. JSON outputs are matched to each
+inventory row by its executable, not by result order. Exactly one matching
+output is required per product before its `--help` smoke runs; missing or
+ambiguous outputs fail the lane. Publication follows successful smoke of every
+row and pushes every returned direct output's closure.
 
 ### Rust/Cargo archives
 

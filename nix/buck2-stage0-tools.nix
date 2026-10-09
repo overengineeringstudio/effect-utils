@@ -14,6 +14,13 @@ let
     (repositoryRoot + "/rust-toolchain.toml")
     (repositoryRoot + "/nix/buck2-stage0-tools.nix")
   ];
+  # Coercing a file beneath a flake store root retains that whole root's
+  # context. Materialize the bytes instead, so unrelated commits do not change
+  # the stage-zero source derivation even when these files are unchanged.
+  toolchainFile = pkgs.writeText "rust-toolchain.toml" (
+    builtins.readFile (repositoryRoot + "/rust-toolchain.toml")
+  );
+  recipeFile = pkgs.writeText "buck2-stage0-tools.nix" (builtins.readFile ./buck2-stage0-tools.nix);
   mkRustFileset =
     packageRoot:
     lib.fileset.unions [
@@ -33,8 +40,8 @@ let
     pkgs.runCommand "buck2-stage0-source" { } ''
       mkdir -p "$out/nix"
       cp -R ${rustSource} "$out/rust"
-      cp ${repositoryRoot + "/rust-toolchain.toml"} "$out/rust-toolchain.toml"
-      cp ${repositoryRoot + "/nix/buck2-stage0-tools.nix"} "$out/nix/buck2-stage0-tools.nix"
+      cp ${toolchainFile} "$out/rust-toolchain.toml"
+      cp ${recipeFile} "$out/nix/buck2-stage0-tools.nix"
     '';
 
   toolDefinitions = {
