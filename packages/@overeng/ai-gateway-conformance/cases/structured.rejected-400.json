@@ -1,0 +1,58 @@
+{
+  "id": "structured.rejected-400",
+  "summary": "Unsupported structured formatting is an HTTP refusal, not unconstrained success.",
+  "requirements": [
+    "AIG-R05",
+    "AIG-R10"
+  ],
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "auth": "bearer",
+    "match": {
+      "model": "fixture/schema-rejected",
+      "stream": false,
+      "responseFormat": "json_schema"
+    }
+  },
+  "response": {
+    "status": 400,
+    "json": {
+      "error": {
+        "message": "response_format json_schema is not supported for this model",
+        "type": "invalid_request_error"
+      }
+    }
+  },
+  "expect": {
+    "outcome": "http-error",
+    "error": {
+      "status": 400,
+      "type": "invalid_request_error"
+    }
+  },
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "age": {
+        "type": "number",
+        "minimum": 0
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "name",
+      "age",
+      "tags"
+    ],
+    "additionalProperties": false
+  }
+}

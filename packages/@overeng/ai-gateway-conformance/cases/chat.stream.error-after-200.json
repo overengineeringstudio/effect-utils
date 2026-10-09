@@ -1,0 +1,50 @@
+{
+  "id": "chat.stream.error-after-200",
+  "summary": "An error data payload after partial output remains a stream failure, without DONE.",
+  "requirements": [
+    "AIG-R10"
+  ],
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "auth": "bearer",
+    "match": {
+      "model": "anthropic/claude-haiku-4-5",
+      "stream": true
+    }
+  },
+  "response": {
+    "status": 200,
+    "sse": [
+      {
+        "id": "chatcmpl-test",
+        "object": "chat.completion.chunk",
+        "created": 1750000000,
+        "model": "anthropic/claude-haiku-4-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant",
+              "content": "Hel"
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      },
+      {
+        "error": {
+          "message": "upstream stream failed",
+          "type": "gateway_error"
+        }
+      }
+    ]
+  },
+  "expect": {
+    "outcome": "stream-error",
+    "error": {
+      "type": "gateway_error"
+    }
+  }
+}

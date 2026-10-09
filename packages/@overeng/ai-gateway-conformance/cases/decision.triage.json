@@ -1,0 +1,116 @@
+{
+  "id": "decision.triage",
+  "summary": "Batch classification, probability and rating with native supplied usage.",
+  "requirements": [
+    "AIG-R07",
+    "AIG-R08",
+    "AIG-R03"
+  ],
+  "request": {
+    "method": "POST",
+    "path": "/v1/systemone",
+    "auth": "bearer",
+    "match": {
+      "model": "openrouter/~typesafe/jev-latest"
+    },
+    "body": {
+      "model": "openrouter/~typesafe/jev-latest",
+      "state": {
+        "ticket": "Charged twice"
+      },
+      "questions": {
+        "department": {
+          "type": "choice",
+          "instructions": "Which team should handle this?",
+          "criteria": {
+            "billing": "Payments and refunds",
+            "technical": "Bugs and outages"
+          }
+        },
+        "urgent": {
+          "type": "noul",
+          "instructions": "Needs action today?"
+        },
+        "frustration": {
+          "type": "score",
+          "instructions": "How frustrated is the customer?",
+          "criteria": [
+            "calm",
+            "frustrated",
+            "angry"
+          ]
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "billing",
+          "probabilities": {
+            "billing": 0.9,
+            "technical": 0.1
+          },
+          "confidence": 0.8
+        },
+        "urgent": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "frustration": {
+          "type": "score",
+          "score": 1.2,
+          "probabilities": {
+            "0": 0,
+            "1": 0.8,
+            "2": 0.2
+          },
+          "legend": {
+            "0": "calm",
+            "1": "frustrated",
+            "2": "angry"
+          },
+          "confidence": 0.6
+        }
+      },
+      "usage": {
+        "input_tokens": 218,
+        "output_tokens": 39
+      }
+    }
+  },
+  "expect": {
+    "outcome": "success",
+    "decision": {
+      "department": {
+        "label": "billing",
+        "probabilities": {
+          "billing": 0.9,
+          "technical": 0.1
+        },
+        "confidence": 0.8
+      },
+      "urgent": {
+        "probability": 0.7
+      },
+      "frustration": {
+        "rating": 1.2,
+        "label": "frustrated",
+        "probabilities": {
+          "calm": 0,
+          "frustrated": 0.8,
+          "angry": 0.2
+        },
+        "confidence": 0.6
+      }
+    },
+    "usage": {
+      "input": 218,
+      "output": 39
+    }
+  }
+}

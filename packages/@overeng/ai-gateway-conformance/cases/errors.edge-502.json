@@ -1,0 +1,33 @@
+{
+  "id": "errors.edge-502",
+  "summary": "Surface the gateway/provider error status and wire type.",
+  "requirements": [
+    "AIG-R10"
+  ],
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "auth": "bearer",
+    "match": {
+      "model": "fixture/upstream-down",
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 502,
+    "json": {
+      "error": {
+        "message": "upstream unavailable",
+        "type": "gateway_error",
+        "code": null
+      }
+    }
+  },
+  "expect": {
+    "outcome": "http-error",
+    "error": {
+      "status": 502,
+      "type": "gateway_error"
+    }
+  }
+}

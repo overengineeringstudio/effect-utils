@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/overengineeringstudio/effect-utils/ai-gateway-conformance/case.schema.json",
+  "title": "AI gateway conformance case",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^AIG-R[0-9]{2}$"
+      }
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "enum": [
+            "GET",
+            "POST"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "auth": {
+          "enum": [
+            "bearer",
+            "none"
+          ]
+        },
+        "match": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "stream": {
+              "type": "boolean"
+            },
+            "responseFormat": {
+              "enum": [
+                "text",
+                "json_object",
+                "json_schema"
+              ]
+            },
+            "hasToolResult": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "method",
+        "path",
+        "auth"
+      ],
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "integer"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "json": {},
+        "sse": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "json"
+          ],
+          "not": {
+            "required": [
+              "sse"
+            ]
+          }
+        },
+        {
+          "required": [
+            "sse"
+          ],
+          "not": {
+            "required": [
+              "json"
+            ]
+          }
+        }
+      ]
+    },
+    "expect": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "enum": [
+            "success",
+            "http-error",
+            "stream-error",
+            "validation-error"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "object": {},
+        "usage": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "integer"
+            },
+            "output": {
+              "type": "integer"
+            },
+            "total": {
+              "type": "integer"
+            },
+            "cached": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "input",
+            "output"
+          ],
+          "additionalProperties": false
+        },
+        "toolCalls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "arguments": {}
+            },
+            "required": [
+              "id",
+              "name",
+              "arguments"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "integer"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "decision": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "outcome"
+      ],
+      "additionalProperties": false
+    },
+    "schema": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "id",
+    "summary",
+    "requirements",
+    "request",
+    "response",
+    "expect"
+  ],
+  "additionalProperties": false
+}
