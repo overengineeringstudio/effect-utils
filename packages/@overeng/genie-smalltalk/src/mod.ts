@@ -138,6 +138,38 @@ const UtcAnchor = Schema.String.pipe(
   Schema.brand('UtcAnchor'),
 )
 
+/** A local 24-hour calendar time, without a weekday or UTC offset. */
+export const CalendarTimeSchema = Schema.String.pipe(
+  Schema.refine((s): s is string => /^(?:[01]\d|2[0-3]):[0-5]\d$/u.test(s), {
+    message: 'calendar at must be a valid 24-hour HH:MM',
+  }),
+  Schema.brand('CalendarTime'),
+  Schema.annotate({ identifier: 'St.CalendarTime' }),
+)
+
+/** A named IANA timezone; st validates against its bundled chrono-tz data at publication. */
+export const IanaTimezoneSchema = Schema.String.pipe(
+  Schema.refine(
+    (s): s is string => {
+      if (/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z0-9._+-]+)*$/u.test(s) === false) return false
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: s })
+        return true
+      } catch {
+        return false
+      }
+    },
+    { message: 'unknown IANA timezone' },
+  ),
+  Schema.brand('IanaTimezone'),
+  Schema.annotate({ identifier: 'St.IanaTimezone' }),
+)
+
+/** st supports one weekly day, not a set of days. */
+export const CalendarDaysSchema = Schema.Tuple([
+  Schema.Literals(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']),
+]).annotate({ identifier: 'St.CalendarDays' })
+
 const Revision = Schema.String.pipe(
   Schema.refine(
     (s): s is string =>
@@ -288,14 +320,26 @@ export const DependsOnSchema = Schema.Struct({
   identifier: 'St.DependsOn',
 })
 
+/** st accepts one through three goals; a single goal retains its existing spelling. */
+export const GoalsSchema = Schema.Union([
+  Text,
+  Schema.NonEmptyArray(Text).pipe(
+    Schema.refine((goals): goals is typeof goals => goals.length <= 3, {
+      message: 'missions and steps accept at most three goals',
+    }),
+  ),
+]).annotate({ identifier: 'St.Goals' })
+
 /** One mission step. */
 export const StepSchema = Schema.Struct({
   id: LocalId,
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
   assignedTo: Schema.optionalKey(SubjectId),
-  dependsOn: Schema.optionalKey(DependsOnSchema),
-  goal: Schema.optionalKey(Text),
+  dependsOn: Schema.optionalKey(
+    Schema.Union([DependsOnSchema, Schema.NonEmptyArray(DependsOnSchema)]),
+  ),
+  goal: Schema.optionalKey(GoalsSchema),
   exec: Schema.optionalKey(ExecSchema),
   gate: Schema.optionalKey(GateSchema),
 }).pipe(
@@ -313,22 +357,40 @@ export const WorkSchema = Schema.Struct({ mission: Revision, workspace: Text }).
   identifier: 'St.Work',
 })
 
-/** A recurring schedule with latest-only catch-up. */
-export const ScheduleSchema = Schema.Struct({
+const scheduleFields = {
   id: LocalId,
   host: Schema.Literal('local'),
-  every: Duration,
-  anchor: UtcAnchor,
   catchUp: Schema.Literal('latest'),
   work: WorkSchema,
-}).annotate({ identifier: 'St.Schedule' })
+}
+
+/** An elapsed-time interval; omitted tags preserve existing every/anchor declarations. */
+export const EveryScheduleSchema = Schema.Struct({
+  ...scheduleFields,
+  _tag: Schema.optionalKey(Schema.Literal('every')),
+  every: Duration,
+  anchor: UtcAnchor,
+}).annotate({ identifier: 'St.EverySchedule' })
+
+/** A daily or single-weekday wall-clock schedule in an explicit IANA timezone. */
+export const CalendarScheduleSchema = Schema.TaggedStruct('calendar', {
+  ...scheduleFields,
+  at: CalendarTimeSchema,
+  timezone: IanaTimezoneSchema,
+  days: Schema.optionalKey(CalendarDaysSchema),
+}).annotate({ identifier: 'St.CalendarSchedule' })
+
+/** A recurring schedule with latest-only catch-up. */
+export const ScheduleSchema = Schema.Union([EveryScheduleSchema, CalendarScheduleSchema]).annotate({
+  identifier: 'St.Schedule',
+})
 
 /** A ready mission with unique steps whose dependencies exist. */
 export const MissionSchema = Schema.Struct({
   id: MissionId,
   state: Schema.Literal('ready'),
   timeout: Schema.optionalKey(Duration),
-  goal: Text,
+  goal: GoalsSchema,
   constraints: Schema.optionalKey(Schema.Array(Text)),
   steps: Schema.Array(StepSchema),
   schedule: Schema.optionalKey(ScheduleSchema),
@@ -338,7 +400,11 @@ export const MissionSchema = Schema.Struct({
       m.steps.length > 0 &&
       new Set(m.steps.map((s) => s.id)).size === m.steps.length &&
       m.steps.every(
-        (s) => s.dependsOn === undefined || m.steps.some((p) => p.id === s.dependsOn?.step),
+        (s) =>
+          s.dependsOn === undefined ||
+          ('step' in s.dependsOn ? [s.dependsOn] : s.dependsOn).every((dependency) =>
+            m.steps.some((p) => p.id === dependency.step),
+          ),
       ),
     { message: 'mission needs unique steps and existing dependencies' },
   ),
@@ -392,8 +458,20 @@ export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
     args: [s.id],
     children: [
       child({ name: 'host', value: s.host }),
-      child({ name: 'every', value: s.every }),
-      child({ name: 'anchor', value: s.anchor }),
+      ...(s._tag === 'calendar'
+        ? [
+            block({
+              name: 'calendar',
+              children: [
+                child({
+                  name: 'at',
+                  value: s.days === undefined ? s.at : `${s.days[0]} ${s.at}`,
+                }),
+                child({ name: 'timezone', value: s.timezone }),
+              ],
+            }),
+          ]
+        : [child({ name: 'every', value: s.every }), child({ name: 'anchor', value: s.anchor })]),
       child({ name: 'catch-up', value: s.catchUp }),
       block({
         name: 'work',
@@ -416,11 +494,17 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
     children.push(
       block({
         name: 'depends-on',
-        children: [node({ name: 'step', args: [s.dependsOn.step, s.dependsOn.state] })],
+        children: ('step' in s.dependsOn ? [s.dependsOn] : s.dependsOn).map((dependency) =>
+          node({ name: 'step', args: [dependency.step, dependency.state] }),
+        ),
       }),
     )
   }
-  if (s.goal !== undefined) children.push(child({ name: 'goal', value: s.goal }))
+  if (s.goal !== undefined) {
+    for (const goal of typeof s.goal === 'string' ? [s.goal] : s.goal) {
+      children.push(child({ name: 'goal', value: goal }))
+    }
+  }
   if (s.exec !== undefined) {
     children.push(
       node({
@@ -461,7 +545,9 @@ export const mission = (input: typeof MissionSchema.Encoded): Node => {
     args: [m.id],
     props: { state: m.state, ...(m.timeout === undefined ? {} : { timeout: m.timeout }) },
     children: [
-      child({ name: 'goal', value: m.goal }),
+      ...(typeof m.goal === 'string' ? [m.goal] : m.goal).map((goal) =>
+        child({ name: 'goal', value: goal }),
+      ),
       ...(m.constraints ?? []).map((constraint) =>
         child({ name: 'constraint', value: constraint }),
       ),

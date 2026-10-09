@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { agent, emit, mission, node, omp, resource, schedule, smalltalkKdl } from './mod.ts'
+import { agent, emit, mission, node, omp, resource, schedule, smalltalkKdl, step } from './mod.ts'
 
 const canonical = () =>
   emit([
@@ -16,7 +16,202 @@ const canonical = () =>
       steps: [{ id: 'first', goal: 'Inspect input.', agentless: true }],
     }),
   ])
+
+const scheduleWork = { mission: `demo@${'a'.repeat(64)}`, workspace: '/work/demo' }
+const calendarSchedule = {
+  id: 'daily',
+  host: 'local',
+  _tag: 'calendar',
+  at: '08:00',
+  timezone: 'Europe/Berlin',
+  catchUp: 'latest',
+  work: scheduleWork,
+} as const
 describe('Smalltalk declarations', () => {
+  it('rejects unknown zones in the callable Intl timezone validator', () => {
+    expect(() => Intl.DateTimeFormat(undefined, { timeZone: 'Mars/Olympus' })).toThrow(RangeError)
+    expect(() => schedule({ ...calendarSchedule, timezone: 'Mars/Olympus' })).toThrow(
+      'unknown IANA timezone',
+    )
+  })
+  it('renders ordered mission and step goals and every dependency parent', () => {
+    expect(
+      emit([
+        mission({
+          id: 'demo',
+          state: 'ready',
+          goal: ['Build.', 'Record.', 'Adopt.'],
+          steps: [
+            { id: 'kit', agentless: true },
+            { id: 'catalog', agentless: true },
+            {
+              id: 'acceptance',
+              agentless: true,
+              goal: ['Verify.', 'Report.'],
+              dependsOn: [
+                { step: 'kit', state: 'completed' },
+                { step: 'catalog', state: 'completed' },
+              ],
+            },
+          ],
+        }),
+      ]),
+    ).toBe(
+      'version 2\nmission "demo" state="ready" {\n  goal "Build."\n  goal "Record."\n  goal "Adopt."\n  step "kit" {\n    agentless\n  }\n  step "catalog" {\n    agentless\n  }\n  step "acceptance" {\n    agentless\n    depends-on {\n      step "kit" "completed"\n      step "catalog" "completed"\n    }\n    goal "Verify."\n    goal "Report."\n  }\n}\n',
+    )
+  })
+  it('keeps single-value declarations byte-identical to singleton arrays', () => {
+    const first = { id: 'first', agentless: true, goal: 'Inspect input.' } as const
+    const next = {
+      id: 'next',
+      assignedTo: 'agent/example/worker',
+      goal: 'Finish.',
+      dependsOn: { step: 'first', state: 'completed' },
+    } as const
+    expect(
+      emit([
+        mission({
+          id: 'demo',
+          state: 'ready',
+          goal: ['Demonstrate KDL.'],
+          steps: [{ ...first, goal: [first.goal] }],
+        }),
+      ]),
+    ).toBe(canonical())
+    const rendered = emit([step(next)])
+    expect(rendered).toBe(
+      'version 2\nstep "next" {\n  assigned-to "agent/example/worker"\n  depends-on {\n    step "first" "completed"\n  }\n  goal "Finish."\n}\n',
+    )
+    expect(emit([step({ ...next, goal: [next.goal], dependsOn: [next.dependsOn] })])).toBe(rendered)
+  })
+  it.each([{ goal: [] }, { goal: ['one', 'two', 'three', 'four'] }, { goal: [''] }])(
+    'rejects invalid goal arrays $goal',
+    ({ goal }) => {
+      expect(() =>
+        mission({
+          id: 'demo',
+          state: 'ready',
+          goal,
+          steps: [{ id: 'first', agentless: true }],
+        } as never),
+      ).toThrow()
+      expect(() => step({ id: 'first', agentless: true, goal } as never)).toThrow()
+    },
+  )
+  it('accepts three step goals and omitted step goals', () => {
+    expect(emit([step({ id: 'first', goal: ['One.', 'Two.', 'Three.'] })])).toContain(
+      '  goal "One."\n  goal "Two."\n  goal "Three."\n',
+    )
+    expect(emit([step({ id: 'first' })])).toBe('version 2\nstep "first" {\n}\n')
+  })
+  it('rejects empty dependency arrays and unsupported dependency states', () => {
+    expect(() => step({ id: 'first', dependsOn: [] } as never)).toThrow()
+    expect(() =>
+      step({
+        id: 'first',
+        dependsOn: [{ step: 'other', state: 'failed' }],
+      } as never),
+    ).toThrow()
+  })
+  it.each([0, 1])('validates every array dependency target at position %i', (missing) => {
+    expect(() =>
+      mission({
+        id: 'demo',
+        state: 'ready',
+        goal: 'Verify.',
+        steps: [
+          { id: 'first', agentless: true },
+          {
+            id: 'next',
+            agentless: true,
+            dependsOn: [
+              { step: missing === 0 ? 'missing' : 'first', state: 'completed' },
+              { step: missing === 1 ? 'missing' : 'first', state: 'completed' },
+            ],
+          },
+        ],
+      }),
+    ).toThrow()
+  })
+  it('renders the documented Berlin daily calendar schedule without interval fields', () => {
+    expect(emit([schedule(calendarSchedule)])).toBe(
+      `version 2
+schedule "daily" {
+  host "local"
+  calendar {
+    at "08:00"
+    timezone "Europe/Berlin"
+  }
+  catch-up "latest"
+  work {
+    mission "${scheduleWork.mission}"
+    workspace "/work/demo"
+  }
+}
+`,
+    )
+  })
+  it.each(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const)(
+    'renders a weekly %s calendar using st DAY HH:MM syntax',
+    (day) => {
+      expect(
+        emit([schedule({ ...calendarSchedule, at: '09:00', days: [day] as const })]),
+      ).toContain(`calendar {\n    at "${day} 09:00"\n    timezone "Europe/Berlin"\n  }`)
+    },
+  )
+  it('supports both tagged and existing untagged interval declarations', () => {
+    const interval = {
+      id: 'cycle',
+      host: 'local',
+      every: '6h',
+      anchor: '2026-01-01T00:00:00Z',
+      catchUp: 'latest',
+      work: scheduleWork,
+    } as const
+    const rendered = emit([schedule(interval)])
+    expect(emit([schedule({ ...interval, _tag: 'every' })])).toBe(rendered)
+    expect(rendered).toContain('  every "6h"\n  anchor "2026-01-01T00:00:00Z"\n')
+    expect(rendered).not.toContain('calendar')
+  })
+  it('renders a calendar schedule nested in a mission', () => {
+    expect(
+      emit([
+        mission({
+          id: 'demo',
+          state: 'ready',
+          goal: 'Daily work.',
+          schedule: calendarSchedule,
+          steps: [{ id: 'first', goal: 'Inspect input.', agentless: true }],
+        }),
+      ]),
+    ).toContain('  schedule "daily" {\n    host "local"\n    calendar {\n      at "08:00"')
+  })
+  it.each(['24:00', '12:60', '8:00', '08:0', '08:00:00', 'Mon 08:00', '', ' 08:00'])(
+    'rejects invalid calendar time %j',
+    (at) => {
+      expect(() => schedule({ ...calendarSchedule, at })).toThrow()
+    },
+  )
+  it.each(['Mars/Olympus', '', '+02:00'])('rejects invalid timezone %j', (timezone) => {
+    expect(() => schedule({ ...calendarSchedule, timezone })).toThrow()
+  })
+  it.each([
+    { timezone: undefined },
+    { days: [] },
+    { days: ['Mon', 'Tue'] },
+    { days: ['Monday'] },
+    { days: 'Mon' },
+    { every: '6h' },
+    { anchor: '2026-01-01T00:00:00Z' },
+    { _tag: undefined },
+    { catchUp: 'all', maxCatchUp: 2 },
+    { misfire: 'skip' },
+  ])('rejects unsupported or conflicting calendar fields %j', (fields) => {
+    expect(() => schedule({ ...calendarSchedule, ...fields } as never)).toThrow()
+  })
+  it.each(['00:00', '23:59'])('accepts boundary calendar time %s', (at) => {
+    expect(emit([schedule({ ...calendarSchedule, at, timezone: 'UTC' })])).toContain(`at "${at}"`)
+  })
   it('resumes an exact Codex session without overriding provider defaults', () => {
     const seat = agent({
       id: 'example/codex',
