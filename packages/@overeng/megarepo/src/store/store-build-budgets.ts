@@ -97,7 +97,7 @@ export const loadBuildOutputBudgetPolicyReceipt = Effect.fn('store.loadBuildOutp
   const content = yield* fs.readFileString(path).pipe(
     Effect.mapError(() => fail(`Cannot read build-output budget policy: ${path}`)),
   )
-  const policy = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BuildOutputBudgets))(content).pipe(
+  const policy = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BuildOutputBudgets), { onExcessProperty: 'error' })(content).pipe(
     Effect.mapError(() => fail(`Cannot decode megarepo.build-output-budgets.v1 policy: ${path}`)),
   )
   const patterns = new Map<string, string>()
@@ -407,7 +407,10 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
       }
     }
     const keptByReason: Record<string, number> = {}
-    for (const candidate of candidates) if (candidate.outcome !== 'would-delete') keptByReason[candidate.reason] = (keptByReason[candidate.reason] ?? 0) + 1
+    for (const candidate of candidates) {
+      if (candidate.outcome === 'would-delete' || candidate.reason === 'scan-incomplete' || candidate.reason === 'artifact-scan-incomplete') continue
+      keptByReason[candidate.reason] = (keptByReason[candidate.reason] ?? 0) + 1
+    }
     classSummaries.set(name, { totalBytes, budgetBytes: config.budgetBytes, idleCandidateBytes, evictedBytes: 0, projectedBytes, keptByReason, scanStatus,
       status: projectedBytes <= config.budgetBytes ? 'within-budget' : 'over-budget-no-idle-candidate' })
   }

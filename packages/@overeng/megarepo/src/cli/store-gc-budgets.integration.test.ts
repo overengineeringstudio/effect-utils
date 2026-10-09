@@ -595,6 +595,8 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
         expect(withSymlink.results.some((r) => r.path.startsWith(`${w}tmp/worklog`))).toBe(false)
         expect(withSymlink.results.filter((r) => r.outcome === 'would-delete')).toEqual([])
         expect(withSymlink.classes['cargo-target']?.scanStatus).toBe('scan-incomplete')
+        expect(withSymlink.classes['cargo-target']?.keptByReason['scan-incomplete']).toBeUndefined()
+        expect(withSymlink.classes['cargo-target']?.keptByReason['artifact-scan-incomplete']).toBeUndefined()
 
         expect(applyCandidate(f, { plan, path: nested }).exitCode).not.toBe(0)
         for (const root of [nested, rust, worklogTarget, `${outsideTarget}/big.bin`]) {
@@ -820,11 +822,13 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
         const valid = planOk(f)
         expect(row(valid, targetA)?.outcome).toBe('would-delete')
         const fs = yield* FileSystem.FileSystem
+        const validPolicy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<string, unknown>
+        const unknownField = encodeJson({ ...validPolicy, unexpected: true })
         const unknownSchema = encodeJson({
           ...(decodeJson(yield* fs.readFileString(f.policyPath)) as Record<string, unknown>),
           schemaVersion: 'megarepo.build-output-budgets.v99',
         })
-        for (const content of ['{"schemaVersion": "megarepo.build-output-budgets.v1",', unknownSchema]) {
+        for (const content of ['{"schemaVersion": "megarepo.build-output-budgets.v1",', unknownSchema, unknownField]) {
           yield* fs.writeFileString(f.policyPath, content)
           for (const args of [
             ['--dry-run'],
