@@ -190,11 +190,11 @@ export const OmpSchema = Schema.Struct({
   resume: Schema.optionalKey(OmpResumeSchema),
 }).annotate({ identifier: 'St.Omp' })
 
-/** Codex configuration; omitted model and effort retain provider defaults. */
+/** Codex harness selection with explicit model and effort routing. */
 export const CodexSchema = Schema.Struct({
   kind: Schema.Literal('codex'),
-  model: Schema.optionalKey(Text),
-  effort: Schema.optionalKey(Text),
+  model: Text,
+  effort: Text,
   args: Schema.optionalKey(Schema.Array(Text)),
   resume: Schema.optionalKey(Schema.Struct({ session: Text })),
 }).annotate({ identifier: 'St.Codex' })
@@ -255,7 +255,10 @@ const isValidAgent = (a: typeof AgentSchemaFields.Type): boolean =>
     (rules) => rules === undefined || rules.length > 0,
   )
 
-/** A durable st agent seat declaration. */
+/**
+ * A durable st agent declaration. Roots orchestrate and delegate heavy work to
+ * harness subagents and missions; role and persona/runtime selectors are not authored.
+ */
 export const AgentSchema = AgentSchemaFields.pipe(
   Schema.refine((a): a is typeof a => isValidAgent(a), { message: 'invalid agent declaration' }),
   Schema.annotate({ identifier: 'St.Agent' }),
@@ -602,8 +605,8 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
         name: 'harness',
         args: [a.harness.kind],
         children: [
-          ...optionalChild({ name: 'model', value: a.harness.model }),
-          ...optionalChild({ name: 'effort', value: a.harness.effort }),
+          child({ name: 'model', value: a.harness.model }),
+          child({ name: 'effort', value: a.harness.effort }),
           ...(a.harness.kind === 'codex' && a.harness.args !== undefined
             ? [node({ name: 'args', args: a.harness.args })]
             : []),

@@ -9,11 +9,13 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   agent,
   type AgentSchema,
+  type CodexSchema,
   emit,
   mission,
   MissionSchema,
   node,
   omp,
+  type OmpSchema,
   resource,
   schedule,
   smalltalkKdl,
@@ -120,24 +122,31 @@ describe('Smalltalk declarations', () => {
       } as never),
     ).toThrow()
   })
-  it('resumes an exact Codex session without overriding provider defaults', () => {
+  it('resumes an exact Codex session while preserving explicit model and effort', () => {
     const seat = agent({
       id: 'example/codex',
       env: { CODEX_HOME: '/srv/codex' },
       harness: {
         kind: 'codex',
+        model: 'example-model',
+        effort: 'xhigh',
         args: ['--config', 'key=value'],
         resume: { session: 'native-thread' },
       },
     })
     expect(emit([seat])).toBe(
-      'version 2\nagent "example/codex" {\n  env {\n    CODEX_HOME "/srv/codex"\n    ST3_NATIVE_RESUME_SESSION "native-thread"\n  }\n  harness "codex" {\n    args "--config" "key=value"\n  }\n}\n',
+      'version 2\nagent "example/codex" {\n  env {\n    CODEX_HOME "/srv/codex"\n    ST3_NATIVE_RESUME_SESSION "native-thread"\n  }\n  harness "codex" {\n    model "example-model"\n    effort "xhigh"\n    args "--config" "key=value"\n  }\n}\n',
     )
     expect(() =>
       agent({
         id: 'example/codex',
         env: { ST3_NATIVE_RESUME_SESSION: 'different-thread' },
-        harness: { kind: 'codex', resume: { session: 'native-thread' } },
+        harness: {
+          kind: 'codex',
+          model: 'example-model',
+          effort: 'xhigh',
+          resume: { session: 'native-thread' },
+        },
       }),
     ).toThrow()
   })
@@ -158,6 +167,50 @@ describe('Smalltalk declarations', () => {
         }),
       ]),
     ).toContain('harness "omp" {\n    model "example-model"\n    effort "high"\n')
+  })
+  it('requires both routing fields in every harness authoring type', () => {
+    expectTypeOf<Omit<typeof OmpSchema.Encoded, 'model'>>().not.toMatchTypeOf<
+      typeof OmpSchema.Encoded
+    >()
+    expectTypeOf<Omit<typeof OmpSchema.Encoded, 'effort'>>().not.toMatchTypeOf<
+      typeof OmpSchema.Encoded
+    >()
+    expectTypeOf<Omit<typeof CodexSchema.Encoded, 'model'>>().not.toMatchTypeOf<
+      typeof CodexSchema.Encoded
+    >()
+    expectTypeOf<Omit<typeof CodexSchema.Encoded, 'effort'>>().not.toMatchTypeOf<
+      typeof CodexSchema.Encoded
+    >()
+  })
+  it.each(['omp', 'codex'])('rejects absent or empty %s routing fields', (kind) => {
+    for (const routing of [
+      {},
+      { model: 'example-model' },
+      { effort: 'medium' },
+      { model: '', effort: 'medium' },
+      { model: 'example-model', effort: '' },
+    ]) {
+      expect(() => agent({ id: 'seat', harness: { kind, ...routing } } as never)).toThrow()
+      expect(() =>
+        mission({
+          ...fanInMission(),
+          reportTo: { id: 'ops/watcher', harness: { kind, ...routing } },
+        } as never),
+      ).toThrow()
+    }
+  })
+  it('does not expose root role or persona/runtime selectors', () => {
+    expectTypeOf<
+      Extract<'role' | 'persona' | 'runtime', keyof typeof AgentSchema.Encoded>
+    >().toBeNever()
+    for (const selector of [
+      { role: 'orchestrator' },
+      { role: 'worker' },
+      { persona: 'generalist' },
+      { runtime: 'generalist' },
+    ]) {
+      expect(() => agent({ id: 'seat', ...selector } as never)).toThrow()
+    }
   })
   it('serializes KDL v2 values, quoted identifiers and stable property ordering', () => {
     expect(
