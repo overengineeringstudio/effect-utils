@@ -90,6 +90,14 @@ created for subsets of a Notion database.
 The live CLI reads `NOTION_API_TOKEN` and accepts `NOTION_TOKEN` as a legacy
 fallback. When a live token is configured, the CLI wires the NotionMD-backed
 body adapter; without a token or injected body port, body sync fails closed.
+In this repo's devenv shell, `notion db ...` resolves the SecretSpec profile
+from `secretspec.toml` when neither token variable is set. Source entrypoints
+can be run with `secrets-run --reason "run notion db" -- <command>`.
+The Notion integration-test tasks also resolve SecretSpec when their explicit
+environment token is absent; CI's supplied token does not require SecretSpec.
+Configure a SecretSpec provider (`secretspec config global init` or
+`SECRETSPEC_PROVIDER`), and use `SECRETSPEC_FILE` for a local manifest with
+provider references when needed. No workstation credential paths are hardcoded.
 
 ## Safety Model
 

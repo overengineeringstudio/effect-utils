@@ -1,12 +1,17 @@
 # Notion integration tests
 #
 # Runs live Notion integration tests for packages that exercise real API semantics.
-# Requires each package's Notion token and scratch parent environment variables;
-# skips gracefully when credentials are not available.
+# Uses an explicit environment token (including CI) when supplied; otherwise
+# resolves the repo's SecretSpec profile before running the test process.
 #
 # Provides:
 #   - test:notion-integration - Run all Notion integration tests
-{ lib, pkgs, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
@@ -86,10 +91,17 @@ let
       datasourceSyncVitestExec pkg.tokenEnv
     else
       integrationVitestExec pkg.tokenEnv;
+  withToken = pkg: pkgs.writeShellScript "notion-integration-${pkg.name}" (vitestExec pkg);
   mkTestTask = pkg: {
     "test:notion-integration:${pkg.name}" = {
       description = "Run Notion integration tests for ${pkg.name}";
-      exec = trace.exec "test:notion-integration:${pkg.name}" (vitestExec pkg);
+      exec = trace.exec "test:notion-integration:${pkg.name}" ''
+        if [ -n "''${${pkg.tokenEnv}:-}" ]; then
+          exec ${withToken pkg}
+        fi
+        export SECRETSPEC_FILE="''${SECRETSPEC_FILE:-${config.devenv.root}/secretspec.toml}"
+        exec secrets-run --reason "run Notion integration tests for ${pkg.name}" -- ${withToken pkg}
+      '';
       cwd = pkg.path;
       after = [ "pnpm:install" ];
     };

@@ -54,7 +54,7 @@ export const resolveNotionToken = Effect.fn('resolveNotionToken')(function* () {
   }
 
   return yield* new NotionTokenMissing({
-    message: `Missing Notion API token; set one of: ${NOTION_TOKEN_ENV_VARS.join(', ')}`,
+    message: `Missing Notion API token; set one of: ${NOTION_TOKEN_ENV_VARS.join(', ')}. In a devenv shell, run: secrets-run --reason "access Notion" -- <command> (using the repo's secretspec.toml).`,
     envVars: NOTION_TOKEN_ENV_VARS,
   })
 })

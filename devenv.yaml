@@ -1,4 +1,7 @@
 require_version: '>=2.3'
+# Runtime secrets use the patched CLI shipped by the secretspec task module.
+secretspec:
+  enable: false
 inputs:
   devenv:
     url: github:cachix/devenv/v2.4.0
