@@ -2209,8 +2209,16 @@ const publishEditorViewCoordinated = async ({
     }
     const commit = (): EditorViewRecord => {
       if (created === true) {
-        renameSync(candidate ?? fail('prepared snapshot candidate is absent'), snapshotDir)
+        // Darwin directory rename updates the source's `..` entry and therefore
+        // needs owner-write on the directory itself. Keep its payload hardened,
+        // then restore the root's immutability before publishing any pointer.
+        renameReadOnlySnapshot({
+          source: candidate ?? fail('prepared snapshot candidate is absent'),
+          destination: snapshotDir,
+        })
         candidate = undefined
+        chmodSync(snapshotDir, statSync(snapshotDir).mode & ~0o222)
+        requireReadOnlySnapshotRoot(snapshotDir)
       }
       enterPhase('retention')
       // Sibling views share the store inventory. Promotion, retention, pointers and GC

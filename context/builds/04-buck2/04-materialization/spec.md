@@ -131,8 +131,10 @@ the lock, the publisher:
    rejects links outside declared roots, and proves no snapshot file shares an
    inode with a disposable source;
 4. verifies the complete payload digest and writes `editor-view.json`;
-5. hardens the new candidate read-only and renames it to the deterministic
-   snapshot;
+5. hardens the private candidate read-only, then promotes it with owner-write
+   temporarily enabled only on the top directory for Darwin's rename semantics;
+   the payload stays read-only, and the final root is hardened and checked
+   before any current pointer is published;
 6. atomically renames the current pointer, installs or validates the package
    first hop, and emits the package-manifest settle signal required by live
    language servers;
