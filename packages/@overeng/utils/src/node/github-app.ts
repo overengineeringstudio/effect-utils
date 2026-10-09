@@ -1,8 +1,8 @@
 import { createPrivateKey, createSign } from 'node:crypto'
 
-import { Clock, Context, Effect, Layer, Metric, Redacted, Schema, Semaphore } from 'effect'
-import { HttpClient, HttpClientRequest } from 'effect/http'
-import type { HttpClientError } from 'effect/http/HttpClientError'
+import { Clock, Context, Effect, Layer, Metric, Redacted, Schema, Semaphore, Stream } from 'effect'
+import { HttpClient, HttpClientRequest, HttpClientResponse } from 'effect/http'
+import { HttpClientError, DecodeError } from 'effect/http/HttpClientError'
 
 const PositiveID = Schema.Int.check(Schema.isGreaterThan(0))
 export const AppIdentity = Schema.Struct({
@@ -39,6 +39,9 @@ export class GitHubAppError extends Schema.TaggedError<GitHubAppError>()('GitHub
   operation: Schema.Literals(['config', 'sign', 'exchange', 'authorize']),
   message: Schema.String,
   status: Schema.optional(Schema.Int),
+  method: Schema.optional(Schema.String),
+  path: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.String),
 }) {}
 
 const TokenResponse = Schema.Struct({
@@ -242,14 +245,50 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         const response = yield* raw.execute(request.pipe(
           HttpClientRequest.setHeaders(headers),
           HttpClientRequest.bearerToken(Redacted.value(credential)),
-        ))
+        )).pipe(Effect.mapError((error) => new GitHubAppError({
+          operation: 'authorize',
+          method: request.method,
+          path: url.pathname,
+          reason: error.reason._tag,
+          ...(error.response === undefined ? {} : { status: error.response.status }),
+          message: `GitHub request failed: ${request.method} ${url.pathname} (${error.reason._tag})`,
+        })))
         yield* observeResponse(scope.installationID, response.headers)
         if (response.status === 401) {
           yield* invalidate(credential)
           // Never transparently replay writes. The caller decides whether an operation is safe to retry.
           return yield* new GitHubAppError({ operation: 'authorize', status: 401, message: 'GitHub rejected installation token; cache invalidated' })
         }
-        return response
+        // Never expose the authenticated request through response decoding failures.
+        // Body access remains lazy/streaming; only safe metadata survives in errors.
+        const safeRequest = HttpClientRequest.make(request.method)(url.pathname)
+        const metadata = HttpClientResponse.fromWeb(safeRequest, new Response(null, {
+          status: response.status,
+          headers: response.headers,
+        }))
+        const decodeFailure = (error: HttpClientError) => new HttpClientError({
+          reason: new DecodeError({
+            request: safeRequest,
+            response: metadata,
+            description: error.reason._tag,
+          }),
+        })
+        const safeResponse = HttpClientResponse.fromWeb(safeRequest, new Response(null, {
+          status: response.status,
+          headers: response.headers,
+        }))
+        Object.defineProperties(safeResponse, {
+          json: { get: () => response.json.pipe(Effect.mapError(decodeFailure)) },
+          text: { get: () => response.text.pipe(Effect.mapError(decodeFailure)) },
+          urlParamsBody: { get: () => response.urlParamsBody.pipe(Effect.mapError(decodeFailure)) },
+          arrayBuffer: { get: () => response.arrayBuffer.pipe(Effect.mapError(decodeFailure)) },
+          formData: { get: () => response.formData.pipe(Effect.mapError(decodeFailure)) },
+        })
+        Object.defineProperty(safeResponse, 'stream', {
+          get: () => response.stream.pipe(Stream.mapError(decodeFailure)),
+        })
+        Object.defineProperty(safeResponse, 'url', { value: response.url })
+        return safeResponse
       }).pipe(Effect.withSpan('github-app.request', {
         attributes: { ...attributes(scope.installationID), 'span.label': `${consumer} ${scope.installationID}` },
       })),
