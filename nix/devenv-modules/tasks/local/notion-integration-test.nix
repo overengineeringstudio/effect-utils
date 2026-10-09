@@ -1,8 +1,8 @@
 # Notion integration tests
 #
 # Runs live Notion integration tests for packages that exercise real API semantics.
-# Uses an explicit environment token (including CI) when supplied; otherwise
-# resolves the repo's SecretSpec profile before running the test process.
+# Uses an explicit environment token; CI skips when it is absent. Local runs
+# resolve the repo's SecretSpec profile before running the test process.
 #
 # Provides:
 #   - test:notion-integration - Run all Notion integration tests
@@ -98,6 +98,10 @@ let
       exec = trace.exec "test:notion-integration:${pkg.name}" ''
         if [ -n "''${${pkg.tokenEnv}:-}" ]; then
           exec ${withToken pkg}
+        fi
+        if [ -n "''${CI:-}" ] || [ "''${GITHUB_ACTIONS:-}" = "true" ]; then
+          echo "${pkg.tokenEnv} not set in CI, skipping Notion integration tests (no provider access)"
+          exit 0
         fi
         export SECRETSPEC_FILE="''${SECRETSPEC_FILE:-${config.devenv.root}/secretspec.toml}"
         exec secrets-run --reason "run Notion integration tests for ${pkg.name}" -- ${withToken pkg}
