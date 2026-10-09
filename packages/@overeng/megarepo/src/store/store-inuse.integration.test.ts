@@ -15,16 +15,18 @@
  * than an ancestor of the live session.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
+import { decodeJson, encodeJson } from '../test-utils/mod.ts'
 import {
   classifyInUse,
   isInsideWorktree,
@@ -32,8 +34,10 @@ import {
   parseProcMapsPaths,
   parseProcStat,
   parseProcUids,
+  readProcessReferences,
   readWorktreeInUse,
   readWorktreeReferencesInUse,
+  type ProcessIdentity,
 } from './store-inuse.ts'
 
 const supportsProcessCwdProbe = process.platform === 'linux' || process.platform === 'darwin'
@@ -65,6 +69,111 @@ const spawnFdHolder = ({ cwd, file }: { cwd: string; file: string }): Promise<Ch
   })
   child.once('spawn', () => resolve(child))
   child.once('error', reject)
+  return promise
+}
+
+/** All privileged commands below operate only on holders or their scoped fixture. */
+const referenceModule = fileURLToPath(new URL('./store-inuse.ts', import.meta.url))
+const jsonModule = fileURLToPath(new URL('../test-utils/json.ts', import.meta.url))
+const ProcessIdentities = Schema.Array(
+  Schema.Struct({ pid: Schema.Number, startTime: Schema.String }),
+)
+
+const runReferenceFixture = ({
+  cwd,
+  code,
+  asRoot = false,
+}: {
+  cwd: string
+  code: string
+  asRoot?: boolean
+}) => {
+  const result = spawnSync(
+    'sudo',
+    [
+      '-n',
+      ...(asRoot === true ? [] : ['-u', 'nobody']),
+      '/usr/bin/env',
+      `PATH=${process.env['PATH'] ?? ''}`,
+      'bun',
+      '--eval',
+      `
+        import { NodeServices } from ${encodeJson(import.meta.resolve('@effect/platform-node'))}
+        import { Effect } from ${encodeJson(import.meta.resolve('effect'))}
+        import * as FileSystem from ${encodeJson(import.meta.resolve('effect/FileSystem'))}
+        import { parseProcStat, parseProcUids, readProcessReferences, readWorktreeReferencesInUse } from ${encodeJson(referenceModule)}
+        import { encodeJson } from ${encodeJson(jsonModule)}
+        ${code}
+      `,
+    ],
+    { cwd, encoding: 'utf8', timeout: 120_000 },
+  )
+  expect(result.status, `sudo fixture failed: ${result.stderr}`).toBe(0)
+  return decodeJson(result.stdout.trim())
+}
+
+/** PR_SET_DUMPABLE=0 denies even same-UID cwd/root/fd/maps reads, but not stat. */
+const spawnIdentityHolder = ({
+  cwd,
+  nonDumpable = true,
+}: {
+  cwd: string
+  nonDumpable?: boolean
+}): Promise<{ child: ChildProcess; identity: ProcessIdentity }> => {
+  const { promise, resolve, reject } = Promise.withResolvers<{
+    child: ChildProcess
+    identity: ProcessIdentity
+  }>()
+  const child = spawn(
+    'sudo',
+    [
+      '-n',
+      '-u',
+      'nobody',
+      '/usr/bin/env',
+      `PATH=${process.env['PATH'] ?? ''}`,
+      'python3',
+      '-u',
+      '-c',
+      `
+import ctypes, os, signal
+if ${nonDumpable === true ? 'True' : 'False'}:
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(4, 0, 0, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), "PR_SET_DUMPABLE")
+with open("/proc/self/stat") as stat:
+    start_time = stat.read().rsplit(")", 1)[1].split()[19]
+print(str(os.getpid()) + ":" + start_time, flush=True)
+signal.pause()
+`,
+    ],
+    { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+  let stdout = ''
+  let stderr = ''
+  child.stdout?.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString()
+    const ready = /^([1-9]\d*):(\d+)\n/u.exec(stdout)
+    if (ready !== null) {
+      resolve({ child, identity: { pid: Number(ready[1]), startTime: ready[2]! } })
+    }
+  })
+  child.stderr?.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString()
+  })
+  child.once('error', reject)
+  child.once('exit', (code) =>
+    reject(new Error(`identity holder exited early (${code}): ${stderr}`)),
+  )
+  return promise
+}
+
+/** sudo relays SIGTERM to its fixture child; never signal an unrelated process. */
+const stopIdentityHolder = (child: ChildProcess): Promise<void> => {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
+  const { promise, resolve } = Promise.withResolvers<void>()
+  child.once('exit', () => resolve())
+  child.kill('SIGTERM')
   return promise
 }
 
@@ -127,15 +236,25 @@ describe('store-inuse classifier', () => {
     })
   })
 
-  it('parses parent pid and kernel-thread flag past a comm with spaces and parens', () => {
-    expect(parseProcStat('42 (a) b (c)) S 7 42 42 0 -1 4194560 0 0')).toEqual({
+  it('parses parent pid, kernel-thread flag and exact field-22 ticks past a comm with spaces and parens', () => {
+    expect(
+      parseProcStat(`42 (a) b (c)) S 7 42 42 0 -1 4194560 ${'0 '.repeat(12)}9007199254740993`),
+    ).toEqual({
       parentPid: 7,
       kernelThread: false,
+      startTime: '9007199254740993',
     })
-    expect(parseProcStat('2 (kthreadd) S 0 0 0 0 -1 2129984 0 0')).toEqual({
+    expect(parseProcStat(`2 (kthreadd) S 0 0 0 0 -1 2129984 ${'0 '.repeat(12)}0`)).toEqual({
       parentPid: 0,
       kernelThread: true,
+      startTime: '0',
     })
+    expect(parseProcStat('42 (truncated) S 7 42 42 0 -1 4194560')).toBeUndefined()
+    for (const startTime of ['-1', '1.5', 'not-ticks']) {
+      expect(
+        parseProcStat(`42 (holder) S 7 42 42 0 -1 4194560 ${'0 '.repeat(12)}${startTime}`),
+      ).toBeUndefined()
+    }
     expect(parseProcStat('garbage')).toBeUndefined()
   })
 
@@ -238,6 +357,148 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
     ),
   )
 
+  it.live(
+    'only exact root-scanned identities cover unreadable own-UID processes; new readable references are still scanned',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+        const worktree = `${root}/worktree`
+        const outside = `${root}/outside`
+        for (const directory of [root, worktree, outside]) {
+          yield* fs.makeDirectory(directory, { recursive: true })
+          yield* fs.chmod(directory, 0o755)
+        }
+        const hidden = yield* Effect.acquireRelease(
+          Effect.promise(() => spawnIdentityHolder({ cwd: outside })),
+          ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
+        )
+        const coveredProcesses = Schema.decodeUnknownSync(ProcessIdentities)(
+          runReferenceFixture({
+            cwd: outside,
+            asRoot: true,
+            code: `
+              const identities = await Effect.runPromise(Effect.gen(function* () {
+                const fs = yield* FileSystem.FileSystem
+                const scan = yield* readProcessReferences({ fs, selfPid: process.pid })
+                if (scan._tag !== 'complete') return yield* Effect.die(encodeJson(scan))
+                return scan.processIdentities
+              }).pipe(Effect.provide(NodeServices.layer)))
+              console.log(encodeJson(identities))
+            `,
+          }),
+        )
+        // Capture must include a process with no path under the candidate worktree.
+        expect(coveredProcesses).toContainEqual(hidden.identity)
+        const wrongStartTime = coveredProcesses.map((identity) =>
+          identity.pid === hidden.identity.pid
+            ? { ...identity, startTime: String(BigInt(identity.startTime) + 1n) }
+            : identity,
+        )
+        const report = runReferenceFixture({
+          cwd: outside,
+          code: `
+            const report = await Effect.runPromise(Effect.gen(function* () {
+              const fs = yield* FileSystem.FileSystem
+              const pid = ${hidden.identity.pid}
+              const stat = parseProcStat(yield* fs.readFileString('/proc/' + pid + '/stat'))
+              const uids = parseProcUids(yield* fs.readFileString('/proc/' + pid + '/status'))
+              const denied = yield* Effect.forEach(['cwd', 'root', 'fd', 'maps'], (entry) =>
+                (entry === 'cwd' || entry === 'root'
+                  ? fs.readLink('/proc/' + pid + '/' + entry)
+                  : entry === 'fd'
+                    ? fs.readDirectory('/proc/' + pid + '/fd')
+                    : fs.readFileString('/proc/' + pid + '/maps')
+                ).pipe(Effect.option, Effect.map((result) => result._tag === 'None')))
+              const scan = (coveredProcesses) => readProcessReferences({
+                fs, selfPid: process.pid, scope: 'own-uid', coveredProcesses,
+              })
+              const exact = yield* scan(${encodeJson(coveredProcesses)})
+              return {
+                identity: { pid, startTime: stat?.startTime },
+                ownUid: uids?.every((uid) => uid === process.getuid()),
+                denied,
+                uncovered: yield* scan(undefined),
+                wrongStartTime: yield* scan(${encodeJson(wrongStartTime)}),
+                exact: exact._tag,
+                identities: exact._tag === 'complete' ? exact.processIdentities : [],
+                candidate: yield* readWorktreeReferencesInUse({
+                  worktreePath: ${encodeJson(worktree)}, scope: 'own-uid',
+                  coveredProcesses: ${encodeJson(coveredProcesses)},
+                }),
+                strictForeign: yield* readWorktreeReferencesInUse({
+                  worktreePath: ${encodeJson(worktree)},
+                  coveredProcesses: ${encodeJson(coveredProcesses)},
+                }),
+              }
+            }).pipe(Effect.provide(NodeServices.layer)))
+            console.log(encodeJson(report))
+          `,
+        })
+        expect(report).toMatchObject({
+          identity: hidden.identity,
+          ownUid: true,
+          denied: [true, true, true, true],
+          uncovered: { _tag: 'unknown', reason: 'inaccessible-process', pid: hidden.identity.pid },
+          wrongStartTime: {
+            _tag: 'unknown',
+            reason: 'inaccessible-process',
+            pid: hidden.identity.pid,
+          },
+          exact: 'complete',
+          identities: expect.arrayContaining([hidden.identity]),
+          candidate: { _tag: 'free' },
+          // Identity proof never permits all-UID scans to skip foreign owners.
+          strictForeign: { _tag: 'unknown', reason: 'inaccessible-process' },
+        })
+
+        const readable = yield* Effect.acquireRelease(
+          Effect.promise(() => spawnIdentityHolder({ cwd: worktree, nonDumpable: false })),
+          ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
+        )
+        expect(coveredProcesses).not.toContainEqual(readable.identity)
+        expect(
+          runReferenceFixture({
+            cwd: outside,
+            code: `
+              const result = await Effect.runPromise(readWorktreeReferencesInUse({
+                worktreePath: ${encodeJson(worktree)}, scope: 'own-uid',
+                coveredProcesses: ${encodeJson(coveredProcesses)},
+              }).pipe(Effect.provide(NodeServices.layer)))
+              console.log(encodeJson(result))
+            `,
+          }),
+        ).toMatchObject({ _tag: 'in-use', holder: { pid: readable.identity.pid, path: worktree } })
+        yield* Effect.promise(() => stopIdentityHolder(readable.child))
+
+        // This process did not exist at capture; a still-fresh identity list cannot waive it.
+        const late = yield* Effect.acquireRelease(
+          Effect.promise(() => spawnIdentityHolder({ cwd: outside })),
+          ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
+        )
+        expect(coveredProcesses).not.toContainEqual(late.identity)
+        expect(
+          runReferenceFixture({
+            cwd: outside,
+            code: `
+              const result = await Effect.runPromise(Effect.gen(function* () {
+                const fs = yield* FileSystem.FileSystem
+                return yield* readProcessReferences({
+                  fs, selfPid: process.pid, scope: 'own-uid',
+                  coveredProcesses: ${encodeJson(coveredProcesses)},
+                })
+              }).pipe(Effect.provide(NodeServices.layer)))
+              console.log(encodeJson(result))
+            `,
+          }),
+        ).toMatchObject({ _tag: 'unknown', reason: 'inaccessible-process', pid: late.identity.pid })
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 120_000 },
+  )
+
   it.effect.skipIf(runsAsRoot === false)(
     'sees cwd and open-file holders, excludes descendants, and frees after exit',
     Effect.fnUntraced(
@@ -274,12 +535,24 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
         expect(yield* readWorktreeReferencesInUse({ worktreePath: worktree })).toEqual({
           _tag: 'free',
         })
+        const descendantScan = yield* readProcessReferences({ fs, selfPid: process.pid })
+        expect(descendantScan._tag).toBe('complete')
+        if (descendantScan._tag === 'complete') {
+          const stat = parseProcStat(yield* fs.readFileString(`/proc/${fdHolder.pid!}/stat`))
+          expect(descendantScan.processIdentities).toContainEqual({
+            pid: fdHolder.pid,
+            startTime: stat?.startTime,
+          })
+          expect(
+            descendantScan.references.some((reference) => reference.pid === fdHolder.pid),
+          ).toBe(false)
+        }
         yield* Effect.promise(() => killHolder(fdHolder))
         yield* Effect.promise(() => killHolder(standIn))
 
-        expect(
-          yield* readWorktreeReferencesInUse({ worktreePath: worktree, selfPid: 1 }),
-        ).toEqual({ _tag: 'free' })
+        expect(yield* readWorktreeReferencesInUse({ worktreePath: worktree, selfPid: 1 })).toEqual({
+          _tag: 'free',
+        })
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

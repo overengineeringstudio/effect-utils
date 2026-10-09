@@ -796,7 +796,12 @@ hygiene plan and apply) owns the output file and its directory as root,
 readable but not writable by the store owner. The owner admits it via
 `gc-config.json` `generatedArtifacts.manifestPath` and
 `agentLivenessProducers: ["mr-process"]`; plan and apply use it for foreign
-processes and still run their own fresh process checks before deletion.
+processes and still run their own fresh process checks before deletion. The
+root snapshot also records each scanned process's PID and kernel start-time
+as `processIdentities`. An unreadable owner-UID process is admitted only
+when that exact identity is in the still-unexpired root snapshot, whose
+cwd/root/fd/maps claims remain protective. Uncovered unreadable processes
+and PID reuse remain unknown and veto deletion.
 
 #### `mr store ls`
 

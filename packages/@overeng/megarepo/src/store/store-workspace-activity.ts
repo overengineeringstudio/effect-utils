@@ -14,6 +14,7 @@ import {
   readProcessReferences,
   readWorktreeReferencesInUse,
   type InUseResult,
+  type ProcessIdentity,
   type ProcessScanScope,
 } from './store-inuse.ts'
 
@@ -428,10 +429,19 @@ const ActivityManifest = Schema.Struct({
   /**
    * `all-uids`: the producer read every process on the host (root), so its
    * `process` claims cover processes the reading owner cannot inspect, but
-   * only for worktrees inside `processRoots`. Says nothing about agents/PTYs.
+   * only for worktrees inside `processRoots`. `processIdentities` proves which
+   * unreadable own-UID lifetimes were scanned. Says nothing about agents/PTYs.
    */
   processCoverage: Schema.optionalKey(Schema.Literal('all-uids')),
   processRoots: Schema.optionalKey(Schema.Array(AbsolutePath)),
+  processIdentities: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        pid: Schema.Int.check(Schema.isGreaterThan(0)),
+        startTime: NonEmpty.check(Schema.makeFilter((value) => /^[0-9]+$/.test(value))),
+      }).annotate({ identifier: 'StoreWorkspaceActivity.ProcessIdentity' }),
+    ),
+  ),
   claims: Schema.Array(
     Schema.Struct({
       workspace: AbsolutePath,
@@ -473,11 +483,17 @@ export interface BudgetWorkspaceActivityEpoch extends WorkspaceActivityEpoch {
 export interface BudgetWorkspaceActivity extends WorkspaceActivity {
   readonly epoch: BudgetWorkspaceActivityEpoch
   /**
-   * Present only for a trusted root-owned `all-uids` manifest: processes of
-   * other uids inside `roots` are covered by its claims, so the owner's own
-   * deletion-time probe may read only its own uid there.
+   * Present only for an admitted, unexpired root-controlled `all-uids` manifest:
+   * foreign uids inside `roots` are covered by its claims. The owner's fresh
+   * probe still reads available processes fully; only these exact lifetimes
+   * may waive unreadable own-UID references.
    */
-  readonly processCoverage?: { readonly roots: ReadonlyArray<string> } | undefined
+  readonly processCoverage?:
+    | {
+        readonly roots: ReadonlyArray<string>
+        readonly processIdentities: ReadonlyArray<ProcessIdentity>
+      }
+    | undefined
 }
 
 /** Absolute path when it resolves to itself, `missing` when gone, else unavailable. */
@@ -496,7 +512,13 @@ const isRootControlled = (info: FileSystem.File.Info): boolean =>
   Option.getOrUndefined(info.uid) === 0 && (info.mode & 0o022) === 0
 
 /** Identity and content-shaping metadata unchanged between two stats. */
-const sameFile = (before: FileSystem.File.Info, after: FileSystem.File.Info): boolean =>
+const sameFile = ({
+  before,
+  after,
+}: {
+  before: FileSystem.File.Info
+  after: FileSystem.File.Info
+}): boolean =>
   before.dev === after.dev &&
   Option.getOrUndefined(before.ino) === Option.getOrUndefined(after.ino) &&
   Option.getOrUndefined(before.ino) !== undefined &&
@@ -547,9 +569,10 @@ const readActivityManifest = Effect.fn('store.readActivityManifest')(function* (
   if (producers.includes(manifest.producer.name) === false) {
     return yield* unavailable('Activity producer is not admitted')
   }
-  const epochHost = manifest.epoch.host.startsWith('host/')
-    ? manifest.epoch.host.slice('host/'.length)
-    : manifest.epoch.host
+  const epochHost =
+    manifest.epoch.host.startsWith('host/') === true
+      ? manifest.epoch.host.slice('host/'.length)
+      : manifest.epoch.host
   if (epochHost !== hostname()) return yield* unavailable('Activity manifest is from another host')
   if (
     manifest.producer.name === PROCESS_SNAPSHOT_PRODUCER &&
@@ -571,18 +594,24 @@ const readActivityManifest = Effect.fn('store.readActivityManifest')(function* (
   if (manifest.complete === false || manifest.errors.length > 0) {
     return yield* unavailable('Activity manifest is incomplete')
   }
-  let processCoverage: { readonly roots: ReadonlyArray<string> } | undefined
+  const identityPids = new Set<number>()
+  for (const identity of manifest.processIdentities ?? []) {
+    if (identityPids.has(identity.pid) === true) {
+      return yield* unavailable('Activity manifest has duplicate process identities')
+    }
+    identityPids.add(identity.pid)
+  }
+  let processCoverage: BudgetWorkspaceActivity['processCoverage']
   if (manifest.processCoverage === 'all-uids') {
-    // Foreign-uid coverage waives part of the owner's own probe, so a file the
-    // owner (or anyone but root) could have written or swapped must not grant
-    // it: no symlink anywhere in the path, a root-controlled file in a
-    // root-controlled directory chain, and the same inode before and after
-    // the read.
+    // Foreign-UID and unreadable own-UID coverage waive part of the owner's
+    // probe, so a file anyone but root could have written or swapped must not
+    // grant it: no symlink in the path, a root-controlled file and directory
+    // chain, and the same inode before and after the read.
     const after = yield* fs.stat(path)
     if (
       (yield* canonicalExisting({ fs, path })) !== normalize(path) ||
       isRootControlled(info) === false ||
-      sameFile(info, after) === false ||
+      sameFile({ before: info, after }) === false ||
       (yield* isRootControlledDirectory({ fs, path: dirname(path) })) === false
     ) {
       return yield* unavailable('All-uid activity manifest is not root-controlled')
@@ -594,7 +623,7 @@ const readActivityManifest = Effect.fn('store.readActivityManifest')(function* (
         return yield* unavailable('All-uid activity root is not canonical')
       }
     }
-    processCoverage = { roots }
+    processCoverage = { roots, processIdentities: manifest.processIdentities ?? [] }
   }
   const activePaths = new Set<string>()
   const processPaths = new Set<string>()
@@ -637,14 +666,17 @@ const readBootId = (fs: FileSystem.FileSystem) =>
  * Megarepo's own capture as the reading owner: every PTY record (running,
  * exited, vanished) owns its cwd until the record is removed, and every
  * in-scope process reference (cwd, root, fd, mapped file) protects the
- * worktree containing it. Any unreadable in-scope process is unknown.
+ * worktree containing it. Unreadable in-scope processes are unknown unless
+ * their exact lifetimes were read in the admitted root snapshot.
  */
 const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
   fs,
   scope,
+  coveredProcesses,
 }: {
   fs: FileSystem.FileSystem
   scope: ProcessScanScope
+  coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
 }) {
   const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
   if (ptyBinary.length === 0) return yield* unavailable('PTY activity source is disabled')
@@ -673,7 +705,7 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
     )
     if (canonical !== undefined) activePaths.add(canonical)
   }
-  const scan = yield* readProcessReferences({ fs, selfPid: process.pid, scope })
+  const scan = yield* readProcessReferences({ fs, selfPid: process.pid, scope, coveredProcesses })
   if (scan._tag === 'unknown') return yield* unavailable(`Process scan is ${scan.reason}`)
   return {
     activePaths,
@@ -718,7 +750,11 @@ export const readBudgetWorkspaceActivity: (options: {
           })
     const own =
       manifest?.processCoverage !== undefined
-        ? yield* readOwnerActivity({ fs, scope: 'own-uid' })
+        ? yield* readOwnerActivity({
+            fs,
+            scope: 'own-uid',
+            coveredProcesses: manifest.processCoverage.processIdentities,
+          })
         : builtin === true
           ? yield* readOwnerActivity({ fs, scope: 'all-uids' })
           : undefined
@@ -753,9 +789,10 @@ export const readBudgetWorkspaceActivity: (options: {
 
 /**
  * Deletion-time process probe matched to the admitted evidence: inside the
- * roots of a trusted all-uid manifest only the owner's own processes are read
- * (foreign ones are the manifest's claims); everywhere else every process must
- * be readable. Callers MUST keep unless the result is `free`.
+ * roots of a trusted all-UID manifest foreign processes are its claims, and
+ * an unreadable own-UID process requires that snapshot's exact identity.
+ * Available owner processes are always read afresh. Outside those roots
+ * every process must be readable. Callers MUST keep unless the result is `free`.
  */
 export const readBudgetWorktreeInUse = ({
   worktreePath,
@@ -768,28 +805,26 @@ export const readBudgetWorktreeInUse = ({
     const coverage = activity?.processCoverage
     const covered =
       coverage !== undefined &&
-      coverage.roots.some((root) => isInsideWorktree({ candidate: worktreePath, worktreePath: root }))
+      coverage.roots.some((root) =>
+        isInsideWorktree({ candidate: worktreePath, worktreePath: root }),
+      )
     return yield* readWorktreeReferencesInUse({
       worktreePath,
       scope: covered === true ? 'own-uid' : 'all-uids',
+      coveredProcesses: covered === true ? coverage?.processIdentities : undefined,
     })
   })
 
 /**
  * Root-run process snapshot (`mr store activity snapshot`): every process's
  * cwd/root/fd/mapped-file reference inside `storeRoots`, as `process` claims
- * with `all-uids` coverage. Directory references claim themselves; file
- * references claim their directory so a deleted-but-open file still protects
- * it. Any unreadable process or root yields `complete: false` with errors.
+ * with `all-uids` coverage and the identities of every scanned user process,
+ * including those with no reference inside the roots. Directory references
+ * claim themselves; files claim their directory so deleted-but-open files still
+ * protect it. Any unreadable process or root yields `complete: false` with errors.
  */
 export const captureProcessActivityManifest = Effect.fn('store.captureProcessActivityManifest')(
-  function* ({
-    fs,
-    storeRoots,
-  }: {
-    fs: FileSystem.FileSystem
-    storeRoots: ReadonlyArray<string>
-  }) {
+  function* ({ fs, storeRoots }: { fs: FileSystem.FileSystem; storeRoots: ReadonlyArray<string> }) {
     const now = yield* Clock.currentTimeMillis
     const errors: Array<string> = []
     const bootId = yield* readBootId(fs).pipe(
@@ -817,7 +852,10 @@ export const captureProcessActivityManifest = Effect.fn('store.captureProcessAct
           reference.kind === 'cwd' || reference.kind === 'root'
             ? reference.path
             : dirname(reference.path)
-        if (roots.some((root) => isInsideWorktree({ candidate: workspace, worktreePath: root }))) {
+        if (
+          roots.some((root) => isInsideWorktree({ candidate: workspace, worktreePath: root })) ===
+          true
+        ) {
           workspaces.add(workspace)
         }
       }
@@ -832,6 +870,7 @@ export const captureProcessActivityManifest = Effect.fn('store.captureProcessAct
       errors,
       processCoverage: 'all-uids',
       processRoots: roots,
+      processIdentities: scan._tag === 'complete' ? scan.processIdentities : [],
       claims: [...workspaces].toSorted().map((workspace) => ({
         workspace,
         sources: ['process'] as const,

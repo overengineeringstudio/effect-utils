@@ -71,6 +71,7 @@ type Fixture = {
   readonly home: string
   readonly policyPath: string
   readonly manifestPath: string
+  readonly isolatedOwner?: boolean
 }
 
 /** Fail loudly (never skip) when the root process probe cannot be exercised. */
@@ -103,6 +104,7 @@ const cliEnv = (f: Fixture): ReadonlyArray<string> => {
     `PATH=${f.state}/bin:${process.env['PATH'] ?? ''}`,
     `MEGAREPO_STORE=${f.storePath}`,
     'NO_COLOR=1',
+    `PTY_SESSION_DIR=${f.home}/pty`,
   ]
 }
 
@@ -123,15 +125,30 @@ const runCli = (
           encoding: 'utf8',
           timeout: 120_000,
         })
-      : spawnSync('bun', [MR_BIN, ...argv], {
-          cwd: f.outside,
-          encoding: 'utf8',
-          timeout: 120_000,
-          env: {
-            ...process.env,
-            ...Object.fromEntries(env.map((pair) => [pair.slice(0, pair.indexOf('=')), pair.slice(pair.indexOf('=') + 1)])),
-          },
-        })
+      : f.isolatedOwner === true
+        ? spawnSync(
+            'sudo',
+            ['-n', '-u', 'nobody', '/usr/bin/env', ...env, 'bun', MR_BIN, ...argv],
+            {
+              cwd: f.outside,
+              encoding: 'utf8',
+              timeout: 120_000,
+            },
+          )
+        : spawnSync('bun', [MR_BIN, ...argv], {
+            cwd: f.outside,
+            encoding: 'utf8',
+            timeout: 120_000,
+            env: {
+              ...process.env,
+              ...Object.fromEntries(
+                env.map((pair) => [
+                  pair.slice(0, pair.indexOf('=')),
+                  pair.slice(pair.indexOf('=') + 1),
+                ]),
+              ),
+            },
+          })
   return { exitCode: result.status, stdout: result.stdout.trim(), stderr: result.stderr }
 }
 
@@ -197,7 +214,10 @@ const writePolicy = (
  */
 const writeGcConfig = (
   f: Fixture,
-  { manifestPath = f.manifestPath, producer = PRODUCER }: { manifestPath?: string; producer?: string } = {},
+  {
+    manifestPath = f.manifestPath,
+    producer = PRODUCER,
+  }: { manifestPath?: string; producer?: string } = {},
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -364,8 +384,7 @@ const allocatedBytes = (roots: ReadonlyArray<string>) =>
     return total
   })
 
-const exists = (path: string) =>
-  FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(path)))
+const exists = (path: string) => FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(path)))
 
 const spawnHolder = (cwd: string): Promise<ChildProcess> => {
   const { promise, resolve, reject } = Promise.withResolvers<ChildProcess>()
@@ -425,10 +444,13 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
 
         const plan = planOk(f)
         expect(plan.schemaVersion).toBe('megarepo.build-output-budget-plan.v1')
-        expect(plan.results.filter((r) => r.outcome === 'would-delete').map((r) => r.path)).toEqual([
-          targetA,
-        ])
-        expect(row(plan, targetA)).toMatchObject({ artifactClass: 'cargo-target', reason: 'eligible' })
+        expect(plan.results.filter((r) => r.outcome === 'would-delete').map((r) => r.path)).toEqual(
+          [targetA],
+        )
+        expect(row(plan, targetA)).toMatchObject({
+          artifactClass: 'cargo-target',
+          reason: 'eligible',
+        })
         expect(row(plan, targetB)).toMatchObject({ outcome: 'keep', reason: 'within-budget' })
         expect(plan.classes['cargo-target']).toMatchObject({
           totalBytes: totalBefore,
@@ -596,7 +618,9 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
         expect(withSymlink.results.filter((r) => r.outcome === 'would-delete')).toEqual([])
         expect(withSymlink.classes['cargo-target']?.scanStatus).toBe('scan-incomplete')
         expect(withSymlink.classes['cargo-target']?.keptByReason['scan-incomplete']).toBeUndefined()
-        expect(withSymlink.classes['cargo-target']?.keptByReason['artifact-scan-incomplete']).toBeUndefined()
+        expect(
+          withSymlink.classes['cargo-target']?.keptByReason['artifact-scan-incomplete'],
+        ).toBeUndefined()
 
         expect(applyCandidate(f, { plan, path: nested }).exitCode).not.toBe(0)
         for (const root of [nested, rust, worklogTarget, `${outsideTarget}/big.bin`]) {
@@ -758,7 +782,10 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
       'teardown "delete" without admitted activity keeps the merged worktree and its worklog',
       Effect.fnUntraced(
         function* () {
-          const { f, w, worklog } = yield* teardownFixture({ teardown: 'delete', prState: 'MERGED' })
+          const { f, w, worklog } = yield* teardownFixture({
+            teardown: 'delete',
+            prState: 'MERGED',
+          })
           yield* writeManifest(f, { variant: 'missing' })
           const result = runMr(f, [])
           expect(result.exitCode, result.stderr).toBe(0)
@@ -789,7 +816,10 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
               : typeof receipt?.['recoverPath'] === 'string'
                 ? `${receipt['recoverPath'].replace(/\/?$/u, '/')}`
                 : undefined
-          expect(survivingRoot, 'retain must neither delete the worktree nor its worklog').toBeDefined()
+          expect(
+            survivingRoot,
+            'retain must neither delete the worktree nor its worklog',
+          ).toBeDefined()
           expect(yield* exists(`${survivingRoot}tmp/worklog/session/notes.md`)).toBe(true)
         },
         Effect.provide(NodeServices.layer),
@@ -822,13 +852,20 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
         const valid = planOk(f)
         expect(row(valid, targetA)?.outcome).toBe('would-delete')
         const fs = yield* FileSystem.FileSystem
-        const validPolicy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<string, unknown>
+        const validPolicy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<
+          string,
+          unknown
+        >
         const unknownField = encodeJson({ ...validPolicy, unexpected: true })
         const unknownSchema = encodeJson({
           ...(decodeJson(yield* fs.readFileString(f.policyPath)) as Record<string, unknown>),
           schemaVersion: 'megarepo.build-output-budgets.v99',
         })
-        for (const content of ['{"schemaVersion": "megarepo.build-output-budgets.v1",', unknownSchema, unknownField]) {
+        for (const content of [
+          '{"schemaVersion": "megarepo.build-output-budgets.v1",',
+          unknownSchema,
+          unknownField,
+        ]) {
           yield* fs.writeFileString(f.policyPath, content)
           for (const args of [
             ['--dry-run'],
@@ -871,6 +908,7 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
           await backdate(a, new Date(Date.now() - 3 * DAY_MS))
           await backdate(b, new Date(Date.now() - 3 * DAY_MS))
         })
+        flush()
         yield* writePolicy(f, { budgetBytes: 64 * MiB })
 
         const plan = planOk(f)
@@ -910,7 +948,9 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
     'deployment: a root `mr store activity snapshot` covers foreign UIDs so the owner-run plan/apply can prove idleness',
     Effect.fnUntraced(
       function* () {
-        const { f, a, targetA, targetB } = yield* twoTargets()
+        const created = yield* twoTargets()
+        const { a, targetA, targetB } = created
+        const f: Fixture = { ...created.f, isolatedOwner: true }
         // Trusted coverage requires the manifest AND its whole parent ancestry to be
         // root-controlled (root-owned, not group/world-writable unless sticky like /tmp).
         // Hand the fixture temp root to root; store/.state/outside stay user-owned and
@@ -926,16 +966,9 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
         }
         const rootDir = `${tmpRoot}/root-activity`
         const rootManifest = `${rootDir}/workspace-activity.json`
-        // Deterministic `pty` command fixture: trusted coverage re-runs `pty list` freshly.
-        const fs = yield* FileSystem.FileSystem
-        yield* fs.writeFileString(`${f.state}/bin/pty`, '#!/bin/sh\n[ "$1" = list ] || exit 64\necho "[]"\n')
-        yield* fs.chmod(`${f.state}/bin/pty`, 0o755)
         const snapshot = () => {
           const result = runCli(f, ['store', 'activity', 'snapshot', '--output', rootManifest])
           expect(result.exitCode, result.stderr).toBe(0)
-          // The producer is store-read-only by contract; any root-created store state
-          // would otherwise block the subsequent owner-run planner.
-          spawnSync('sudo', ['-n', 'chown', '-R', `${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`, f.storePath])
           return decodeJson(spawnSync('cat', [rootManifest], { encoding: 'utf8' }).stdout) as {
             readonly producer: { readonly name: string; readonly version: string }
             readonly processCoverage?: string
@@ -978,13 +1011,21 @@ describe('mr store gc --budgets (build-output budgets acceptance)', () => {
             ?.sources,
         ).toContain('process')
         yield* writeGcConfig(f, { manifestPath: rootManifest, producer: live.producer.name })
+        // A separate unprivileged UID isolates this proof from ambient owner
+        // processes while keeping the real process table and PTY CLI.
+        const ownership = spawnSync(
+          'sudo',
+          ['-n', 'chown', '-R', 'nobody:nogroup', f.storePath, f.outside, f.home],
+          { encoding: 'utf8' },
+        )
+        expect(ownership.status, ownership.stderr).toBe(0)
 
         const ownerLive = runBudgets(f, ['--dry-run'], { asRoot: false })
         expect(ownerLive.exitCode, ownerLive.stderr).toBe(0)
         expect(row(ownerLive.plan!, targetA)).toMatchObject({ outcome: 'keep', reason: 'live' })
-        expect(ownerLive.plan!.results.some((r) => r.reason === 'process-liveness-unavailable')).toBe(
-          false,
-        )
+        expect(
+          ownerLive.plan!.results.some((r) => r.reason === 'process-liveness-unavailable'),
+        ).toBe(false)
 
         yield* Effect.promise(() => stopRootHolder(holder))
         const idle = snapshot()

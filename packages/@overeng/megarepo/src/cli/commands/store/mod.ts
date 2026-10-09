@@ -1075,21 +1075,25 @@ const scanTeardownWorklog = Effect.fn('megarepo/store/gc/scan-worklog')(function
       if (root.isDirectory() === false || parent.isDirectory() === false) {
         throw new Error('worklog or its parent is not a real directory')
       }
-      const deadline = Date.now() + GENERATED_SCAN_TIMEOUT_MS
+      const deadline = performance.now() + GENERATED_SCAN_TIMEOUT_MS
       const pending = [path]
       const seen = new Set<string>()
       let allocatedBytes = 0
       let count = 0
       while (pending.length > 0) {
         count += 1
-        if (Date.now() > deadline || count > GENERATED_SCAN_ENTRY_CAP) {
+        if (performance.now() > deadline || count > GENERATED_SCAN_ENTRY_CAP) {
           throw new Error('worklog scan incomplete')
         }
         const current = pending.pop()!
+        // Sequential traversal bounds outstanding IO and memory.
+        // eslint-disable-next-line no-await-in-loop
         const info = await lstat(current)
         if (
           info.dev !== root.dev ||
-          (info.isDirectory() === false && info.isFile() === false && info.isSymbolicLink() === false)
+          (info.isDirectory() === false &&
+            info.isFile() === false &&
+            info.isSymbolicLink() === false)
         ) {
           throw new Error('worklog crosses a mount or contains a special file')
         }
@@ -1099,7 +1103,9 @@ const scanTeardownWorklog = Effect.fn('megarepo/store/gc/scan-worklog')(function
           allocatedBytes += info.blocks * 512
         }
         if (info.isDirectory() === true) {
+          // eslint-disable-next-line no-await-in-loop
           const directory = await opendir(current)
+          // eslint-disable-next-line no-await-in-loop
           for await (const entry of directory) pending.push(`${current}/${entry.name}`)
         }
       }
@@ -1116,64 +1122,75 @@ const scanTeardownWorklog = Effect.fn('megarepo/store/gc/scan-worklog')(function
  * Gates beyond the cold classifier for deleting a merged worktree with its
  * worklog. `undefined` means eligible; every reason falls back to archiving.
  */
-const checkMergedWorklogTeardown = Effect.fn('megarepo/store/gc/check-worklog-teardown')(function* ({
-  worktreePath,
-  bareRepoPath,
-  expectedHead,
-  defaultBranch,
-  worklogPath,
-}: {
-  worktreePath: AbsoluteDirPath
-  bareRepoPath: AbsoluteDirPath
-  expectedHead: string
-  defaultBranch: string | undefined
-  worklogPath: string
-}) {
-  if (defaultBranch === undefined) return 'default-branch-unavailable'
-  const head = yield* Git.getCurrentCommit(worktreePath)
-  if (head !== expectedHead) return 'head-changed'
-  const reachable = yield* Git.runCommand({
-    cwd: bareRepoPath,
-    args: ['merge-base', '--is-ancestor', head, `refs/remotes/origin/${defaultBranch}`],
-  }).pipe(
-    Effect.as(true),
-    Effect.orElseSucceed(() => false),
-  )
-  if (reachable === false) return 'head-not-on-default'
-  const tracked = yield* Git.hasTrackedFiles({ cwd: worktreePath, path: worklogPath })
-  if (tracked === true) return 'tracked-worklog'
-  const exclude = `:(exclude)${worklogPath}`
-  const changes = yield* Git.runCommand({
-    cwd: worktreePath,
-    args: ['status', '--porcelain', '--untracked-files=all', '--', '.', exclude],
-  })
-  if (changes.length > 0) return 'other-dirty-content'
-  const ignored = yield* Git.runCommand({
-    cwd: worktreePath,
-    args: ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '--', '.', exclude],
-  })
-  for (const entry of ignored.split('\n')) {
-    if (entry.length === 0) continue
-    const segments = entry.replace(/\/$/u, '').split('/')
-    const name = segments.at(-1)!
-    if (
-      segments.some((segment) => TEARDOWN_REBUILDABLE_DIRS[segment] === true) === false &&
-      name.startsWith('result') === false &&
-      name.endsWith('.tsbuildinfo') === false &&
-      name !== '.oxlint-with-plugins.json'
-    ) {
-      return 'other-ignored-content'
+const checkMergedWorklogTeardown = Effect.fn('megarepo/store/gc/check-worklog-teardown')(
+  function* ({
+    worktreePath,
+    bareRepoPath,
+    expectedHead,
+    defaultBranch,
+    worklogPath,
+  }: {
+    worktreePath: AbsoluteDirPath
+    bareRepoPath: AbsoluteDirPath
+    expectedHead: string
+    defaultBranch: string | undefined
+    worklogPath: string
+  }) {
+    if (defaultBranch === undefined) return 'default-branch-unavailable'
+    const head = yield* Git.getCurrentCommit(worktreePath)
+    if (head !== expectedHead) return 'head-changed'
+    const reachable = yield* Git.runCommand({
+      cwd: bareRepoPath,
+      args: ['merge-base', '--is-ancestor', head, `refs/remotes/origin/${defaultBranch}`],
+    }).pipe(
+      Effect.as(true),
+      Effect.orElseSucceed(() => false),
+    )
+    if (reachable === false) return 'head-not-on-default'
+    const tracked = yield* Git.hasTrackedFiles({ cwd: worktreePath, path: worklogPath })
+    if (tracked === true) return 'tracked-worklog'
+    const exclude = `:(exclude)${worklogPath}`
+    const changes = yield* Git.runCommand({
+      cwd: worktreePath,
+      args: ['status', '--porcelain', '--untracked-files=all', '--', '.', exclude],
+    })
+    if (changes.length > 0) return 'other-dirty-content'
+    const ignored = yield* Git.runCommand({
+      cwd: worktreePath,
+      args: [
+        'ls-files',
+        '--others',
+        '--ignored',
+        '--exclude-standard',
+        '--directory',
+        '--',
+        '.',
+        exclude,
+      ],
+    })
+    for (const entry of ignored.split('\n')) {
+      if (entry.length === 0) continue
+      const segments = entry.replace(/\/$/u, '').split('/')
+      const name = segments.at(-1)!
+      if (
+        segments.some((segment) => TEARDOWN_REBUILDABLE_DIRS[segment] === true) === false &&
+        name.startsWith('result') === false &&
+        name.endsWith('.tsbuildinfo') === false &&
+        name !== '.oxlint-with-plugins.json'
+      ) {
+        return 'other-ignored-content'
+      }
     }
-  }
-  const registrations = yield* Git.listWorktrees(bareRepoPath)
-  const matches = registrations.filter(
-    (entry) => normalizeStorePath(entry.path) === normalizeStorePath(worktreePath),
-  )
-  if (matches.length !== 1 || Option.isSome(matches[0]!.lockReason) === true) {
-    return 'worktree-registration-unknown'
-  }
-  return undefined
-})
+    const registrations = yield* Git.listWorktrees(bareRepoPath)
+    const matches = registrations.filter(
+      (entry) => normalizeStorePath(entry.path) === normalizeStorePath(worktreePath),
+    )
+    if (matches.length !== 1 || Option.isSome(matches[0]!.lockReason) === true) {
+      return 'worktree-registration-unknown'
+    }
+    return undefined
+  },
+)
 
 /**
  * Cold reclamation for ONE repo's named worktrees (decisions 0001–0010).
@@ -1593,7 +1610,11 @@ const coldReclaimRepo = ({
               : Effect.gen(function* () {
                   const leaseOwnerPath = yield* canonicalizeOwnerPath(worktree.path)
                   return yield* teardownAction.pipe(
-                    withDeletionLease({ storeBasePath: store.basePath, ownerPath: leaseOwnerPath, now }),
+                    withDeletionLease({
+                      storeBasePath: store.basePath,
+                      ownerPath: leaseOwnerPath,
+                      now,
+                    }),
                     storeLock.withWorktreeLock(worktree.path),
                   )
                 })
@@ -1617,7 +1638,9 @@ const coldReclaimRepo = ({
               }),
             )
           } else if (teardown._tag === 'kept-teardown') {
-            results.push(coldResult({ target, status: 'kept', reason: teardown.reason, ...policyReceipt }))
+            results.push(
+              coldResult({ target, status: 'kept', reason: teardown.reason, ...policyReceipt }),
+            )
           } else if (teardown._tag === 'error') {
             results.push(
               coldResult({
@@ -2080,7 +2103,9 @@ const storeGcCommand = Cli.Command.make(
       Cli.Flag.withDefault(false),
     ),
     budgets: Cli.Flag.String('budgets').pipe(
-      Cli.Flag.withDescription('Plan allocated-byte LRU eviction using a strict build-output policy file'),
+      Cli.Flag.withDescription(
+        'Plan allocated-byte LRU eviction using a strict build-output policy file',
+      ),
       Cli.Flag.optional,
     ),
     expectedPlan: Cli.Flag.String('expected-plan').pipe(
@@ -2110,16 +2135,20 @@ const storeGcCommand = Cli.Command.make(
         Option.isSome(expectedPlan) === true || Option.isSome(candidatePath) === true
       const planningOnly = dryRun === true || targetedApply === true
 
-      if (Option.isSome(budgets) === true && (generatedArtifacts === true || all === true || force === true)) {
+      if (
+        Option.isSome(budgets) === true &&
+        (generatedArtifacts === true || all === true || force === true)
+      ) {
         return yield* new StoreCommandError({
           message: '--budgets is incompatible with --generated-artifacts, --all and --force',
         })
       }
       // Decode before collecting or reconciling store state. Invalid policy is
       // an error, never an implicit fallback to ordinary whole-worktree GC.
-      const budgetPolicy = Option.isSome(budgets) === true
-        ? yield* loadBuildOutputBudgets({ path: budgets.value })
-        : undefined
+      const budgetPolicy =
+        Option.isSome(budgets) === true
+          ? yield* loadBuildOutputBudgets({ path: budgets.value })
+          : undefined
       if (generatedArtifacts === true && (all === true || force === true)) {
         return yield* new StoreCommandError({
           message: '--generated-artifacts is incompatible with --all and --force',
@@ -2166,18 +2195,29 @@ const storeGcCommand = Cli.Command.make(
           const workspaceRoot = yield* findMegarepoRoot(cwd)
           const liveSet = yield* collectStoreLiveSet({
             store,
-            ...(Option.isSome(workspaceRoot) === true ? { currentWorkspaceRoot: workspaceRoot.value } : {}),
+            ...(Option.isSome(workspaceRoot) === true
+              ? { currentWorkspaceRoot: workspaceRoot.value }
+              : {}),
             pruneStaleRegistry: false,
             refreshCurrentWorkspace: false,
             now,
           })
           const repos = yield* store.listRepos
-          const repoWorktrees = yield* Effect.forEach(repos, (repo) =>
-            Effect.gen(function* () {
-              const bareRepoPath = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('.bare/'))
-              const worktrees = yield* collectRepoStoreWorktrees({ fs, repoPath: repo.fullPath, bareRepoPath })
-              return { repo, bareRepoPath, worktrees }
-            }),
+          const repoWorktrees = yield* Effect.forEach(
+            repos,
+            (repo) =>
+              Effect.gen(function* () {
+                const bareRepoPath = EffectPath.ops.join(
+                  repo.fullPath,
+                  EffectPath.unsafe.relativeDir('.bare/'),
+                )
+                const worktrees = yield* collectRepoStoreWorktrees({
+                  fs,
+                  repoPath: repo.fullPath,
+                  bareRepoPath,
+                })
+                return { repo, bareRepoPath, worktrees }
+              }),
             { concurrency: gcRepoConcurrency() },
           )
           return { liveSet, repoWorktrees }
@@ -2213,13 +2253,18 @@ const storeGcCommand = Cli.Command.make(
           const expectedPlanValue = expectedPlan.value
           const candidatePathValue = candidatePath.value
           if (plan.planSha256 !== expectedPlanValue) {
-            return yield* new StoreCommandError({ message: 'store gc budget plan changed; refusing candidate application' })
+            return yield* new StoreCommandError({
+              message: 'store gc budget plan changed; refusing candidate application',
+            })
           }
-          const selected = plan.results.filter((candidate) =>
-            candidate.path === candidatePathValue && candidate.outcome === 'would-delete',
+          const selected = plan.results.filter(
+            (candidate) =>
+              candidate.path === candidatePathValue && candidate.outcome === 'would-delete',
           )
           if (selected.length !== 1) {
-            return yield* new StoreCommandError({ message: 'budget candidate is missing, ambiguous, or no longer eligible' })
+            return yield* new StoreCommandError({
+              message: 'budget candidate is missing, ambiguous, or no longer eligible',
+            })
           }
           plan = yield* storeLock.withWorktreeLock(selected[0]!.workspacePath)(
             Effect.gen(function* () {
@@ -2241,7 +2286,9 @@ const storeGcCommand = Cli.Command.make(
           yield* Console.log(yield* Schema.encodeEffect(Schema.fromJsonString(BudgetPlan))(plan))
         } else {
           for (const [name, summary] of Object.entries(plan.classes)) {
-            yield* Console.log(`${name}: ${summary.status} · ${summary.scanStatus} · ${summary.totalBytes} allocated bytes / ${summary.budgetBytes} budget · ${summary.evictedBytes} eviction bytes · ${summary.projectedBytes} projected bytes`)
+            yield* Console.log(
+              `${name}: ${summary.status} · ${summary.scanStatus} · ${summary.totalBytes} allocated bytes / ${summary.budgetBytes} budget · ${summary.evictedBytes} eviction bytes · ${summary.projectedBytes} projected bytes`,
+            )
           }
           for (const candidate of plan.results) {
             yield* Console.log(`${candidate.outcome} ${candidate.path} (${candidate.reason})`)

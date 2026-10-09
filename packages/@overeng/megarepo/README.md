@@ -197,9 +197,11 @@ The host owner (for example a dotfiles systemd oneshot run as root before each h
 apply) owns the output: the file and its directory are root-owned and not writable by the store
 owner, but readable by it. The store owner admits it through `gc-config.json`
 `generatedArtifacts.manifestPath` and `agentLivenessProducers: ["mr-process"]`. Plan and apply use
-the manifest only as foreign-process evidence; immediately before deletion they still run their
-own fresh process checks for processes of the owner's UID, and a missing, expired, foreign-host, or
-incomplete manifest keeps every candidate.
+the manifest for foreign-process evidence and still inspect owner-UID processes freshly.
+An unreadable owner-UID process is covered only when its current PID and kernel start-time
+match a `processIdentities` entry in the unexpired root snapshot; the snapshot's full path
+claims still apply. A new unreadable process, PID reuse, or missing, expired, foreign-host,
+or incomplete manifest keeps every candidate.
 
 Run as root, point `MEGAREPO_STORE` at the owner's store so the claims cover that store root.
 
