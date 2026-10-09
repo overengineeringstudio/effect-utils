@@ -18,6 +18,7 @@ export const internalPackages = [
   'effect-ai-claude-cli',
   'effect-ai-gateway',
   'effect-distributed-lock',
+  'effect-iroh',
   'effect-path',
   'effect-react',
   'effect-rpc-explorer',
