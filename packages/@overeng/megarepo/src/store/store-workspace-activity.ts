@@ -1,10 +1,21 @@
+import { randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
-import { isAbsolute, normalize, sep } from 'node:path'
+import { basename, dirname, isAbsolute, normalize, sep } from 'node:path'
 
-import { Effect, Schema, Stream } from 'effect'
+import { Clock, DateTime, Effect, Option, Schema, Stream } from 'effect'
 import type * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
+
+import { MR_VERSION } from '../core/version.ts'
+import {
+  isInsideWorktree,
+  readProcessReferences,
+  readWorktreeReferencesInUse,
+  type InUseResult,
+  type ProcessScanScope,
+} from './store-inuse.ts'
 
 /** Host admission survives fresh captures; store indices naturally advance during work. */
 export interface WorkspaceActivityEpoch {
@@ -14,6 +25,11 @@ export interface WorkspaceActivityEpoch {
 /** Canonical workspace paths protected by observed agents and retained PTY records. */
 export interface WorkspaceActivity {
   readonly activePaths: ReadonlySet<string>
+  /**
+   * Kernel-reported process cwd/root/fd/map paths. These only protect a
+   * worktree that contains them: a process rooted at `/` owns no worktree.
+   */
+  readonly processPaths?: ReadonlySet<string> | undefined
   readonly epoch: WorkspaceActivityEpoch
 }
 
@@ -110,26 +126,18 @@ export const isWorkspaceActive = ({
     )
       return true
   }
+  for (const processPath of activity.processPaths ?? []) {
+    if (isInsideWorktree({ candidate: processPath, worktreePath: worktree }) === true) return true
+  }
   return false
 }
 
 /**
- * Read native st3 actual workspaces and retained local PTYs. Unknown evidence is not
- * an empty set: callers must veto reclamation when this returns undefined.
- * Each invocation is a fresh capture, with bounded pagination, bytes and time.
+ * One bounded JSON command reader per activity capture. Its byte budget spans
+ * every command in that capture, so pagination cannot grow without bound.
  */
-export const readWorkspaceActivity: (options: {
-  readonly fs: FileSystem.FileSystem
-  readonly admittedEpoch?: WorkspaceActivityEpoch | undefined
-}) => Effect.Effect<WorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
-  'store.readWorkspaceActivity',
-)(function* ({ fs, admittedEpoch }) {
-  const host = `host/${hostname()}`
-  if (admittedEpoch !== undefined && admittedEpoch.host !== host) return undefined
+const makeActivityCommandJson = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner
-  const st3Binary = process.env['MEGAREPO_GC_ST3_BIN'] ?? 'st3'
-  const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
-  if (st3Binary.length === 0 || ptyBinary.length === 0) return undefined
   let capturedBytes = 0
 
   const capture = Effect.fn('store.captureWorkspaceActivity')(function* ({
@@ -187,7 +195,7 @@ export const readWorkspaceActivity: (options: {
     if (exitCode !== 0) return yield* unavailable('Activity command failed')
     return stdout
   })
-  const commandJson = <TType, TEncoded>({
+  return <TType, TEncoded>({
     command,
     args,
     schema,
@@ -201,6 +209,25 @@ export const readWorkspaceActivity: (options: {
       Effect.scoped,
       Effect.timeout('5 seconds'),
     )
+})
+
+/**
+ * Read native st3 actual workspaces and retained local PTYs. Unknown evidence is not
+ * an empty set: callers must veto reclamation when this returns undefined.
+ * Each invocation is a fresh capture, with bounded pagination, bytes and time.
+ */
+export const readWorkspaceActivity: (options: {
+  readonly fs: FileSystem.FileSystem
+  readonly admittedEpoch?: WorkspaceActivityEpoch | undefined
+}) => Effect.Effect<WorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
+  'store.readWorkspaceActivity',
+)(function* ({ fs, admittedEpoch }) {
+  const host = `host/${hostname()}`
+  if (admittedEpoch !== undefined && admittedEpoch.host !== host) return undefined
+  const st3Binary = process.env['MEGAREPO_GC_ST3_BIN'] ?? 'st3'
+  const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
+  if (st3Binary.length === 0 || ptyBinary.length === 0) return undefined
+  const commandJson = yield* makeActivityCommandJson
 
   const read = Effect.gen(function* () {
     const agents: Array<typeof Agent.Type> = []
@@ -375,3 +402,479 @@ export const readWorkspaceActivity: (options: {
     Effect.orElseSucceed(() => undefined),
   )
 })
+
+/** Schema tag of the producer-neutral activity manifest. */
+export const WORKSPACE_ACTIVITY_V2_SCHEMA = 'megarepo.workspace-activity.v2'
+
+/** Producer name for evidence megarepo captures itself from PTY records and `/proc`. */
+export const BUILTIN_ACTIVITY_PRODUCER = 'builtin'
+
+/** Producer name of `mr store activity snapshot`: root-run, process-only evidence. */
+export const PROCESS_SNAPSHOT_PRODUCER = 'mr-process'
+
+/** Manifest lifetime ceiling: older evidence cannot describe the current host. */
+export const WORKSPACE_ACTIVITY_MAX_TTL_MS = 5 * 60 * 1000
+
+const MANIFEST_BYTES = 4 * 1024 * 1024
+
+const ActivityManifest = Schema.Struct({
+  schemaVersion: Schema.Literal(WORKSPACE_ACTIVITY_V2_SCHEMA),
+  producer: Schema.Struct({ name: NonEmpty, version: NonEmpty }),
+  epoch: Schema.Struct({ host: NonEmpty, snapshotId: NonEmpty, storeIndex: Count }),
+  capturedAt: Schema.DateTimeUtcFromString,
+  expiresAt: Schema.DateTimeUtcFromString,
+  complete: Schema.Boolean,
+  errors: Schema.Array(Schema.String),
+  /**
+   * `all-uids`: the producer read every process on the host (root), so its
+   * `process` claims cover processes the reading owner cannot inspect, but
+   * only for worktrees inside `processRoots`. Says nothing about agents/PTYs.
+   */
+  processCoverage: Schema.optionalKey(Schema.Literal('all-uids')),
+  processRoots: Schema.optionalKey(Schema.Array(AbsolutePath)),
+  claims: Schema.Array(
+    Schema.Struct({
+      workspace: AbsolutePath,
+      sources: Schema.Array(Schema.Literals(['st3-seat', 'pty', 'process'])),
+      agents: Schema.Array(NonEmpty),
+      activeRuntimeIds: Schema.Array(NonEmpty),
+      active: Schema.Boolean,
+    }),
+  ),
+}).annotate({ identifier: 'StoreWorkspaceActivity.ActivityManifest' })
+
+/** Decoded `megarepo.workspace-activity.v2` manifest. */
+export type WorkspaceActivityManifest = typeof ActivityManifest.Type
+
+/**
+ * Which liveness evidence a budget scan admits. `manifestPath` names an external
+ * `megarepo.workspace-activity.v2` manifest whose producer must be listed in
+ * `agentLivenessProducers`; `builtin` (default true) adds megarepo's own PTY
+ * record and `/proc` capture. A configured manifest never falls back to builtin.
+ */
+export interface BudgetActivityConfig {
+  readonly manifestPath?: string | undefined
+  readonly agentLivenessProducers?: ReadonlyArray<string> | undefined
+  readonly builtin?: boolean | undefined
+}
+
+/**
+ * Identity of the admitted evidence. A scan is valid only when the evidence
+ * read after it carries the same epoch; capture times are deliberately absent
+ * so a plan hash survives fresh captures of an unchanged producer snapshot.
+ */
+export interface BudgetWorkspaceActivityEpoch extends WorkspaceActivityEpoch {
+  readonly producer: string
+  readonly snapshotId: string
+  readonly storeIndex: number
+}
+
+/** Activity whose epoch identifies the admitted producer snapshot. */
+export interface BudgetWorkspaceActivity extends WorkspaceActivity {
+  readonly epoch: BudgetWorkspaceActivityEpoch
+  /**
+   * Present only for a trusted root-owned `all-uids` manifest: processes of
+   * other uids inside `roots` are covered by its claims, so the owner's own
+   * deletion-time probe may read only its own uid there.
+   */
+  readonly processCoverage?: { readonly roots: ReadonlyArray<string> } | undefined
+}
+
+/** Absolute path when it resolves to itself, `missing` when gone, else unavailable. */
+const canonicalExisting = ({ fs, path }: { fs: FileSystem.FileSystem; path: string }) =>
+  fs.realPath(path).pipe(
+    Effect.map((resolved) => (resolved === normalize(path) ? resolved : ('noncanonical' as const))),
+    Effect.catch((error: PlatformError) =>
+      error.reason._tag === 'NotFound'
+        ? Effect.succeed('missing' as const)
+        : Effect.fail(unavailable('Activity workspace cannot be canonicalized')),
+    ),
+  )
+
+/** Only root may have written it: uid 0 and neither group- nor world-writable. */
+const isRootControlled = (info: FileSystem.File.Info): boolean =>
+  Option.getOrUndefined(info.uid) === 0 && (info.mode & 0o022) === 0
+
+/** Identity and content-shaping metadata unchanged between two stats. */
+const sameFile = (before: FileSystem.File.Info, after: FileSystem.File.Info): boolean =>
+  before.dev === after.dev &&
+  Option.getOrUndefined(before.ino) === Option.getOrUndefined(after.ino) &&
+  Option.getOrUndefined(before.ino) !== undefined &&
+  Option.getOrUndefined(before.uid) === Option.getOrUndefined(after.uid) &&
+  before.mode === after.mode &&
+  before.size === after.size &&
+  Option.getOrUndefined(before.mtime)?.getTime() === Option.getOrUndefined(after.mtime)?.getTime()
+
+/**
+ * `path` is a canonical directory only root can change, and no ancestor lets
+ * another user rename it away: every ancestor is root-owned and either not
+ * group/world-writable or sticky (like `/tmp`, where only root may move a
+ * root-owned entry).
+ */
+const isRootControlledDirectory = ({ fs, path }: { fs: FileSystem.FileSystem; path: string }) =>
+  Effect.gen(function* () {
+    if ((yield* canonicalExisting({ fs, path })) !== normalize(path)) return false
+    const directory = yield* fs.stat(path)
+    if (directory.type !== 'Directory' || isRootControlled(directory) === false) return false
+    for (let ancestor = dirname(path); ; ancestor = dirname(ancestor)) {
+      const info = yield* fs.stat(ancestor)
+      if (
+        Option.getOrUndefined(info.uid) !== 0 ||
+        ((info.mode & 0o022) !== 0 && (info.mode & 0o1000) === 0)
+      ) {
+        return false
+      }
+      if (ancestor === dirname(ancestor)) return true
+    }
+  })
+
+const readActivityManifest = Effect.fn('store.readActivityManifest')(function* ({
+  fs,
+  path,
+  producers,
+}: {
+  fs: FileSystem.FileSystem
+  path: string
+  producers: ReadonlyArray<string>
+}) {
+  const info = yield* fs.stat(path)
+  if (info.type !== 'File' || Number(info.size) > MANIFEST_BYTES) {
+    return yield* unavailable('Activity manifest is not a bounded regular file')
+  }
+  const manifest = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ActivityManifest))(
+    yield* fs.readFileString(path),
+  )
+  if (producers.includes(manifest.producer.name) === false) {
+    return yield* unavailable('Activity producer is not admitted')
+  }
+  const epochHost = manifest.epoch.host.startsWith('host/')
+    ? manifest.epoch.host.slice('host/'.length)
+    : manifest.epoch.host
+  if (epochHost !== hostname()) return yield* unavailable('Activity manifest is from another host')
+  if (
+    manifest.producer.name === PROCESS_SNAPSHOT_PRODUCER &&
+    (manifest.epoch.storeIndex !== 0 || manifest.epoch.snapshotId !== (yield* readBootId(fs)))
+  ) {
+    return yield* unavailable('Process activity manifest is from another host boot')
+  }
+  const now = yield* Clock.currentTimeMillis
+  const capturedAt = DateTime.toEpochMillis(manifest.capturedAt)
+  const expiresAt = DateTime.toEpochMillis(manifest.expiresAt)
+  if (
+    capturedAt > now ||
+    expiresAt <= now ||
+    expiresAt <= capturedAt ||
+    expiresAt - capturedAt > WORKSPACE_ACTIVITY_MAX_TTL_MS
+  ) {
+    return yield* unavailable('Activity manifest is not fresh')
+  }
+  if (manifest.complete === false || manifest.errors.length > 0) {
+    return yield* unavailable('Activity manifest is incomplete')
+  }
+  let processCoverage: { readonly roots: ReadonlyArray<string> } | undefined
+  if (manifest.processCoverage === 'all-uids') {
+    // Foreign-uid coverage waives part of the owner's own probe, so a file the
+    // owner (or anyone but root) could have written or swapped must not grant
+    // it: no symlink anywhere in the path, a root-controlled file in a
+    // root-controlled directory chain, and the same inode before and after
+    // the read.
+    const after = yield* fs.stat(path)
+    if (
+      (yield* canonicalExisting({ fs, path })) !== normalize(path) ||
+      isRootControlled(info) === false ||
+      sameFile(info, after) === false ||
+      (yield* isRootControlledDirectory({ fs, path: dirname(path) })) === false
+    ) {
+      return yield* unavailable('All-uid activity manifest is not root-controlled')
+    }
+    const roots = manifest.processRoots ?? []
+    if (roots.length === 0) return yield* unavailable('All-uid activity manifest has no roots')
+    for (const root of roots) {
+      if ((yield* canonicalExisting({ fs, path: root })) !== normalize(root)) {
+        return yield* unavailable('All-uid activity root is not canonical')
+      }
+    }
+    processCoverage = { roots }
+  }
+  const activePaths = new Set<string>()
+  const processPaths = new Set<string>()
+  for (const claim of manifest.claims) {
+    if (claim.sources.length === 0) return yield* unavailable('Activity claim has no source')
+    if (claim.active === false) continue
+    const canonical = yield* canonicalExisting({ fs, path: claim.workspace })
+    if (canonical === 'noncanonical') return yield* unavailable('Activity claim is noncanonical')
+    // A deleted workspace has nothing left to protect.
+    if (canonical === 'missing') continue
+    // A process reference only holds the worktree containing it; agent and
+    // PTY workspaces also protect the composed roots above them.
+    if (claim.sources.every((source) => source === 'process') === true) processPaths.add(canonical)
+    else activePaths.add(canonical)
+  }
+  return {
+    activePaths,
+    processPaths,
+    processCoverage,
+    epoch: {
+      host: epochHost,
+      producer: manifest.producer.name,
+      snapshotId: manifest.epoch.snapshotId,
+      storeIndex: manifest.epoch.storeIndex,
+    },
+  }
+})
+
+const readBootId = (fs: FileSystem.FileSystem) =>
+  fs.readFileString('/proc/sys/kernel/random/boot_id').pipe(
+    Effect.map((content) => content.trim()),
+    Effect.flatMap((bootId) =>
+      bootId.length === 0
+        ? Effect.fail(unavailable('Host boot identity is unavailable'))
+        : Effect.succeed(bootId),
+    ),
+  )
+
+/**
+ * Megarepo's own capture as the reading owner: every PTY record (running,
+ * exited, vanished) owns its cwd until the record is removed, and every
+ * in-scope process reference (cwd, root, fd, mapped file) protects the
+ * worktree containing it. Any unreadable in-scope process is unknown.
+ */
+const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
+  fs,
+  scope,
+}: {
+  fs: FileSystem.FileSystem
+  scope: ProcessScanScope
+}) {
+  const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
+  if (ptyBinary.length === 0) return yield* unavailable('PTY activity source is disabled')
+  const bootId = yield* readBootId(fs)
+  const commandJson = yield* makeActivityCommandJson
+  const sessions = yield* commandJson({
+    command: ptyBinary,
+    args: ['list', '--json', '--tags'],
+    schema: PtySessions,
+  })
+  const names = new Set<string>()
+  const activePaths = new Set<string>()
+  for (const session of sessions) {
+    if (names.has(session.name) === true) return yield* unavailable('Duplicate PTY activity record')
+    names.add(session.name)
+    if (session.status === 'running' && session.pid === null) {
+      return yield* unavailable('Running PTY has no process')
+    }
+    const canonical = yield* fs.realPath(session.cwd).pipe(
+      Effect.map((path): string | undefined => path),
+      Effect.catch((error: PlatformError) =>
+        error.reason._tag === 'NotFound'
+          ? Effect.succeed(undefined)
+          : Effect.fail(unavailable('PTY workspace cannot be canonicalized')),
+      ),
+    )
+    if (canonical !== undefined) activePaths.add(canonical)
+  }
+  const scan = yield* readProcessReferences({ fs, selfPid: process.pid, scope })
+  if (scan._tag === 'unknown') return yield* unavailable(`Process scan is ${scan.reason}`)
+  return {
+    activePaths,
+    processPaths: new Set(scan.references.map((reference) => reference.path)),
+    epoch: {
+      host: hostname(),
+      producer: BUILTIN_ACTIVITY_PRODUCER,
+      snapshotId: bootId,
+      storeIndex: 0,
+    },
+  }
+})
+
+/**
+ * Read build-output budget liveness. Undefined is unknown evidence and MUST
+ * keep every candidate: no admitted source, missing/expired/foreign/incomplete
+ * manifest, an epoch that differs from `admittedEpoch`, or any capture failure.
+ *
+ * A generic admitted manifest is complete agent/PTY/process evidence; builtin
+ * capture then adds PTYs and a full all-uid `/proc` scan. A trusted `all-uids`
+ * manifest is process-only, so the owner's PTY records and own-uid processes
+ * are always captured fresh beside it, regardless of `builtin`.
+ * Independent of native st3 activity; that remains `readWorkspaceActivity`.
+ */
+export const readBudgetWorkspaceActivity: (options: {
+  readonly fs: FileSystem.FileSystem
+  readonly config: BudgetActivityConfig
+  readonly admittedEpoch?: BudgetWorkspaceActivityEpoch | undefined
+}) => Effect.Effect<BudgetWorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
+  'store.readBudgetWorkspaceActivity',
+)(function* ({ fs, config, admittedEpoch }) {
+  const builtin = config.builtin ?? true
+  if (config.manifestPath === undefined && builtin === false) return undefined
+  const read = Effect.gen(function* () {
+    const manifest =
+      config.manifestPath === undefined
+        ? undefined
+        : yield* readActivityManifest({
+            fs,
+            path: config.manifestPath,
+            producers: config.agentLivenessProducers ?? [],
+          })
+    const own =
+      manifest?.processCoverage !== undefined
+        ? yield* readOwnerActivity({ fs, scope: 'own-uid' })
+        : builtin === true
+          ? yield* readOwnerActivity({ fs, scope: 'all-uids' })
+          : undefined
+    const activity: BudgetWorkspaceActivity | undefined =
+      manifest === undefined
+        ? own
+        : own === undefined
+          ? manifest
+          : {
+              activePaths: new Set([...manifest.activePaths, ...own.activePaths]),
+              processPaths: new Set([...manifest.processPaths, ...own.processPaths]),
+              processCoverage: manifest.processCoverage,
+              epoch: manifest.epoch,
+            }
+    if (activity === undefined) return undefined
+    if (
+      admittedEpoch !== undefined &&
+      (admittedEpoch.host !== activity.epoch.host ||
+        admittedEpoch.producer !== activity.epoch.producer ||
+        admittedEpoch.snapshotId !== activity.epoch.snapshotId ||
+        admittedEpoch.storeIndex !== activity.epoch.storeIndex)
+    ) {
+      return undefined
+    }
+    return activity
+  })
+  return yield* read.pipe(
+    Effect.timeout(CAPTURE_TIMEOUT_MS),
+    Effect.orElseSucceed(() => undefined),
+  )
+})
+
+/**
+ * Deletion-time process probe matched to the admitted evidence: inside the
+ * roots of a trusted all-uid manifest only the owner's own processes are read
+ * (foreign ones are the manifest's claims); everywhere else every process must
+ * be readable. Callers MUST keep unless the result is `free`.
+ */
+export const readBudgetWorktreeInUse = ({
+  worktreePath,
+  activity,
+}: {
+  worktreePath: string
+  activity: BudgetWorkspaceActivity | undefined
+}): Effect.Effect<InUseResult, never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const coverage = activity?.processCoverage
+    const covered =
+      coverage !== undefined &&
+      coverage.roots.some((root) => isInsideWorktree({ candidate: worktreePath, worktreePath: root }))
+    return yield* readWorktreeReferencesInUse({
+      worktreePath,
+      scope: covered === true ? 'own-uid' : 'all-uids',
+    })
+  })
+
+/**
+ * Root-run process snapshot (`mr store activity snapshot`): every process's
+ * cwd/root/fd/mapped-file reference inside `storeRoots`, as `process` claims
+ * with `all-uids` coverage. Directory references claim themselves; file
+ * references claim their directory so a deleted-but-open file still protects
+ * it. Any unreadable process or root yields `complete: false` with errors.
+ */
+export const captureProcessActivityManifest = Effect.fn('store.captureProcessActivityManifest')(
+  function* ({
+    fs,
+    storeRoots,
+  }: {
+    fs: FileSystem.FileSystem
+    storeRoots: ReadonlyArray<string>
+  }) {
+    const now = yield* Clock.currentTimeMillis
+    const errors: Array<string> = []
+    const bootId = yield* readBootId(fs).pipe(
+      Effect.catch(() => {
+        errors.push('host boot identity is unavailable')
+        return Effect.succeed('unknown')
+      }),
+    )
+    const roots: Array<string> = []
+    for (const root of storeRoots) {
+      const canonical = yield* fs.realPath(root).pipe(Effect.option)
+      if (canonical._tag === 'None') errors.push(`store root cannot be resolved: ${root}`)
+      else roots.push(canonical.value)
+    }
+    if (roots.length === 0) errors.push('no store roots')
+    const scan = yield* readProcessReferences({ fs, selfPid: process.pid, scope: 'all-uids' })
+    const workspaces = new Set<string>()
+    if (scan._tag === 'unknown') {
+      errors.push(
+        `process scan is ${scan.reason}${scan.pid === undefined ? '' : ` (pid ${scan.pid})`}`,
+      )
+    } else {
+      for (const reference of scan.references) {
+        const workspace =
+          reference.kind === 'cwd' || reference.kind === 'root'
+            ? reference.path
+            : dirname(reference.path)
+        if (roots.some((root) => isInsideWorktree({ candidate: workspace, worktreePath: root }))) {
+          workspaces.add(workspace)
+        }
+      }
+    }
+    const manifest: WorkspaceActivityManifest = {
+      schemaVersion: WORKSPACE_ACTIVITY_V2_SCHEMA,
+      producer: { name: PROCESS_SNAPSHOT_PRODUCER, version: MR_VERSION },
+      epoch: { host: hostname(), snapshotId: bootId, storeIndex: 0 },
+      capturedAt: DateTime.makeUnsafe(now),
+      expiresAt: DateTime.makeUnsafe(now + WORKSPACE_ACTIVITY_MAX_TTL_MS),
+      complete: errors.length === 0,
+      errors,
+      processCoverage: 'all-uids',
+      processRoots: roots,
+      claims: [...workspaces].toSorted().map((workspace) => ({
+        workspace,
+        sources: ['process'] as const,
+        agents: [],
+        activeRuntimeIds: [],
+        active: true,
+      })),
+    }
+    return manifest
+  },
+)
+
+/**
+ * Atomically publish a manifest: exclusively create a fresh randomly named
+ * sibling with mode 0644, then rename it over `path`, so readers never see a
+ * partial manifest; the temp file is removed on any failure. An `all-uids`
+ * manifest may only be published into a canonical root-controlled directory,
+ * because readers grant it foreign-process coverage.
+ */
+export const writeWorkspaceActivityManifest = Effect.fn('store.writeWorkspaceActivityManifest')(
+  function* ({
+    fs,
+    path,
+    manifest,
+  }: {
+    fs: FileSystem.FileSystem
+    path: string
+    manifest: WorkspaceActivityManifest
+  }) {
+    if (isAbsolute(path) === false) return yield* unavailable('Activity manifest path is relative')
+    if (
+      manifest.processCoverage === 'all-uids' &&
+      (yield* isRootControlledDirectory({ fs, path: dirname(path) })) === false
+    ) {
+      return yield* unavailable('All-uid activity manifest directory is not root-controlled')
+    }
+    const content = yield* Schema.encodeEffect(Schema.fromJsonString(ActivityManifest))(manifest)
+    const temporary = `${dirname(path)}/.${basename(path)}.${randomUUID()}.tmp`
+    yield* Effect.gen(function* () {
+      yield* fs.writeFileString(temporary, content, { flag: 'wx', mode: 0o644 })
+      // `mode` at creation is filtered by umask; publish exactly 0644.
+      yield* fs.chmod(temporary, 0o644)
+      yield* fs.rename(temporary, path)
+    }).pipe(Effect.onError(() => fs.remove(temporary).pipe(Effect.ignore)))
+  },
+)

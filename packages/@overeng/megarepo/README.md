@@ -117,6 +117,119 @@ symlinks or incomplete scans produce `unknown`. JSON results retain the same sha
 Application recomputes the complete plan, requires the exact digest and a unique candidate, then
 revalidates and removes only that candidate under its owner-worktree lock and its deletion lease.
 
+### Build-output budgets
+
+A host policy can cap per-class build output across every store worktree and evict least recently
+written idle roots until each class is back under budget:
+
+```bash
+mr store gc --budgets /etc/megarepo/build-output-budgets.json --dry-run --output json
+mr store gc --budgets /etc/megarepo/build-output-budgets.json --expected-plan <sha256> --candidate-path <root> --output json
+```
+
+`--budgets` cannot be combined with `--generated-artifacts`, `--all`, or `--force`. The policy is
+decoded strictly before the store is inspected: an unreadable file, unknown `schemaVersion`, or
+malformed field exits non-zero and deletes nothing. Its shape is:
+
+```json
+{
+  "schemaVersion": "megarepo.build-output-budgets.v1",
+  "host": "build-host",
+  "storeRoots": ["/home/developer/.megarepo"],
+  "quotaBytes": 824633720832,
+  "idleRetentionMs": 86400000,
+  "classes": {
+    "cargo-target": { "budgetBytes": 85899345920, "paths": ["target", "**/target"] }
+  },
+  "worklog": { "path": "tmp/worklog", "teardown": "delete" }
+}
+```
+
+`<name>` matches only at the worktree root; `**/<name>` also matches nested directories without
+crossing symlinks, mount points, `.git`, another class root, or `tmp/worklog`. Scans are bounded by
+an entry cap and deadline; an incomplete scan reports the class `scanStatus: "scan-incomplete"` and
+its rows `unknown`, independently of `keptByReason`.
+
+Accounting sums allocated bytes (`st_blocks * 512`) over unique `(dev, ino)` pairs without
+following symlinks, so hardlinked files count once. Reflinked or deduplicated blocks still count
+as allocated per file: on ZFS or other copy-on-write filesystems, the physical savings of block
+cloning are not visible to `du` or to this accounting, and evicting a reflinked root can free fewer
+bytes than reported. Per class, roots are evicted in ascending newest-write order until the
+projected total fits the budget. Only proven-idle roots are candidates: no live process
+cwd/root/fd/maps inside the worktree, no held `mr store lease`, no active agent claim, newest write
+older than `idleRetentionMs`, Git-ignored with no tracked file, and canonically contained in the
+worktree. Any unknown keeps. When nothing idle remains, the class reports
+`over-budget-no-idle-candidate` rather than evicting live work.
+
+JSON output is the `megarepo.build-output-budget-plan.v1` document: `planSha256`, the candidate
+`results`, and `classes` keyed by class name with `totalBytes`, `budgetBytes`,
+`idleCandidateBytes`, `evictedBytes`, `projectedBytes`, `keptByReason`, `scanStatus`, and `status`
+for exporting gauges. Application holds the owner-worktree lock and deletion lease, recaptures
+activity on the admitted epoch, replans completely, requires the same digest, and re-checks every
+idle predicate on the one candidate before deleting it.
+
+`--budgets` itself never removes worktrees or worklogs; budget mode evicts build-output roots
+only. The optional `worklog` field is consumed by default GC teardown (below).
+
+Builds that have not written yet are invisible to the mtime and activity checks. Until devenv and
+agent activations wrap their builds in `mr store lease --owner-path <worktree>`, such a build is
+protected only by the process veto; lease wrapping of activations is tracked in
+[the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
+
+### Root activity snapshot
+
+An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
+strict process probe reports `unknown` (and keeps) whenever foreign processes exist. A host can
+close that gap with a root oneshot that writes a producer-neutral manifest:
+
+```bash
+mr store activity snapshot --output /run/megarepo/workspace-activity.json
+```
+
+The command writes `megarepo.workspace-activity.v2` with producer `mr-process`, the host epoch,
+`capturedAt` and `expiresAt` (at most 5 minutes later), `complete`, `errors`, and one claim with
+source `process` per path under the store root referenced by any process cwd, root, open file, or
+mapped file. It runs no hooks or external commands. Without full visibility of every process
+(not root, or any unreadable `/proc` entry) it still writes the manifest, with `complete: false`
+and the errors, which consumers treat as `unknown`. `--output` is a file path, not an output mode.
+
+The host owner (for example a dotfiles systemd oneshot run as root before each hygiene plan and
+apply) owns the output: the file and its directory are root-owned and not writable by the store
+owner, but readable by it. The store owner admits it through `gc-config.json`
+`generatedArtifacts.manifestPath` and `agentLivenessProducers: ["mr-process"]`. Plan and apply use
+the manifest only as foreign-process evidence; immediately before deletion they still run their
+own fresh process checks for processes of the owner's UID, and a missing, expired, foreign-host, or
+incomplete manifest keeps every candidate.
+
+Run as root, point `MEGAREPO_STORE` at the owner's store so the claims cover that store root.
+
+### Merged worktree worklog teardown
+
+Default `mr store gc` reads worklog disposition from the same strict budgets policy, referenced by
+`$MEGAREPO_STORE/.state/gc-config.json`:
+
+```json
+{ "buildOutputBudgetsPath": "/etc/megarepo/build-output-budgets.json" }
+```
+
+No `buildOutputBudgetsPath`, no `worklog` in the policy, or `"teardown": "retain"` keeps today's
+archive → reap lifecycle. A configured but unreadable or invalid policy fails the run. With
+`"teardown": "delete"`, a merged worktree is removed together with its worklog instead of archived.
+Teardown applies only when the cold classifier archives with reason `merged` (merged PR, grace
+windows, live-set veto, lossless floor) and additionally HEAD is reachable from
+`origin/<default>`, the worktree is registered once and unlocked, the worklog is untracked, Git
+status is clean apart from the worklog, and ignored content outside it is rebuildable output. A
+planning-time failed or unknown check falls back to archiving; a check failing under the lock keeps
+the worktree. Parked, closed, or unmerged worktrees are never torn down. Under the worktree lock and the owner's deletion lease, the policy is reloaded and must
+keep the same SHA-256, the live set is re-checked, admitted activity must be available and show
+no agent, PTY, or process claim (unavailable activity keeps with `agent-liveness-unavailable`), the
+strict cwd/root/fd/maps probe must pass (foreign processes covered by an admitted root snapshot),
+and every teardown check is re-run; then the
+worklog is measured, and one `git worktree remove --force` removes the worktree (force only covers
+the proven worklog and rebuildable output; the branch ref is retained). The result reports
+`status: "reaped"`, `reason: "merged-worklog-teardown"`, `worklogBytesRemoved` (allocated bytes,
+estimated in `--dry-run`), `worklogPolicyPath`, and `worklogPolicySha256`.
+
 ### Deletion lease
 
 An activity snapshot cannot exclude an activation that starts immediately afterwards. A lease

@@ -56,7 +56,15 @@ export interface StoreGcConfig {
     readonly enabled: boolean
     readonly retentionMs: number
     readonly allowlist: ReadonlyArray<StoreGcGeneratedArtifact>
+    /** External `megarepo.workspace-activity.v2` manifest; never replaced by builtin evidence. */
+    readonly manifestPath?: string
+    /** Producer names admitted from `manifestPath`; empty admits none. */
+    readonly agentLivenessProducers?: ReadonlyArray<string>
+    /** Megarepo's own PTY record and `/proc` capture; defaults to true. */
+    readonly builtin?: boolean
   }
+  /** Build-output budget policy; its `worklog` drives merged-worktree teardown. */
+  readonly buildOutputBudgetsPath?: string
 }
 
 /** Defaults applied when no override file is present (or it is invalid). */
@@ -71,6 +79,10 @@ export const DEFAULT_STORE_GC_CONFIG: StoreGcConfig = {
   },
 } as const
 
+const AbsoluteFilePath = Schema.NonEmptyString.check(
+  Schema.makeFilter((path) => path.startsWith('/') && !path.includes('\0')),
+)
+
 /** On-disk override shape: every key optional; only provided keys override defaults. */
 const StoreGcConfigOverride = Schema.Struct({
   absenceGraceMs: Schema.optional(Schema.Finite),
@@ -81,8 +93,12 @@ const StoreGcConfigOverride = Schema.Struct({
       enabled: Schema.optional(Schema.Boolean),
       retentionMs: Schema.optional(Schema.Finite),
       allowlist: Schema.optional(Schema.Array(Schema.Literals([...STORE_GC_GENERATED_ARTIFACTS]))),
+      manifestPath: Schema.optionalKey(AbsoluteFilePath),
+      agentLivenessProducers: Schema.optionalKey(Schema.Array(Schema.NonEmptyString)),
+      builtin: Schema.optionalKey(Schema.Boolean),
     }),
   ),
+  buildOutputBudgetsPath: Schema.optionalKey(AbsoluteFilePath),
 })
 
 /** Parsed `gc-config.json` override: every timer optional. */
@@ -136,7 +152,23 @@ export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConf
             DEFAULT_STORE_GC_CONFIG.generatedArtifacts.allowlist,
         ),
       ],
+      ...(override.generatedArtifacts?.manifestPath === undefined
+        ? {}
+        : { manifestPath: override.generatedArtifacts.manifestPath }),
+      ...(override.generatedArtifacts?.agentLivenessProducers === undefined
+        ? {}
+        : {
+            agentLivenessProducers: [
+              ...new Set(override.generatedArtifacts.agentLivenessProducers),
+            ],
+          }),
+      ...(override.generatedArtifacts?.builtin === undefined
+        ? {}
+        : { builtin: override.generatedArtifacts.builtin }),
     },
+    ...(override.buildOutputBudgetsPath === undefined
+      ? {}
+      : { buildOutputBudgetsPath: override.buildOutputBudgetsPath }),
   }
 }
 

@@ -29,10 +29,15 @@ import {
   classifyInUse,
   isInsideWorktree,
   parseLsofProcessCwds,
+  parseProcMapsPaths,
+  parseProcStat,
+  parseProcUids,
   readWorktreeInUse,
+  readWorktreeReferencesInUse,
 } from './store-inuse.ts'
 
 const supportsProcessCwdProbe = process.platform === 'linux' || process.platform === 'darwin'
+const runsAsRoot = process.getuid?.() === 0
 
 /** Spawn a long-lived holder in `cwd`, resolved once the OS reports it spawned. */
 const spawnHolder = (cwd: string): Promise<ChildProcess> => {
@@ -48,6 +53,18 @@ const killHolder = (child: ChildProcess): Promise<void> => {
   const { promise, resolve } = Promise.withResolvers<void>()
   child.once('exit', () => resolve())
   child.kill('SIGKILL')
+  return promise
+}
+
+/** A holder whose cwd is elsewhere but which keeps `file` open on fd 3. */
+const spawnFdHolder = ({ cwd, file }: { cwd: string; file: string }): Promise<ChildProcess> => {
+  const { promise, resolve, reject } = Promise.withResolvers<ChildProcess>()
+  const child = spawn('sh', ['-c', 'exec 3<"$1"; exec sleep 120', 'holder', file], {
+    cwd,
+    stdio: 'ignore',
+  })
+  child.once('spawn', () => resolve(child))
+  child.once('error', reject)
   return promise
 }
 
@@ -109,6 +126,40 @@ describe('store-inuse classifier', () => {
       _tag: 'free',
     })
   })
+
+  it('parses parent pid and kernel-thread flag past a comm with spaces and parens', () => {
+    expect(parseProcStat('42 (a) b (c)) S 7 42 42 0 -1 4194560 0 0')).toEqual({
+      parentPid: 7,
+      kernelThread: false,
+    })
+    expect(parseProcStat('2 (kthreadd) S 0 0 0 0 -1 2129984 0 0')).toEqual({
+      parentPid: 0,
+      kernelThread: true,
+    })
+    expect(parseProcStat('garbage')).toBeUndefined()
+  })
+
+  it('extracts mapped file paths, including deleted ones, and skips anonymous maps', () => {
+    expect(
+      parseProcMapsPaths(
+        [
+          '00400000-00452000 r-xp 00000000 08:02 173521 /usr/bin/dbus-daemon',
+          '7f00-7f01 rw-p 00000000 00:00 0 ',
+          '7f01-7f02 rw-p 00000000 00:00 0 [heap]',
+          '7f02-7f03 r--p 00000000 08:02 99 /store/repo/target/lib name.so (deleted)',
+        ].join('\n'),
+      ),
+    ).toEqual(['/usr/bin/dbus-daemon', '/store/repo/target/lib name.so'])
+  })
+
+  it('parses the four status uids and rejects malformed lines', () => {
+    expect(parseProcUids('Name:\tsleep\nUid:\t1000\t1000\t1000\t1000\nGid:\t100\n')).toEqual([
+      1000, 1000, 1000, 1000,
+    ])
+    expect(parseProcUids('Uid:\t1000\t0\t1000\t0\n')).toEqual([1000, 0, 1000, 0])
+    expect(parseProcUids('Uid:\t1000\n')).toBeUndefined()
+    expect(parseProcUids('Name:\tsleep\n')).toBeUndefined()
+  })
 })
 
 describe.skipIf(supportsProcessCwdProbe === false)('store-inuse native process probe', () => {
@@ -162,6 +213,73 @@ describe.skipIf(supportsProcessCwdProbe === false)('store-inuse native process p
         const result = yield* readWorktreeInUse({ worktreePath: worktree })
         yield* Effect.promise(() => killHolder(child))
         expect(result._tag).toBe('free')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+})
+
+describe.skipIf(process.platform !== 'linux')('store-inuse strict reference probe', () => {
+  it.effect.skipIf(runsAsRoot === true)(
+    'an unreadable process of another owner makes the probe unknown',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const worktree = yield* fs.makeTempDirectoryScoped()
+        // PID 1 is root-owned; its cwd/root/fds are unreadable to this user.
+        expect(yield* readWorktreeReferencesInUse({ worktreePath: worktree })).toEqual({
+          _tag: 'unknown',
+          reason: 'inaccessible-process',
+        })
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect.skipIf(runsAsRoot === false)(
+    'sees cwd and open-file holders, excludes descendants, and frees after exit',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+        const worktree = `${root}/worktree`
+        const outside = `${root}/outside`
+        yield* fs.makeDirectory(`${worktree}/target`, { recursive: true })
+        yield* fs.makeDirectory(outside)
+        yield* fs.writeFileString(`${worktree}/target/artifact`, 'bytes')
+
+        const standIn = yield* Effect.promise(() => spawnHolder(outside))
+        const cwdHolder = yield* Effect.promise(() => spawnHolder(worktree))
+        const cwdResult = yield* readWorktreeReferencesInUse({
+          worktreePath: worktree,
+          selfPid: standIn.pid!,
+        })
+        expect(cwdResult).toMatchObject({ _tag: 'in-use', holder: { pid: cwdHolder.pid } })
+        yield* Effect.promise(() => killHolder(cwdHolder))
+
+        const fdHolder = yield* Effect.promise(() =>
+          spawnFdHolder({ cwd: outside, file: `${worktree}/target/artifact` }),
+        )
+        const fdResult = yield* readWorktreeReferencesInUse({
+          worktreePath: worktree,
+          selfPid: standIn.pid!,
+        })
+        expect(fdResult).toMatchObject({
+          _tag: 'in-use',
+          holder: { pid: fdHolder.pid, path: `${worktree}/target/artifact` },
+        })
+        // The same holder is this test's descendant: never a self-veto.
+        expect(yield* readWorktreeReferencesInUse({ worktreePath: worktree })).toEqual({
+          _tag: 'free',
+        })
+        yield* Effect.promise(() => killHolder(fdHolder))
+        yield* Effect.promise(() => killHolder(standIn))
+
+        expect(
+          yield* readWorktreeReferencesInUse({ worktreePath: worktree, selfPid: 1 }),
+        ).toEqual({ _tag: 'free' })
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

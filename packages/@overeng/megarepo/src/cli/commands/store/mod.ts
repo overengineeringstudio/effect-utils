@@ -7,9 +7,9 @@
 import { createHash } from 'node:crypto'
 import type { Dir, Stats } from 'node:fs'
 import { lstat, opendir } from 'node:fs/promises'
-import { isAbsolute, normalize } from 'node:path'
+import { dirname, isAbsolute, normalize } from 'node:path'
 
-import { Clock, Effect, Option, Schedule, Schema, Stream } from 'effect'
+import { Clock, Console, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
@@ -36,6 +36,13 @@ import {
   reapArchive,
   scanArchives,
 } from '../../../store/store-archive.ts'
+import {
+  applyBuildOutputBudgetCandidate,
+  BudgetPlan,
+  loadBuildOutputBudgetPolicyReceipt,
+  loadBuildOutputBudgets,
+  planBuildOutputBudgets,
+} from '../../../store/store-build-budgets.ts'
 import { canonicalizeOwnerPath, withDeletionLease } from '../../../store/store-deletion-lease.ts'
 import {
   loadStoreGcConfig,
@@ -64,8 +71,12 @@ import {
   type PrStateResolverService,
 } from '../../../store/store-pr-state.ts'
 import {
+  captureProcessActivityManifest,
   isWorkspaceActive,
   readWorkspaceActivity,
+  readBudgetWorkspaceActivity,
+  readBudgetWorktreeInUse,
+  writeWorkspaceActivityManifest,
   type WorkspaceActivityEpoch,
 } from '../../../store/store-workspace-activity.ts'
 import {
@@ -933,6 +944,9 @@ const coldResult = ({
   recoverPath,
   pathRef,
   actualHeadBranch,
+  worklogBytesRemoved,
+  worklogPolicyPath,
+  worklogPolicySha256,
 }: {
   target: NamedWorktreeTarget
   status: StoreGcResult['status']
@@ -941,6 +955,9 @@ const coldResult = ({
   recoverPath?: string | undefined
   pathRef?: string | undefined
   actualHeadBranch?: string | undefined
+  worklogBytesRemoved?: number | undefined
+  worklogPolicyPath?: string | undefined
+  worklogPolicySha256?: string | undefined
 }): StoreGcResult => ({
   repo: target.repoRelativePath,
   ref: target.worktree.ref,
@@ -952,6 +969,9 @@ const coldResult = ({
   ...(recoverPath !== undefined ? { recoverPath } : {}),
   ...(pathRef !== undefined ? { pathRef } : {}),
   ...(actualHeadBranch !== undefined ? { actualHeadBranch } : {}),
+  ...(worklogBytesRemoved !== undefined ? { worklogBytesRemoved } : {}),
+  ...(worklogPolicyPath !== undefined ? { worklogPolicyPath } : {}),
+  ...(worklogPolicySha256 !== undefined ? { worklogPolicySha256 } : {}),
 })
 
 /**
@@ -1007,6 +1027,154 @@ const inUseMessage = (holder: InUseHolder): string =>
     ? `live process pid ${holder.pid} has its cwd inside the worktree (${holder.path})`
     : `in-use state could not be determined, kept conservatively (${holder.path})`
 
+/** Worklog teardown authority resolved from the strict build-output budgets policy. */
+interface WorklogTeardownPolicy {
+  readonly path: string
+  readonly policyPath: string
+  readonly policySha256: string
+}
+
+/**
+ * Resolve teardown authority from `gc-config.json` `buildOutputBudgetsPath`.
+ * No path, no `worklog`, or `retain` keeps worklogs; a configured but
+ * unreadable/invalid policy fails the run rather than silently retaining.
+ */
+const loadWorklogTeardownPolicy = Effect.fn('megarepo/store/gc/load-worklog-policy')(function* (
+  policyPath: string | undefined,
+) {
+  if (policyPath === undefined) return undefined
+  const receipt = yield* loadBuildOutputBudgetPolicyReceipt({ path: policyPath })
+  const worklog = receipt.policy.worklog
+  if (worklog === undefined || worklog.teardown !== 'delete') return undefined
+  return {
+    path: worklog.path,
+    policyPath: receipt.policyPath,
+    policySha256: receipt.policySha256,
+  } satisfies WorklogTeardownPolicy
+})
+
+/** Rebuildable ignored content Git may delete with a merged worktree. */
+const TEARDOWN_REBUILDABLE_DIRS: Record<string, true> = {
+  dist: true,
+  node_modules: true,
+  '.devenv': true,
+  '.direnv': true,
+  'buck-out': true,
+  target: true,
+}
+
+/**
+ * Measure an authorized worklog without following symlinks. Allocated bytes are
+ * counted once per inode; incomplete or boundary-crossing scans keep the tree.
+ */
+const scanTeardownWorklog = Effect.fn('megarepo/store/gc/scan-worklog')(function* (path: string) {
+  return yield* Effect.tryPromise({
+    try: async () => {
+      const root = await lstat(path)
+      const parent = await lstat(dirname(path))
+      if (root.isDirectory() === false || parent.isDirectory() === false) {
+        throw new Error('worklog or its parent is not a real directory')
+      }
+      const deadline = Date.now() + GENERATED_SCAN_TIMEOUT_MS
+      const pending = [path]
+      const seen = new Set<string>()
+      let allocatedBytes = 0
+      let count = 0
+      while (pending.length > 0) {
+        count += 1
+        if (Date.now() > deadline || count > GENERATED_SCAN_ENTRY_CAP) {
+          throw new Error('worklog scan incomplete')
+        }
+        const current = pending.pop()!
+        const info = await lstat(current)
+        if (
+          info.dev !== root.dev ||
+          (info.isDirectory() === false && info.isFile() === false && info.isSymbolicLink() === false)
+        ) {
+          throw new Error('worklog crosses a mount or contains a special file')
+        }
+        const inode = `${info.dev}:${info.ino}`
+        if (seen.has(inode) === false) {
+          seen.add(inode)
+          allocatedBytes += info.blocks * 512
+        }
+        if (info.isDirectory() === true) {
+          const directory = await opendir(current)
+          for await (const entry of directory) pending.push(`${current}/${entry.name}`)
+        }
+      }
+      return allocatedBytes
+    },
+    catch: (cause) =>
+      new StoreCommandError({
+        message: `unable to inspect worklog ${path}: ${cause instanceof Error === true ? cause.message : String(cause)}`,
+      }),
+  })
+})
+
+/**
+ * Gates beyond the cold classifier for deleting a merged worktree with its
+ * worklog. `undefined` means eligible; every reason falls back to archiving.
+ */
+const checkMergedWorklogTeardown = Effect.fn('megarepo/store/gc/check-worklog-teardown')(function* ({
+  worktreePath,
+  bareRepoPath,
+  expectedHead,
+  defaultBranch,
+  worklogPath,
+}: {
+  worktreePath: AbsoluteDirPath
+  bareRepoPath: AbsoluteDirPath
+  expectedHead: string
+  defaultBranch: string | undefined
+  worklogPath: string
+}) {
+  if (defaultBranch === undefined) return 'default-branch-unavailable'
+  const head = yield* Git.getCurrentCommit(worktreePath)
+  if (head !== expectedHead) return 'head-changed'
+  const reachable = yield* Git.runCommand({
+    cwd: bareRepoPath,
+    args: ['merge-base', '--is-ancestor', head, `refs/remotes/origin/${defaultBranch}`],
+  }).pipe(
+    Effect.as(true),
+    Effect.orElseSucceed(() => false),
+  )
+  if (reachable === false) return 'head-not-on-default'
+  const tracked = yield* Git.hasTrackedFiles({ cwd: worktreePath, path: worklogPath })
+  if (tracked === true) return 'tracked-worklog'
+  const exclude = `:(exclude)${worklogPath}`
+  const changes = yield* Git.runCommand({
+    cwd: worktreePath,
+    args: ['status', '--porcelain', '--untracked-files=all', '--', '.', exclude],
+  })
+  if (changes.length > 0) return 'other-dirty-content'
+  const ignored = yield* Git.runCommand({
+    cwd: worktreePath,
+    args: ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '--', '.', exclude],
+  })
+  for (const entry of ignored.split('\n')) {
+    if (entry.length === 0) continue
+    const segments = entry.replace(/\/$/u, '').split('/')
+    const name = segments.at(-1)!
+    if (
+      segments.some((segment) => TEARDOWN_REBUILDABLE_DIRS[segment] === true) === false &&
+      name.startsWith('result') === false &&
+      name.endsWith('.tsbuildinfo') === false &&
+      name !== '.oxlint-with-plugins.json'
+    ) {
+      return 'other-ignored-content'
+    }
+  }
+  const registrations = yield* Git.listWorktrees(bareRepoPath)
+  const matches = registrations.filter(
+    (entry) => normalizeStorePath(entry.path) === normalizeStorePath(worktreePath),
+  )
+  if (matches.length !== 1 || Option.isSome(matches[0]!.lockReason) === true) {
+    return 'worktree-registration-unknown'
+  }
+  return undefined
+})
+
 /**
  * Cold reclamation for ONE repo's named worktrees (decisions 0001–0010).
  *
@@ -1037,6 +1205,7 @@ const coldReclaimRepo = ({
   now,
   dryRun,
   candidatePath,
+  worklogPolicy,
   lockAlreadyHeld = false,
 }: {
   store: Effect.Success<typeof Store>
@@ -1053,6 +1222,8 @@ const coldReclaimRepo = ({
   now: number
   dryRun: boolean
   candidatePath?: string | undefined
+  /** Teardown authority from the strict budgets policy; `undefined` retains worklogs. */
+  worklogPolicy?: WorklogTeardownPolicy | undefined
   lockAlreadyHeld?: boolean | undefined
 }) =>
   Effect.gen(function* () {
@@ -1326,6 +1497,150 @@ const coldReclaimRepo = ({
       if (decision._tag === 'keep') {
         results.push(coldResult({ target, status: 'kept', reason: decision.reason }))
         continue
+      }
+
+      // Merged teardown (budgets policy `worklog.teardown: "delete"`): the
+      // classifier has already proven merged PR, grace, liveness, and the
+      // lossless floor. Remove the worktree with its worklog only when HEAD is
+      // also on the remote default and the worklog is the sole untracked
+      // non-rebuildable content; any other blocker falls back to archiving.
+      if (decision.reason === 'merged' && worklogPolicy !== undefined) {
+        const fs = yield* FileSystem.FileSystem
+        const worklogPath = `${normalizeStorePath(worktree.path)}/${worklogPolicy.path}`
+        const policyReceipt = {
+          worklogPolicyPath: worklogPolicy.policyPath,
+          worklogPolicySha256: worklogPolicy.policySha256,
+        }
+        const teardownBlocker = checkMergedWorklogTeardown({
+          worktreePath: worktree.path,
+          bareRepoPath,
+          expectedHead: worktreeHead,
+          defaultBranch,
+          worklogPath: worklogPolicy.path,
+        }).pipe(Effect.orElseSucceed(() => 'teardown-check-failed'))
+        const worklogPresent = yield* fs.exists(worklogPath).pipe(Effect.orElseSucceed(() => false))
+        const blocker = worklogPresent === false ? 'no-worklog' : yield* teardownBlocker
+        const estimatedBytes =
+          blocker === undefined
+            ? yield* scanTeardownWorklog(worklogPath).pipe(Effect.option)
+            : Option.none<number>()
+        if (Option.isSome(estimatedBytes) === true) {
+          if (dryRun === true) {
+            results.push(
+              coldResult({
+                target,
+                status: 'reaped',
+                reason: 'merged-worklog-teardown',
+                worklogBytesRemoved: estimatedBytes.value,
+                ...policyReceipt,
+              }),
+            )
+            continue
+          }
+          const teardownAction = Effect.gen(function* () {
+            const freshPolicy = yield* loadWorklogTeardownPolicy(worklogPolicy.policyPath)
+            if (freshPolicy?.policySha256 !== worklogPolicy.policySha256) {
+              return { _tag: 'kept-teardown' as const, reason: 'worklog-policy-changed' }
+            }
+            const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
+            if (isPathProtected({ liveSet: freshLiveSet, path: worktree.path }) === true) {
+              return { _tag: 'kept-live' as const }
+            }
+            // Whole-worktree deletion requires admitted agent/PTY/process
+            // activity (unknown keeps), then the strict cwd/root/fd/maps probe;
+            // a trusted all-uid root manifest covers foreign processes.
+            const activity = yield* readBudgetWorkspaceActivity({
+              fs,
+              config: config.generatedArtifacts,
+            })
+            if (activity === undefined) {
+              return { _tag: 'kept-teardown' as const, reason: 'agent-liveness-unavailable' }
+            }
+            const canonicalWorktree = yield* fs.realPath(worktree.path)
+            if (isWorkspaceActive({ activity, canonicalWorktree }) === true) {
+              return { _tag: 'kept-live' as const }
+            }
+            const references = yield* readBudgetWorktreeInUse({
+              worktreePath: canonicalWorktree,
+              activity,
+            })
+            if (references._tag !== 'free') {
+              const holder =
+                references._tag === 'in-use'
+                  ? references.holder
+                  : { pid: -1, path: `unknown: ${references.reason}` }
+              return { _tag: 'kept-in-use' as const, holder }
+            }
+            const freshBlocker = yield* teardownBlocker
+            if (freshBlocker !== undefined) {
+              return { _tag: 'kept-teardown' as const, reason: freshBlocker }
+            }
+            const worklogBytesRemoved = yield* scanTeardownWorklog(worklogPath)
+            // One Git removal after every predicate passed: `--force` only
+            // overrides the proven untracked worklog and allowlisted ignored
+            // output, so a failure never leaves a half-deleted worktree.
+            yield* Git.removeWorktree({
+              repoPath: bareRepoPath,
+              worktreePath: worktree.path,
+              force: true,
+            })
+            return { _tag: 'removed' as const, worklogBytesRemoved }
+          })
+          // A plan-bound application already holds this owner's lock and lease.
+          const teardown = yield* (
+            lockAlreadyHeld === true
+              ? teardownAction
+              : Effect.gen(function* () {
+                  const leaseOwnerPath = yield* canonicalizeOwnerPath(worktree.path)
+                  return yield* teardownAction.pipe(
+                    withDeletionLease({ storeBasePath: store.basePath, ownerPath: leaseOwnerPath, now }),
+                    storeLock.withWorktreeLock(worktree.path),
+                  )
+                })
+          ).pipe(
+            Effect.catch((error) =>
+              Effect.succeed({
+                _tag: 'error' as const,
+                message: error instanceof Error === true ? error.message : String(error),
+              }),
+            ),
+          )
+          if (teardown._tag === 'kept-live') {
+            results.push(coldResult({ target, status: 'kept', reason: 'live' }))
+          } else if (teardown._tag === 'kept-in-use') {
+            results.push(
+              coldResult({
+                target,
+                status: 'kept',
+                reason: 'process-in-use',
+                message: inUseMessage(teardown.holder),
+              }),
+            )
+          } else if (teardown._tag === 'kept-teardown') {
+            results.push(coldResult({ target, status: 'kept', reason: teardown.reason, ...policyReceipt }))
+          } else if (teardown._tag === 'error') {
+            results.push(
+              coldResult({
+                target,
+                status: 'error',
+                reason: 'merged-worklog-teardown',
+                message: teardown.message,
+                ...policyReceipt,
+              }),
+            )
+          } else {
+            results.push(
+              coldResult({
+                target,
+                status: 'reaped',
+                reason: 'merged-worklog-teardown',
+                worklogBytesRemoved: teardown.worklogBytesRemoved,
+                ...policyReceipt,
+              }),
+            )
+          }
+          continue
+        }
       }
 
       // Archive decision: serialize under the worktree lock and re-check the live
@@ -1764,6 +2079,10 @@ const storeGcCommand = Cli.Command.make(
       Cli.Flag.withDescription('Plan configured generated-artifact cleanup'),
       Cli.Flag.withDefault(false),
     ),
+    budgets: Cli.Flag.String('budgets').pipe(
+      Cli.Flag.withDescription('Plan allocated-byte LRU eviction using a strict build-output policy file'),
+      Cli.Flag.optional,
+    ),
     expectedPlan: Cli.Flag.String('expected-plan').pipe(
       Cli.Flag.withDescription('Apply only the exact generated-artifact dry-run plan'),
       Cli.Flag.optional,
@@ -1773,7 +2092,7 @@ const storeGcCommand = Cli.Command.make(
       Cli.Flag.optional,
     ),
   },
-  ({ output, dryRun, force, all, generatedArtifacts, expectedPlan, candidatePath }) =>
+  ({ output, dryRun, force, all, generatedArtifacts, budgets, expectedPlan, candidatePath }) =>
     Effect.gen(function* () {
       const outputMode = yield* resolveOutputOption(output)
       const cwd = yield* Cwd
@@ -1791,6 +2110,16 @@ const storeGcCommand = Cli.Command.make(
         Option.isSome(expectedPlan) === true || Option.isSome(candidatePath) === true
       const planningOnly = dryRun === true || targetedApply === true
 
+      if (Option.isSome(budgets) === true && (generatedArtifacts === true || all === true || force === true)) {
+        return yield* new StoreCommandError({
+          message: '--budgets is incompatible with --generated-artifacts, --all and --force',
+        })
+      }
+      // Decode before collecting or reconciling store state. Invalid policy is
+      // an error, never an implicit fallback to ordinary whole-worktree GC.
+      const budgetPolicy = Option.isSome(budgets) === true
+        ? yield* loadBuildOutputBudgets({ path: budgets.value })
+        : undefined
       if (generatedArtifacts === true && (all === true || force === true)) {
         return yield* new StoreCommandError({
           message: '--generated-artifacts is incompatible with --all and --force',
@@ -1822,6 +2151,104 @@ const storeGcCommand = Cli.Command.make(
         return yield* new StoreCommandError({
           message: '--generated-artifacts mutation requires --expected-plan and --candidate-path',
         })
+      }
+
+      if (budgetPolicy !== undefined && Option.isSome(budgets) === true) {
+        if (dryRun === false && targetedApply === false) {
+          return yield* new StoreCommandError({
+            message: '--budgets mutation requires --expected-plan and --candidate-path',
+          })
+        }
+        const now = yield* Clock.currentTimeMillis
+        const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+        const activityConfig = config.generatedArtifacts
+        const collectBudgetInputs = Effect.gen(function* () {
+          const workspaceRoot = yield* findMegarepoRoot(cwd)
+          const liveSet = yield* collectStoreLiveSet({
+            store,
+            ...(Option.isSome(workspaceRoot) === true ? { currentWorkspaceRoot: workspaceRoot.value } : {}),
+            pruneStaleRegistry: false,
+            refreshCurrentWorkspace: false,
+            now,
+          })
+          const repos = yield* store.listRepos
+          const repoWorktrees = yield* Effect.forEach(repos, (repo) =>
+            Effect.gen(function* () {
+              const bareRepoPath = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('.bare/'))
+              const worktrees = yield* collectRepoStoreWorktrees({ fs, repoPath: repo.fullPath, bareRepoPath })
+              return { repo, bareRepoPath, worktrees }
+            }),
+            { concurrency: gcRepoConcurrency() },
+          )
+          return { liveSet, repoWorktrees }
+        })
+        const inputs = yield* collectBudgetInputs
+        const activity = yield* readBudgetWorkspaceActivity({ fs, config: activityConfig })
+        let plan = yield* planBuildOutputBudgets({
+          policy: budgetPolicy,
+          storeBasePath: store.basePath,
+          ...inputs,
+          activity,
+          now,
+        })
+        // Activity must stay on the admitted epoch across discovery and
+        // accounting; a replaced or expired capture makes every row unknown.
+        if (activity !== undefined) {
+          const afterScan = yield* readBudgetWorkspaceActivity({
+            fs,
+            config: activityConfig,
+            admittedEpoch: activity.epoch,
+          })
+          if (afterScan === undefined) {
+            plan = yield* planBuildOutputBudgets({
+              policy: budgetPolicy,
+              storeBasePath: store.basePath,
+              ...inputs,
+              activity: undefined,
+              now,
+            })
+          }
+        }
+        if (Option.isSome(expectedPlan) === true && Option.isSome(candidatePath) === true) {
+          const expectedPlanValue = expectedPlan.value
+          const candidatePathValue = candidatePath.value
+          if (plan.planSha256 !== expectedPlanValue) {
+            return yield* new StoreCommandError({ message: 'store gc budget plan changed; refusing candidate application' })
+          }
+          const selected = plan.results.filter((candidate) =>
+            candidate.path === candidatePathValue && candidate.outcome === 'would-delete',
+          )
+          if (selected.length !== 1) {
+            return yield* new StoreCommandError({ message: 'budget candidate is missing, ambiguous, or no longer eligible' })
+          }
+          plan = yield* storeLock.withWorktreeLock(selected[0]!.workspacePath)(
+            Effect.gen(function* () {
+              const freshInputs = yield* collectBudgetInputs
+              return yield* applyBuildOutputBudgetCandidate({
+                policyPath: budgets.value,
+                storeBasePath: store.basePath,
+                ...freshInputs,
+                now: yield* Clock.currentTimeMillis,
+                expectedPlan: expectedPlanValue,
+                candidatePath: candidatePathValue,
+                activityConfig,
+              })
+            }),
+          )
+        }
+        const mode = yield* OutputModeTag.pipe(Effect.provide(outputModeLayer(outputMode)))
+        if (mode._tag === 'json') {
+          yield* Console.log(yield* Schema.encodeEffect(Schema.fromJsonString(BudgetPlan))(plan))
+        } else {
+          for (const [name, summary] of Object.entries(plan.classes)) {
+            yield* Console.log(`${name}: ${summary.status} · ${summary.scanStatus} · ${summary.totalBytes} allocated bytes / ${summary.budgetBytes} budget · ${summary.evictedBytes} eviction bytes · ${summary.projectedBytes} projected bytes`)
+          }
+          for (const candidate of plan.results) {
+            yield* Console.log(`${candidate.outcome} ${candidate.path} (${candidate.reason})`)
+          }
+          yield* Console.log(`planSha256 ${plan.planSha256}`)
+        }
+        return
       }
 
       const processGcDecision = ({
@@ -2316,6 +2743,7 @@ const storeGcCommand = Cli.Command.make(
                   )
 
             const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+            const worklogPolicy = yield* loadWorklogTeardownPolicy(config.buildOutputBudgetsPath)
 
             // Use an injected `PrStateResolver` when present (tests provide a stub
             // layer); otherwise build the live `gh`-shelling resolver here so the
@@ -2362,6 +2790,7 @@ const storeGcCommand = Cli.Command.make(
                       config,
                       now,
                       dryRun: planningOnly,
+                      worklogPolicy,
                     }).pipe(
                       Effect.ensuring(
                         Effect.sync(() => {
@@ -2610,6 +3039,7 @@ const storeGcCommand = Cli.Command.make(
                 config,
                 now,
                 dryRun: false,
+                worklogPolicy: yield* loadWorklogTeardownPolicy(config.buildOutputBudgetsPath),
                 candidatePath: candidate.path,
                 lockAlreadyHeld: ownerLockHeld,
               })
@@ -3364,6 +3794,51 @@ const storeLeaseCommand = Cli.Command.make(
     ),
 ).pipe(Cli.Command.withDescription('Run a command while holding a store deletion lease'))
 
+/**
+ * `mr store activity snapshot --output <file>`
+ *
+ * Root producer for foreign-process evidence: captures every process cwd/root/
+ * fd/map under the store root into a `megarepo.workspace-activity.v2` manifest
+ * (producer `mr-process`, TTL ≤ 5 min). Partial `/proc` visibility still writes
+ * the manifest, marked `complete: false`, which consumers treat as unknown.
+ * Runs no hooks or external commands.
+ */
+const storeActivitySnapshotCommand = Cli.Command.make(
+  'snapshot',
+  {
+    outputPath: Cli.Flag.String('output').pipe(
+      Cli.Flag.withDescription('Absolute manifest file path to write atomically (mode 0644)'),
+    ),
+  },
+  ({ outputPath }) =>
+    Effect.gen(function* () {
+      if (isNormalizedAbsolutePath(outputPath) === false) {
+        return yield* new StoreCommandError({
+          message: '--output must be a normalized absolute file path',
+        })
+      }
+      const store = yield* Store
+      const fs = yield* FileSystem.FileSystem
+      const manifest = yield* captureProcessActivityManifest({
+        fs,
+        storeRoots: [normalizeStorePath(store.basePath)],
+      })
+      yield* writeWorkspaceActivityManifest({ fs, path: outputPath, manifest })
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Observability.withCommandSpan({
+        name: 'megarepo/store/activity/snapshot',
+        command: 'store activity snapshot',
+      }),
+    ),
+).pipe(Cli.Command.withDescription('Write a process-activity manifest for the store (run as root)'))
+
+/** Activity subcommand group */
+const storeActivityCommand = Cli.Command.make('activity', {}).pipe(
+  Cli.Command.withSubcommands([storeActivitySnapshotCommand]),
+  Cli.Command.withDescription('Produce workspace-activity evidence for store reclamation'),
+)
+
 /** Store subcommand group */
 export const storeCommand = Cli.Command.make('store', {}).pipe(
   Cli.Command.withSubcommands([
@@ -3374,6 +3849,7 @@ export const storeCommand = Cli.Command.make('store', {}).pipe(
     storeGcCommand,
     storeFixCommand,
     storeLeaseCommand,
+    storeActivityCommand,
     storeWorktreeCommand,
   ]),
   Cli.Command.withDescription('Manage the shared git store'),

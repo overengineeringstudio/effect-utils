@@ -631,6 +631,8 @@ Garbage collect unused worktrees:
 
 ```bash
 mr store gc [--dry-run] [--force] [--all]
+mr store gc --generated-artifacts (--dry-run | --expected-plan <sha256> --candidate-path <path>)
+mr store gc --budgets <policy.json> (--dry-run | --expected-plan <sha256> --candidate-path <root>)
 ```
 
 **Behavior:**
@@ -649,6 +651,10 @@ mr store gc [--dry-run] [--force] [--all]
 - `--force`: remove even dirty worktrees
 - `--all`: also consider named branch and tag worktrees for removal (nuclear mode
   — bypasses the live set entirely; distinct from cold reclamation, which honors it)
+- `--generated-artifacts`: plan-bound cleanup of configured generated directories
+- `--budgets <file>`: plan-bound byte-budget LRU eviction of build-output roots
+  (see [Build-output budgets](#build-output-budgets)); mutually exclusive with
+  `--generated-artifacts`, `--all`, and `--force`
 
 **Safety:** Skips worktrees with uncommitted changes or unpushed commits unless `--force`, and rechecks the live set under the worktree lock before removal.
 
@@ -701,6 +707,21 @@ layered gates evaluated in this order (each short-circuits to keep):
    archive is later **reaped** (hard-deleted) once it ages past the _archive
    retention TTL_ (default 30d). gc also reaps pre-existing `.archive/` worktrees
    it would otherwise ignore.
+7. **Merged worklog teardown (opt-in).** When `gc-config.json`
+   `buildOutputBudgetsPath` names a strict budgets policy whose `worklog.teardown`
+   is `"delete"` (an invalid configured policy fails the run), a worktree archived
+   for reason `merged` whose HEAD is also reachable from `origin/<default>`, which
+   is registered once and unlocked, clean apart from an untracked `worklog.path`
+   (`tmp/worklog`), and holds no non-rebuildable ignored content is instead
+   removed with one `git worktree remove --force` under the worktree lock and
+   deletion lease, after reloading the policy (same SHA-256 required) and
+   re-running the live-set check, admitted activity (agent/PTY/process claims;
+   unavailable keeps as `agent-liveness-unavailable`), the strict
+   cwd/root/fd/maps probe, and the teardown checks. Its result is `reaped` /
+   `merged-worklog-teardown` with `worklogBytesRemoved`, `worklogPolicyPath`, and
+   `worklogPolicySha256`. A planning-time failed or unknown check falls back to
+   step 6 and a check failing under the lock keeps the worktree; no policy path,
+   no `worklog`, or `"retain"` always uses step 6.
 
 Timer defaults are overridable via `$STORE/.state/gc-config.json`
 (`absenceGraceMs`, `postMergeGraceMs`, `archiveRetentionMs`). Archive and reap
@@ -724,9 +745,58 @@ worst case is a re-`mr apply` (re-fetch), except the deleted-remote-branch edge
 of `removed`, `archived`, `reaped`, `kept`, `skipped_dirty`, `skipped_in_use`, or
 `error`, plus a stable `reason` tag (`live`, `not-stale`, `unrecoverable-local-work`,
 `absence-grace`, `post-merge-grace`, `merged`, `closed`, `ref_mismatch`,
-`ref_mismatch_clean`, …) and, for `archived`, a `recoverPath` pointing at the
-`.archive/` location. Ref-mismatch clean archives also expose the store path ref
+`ref_mismatch_clean`, `merged-worklog-teardown`, `worklog-policy-changed`, …), for
+`archived` a `recoverPath` pointing at the `.archive/` location, and for worklog
+teardown `worklogBytesRemoved` plus the authorizing policy path and SHA-256. Ref-mismatch clean archives also expose the store path ref
 and actual HEAD branch in machine-readable metadata.
+
+##### Build-output budgets
+
+`--budgets` reads a strict `megarepo.build-output-budgets.v1` policy before any
+store inspection (unknown schema or malformed input ⇒ non-zero exit, nothing
+deleted). Each class lists root patterns (`name` at the worktree root,
+`**/name` nested, never crossing symlinks, mounts, `.git`, another class root,
+or `tmp/worklog`). Accounting is allocated bytes (`st_blocks * 512`) over unique
+`(dev, ino)` without following symlinks; reflinked/cloned blocks are counted
+per file, so ZFS block-cloning savings are invisible to it and to `du`. While a
+class exceeds `budgetBytes`, proven-idle roots are planned for eviction oldest
+newest-write first until the projection fits; a class that cannot get under
+budget reports `over-budget-no-idle-candidate`. Proven idle requires no process
+reference, no deletion lease, no agent claim on the admitted activity epoch,
+newest write older than `idleRetentionMs`, an ignored root with no tracked
+file, and canonical containment; unknown keeps. Incomplete scans mark the class
+`scan-incomplete` regardless of `keptByReason`.
+
+Output is the `megarepo.build-output-budget-plan.v1` document (`planSha256`,
+`results`, `classes`). Application takes the candidate's owner lock and deletion
+lease, recaptures activity, replans with the same digest, re-checks the
+candidate, then deletes that root only. Budget mode never tears down worktrees;
+the policy's optional `worklog` field is consumed only by default-GC teardown
+(step 7). Builds that have not written yet are protected only by the
+process veto until activations hold `mr store lease` (follow-up).
+
+#### `mr store activity snapshot`
+
+```bash
+MEGAREPO_STORE=<owner store> mr store activity snapshot --output <absolute file>
+```
+
+Root producer of foreign-process evidence. Writes atomically (temp + rename,
+mode 0644) a `megarepo.workspace-activity.v2` manifest: producer `mr-process`
+with the package version, host epoch, `capturedAt`/`expiresAt` (TTL at most
+5 min), `complete`, `errors`, and `process` claims for every path under the
+store root referenced by any process cwd, root, fd, or map. It executes no
+hooks or external commands. Without full `/proc` visibility (non-root or any
+unreadable process) the manifest is still written with `complete: false`;
+consumers then treat activity as unknown and keep. `--output` is a file path,
+not an output mode.
+
+Ownership contract: the host owner (dotfiles root oneshot, run right before
+hygiene plan and apply) owns the output file and its directory as root,
+readable but not writable by the store owner. The owner admits it via
+`gc-config.json` `generatedArtifacts.manifestPath` and
+`agentLivenessProducers: ["mr-process"]`; plan and apply use it for foreign
+processes and still run their own fresh process checks before deletion.
 
 #### `mr store ls`
 

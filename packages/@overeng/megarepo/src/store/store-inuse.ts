@@ -17,6 +17,7 @@
 
 import { Effect } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
@@ -32,7 +33,10 @@ export interface InUseHolder {
 export type InUseResult =
   | { readonly _tag: 'free' }
   | { readonly _tag: 'in-use'; readonly holder: InUseHolder }
-  | { readonly _tag: 'unknown'; readonly reason: 'no-proc' | 'scan-failed' }
+  | {
+      readonly _tag: 'unknown'
+      readonly reason: 'no-proc' | 'scan-failed' | 'inaccessible-process'
+    }
 
 /** One observed process cwd. */
 export interface ProcessCwd {
@@ -216,7 +220,7 @@ const readDarwinProcessCwds: Effect.Effect<
   return observed.some((entry) => entry.pid === process.pid) === true ? observed : undefined
 })
 
-const hasDarwinAncestor = ({
+const hasAncestorInTable = ({
   parentByPid,
   pid,
   ancestorPid,
@@ -292,9 +296,249 @@ export const readWorktreeInUse = ({
       excludePids: new Set(
         inside
           .filter((entry) =>
-            hasDarwinAncestor({ parentByPid, pid: entry.pid, ancestorPid: selfPid }),
+            hasAncestorInTable({ parentByPid, pid: entry.pid, ancestorPid: selfPid }),
           )
           .map((entry) => entry.pid),
       ),
     })
+  })
+
+/** Kernel reference kinds that can hold a path below a worktree. */
+export type ProcessReferenceKind = 'cwd' | 'root' | 'fd' | 'map'
+
+/** One kernel-reported path a live process holds. */
+export interface ProcessReference {
+  readonly pid: number
+  readonly kind: ProcessReferenceKind
+  readonly path: string
+}
+
+/** Complete reference table, or why completeness cannot be proven. */
+export type ProcessReferenceScan =
+  | { readonly _tag: 'complete'; readonly references: ReadonlyArray<ProcessReference> }
+  | {
+      readonly _tag: 'unknown'
+      readonly reason: 'no-proc' | 'scan-failed' | 'inaccessible-process'
+      readonly pid?: number | undefined
+    }
+
+/** `PF_KTHREAD` in `/proc/<pid>/stat` flags: no user address space or files. */
+const PF_KTHREAD = 0x0020_0000
+
+/**
+ * Parse the parent pid and kernel-thread flag from `/proc/<pid>/stat`.
+ * `comm` may contain spaces and parentheses, so fields start after the last `)`.
+ */
+export const parseProcStat = (
+  content: string,
+): { readonly parentPid: number; readonly kernelThread: boolean } | undefined => {
+  const close = content.lastIndexOf(')')
+  if (close === -1) return undefined
+  // After `)`: state(3) ppid(4) pgrp session tty_nr tpgid flags(9).
+  const fields = content.slice(close + 1).trim().split(/\s+/)
+  const parentPid = Number(fields[1])
+  const flags = Number(fields[6])
+  if (
+    Number.isSafeInteger(parentPid) === false ||
+    parentPid < 0 ||
+    Number.isSafeInteger(flags) === false ||
+    flags < 0
+  ) {
+    return undefined
+  }
+  return { parentPid, kernelThread: (flags & PF_KTHREAD) !== 0 }
+}
+
+/** Kernel link targets of deleted files keep their former path plus this marker. */
+const withoutDeletedMarker = (path: string): string => path.replace(/ \(deleted\)$/, '')
+
+/** Absolute file paths mapped into a process, from `/proc/<pid>/maps`. */
+export const parseProcMapsPaths = (content: string): ReadonlyArray<string> =>
+  content.split('\n').flatMap((line) => {
+    const match = /^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\/.*)$/.exec(line)
+    return match?.[1] === undefined ? [] : [withoutDeletedMarker(match[1])]
+  })
+
+type ProcRead<TValue> =
+  | { readonly _tag: 'value'; readonly value: TValue }
+  | { readonly _tag: 'gone' }
+  | { readonly _tag: 'denied' }
+
+/** A vanished process is no evidence; every other failure is unreadable evidence. */
+const procRead = <TValue>(
+  effect: Effect.Effect<TValue, PlatformError>,
+): Effect.Effect<ProcRead<TValue>> =>
+  effect.pipe(
+    Effect.map((value): ProcRead<TValue> => ({ _tag: 'value', value })),
+    Effect.catch((error) =>
+      Effect.succeed<ProcRead<TValue>>(
+        error.reason._tag === 'NotFound' ? { _tag: 'gone' } : { _tag: 'denied' },
+      ),
+    ),
+  )
+
+type ProcessEntry =
+  | { readonly _tag: 'gone' }
+  | { readonly _tag: 'denied'; readonly pid: number }
+  | {
+      readonly _tag: 'process'
+      readonly pid: number
+      readonly parentPid: number
+      readonly references: ReadonlyArray<ProcessReference>
+    }
+
+/** Real, effective, saved and filesystem uids from `/proc/<pid>/status`. */
+export const parseProcUids = (content: string): ReadonlyArray<number> | undefined => {
+  const line = content.split('\n').find((entry) => entry.startsWith('Uid:') === true)
+  const uids = line?.slice('Uid:'.length).trim().split(/\s+/).map(Number)
+  return uids !== undefined &&
+    uids.length === 4 &&
+    uids.every((uid) => Number.isSafeInteger(uid) === true && uid >= 0) === true
+    ? uids
+    : undefined
+}
+
+const readProcessEntry = ({
+  fs,
+  pid,
+  ownUid,
+}: {
+  fs: FileSystem.FileSystem
+  pid: number
+  ownUid: number | undefined
+}): Effect.Effect<ProcessEntry> =>
+  Effect.gen(function* () {
+    const stat = yield* procRead(fs.readFileString(`/proc/${pid}/stat`))
+    if (stat._tag === 'gone') return { _tag: 'gone' } as const
+    const parsed = stat._tag === 'value' ? parseProcStat(stat.value) : undefined
+    if (parsed === undefined) return { _tag: 'denied', pid } as const
+    if (parsed.kernelThread === true) {
+      return { _tag: 'process', pid, parentPid: parsed.parentPid, references: [] } as const
+    }
+    if (ownUid !== undefined) {
+      const status = yield* procRead(fs.readFileString(`/proc/${pid}/status`))
+      if (status._tag === 'gone') return { _tag: 'gone' } as const
+      const uids = status._tag === 'value' ? parseProcUids(status.value) : undefined
+      if (uids === undefined) return { _tag: 'denied', pid } as const
+      // Any foreign identity (setuid included) is left to the trusted
+      // all-UID evidence; it stays in the table for the descendant walk.
+      if (uids.some((uid) => uid !== ownUid) === true) {
+        return { _tag: 'process', pid, parentPid: parsed.parentPid, references: [] } as const
+      }
+    }
+    const references: Array<ProcessReference> = []
+    for (const kind of ['cwd', 'root'] as const) {
+      const link = yield* procRead(fs.readLink(`/proc/${pid}/${kind}`))
+      if (link._tag === 'denied') return { _tag: 'denied', pid } as const
+      if (link._tag === 'value') {
+        references.push({ pid, kind, path: withoutDeletedMarker(link.value) })
+      }
+    }
+    const fds = yield* procRead(fs.readDirectory(`/proc/${pid}/fd`))
+    if (fds._tag === 'denied') return { _tag: 'denied', pid } as const
+    const fdLinks = yield* Effect.forEach(
+      fds._tag === 'value' ? fds.value : [],
+      (fd) => procRead(fs.readLink(`/proc/${pid}/fd/${fd}`)),
+      { concurrency: 32 },
+    )
+    for (const link of fdLinks) {
+      if (link._tag === 'denied') return { _tag: 'denied', pid } as const
+      // Sockets, pipes and anonymous inodes are not filesystem paths.
+      if (link._tag === 'value' && link.value.startsWith('/') === true) {
+        references.push({ pid, kind: 'fd', path: withoutDeletedMarker(link.value) })
+      }
+    }
+    const maps = yield* procRead(fs.readFileString(`/proc/${pid}/maps`))
+    if (maps._tag === 'denied') return { _tag: 'denied', pid } as const
+    if (maps._tag === 'value') {
+      for (const path of new Set(parseProcMapsPaths(maps.value))) {
+        references.push({ pid, kind: 'map', path })
+      }
+    }
+    return { _tag: 'process', pid, parentPid: parsed.parentPid, references } as const
+  })
+
+/** Which processes a reference scan must read completely. */
+export type ProcessScanScope = 'all-uids' | 'own-uid'
+
+/**
+ * Read Linux process cwd/root/fd/mapped-file references.
+ *
+ * Unlike the legacy cwd probe, an unreadable process is not skipped: another
+ * owner's process may hold a worktree, so the scan becomes `unknown`. Only a
+ * process that exits mid-scan is dropped, and kernel threads (which hold no
+ * user files) are exempt. `own-uid` reads only processes whose every uid is
+ * this process's uid; callers MUST pair it with trusted all-UID evidence for
+ * the rest. `selfPid` and its descendants are excluded so megarepo's own git
+ * children never veto its work.
+ */
+export const readProcessReferences = ({
+  fs,
+  selfPid,
+  scope = 'all-uids',
+}: {
+  fs: FileSystem.FileSystem
+  selfPid: number
+  scope?: ProcessScanScope | undefined
+}): Effect.Effect<ProcessReferenceScan> =>
+  Effect.gen(function* () {
+    if (process.platform !== 'linux') return { _tag: 'unknown', reason: 'no-proc' } as const
+    const ownUid = scope === 'own-uid' ? process.getuid?.() : undefined
+    if (scope === 'own-uid' && ownUid === undefined) {
+      return { _tag: 'unknown', reason: 'no-proc' } as const
+    }
+    const listing = yield* procRead(fs.readDirectory('/proc'))
+    if (listing._tag !== 'value') return { _tag: 'unknown', reason: 'scan-failed' } as const
+    const pids = listing.value.flatMap((entry) => {
+      const pid = parsePidField(entry)
+      return pid === undefined ? [] : [pid]
+    })
+    const entries = yield* Effect.forEach(pids, (pid) => readProcessEntry({ fs, pid, ownUid }), {
+      concurrency: 16,
+    })
+    const processes: Array<Extract<ProcessEntry, { _tag: 'process' }>> = []
+    for (const entry of entries) {
+      if (entry._tag === 'denied') {
+        return { _tag: 'unknown', reason: 'inaccessible-process', pid: entry.pid } as const
+      }
+      if (entry._tag === 'process') processes.push(entry)
+    }
+    const parentByPid = new Map(processes.map((entry) => [entry.pid, entry.parentPid]))
+    return {
+      _tag: 'complete',
+      references: processes.flatMap((entry) =>
+        hasAncestorInTable({ parentByPid, pid: entry.pid, ancestorPid: selfPid }) === true
+          ? []
+          : entry.references,
+      ),
+    } as const
+  })
+
+/**
+ * Strict deletion-time probe: any process cwd, root, open file or mapped file
+ * inside `worktreePath` holds it; any unreadable in-scope process or non-Linux
+ * host is `unknown`. Callers MUST keep unless the result is `free`, and may
+ * narrow `scope` to `own-uid` only under trusted all-UID evidence.
+ */
+export const readWorktreeReferencesInUse = ({
+  worktreePath,
+  selfPid = process.pid,
+  scope = 'all-uids',
+}: {
+  worktreePath: AbsoluteDirPath | string
+  selfPid?: number | undefined
+  scope?: ProcessScanScope | undefined
+}): Effect.Effect<InUseResult, never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const canonical = yield* procRead(fs.realPath(worktreePath))
+    if (canonical._tag !== 'value') return { _tag: 'unknown', reason: 'scan-failed' } as const
+    const scan = yield* readProcessReferences({ fs, selfPid, scope })
+    if (scan._tag === 'unknown') return { _tag: 'unknown', reason: scan.reason } as const
+    const holder = scan.references.find((reference) =>
+      isInsideWorktree({ candidate: reference.path, worktreePath: canonical.value }),
+    )
+    return holder === undefined
+      ? ({ _tag: 'free' } as const)
+      : ({ _tag: 'in-use', holder: { pid: holder.pid, path: holder.path } } as const)
   })
