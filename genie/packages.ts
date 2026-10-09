@@ -11,6 +11,7 @@
 export const internalPackages = [
   'agent-session-ingest',
   'ai-gateway-conformance',
+  'ai-gateway-edge',
   'buck2-tools',
   'content-address',
   'devbar',

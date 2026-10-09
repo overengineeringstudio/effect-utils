@@ -1,0 +1,429 @@
+import { createHash } from 'node:crypto'
+import * as Http from 'node:http'
+import { join } from 'node:path'
+
+import { NodeHttpServer, NodeServices } from '@effect/platform-node'
+import { loadCases, toHttpClientResponse } from '@overeng/ai-gateway-conformance'
+import { Effect, Fiber, FileSystem, Layer, Schema } from 'effect'
+import { HttpRouter } from 'effect/http'
+import * as HttpClientRequest from 'effect/http/HttpClientRequest'
+import { afterEach, describe, expect, it } from 'vitest'
+
+import { loadConfig, type GatewayConfig } from './Config.ts'
+import { makeRoutes } from './Proxy.ts'
+
+const servers: Array<{ stop: () => Promise<void> }> = []
+afterEach(async () => {
+  for (const server of servers.splice(0)) await server.stop()
+})
+
+const start = async (handler: (request: Request) => Response | Promise<Response>) => {
+  const server = Http.createServer(async (incoming, outgoing) => {
+    try {
+      const chunks: Buffer[] = []
+      for await (const chunk of incoming) chunks.push(Buffer.from(chunk))
+      const headers = new Headers()
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (Array.isArray(value)) value.forEach((part) => headers.append(name, part))
+        else if (value !== undefined) headers.set(name, value)
+      }
+      const method = incoming.method ?? 'GET'
+      const request = new Request(`http://127.0.0.1${incoming.url ?? '/'}`, {
+        method,
+        headers,
+        ...(method === 'GET' ? {} : { body: Buffer.concat(chunks).toString('utf8') }),
+      })
+      const response = await handler(request)
+      outgoing.writeHead(response.status, Object.fromEntries(response.headers))
+      if (response.body) for await (const chunk of response.body) outgoing.write(chunk)
+      outgoing.end()
+    } catch {
+      outgoing.writeHead(500).end()
+    }
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  servers.push({
+    stop: () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((cause) => (cause ? reject(cause) : resolve())),
+      ),
+  })
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Expected TCP address')
+  return `http://127.0.0.1:${address.port}`
+}
+
+const gateway = async (
+  upstream: string,
+  consumers: GatewayConfig['consumers'] = [
+    { name: 'fixture-consumer', tokenSha256: createHash('sha256').update('secret').digest('hex') },
+  ],
+) => {
+  const { router, metrics } = makeRoutes({
+    upstream: new URL(upstream),
+    consumers,
+  })
+  const server = Http.createServer()
+  const fiber = Effect.runFork(
+    Layer.launch(
+      HttpRouter.serve(router, { disableLogger: true, disableListenLog: true }).pipe(
+        Layer.provide(NodeHttpServer.layer(() => server, { port: 0, host: '127.0.0.1' })),
+      ),
+    ),
+  )
+  await new Promise<void>((resolve) => {
+    if (server.listening) resolve()
+    else server.once('listening', resolve)
+  })
+  servers.push({
+    stop: async () => {
+      await Effect.runPromise(Fiber.interrupt(fiber))
+    },
+  })
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Expected TCP address')
+  return { url: `http://127.0.0.1:${address.port}`, metrics }
+}
+
+const auth = { authorization: 'Bearer secret' }
+
+describe('consumer verifier isolation', () => {
+  it('rejects malformed, unknown and revoked bearers without revoking another consumer', async () => {
+    const upstream = await start(() => Response.json({ object: 'list', data: [] }))
+    const consumers = ['first', 'second'].map((name) => ({
+      name,
+      tokenSha256: createHash('sha256').update(`fixture-${name}`).digest('hex'),
+    }))
+    const before = await gateway(upstream, consumers)
+    const after = await gateway(upstream, consumers.filter(({ name }) => name !== 'first'))
+    for (const token of ['fixture-first', 'fixture-second']) {
+      const response = await fetch(`${before.url}/v1/models`, {
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(response.status).toBe(200)
+      await response.text()
+    }
+    for (const authorization of [
+      'Bearer fixture-first', 'Bearer unknown', 'bearer fixture-second', 'Bearer two tokens',
+    ]) {
+      const response = await fetch(`${after.url}/v1/models`, { headers: { authorization } })
+      expect(response.status).toBe(401)
+      expect(await response.json()).toMatchObject({ error: { type: 'authentication_error', code: null } })
+    }
+    const retained = await fetch(`${after.url}/v1/models`, {
+      headers: { authorization: 'Bearer fixture-second' },
+    })
+    expect(retained.status).toBe(200)
+    await retained.text()
+    expect(after.metrics.render()).toContain('requests_total{consumer="second",model="models",status="200"} 1')
+    expect(after.metrics.render()).not.toContain('consumer="first"')
+  })
+
+  it('emits the local 502 error envelope when the upstream transport is unavailable', async () => {
+    // Reserve an ephemeral address, then close it: no host-bound port is assumed.
+    const server = Http.createServer()
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('Expected TCP address')
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    const { url, metrics } = await gateway(`http://127.0.0.1:${address.port}`)
+    const response = await fetch(`${url}/v1/models`, { headers: auth })
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({
+      error: { message: 'Upstream unavailable', type: 'gateway_error', code: null },
+    })
+    expect(metrics.render()).toContain('requests_total{consumer="fixture-consumer",model="models",status="502"} 1')
+  })
+})
+
+describe('gateway proxy', () => {
+  it('loads a real JSON config with a string upstream URL', async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: 'ai-gateway-edge-test-' })
+        const path = join(directory, 'config.json')
+        const configJson = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+          upstream: 'http://localhost',
+          consumers: [
+            { name: 'fixture-consumer', tokenSha256: createHash('sha256').update('secret').digest('hex') },
+          ],
+        })
+        yield* fs.writeFileString(path, configJson)
+        const config = yield* loadConfig(path)
+        expect(config.upstream.href).toBe('http://localhost/')
+        expect(config.consumers[0]?.name).toBe('fixture-consumer')
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    )
+  })
+  it('rejects unauthorized requests and passes authenticated model discovery without forwarding credentials', async () => {
+    const upstream = await start((request) =>
+      Response.json({
+        auth: request.headers.get('authorization'),
+        hop: request.headers.get('x-hop'),
+      }),
+    )
+    const { url } = await gateway(upstream)
+    const refused = await fetch(`${url}/v1/models`)
+    expect(refused.status).toBe(401)
+    expect(await refused.json()).toMatchObject({ error: { type: 'authentication_error' } })
+    const forwarded = await new Promise<unknown>((resolve, reject) => {
+      const request = Http.get(
+        `${url}/v1/models`,
+        { headers: { ...auth, connection: 'x-hop', 'x-hop': 'private' } },
+        (response) => {
+          const chunks: Buffer[] = []
+          response.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+          response.on('end', () => resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))))
+          response.on('error', reject)
+        },
+      )
+      request.on('error', reject)
+    })
+    expect(forwarded).toEqual({ auth: null, hop: null })
+  })
+
+  it('preserves a plaintext upstream error without requiring JSON usage', async () => {
+    const upstream = await start(() =>
+      new Response('temporarily unavailable\n', {
+        status: 503,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    )
+    const { url, metrics } = await gateway(upstream)
+    const response = await fetch(`${url}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'anthropic/example' }),
+    })
+    expect(response.status).toBe(503)
+    expect(response.headers.get('content-type')).toBe('text/plain')
+    expect(await response.text()).toBe('temporarily unavailable\n')
+    expect(metrics.render()).toContain(
+      'requests_total{consumer="fixture-consumer",model="anthropic/example",status="503"} 1',
+    )
+  })
+
+  it('accounts for authenticated malformed JSON and missing models without forwarding them', async () => {
+    let forwarded = 0
+    const upstream = await start(() => {
+      forwarded++
+      return Response.json({})
+    })
+    const { url, metrics } = await gateway(upstream)
+    for (const body of ['{', '{"messages":[]}']) {
+      const response = await fetch(`${url}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
+        body,
+      })
+      expect(response.status).toBe(400)
+      await response.text()
+    }
+    expect(forwarded).toBe(0)
+    const rendered = metrics.render()
+    expect(rendered).toContain(
+      'requests_total{consumer="fixture-consumer",model="unknown",status="400"} 2',
+    )
+    expect(rendered).toContain(
+      'request_duration_seconds_count{consumer="fixture-consumer",model="unknown"} 2',
+    )
+    expect(rendered).toContain(
+      'request_duration_seconds_bucket{consumer="fixture-consumer",model="unknown",le="+Inf"} 2',
+    )
+    const sum = rendered.match(
+      /request_duration_seconds_sum\{consumer="fixture-consumer",model="unknown"\} (\S+)/,
+    )
+    expect(Number(sum?.[1])).toBeGreaterThan(0)
+  })
+
+  it('meters non-stream usage and injects stream usage options while preserving SSE bytes', async () => {
+    const seen: unknown[] = []
+    const sse =
+      'data: {"choices":[],"usage":null}\n\ndata: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}\n\ndata: [DONE]\n\n'
+    const upstream = await start(async (request) => {
+      const json = (await request.json()) as {
+        stream: boolean
+        stream_options?: { include_usage: boolean }
+      }
+      seen.push(json)
+      if (json.stream)
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              const bytes = new TextEncoder().encode(sse)
+              controller.enqueue(bytes.subarray(0, 17))
+              controller.enqueue(bytes.subarray(17))
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        )
+      return Response.json({ usage: { prompt_tokens: 4, completion_tokens: 2 } })
+    })
+    const { url, metrics } = await gateway(upstream)
+    const call = (stream: boolean) =>
+      fetch(`${url}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json', connection: 'keep-alive' },
+        body: JSON.stringify({ model: 'anthropic/example', stream }),
+      })
+    expect((await call(false)).status).toBe(200)
+    expect(await (await call(true)).text()).toBe(sse)
+    expect(seen).toEqual([
+      { model: 'anthropic/example', stream: false },
+      { model: 'anthropic/example', stream: true, stream_options: { include_usage: true } },
+    ])
+    expect(metrics.render()).toContain(
+      'tokens_total{consumer="fixture-consumer",model="anthropic/example",kind="input"} 11',
+    )
+    expect(metrics.render()).toContain(
+      'tokens_total{consumer="fixture-consumer",model="anthropic/example",kind="cached"} 2',
+    )
+    expect(metrics.render()).toContain(
+      'requests_total{consumer="fixture-consumer",model="anthropic/example",status="200"} 2',
+    )
+  })
+  it('authenticates and forwards both System One wire paths, preserving their bodies and metering their usage', async () => {
+    const upstream = await start(async (request) =>
+      Response.json({
+        path: new URL(request.url).pathname,
+        authorization: request.headers.get('authorization'),
+        submitted: await request.json(),
+        usage: { input_tokens: 6, output_tokens: 4 },
+      }),
+    )
+    const { url, metrics } = await gateway(upstream)
+    for (const path of ['/v1/systemone', '/alpha/decisions']) {
+      const body = {
+        model: 'typesafe/decision',
+        state: { context: 1 },
+        questions: { choice: { type: 'choice', instructions: { options: ['yes', 'no'] } } },
+      }
+      const refused = await fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(body) })
+      expect(refused.status).toBe(401)
+      expect(await refused.json()).toMatchObject({ error: { type: 'authentication_error' } })
+      const response = await fetch(`${url}${path}`, {
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({
+        path,
+        authorization: null,
+        submitted: body,
+        usage: { input_tokens: 6, output_tokens: 4 },
+      })
+    }
+    expect(metrics.render()).toContain(
+      'tokens_total{consumer="fixture-consumer",model="typesafe/decision",kind="input"} 12',
+    )
+    expect(metrics.render()).toContain(
+      'tokens_total{consumer="fixture-consumer",model="typesafe/decision",kind="output"} 8',
+    )
+    expect(metrics.render()).toContain(
+      'requests_total{consumer="fixture-consumer",model="typesafe/decision",status="200"} 2',
+    )
+  })
+})
+
+const cases = await Effect.runPromise(loadCases().pipe(Effect.provide(NodeServices.layer)))
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Json))
+const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json))
+
+describe('shared wire conformance through the edge', () => {
+  // Every current case has an edge-supported endpoint. Client-side validation
+  // expectations remain client responsibilities; the edge preserves their bytes.
+  it.each(cases)('$id', async (replayCase) => {
+    const fakeResponse = toHttpClientResponse({
+      case: replayCase,
+      request: HttpClientRequest.get('http://upstream.example'),
+    })
+    const expectedBytes = await Effect.runPromise(fakeResponse.text)
+    const authenticationRefusal =
+      replayCase.request.auth === 'none' && replayCase.response.status === 401
+    // Client fixtures may omit auth on a fake transport. The protected edge
+    // projection supplies a fixture bearer except for the actual auth refusal.
+    const body: typeof Schema.JsonObject.Type = {
+      model: replayCase.request.match?.model ?? 'fixture/model',
+      stream: replayCase.request.match?.stream ?? false,
+      messages: [{ role: 'user', content: 'Fixture request' }],
+      ...(replayCase.request.match?.responseFormat === undefined
+        ? {}
+        : {
+            response_format: {
+              type: replayCase.request.match.responseFormat,
+              ...(replayCase.schema === undefined
+                ? {}
+                : { json_schema: { name: 'fixture', schema: replayCase.schema } }),
+            },
+          }),
+      ...(replayCase.request.match?.stream === true
+        ? { stream_options: { include_usage: false, fixture_option: true } }
+        : {}),
+      ...replayCase.request.body,
+    }
+    let forwarded = 0
+    const upstream = await start(async (request) => {
+      forwarded++
+      expect(new URL(request.url).pathname).toBe(replayCase.request.path)
+      expect(request.method).toBe(replayCase.request.method)
+      expect(request.headers.get('authorization')).toBeNull()
+      if (request.method === 'POST') {
+        const submitted = decodeJson(await request.text())
+        if (replayCase.request.path === '/v1/chat/completions' && body.stream === true) {
+          const options = body.stream_options
+          expect(submitted).toEqual({
+            ...body,
+            stream_options: {
+              ...(typeof options === 'object' && options !== null && !Array.isArray(options)
+                ? options
+                : {}),
+              include_usage: true,
+            },
+          })
+        } else expect(submitted).toEqual(body)
+      }
+      return new Response(expectedBytes, {
+        status: fakeResponse.status,
+        headers: fakeResponse.headers,
+      })
+    })
+    const { url, metrics } = await gateway(upstream)
+    const response = await fetch(`${url}${replayCase.request.path}`, {
+      method: replayCase.request.method,
+      headers: {
+        'content-type': 'application/json',
+        ...(authenticationRefusal ? {} : auth),
+      },
+      ...(replayCase.request.method === 'POST' ? { body: encodeJson(body) } : {}),
+    })
+    expect(response.status).toBe(replayCase.response.status)
+    const bytes = await response.text()
+    if (authenticationRefusal) {
+      expect(forwarded).toBe(0)
+      expect(decodeJson(bytes)).toMatchObject({
+        error: { type: replayCase.expect.error?.type, code: null },
+      })
+      expect(metrics.render()).not.toContain('consumer=')
+    } else {
+      expect(forwarded).toBe(1)
+      expect(bytes).toBe(expectedBytes)
+      expect(response.headers.get('content-type')).toBe(fakeResponse.headers['content-type'])
+      const model = replayCase.request.method === 'GET' ? 'models' : body.model
+      expect(metrics.render()).toContain(
+        `requests_total{consumer="fixture-consumer",model="${model}",status="${response.status}"} 1`,
+      )
+      if (replayCase.expect.usage !== undefined) {
+        const usage = replayCase.expect.usage
+        expect(metrics.render()).toContain(
+          `tokens_total{consumer="fixture-consumer",model="${model}",kind="input"} ${usage.input}`,
+        )
+        expect(metrics.render()).toContain(
+          `tokens_total{consumer="fixture-consumer",model="${model}",kind="output"} ${usage.output}`,
+        )
+      }
+    }
+  })
+})
