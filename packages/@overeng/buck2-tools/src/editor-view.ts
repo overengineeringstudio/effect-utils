@@ -1183,13 +1183,15 @@ const fingerprintSnapshotPayload = async ({
   readonly roots?: readonly DeclaredSnapshotRoot[]
   readonly onFailure?: () => void
 }): Promise<SnapshotPayloadFingerprints> => {
+  let firstFailure: { readonly error: unknown } | undefined
   const diagnose = <T>(operation: Promise<T>): Promise<T> =>
-    onFailure === undefined
-      ? operation
-      : operation.catch((error: unknown) => {
-          onFailure()
-          throw error
-        })
+    operation.catch((error: unknown) => {
+      if (firstFailure === undefined) {
+        firstFailure = { error }
+        onFailure?.()
+      }
+      throw error
+    })
   const backing = join(snapshotDir, '.backing')
   const nodeModules = join(snapshotDir, 'node_modules')
   if (pathExists(backing) === false)
@@ -1235,6 +1237,7 @@ const fingerprintSnapshotPayload = async ({
           }),
         ),
   ])
+  if (firstFailure !== undefined) throw firstFailure.error
   if (backingResult.status === 'rejected') throw backingResult.reason
   if (extraResult.status === 'rejected') throw extraResult.reason
   if (nodeModulesResult.status === 'rejected') throw nodeModulesResult.reason
@@ -2331,11 +2334,11 @@ const publishEditorViewCoordinated = async ({
 export const publishEditorView = (options: EditorViewOptions): Promise<EditorViewRecord> =>
   publishEditorViewCoordinated({ options })
 
-/** One resource bound shared by bootstrap and source-test dependency publication. */
-export const editorViewPublicationWorkers = 4
+/** Shared bound; one view contains suspected cross-view overlap until #1743 establishes the cause. */
+export const editorViewPublicationWorkers = 1
 
 /**
- * Prepare a bounded set of independent views concurrently under exclusive state-root locks.
+ * Prepare a bounded set of independent views under exclusive state-root locks.
  * Every byte/link/ownership proof remains intact; shared inventory and pointer commits are ordered.
  */
 export const publishEditorViews = async ({

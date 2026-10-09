@@ -28,8 +28,9 @@ store entry without writing its payload. Literal symlink targets participate in
 the input hash: a Buck artifact-path change is a new admission even when package
 file bytes are unchanged, and therefore materializes a new byte-owned snapshot.
 
-Batch publication prepares up to four private candidates concurrently and
-serializes commits within each editor state root. All fingerprint subprocesses
+Batch publication prepares one private candidate at a time and serializes
+commits within each editor state root. Independent root fingerprints within
+that candidate still run concurrently. All fingerprint subprocesses
 for a candidate settle before hardening, promotion, or failure cleanup can
 change it. A failed fingerprint does not release the candidate or its state-root
 lock while another payload walk remains active.

@@ -722,6 +722,7 @@ describe('editor view publisher', () => {
             if (tree.endsWith('/.backing/0000') === true) {
               entered.resolve(tree)
               await proceed.promise
+              throw new Error('later payload fingerprint failed')
             }
           }
           return runFingerprintTool(request)
@@ -752,8 +753,8 @@ describe('editor view publisher', () => {
         proceed.resolve()
         await publication
         expect(failure).toBeInstanceOf(Error)
-        expect(failure instanceof Error ? failure.message : '').toContain(
-          'payload fingerprint failed',
+        expect(failure instanceof Error ? failure.cause : undefined).toEqual(
+          new Error('payload fingerprint failed'),
         )
         expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
         expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
@@ -767,10 +768,10 @@ describe('editor view publisher', () => {
     },
   )
 
-  it('keeps a paused candidate private while a sibling hardens and commits shared backing roots', async () => {
+  it('keeps a queued sibling from preparing while a candidate payload walk is active', async () => {
     const fixture = makeFixture()
     const entered = Promise.withResolvers<string>()
-    const committed = Promise.withResolvers<void>()
+    let siblingStarted = false
     const proceed = Promise.withResolvers<void>()
     const runFingerprintTool = fingerprintRunner.runFingerprintTool
     let pausedTree: string | undefined
@@ -800,7 +801,7 @@ describe('editor view publisher', () => {
         if (index === 1)
           Object.assign(option, {
             beforeMaterialize: async () => {
-              await entered.promise
+              siblingStarted = true
             },
           })
         return Object.assign(option, { backingRoots: [backing] })
@@ -809,12 +810,18 @@ describe('editor view publisher', () => {
       publication = publishEditorViews({
         options,
         onPublished: (record) => {
-          if (record.package === sibling.options.package) committed.resolve()
+          if (record.package === fixture.options.package) {
+            const copied = lstatSync(join(backing, 'node_modules'), { bigint: true })
+            expect(copied.ctimeNs).toBe(source.ctimeNs)
+            expect(copied.mode).toBe(source.mode)
+          }
         },
       })
       const pendingTree = await entered.promise
       const before = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
-      await committed.promise
+      await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
+      expect(editorViewPublicationWorkers).toBe(1)
+      expect(siblingStarted).toBe(false)
       const after = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
       expect(after.ctimeNs).toBe(before.ctimeNs)
       expect(after.mode).toBe(before.mode)
@@ -825,6 +832,7 @@ describe('editor view publisher', () => {
       expect(readdirSync(fixture.editorRoot)).toContain('.publish.lock')
       proceed.resolve()
       await publication
+      expect(siblingStarted).toBe(true)
       for (const option of options)
         await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
       expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
@@ -836,13 +844,11 @@ describe('editor view publisher', () => {
     }
   })
 
-  it('captures sibling phases at fingerprint failure rather than after the children settle', async () => {
+  it('captures the failed worker before a queued sibling begins preparing', async () => {
     const fixture = makeFixture()
     const entered = Promise.withResolvers<string>()
     const failPayload = Promise.withResolvers<void>()
-    const siblingReady = Promise.withResolvers<void>()
-    const startSibling = Promise.withResolvers<void>()
-    const committed = Promise.withResolvers<void>()
+    let siblingStarted = false
     const proceed = Promise.withResolvers<void>()
     const original = Object.assign(new Error('payload fingerprint failed'), { exitCode: 17 })
     const runFingerprintTool = fingerprintRunner.runFingerprintTool
@@ -878,26 +884,21 @@ describe('editor view publisher', () => {
             ...sibling.options,
             backingRoots: [backing],
             beforeMaterialize: async () => {
-              siblingReady.resolve()
-              await startSibling.promise
+              siblingStarted = true
             },
           },
         ],
-        onPublished: (record) => {
-          if (record.package === sibling.options.package) committed.resolve()
-        },
       }).catch((error: unknown) => {
         failure = error
       })
       await entered.promise
-      await siblingReady.promise
       failPayload.resolve()
       await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
-      startSibling.resolve()
-      await committed.promise
+      expect(siblingStarted).toBe(false)
       expect(failure).toBeUndefined()
       proceed.resolve()
       await publication
+      expect(siblingStarted).toBe(true)
       expect(failure).toBeInstanceOf(Error)
       if (!(failure instanceof Error)) throw new Error('publication did not fail')
       expect(failure.cause).toBe(original)
@@ -913,17 +914,9 @@ describe('editor view publisher', () => {
           phase: 'payload',
           candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
         },
-        {
-          package: sibling.options.package,
-          viewName: sibling.options.viewName,
-          editorRoot: fixture.editorRoot,
-          phase: 'materialize',
-          candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
-        },
       ])
     } finally {
       failPayload.resolve()
-      startSibling.resolve()
       proceed.resolve()
       await publication
       spy.mockRestore()
