@@ -12,6 +12,16 @@ Authoritative grammar: `compoundingtech/smalltalk`, `crates/st3/src/graph.rs` at
 
 The conformance test is opt-in with `ST_BIN` pointing to a binary built from the exact pinned upstream revision. Its scratch daemon must be isolated from the caller's runtime directories.
 
+Daemonless native KDL parsing is an upstream prerequisite for a pinned-binary
+CI parse check. At native revision `14311260cf907e9b8dabf629588314e63dec3665`,
+`st apply --dry-run` still calls the daemon's `/v1/sets/preview`, and
+`st missions check` calls `/v1/gate-checks`. The daemonless `st2 validate`
+command parses the legacy agent catalog, not the st3 mission/schedule grammar,
+so it is not a substitute. Add a native offline st3 document parse/check
+entrypoint before wiring its pinned binary into this package's CI; retain the
+existing isolated-daemon conformance test meanwhile. A binary predating native
+mission reporting must not be used to check generated `report-to` declarations.
+
 ## Step dependency fan-in
 
 Author `dependsOn` as a nonempty list of `{ step, state: 'completed' }` entries. All entries must be satisfied (AND); every target must name an existing mission step. Omit the field for independent steps. Singleton dependencies use a one-item list; the former object form is no longer accepted.
