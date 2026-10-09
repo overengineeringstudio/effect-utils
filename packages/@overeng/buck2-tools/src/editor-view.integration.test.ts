@@ -1363,9 +1363,14 @@ describe('editor view publisher', () => {
       await expect(checkEditorView(first.options)).rejects.toThrow(
         'snapshot immutability violation',
       )
-      await expect(publishEditorView(first.options)).rejects.toThrow(
-        /snapshot file is writable: .*\/node_modules\/dep\/index\.js$/,
-      )
+      await expect(publishEditorView(first.options)).rejects.toMatchObject({
+        message: expect.stringContaining('; publication workers='),
+        cause: expect.objectContaining({
+          message: expect.stringMatching(
+            /^editor view: snapshot file is writable: .*\/node_modules\/dep\/index\.js$/u,
+          ),
+        }),
+      })
     } finally {
       cleanup(first)
     }
