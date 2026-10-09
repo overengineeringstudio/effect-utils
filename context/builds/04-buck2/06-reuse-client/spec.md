@@ -550,7 +550,12 @@ does not compare provenance. This projection is distinct from the strict native
 
 The two-root regression requires a locally executed/uploaded descriptor in
 context A, a remote descriptor action-cache hit in context B, byte-identical
-descriptor files, and zero executed/local-cache build actions on B.
+descriptor files, and zero executed/local-cache **cache-eligible** build actions
+on B. It uses the shared local-materialization classification to exempt cheap
+tree/store assembly without dropping those actions from retained evidence.
+`scripts/buck2-remote-cache-proof.sh --assert-context-b-build <native-log.jsonl>`
+replays the same build assertions without contacting the cache or mutating proof
+sources.
 
 ### Lane budget measurements
 
