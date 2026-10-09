@@ -280,6 +280,41 @@ ok({
   condition: testRunDependencies.some((name) => name.startsWith('test:run:batch:') === true),
   name: 'test:run executes the source-owned complement partition',
 })
+ok({
+  condition:
+    [...(dependencies.get('test:buck2:unit') ?? [])].join('\n') === 'genie:check' &&
+    reaches({ start: 'test:buck2:unit', target: 'buck2:editor:publish:test' }) === false &&
+    reaches({ start: 'buck2:editor:publish:test', target: 'test:buck2:unit' }) === false,
+  name: 'bounded tests and collection prebuild run alongside editor publication after freshness',
+})
+const boundedTestCommand = requireTask('test:buck2:unit').command
+if (typeof boundedTestCommand === 'string') {
+  const commandBody =
+    existsSync(boundedTestCommand) === true ? readFileSync(boundedTestCommand, 'utf8') : ''
+  const prebuildOffset = commandBody.indexOf('--prebuild-only')
+  const verdictOffset = commandBody.indexOf('exec "$BUCK2_BIN" test')
+  ok({
+    condition:
+      commandBody.includes('packages/@overeng/utils-dev/src/check-baseline-test-collection.ts') &&
+      prebuildOffset !== -1 &&
+      verdictOffset > prebuildOffset &&
+      commandBody.split('--prebuild-only').length === 2,
+    name: 'the bounded aggregate prebuilds collection once before its single test invocation',
+    detail: boundedTestCommand,
+  })
+}
+const collectionGateCommand = requireTask('test:run').command
+if (typeof collectionGateCommand === 'string') {
+  const commandBody =
+    existsSync(collectionGateCommand) === true ? readFileSync(collectionGateCommand, 'utf8') : ''
+  ok({
+    condition:
+      commandBody.includes('packages/@overeng/utils-dev/src/check-baseline-test-collection.ts') &&
+      commandBody.includes('--prebuild-only') === false,
+    name: 'final collection aggregation never substitutes the build-only phase for its verdict',
+    detail: collectionGateCommand,
+  })
+}
 // `genie:check` prevents a stale graph from proving itself. It is the freshness barrier for
 // repository-root Buck tasks. `mr:apply` stays outside the check aggregates.
 const buck2TestAuthority = JSON.parse(readFileSync(`${root}/buck2-test-authority.json`, 'utf8'))
@@ -576,6 +611,28 @@ const taskSource = (name) => {
   const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
 }
+
+ok({
+  condition: taskSource('test:buck2:unit').includes('prebuildCollection = true;'),
+  name: 'bounded aggregate declares early collection prebuild even without command metadata',
+})
+const collectionGateSource = readFileSync(
+  `${root}/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts`,
+  'utf8',
+)
+const prebuildBranchOffset = collectionGateSource.indexOf(
+  "if (process.argv.includes('--prebuild-only') === true)",
+)
+ok({
+  condition:
+    prebuildBranchOffset !== -1 &&
+    prebuildBranchOffset < collectionGateSource.indexOf('const sourceTasksPath =') &&
+    prebuildBranchOffset < collectionGateSource.indexOf('const testFiles =') &&
+    collectionGateSource.includes('const buildPlan = collectionBuildPlan({ lanes })') &&
+    collectionGateSource.includes('const collectionBuildError = await') &&
+    collectionGateSource.includes('const built = await buildCollectionArtifacts()'),
+  name: 'prebuild shares the final current-input plan without reading or caching source verdicts',
+})
 
 const editorMaterializeSource = taskSource('buck2:editor:materialize')
 const orderedMaterializationSteps = [

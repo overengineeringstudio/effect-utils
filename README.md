@@ -197,6 +197,20 @@ NOTION_API_TOKEN=secret_xxx devenv tasks run test:integration
 devenv tasks run test:watch
 ```
 
+The aggregate starts `test:buck2:unit` after `genie:check`, independently of
+editor dependency publication. It first prebuilds every declared Vitest collection
+product from `buck2-test-authority.json`, then executes the bounded lanes in the
+existing single Buck test invocation. The prebuild performs no source tests and
+does not cache source reports or coverage verdicts.
+
+After the source suites and bounded verdicts finish, `test:run` still invokes
+the baseline-collection gate. That gate resolves the identical collection targets
+with the same local-only host-platform Buck build, so current inputs are checked
+even when the products are warm. It then validates the complete filesystem census,
+each bounded selection's exact inventory, source-task ownership and baseline counts.
+Prebuilding changes scheduling only: missing or malformed products, coverage drift,
+failed bounded execution and missing source evidence still fail the aggregate.
+
 ### Type Checking
 
 Buck is the only repository-wide TypeScript check authority:

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  collectionBuildPlan,
   decodeCollectionArtifact,
   decodeTestAuthority,
   decodeSourceTaskScope,
@@ -429,6 +430,55 @@ describe('ownershipForFile', () => {
     expect(
       ownershipForFile({ file: 'packages/@overeng/alpha/src/a.test.ts', lanes: [bunLane] }).kind,
     ).toBe('unowned')
+  })
+})
+
+describe('collectionBuildPlan', () => {
+  it('builds every declared product once in byte order, including named and baseline-free lanes', () => {
+    const targets = [
+      'effect_utils//packages/@overeng/alpha:bundle_smoke_collect',
+      'effect_utils//packages/@overeng/alpha:test_collect',
+      'effect_utils//packages/@overeng/zeta:test_collect',
+    ]
+    const plan = collectionBuildPlan({
+      lanes: [
+        lane({
+          collectionTarget: targets[2]!,
+          packageName: 'zeta',
+          packagePath: 'packages/@overeng/zeta',
+        }),
+        lane(),
+        lane({
+          collectionTarget: targets[0]!,
+          selectedTestFiles: ['src/bundle.test.ts'],
+          target: 'effect_utils//packages/@overeng/alpha:bundle_smoke',
+          taskName: 'test:alpha:bundle_smoke',
+        }),
+        lane(),
+      ],
+    })
+    expect(plan.targets).toStrictEqual(targets)
+    expect(plan.args).toStrictEqual([
+      'build',
+      '--show-output',
+      '--target-platforms',
+      'effect_utils//buck2/platforms:host_platform',
+      '--local-only',
+      ...targets,
+    ])
+  })
+
+  it('does not manufacture collection products for Bun or shell verdict lanes', () => {
+    const { collectionTarget: _collectionTarget, ...withoutCollection } = lane()
+    expect(
+      collectionBuildPlan({
+        lanes: [
+          { ...withoutCollection, runner: 'bun' },
+          { ...withoutCollection, runner: 'shell' },
+        ],
+      }).targets,
+    ).toStrictEqual([])
+    expect(collectionBuildPlan({ lanes: [] }).targets).toStrictEqual([])
   })
 })
 

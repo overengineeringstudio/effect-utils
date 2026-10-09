@@ -452,7 +452,11 @@ let
   # Every Buck-invoking task uses the checkout's pinned binary and standalone
   # project root.
   buck2UnitTestExec =
-    { name, targets }:
+    {
+      name,
+      targets,
+      prebuildCollection ? false,
+    }:
     trace.exec name ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
@@ -463,6 +467,13 @@ let
         ]
       }
       ${publishBuckCapabilities}
+      ${lib.optionalString prebuildCollection ''
+        ${pkgs.bun}/bin/bun "$root/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts" \
+          --root "$root" \
+          --buck2 "$BUCK2_BIN" \
+          --buck2-cwd "$root" \
+          --prebuild-only
+      ''}
       cd "$root"
       exec "$BUCK2_BIN" test \
         --target-platforms effect_utils//buck2/platforms:host_platform \
@@ -1594,16 +1605,17 @@ in
     "nix:check:quick"
     "otel:pipeline-run:test"
   ];
-  # One Buck invocation executes every admitted bounded lane. This is what `test:run` waits on;
-  # the per-lane `test:<package>` tasks (imported above) exist for standalone use and are not
-  # part of that graph, so no suite is scheduled twice.
+  # Prebuild every collection product after genie freshness alongside editor publication,
+  # then execute every admitted bounded lane in one Buck test invocation. The per-lane tasks
+  # remain standalone-only, so neither bounded nor source verdicts are scheduled twice.
   tasks."test:buck2:unit" = {
-    description = "Execute every admitted bounded unit-test lane under Buck";
+    description = "Prebuild collection products and execute every admitted bounded unit-test lane";
     after = [ "genie:check" ];
     # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
       name = "test:buck2:unit";
       targets = map (lane: lane.target) buck2TestLanes;
+      prebuildCollection = true;
     };
   };
   tasks."check:all".after = [
@@ -1614,7 +1626,8 @@ in
 
   # `test:run` is the aggregate: the single Buck invocation for every bounded lane, plus the
   # source-only and unbounded-complement Vitest tasks the shared module wired into its `after`.
-  # The baseline-collection gate then runs last and reads both kinds of evidence.
+  # The baseline-collection gate runs last, resolves the same (now warm) Buck products against
+  # current inputs, and validates both bounded inventory and completed source evidence.
   tasks."test:run".after = [ "test:buck2:unit" ];
   tasks."test:run".exec = lib.mkForce (
     trace.exec "test:run" ''
