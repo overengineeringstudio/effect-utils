@@ -1,9 +1,10 @@
 import { generateKeyPairSync, verify } from 'node:crypto'
 import { createServer } from 'node:http'
 
+import { NodeHttpClient } from '@effect/platform-node'
 import { it } from '@effect/vitest'
-import { Clock, Deferred, Effect, Fiber, Metric, Redacted, Schema } from 'effect'
-import { FetchHttpClient } from 'effect/http'
+import { Clock, Context, Deferred, Effect, Fiber, Layer, Metric, Redacted, Schema } from 'effect'
+import { FetchHttpClient, HttpClient } from 'effect/http'
 import { TestClock } from 'effect/testing'
 import { expect } from 'vitest'
 
@@ -13,7 +14,7 @@ const Json = Schema.fromJsonString(Schema.Unknown)
 const Claims = Schema.fromJsonString(Schema.Struct({ iat: Schema.Int, exp: Schema.Int, iss: Schema.String }))
 const scope: InstallationScope = { installationID: 123, repositories: { _tag: 'Selected', names: ['dotfiles'] }, permissions: { issues: 'write' } }
 
-const fixture = Effect.gen(function* () {
+const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient.layer) => Effect.gen(function* () {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
   const started = yield* Deferred.make<void>()
   const release = yield* Deferred.make<void>()
@@ -28,6 +29,11 @@ const fixture = Effect.gen(function* () {
     jwts: [] as Array<{ iat: number; exp: number; iss: string; verified: boolean }>,
     delayMint: false,
     delayResponse: false,
+    disconnect: false,
+    malformed: false,
+    expirySeconds: 3600,
+    redirect: '',
+    authorization: [] as string[],
   }
   const server = createServer(async (request, response) => {
     if (request.url === '/app/installations/123/access_tokens') {
@@ -46,15 +52,25 @@ const fixture = Effect.gen(function* () {
         verified: verify('RSA-SHA256', Buffer.from(`${header}.${claims}`), publicKey, Buffer.from(signature, 'base64url')),
       })
       response.writeHead(state.mintStatus, { 'content-type': 'application/json', 'x-ratelimit-remaining': '4999', 'x-ratelimit-resource': 'core' })
-      response.end(Schema.encodeSync(Json)({ token: `installation-${state.exchanges}`, expires_at: new Date(state.now + 3_600_000).toISOString() }))
+      response.end(Schema.encodeSync(Json)({ token: `installation-${state.exchanges}`, expires_at: new Date(state.now + state.expirySeconds * 1000).toISOString() }))
     } else {
       state.calls++
+      state.authorization.push(request.headers.authorization ?? '')
+      if (state.disconnect) {
+        request.socket.destroy()
+        return
+      }
+      if (request.url === '/redirect' && state.redirect !== '') {
+        response.writeHead(302, { location: state.redirect })
+        response.end()
+        return
+      }
       if (state.delayResponse) {
         await Effect.runPromiseWith(delay)(Deferred.succeed(started, undefined))
         await Effect.runPromiseWith(delay)(Deferred.await(release))
       }
       response.writeHead(state.unauthorized ? 401 : 200, { 'content-type': 'application/json', 'x-ratelimit-remaining': '4998', 'x-ratelimit-resource': 'core' })
-      response.end('{}')
+      response.end(state.malformed ? '{invalid' : '{}')
     }
   })
   yield* Effect.acquireRelease(
@@ -64,16 +80,17 @@ const fixture = Effect.gen(function* () {
   const address = server.address()
   if (address === null || typeof address === 'string') return yield* Effect.die('Expected TCP test server')
   const apiBase = new URL(`http://127.0.0.1:${address.port}`)
+  const services = yield* Layer.build(transport)
   const app = yield* makeGitHubApp({
     identity: { clientID: 'Iv1.fixture' },
     privateKey: Redacted.make(privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()),
-  }, { apiBase, consumer: 'fixture' }).pipe(Effect.provide(FetchHttpClient.layer))
+  }, { apiBase, consumer: 'fixture' }).pipe(Effect.provideService(HttpClient.HttpClient, Context.get(services, HttpClient.HttpClient)))
   return { state, app, apiBase, started, release }
 })
 
 it.effect('signs real JWTs, caches concurrent requests, refreshes early, and isolates scope', () =>
   Effect.gen(function* () {
-    const { state, app } = yield* fixture
+    const { state, app } = yield* fixture()
     const tokens = yield* Effect.forEach([1, 2, 3, 4], () => app.token(scope), { concurrency: 'unbounded' })
     expect(tokens.map(Redacted.value)).toEqual(Array(4).fill('installation-1'))
     expect(state.exchanges).toBe(1)
@@ -96,7 +113,7 @@ it.effect('signs real JWTs, caches concurrent requests, refreshes early, and iso
 
 it.effect('invalidates on 401 without replay and remints on the next explicit operation', () =>
   Effect.gen(function* () {
-    const { state, app, apiBase } = yield* fixture
+    const { state, app, apiBase } = yield* fixture()
     const client = app.client(scope)
     state.unauthorized = true
     const failure = yield* client.post(new URL('/probe', apiBase)).pipe(Effect.flip)
@@ -112,7 +129,7 @@ it.effect('invalidates on 401 without replay and remints on the next explicit op
 
 it.effect('types mint 401, rejects empty permission scopes, and never sends credentials off-origin', () =>
   Effect.gen(function* () {
-    const { state, app } = yield* fixture
+    const { state, app } = yield* fixture()
     state.mintStatus = 401
     const mintFailure = yield* app.token(scope).pipe(Effect.flip)
     expect(mintFailure).toMatchObject({ _tag: 'GitHubAppError', operation: 'exchange', status: 401 })
@@ -125,7 +142,7 @@ it.effect('types mint 401, rejects empty permission scopes, and never sends cred
 
 it.effect('shares a failed mint across concurrent callers and allows the next call to recover', () =>
   Effect.gen(function* () {
-    const { state, app, started, release } = yield* fixture
+    const { state, app, started, release } = yield* fixture()
     state.delayMint = true
     state.mintStatus = 403
     const fibers = yield* Effect.forEach([1, 2, 3, 4], () => app.token(scope).pipe(Effect.flip, Effect.forkChild))
@@ -142,7 +159,7 @@ it.effect('shares a failed mint across concurrent callers and allows the next ca
 
 it.effect('does not serialize independent scopes behind a stalled exchange', () =>
   Effect.gen(function* () {
-    const { state, app, started, release } = yield* fixture
+    const { state, app, started, release } = yield* fixture()
     state.delayMint = true
     const pending = yield* app.token(scope).pipe(Effect.forkChild)
     yield* Deferred.await(started)
@@ -156,7 +173,7 @@ it.effect('does not serialize independent scopes behind a stalled exchange', () 
 
 it.effect('canonicalizes repository and permission ordering without widening authority', () =>
   Effect.gen(function* () {
-    const { state, app } = yield* fixture
+    const { state, app } = yield* fixture()
     yield* app.token({ ...scope, repositories: { _tag: 'Selected', names: ['b', 'a', 'a'] }, permissions: { issues: 'write', contents: 'read' } })
     yield* app.token({ ...scope, repositories: { _tag: 'Selected', names: ['a', 'b'] }, permissions: { contents: 'read', issues: 'write' } })
     expect(state.exchanges).toBe(1)
@@ -166,7 +183,7 @@ it.effect('canonicalizes repository and permission ordering without widening aut
 
 it.effect('allows explicit installation-wide reads without conflating selected scope', () =>
   Effect.gen(function* () {
-    const { state, app } = yield* fixture
+    const { state, app } = yield* fixture()
     const readScope: InstallationScope = { ...scope, permissions: { issues: 'read' } }
     yield* app.token(readScope)
     yield* app.token({ ...readScope, repositories: { _tag: 'AllInstallation' } })
@@ -190,7 +207,7 @@ it.effect('rejects broad writes and invalid repository selectors at the schema b
     ]) {
       expect((yield* decode({ ...scope, repositories }).pipe(Effect.result))._tag).toBe('Failure')
     }
-    const { state, app } = yield* fixture
+    const { state, app } = yield* fixture()
     expect(yield* app.token({ ...scope, repositories: { _tag: 'AllInstallation' } }).pipe(Effect.flip))
       .toMatchObject({ operation: 'config' })
     expect(state.exchanges).toBe(0)
@@ -199,7 +216,7 @@ it.effect('rejects broad writes and invalid repository selectors at the schema b
 
 it.effect('records safe per-consumer mint/failure, expiry, and bucket metrics', () =>
   Effect.gen(function* () {
-    const { state, app, apiBase } = yield* fixture
+    const { state, app, apiBase } = yield* fixture()
     const attributes = { 'github.app.client_id': 'Iv1.fixture', 'github.installation.id': '123', 'github.consumer': 'fixture' }
     state.mintStatus = 403
     yield* app.token(scope).pipe(Effect.flip)
@@ -221,7 +238,7 @@ it.effect('records safe per-consumer mint/failure, expiry, and bucket metrics', 
 
 it.effect('a late 401 cannot evict the replacement minted during the old request', () =>
   Effect.gen(function* () {
-    const { state, app, apiBase, started, release } = yield* fixture
+    const { state, app, apiBase, started, release } = yield* fixture()
     state.delayResponse = true
     const pending = yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip, Effect.forkChild)
     yield* Deferred.await(started)
@@ -231,6 +248,100 @@ it.effect('a late 401 cannot evict the replacement minted during the old request
     state.unauthorized = true
     yield* Deferred.succeed(release, undefined)
     expect(yield* Fiber.join(pending)).toMatchObject({ operation: 'authorize', status: 401 })
+    expect(Redacted.value(yield* app.token(scope))).toBe('installation-2')
+    expect(state.exchanges).toBe(2)
+  }),
+)
+
+/** Inspect non-enumerable properties too: error serializers need not use toJSON. */
+const expectCredentialFree = (value: unknown, credential: string) => {
+  const seen = new Set<object>()
+  const walk = (item: unknown): void => {
+    if (typeof item === 'string') expect(item).not.toContain(credential)
+    if (item === null || (typeof item !== 'object' && typeof item !== 'function') || seen.has(item)) return
+    seen.add(item)
+    for (const key of Reflect.ownKeys(item)) {
+      const descriptor = Object.getOwnPropertyDescriptor(item, key)
+      if (descriptor && 'value' in descriptor) walk(descriptor.value)
+    }
+  }
+  walk(value)
+  expect(Schema.encodeSync(Json)(value)).not.toContain(credential)
+}
+
+for (const [name, transport] of [
+  ['fetch', FetchHttpClient.layer],
+  ['node-http', NodeHttpClient.layerNodeHttp],
+  ['undici', NodeHttpClient.layerUndici],
+] as const) {
+  it.effect(`${name}: excludes credentials from transport and decoding failures`, () =>
+    Effect.gen(function* () {
+      const { state, app, apiBase } = yield* fixture(transport)
+      const credential = Redacted.value(yield* app.token(scope))
+      state.disconnect = true
+      const failure = yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip)
+      expectCredentialFree(failure, credential)
+      expectCredentialFree({ cause: failure }, credential)
+      state.disconnect = false
+      state.malformed = true
+      const response = yield* app.client(scope).get(new URL('/probe', apiBase))
+      const decoding = yield* response.json.pipe(Effect.flip)
+      expectCredentialFree(decoding, credential)
+      expectCredentialFree({ cause: decoding }, credential)
+      expect(decoding.request.headers.authorization).toBeUndefined()
+      expect(decoding.response?.status).toBe(200)
+    }),
+  )
+
+  it.effect(`${name}: real transport redirects never send the token to another origin`, () =>
+    Effect.gen(function* () {
+      const { state, app, apiBase } = yield* fixture(transport)
+      const received: string[] = []
+      const destination = createServer((request, response) => {
+        received.push(request.headers.authorization ?? '')
+        response.end('{}')
+      })
+      yield* Effect.acquireRelease(
+        Effect.promise(() => new Promise<void>((resolve) => destination.listen(0, '127.0.0.1', resolve))),
+        () => Effect.promise(() => new Promise<void>((resolve) => destination.close(() => resolve()))),
+      )
+      const address = destination.address()
+      if (address === null || typeof address === 'string') return yield* Effect.die('Expected redirect fixture address')
+      state.redirect = `http://127.0.0.1:${address.port}/destination`
+      const response = yield* app.client(scope).get(new URL('/redirect', apiBase))
+      expect([200, 302]).toContain(response.status)
+      expect(state.authorization).toEqual(['Bearer installation-1'])
+      expect(received.every((authorization) => authorization === '')).toBe(true)
+      if (response.status === 200) expect(received).toEqual([''])
+      else expect(received).toEqual([])
+    }),
+  )
+}
+
+it.effect('cancelling a shared-mint waiter does not cancel the mint or strand later callers', () =>
+  Effect.gen(function* () {
+    const { state, app, started, release } = yield* fixture()
+    state.delayMint = true
+    const owner = yield* app.token(scope).pipe(Effect.forkChild)
+    yield* Deferred.await(started)
+    const waiter = yield* app.token(scope).pipe(Effect.forkChild)
+    yield* Effect.yieldNow
+    yield* Fiber.interrupt(waiter)
+    yield* Deferred.succeed(release, undefined)
+    expect(Redacted.value(yield* Fiber.join(owner))).toBe('installation-1')
+    expect(Redacted.value(yield* app.token(scope))).toBe('installation-1')
+    expect(state.exchanges).toBe(1)
+  }),
+)
+
+it.effect('rejects tokens expiring inside the refresh window without caching them', () =>
+  Effect.gen(function* () {
+    const { state, app } = yield* fixture()
+    state.expirySeconds = 60
+    expect(yield* app.token(scope).pipe(Effect.flip)).toMatchObject({
+      operation: 'exchange', message: 'Installation token expires inside refresh window',
+    })
+    state.expirySeconds = 3600
     expect(Redacted.value(yield* app.token(scope))).toBe('installation-2')
     expect(state.exchanges).toBe(2)
   }),
