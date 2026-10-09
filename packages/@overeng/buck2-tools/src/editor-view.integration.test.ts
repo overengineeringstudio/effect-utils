@@ -910,7 +910,7 @@ describe('editor view publisher', () => {
         {
           package: fixture.options.package,
           viewName: fixture.options.viewName,
-          editorRoot: fixture.editorRoot,
+          editorRoot: realpathSync(fixture.editorRoot),
           phase: 'payload',
           candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
         },
