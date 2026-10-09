@@ -66,7 +66,8 @@ report=$(awk -v platform="$platform" -v total="$total" -v interval="$interval" -
   }
   END {
     if (!count) exit 1
-    printf "{\"schemaVersion\":1,\"platform\":\"%s\",\"scope\":\"host\",\"sampleIntervalSeconds\":%d,\"sampleCount\":%d,\"failedSampleCount\":%d,\"totalMemoryBytes\":%.0f,\"peakSummedProcessRssBytes\":%.0f,\"peakSummedProcessLifetimeCpuPercent\":%.3f,\"peakCompressorBytes\":%.0f,\"pageoutsDuringSampling\":%.0f,\"rssSemantics\":\"sum of process RSS; shared pages may be counted repeatedly\",\"cpuSemantics\":\"sum of ps process lifetime-average percentages; 100 means one CPU\",\"pageoutSemantics\":\"Darwin Pageouts or Linux pswpout counter delta; units are native pages\"}\n", platform, interval, count, failures, total, rss, cpu, compressor, lastPageouts-firstPageouts
+    compressorJson = platform == "Darwin" ? sprintf("%.0f", compressor) : "null"
+    printf "{\"schemaVersion\":1,\"platform\":\"%s\",\"scope\":\"host\",\"sampleIntervalSeconds\":%d,\"sampleCount\":%d,\"failedSampleCount\":%d,\"totalMemoryBytes\":%.0f,\"peakSummedProcessRssBytes\":%.0f,\"peakSummedProcessLifetimeCpuPercent\":%.3f,\"peakCompressorBytes\":%s,\"pageoutsDuringSampling\":%.0f,\"rssSemantics\":\"sum of process RSS; shared pages may be counted repeatedly\",\"cpuSemantics\":\"sum of ps process lifetime-average percentages; 100 means one CPU\",\"pageoutSemantics\":\"Darwin Pageouts or Linux pswpout counter delta; units are native pages\"}\n", platform, interval, count, failures, total, rss, cpu, compressorJson, lastPageouts-firstPageouts
   }
 ' "$samples")
 printf '%s\n' "$report" > "$output"

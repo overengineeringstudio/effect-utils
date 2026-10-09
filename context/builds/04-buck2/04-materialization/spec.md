@@ -146,7 +146,8 @@ the lock, the publisher:
    `buck2:editor:check` performs the full admitted-state traversal.
 
 Bootstrap and publication commands submit all selected views in one
-`publish-batch --requests <JSON array of publish argument lists>` operation.
+`publish-batch` operation, with the JSON array of publish argument lists on
+stdin. Request size is not limited by the operating system's per-argument cap.
 The batch acquires each distinct state-root lock before preparing any view and
 holds every lock until all workers have settled. `editorViewPublicationWorkers`
 in the publisher is the single declared resource bound (four); bootstrap and

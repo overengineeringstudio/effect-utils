@@ -409,6 +409,7 @@ export type RunCommand = (options: {
   readonly command: string
   readonly args: readonly string[]
   readonly cwd: string
+  readonly input?: string
   readonly detached?: boolean
   readonly signal?: AbortSignal
 }) => Promise<CommandResult>
@@ -437,12 +438,12 @@ export class CommandFailure extends Error {
 }
 
 /** Default {@link RunCommand}: buffers output and fails closed on a non-zero exit. */
-export const runCommand: RunCommand = ({ command, args, cwd, signal, detached }) => {
+export const runCommand: RunCommand = ({ command, args, cwd, signal, detached, input }) => {
   const settled = Promise.withResolvers<CommandResult>()
   const child = spawn(command, args, {
     cwd,
     signal,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     detached,
   })
   let stdout = ''
@@ -454,6 +455,8 @@ export const runCommand: RunCommand = ({ command, args, cwd, signal, detached })
     stderr += chunk
   })
   child.once('error', settled.reject)
+  child.stdin?.on('error', settled.reject)
+  child.stdin?.end(input)
   child.once('close', (code, childSignal) => {
     if (code === 0) settled.resolve({ stdout, stderr })
     else
@@ -675,12 +678,8 @@ export const reconcileBuckViews = async ({
     const requests = await Promise.all(entries.map(publicationArgs))
     const result = await execute({
       command: options.editorViewCommand[0],
-      args: [
-        ...options.editorViewCommand.slice(1),
-        'publish-batch',
-        '--requests',
-        JSON.stringify(requests),
-      ],
+      args: [...options.editorViewCommand.slice(1), 'publish-batch'],
+      input: JSON.stringify(requests),
       detached: true,
       cwd: options.repoRoot,
     })

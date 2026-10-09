@@ -2664,9 +2664,8 @@ const parseCli = (args: readonly string[]): ParsedCli => {
 const main = async (): Promise<void> => {
   const args = process.argv.slice(2)
   if (args[0] === 'publish-batch') {
-    if (args.length !== 3 || args[1] !== '--requests')
-      fail('expected publish-batch --requests <JSON array of publish arguments>')
-    const raw: unknown = JSON.parse(args[2] ?? fail('batch requests are absent'))
+    if (args.length !== 1) fail('expected publish-batch with a JSON request array on stdin')
+    const raw: unknown = JSON.parse(readFileSync(0, 'utf8'))
     if (isUnknownArray(raw) === false) fail('batch requests must be an array')
     const requests = raw.map((request) => {
       if (
