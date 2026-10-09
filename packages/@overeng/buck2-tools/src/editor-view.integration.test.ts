@@ -627,19 +627,20 @@ describe('editor view publisher', () => {
         ...['genie', 'utils', 'restate-effect', 'ci-tools', 'buck2-tools'].map(
           (packageName) => makeSiblingView({ fixture, packageName }).options,
         ),
-      ].map((option) => ({
-        ...option,
-        backingRoots: [option.nodeModules],
-        beforeMaterialize: async () => {
-          active += 1
-          peak = Math.max(peak, active)
-          started.push(option.viewName)
-          if (started.length === editorViewPublicationWorkers) entered.resolve()
-          await proceed.promise
-          active -= 1
-        },
-      }))
-      batch = publishEditorViews(options)
+      ].map((option) =>
+        Object.assign(option, {
+          backingRoots: [option.nodeModules],
+          beforeMaterialize: async () => {
+            active += 1
+            peak = Math.max(peak, active)
+            started.push(option.viewName)
+            if (started.length === editorViewPublicationWorkers) entered.resolve()
+            await proceed.promise
+            active -= 1
+          },
+        }),
+      )
+      batch = publishEditorViews({ options })
       await entered.promise
       expect(started.toSorted()).toEqual(
         options
@@ -674,23 +675,24 @@ describe('editor view publisher', () => {
         ...['genie', 'utils'].map(
           (packageName) => makeSiblingView({ fixture, packageName }).options,
         ),
-      ].map((option) => ({
-        ...option,
-        backingRoots: [option.nodeModules],
-        beforeMaterialize: () => {
-          visited.push(option.viewName)
-          if (option.viewName === 'tui-core') throw new Error('first view preparation failed')
-        },
-      }))
-      await expect(publishEditorViews(options)).rejects.toThrow('first view preparation failed')
+      ].map((option) =>
+        Object.assign(option, {
+          backingRoots: [option.nodeModules],
+          beforeMaterialize: () => {
+            visited.push(option.viewName)
+            if (option.viewName === 'tui-core') throw new Error('first view preparation failed')
+          },
+        }),
+      )
+      await expect(publishEditorViews({ options })).rejects.toThrow('first view preparation failed')
       expect(visited.toSorted()).toEqual(['genie', 'tui-core', 'utils'])
       for (const option of options.slice(1))
         await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
       expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
       expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(2)
-      await expect(publishEditorViews([fixture.options, fixture.options])).rejects.toThrow(
-        'duplicate batch publication identity',
-      )
+      await expect(
+        publishEditorViews({ options: [fixture.options, fixture.options] }),
+      ).rejects.toThrow('duplicate batch publication identity')
       expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
     } finally {
       cleanup(fixture)

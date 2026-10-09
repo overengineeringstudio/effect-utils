@@ -1354,6 +1354,7 @@ const materializeDeclaredRoots = async ({
   for (const root of roots) {
     const destination = join(candidate, root.destination)
     mkdirSync(destination, { recursive: true })
+    // eslint-disable-next-line no-await-in-loop -- One copy child per active view preserves the shared resource bound.
     await copyWithTool({
       tool: cp,
       args: [
@@ -1936,10 +1937,13 @@ type PublicationCoordinator = {
 }
 
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
-const publishEditorViewCoordinated = async (
-  options: EditorViewOptions,
-  coordinator?: PublicationCoordinator,
-): Promise<EditorViewRecord> => {
+const publishEditorViewCoordinated = async ({
+  options,
+  coordinator,
+}: {
+  options: EditorViewOptions
+  coordinator?: PublicationCoordinator
+}): Promise<EditorViewRecord> => {
   const startedAtMs = performance.timeOrigin + performance.now()
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
@@ -2246,7 +2250,7 @@ const publishEditorViewCoordinated = async (
 
 /** Publish one view while holding the exclusive state-root lock through every proof and write. */
 export const publishEditorView = (options: EditorViewOptions): Promise<EditorViewRecord> =>
-  publishEditorViewCoordinated(options)
+  publishEditorViewCoordinated({ options })
 
 /** One resource bound shared by bootstrap and source-test dependency publication. */
 export const editorViewPublicationWorkers = 4
@@ -2255,10 +2259,13 @@ export const editorViewPublicationWorkers = 4
  * Prepare a bounded set of independent views concurrently under exclusive state-root locks.
  * Every byte/link/ownership proof remains intact; shared inventory and pointer commits are ordered.
  */
-export const publishEditorViews = async (
-  options: readonly EditorViewOptions[],
-  onPublished?: (record: EditorViewRecord, durationMs: number) => void,
-): Promise<readonly EditorViewRecord[]> => {
+export const publishEditorViews = async ({
+  options,
+  onPublished,
+}: {
+  options: readonly EditorViewOptions[]
+  onPublished?: (record: EditorViewRecord, durationMs: number) => void
+}): Promise<readonly EditorViewRecord[]> => {
   const coordinators = new Map<string, PublicationCoordinator>()
   const identities = new Set<string>()
   const results: PromiseSettledResult<EditorViewRecord>[] = []
@@ -2267,9 +2274,10 @@ export const publishEditorViews = async (
     for (const option of options) {
       const paths = makePaths(option)
       const identity = join(paths.editorRoot, paths.viewName)
-      if (identities.has(identity)) fail(`duplicate batch publication identity: ${identity}`)
+      if (identities.has(identity) === true)
+        fail(`duplicate batch publication identity: ${identity}`)
       identities.add(identity)
-      if (coordinators.has(paths.editorRoot)) continue
+      if (coordinators.has(paths.editorRoot) === true) continue
       ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
       ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
       const lock = acquireLock({
@@ -2306,7 +2314,8 @@ export const publishEditorViews = async (
         try {
           const coordinator =
             coordinators.get(makePaths(option).editorRoot) ?? fail('batch root lock is absent')
-          const record = await publishEditorViewCoordinated(option, coordinator)
+          // eslint-disable-next-line no-await-in-loop -- Each worker must finish before claiming its next view.
+          const record = await publishEditorViewCoordinated({ options: option, coordinator })
           results[index] = { status: 'fulfilled', value: record }
           onPublished?.(record, performance.now() - startedAt)
           emitPublicationSpan(0)
@@ -2669,17 +2678,20 @@ const main = async (): Promise<void> => {
       if (parsed.command !== 'publish') fail('batch requests may only publish views')
       return parsed.options
     })
-    await publishEditorViews(requests, (record, durationMs) => {
-      process.stderr.write(
-        `[editor-view-timing] ${JSON.stringify({
-          phase: 'editor-view',
-          packagePath: record.package,
-          durationMs,
-        })}\n`,
-      )
-      process.stdout.write(
-        `published ${record.package} editor view ${record.editorInputsFingerprint}\n`,
-      )
+    await publishEditorViews({
+      options: requests,
+      onPublished: (record, durationMs) => {
+        process.stderr.write(
+          `[editor-view-timing] ${JSON.stringify({
+            phase: 'editor-view',
+            packagePath: record.package,
+            durationMs,
+          })}\n`,
+        )
+        process.stdout.write(
+          `published ${record.package} editor view ${record.editorInputsFingerprint}\n`,
+        )
+      },
     })
     return
   }
