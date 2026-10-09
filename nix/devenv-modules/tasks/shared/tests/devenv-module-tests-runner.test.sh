@@ -11,7 +11,7 @@ cleanup() {
   local status=$?
   if [ "$gates_open" = true ]; then
     printf 'release\n' >&4
-    printf 'release\n' >&5
+    for ((release=0; release<4; release++)); do printf 'release\n' >&5; done
   fi
   if [ -n "$runner_pid" ]; then
     kill -TERM "$runner_pid" 2>/dev/null || true
@@ -25,13 +25,21 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 run_case() {
   local label="$1" first_exit="$2" second_exit="$3" serial_exit="$4" expected="$5"
-  local fixture="$tmpdir/$label" ready first_ready second_ready status=0 name pid
+  local workers="${6:-4}" weighted="${7:-true}"
+  local fixture="$tmpdir/$label" ready status=0 name pid index initial_seen=":"
   local -a names=(
     buck2-capability-daemon.test.sh buck2-capability-publish.test.sh
     buck2-capability-source.test.sh buck2-no-python-actions.test.sh
     buck2-rules-source.test.sh buck2-rust-deps.test.sh worktree-teardown.test.sh
   )
+  if [ "$weighted" = true ]; then
+    names=(worktree-teardown.test.sh buck2-capability-daemon.test.sh
+      buck2-capability-publish.test.sh buck2-capability-source.test.sh
+      buck2-no-python-actions.test.sh buck2-rules-source.test.sh buck2-rust-deps.test.sh)
+  fi
   mkdir -p "$fixture/tests" "$fixture/state/private"
+  printf '%s\n' '{"worktree-teardown.test.sh":90,"buck2-capability-daemon.test.sh":80,"buck2-capability-publish.test.sh":70,"buck2-capability-source.test.sh":60,"buck2-no-python-actions.test.sh":50,"zz-unreviewed fixture.test.sh":999}' >"$fixture/weights.json"
+  if [ "$weighted" = false ]; then printf '{}\n' >"$fixture/weights.json"; fi
   mkfifo "$fixture/ready" "$fixture/release-first" "$fixture/release-second"
   exec 3<>"$fixture/ready"
   exec 4<>"$fixture/release-first"
@@ -63,6 +71,9 @@ case "$name" in
     IFS= read -r _ <"$RUNNER_FIXTURE_RELEASE_SECOND"
     exit "$RUNNER_FIXTURE_SECOND_EXIT" ;;
 esac
+case ":$RUNNER_FIXTURE_BLOCKED:" in
+  *":$name:"*) IFS= read -r _ <"$RUNNER_FIXTURE_RELEASE_SECOND" ;;
+esac
 SCRIPT
   done
   cat >"$fixture/tests/devenv-task-graph.test.sh" <<'SCRIPT'
@@ -81,6 +92,8 @@ printf 'serial\n' >"$RUNNER_FIXTURE_STATE/serial-last"
 SCRIPT
 
   RUNNER_FIXTURE_STATE="$fixture/state" \
+    MODULE_TEST_WORKERS="$workers" MODULE_TEST_WEIGHTS="$fixture/weights.json" \
+    RUNNER_FIXTURE_BLOCKED="$(IFS=:; printf '%s' "${names[*]:0:$workers}")" \
     RUNNER_FIXTURE_READY="$fixture/ready" \
     RUNNER_FIXTURE_RELEASE_FIRST="$fixture/release-first" \
     RUNNER_FIXTURE_RELEASE_SECOND="$fixture/release-second" \
@@ -90,25 +103,28 @@ SCRIPT
     RUNNER_FIXTURE_VALUE=inherited RUNNER_FIXTURE_CWD="$PWD" \
     "$TEST_BASH" "$RUNNER" "$fixture/tests" >"$fixture/stdout" 2>"$fixture/stderr" &
   runner_pid=$!
-  IFS= read -r -t 30 -u 3 first_ready || fail "$label: first worker did not start"
-  IFS= read -r -t 30 -u 3 second_ready || fail "$label: second worker did not start"
-  case "$first_ready:$second_ready" in
-    buck2-capability-daemon.test.sh:buck2-capability-publish.test.sh | \
-    buck2-capability-publish.test.sh:buck2-capability-daemon.test.sh) ;;
-    *) fail "$label: unexpected first workers: $first_ready, $second_ready" ;;
-  esac
-  for name in "${names[@]:2}"; do
+  for ((index=0; index<workers; index++)); do
+    IFS= read -r -t 30 -u 3 ready || fail "$label: worker $index did not start"
+    case "$initial_seen" in *":$ready:"*) fail "$label: duplicate worker: $ready" ;; esac
+    initial_seen="$initial_seen$ready:"
+    found=false
+    for name in "${names[@]:0:$workers}"; do
+      if [ "$ready" = "$name" ]; then found=true; fi
+    done
+    [ "$found" = true ] || fail "$label: shorter script dispatched before longest: $ready"
+  done
+  for name in "${names[@]:$workers}"; do
     [ ! -f "$fixture/state/$name.pid" ] || fail "$label: extra worker exceeded bound: $name"
   done
 
   if [ "$label" = supervisor-term ]; then kill -TERM "$runner_pid"; fi
   printf 'release\n' >&4
   # One worker must continue after a failure while the other is still blocked.
-  for name in "${names[@]:2}"; do
+  for name in "${names[@]:$workers}"; do
     IFS= read -r -t 30 -u 3 ready || fail "$label: failure skipped $name"
     [ "$ready" = "$name" ] || fail "$label: expected $name, got $ready"
   done
-  printf 'release\n' >&5
+  for ((index=1; index<workers; index++)); do printf 'release\n' >&5; done
   wait "$runner_pid" || status=$?
   runner_pid=""
   [ "$status" -eq "$expected" ] || fail "$label: expected exit $expected, got $status"
@@ -127,13 +143,17 @@ SCRIPT
   grep -Eq "script=buck2-capability-publish.test.sh phase=end timestamp=[^ ]+ scheduling=parallel status=$second_exit$" "$fixture/stderr" || fail "$label: second verdict not recorded"
   grep -Eq "script=devenv-task-graph.test.sh phase=end timestamp=[^ ]+ scheduling=serial status=$serial_exit$" "$fixture/stderr" || fail "$label: serial verdict not recorded"
   grep -qF 'script=zz-unreviewed fixture.test.sh phase=end timestamp=' "$fixture/stderr" || fail "$label: unknown script was skipped"
-  awk '
+  for name in devenv-task-graph.test.sh 'zz-unreviewed fixture.test.sh'; do
+    [ "$(grep -cF "script=$name phase=start timestamp=" "$fixture/stderr")" -eq 1 ] || fail "$label: serial start missing or duplicated: $name"
+    [ "$(grep -cF "script=$name phase=end timestamp=" "$fixture/stderr")" -eq 1 ] || fail "$label: serial end missing or duplicated: $name"
+  done
+  awk -v workers="$workers" '
     /phase=start / { active++; if (active > peak) peak = active }
     /scheduling=serial/ && active > 1 { invalid = 1 }
     /phase=end / { active--; if (active < 0) invalid = 1 }
-    END { exit invalid || active != 0 || peak != 2 }
-  ' "$fixture/stderr" || fail "$label: timestamp evidence violated the two-worker / serial bound"
-  printf 'PASS: %s (two workers, serial admission, complete verdicts, isolated shells, reaped children)\n' "$label"
+    END { exit invalid || active != 0 || peak != workers }
+  ' "$fixture/stderr" || fail "$label: timestamp evidence violated the worker / serial bound"
+  printf 'PASS: %s (%s workers, serial admission, complete verdicts, isolated shells, reaped children)\n' "$label" "$workers"
 }
 
 run_case success 0 0 0 0
@@ -141,6 +161,8 @@ run_case first-worker-failure 7 0 0 1
 run_case second-worker-failure 0 23 0 1
 run_case all-failures 7 255 19 1
 run_case supervisor-term 0 0 0 143
+run_case fallback-three 0 0 0 0 3
+run_case default-weights 0 0 0 0 4 false
 
 mkdir -p "$tmpdir/empty"
 if "$TEST_BASH" "$RUNNER" "$tmpdir/empty" >"$tmpdir/empty.stdout" 2>"$tmpdir/empty.stderr"; then
@@ -151,3 +173,10 @@ if "$TEST_BASH" "$RUNNER" "$tmpdir/missing" >"$tmpdir/missing.stdout" 2>"$tmpdir
   fail 'missing suite succeeded'
 fi
 printf 'PASS: empty and missing suites fail\n'
+for workers in 0 -1 two 1.5; do
+  if MODULE_TEST_WORKERS="$workers" "$TEST_BASH" "$RUNNER" "$tmpdir/success/tests" >"$tmpdir/invalid.stdout" 2>"$tmpdir/invalid.stderr"; then
+    fail "invalid worker count succeeded: $workers"
+  fi
+  grep -qF 'Expected a positive integer MODULE_TEST_WORKERS' "$tmpdir/invalid.stderr"
+done
+printf 'PASS: invalid worker counts fail before dispatch\n'

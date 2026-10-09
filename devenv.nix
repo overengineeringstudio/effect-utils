@@ -33,6 +33,7 @@ let
   ciUnitTest = builtins.getEnv "EFFECT_UTILS_CI_TEST" == "1";
   testPlatform = builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM";
   testPlatforms = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-platforms.json);
+  testScheduling = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-scheduling.json);
   darwinTestTasks = map (suite: suite.task) testPlatforms.darwin;
   classifiedTestTasks = darwinTestTasks ++ map (suite: suite.task) testPlatforms.neutral;
   extraSourceTestTasks = [
@@ -93,7 +94,10 @@ let
     weaver-diff = import ./nix/devenv-modules/tasks/shared/weaver-diff.nix;
     weaver-live-check = import ./nix/devenv-modules/tasks/shared/weaver-live-check.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
-    devenv-module-tests = ./nix/devenv-modules/tasks/local/devenv-module-tests.nix;
+    devenv-module-tests = import ./nix/devenv-modules/tasks/local/devenv-module-tests.nix {
+      workerCount = testScheduling.workers;
+      scriptWeights = testScheduling.moduleScriptSeconds;
+    };
   };
   # Repository CLIs come from the reviewed Buck product boundary, not from a
   # source entrypoint that exists only here. The activated shell, the flake
@@ -822,7 +826,8 @@ in
       ) allSourceTestPackages;
       aggregatePackages = sourceTestPackages;
       extraTests = builtins.filter selectedTestTask extraSourceTestTasks;
-      packageConcurrency = 4;
+      packageConcurrency = testScheduling.workers;
+      packageWeights = testScheduling.sourceTaskSeconds;
       retainVitestJson = true;
     })
     # Per-lane Buck `test:<package>` tasks, each pulling in its unbounded complement.
@@ -1179,14 +1184,17 @@ in
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
-      # Directory, not a flat glob: genie/buck2/vitest.config.ts includes
-      # `**/*.unit.test.ts`, and Bun discovers recursively the same way.
-      exec ${pkgs.bun}/bin/bun test genie/buck2/
+      # An explicit directory preserves recursive discovery without matching
+      # the copies Buck stages under buck-out, like genie:ci-workflow:test.
+      exec ${pkgs.bun}/bin/bun test ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts
     '';
     execIfModified = [
       "BUCK"
       "genie/buck2/**/*.ts"
       "genie/buck2/fixtures/**/*"
+      "genie/ci-workflow/test-scheduling.json"
+      "scripts/editor-view-authority.ts"
+      "scripts/editor-view-authority.unit.test.ts"
       "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
       "packages/@overeng/buck2-tools/src/**/*.ts"
     ];

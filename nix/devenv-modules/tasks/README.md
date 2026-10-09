@@ -150,9 +150,11 @@ for outer tasks that must complete before the nested devenv process can evaluate
     non-interactive callers; `DEVENV_FORCE_SETUP=1` explicitly overrides it.
 - `test.nix` - Test tasks
   - A package's `installTask` overrides the shared installer for direct
-    `test:<name>` execution. `test:run` batches use execution aliases with the
-    shared installer and ordered barriers; direct tasks never run earlier
-    batches. Package-specific `after` prerequisites apply to both paths.
+    `test:<name>` execution. `test:run` uses weighted execution chains with the
+    shared installer: a chain advances independently when its preceding task
+    finishes, without a whole-batch barrier. Direct tasks never pull other
+    packages into their closure. Package-specific `after` prerequisites apply
+    to both paths; the aggregate waits for every chain tail and extra test.
 - `test-playwright.nix` - Playwright e2e tasks
 - `vercel.nix` - Vercel deploy tasks
   - Static and build-mode deploys delegate provider behavior to `ci-tools deploy vercel`.
@@ -178,7 +180,7 @@ They assume the effect-utils repo structure and are not exported in flake.nix.
 ### Characteristics:
 
 - **Hardcoded paths** (e.g., `packages/@overeng/*`, `devenv.nix` location)
-- **No parameters** - simple inline definitions
+- **Repository-owned parameters** - local policy stays in this checkout
 - **Not exported** in flake.nix
 - **Repo-specific logic** that wouldn't make sense elsewhere
 
@@ -190,12 +192,14 @@ They assume the effect-utils repo structure and are not exported in flake.nix.
 
 `devenv-modules:test` discovers every `shared/tests/*.test.sh`; it does not
 filter the suite. `local/devenv-module-tests.sh` runs unaudited and shared-checkout
-state scripts serially before starting a fixed two-worker pool for explicitly
-admitted scripts. Both phases keep running after failures. The aggregate fails
-if any script fails, and stderr records each script's UTC start/end timestamp,
-scheduling class, and original exit status. Stdout and stderr are not discarded.
-The Nix task pins Bash, GNU date, and xargs; the runner uses the GNU/BSD common
-`xargs -0 -n 1 -P 2` interface rather than Bash-version-specific `wait -n`.
+state scripts serially before starting a bounded worker pool for explicitly
+admitted scripts. Only admitted scripts are ordered longest-first, with lexical
+ties and weight one for scripts without a declared duration. Both phases keep
+running after failures. The aggregate fails if any script fails, and stderr
+records each script's UTC start/end timestamp, scheduling class, and original
+exit status. Stdout and stderr are not discarded. The Nix task pins Bash,
+GNU date, jq, and xargs; the runner uses the GNU/BSD common
+`xargs -0 -n 1 -P <workers>` interface rather than Bash-version-specific `wait -n`.
 Worker failures, including exit 255, are normalized only at the xargs boundary
 so xargs cannot stop dispatching the remaining scripts. The supervisor waits
 for the complete pool on ordinary failures and on INT/TERM to the supervisor.
@@ -286,45 +290,55 @@ evaluation/cache state. All unaudited additions also remain serial.
 
 `devenv-module-tests-runner.test.sh` is also serial. Its FIFO-gated fixtures
 exercise the actual runner, including explicit daemon/publisher/teardown
-admission and the graph-check serial barrier: two-worker bounds, continued
+admission and the graph-check serial barrier: four-worker bounds, the
+three-worker fallback, longest-first dispatch, continued
 dispatch after either worker or the serial phase fails, exit-255 coverage,
 per-script verdicts, cwd/environment isolation, complete child cleanup/reaping,
 unknown filenames with spaces, empty/missing suites, and draining after
 supervisor TERM.
 
-#### Baseline scheduling prediction
+#### Declared scheduling policy and evidence
 
-The per-script start/end records in
-[run 37861666259](https://github.com/overengineeringstudio/effect-utils/actions/runs/37861666259)
-give these durations in seconds, rather than evaluator-site counts:
+[`genie/ci-workflow/test-scheduling.json`](../../../genie/ci-workflow/test-scheduling.json)
+is the checked-in scheduling authority. Its `workers` setting defaults to four
+for both source-task chains and module-test workers. Change this one setting
+to three for the lower-concurrency fallback; no runtime timing download or
+environment-dependent worker override changes the CI policy.
 
-| Script                       |   Linux |  Darwin |
-| ---------------------------- | ------: | ------: |
-| `pnpm-task-smoke`            |  39.790 |  34.170 |
-| `worktree-teardown`          |  35.891 |  54.246 |
-| `pnpm-gvs`                   |  20.290 |  24.512 |
-| `pipeline-run`               |  15.017 |  17.427 |
-| `buck2-capability-daemon`    |  13.052 |  19.594 |
-| `buck2-capability-publish`   |  11.391 |  25.661 |
-| `devenv-task-graph` (serial) |   0.256 |   0.253 |
-| One serial script            |   0.256 |   0.253 |
-| All 42 admitted scripts      | 206.586 | 247.414 |
+The table's positive integer weights round up observed Darwin seconds from
+[run 37886131764](https://github.com/overengineeringstudio/effect-utils/actions/runs/37886131764).
+Missing weights use one, so newly selected tasks still execute. Source tasks
+are assigned longest-first to the least-loaded chain; ties are deterministic.
+Editor publication starts the longest declared views first in its existing
+four-worker publisher, without changing authority, snapshot validation, or
+commit serialization.
 
-**[INFERENCE]** Replaying the admitted scripts in lexical order onto the next
-available of two workers, holding each observed duration fixed, gives worker
-loads of 98.461/108.125 s on Linux and 105.439/141.974 s on Darwin. Adding the
-serial barrier and retaining the original task overhead predicts module tasks
-of 108.642/142.497 s versus the observed 207.103/247.936 s: about 98.461/105.439 s
-of module-duration saving. This is a scheduling model, not an exercised speedup;
-it excludes the newly added runner test's duration and extra dispatch cost,
-and does not model Nix/store/CPU contention or changed cold/warm ordering.
+| Observed Darwin phase/script | Seconds |
+| ---------------------------- | ------: |
+| Module task, two workers     | 162.926 |
+| `worktree-teardown`          |  50.859 |
+| `buck2-capability-publish`   |  46.243 |
+| `buck2-capability-daemon`    |  36.662 |
+| `pnpm-task-smoke`            |  35.419 |
+| `pnpm-gvs`                   |  21.660 |
+| `pipeline-run`               |  18.069 |
+| Source whole-batch chain     | 135.347 |
+| Editor test publication      | 164.919 |
+| Final Buck collector         |   1.642 |
 
-Both baseline module tasks were critical. Source batches finished only
-16.114 s earlier on Linux and 68.556 s earlier on Darwin, so this lever alone
-has predicted job savings capped at 16.114/68.556 s, not the full module saving.
-Both source branches become critical. Accelerating them separately can unlock
-more of the module saving.
-The final collector's 38.643/39.080 s is unchanged.
+**[INFERENCE]** Holding these observed durations fixed, four longest-first
+module workers give about 77 seconds including the serial prefix, and four
+weighted source chains give about 72 seconds. Together they could shorten the
+critical test tail by about 86 seconds. This is a scheduling model, not a
+measured four-worker speedup: increased CPU, Nix evaluation, filesystem, or
+daemon contention can lengthen individual tasks. Changing only one branch
+cannot realize their combined modeled saving.
+
+The run's host sampler saw a peak summed process RSS of 15.66 GiB on 28 GiB,
+no observed compression/pageouts, and peak summed process lifetime-average
+CPU of 1164.9% on 12 CPUs. CPU is not interval utilization, and peaks have no
+phase timestamps. The four-worker choice requires an actual merge-group
+observation; use the declared three-worker fallback if contention warrants it.
 
 Focused verification (inside the pinned development shell):
 
