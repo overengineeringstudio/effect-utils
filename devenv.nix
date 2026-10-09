@@ -1108,6 +1108,8 @@ in
       "nix/buck2.nix"
       "scripts/buck2-entrypoint.*"
       "scripts/buck2-cache-posture.*"
+      "scripts/buck2-remote-cache-proof.sh"
+      "genie/ci-scripts/buck2-action-evidence.ts"
       "scripts/buck2-file-watcher.*"
     ];
   };

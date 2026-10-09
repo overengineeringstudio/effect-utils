@@ -3,8 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { createServer, type ServerHttp2Stream } from 'node:http2'
 import { createServer as createTcpServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
+import { localMaterializationCategories } from '../genie/ci-scripts/buck2-action-evidence.ts'
 import {
   probeRemoteCacheCapabilities,
   publicProbeAddress,
@@ -387,5 +388,78 @@ describe('REAPI probe diagnostics', () => {
       expect(JSON.stringify(failures)).not.toContain('private-host.example')
       expect(JSON.stringify(failures)).not.toContain('credential-secret')
     }
+  })
+})
+
+describe('fresh-root remote build proof', () => {
+  const replay = (actions: readonly { category: string; executionKind: number }[]) => {
+    const root = makeRoot()
+    const events = join(root, 'events.jsonl')
+    writeFileSync(
+      events,
+      actions
+        .map(({ category, executionKind }) =>
+          JSON.stringify({
+            Event: {
+              data: {
+                SpanEnd: {
+                  data: {
+                    ActionExecution: {
+                      name: { category },
+                      execution_kind: executionKind,
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        )
+        .join('\n'),
+    )
+    const repoRoot = resolve(import.meta.dirname, '..')
+    return Bun.spawnSync(
+      [
+        'bash',
+        join(repoRoot, 'scripts/buck2-remote-cache-proof.sh'),
+        '--assert-context-b-build',
+        events,
+      ],
+      { cwd: repoRoot, env: { ...process.env, GITHUB_WORKSPACE: repoRoot } },
+    )
+  }
+
+  const descriptorHit = { category: 'javascript_product_descriptor', executionKind: 3 }
+
+  it('accepts remote compute hits alongside every intentionally local materialization category', () => {
+    const result = replay([
+      descriptorHit,
+      { category: 'tsgo_emit', executionKind: 3 },
+      ...localMaterializationCategories.flatMap((category) =>
+        [1, 7, 8, 10].map((executionKind) => ({ category, executionKind })),
+      ),
+    ])
+    expect(result.exitCode).toBe(0)
+  })
+
+  it('rejects executed or locally reused cache-eligible actions despite a descriptor remote hit', () => {
+    for (const category of ['tsgo_emit', 'package_bin_artifact', 'unknown_category']) {
+      for (const executionKind of [1, 2, 7, 8, 10, 11]) {
+        const result = replay([descriptorHit, { category, executionKind }])
+        expect(result.exitCode).toBe(1)
+        expect(result.stdout.toString()).toContain('Context B executed a cache-eligible action')
+      }
+    }
+  })
+
+  it('still requires both a remote hit and the explicit remote descriptor hit', () => {
+    const missingAllHits = replay([{ category: 'package_tree', executionKind: 1 }])
+    expect(missingAllHits.exitCode).toBe(1)
+    expect(missingAllHits.stdout.toString()).toContain('did not report a remote action-cache hit')
+
+    const missingDescriptor = replay([{ category: 'tsgo_emit', executionKind: 3 }])
+    expect(missingDescriptor.exitCode).toBe(1)
+    expect(missingDescriptor.stdout.toString()).toContain(
+      'did not reuse the remote product descriptor',
+    )
   })
 })

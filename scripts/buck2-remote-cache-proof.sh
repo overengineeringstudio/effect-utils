@@ -3,9 +3,6 @@ set -euo pipefail
 
 source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"
 cd "$source_root"
-bun scripts/buck2-cache-posture.ts "$source_root"
-grep -Fq 'allow_cache_uploads = true' .buckconfig.local || { echo '::error::publisher cache posture was not selected'; exit 1; }
-buck="${BUCK2_BIN:?BUCK2_BIN not set}"
 # `log show` emits numeric protobuf enums in the pinned Buck2 release:
 # https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_data/data.proto
 readonly ACTION_EXECUTION_KIND_LOCAL=1
@@ -13,6 +10,33 @@ readonly ACTION_EXECUTION_KIND_ACTION_CACHE=3
 readonly UPLOAD_RESULT_UPLOADED=1
 # LOCAL, REMOTE, LOCAL_DEP_FILE, LOCAL_WORKER, LOCAL_ACTION_CACHE, REMOTE_WORKER.
 readonly EXECUTED_OR_LOCAL_CACHE_KINDS='[1,2,7,8,10,11]'
+
+# Offline replay uses the same assertions as the fresh-root build below.
+assert_context_b_build() {
+  local evidence="$1" excluded_categories
+  excluded_categories="$(bun -e 'import { localMaterializationCategories } from "./genie/ci-scripts/buck2-action-evidence.ts"; console.log(JSON.stringify(localMaterializationCategories))')"
+  if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind == $action_cache)' "$evidence" >/dev/null; then
+    echo '::error::Context B did not report a remote action-cache hit'
+    return 1
+  fi
+  if jq -e --argjson kinds "$EXECUTED_OR_LOCAL_CACHE_KINDS" --argjson excluded "$excluded_categories" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | ($excluded | index($action.name.category) | not) and ($kinds | index($action.execution_kind)))' "$evidence" >/dev/null; then
+    echo '::error::Context B executed a cache-eligible action or reused local action state instead of relying on the remote action cache'
+    return 1
+  fi
+  if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "javascript_product_descriptor" and $action.execution_kind == $action_cache)' "$evidence" >/dev/null; then
+    echo '::error::Context B did not reuse the remote product descriptor action'
+    return 1
+  fi
+}
+
+if [ "${1:-}" = --assert-context-b-build ]; then
+  assert_context_b_build "${2:?native event log path required}"
+  exit
+fi
+
+bun scripts/buck2-cache-posture.ts "$source_root"
+grep -Fq 'allow_cache_uploads = true' .buckconfig.local || { echo '::error::publisher cache posture was not selected'; exit 1; }
+buck="${BUCK2_BIN:?BUCK2_BIN not set}"
 context_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-context-b"
 target='effect_utils//packages/@overeng/ci-tools:ci-tools-candidate'
 test_target='effect_utils//packages/@overeng/content-address:test'
@@ -135,20 +159,9 @@ grep -Fq 'remote_cache_enabled = true' .buckconfig.local || { echo '::error::rea
 grep -Fq 'allow_cache_uploads = false' .buckconfig.local || { echo '::error::reader cache uploads were not disabled'; exit 1; }
 if grep -Fq 'http_headers' .buckconfig.local; then echo '::error::reader cache inherited publisher auth'; exit 1; fi
 
-# The independent build must hit the remote action cache, not run an action.
+# Cache-eligible build actions must hit remotely; materialization stays local by policy.
 run_proof_command "$evidence_b" proof-b-build build --local-only "$target"
-if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind == $action_cache)' "$evidence_b" >/dev/null; then
-  echo '::error::Context B did not report a remote action-cache hit'
-  exit 1
-fi
-if jq -e --argjson kinds "$EXECUTED_OR_LOCAL_CACHE_KINDS" 'select(.Event.data.SpanEnd.data.ActionExecution.execution_kind as $kind | $kinds | index($kind))' "$evidence_b" >/dev/null; then
-  echo '::error::Context B executed an action or reused local action state instead of relying on the remote action cache'
-  exit 1
-fi
-if ! jq -e --argjson action_cache "$ACTION_EXECUTION_KIND_ACTION_CACHE" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "javascript_product_descriptor" and $action.execution_kind == $action_cache)' "$evidence_b" >/dev/null; then
-  echo '::error::Context B did not reuse the remote product descriptor action'
-  exit 1
-fi
+assert_context_b_build "$evidence_b"
 descriptor_path="$("$buck" build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value')"
 cp "$descriptor_path" "$descriptor_b"
 if ! cmp -s "$descriptor_a" "$descriptor_b"; then

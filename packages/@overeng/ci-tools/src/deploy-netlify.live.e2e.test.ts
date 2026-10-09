@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+
+import { redactDeployDiagnosticText } from './deploy-domain.ts'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
@@ -109,6 +111,7 @@ describe('ci-tools deploy netlify live E2E', () => {
         .slice(0, 24)
       const target = `ci-tools-e2e-${suffix}`
       const marker = `ci-tools-live-netlify-e2e:${runId}:${process.env.GITHUB_RUN_ATTEMPT ?? '0'}`
+      let succeeded = false
 
       try {
         mkdirSync(artifactDir, { recursive: true })
@@ -125,6 +128,21 @@ describe('ci-tools deploy netlify live E2E', () => {
           marker,
         })
         const token = process.env.NETLIFY_AUTH_TOKEN
+        const redactionOptions = { secretValues: token === undefined ? [] : [token] }
+        if (existsSync(reportFile) === true) {
+          writeFileSync(
+            reportFile,
+            redactDeployDiagnosticText(readFileSync(reportFile, 'utf8'), redactionOptions),
+          )
+        }
+        if (result.status !== 0) {
+          console.error(
+            redactDeployDiagnosticText(
+              `ci-tools exit status: ${result.status}\n${result.stdout}\n${result.stderr}`,
+              redactionOptions,
+            ),
+          )
+        }
         expect(
           token === undefined ? false : `${result.stdout}\n${result.stderr}`.includes(token),
         ).toBe(false)
@@ -141,8 +159,12 @@ describe('ci-tools deploy netlify live E2E', () => {
           alias: target,
           cleanup: 'skipped',
         })
+        succeeded = true
+      } catch (cause) {
+        console.error(`Live Netlify E2E failed; retained sanitized report at ${reportFile}`)
+        throw cause
       } finally {
-        rmSync(workspace, { recursive: true, force: true })
+        if (succeeded === true) rmSync(workspace, { recursive: true, force: true })
       }
     },
     180_000,
