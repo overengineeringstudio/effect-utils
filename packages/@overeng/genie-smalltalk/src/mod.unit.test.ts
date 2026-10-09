@@ -15,8 +15,62 @@ const canonical = () =>
       goal: 'Demonstrate KDL.',
       steps: [{ id: 'first', goal: 'Inspect input.', agentless: true }],
     }),
+    mission(fanInMission()),
   ])
+const fanInMission = () => ({
+  id: 'fan-in',
+  goal: 'Join independent work.',
+  steps: [
+    { id: 'first', agentless: true as const },
+    { id: 'second', agentless: true as const },
+    {
+      id: 'join',
+      agentless: true as const,
+      dependsOn: [
+        { step: 'first', state: 'completed' as const },
+        { step: 'second', state: 'completed' as const },
+      ],
+    },
+  ],
+})
+
 describe('Smalltalk declarations', () => {
+  it('renders AND fan-in as multiple ordered step entries in one depends-on block', () => {
+    expect(emit([mission(fanInMission())])).toBe(
+      'version 2\nmission "fan-in" {\n  goal "Join independent work."\n  step "first" {\n    agentless\n  }\n  step "second" {\n    agentless\n  }\n  step "join" {\n    agentless\n    depends-on {\n      step "first" "completed"\n      step "second" "completed"\n    }\n  }\n}\n',
+    )
+  })
+  it('preserves singleton dependency KDL with list authoring', () => {
+    const input = fanInMission()
+    input.steps[2]!.dependsOn = [{ step: 'first', state: 'completed' }]
+    expect(emit([mission(input)])).toContain(
+      'depends-on {\n      step "first" "completed"\n    }',
+    )
+  })
+  it.each([
+    { dependsOn: [] },
+    {
+      dependsOn: [
+        { step: 'first', state: 'completed' },
+        { step: 'missing', state: 'completed' },
+      ],
+    },
+    {
+      dependsOn: [
+        { step: 'first', state: 'completed' },
+        { step: 'second', state: 'failed' },
+      ],
+    },
+    { dependsOn: { step: 'first', state: 'completed' } },
+  ])('rejects invalid dependency lists %j', ({ dependsOn }) => {
+    const input = fanInMission()
+    expect(() =>
+      mission({
+        ...input,
+        steps: [...input.steps.slice(0, 2), { id: 'join', agentless: true, dependsOn }],
+      } as never),
+    ).toThrow()
+  })
   it('resumes an exact Codex session without overriding provider defaults', () => {
     const seat = agent({
       id: 'example/codex',
