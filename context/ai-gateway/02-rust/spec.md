@@ -75,4 +75,3 @@ wrapper operation span
 The wrapper owns the semantic operation span, not async-openai internals. Follow [the parent's telemetry contract](../spec.md#client-telemetry-aig-r12) for names and `gen_ai.*` attributes. Ordinary/structured chat and a model tool-call exchange are chat operations; native decisions use the documented decision operation. Keep the span open through final usage and local validation, or through error/cancellation, including when the consumer drops a stream. There is no detached success span created merely by receiving HTTP 200.
 
 Consumers supply OpenTelemetry subscribers/providers and exporters; the wrapper does not install process-global telemetry. No bearer, raw prompt, response text, or tool arguments are captured by default.
-

@@ -1,6 +1,6 @@
 # AI Gateway — Intuition
 
-*For: application and client-library authors · Assumes: HTTP and JSON · Covers: the shared contract and its realizations*
+_For: application and client-library authors · Assumes: HTTP and JSON · Covers: the shared contract and its realizations_
 
 ```text
 consumers

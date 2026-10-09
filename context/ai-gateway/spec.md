@@ -27,13 +27,13 @@ JSON requests use `Content-Type: application/json`. Chat responses are JSON unle
 
 ### Identifier ownership and compatibility
 
-| Identifier | Owner and grammar | Reader behavior |
-| --- | --- | --- |
-| HTTP paths, JSON keys, SSE `data` framing | OpenAI-compatible chat convention, with this contract's health and System One routes; case-sensitive | Use exact documented paths and discriminators; additional provider metadata may be retained without assigning new semantics. |
-| Model ID | Gateway catalog/provider namespace; nonempty `provider/model` string; prefix and remainder are opaque, case-sensitive catalog data | Preserve exact IDs, including slashes and `~` within the remainder. Never infer provider protocol, rewrite aliases, or assume availability from syntax. |
-| Decision question name | Caller-owned nonempty JSON object key, case-sensitive and unique within one request | Response keys correlate by exact name; missing requested names fail validation. |
-| `AI_GATEWAY_URL`, `AI_GATEWAY_TOKEN` | Repository-owned cross-language convention, uppercase ASCII names | Not OpenAI-standard `OPENAI_*` variables; no implicit fallback to a public provider endpoint. |
-| Response-format and question `type` | This wire's documented lowercase discriminators | One discriminator selects one semantic axis. Unknown types are not a supported request. |
+| Identifier                                | Owner and grammar                                                                                                                  | Reader behavior                                                                                                                                         |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP paths, JSON keys, SSE `data` framing | OpenAI-compatible chat convention, with this contract's health and System One routes; case-sensitive                               | Use exact documented paths and discriminators; additional provider metadata may be retained without assigning new semantics.                            |
+| Model ID                                  | Gateway catalog/provider namespace; nonempty `provider/model` string; prefix and remainder are opaque, case-sensitive catalog data | Preserve exact IDs, including slashes and `~` within the remainder. Never infer provider protocol, rewrite aliases, or assume availability from syntax. |
+| Decision question name                    | Caller-owned nonempty JSON object key, case-sensitive and unique within one request                                                | Response keys correlate by exact name; missing requested names fail validation.                                                                         |
+| `AI_GATEWAY_URL`, `AI_GATEWAY_TOKEN`      | Repository-owned cross-language convention, uppercase ASCII names                                                                  | Not OpenAI-standard `OPENAI_*` variables; no implicit fallback to a public provider endpoint.                                                           |
+| Response-format and question `type`       | This wire's documented lowercase discriminators                                                                                    | One discriminator selects one semantic axis. Unknown types are not a supported request.                                                                 |
 
 Examples: `anthropic/claude-haiku-4-5` is a provider ID;
 `openrouter/~typesafe/jev-latest` is a route/alias ID;
@@ -51,16 +51,18 @@ The catalog envelope is:
 ```json
 {
   "object": "list",
-  "data": [{
-    "id": "anthropic/claude-haiku-4-5",
-    "object": "model",
-    "owned_by": "anthropic",
-    "api": "anthropic-messages",
-    "display_name": "Claude Haiku 4.5",
-    "input_modalities": ["text", "image"],
-    "context_length": 200000,
-    "max_output_tokens": 64000
-  }]
+  "data": [
+    {
+      "id": "anthropic/claude-haiku-4-5",
+      "object": "model",
+      "owned_by": "anthropic",
+      "api": "anthropic-messages",
+      "display_name": "Claude Haiku 4.5",
+      "input_modalities": ["text", "image"],
+      "context_length": 200000,
+      "max_output_tokens": 64000
+    }
+  ]
 }
 ```
 
@@ -85,13 +87,15 @@ A representative nonstreaming response is:
   "object": "chat.completion",
   "created": 1700000000,
   "model": "anthropic/claude-haiku-4-5",
-  "choices": [{
-    "index": 0,
-    "message": {"role":"assistant", "content":"Hello"},
-    "finish_reason": "stop",
-    "logprobs": null
-  }],
-  "usage": {"prompt_tokens":12, "completion_tokens":2, "total_tokens":14}
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "Hello" },
+      "finish_reason": "stop",
+      "logprobs": null
+    }
+  ],
+  "usage": { "prompt_tokens": 12, "completion_tokens": 2, "total_tokens": 14 }
 }
 ```
 
@@ -138,10 +142,10 @@ original schema -> client projection -> response_format -> gateway adaptation
 
 The supported response-format discriminators are:
 
-| Mode | Request | Guarantee |
-| --- | --- | --- |
-| Text | `{"type":"text"}` | Ordinary text; no structured-value guarantee. |
-| JSON object | `{"type":"json_object"}` | Request JSON object formatting, not validation against a caller schema; a backend may refuse it. |
+| Mode        | Request                                                                                                                                                                                        | Guarantee                                                                                                                          |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Text        | `{"type":"text"}`                                                                                                                                                                              | Ordinary text; no structured-value guarantee.                                                                                      |
+| JSON object | `{"type":"json_object"}`                                                                                                                                                                       | Request JSON object formatting, not validation against a caller schema; a backend may refuse it.                                   |
 | JSON Schema | `{"type":"json_schema","json_schema":{"name":"document","schema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false},"strict":true}}` | Request native schema formatting; original-schema validation remains a client obligation. `description` and `strict` are optional. |
 
 Malformed known formats and unsupported constrained formats fail. Some providers refuse `json_object` and require `json_schema`. Schema names may be sanitized/truncated to 64 characters for provider transport; that does not change the validation schema.
@@ -163,11 +167,19 @@ This is a separate nonstreaming operation, not a chat fallback or persistent ses
 ```json
 {
   "model": "openrouter/~typesafe/jev-latest",
-  "state": {"ticket":"Charged twice"},
+  "state": { "ticket": "Charged twice" },
   "questions": {
-    "department": {"type":"choice", "instructions":"Which team handles this?", "criteria":{"billing":"Payments", "technical":"Bugs"}},
-    "urgent": {"type":"noul", "instructions":"Needs action today?"},
-    "frustration": {"type":"score", "instructions":"How frustrated is the customer?", "criteria":["calm","frustrated","angry"]}
+    "department": {
+      "type": "choice",
+      "instructions": "Which team handles this?",
+      "criteria": { "billing": "Payments", "technical": "Bugs" }
+    },
+    "urgent": { "type": "noul", "instructions": "Needs action today?" },
+    "frustration": {
+      "type": "score",
+      "instructions": "How frustrated is the customer?",
+      "criteria": ["calm", "frustrated", "angry"]
+    }
   }
 }
 ```
@@ -177,11 +189,22 @@ This is a separate nonstreaming operation, not a chat fallback or persistent ses
 ```json
 {
   "answers": {
-    "department": {"type":"choice", "choice":"billing", "probabilities":{"billing":0.9,"technical":0.1}, "confidence":0.8},
-    "urgent": {"type":"noul", "noul":0.7},
-    "frustration": {"type":"score", "score":1.2, "probabilities":{"0":0,"1":0.8,"2":0.2}, "legend":{"0":"calm","1":"frustrated","2":"angry"}, "confidence":0.6}
+    "department": {
+      "type": "choice",
+      "choice": "billing",
+      "probabilities": { "billing": 0.9, "technical": 0.1 },
+      "confidence": 0.8
+    },
+    "urgent": { "type": "noul", "noul": 0.7 },
+    "frustration": {
+      "type": "score",
+      "score": 1.2,
+      "probabilities": { "0": 0, "1": 0.8, "2": 0.2 },
+      "legend": { "0": "calm", "1": "frustrated", "2": "angry" },
+      "confidence": 0.6
+    }
   },
-  "usage": {"input_tokens":218,"output_tokens":39}
+  "usage": { "input_tokens": 218, "output_tokens": 39 }
 }
 ```
 
@@ -198,17 +221,17 @@ request -> local validation / transport / HTTP refusal / stream error / output v
         -> success only when the selected operation completes and checks pass
 ```
 
-| Status | Meaning |
-| --- | --- |
-| 400 | Invalid JSON/model payload, malformed supported response format, or provider schema rejection. |
-| 401 | Missing, invalid, or revoked consumer bearer. |
-| 404 | Unknown model or route; no guessed alias fallback. |
-| 422 | Invalid native decision request or a non-judgment model selected for decisions. |
-| 429 | Provider/rate-limit refusal; preserve any Retry-After hint. |
-| 499 | Request aborted where reported by the gateway. |
-| 500 | Internal gateway/provider error. |
-| 502 | Upstream transport unavailable. |
-| 503 | Failed health check or upstream/service unavailable. |
+| Status | Meaning                                                                                        |
+| ------ | ---------------------------------------------------------------------------------------------- |
+| 400    | Invalid JSON/model payload, malformed supported response format, or provider schema rejection. |
+| 401    | Missing, invalid, or revoked consumer bearer.                                                  |
+| 404    | Unknown model or route; no guessed alias fallback.                                             |
+| 422    | Invalid native decision request or a non-judgment model selected for decisions.                |
+| 429    | Provider/rate-limit refusal; preserve any Retry-After hint.                                    |
+| 499    | Request aborted where reported by the gateway.                                                 |
+| 500    | Internal gateway/provider error.                                                               |
+| 502    | Upstream transport unavailable.                                                                |
+| 503    | Failed health check or upstream/service unavailable.                                           |
 
 Gateway-generated errors commonly have `{"error":{"message":"Invalid bearer","type":"authentication_error","code":null}}`; other gateway errors use `type: "gateway_error"`. Provider errors commonly have `{"error":{"message":"Unknown model","type":"invalid_request_error"}}` without `code` or `param`. Other failures can contain plain error strings or non-JSON bodies. Clients preserve HTTP status and available error type/message/raw body rather than requiring the full OpenAI error schema. Supplied provider statuses remain failures, even when not listed above. SSE errors retain their payload and operation failure even though the HTTP status is 200. Local schema/answer-validation failure is distinguishable from HTTP rejection.
 
@@ -250,15 +273,15 @@ success, HTTP failure, stream failure, and local validation failure, with
 applicable text, object, usage, tool calls, error status/type, or decision answers.
 Structured cases also retain the caller's original JSON Schema for validation.
 
-| Case IDs | Contract exercised |
-| --- | --- |
-| `models.list`, `chat.text` | Model catalog and ordinary generation. |
-| `chat.stream.usage`, `chat.stream.error-after-200` | Usage-only SSE chunks and errors after HTTP success. |
-| `chat.auth.none-401` | Absent bearer and authentication rejection. |
+| Case IDs                                                            | Contract exercised                                                  |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `models.list`, `chat.text`                                          | Model catalog and ordinary generation.                              |
+| `chat.stream.usage`, `chat.stream.error-after-200`                  | Usage-only SSE chunks and errors after HTTP success.                |
+| `chat.auth.none-401`                                                | Absent bearer and authentication rejection.                         |
 | `structured.valid`, `structured.invalid`, `structured.rejected-400` | Structured success, original-schema validation, and format refusal. |
-| `tools.call`, `tools.result` | Tool-call preservation and result continuation. |
-| `decision.triage`, `decision.invalid-422` | Native decisions and rejected requests. |
-| `errors.upstream-404`, `errors.rate-limited-429`, `errors.edge-502` | Distinguishable unsuccessful HTTP outcomes. |
+| `tools.call`, `tools.result`                                        | Tool-call preservation and result continuation.                     |
+| `decision.triage`, `decision.invalid-422`                           | Native decisions and rejected requests.                             |
+| `errors.upstream-404`, `errors.rate-limited-429`, `errors.edge-502` | Distinguishable unsuccessful HTTP outcomes.                         |
 
 The `01-effect`, `02-rust`, and edge realizations must replay every case. Each
 realization owns its replay adapter and local controlled transport or server
