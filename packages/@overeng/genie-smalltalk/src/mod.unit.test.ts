@@ -19,6 +19,7 @@ const canonical = () =>
   ])
 const fanInMission = () => ({
   id: 'fan-in',
+  state: 'ready' as const,
   goal: 'Join independent work.',
   steps: [
     { id: 'first', agentless: true as const },
@@ -37,15 +38,13 @@ const fanInMission = () => ({
 describe('Smalltalk declarations', () => {
   it('renders AND fan-in as multiple ordered step entries in one depends-on block', () => {
     expect(emit([mission(fanInMission())])).toBe(
-      'version 2\nmission "fan-in" {\n  goal "Join independent work."\n  step "first" {\n    agentless\n  }\n  step "second" {\n    agentless\n  }\n  step "join" {\n    agentless\n    depends-on {\n      step "first" "completed"\n      step "second" "completed"\n    }\n  }\n}\n',
+      'version 2\nmission "fan-in" state="ready" {\n  goal "Join independent work."\n  step "first" {\n    agentless\n  }\n  step "second" {\n    agentless\n  }\n  step "join" {\n    agentless\n    depends-on {\n      step "first" "completed"\n      step "second" "completed"\n    }\n  }\n}\n',
     )
   })
   it('preserves singleton dependency KDL with list authoring', () => {
     const input = fanInMission()
     input.steps[2]!.dependsOn = [{ step: 'first', state: 'completed' }]
-    expect(emit([mission(input)])).toContain(
-      'depends-on {\n      step "first" "completed"\n    }',
-    )
+    expect(emit([mission(input)])).toContain('depends-on {\n      step "first" "completed"\n    }')
   })
   it.each([
     { dependsOn: [] },

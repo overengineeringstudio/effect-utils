@@ -296,9 +296,10 @@ export const StepSchema = Schema.Struct({
   assignedTo: Schema.optionalKey(SubjectId),
   dependsOn: Schema.optionalKey(
     Schema.Array(DependsOnSchema).pipe(
-      Schema.refine((dependencies): dependencies is typeof dependencies => dependencies.length > 0, {
-        message: 'dependsOn needs at least one dependency',
-      }),
+      Schema.refine(
+        (dependencies): dependencies is typeof dependencies => dependencies.length > 0,
+        { message: 'dependsOn needs at least one dependency' },
+      ),
     ),
   ),
   goal: Schema.optionalKey(Text),
