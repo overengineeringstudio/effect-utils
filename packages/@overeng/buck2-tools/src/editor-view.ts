@@ -464,10 +464,10 @@ const canonicalTreeFingerprints = async ({
         ancestors: new Set([...ancestors, identity]),
       })
       const after = lstatSync(absolutePath, { bigint: true })
+      // Overlayfs may reassign directory inodes without a content or timestamp change.
       if (
         after.isDirectory() === false ||
         after.dev !== before.dev ||
-        after.ino !== before.ino ||
         after.mtimeNs !== before.mtimeNs ||
         after.ctimeNs !== before.ctimeNs
       )
@@ -570,7 +570,6 @@ const canonicalTreeFingerprints = async ({
   if (
     rootAfter.isDirectory() === false ||
     rootAfter.dev !== rootBefore.dev ||
-    rootAfter.ino !== rootBefore.ino ||
     rootAfter.mtimeNs !== rootBefore.mtimeNs ||
     rootAfter.ctimeNs !== rootBefore.ctimeNs
   )
@@ -2334,8 +2333,8 @@ const publishEditorViewCoordinated = async ({
 export const publishEditorView = (options: EditorViewOptions): Promise<EditorViewRecord> =>
   publishEditorViewCoordinated({ options })
 
-/** Shared bound; one view contains suspected cross-view overlap until #1743 establishes the cause. */
-export const editorViewPublicationWorkers = 1
+/** Shared bound for independent private preparations; commits remain serialized per state root. */
+export const editorViewPublicationWorkers = 4
 
 /**
  * Prepare a bounded set of independent views under exclusive state-root locks.

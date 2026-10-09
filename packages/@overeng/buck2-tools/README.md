@@ -28,9 +28,9 @@ store entry without writing its payload. Literal symlink targets participate in
 the input hash: a Buck artifact-path change is a new admission even when package
 file bytes are unchanged, and therefore materializes a new byte-owned snapshot.
 
-Batch publication prepares one private candidate at a time and serializes
-commits within each editor state root. Independent root fingerprints within
-that candidate still run concurrently. All fingerprint subprocesses
+Batch publication prepares up to four private candidates concurrently and
+serializes commits within each editor state root. Independent root fingerprints
+within each candidate also run concurrently. All fingerprint subprocesses
 for a candidate settle before hardening, promotion, or failure cleanup can
 change it. A failed fingerprint does not release the candidate or its state-root
 lock while another payload walk remains active.
@@ -41,6 +41,14 @@ active workers' package, view, state root, phase, and private candidate. Payload
 failures capture these states when the first fingerprint child fails, before
 waiting for the remaining children; the original error remains available as
 the cause.
+
+Tree stability compares entry type, device, modification/change times, and
+regular-file size. File and symlink inode identities remain checked; directory
+inode numbers are not persistent on every filesystem and are not a content
+stability signal. In particular, overlayfs without persistent inode mapping can
+reassign a directory inode on cache eviction without changing its contents or
+other metadata. Byte digests, link-target checks, and byte-ownership proofs are
+unchanged.
 
 Repository tasks retain **current plus previous (two snapshots per view)**,
 not two snapshots for the entire shared store. With `N` package views the bound

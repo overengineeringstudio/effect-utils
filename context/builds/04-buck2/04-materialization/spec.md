@@ -110,6 +110,12 @@ view digest, exact byte-owned snapshot digest, and deterministic snapshot name.
 Tree digests use the `effect-utils/tree-digest/v1` domain separator, unsigned
 UTF-8 byte ordering, length framing, and fail-closed checks for special or
 concurrently changing files.
+Stability checks retain entry type, device, modification/change times, regular-file
+size, and file/symlink inode identity. Directory inode numbers are excluded:
+[overlayfs inode properties](https://docs.kernel.org/filesystems/overlayfs.html#inode-properties)
+do not guarantee their persistence in every layer configuration. Directory
+content and link targets remain covered by the same tree digest and timestamps;
+the digest format and byte-ownership admission are unchanged.
 
 Before publication, `buck2:editor:authority` compares the canonical admission
 registry with tracked package manifests and a Buck `owner(...)` census. The
@@ -152,7 +158,7 @@ Bootstrap and publication commands submit all selected views in one
 stdin. Request size is not limited by the operating system's per-argument cap.
 The batch acquires each distinct state-root lock before preparing any view and
 holds every lock until all workers have settled. `editorViewPublicationWorkers`
-in the publisher is the single declared resource bound (one); bootstrap and
+in the publisher is the single declared resource bound (four); bootstrap and
 source-test publication both use it. Independent root fingerprints within a
 candidate remain concurrent. Native copy children are awaited asynchronously,
 with at most one per active view. Candidate names are unique per view operation;
