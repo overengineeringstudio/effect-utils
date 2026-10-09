@@ -2334,8 +2334,9 @@ const publishEditorViewCoordinated = async ({
 export const publishEditorView = (options: EditorViewOptions): Promise<EditorViewRecord> =>
   publishEditorViewCoordinated({ options })
 
-/** Shared bound; one view contains suspected cross-view overlap until #1743 establishes the cause. */
-export const editorViewPublicationWorkers = 1
+/** Temporary #1743 experiment branch only; never merge the test override into main. */
+export const editorViewPublicationWorkers =
+  process.env.EDITOR_VIEW_TEST_PUBLICATION_WORKERS === '4' ? 4 : 1
 
 /**
  * Prepare a bounded set of independent views under exclusive state-root locks.

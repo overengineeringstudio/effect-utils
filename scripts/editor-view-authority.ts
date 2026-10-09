@@ -232,7 +232,25 @@ const main = async (): Promise<void> => {
       repoRoot: options.repoRoot,
       workspaceRoot: options.workspaceRoot,
       buck2: options.buck2,
-      editorViewCommand: [process.execPath, options.publisher],
+      // Temporary #1743 branch instrumentation: trace only the finite publisher,
+      // not Buck/Watchman daemons whose lifetimes outlast a build command.
+      editorViewCommand:
+        process.env.EDITOR_VIEW_TEST_SYSCALL_TRACE === undefined
+          ? [process.execPath, options.publisher]
+          : [
+              'strace',
+              '-f',
+              '-ttt',
+              '-yy',
+              '-s',
+              '512',
+              '-e',
+              'trace=execve,exit_group,chmod,fchmod,fchmodat,fchmodat2,utimensat,rename,renameat,renameat2,unlink,unlinkat,symlink,symlinkat,link,linkat,mkdir,mkdirat,openat',
+              '-o',
+              process.env.EDITOR_VIEW_TEST_SYSCALL_TRACE,
+              process.execPath,
+              options.publisher,
+            ],
       workspaceAuthority: options.output,
       cp: options.cp,
       mv: options.mv,

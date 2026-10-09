@@ -1031,6 +1031,7 @@ in
     pkgs.bun
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
+    pkgs.strace # Temporary #1743 Namespace experiment; trace candidate metadata writers.
     # Buck's admitted event backend; avoids pnpm alias staleness and whole-tree
     # crawler races under concurrent repository tools.
     pkgs.watchman
