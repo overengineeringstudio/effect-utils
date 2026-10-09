@@ -563,7 +563,7 @@ const readActivityManifest = Effect.fn('store.readActivityManifest')(function* (
   if (info.type !== 'File' || Number(info.size) > MANIFEST_BYTES) {
     return yield* unavailable('Activity manifest is not a bounded regular file')
   }
-  const manifest = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ActivityManifest))(
+  const manifest = yield* Schema.decodeEffect(Schema.fromJsonString(ActivityManifest))(
     yield* fs.readFileString(path),
   )
   if (producers.includes(manifest.producer.name) === false) {
@@ -655,10 +655,9 @@ const readActivityManifest = Effect.fn('store.readActivityManifest')(function* (
 const readBootId = (fs: FileSystem.FileSystem) =>
   fs.readFileString('/proc/sys/kernel/random/boot_id').pipe(
     Effect.map((content) => content.trim()),
-    Effect.flatMap((bootId) =>
-      bootId.length === 0
-        ? Effect.fail(unavailable('Host boot identity is unavailable'))
-        : Effect.succeed(bootId),
+    Effect.filterOrFail(
+      (bootId) => bootId.length > 0,
+      () => unavailable('Host boot identity is unavailable'),
     ),
   )
 
@@ -699,7 +698,7 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
       Effect.map((path): string | undefined => path),
       Effect.catch((error: PlatformError) =>
         error.reason._tag === 'NotFound'
-          ? Effect.succeed(undefined)
+          ? Effect.void
           : Effect.fail(unavailable('PTY workspace cannot be canonicalized')),
       ),
     )

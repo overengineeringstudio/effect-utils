@@ -56,7 +56,7 @@ const REPO = { host: 'github.com', owner: 'acme', repo: 'widget' } as const
 const REPO_KEY = `${REPO.host}/${REPO.owner}/${REPO.repo}`
 
 const decodePlan = Schema.decodeUnknownSync(Schema.fromJsonString(BudgetPlan))
-type Plan = typeof BudgetPlan.Type
+type Plan = BudgetPlan
 
 // =============================================================================
 // Root CLI subprocess

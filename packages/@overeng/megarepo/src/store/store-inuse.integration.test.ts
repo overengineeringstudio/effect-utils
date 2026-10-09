@@ -76,7 +76,7 @@ const spawnFdHolder = ({ cwd, file }: { cwd: string; file: string }): Promise<Ch
 const referenceModule = fileURLToPath(new URL('./store-inuse.ts', import.meta.url))
 const jsonModule = fileURLToPath(new URL('../test-utils/json.ts', import.meta.url))
 const ProcessIdentities = Schema.Array(
-  Schema.Struct({ pid: Schema.Number, startTime: Schema.String }),
+  Schema.Struct({ pid: Schema.Finite, startTime: Schema.String }),
 )
 
 const runReferenceFixture = ({
@@ -390,7 +390,7 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
             Effect.promise(() => spawnIdentityHolder({ cwd: outside })),
             ({ child }) => Effect.promise(() => stopIdentityHolder(child)),
           )
-          const coveredProcesses = Schema.decodeUnknownSync(ProcessIdentities)(
+          const coveredProcesses = yield* Schema.decodeUnknownEffect(ProcessIdentities)(
             runReferenceFixture({
               cwd: outside,
               asRoot: true,

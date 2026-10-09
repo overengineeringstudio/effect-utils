@@ -144,7 +144,7 @@ export const loadBuildOutputBudgetPolicyReceipt = Effect.fn(
   const content = yield* fs
     .readFileString(path)
     .pipe(Effect.mapError(() => fail(`Cannot read build-output budget policy: ${path}`)))
-  const policy = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BuildOutputBudgets), {
+  const policy = yield* Schema.decodeEffect(Schema.fromJsonString(BuildOutputBudgets), {
     onExcessProperty: 'error',
   })(content).pipe(
     Effect.mapError(() => fail(`Cannot decode megarepo.build-output-budgets.v1 policy: ${path}`)),
