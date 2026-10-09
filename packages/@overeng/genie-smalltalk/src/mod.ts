@@ -167,8 +167,10 @@ const AgentTaskFields = Schema.Struct({
   ),
 )
 
-const AgentTask = Schema.declare<typeof AgentTaskFields.Type>(
-  Schema.is(AgentTaskFields, { onExcessProperty: 'error' }),
+const AgentTask = Schema.declare<typeof AgentTaskFields.Encoded>(
+  (input): input is typeof AgentTaskFields.Encoded =>
+    Schema.is(AgentTaskFields)(input) &&
+    Reflect.ownKeys(input).every((key) => Object.hasOwn(AgentTaskFields.schema.fields, key)),
 ).annotate({ identifier: 'St.AgentTask' })
 
 const RenderOperation = Schema.Struct({
