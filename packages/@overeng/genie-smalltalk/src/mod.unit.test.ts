@@ -8,7 +8,9 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import {
   agent,
-  type AgentSchema,
+  type AgentReference,
+  AgentReferenceSchema,
+  AgentSchema,
   type CodexSchema,
   emit,
   mission,
@@ -18,6 +20,8 @@ import {
   type OmpSchema,
   resource,
   schedule,
+  step,
+  StepSchema,
   smalltalkKdl,
 } from './mod.ts'
 
@@ -87,6 +91,163 @@ describe('Smalltalk declarations', () => {
     expect(declaration.children?.some((entry) => entry.name === 'report-to')).toBe(false)
     expect(emit([declaration])).not.toContain('Mission watcher')
     expect(emit([declaration])).not.toContain('harness')
+  })
+  it('requires imported objects for step assignment and under targets', () => {
+    type AssignedTo = NonNullable<(typeof StepSchema.Encoded)['assignedTo']>
+    type UnderTarget = NonNullable<(typeof AgentSchema.Encoded)['under']>[number]['target']
+    expectTypeOf<string>().not.toMatchTypeOf<AssignedTo>()
+    expectTypeOf<`agent/${string}`>().not.toMatchTypeOf<AssignedTo>()
+    expectTypeOf<string>().not.toMatchTypeOf<UnderTarget>()
+    expectTypeOf<`agent/${string}`>().not.toMatchTypeOf<UnderTarget>()
+    expectTypeOf<typeof reporter>().toMatchTypeOf<AssignedTo>()
+    expectTypeOf<typeof reporter>().toMatchTypeOf<UnderTarget>()
+    expectTypeOf<typeof reporter>().toMatchTypeOf<AgentReference>()
+  })
+  it('lowers imported references to exact native IDs without referenced launch metadata', () => {
+    const input = {
+      id: 'assigned',
+      state: 'ready',
+      reportTo: reporter,
+      goal: 'Delegate work.',
+      steps: [{ id: 'inspect', assignedTo: reporter, goal: 'Inspect input.' }],
+    } satisfies typeof MissionSchema.Encoded
+    expect(emit([mission(input)])).toBe(
+      'version 2\nmission "assigned" report-to="agent/ops/watcher" state="ready" {\n  goal "Delegate work."\n  step "inspect" {\n    assigned-to "agent/ops/watcher"\n    goal "Inspect input."\n  }\n}\n',
+    )
+    expect(
+      emit([
+        agent({
+          id: 'ops/worker',
+          under: [{ target: reporter, reason: 'Delegated work.' }, { target: { id: 'other/manager' } }],
+        }),
+      ]),
+    ).toBe(
+      'version 2\nagent "ops/worker" {\n  under "agent/ops/watcher" reason="Delegated work."\n  under "agent/other/manager"\n}\n',
+    )
+  })
+  it('retains imported object identity and kit metadata for every reference position', () => {
+    const importedSeat = {
+      ...reporter,
+      env: { KIT_SESSION_HOME: '/sessions/kit' },
+      hold: { reason: 'Not deployed yet.' },
+      returnFacts: { assignedTo: 'Worker owns this boundary.' },
+    }
+    expect(Schema.decodeSync(AgentReferenceSchema)(importedSeat)).toBe(importedSeat)
+    const assigned = Schema.decodeSync(StepSchema)({ id: 'inspect', assignedTo: importedSeat })
+    const subordinate = Schema.decodeSync(AgentSchema)({
+      id: 'ops/worker',
+      under: [{ target: importedSeat }],
+    })
+    expect(assigned.assignedTo).toBe(importedSeat)
+    expect(subordinate.under?.[0]?.target).toBe(importedSeat)
+    expect(Schema.decodeSync(MissionSchema)({ ...fanInMission(), reportTo: importedSeat }).reportTo).toBe(
+      importedSeat,
+    )
+    const kdl = emit([
+      step({ id: 'inspect', assignedTo: importedSeat }),
+      agent({ id: 'ops/worker', under: [{ target: importedSeat }] }),
+    ])
+    for (const metadata of ['harness', 'Mission watcher', 'KIT_SESSION_HOME', 'hold', 'returnFacts']) {
+      expect(kdl).not.toContain(metadata)
+    }
+  })
+  it.each([
+    'agent/ops/watcher',
+    'ops/watcher',
+    'person/operator',
+    '',
+    { id: '' },
+    { id: '../bad' },
+    { id: 'ops//watcher' },
+    { id: '/ops/watcher' },
+    { id: 'ops/watcher/' },
+    { id: 'ops/../watcher' },
+    { id: 'ops watcher' },
+    { id: 'a'.repeat(513) },
+    { id: 1 },
+    {},
+    null,
+  ])('rejects invalid imported agent references in every position %j', (reference) => {
+    expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+    expect(() => Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference })).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
+    ).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
+    ).toThrow()
+  })
+  it.each([
+    { harness: { kind: 'omp', model: 'example-model' } },
+    { harness: { kind: 'omp', model: 'example-model', effort: 'xhigh' } },
+    { harness: { kind: 'codex', model: '', effort: 'high' } },
+    {
+      command: 'true',
+      harness: { kind: 'omp', model: 'example-model', effort: 'high' },
+    },
+    { command: 'true', argv: ['true'] },
+    { checkout: { repository: 'repo', base: 'main', branch: 'work' } },
+  ])('validates the complete referenced launch declaration %j', (launch) => {
+    const reference = { id: 'ops/invalid', ...launch }
+    expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+    expect(() => Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference })).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
+    ).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
+    ).toThrow()
+  })
+  it('validates imported supervisors recursively without losing reference identity', () => {
+    const supervisor = { id: 'ops/supervisor', under: [{ target: reporter }] }
+    expect(Schema.decodeSync(AgentReferenceSchema)(supervisor)).toBe(supervisor)
+    expect(
+      emit([agent({ id: 'ops/worker', under: [{ target: supervisor }] })]),
+    ).toBe('version 2\nagent "ops/worker" {\n  under "agent/ops/supervisor"\n}\n')
+    expect(() =>
+      Schema.decodeUnknownSync(AgentReferenceSchema)({
+        ...supervisor,
+        under: [{ target: { id: 'ops/invalid', harness: { kind: 'omp' } } }],
+      }),
+    ).toThrow()
+  })
+  it('omits restart from nested task authoring types while retaining root restart', () => {
+    type PtyTask = NonNullable<(typeof AgentSchema.Encoded)['pty']>[number]
+    type ExecTask = NonNullable<(typeof AgentSchema.Encoded)['exec']>[number]
+    expectTypeOf<Extract<'restart', keyof PtyTask>>().toBeNever()
+    expectTypeOf<Extract<'restart', keyof ExecTask>>().toBeNever()
+    expectTypeOf<Extract<'restart', keyof typeof AgentSchema.Encoded>>().toEqualTypeOf<'restart'>()
+    expect(
+      emit([
+        agent({
+          id: 'ops/worker',
+          restart: 'always',
+          pty: [{ id: 'shell', command: 'sh' }],
+          exec: [{ id: 'check', host: 'local', workspace: '/tmp', argv: ['true'] }],
+        }),
+      ]),
+    ).toBe(
+      'version 2\nagent "ops/worker" {\n  restart "always"\n  pty "shell" {\n    command "sh"\n  }\n  exec "check" {\n    host "local"\n    workspace "/tmp"\n    argv "true"\n  }\n}\n',
+    )
+  })
+  it.each(['pty', 'exec'] as const)('rejects excess restart on nested %s tasks at runtime', (kind) => {
+    for (const launch of [{ command: 'true' }, { argv: ['true'] }]) {
+      for (const restart of ['never', 'always', undefined]) {
+        const reference = { id: 'ops/worker', [kind]: [{ id: 'task', ...launch, restart }] }
+        expect(() => agent(reference)).toThrow()
+        expect(() => Schema.decodeUnknownSync(AgentSchema)(reference)).toThrow()
+        expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+        expect(() =>
+          Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+        ).toThrow()
+        expect(() =>
+          Schema.decodeUnknownSync(AgentSchema)({ id: 'ops/subordinate', under: [{ target: reference }] }),
+        ).toThrow()
+        expect(() =>
+          Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
+        ).toThrow()
+      }
+    }
   })
   it('renders AND fan-in as multiple ordered step entries in one depends-on block', () => {
     expect(emit([mission(fanInMission())])).toBe(
@@ -235,7 +396,7 @@ describe('Smalltalk declarations', () => {
         state: 'ready',
         reportTo: reporter,
         goal: 'go',
-        steps: [{ id: 'a', agentless: true, assignedTo: 'agent/a' }],
+        steps: [{ id: 'a', agentless: true, assignedTo: reporter }],
       }),
     ).toThrow()
     expect(() => agent({ id: 'demo', workspace: '/tmp', surprise: true } as never)).toThrow()

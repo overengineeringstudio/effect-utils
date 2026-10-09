@@ -158,7 +158,6 @@ const AgentTask = Schema.Struct({
   workspace: Schema.optionalKey(Text),
   command: Schema.optionalKey(Text),
   argv: Schema.optionalKey(Schema.Array(Text)),
-  restart: Schema.optionalKey(Restart),
 }).pipe(
   Schema.refine(
     (t): t is typeof t => Number(t.command !== undefined) + Number(t.argv !== undefined) === 1,
@@ -166,6 +165,7 @@ const AgentTask = Schema.Struct({
       message: 'task needs exactly one launch form',
     },
   ),
+  Schema.annotate({ parseOptions: { onExcessProperty: 'error' } }),
 )
 
 const RenderOperation = Schema.Struct({
@@ -199,6 +199,23 @@ export const CodexSchema = Schema.Struct({
   resume: Schema.optionalKey(Schema.Struct({ session: Text })),
 }).annotate({ identifier: 'St.Codex' })
 
+/**
+ * The ID view of an imported agent declaration. Validation still checks the full
+ * AgentSchema; this structural view keeps under references from recursively
+ * expanding AgentSchema's inferred type and retains the original object.
+ */
+export interface AgentReference {
+  readonly id: string
+}
+
+const isAgentReference = (input: unknown): input is AgentReference =>
+  isAgentDeclaration(input) && input.id.includes('//') === false
+
+/** An imported agent object, validated lazily without copying launch or kit metadata. */
+export const AgentReferenceSchema = Schema.declare<AgentReference>(isAgentReference).annotate({
+  identifier: 'St.AgentReference',
+})
+
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
   identity: Schema.optionalKey(Text),
@@ -216,7 +233,7 @@ const AgentSchemaFields = Schema.Struct({
     }),
   ),
   under: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ target: Text, reason: Schema.optionalKey(Text) })),
+    Schema.Array(Schema.Struct({ target: AgentReferenceSchema, reason: Schema.optionalKey(Text) })),
   ),
   restart: Schema.optionalKey(Restart),
   rollout: Schema.optionalKey(Schema.Literal('manual')),
@@ -264,6 +281,8 @@ export const AgentSchema = AgentSchemaFields.pipe(
   Schema.annotate({ identifier: 'St.Agent' }),
 )
 
+const isAgentDeclaration = Schema.is(AgentSchema)
+
 /** A step gate on an exit code or subject state. */
 export const GateSchema = Schema.Struct({
   name: Text,
@@ -296,7 +315,7 @@ export const StepSchema = Schema.Struct({
   id: LocalId,
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
-  assignedTo: Schema.optionalKey(SubjectId),
+  assignedTo: Schema.optionalKey(AgentReferenceSchema),
   dependsOn: Schema.optionalKey(
     Schema.Array(DependsOnSchema).pipe(
       Schema.refine(
@@ -339,7 +358,7 @@ export const ScheduleSchema = Schema.Struct({
  * Kit metadata on the declaration is not part of the reference.
  */
 export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(
-  Schema.is(AgentSchema),
+  isAgentDeclaration,
 ).pipe(
   Schema.refine((a): a is typeof a => a.id.includes('//') === false, {
     message: 'report-to agent ID must not contain empty path segments',
@@ -438,7 +457,9 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
   const s = decode({ schema: StepSchema, input })
   const children: Node[] = []
   if (s.agentless === true) children.push(node({ name: 'agentless' }))
-  if (s.assignedTo !== undefined) children.push(child({ name: 'assigned-to', value: s.assignedTo }))
+  if (s.assignedTo !== undefined) {
+    children.push(child({ name: 'assigned-to', value: `agent/${s.assignedTo.id}` }))
+  }
   if (s.dependsOn !== undefined) {
     children.push(
       block({
@@ -522,7 +543,6 @@ const taskNode = ({
       ...optionalChild({ name: 'workspace', value: task.workspace }),
       ...optionalChild({ name: 'command', value: task.command }),
       ...(task.argv === undefined ? [] : [node({ name: 'argv', args: task.argv })]),
-      ...optionalChild({ name: 'restart', value: task.restart }),
     ],
   })
 
@@ -564,7 +584,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
     children.push(
       node({
         name: 'under',
-        args: [under.target],
+        args: [`agent/${under.target.id}`],
         props: under.reason === undefined ? {} : { reason: under.reason },
       }),
     )

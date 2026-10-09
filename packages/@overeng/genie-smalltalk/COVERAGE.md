@@ -28,6 +28,18 @@ Native support starts at `compoundingtech/smalltalk` commit `3e7efce0663826a4e2b
 
 Changing `reportTo` changes the mission revision, not an agent's launch declaration. Existing runs retain the reporter recorded when they started; new runs use the new revision. Unit tests assert required/object-only authoring, invalid-reference rejection, and the exact mission-header KDL. The opt-in native conformance fixture publishes reporting missions through an isolated daemon.
 
+## Imported agent references
+
+Author `StepSchema.assignedTo` and each `AgentSchema.under[].target` with an imported agent declaration, just like mission `reportTo`. Strings (including `` `agent/${id}` ``) are not references. IDs are structural, not a registry or global enum: independently declared valid agent IDs work without registering them.
+
+`AgentReference` exposes the structural `{ readonly id: string }` view to avoid recursively expanding agent authoring types. `AgentReferenceSchema` defers validation to the complete `AgentSchema`, including harness routing, launch conflicts, nested supervisor references, and ID validation; empty ID path segments are rejected as for `ReportToSchema`. The imported object and any kit metadata retain their identity. The existing `ReportToSchema` API continues to expose the complete agent authoring type.
+
+Lowering emits only `assigned-to "agent/ID"` or `under "agent/ID" reason="..."`, never the referenced agent's launch configuration or kit metadata. There is no separate mission-agent launch API. Unit coverage includes exact KDL, object-only authoring types, invalid IDs and launches, and retained imported metadata.
+
+## Nested agent tasks
+
+Agent `pty` and `exec` tasks accept exactly one `command` or `argv` launch form and optional `host`/`workspace`; they do not accept or render `restart`. Excess task fields are rejected even when the containing agent is referenced rather than rendered. Unit assertions cover both task authoring types and runtime rejection, including an explicitly undefined `restart`. Root agent restart policy is unchanged; mission-step `ExecSchema.restart` remains a separate modeled field.
+
 ## Root agent contract and explicit routing
 
 All root agents use the generalist runtime and one contract: orchestrate and delegate heavy work to harness subagents and missions. Inline work is limited to accountable-boundary actions (pairing, asks, mission disposition, final merge/publish) and minimal small sequential commands or fixes. `AgentSchema` exposes no per-agent `role`, `persona`, or `runtime` selector; constructors reject these fields.
