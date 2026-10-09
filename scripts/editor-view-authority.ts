@@ -1,6 +1,7 @@
 #!/usr/bin/env -S bun
 import process from 'node:process'
 
+import testScheduling from '../genie/ci-workflow/test-scheduling.json'
 import { pnpmWorkspaceMemberPaths } from '../genie/packages.ts'
 import { reconcileBuckViews } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import type {
@@ -18,9 +19,11 @@ export const editorViewPackagePaths = ['.', ...pnpmWorkspaceMemberPaths].toSorte
 export const editorViewPlan = ({
   cell,
   packagePaths = editorViewPackagePaths,
+  packageWeights = {},
 }: {
   readonly cell: string
   readonly packagePaths?: readonly string[]
+  readonly packageWeights?: Readonly<Record<string, number>>
 }): BuckWatchPlan => ({
   globalPaths: [],
   packages: packagePaths
@@ -47,9 +50,17 @@ export const editorViewPlan = ({
         },
       }
     })
-    .toSorted((left, right) =>
-      left.packagePath === right.packagePath ? 0 : left.packagePath < right.packagePath ? -1 : 1,
-    ),
+    .toSorted((left, right) => {
+      const weightDifference =
+        (packageWeights[right.packagePath] ?? 1) - (packageWeights[left.packagePath] ?? 1)
+      return weightDifference !== 0
+        ? weightDifference
+        : left.packagePath === right.packagePath
+          ? 0
+          : left.packagePath < right.packagePath
+            ? -1
+            : 1
+    }),
 })
 /** Decode and validate the explicit package scope supplied to an editor-view publication. */
 export const decodePublicationPackagePaths = (serialized: string): readonly string[] => {
@@ -205,6 +216,7 @@ const main = async (): Promise<void> => {
   const plan = editorViewPlan({
     cell: options.cell,
     packagePaths: packageScope.publicationPackagePaths,
+    packageWeights: testScheduling.editorViewSeconds,
   })
   await reconcileBuckViews({
     request: {
