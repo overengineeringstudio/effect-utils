@@ -64,14 +64,19 @@ describe('Smalltalk declarations', () => {
     const { reportTo: _reportTo, ...unreported } = fanInMission()
     expect(() => Schema.decodeUnknownSync(MissionSchema)(unreported)).toThrow()
   })
-  it.each(['agent/ops/watcher', 'person/operator', 'none', undefined, { id: '' }, { id: '../bad' }])(
-    'rejects invalid reporting references %j',
-    (reportTo) => {
-      expect(() =>
-        Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo }),
-      ).toThrow()
-    },
-  )
+  it.each([
+    'agent/ops/watcher',
+    'person/operator',
+    'none',
+    undefined,
+    { id: '' },
+    { id: '../bad' },
+    { id: 'ops//watcher' },
+  ])('rejects invalid reporting references %j', (reportTo) => {
+    expect(() =>
+      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo }),
+    ).toThrow()
+  })
   it('renders only the native mission-level report property and retains imported kit metadata', () => {
     const importedSeat = { ...reporter, hold: { reason: 'Not deployed yet.' } }
     const input = { ...fanInMission(), reportTo: importedSeat }
