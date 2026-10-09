@@ -94,6 +94,18 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  packages/@overeng/ai-gateway-conformance:
+    devDependencies:
+      '@types/node':
+        specifier: 26.5.0
+        version: 26.5.0
+      effect:
+        specifier: 4.0.0
+        version: 4.0.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   packages/@overeng/buck2-tools:
     dependencies:
       acorn:
@@ -301,9 +313,15 @@ importers:
       '@effect/ai-typesafe':
         specifier: 4.0.0
         version: 4.0.0(effect@4.0.0)
+      '@effect/platform-node':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
         specifier: 4.0.0
         version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
+      '@overeng/ai-gateway-conformance':
+        specifier: workspace:^
+        version: link:../ai-gateway-conformance
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -1216,7 +1234,7 @@ importers:
     dependencies:
       '@overeng/content-address':
         specifier: workspace:^
-        version: file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))
+        version: link:../content-address
       '@overeng/notion-core':
         specifier: workspace:^
         version: link:../notion-core
@@ -1319,7 +1337,7 @@ importers:
         version: 4.0.0(effect@4.0.0)(vitest@5.0.3)
       '@overeng/content-address':
         specifier: workspace:^
-        version: file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))
+        version: link:../content-address
       '@overeng/notion-core':
         specifier: workspace:^
         version: link:../notion-core
@@ -1411,7 +1429,7 @@ importers:
     dependencies:
       '@overeng/content-address':
         specifier: workspace:^
-        version: file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))
+        version: link:../content-address
       '@overeng/notion-core':
         specifier: workspace:^
         version: link:../notion-core
@@ -1673,7 +1691,7 @@ importers:
     dependencies:
       '@overeng/content-address':
         specifier: workspace:^
-        version: file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))
+        version: link:../content-address
     devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^
@@ -3155,12 +3173,6 @@ packages:
       react: '>=19.2.0'
       react-devtools-core: ^7.0.1
       ws: ^8.18.0
-
-  '@overeng/content-address@file:packages/@overeng/content-address':
-    resolution: {directory: packages/@overeng/content-address, type: directory}
-
-  '@overeng/effect-rust@file:packages/@overeng/effect-rust':
-    resolution: {directory: packages/@overeng/effect-rust, type: directory}
 
   '@oxc-parser/binding-android-arm-eabi@0.127.0':
     resolution: {integrity: sha512-0LC7ye4hvqbIKxAzThzvswgHLFu2AURKzYLeSVvLdu2TBOYWQDmHnTqPLeA597BcUCxiLqLsS4CJ5uoI5WYWCQ==}
@@ -6606,21 +6618,6 @@ snapshots:
     transitivePeerDependencies:
       - typescript
       - web-tree-sitter
-
-  '@overeng/content-address@file:packages/@overeng/content-address(redis@6.2.1(@opentelemetry/api@1.9.1))':
-    dependencies:
-      '@effect/platform-node': 4.0.0(effect@4.0.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
-      '@noble/hashes': 2.4.0
-      '@overeng/effect-rust': file:packages/@overeng/effect-rust
-      effect: 4.0.0
-    transitivePeerDependencies:
-      - bufferutil
-      - redis
-      - utf-8-validate
-
-  '@overeng/effect-rust@file:packages/@overeng/effect-rust':
-    dependencies:
-      effect: 4.0.0
 
   '@oxc-parser/binding-android-arm-eabi@0.127.0':
     optional: true
