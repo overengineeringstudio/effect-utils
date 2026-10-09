@@ -340,7 +340,11 @@ describe('Buck watch reconciliation', () => {
         ]),
       )
 
-      const batchInvocations: { command: string; args: readonly string[]; input?: string }[] = []
+      const batchInvocations: {
+        command: string
+        args: readonly string[]
+        input: string | undefined
+      }[] = []
       await reconcileBuckViews({
         request: {
           packagePaths: ['packages/app'],

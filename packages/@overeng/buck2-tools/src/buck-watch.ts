@@ -440,12 +440,10 @@ export class CommandFailure extends Error {
 /** Default {@link RunCommand}: buffers output and fails closed on a non-zero exit. */
 export const runCommand: RunCommand = ({ command, args, cwd, signal, detached, input }) => {
   const settled = Promise.withResolvers<CommandResult>()
-  const child = spawn(command, args, {
-    cwd,
-    signal,
-    stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-    detached,
-  })
+  const child =
+    input === undefined
+      ? spawn(command, args, { cwd, signal, stdio: ['ignore', 'pipe', 'pipe'], detached })
+      : spawn(command, args, { cwd, signal, stdio: ['pipe', 'pipe', 'pipe'], detached })
   let stdout = ''
   let stderr = ''
   child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
