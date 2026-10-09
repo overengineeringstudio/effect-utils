@@ -152,7 +152,7 @@ const Restart = Schema.Literals(['never', 'always'])
 const Env = Schema.Record(Schema.String, Schema.String)
 const Authority = Schema.Array(Schema.Struct({ verb: Text, pattern: Text }))
 
-const AgentTask = Schema.Struct({
+const AgentTaskFields = Schema.Struct({
   id: LocalId,
   host: Schema.optionalKey(Text),
   workspace: Schema.optionalKey(Text),
@@ -165,8 +165,11 @@ const AgentTask = Schema.Struct({
       message: 'task needs exactly one launch form',
     },
   ),
-  Schema.annotate({ parseOptions: { onExcessProperty: 'error' } }),
 )
+
+const AgentTask = Schema.declare<typeof AgentTaskFields.Type>(
+  Schema.is(AgentTaskFields, { onExcessProperty: 'error' }),
+).annotate({ identifier: 'St.AgentTask' })
 
 const RenderOperation = Schema.Struct({
   kind: Schema.Literals(['copy', 'file', 'json-upsert']),
