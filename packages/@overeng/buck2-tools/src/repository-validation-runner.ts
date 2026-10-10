@@ -317,6 +317,7 @@ const checkWorkspaceContract = ({
     return name
   })
   const expectedCargoPackages = [
+    'ai-gateway',
     'buck2-archive-tool',
     'buck2-events',
     'buck2-product',
