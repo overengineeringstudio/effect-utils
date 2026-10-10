@@ -68,8 +68,10 @@ export type Case = typeof Case.Type
 /** Requires the caller's FileSystem layer; works in source and packaged module layouts. */
 export const loadCases = Effect.fn('AiGatewayConformance.loadCases')(function* () {
   const fs = yield* FileSystem.FileSystem
+  // The source module is in src/; the shipped JS module is in dist/src/.
+  // Both layouts keep the corpus as files at the package root, not module exports.
   const directory = fileURLToPath(
-    new URL('./cases/', import.meta.resolve('@overeng/ai-gateway-conformance/case.schema.json')),
+    new URL(import.meta.url.endsWith('.ts') ? '../cases/' : '../../cases/', import.meta.url),
   )
   const files = (yield* fs.readDirectory(directory))
     .filter((file) => file.endsWith('.json'))

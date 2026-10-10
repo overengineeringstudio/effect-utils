@@ -14,24 +14,7 @@
     ".": {
       "types": "./dist/src/mod.d.ts",
       "default": "./src/mod.ts"
-    },
-    "./case.schema.json": "./case.schema.json",
-    "./cases/chat.auth.none-401.json": "./cases/chat.auth.none-401.json",
-    "./cases/chat.stream.error-after-200.json": "./cases/chat.stream.error-after-200.json",
-    "./cases/chat.stream.usage.json": "./cases/chat.stream.usage.json",
-    "./cases/chat.text.json": "./cases/chat.text.json",
-    "./cases/decision.invalid-422.json": "./cases/decision.invalid-422.json",
-    "./cases/decision.invalid-label.json": "./cases/decision.invalid-label.json",
-    "./cases/decision.triage.json": "./cases/decision.triage.json",
-    "./cases/errors.edge-502.json": "./cases/errors.edge-502.json",
-    "./cases/errors.rate-limited-429.json": "./cases/errors.rate-limited-429.json",
-    "./cases/errors.upstream-404.json": "./cases/errors.upstream-404.json",
-    "./cases/models.list.json": "./cases/models.list.json",
-    "./cases/structured.invalid.json": "./cases/structured.invalid.json",
-    "./cases/structured.rejected-400.json": "./cases/structured.rejected-400.json",
-    "./cases/structured.valid.json": "./cases/structured.valid.json",
-    "./cases/tools.call.json": "./cases/tools.call.json",
-    "./cases/tools.result.json": "./cases/tools.result.json"
+    }
   },
   "devDependencies": {
     "@types/node": "26.5.0",
@@ -47,24 +30,7 @@
       ".": {
         "types": "./dist/src/mod.d.ts",
         "default": "./dist/src/mod.js"
-      },
-      "./cases/chat.auth.none-401.json": "./cases/chat.auth.none-401.json",
-      "./cases/chat.stream.error-after-200.json": "./cases/chat.stream.error-after-200.json",
-      "./cases/chat.stream.usage.json": "./cases/chat.stream.usage.json",
-      "./cases/chat.text.json": "./cases/chat.text.json",
-      "./cases/decision.invalid-422.json": "./cases/decision.invalid-422.json",
-      "./cases/decision.invalid-label.json": "./cases/decision.invalid-label.json",
-      "./cases/decision.triage.json": "./cases/decision.triage.json",
-      "./cases/errors.edge-502.json": "./cases/errors.edge-502.json",
-      "./cases/errors.rate-limited-429.json": "./cases/errors.rate-limited-429.json",
-      "./cases/errors.upstream-404.json": "./cases/errors.upstream-404.json",
-      "./cases/models.list.json": "./cases/models.list.json",
-      "./cases/structured.invalid.json": "./cases/structured.invalid.json",
-      "./cases/structured.rejected-400.json": "./cases/structured.rejected-400.json",
-      "./cases/structured.valid.json": "./cases/structured.valid.json",
-      "./cases/tools.call.json": "./cases/tools.call.json",
-      "./cases/tools.result.json": "./cases/tools.result.json",
-      "./case.schema.json": "./case.schema.json"
+      }
     }
   }
 }

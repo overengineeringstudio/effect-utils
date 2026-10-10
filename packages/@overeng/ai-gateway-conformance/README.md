@@ -31,9 +31,9 @@ Each `cases/<id>.json` file describes one exchange:
 caller-provided Effect `FileSystem`), and `toHttpClientResponse({ case, request })`
 for in-process Effect HTTP replay. The loader validates decoded JSON and rejects
 unknown contract fields. Cases are loaded in filename order.
-Each JSON case is exported at `@overeng/ai-gateway-conformance/cases/<id>.json`.
-The manifest generator derives explicit case exports from the directory in filename
-order, so archive validation checks concrete files rather than wildcard targets.
+The JSON corpus and schema ship as package files, not module subpath exports.
+JavaScript consumers use the root `loadCases()` export; other realizations read
+the data files directly.
 
 ## Adding a case
 
