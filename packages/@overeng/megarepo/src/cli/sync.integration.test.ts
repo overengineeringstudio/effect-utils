@@ -3748,9 +3748,12 @@ describe('mr fetch', () => {
               )
             } else {
               expect(result.exitCode).toBe(1)
-              expect(`${result.stdout}\n${result.stderr}`).toContain(
-                'Refusing to mutate canonical worktree',
-              )
+              expect(Exit.isFailure(result.exit)).toBe(true)
+              if (Exit.isFailure(result.exit) === true) {
+                expect(Cause.pretty(result.exit.cause)).toContain(
+                  'Refusing to mutate canonical worktree',
+                )
+              }
               expect(yield* fs.readFileString(`${root}megarepo.lock`)).toBe(lockAt(initialCommit))
               expect(yield* fs.exists(`${root}repos`)).toBe(false)
             }
