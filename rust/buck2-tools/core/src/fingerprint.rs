@@ -4,7 +4,7 @@
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::ffi::OsString;
-use std::fs::{self, File, Metadata};
+use std::fs::{self, File, FileType, Metadata};
 use std::io::{self, Read};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
@@ -67,15 +67,44 @@ fn sorted_names(directory: &Path) -> io::Result<Vec<OsString>> {
     Ok(names)
 }
 
+#[derive(Clone, Copy)]
+struct StabilityMetadata {
+    kind: FileType,
+    dev: u64,
+    ino: u64,
+    mtime: (i64, i64),
+    ctime: (i64, i64),
+    size: u64,
+}
+
+impl From<&Metadata> for StabilityMetadata {
+    fn from(metadata: &Metadata) -> Self {
+        Self {
+            kind: metadata.file_type(),
+            dev: metadata.dev(),
+            ino: metadata.ino(),
+            mtime: (metadata.mtime(), metadata.mtime_nsec()),
+            ctime: (metadata.ctime(), metadata.ctime_nsec()),
+            size: metadata.size(),
+        }
+    }
+}
+
+impl StabilityMetadata {
+    fn same(&self, after: &Self, file: bool) -> bool {
+        self.kind == after.kind
+            && self.dev == after.dev
+            // Overlayfs can reassign a directory's inode when its inode cache
+            // entry is evicted. It is not a persistent directory identity.
+            && (self.kind.is_dir() || self.ino == after.ino)
+            && self.mtime == after.mtime
+            && self.ctime == after.ctime
+            && (!file || self.size == after.size)
+    }
+}
+
 fn same(before: &Metadata, after: &Metadata, file: bool) -> bool {
-    before.file_type() == after.file_type()
-        && before.dev() == after.dev()
-        && before.ino() == after.ino()
-        && before.mtime() == after.mtime()
-        && before.mtime_nsec() == after.mtime_nsec()
-        && before.ctime() == after.ctime()
-        && before.ctime_nsec() == after.ctime_nsec()
-        && (!file || before.size() == after.size())
+    StabilityMetadata::from(before).same(&StabilityMetadata::from(after), file)
 }
 
 fn entry_type(metadata: &Metadata) -> &'static str {
@@ -480,7 +509,7 @@ pub fn fingerprint_input_root(root: &Path) -> io::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{same, tree_changed};
+    use super::{same, tree_changed, StabilityMetadata};
     use std::fs::{self, File, FileTimes, Metadata, Permissions};
     use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
     use std::path::Path;
@@ -534,6 +563,40 @@ mod tests {
             .unwrap()
             .split(", ")
             .collect()
+    }
+
+    #[test]
+    fn directory_inode_reassignment_is_not_a_tree_mutation() {
+        let scratch = tempfile::tempdir().unwrap();
+        let metadata = fs::symlink_metadata(scratch.path()).unwrap();
+        let before = StabilityMetadata::from(&metadata);
+        let mut after = before;
+        after.ino += 1;
+        assert!(before.same(&after, false));
+
+        after.mtime.1 += 1;
+        assert!(!before.same(&after, false));
+        after.mtime = before.mtime;
+        after.ctime.1 += 1;
+        assert!(!before.same(&after, false));
+        after.ctime = before.ctime;
+        after.dev += 1;
+        assert!(!before.same(&after, false));
+    }
+
+    #[test]
+    fn nondirectory_inode_reassignment_remains_a_tree_mutation() {
+        let scratch = tempfile::tempdir().unwrap();
+        let file = scratch.path().join("file");
+        let link = scratch.path().join("link");
+        fs::write(&file, b"content").unwrap();
+        symlink("file", &link).unwrap();
+        for path in [&file, &link] {
+            let before = StabilityMetadata::from(&fs::symlink_metadata(path).unwrap());
+            let mut after = before;
+            after.ino += 1;
+            assert!(!before.same(&after, before.kind.is_file()));
+        }
     }
 
     #[test]

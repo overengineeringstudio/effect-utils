@@ -768,10 +768,11 @@ describe('editor view publisher', () => {
     },
   )
 
-  it('keeps a queued sibling from preparing while a candidate payload walk is active', async () => {
+  it('allows sibling preparation without mutating an active private payload walk', async () => {
     const fixture = makeFixture()
     const entered = Promise.withResolvers<string>()
     let siblingStarted = false
+    const siblingEntered = Promise.withResolvers<void>()
     const proceed = Promise.withResolvers<void>()
     const runFingerprintTool = fingerprintRunner.runFingerprintTool
     let pausedTree: string | undefined
@@ -802,6 +803,7 @@ describe('editor view publisher', () => {
           Object.assign(option, {
             beforeMaterialize: async () => {
               siblingStarted = true
+              siblingEntered.resolve()
             },
           })
         return Object.assign(option, { backingRoots: [backing] })
@@ -819,9 +821,9 @@ describe('editor view publisher', () => {
       })
       const pendingTree = await entered.promise
       const before = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
-      await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
-      expect(editorViewPublicationWorkers).toBe(1)
-      expect(siblingStarted).toBe(false)
+      await siblingEntered.promise
+      expect(editorViewPublicationWorkers).toBe(4)
+      expect(siblingStarted).toBe(true)
       const after = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
       expect(after.ctimeNs).toBe(before.ctimeNs)
       expect(after.mode).toBe(before.mode)
@@ -848,6 +850,8 @@ describe('editor view publisher', () => {
     const fixture = makeFixture()
     const entered = Promise.withResolvers<string>()
     const failPayload = Promise.withResolvers<void>()
+    const peersEntered = Promise.withResolvers<void>()
+    let peersStarted = 0
     let siblingStarted = false
     const proceed = Promise.withResolvers<void>()
     const original = Object.assign(new Error('payload fingerprint failed'), { exitCode: 17 })
@@ -877,9 +881,21 @@ describe('editor view publisher', () => {
       const backing = join(fixture.root, 'inputs', 'shared-backing')
       mkdirSync(backing)
       writeFileSync(join(backing, 'dep.js'), 'export default 1\n')
+      const peers = ['utils', 'ci-tools', 'buck2-tools'].map(
+        (packageName) => makeSiblingView({ fixture, packageName }).options,
+      )
       publication = publishEditorViews({
         options: [
           { ...fixture.options, backingRoots: [backing] },
+          ...peers.map((option) => ({
+            ...option,
+            backingRoots: [backing],
+            beforeMaterialize: async () => {
+              peersStarted += 1
+              if (peersStarted === editorViewPublicationWorkers - 1) peersEntered.resolve()
+              await proceed.promise
+            },
+          })),
           {
             ...sibling.options,
             backingRoots: [backing],
@@ -892,6 +908,7 @@ describe('editor view publisher', () => {
         failure = error
       })
       await entered.promise
+      await peersEntered.promise
       failPayload.resolve()
       await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
       expect(siblingStarted).toBe(false)
@@ -906,15 +923,25 @@ describe('editor view publisher', () => {
       const states: unknown = JSON.parse(
         failure.message.split('; publication workers=')[1] ?? 'null',
       )
-      expect(states).toEqual([
-        {
-          package: fixture.options.package,
-          viewName: fixture.options.viewName,
-          editorRoot: realpathSync(fixture.editorRoot),
-          phase: 'payload',
-          candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
-        },
-      ])
+      expect(states).toEqual(
+        expect.arrayContaining([
+          {
+            package: fixture.options.package,
+            viewName: fixture.options.viewName,
+            editorRoot: realpathSync(fixture.editorRoot),
+            phase: 'payload',
+            candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
+          },
+          ...peers.map((option) => ({
+            package: option.package,
+            viewName: option.viewName,
+            editorRoot: realpathSync(fixture.editorRoot),
+            phase: 'materialize',
+            candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
+          })),
+        ]),
+      )
+      expect(states).toHaveLength(editorViewPublicationWorkers)
     } finally {
       failPayload.resolve()
       proceed.resolve()
