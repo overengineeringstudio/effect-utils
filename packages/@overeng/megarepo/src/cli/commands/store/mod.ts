@@ -197,10 +197,13 @@ type GeneratedArtifactRepoWorktrees = ReadonlyArray<{
 
 const encodeCanonicalPlan = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
-const planSha256For = (
-  results: ReadonlyArray<StoreGcResult>,
-  deletionIdentities: ReadonlyMap<string, DeletionIdentity>,
-): string => {
+const planSha256For = ({
+  results,
+  deletionIdentities,
+}: {
+  results: ReadonlyArray<StoreGcResult>
+  deletionIdentities: ReadonlyMap<string, DeletionIdentity>
+}): string => {
   const canonicalPlan = results
     .map((result) => ({
       repo: result.repo,
@@ -464,7 +467,7 @@ const planGeneratedArtifacts = ({
     return {
       results: generatedResults,
       deletionIdentities,
-      planSha256: planSha256For(generatedResults, deletionIdentities),
+      planSha256: planSha256For({ results: generatedResults, deletionIdentities }),
       ...(initialActivity === undefined ? {} : { activityEpoch: initialActivity.epoch }),
     }
   })
@@ -3090,7 +3093,7 @@ const storeGcCommand = Cli.Command.make(
           }
 
           if (generatedArtifacts === false && planningOnly === true) {
-            planSha256 = planSha256For(results, deletionIdentities)
+            planSha256 = planSha256For({ results, deletionIdentities })
           }
 
           if (

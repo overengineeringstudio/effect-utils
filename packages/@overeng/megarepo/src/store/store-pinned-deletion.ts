@@ -84,7 +84,7 @@ export const withPinnedDeletion = <TError = never, TRequirements = never>({
         yield* native({ path, operation: () => quarantineAndRemove(chain) })
       }),
     (chain) => Effect.sync(() => closeChain(chain)),
-  ).pipe(Effect.withSpan('store.withPinnedDeletion'))
+  )
 
 // Effect FileSystem has no openat/no-follow directory primitive. Keep the Linux-native boundary
 // synchronous so cancellation cannot strand an acquired fd or interrupt quarantine mid-operation.
@@ -158,7 +158,7 @@ const pinChain = ({
     throw fail({ path, message: 'Deletion target must be strictly inside the admitted root' })
   const paths = ['/']
   let current = ''
-  for (const part of target.split('/').filter((part) => part !== '')) {
+  for (const part of target.split('/').filter((segment) => segment !== '')) {
     current += `/${part}`
     paths.push(current)
   }
