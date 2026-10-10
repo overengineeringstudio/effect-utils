@@ -809,6 +809,20 @@ const cargoBuck2PackageProjectionFor = ({
       .filter((input) => input.endsWith('/**/*.rs') === false && input.endsWith('.ts') === false)
       .map((input) => [input, resourceFingerprints[input] ?? sha256(repo.readText(input))]),
   )
+  // Prelude resolves CARGO_MANIFEST_DIR to a runtime absolute path. A source
+  // that mentions it cannot share portable compiler outputs across worktrees.
+  // Audit every declared source, not just the crate root or enabled modules.
+  const cacheSourceAudit = Object.fromEntries(
+    sources.map((source) => [
+      source,
+      repo.readText(`${packagePath}/${source}`).includes('CARGO_MANIFEST_DIR') === false,
+    ]),
+  )
+  const cacheResourceAudit = resources.every(
+    (resource) =>
+      resource.path !== undefined &&
+      repo.readText(resource.path).includes('CARGO_MANIFEST_DIR') === false,
+  )
   const semanticData = {
     binaries,
     compileEnv,
@@ -817,6 +831,11 @@ const cargoBuck2PackageProjectionFor = ({
       ? {}
       : { foreignPackages: foreignProjections.map((projection) => projection.data) }),
     cliBuildStamp,
+    cacheAdmission: {
+      contract: 'linux-x86_64-source-audited-compile/v1',
+      sourceAudit: cacheSourceAudit,
+      resourceAudit: cacheResourceAudit,
+    },
     conditionalDevDependencies,
     conditionalNormalDependencies,
     devDependencies,
@@ -902,10 +921,17 @@ const cargoBuck2PackageProjectionFor = ({
     readonly visibility?: readonly string[]
     readonly procMacro?: boolean
   }): readonly string[] => [
-    `native.${rule}(`,
+    `${rule}(`,
     `    name = ${starlarkString(name)},`,
     `    crate = ${starlarkString(crate)},`,
     `    crate_root = ${starlarkString(crateRoot)},`,
+    `    cache_audited = ${
+      buildScript === undefined &&
+      cacheResourceAudit === true &&
+      ruleSources.every((source) => cacheSourceAudit[source] === true)
+        ? 'True'
+        : 'False'
+    },`,
     ...(procMacro === true ? ['    proc_macro = True,'] : []),
     ...(resources.length === 0
       ? renderSources({ name: 'srcs', values: ruleSources, foreignMember })
@@ -1000,7 +1026,7 @@ const cargoBuck2PackageProjectionFor = ({
       ),
     ].toSorted(([left], [right]) => compareStrings({ left, right }))
     rules.push(
-      'native.rust_binary(',
+      'rust_binary(',
       `    name = ${starlarkString(buildScriptBuild)},`,
       '    crate = "build_script_build",',
       `    crate_root = ${starlarkString(buildScript.path)},`,
@@ -1191,6 +1217,7 @@ const cargoBuck2PackageProjectionFor = ({
     `# Regenerate: ${regenerationCommand}`,
     '',
     'load("@prelude//:prelude.bzl", "native")',
+    `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:cache.bzl`)}, "rust_binary", "rust_library")`,
     `load(${starlarkString(`${buck2LoadLabelPrefix}:static_checks.bzl`)}, "static_source_set")`,
     ...(wasmBindgen === undefined && napi === undefined && wasmGuest === undefined
       ? []

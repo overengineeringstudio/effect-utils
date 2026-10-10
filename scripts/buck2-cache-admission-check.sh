@@ -53,6 +53,10 @@ load("//buck2/package_tools.bzl", "PackageCommandRuntimeInfo", "package_bin_chec
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
 load("//buck2/rust:interop.bzl", "RustInteropProductInfo", "rust_interop_smoke")
+load("//buck2/rust:cache.bzl", _cache_rust_library = "rust_library")
+
+def fixture_audited_rust_library(name, **kwargs):
+    _cache_rust_library(name = name, cache_audited = True, **kwargs)
 
 def _dependency_impl(ctx):
     artifact = ctx.attrs.src
@@ -249,6 +253,70 @@ package_bin_check(
 )
 BUCK
 
+# Inspect the real Rust macros without needing compiler capabilities in this
+# analysis-only fixture cell. Tainted rules must have no cache constraint in
+# their unconfigured declaration, including taint in an unselected branch.
+mkdir -p "$work/rust-negative"
+cat > "$work/rust-negative/manifest-token.rs" <<'RUST'
+pub const MANIFEST: &str = env!("CARGO_MANIFEST_DIR");
+RUST
+cat > "$work/rust-negative/BUCK" <<'BUCK'
+load("@rules//buck2/rust:cache.bzl", "cargo", _rust_library = "rust_library")
+load("//:fixture.bzl", rust_library = "fixture_audited_rust_library")
+
+_rust_library(name = "unknown_source", env = {"CARGO_PKG_NAME": "fixture"})
+_rust_library(
+    name = "manifest_token_audit_denied",
+    srcs = ["manifest-token.rs"],
+    crate_root = "manifest-token.rs",
+    env = {"CARGO_MANIFEST_DIR": "rust-negative"},
+    cache_audited = False,
+)
+rust_library(name = "identity_override", env = {"EFFECT_UTILS_RUST_TOOLCHAIN_IDENTITY": ""})
+rust_library(name = "volatile_closure_override", env = {"EFFECT_UTILS_RUST_COMPILER_CLOSURE": "/tmp/compiler"})
+
+rust_library(name = "volatile_home", env = {"HOME": "/home/fixture"})
+rust_library(name = "volatile_rustc_log", env = {"RUSTC_LOG": "debug"})
+rust_library(name = "buildscript_out_dir", env = {"OUT_DIR": "$(location //:package_tree)"})
+rust_library(name = "absolute_manifest", env = {"CARGO_MANIFEST_DIR": "/tmp/fixture"})
+rust_library(name = "buildscript_flags", rustc_flags = ["@$(location //:package_tree)"])
+rust_library(name = "abspath_flags", rustc_flags = ["--cfg=$(abspath //:fixture-dependency.txt)"])
+rust_library(name = "incremental_attr", incremental_enabled = True)
+rust_library(name = "incremental_flags", rustc_flags = ["-Cincremental=/nix/store/fixture"])
+rust_library(name = "host_cpu_flags", rustc_flags = ["-Ctarget-cpu=native"])
+rust_library(name = "selector_env", env = select({
+    "prelude//os/constraints:macos": {"OUT_DIR": "elsewhere"},
+    "DEFAULT": {"CARGO_PKG_NAME": "fixture"},
+}))
+rust_library(name = "selector_flags", rustc_flags = select({
+    "prelude//os/constraints:macos": ["@$(location //:package_tree)"],
+    "DEFAULT": ["--cfg=fixture"],
+}))
+cargo.rust_library(name = "cargo_platform_taint", cache_audited = True, platform = {
+    "linux-arm64": {"env": {"OUT_DIR": "elsewhere"}},
+})
+cargo.rust_binary(name = "cargo_buildscript", crate = "build_script_build", cache_audited = True)
+BUCK
+
+for row in \
+  'rust_exec_alias exec_compatible_with ["@rules//buck2/platforms:cache_hermetic"]' \
+  'rust_exec_canonical exec_compatible_with ["effect_utils//buck2/platforms:cache_hermetic"]' \
+  'rust_exec_relative exec_compatible_with ["//buck2/platforms:cache_hermetic"]' \
+  'rust_hidden_marker _cache_admission_constraint "//buck2/platforms:host_platform"' \
+  'rust_hidden_twin _cache_native_diagnostics "//:package_tree"' \
+  'rust_hidden_audit _cache_source_audited True' \
+  'rust_cache_upload allow_cache_upload True'; do
+  package="${row%% *}"
+  rest="${row#* }"
+  attr="${rest%% *}"
+  value="${rest#* }"
+  mkdir -p "$work/$package"
+  cat > "$work/$package/BUCK" <<BUCK
+load("@rules//buck2/rust:cache.bzl", "rust_library")
+rust_library(name = "override", $attr = $value)
+BUCK
+done
+
 cd "$work"
 for target in admitted_collect default_uncacheable_collect default_unadmitted_check; do
   if ! "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//:$target" > "$work/$target.log" 2>&1; then
@@ -316,3 +384,28 @@ if ! grep -Fq 'Error coercing attribute `_cache_admission_constraint`' "$work/ov
   exit 1
 fi
 printf 'PASS rejected: caller_override\n'
+
+for target in unknown_source manifest_token_audit_denied identity_override volatile_closure_override volatile_home volatile_rustc_log buildscript_out_dir absolute_manifest buildscript_flags abspath_flags incremental_attr incremental_flags host_cpu_flags selector_env selector_flags cargo_platform_taint cargo_buildscript; do
+  "$buck" --isolation-dir cache-admission-check uquery --json --output-attribute exec_compatible_with \
+    "effect_utils//rust-negative:$target" > "$work/rust-$target.log" 2>&1
+  if ! grep -Eq '"exec_compatible_with"[[:space:]]*:[[:space:]]*\[\]' "$work/rust-$target.log"; then
+    cat "$work/rust-$target.log" >&2
+    printf 'Tainted Rust rule acquired cache admission: %s\n' "$target" >&2
+    exit 1
+  fi
+  printf 'PASS Rust native-default-deny: %s\n' "$target"
+done
+
+for package in rust_exec_alias rust_exec_canonical rust_exec_relative rust_hidden_marker rust_hidden_twin rust_hidden_audit rust_cache_upload; do
+  if "$buck" --isolation-dir cache-admission-check uquery "effect_utils//$package:override" > "$work/$package.log" 2>&1; then
+    cat "$work/$package.log" >&2
+    printf 'Rust macro unexpectedly accepted caller cache/exec override: %s\n' "$package" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'Rust cache macros own cache/exec compatibility; caller override' "$work/$package.log"; then
+    cat "$work/$package.log" >&2
+    printf 'Rust override failed for a reason other than admission ownership: %s\n' "$package" >&2
+    exit 1
+  fi
+  printf 'PASS Rust rejected override: %s\n' "$package"
+done

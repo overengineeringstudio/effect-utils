@@ -31,6 +31,7 @@ load(
     "host_capability_platform",
     "host_rust_target_triple",
     "require_capability",
+    "require_capability_closure",
 )
 
 # Cargo treats empty wrapper values as disabled. Buck owns compiler selection
@@ -293,13 +294,17 @@ def _portable_link_env(target_triple):
         return {}
     fail("native Rust toolchain has no portable link environment for {}".format(target_triple))
 
-def _compile_env(metadata, target_triple):
+def _compile_env(metadata, target_triple, identity, compiler_closure):
     result = {
         "AR": metadata["rust-archiver"]["executableStorePath"],
         "CC": metadata["rust-c-compiler"]["executableStorePath"],
         "CXX": metadata["rust-cxx-compiler"]["executableStorePath"],
         "LD": metadata["rust-linker"]["executableStorePath"],
         "PATH": metadata["rust-shell"]["executableStorePath"].removesuffix("/bash"),
+        # Attest the immutable compiler/sysroot and linker capability inputs in
+        # the serialized action key, not merely the toolchain provider.
+        "EFFECT_UTILS_RUST_TOOLCHAIN_IDENTITY": identity,
+        "EFFECT_UTILS_RUST_COMPILER_CLOSURE": ":".join(compiler_closure),
     }
     result.update(RUST_COMPILER_WRAPPER_ENV)
     result.update(_portable_link_env(target_triple))
@@ -322,6 +327,12 @@ def native_rust_toolchains(capabilities, generation, target_platform):
         target_platform,
         target_triple,
         metadata,
+    )
+    compiler_closure = require_capability_closure(
+        capabilities,
+        generation,
+        capability_platform,
+        "rust-compiler",
     )
     compatibility = {
         "exec_compatible_with": native_execution_constraints(target_platform),
@@ -388,7 +399,7 @@ def native_rust_toolchains(capabilities, generation, target_platform):
         "clippy_driver": metadata["rust-clippy-driver"]["executableStorePath"],
         # Build scripts remain executor-native; wasm rustc ignores the native
         # C/C++ linker settings and uses its explicitly attested wasm-ld.
-        "compile_env": _compile_env(metadata, target_triple),
+        "compile_env": _compile_env(metadata, target_triple, identity, compiler_closure),
         "target_platform": target_platform,
         "rustc_flags": select({
             "@rules//buck2/rust:release": release_flags,

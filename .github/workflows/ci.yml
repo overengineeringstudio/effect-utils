@@ -3389,7 +3389,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Prove fresh-root remote action and test-cache hits
+      - name: Prove fresh-root remote JS, native Rust and test-cache hits
         env:
           GITHUB_TOKEN: ${{ github.token }}
           BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}
