@@ -159,6 +159,7 @@ const assertUsage = ({ case: replayCase, usage }: { case: Case; usage: Response.
 }
 
 /** Keep validation replay enabled while naming the missing billed-usage guarantees. */
+// Tracked upstream gaps: https://github.com/overengineeringstudio/effect-utils/issues/1750
 const skippedErrorUsage: Record<string, string> = {
   'structured.invalid':
     'LanguageModel.generateObject constructs StructuredOutputError without retaining response usage.',
@@ -202,6 +203,7 @@ const assertError = ({ case: replayCase, error }: { case: Case; error: AiError.A
 }
 
 /** Explicit upstream gaps: adding a case never silently removes it from replay. */
+// Tracked upstream gaps: https://github.com/overengineeringstudio/effect-utils/issues/1750
 const skippedCases: Record<string, string> = {
   'chat.stream.error-after-200':
     'The compatible provider ignores UnknownChatCompletionEvent, including error data envelopes after HTTP 200; it cannot assert a stream-error outcome or error type.',
