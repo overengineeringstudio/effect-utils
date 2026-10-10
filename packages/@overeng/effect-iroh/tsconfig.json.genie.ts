@@ -1,4 +1,9 @@
-import { baseTsconfigCompilerOptions, packageTsconfigCompilerOptions, nodeTypes, tsconfigJson } from '../../../genie/internal.ts'
+import {
+  baseTsconfigCompilerOptions,
+  packageTsconfigCompilerOptions,
+  nodeTypes,
+  tsconfigJson,
+} from '../../../genie/internal.ts'
 
 export default tsconfigJson({
   compilerOptions: {

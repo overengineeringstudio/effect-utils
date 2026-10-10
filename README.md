@@ -124,111 +124,15 @@ schema-first `OtelMetric` contracts, preserving their exported metric identities
 - **OTEL spans** - Automatic tracing with cross-process trace propagation
 - **Test helpers** - `withTestCtx` for automatic layer provision in Playwright tests
 
-### Peer-to-peer QUIC (prototype)
+### Peer-to-peer QUIC
 
-[`@overeng/effect-iroh`](./packages/@overeng/effect-iroh) wraps the official
-[`@number0/iroh`](https://docs.iroh.computer/languages/javascript) Node N-API
-bindings in Effect 4. This is a working, private prototype, not a published
-production package or a replacement for host networking policy.
+Effect 4 bindings for authenticated peer-to-peer QUIC and schema-framed messages
+in Node and Bun desktop/server applications.
+See the [package README](./packages/@overeng/effect-iroh/README.md) for usage and limitations.
 
-```ts
-import { Effect, Stream } from 'effect'
-import { IrohEndpoint } from '@overeng/effect-iroh'
-
-const program = Effect.gen(function* () {
-  const endpoint = yield* IrohEndpoint
-  const connection = yield* endpoint.connect(peerAddress, 'my-protocol/1')
-  // Check connection.remoteId against application policy before processing data.
-  const bi = yield* connection.openBi
-  const protocol = bi.messages(MyVersionedSchema)
-  yield* Stream.make(message).pipe(Stream.run(protocol.write))
-  return yield* Stream.runCollect(protocol.read)
-})
-
-// The Layer owns bind/close; connection and stream acquisition require Scope.
-// `peerAddress`, `MyVersionedSchema`, and `message` belong to the caller's protocol.
-const run = Effect.scoped(program).pipe(
-  Effect.provide(IrohEndpoint.layer({ alpns: ['my-protocol/1'] })),
-)
-```
-
-`IrohEndpoint.make(options)` permits multiple independent endpoints in one Scope.
-`accept` is a scoped Effect returning a connection, or `undefined` after endpoint
-closure. Connections expose `openBi`, `acceptBi`, `remoteId`, negotiated `alpn`,
-and observed `paths`. Bidirectional streams expose byte Streams/Sinks, explicit
-`close`, and `messages(schema)` Streams/Sinks. Choose one reader and one writer
-per stream half; do not mix the raw and framed interfaces on the same half.
-Sinks send FIN after successful upstream completion. Frames are a four-byte
-big-endian length followed by Schema JSON encoded as UTF-8; the default limit
-is 1 MiB. The [echo example](./packages/@overeng/effect-iroh/src/echo.ts) uses an
-explicit `apiVersion: 1` envelope and exchanges two Unicode-capable messages.
-Failures are Schema-tagged `IrohInitError`, `IrohTransportError`, and
-`IrohProtocolError`.
-
-The official promises do not expose cancellation handles. Interruption therefore
-closes the owning **connection** for stream operations, or the **endpoint** for
-accept/connect/online, and awaits native settlement. Cancelling an accept ends
-that endpoint's accept loop; cancelling a read also ends sibling streams on that
-connection. This explicit, conservative behavior avoids abandoning Rust futures,
-but should become per-operation cancellation before broad adoption.
-
-#### Binding choice and versions
-
-The latest npm binding is `@number0/iroh@1.1.0`; its upstream lock pins the older
-iroh 1.0.2. The prototype also provides a
-[hash-pinned source build recipe](./packages/@overeng/effect-iroh/native/build-native.sh)
-and a committed Cargo lock rebuilding the official bindings against
-[`iroh@1.3.0`](https://docs.rs/iroh/1.3.0/iroh/), without maintaining a second Rust
-adapter. The recipe pins upstream commit
-`3103bf5295be6d50c5272ff7a426e9b539f3f587` and compiles with `nice -n19 -j4`.
-Pass the resulting absolute `.node` path as `nativeLibraryPath`; the default
-uses the published npm binary, not the rebuilt 1.3.0 core. Do not set
-`NAPI_RS_NATIVE_LIBRARY_PATH` globally: it also overrides unrelated N-API modules
-such as Vitest's rolldown binding. The npm 1.1.0 manifest's `main` points to an
-absent `iroh-js/index.js`; this package explicitly loads its actual
-`@number0/iroh/index.js` entry.
-
-- **Handwritten napi-rs:** possible, but duplicates the officially maintained
-  endpoint/connection/stream bindings and their platform work.
-- **Our Effect/Rust interop:** retains value for new application-specific Rust
-  engines and cancellation-aware jobs. Its resource macros currently support
-  synchronous resource methods, not iroh's async handle graph, and a generated
-  adapter would need a new Rust wrapper. We do not add that work to this prototype.
-- **Wasm:** [iroh supports browsers](https://docs.iroh.computer/languages/wasm-browser),
-  but ordinary browser connections are relay-only because the sandbox has no UDP,
-  and there is no official browser npm package. Native FFI preserves hole punching
-  for desktop/server Node and Bun; no misleading isomorphic export is advertised.
-
-#### Reproduction and observed evidence
-
-Inside an environment with Cargo/Rust >=1.91 and a C linker:
-
-```bash
-bash packages/@overeng/effect-iroh/native/build-native.sh
-cd packages/@overeng/effect-iroh
-CI=1 IROH_NATIVE_LIBRARY_PATH="$PWD/native/.build/iroh.node" \
-  node ../../../node_modules/vitest/vitest.mjs run --config vitest.config.ts
-```
-
-On 2026-10-09, the latest-core build completed in 108.95 s. Node 24.20.0,
-Effect/@effect-vitest 4.0.0 and Vitest 5.0.3 passed three real native tests in
-663 ms: schema roundtrip, scoped Layer/cancelled accept, and oversized-frame
-rejection before reading its payload. A separate Node direct-IP run measured
-26.06 ms binding, 11.18 ms connection, 8.59 ms message exchange, 47.61 ms total.
-A Bun 1.4.2 run with the n0 preset and no supplied direct-address hints measured
-3106.14 ms binding/online, 50.39 ms connection, 43.22 ms exchange, 3203.60 ms total.
-Its initial selected path was the public `euc1-1.relay.n0.iroh.link` relay;
-the final selected path was a local direct-IP path. These are two endpoints on
-one host, not evidence of cross-host internet hole punching or a throughput
-benchmark.
-
-Before shipping: admit the rebuilt native product through Buck and Nix instead
-of this development recipe; fix/confirm upstream npm entrypoints; test the
-Linux/macOS/Windows matrix (official JS prebuilds do not include Intel macOS);
-expand Bun lifecycle/cancellation coverage; add per-operation native cancellation
-and bounded-buffer APIs (upstream currently converts byte arrays through
-`number[]`); and define application authorization/identity persistence separately
-from authenticated transport. No fleet ACL or operational cutover is included.
+| Package                                                       | Description                         |
+| ------------------------------------------------------------- | ----------------------------------- |
+| [@overeng/effect-iroh](./packages/@overeng/effect-iroh)           | Effect wrapper for the iroh binding |
 
 ### Utilities
 
