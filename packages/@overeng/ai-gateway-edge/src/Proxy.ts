@@ -95,7 +95,10 @@ class UsageEvents {
   }
 }
 
-export const makeRoutes = (config: GatewayConfig, metrics = new Metrics(config.maxModelLabels ?? 64)) => {
+export const makeRoutes = (
+  config: GatewayConfig,
+  metrics = new Metrics(config.maxModelLabels ?? 64),
+) => {
   const consumers = config.consumers.map(({ name, tokenSha256 }) => ({
     name,
     digest: Buffer.from(tokenSha256, 'hex'),
@@ -129,7 +132,12 @@ export const makeRoutes = (config: GatewayConfig, metrics = new Metrics(config.m
     if (input !== undefined) metrics.addTokens({ consumer, model }, status, 'input', input)
     if (output !== undefined) metrics.addTokens({ consumer, model }, status, 'output', output)
     if (usage.prompt_tokens_details?.cached_tokens !== undefined)
-      metrics.addTokens({ consumer, model }, status, 'cached', usage.prompt_tokens_details.cached_tokens)
+      metrics.addTokens(
+        { consumer, model },
+        status,
+        'cached',
+        usage.prompt_tokens_details.cached_tokens,
+      )
     if (usage.completion_tokens_details?.reasoning_tokens !== undefined)
       metrics.addTokens(
         { consumer, model },

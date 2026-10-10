@@ -7,11 +7,13 @@ export const buck2TypeScriptAdmission = {
   packagePath: 'packages/@overeng/ai-gateway-edge',
   projectionSource: 'packages/@overeng/ai-gateway-edge/BUCK.genie.ts',
   sourceRoots: ['src'],
-  workspaceSiblings: [{
-    packageName: '@overeng/ai-gateway-conformance',
-    packagePath: 'packages/@overeng/ai-gateway-conformance',
-    distTarget: '//packages/@overeng/ai-gateway-conformance:dist',
-  }],
+  workspaceSiblings: [
+    {
+      packageName: '@overeng/ai-gateway-conformance',
+      packagePath: 'packages/@overeng/ai-gateway-conformance',
+      distTarget: '//packages/@overeng/ai-gateway-conformance:dist',
+    },
+  ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
   tests: [{ name: 'test', runner: 'vitest' }],
 } as const satisfies Buck2TypeScriptAdmission

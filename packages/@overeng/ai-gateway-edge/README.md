@@ -15,9 +15,7 @@ The ports above are illustrative. All listener addresses and the upstream are ru
 ```json
 {
   "upstream": "https://upstream.example",
-  "consumers": [
-    { "name": "example-consumer", "tokenSha256": "<64 lowercase hexadecimal digits>" }
-  ]
+  "consumers": [{ "name": "example-consumer", "tokenSha256": "<64 lowercase hexadecimal digits>" }]
 }
 ```
 

@@ -24,10 +24,14 @@ export default packageJson(
   {
     name: '@overeng/ai-gateway-edge',
     ...privatePackageDefaults,
-    description: 'Runtime-configured authentication and metering edge for the shared AI gateway wire',
+    description:
+      'Runtime-configured authentication and metering edge for the shared AI gateway wire',
     bin: { 'ai-gateway-edge': './src/cli.ts' },
     exports: {
-      '.': exportEntry({ types: './dist/src/mod.d.ts', default: './src/mod.ts' }, { environment: 'node' }),
+      '.': exportEntry(
+        { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
+        { environment: 'node' },
+      ),
     },
     publishConfig: {
       access: 'public',

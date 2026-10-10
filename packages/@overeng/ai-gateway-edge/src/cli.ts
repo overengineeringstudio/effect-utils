@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import * as Http from 'node:http'
 import { createHash } from 'node:crypto'
+import * as Http from 'node:http'
 
 import { NodeHttpServer, NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
@@ -49,10 +49,23 @@ const main = Effect.gen(function* () {
     Layer.provide(NodeHttpServer.layer(() => Http.createServer(), address)),
   )
   const metricsAddress = option('--metrics-bind')
-  const metricsLayer = metricsAddress === undefined ? Layer.empty : HttpRouter.serve(
-    HttpRouter.addAll([HttpRouter.route('GET', '/metrics', Effect.sync(() => HttpServerResponse.text(metrics.render(), { contentType: 'text/plain; version=0.0.4; charset=utf-8' })))]),
-    { disableLogger: true, disableListenLog: true },
-  ).pipe(Layer.provide(NodeHttpServer.layer(() => Http.createServer(), bind(metricsAddress))))
+  const metricsLayer =
+    metricsAddress === undefined
+      ? Layer.empty
+      : HttpRouter.serve(
+          HttpRouter.addAll([
+            HttpRouter.route(
+              'GET',
+              '/metrics',
+              Effect.sync(() =>
+                HttpServerResponse.text(metrics.render(), {
+                  contentType: 'text/plain; version=0.0.4; charset=utf-8',
+                }),
+              ),
+            ),
+          ]),
+          { disableLogger: true, disableListenLog: true },
+        ).pipe(Layer.provide(NodeHttpServer.layer(() => Http.createServer(), bind(metricsAddress))))
   yield* Effect.log(`ai-gateway-edge listening on ${option('--bind')}`)
   return yield* Layer.launch(Layer.mergeAll(app, metricsLayer))
 })

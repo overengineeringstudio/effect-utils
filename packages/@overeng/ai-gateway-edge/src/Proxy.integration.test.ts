@@ -3,15 +3,16 @@ import * as Http from 'node:http'
 import { join } from 'node:path'
 
 import { NodeHttpServer, NodeServices } from '@effect/platform-node'
-import { loadCases, toHttpClientResponse } from '@overeng/ai-gateway-conformance'
 import { Effect, Fiber, FileSystem, Layer, Schema } from 'effect'
 import { HttpRouter } from 'effect/http'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { loadCases, toHttpClientResponse } from '@overeng/ai-gateway-conformance'
+
 import { loadConfig, type GatewayConfig } from './Config.ts'
-import { makeRoutes } from './Proxy.ts'
 import { Metrics } from './Metrics.ts'
+import { makeRoutes } from './Proxy.ts'
 
 const servers: Array<{ stop: () => Promise<void> }> = []
 afterEach(async () => {
@@ -98,7 +99,10 @@ describe('consumer verifier isolation (AIG.EDGE-R01, AIG.EDGE-R05, AIG.EDGE-R06)
       tokenSha256: createHash('sha256').update(`fixture-${name}`).digest('hex'),
     }))
     const before = await gateway(upstream, consumers)
-    const after = await gateway(upstream, consumers.filter(({ name }) => name !== 'first'))
+    const after = await gateway(
+      upstream,
+      consumers.filter(({ name }) => name !== 'first'),
+    )
     for (const token of ['fixture-first', 'fixture-second']) {
       const response = await fetch(`${before.url}/v1/models`, {
         headers: { authorization: `Bearer ${token}` },
@@ -107,18 +111,25 @@ describe('consumer verifier isolation (AIG.EDGE-R01, AIG.EDGE-R05, AIG.EDGE-R06)
       await response.text()
     }
     for (const authorization of [
-      'Bearer fixture-first', 'Bearer unknown', 'bearer fixture-second', 'Bearer two tokens',
+      'Bearer fixture-first',
+      'Bearer unknown',
+      'bearer fixture-second',
+      'Bearer two tokens',
     ]) {
       const response = await fetch(`${after.url}/v1/models`, { headers: { authorization } })
       expect(response.status).toBe(401)
-      expect(await response.json()).toMatchObject({ error: { type: 'authentication_error', code: null } })
+      expect(await response.json()).toMatchObject({
+        error: { type: 'authentication_error', code: null },
+      })
     }
     const retained = await fetch(`${after.url}/v1/models`, {
       headers: { authorization: 'Bearer fixture-second' },
     })
     expect(retained.status).toBe(200)
     await retained.text()
-    expect(after.metrics.render()).toContain('requests_total{consumer="second",model="models",status="200"} 1')
+    expect(after.metrics.render()).toContain(
+      'requests_total{consumer="second",model="models",status="200"} 1',
+    )
     expect(after.metrics.render()).not.toContain('consumer="first"')
   })
 
@@ -135,7 +146,9 @@ describe('consumer verifier isolation (AIG.EDGE-R01, AIG.EDGE-R05, AIG.EDGE-R06)
     expect(await response.json()).toEqual({
       error: { message: 'Upstream unavailable', type: 'gateway_error', code: null },
     })
-    expect(metrics.render()).toContain('requests_total{consumer="fixture-consumer",model="_rejected",status="502"} 1')
+    expect(metrics.render()).toContain(
+      'requests_total{consumer="fixture-consumer",model="_rejected",status="502"} 1',
+    )
   })
 })
 
@@ -149,7 +162,10 @@ describe('gateway proxy (AIG.EDGE-R02, AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R05,
         const configJson = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
           upstream: 'http://localhost',
           consumers: [
-            { name: 'fixture-consumer', tokenSha256: createHash('sha256').update('secret').digest('hex') },
+            {
+              name: 'fixture-consumer',
+              tokenSha256: createHash('sha256').update('secret').digest('hex'),
+            },
           ],
           maxModelLabels: 2,
         })
@@ -189,11 +205,12 @@ describe('gateway proxy (AIG.EDGE-R02, AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R05,
   })
 
   it('preserves a plaintext upstream error without requiring JSON usage', async () => {
-    const upstream = await start(() =>
-      new Response('temporarily unavailable\n', {
-        status: 503,
-        headers: { 'content-type': 'text/plain' },
-      }),
+    const upstream = await start(
+      () =>
+        new Response('temporarily unavailable\n', {
+          status: 503,
+          headers: { 'content-type': 'text/plain' },
+        }),
     )
     const { url, metrics } = await gateway(upstream)
     const response = await fetch(`${url}/v1/chat/completions`, {
@@ -344,8 +361,12 @@ describe('bounded model accounting (AIG.EDGE-R06)', () => {
     expect(metrics.render().match(/^requests_total\{/gm)).toHaveLength(65)
     expect(metrics.render()).toContain('model="fixture/model-63"')
     expect(metrics.render()).not.toContain('model="fixture/model-64"')
-    expect(metrics.render()).toContain('requests_total{consumer="fixture-consumer",model="_other",status="200"} 6')
-    expect(metrics.render()).toContain('tokens_total{consumer="fixture-consumer",model="_other",kind="input"} 6')
+    expect(metrics.render()).toContain(
+      'requests_total{consumer="fixture-consumer",model="_other",status="200"} 6',
+    )
+    expect(metrics.render()).toContain(
+      'tokens_total{consumer="fixture-consumer",model="_other",kind="input"} 6',
+    )
     const zero = new Metrics(0)
     zero.record({ consumer: 'fixture-consumer', model: 'fixture/model' }, 200, 0.1)
     expect(zero.render()).toContain('model="_other"')
@@ -357,20 +378,32 @@ describe('bounded model accounting (AIG.EDGE-R06)', () => {
     const upstream = await start(async (request) => {
       const body = decodeJson(await request.text())
       submitted.push(body)
-      const rejected = typeof body === 'object' && body !== null &&
-        'model' in body && typeof body.model === 'string' && body.model.startsWith('fixture/rejected-')
-      return Response.json({ usage: { prompt_tokens: 2, completion_tokens: 1 } }, {
-        status: rejected ? 429 : 200,
-      })
+      const rejected =
+        typeof body === 'object' &&
+        body !== null &&
+        'model' in body &&
+        typeof body.model === 'string' &&
+        body.model.startsWith('fixture/rejected-')
+      return Response.json(
+        { usage: { prompt_tokens: 2, completion_tokens: 1 } },
+        {
+          status: rejected ? 429 : 200,
+        },
+      )
     })
     const { url, metrics } = await gateway(upstream, undefined, 2)
     const models = [
       ...Array.from({ length: 12 }, (_, index) => `fixture/rejected-${index}`),
-      'fixture/first', 'fixture/second', 'fixture/overflow-a', 'fixture/overflow-b', 'fixture/first',
+      'fixture/first',
+      'fixture/second',
+      'fixture/overflow-a',
+      'fixture/overflow-b',
+      'fixture/first',
     ]
     for (const model of models) {
       const response = await fetch(`${url}/v1/chat/completions`, {
-        method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
         body: encodeJson({ model }),
       })
       expect(response.status).toBe(model.startsWith('fixture/rejected-') ? 429 : 200)
@@ -382,14 +415,30 @@ describe('bounded model accounting (AIG.EDGE-R06)', () => {
     expect(rendered.match(/^request_duration_seconds_count\{/gm)).toHaveLength(4)
     expect(rendered).not.toContain('model="fixture/rejected-')
     expect(rendered).not.toContain('model="fixture/overflow-')
-    expect(rendered).toContain('requests_total{consumer="fixture-consumer",model="_rejected",status="429"} 12')
-    expect(rendered).toContain('tokens_total{consumer="fixture-consumer",model="_rejected",kind="input"} 24')
-    expect(rendered).toContain('request_duration_seconds_count{consumer="fixture-consumer",model="_rejected"} 12')
-    expect(rendered).toContain('requests_total{consumer="fixture-consumer",model="fixture/first",status="200"} 2')
-    expect(rendered).toContain('requests_total{consumer="fixture-consumer",model="fixture/second",status="200"} 1')
-    expect(rendered).toContain('requests_total{consumer="fixture-consumer",model="_other",status="200"} 2')
-    expect(rendered).toContain('tokens_total{consumer="fixture-consumer",model="_other",kind="input"} 4')
-    expect(rendered).toContain('request_duration_seconds_count{consumer="fixture-consumer",model="_other"} 2')
+    expect(rendered).toContain(
+      'requests_total{consumer="fixture-consumer",model="_rejected",status="429"} 12',
+    )
+    expect(rendered).toContain(
+      'tokens_total{consumer="fixture-consumer",model="_rejected",kind="input"} 24',
+    )
+    expect(rendered).toContain(
+      'request_duration_seconds_count{consumer="fixture-consumer",model="_rejected"} 12',
+    )
+    expect(rendered).toContain(
+      'requests_total{consumer="fixture-consumer",model="fixture/first",status="200"} 2',
+    )
+    expect(rendered).toContain(
+      'requests_total{consumer="fixture-consumer",model="fixture/second",status="200"} 1',
+    )
+    expect(rendered).toContain(
+      'requests_total{consumer="fixture-consumer",model="_other",status="200"} 2',
+    )
+    expect(rendered).toContain(
+      'tokens_total{consumer="fixture-consumer",model="_other",kind="input"} 4',
+    )
+    expect(rendered).toContain(
+      'request_duration_seconds_count{consumer="fixture-consumer",model="_other"} 2',
+    )
   })
 })
 
@@ -400,26 +449,33 @@ describe('incremental SSE transport (AIG.EDGE-R04)', () => {
     const { promise: released, resolve: release } = Promise.withResolvers<void>()
     let upstreamEnded = false
     let upstreamCanceled = false
-    const upstream = await start(() => new Response(new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode(firstEvent))
-        void released.then(() => {
-          upstreamEnded = true
-          if (upstreamCanceled) return
-          controller.enqueue(new TextEncoder().encode(endEvent))
-          controller.close()
-        })
-      },
-      cancel() {
-        upstreamCanceled = true
-      },
-    }), { headers: { 'content-type': 'text/event-stream' } }))
+    const upstream = await start(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(firstEvent))
+              void released.then(() => {
+                upstreamEnded = true
+                if (upstreamCanceled) return
+                controller.enqueue(new TextEncoder().encode(endEvent))
+                controller.close()
+              })
+            },
+            cancel() {
+              upstreamCanceled = true
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+    )
     const { url } = await gateway(upstream)
     try {
       // If the edge buffers until upstream EOF, this real-time deadline fails
       // while the upstream is still held behind the explicit release barrier.
       const response = await fetch(`${url}/v1/chat/completions`, {
-        method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
         body: encodeJson({ model: 'fixture/stream', stream: true }),
         signal: AbortSignal.timeout(2000),
       })
@@ -466,10 +522,11 @@ describe('incremental SSE transport (AIG.EDGE-R04)', () => {
     })
     await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve))
     servers.push({
-      stop: () => new Promise<void>((resolve, reject) => {
-        upstream.close((cause) => (cause ? reject(cause) : resolve()))
-        upstream.closeAllConnections()
-      }),
+      stop: () =>
+        new Promise<void>((resolve, reject) => {
+          upstream.close((cause) => (cause ? reject(cause) : resolve()))
+          upstream.closeAllConnections()
+        }),
     })
     const address = upstream.address()
     if (address === null || typeof address === 'string') throw new Error('Expected TCP address')
@@ -477,7 +534,8 @@ describe('incremental SSE transport (AIG.EDGE-R04)', () => {
     const client = new AbortController()
     try {
       const response = await fetch(`${url}/v1/chat/completions`, {
-        method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
         body: encodeJson({ model: 'fixture/stream', stream: true }),
         signal: AbortSignal.any([client.signal, AbortSignal.timeout(2000)]),
       })
@@ -596,9 +654,12 @@ describe('shared wire conformance through the edge (AIG.EDGE-R07)', () => {
       expect(forwarded).toBe(1)
       expect(bytes).toBe(expectedBytes)
       expect(response.headers.get('content-type')).toBe(fakeResponse.headers['content-type'])
-      const model = response.status >= 200 && response.status < 300
-        ? (replayCase.request.method === 'GET' ? 'models' : body.model)
-        : '_rejected'
+      const model =
+        response.status >= 200 && response.status < 300
+          ? replayCase.request.method === 'GET'
+            ? 'models'
+            : body.model
+          : '_rejected'
       expect(metrics.render()).toContain(
         `requests_total{consumer="fixture-consumer",model="${model}",status="${response.status}"} 1`,
       )

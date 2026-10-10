@@ -51,12 +51,12 @@ bearer -> digest comparison -> decode model -> force stream usage -> upstream
 
 ## Accounting (AIG.EDGE-R06)
 
-| Metric | Labels | Meaning |
-| --- | --- | --- |
-| `requests_total` | `consumer, model, status` | Authenticated response count |
-| `tokens_total` | `consumer, model, kind` | Supplied `input`, `output`, `cached`, `reasoning` tokens |
-| `request_duration_seconds_bucket` | `consumer, model, le` | Cumulative duration histogram |
-| `request_duration_seconds_sum`, `request_duration_seconds_count` | `consumer, model` | Duration aggregate |
+| Metric                                                           | Labels                    | Meaning                                                  |
+| ---------------------------------------------------------------- | ------------------------- | -------------------------------------------------------- |
+| `requests_total`                                                 | `consumer, model, status` | Authenticated response count                             |
+| `tokens_total`                                                   | `consumer, model, kind`   | Supplied `input`, `output`, `cached`, `reasoning` tokens |
+| `request_duration_seconds_bucket`                                | `consumer, model, le`     | Cumulative duration histogram                            |
+| `request_duration_seconds_sum`, `request_duration_seconds_count` | `consumer, model`         | Duration aggregate                                       |
 
 The package owns these case-sensitive Prometheus metric identifiers. Consumer values are escaped configuration values. Request, token and duration metrics share one model-label admission set per `Metrics` instance:
 
@@ -73,10 +73,10 @@ The package owns these case-sensitive Prometheus metric identifiers. Consumer va
 
 All 16 current cases have edge-supported endpoints and are replayed as edge transport projections. The following case expectations are explicitly not applicable to the edge:
 
-| Case | Inapplicable expectation and replay projection |
-| --- | --- |
-| `chat.stream.usage` | No-bearer success is a client fake-transport convention, not protected-edge behavior. Replay supplies a fixture bearer and asserts SSE/usage preservation. |
-| `decision.invalid-label` | No-bearer success and client-side label validation are not edge guarantees. Replay supplies a fixture bearer and asserts unchanged invalid output. |
-| `structured.invalid` | Original-schema validation belongs to the consumer. Replay asserts unchanged invalid output so the consumer can reject it. |
+| Case                     | Inapplicable expectation and replay projection                                                                                                             |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chat.stream.usage`      | No-bearer success is a client fake-transport convention, not protected-edge behavior. Replay supplies a fixture bearer and asserts SSE/usage preservation. |
+| `decision.invalid-label` | No-bearer success and client-side label validation are not edge guarantees. Replay supplies a fixture bearer and asserts unchanged invalid output.         |
+| `structured.invalid`     | Original-schema validation belongs to the consumer. Replay asserts unchanged invalid output so the consumer can reject it.                                 |
 
 Case bodies are partial request matchers, so replay merges them with the case's model, stream and structured-format predicates to produce complete requests. Parsed tool calls, structured values and native probabilities are interpreted in consumer suites, not by the edge. No case is silently skipped.
