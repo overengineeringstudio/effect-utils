@@ -249,8 +249,9 @@ original-schema validation, decision integrity checks, or operation telemetry.
   response body, and optional `Retry-After` header.
 - `Error::Stream` preserves a diagnosis and the raw error payload when available.
 - `Error::Validation { errors, usage }` reports local schema or decision integrity
-  failures. If a successful provider response was rejected locally, its billed
-  usage is retained in the error; pre-request validation has `usage: None`.
+  failures. Structured-output and `decide` validation retain billed usage when
+  rejecting a successful provider response. Pre-request validation and `run_tools`
+  post-response rejections have `usage: None`.
 - `Error::Transport` and `Error::Config` distinguish transport/configuration failures.
 
 The client never automatically retries HTTP refusals, transport failures, or
