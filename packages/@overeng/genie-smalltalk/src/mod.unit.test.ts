@@ -3,15 +3,34 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { Schema } from 'effect'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
-import { agent, emit, mission, node, omp, resource, schedule, smalltalkKdl } from './mod.ts'
+import {
+  agent,
+  type AgentSchema,
+  emit,
+  mission,
+  MissionSchema,
+  node,
+  omp,
+  resource,
+  schedule,
+  smalltalkKdl,
+} from './mod.ts'
+
+const reporter = {
+  id: 'ops/watcher',
+  name: 'Mission watcher',
+  harness: { kind: 'omp', model: 'example-model', effort: 'medium' },
+} satisfies typeof AgentSchema.Encoded
 
 const canonical = () =>
   emit([
     mission({
       id: 'demo',
       state: 'ready',
+      reportTo: reporter,
       goal: 'Demonstrate KDL.',
       steps: [{ id: 'first', goal: 'Inspect input.', agentless: true }],
     }),
@@ -20,6 +39,7 @@ const canonical = () =>
 const fanInMission = () => ({
   id: 'fan-in',
   state: 'ready' as const,
+  reportTo: reporter,
   goal: 'Join independent work.',
   steps: [
     { id: 'first', agentless: true as const },
@@ -36,9 +56,39 @@ const fanInMission = () => ({
 })
 
 describe('Smalltalk declarations', () => {
+  it('requires a typed agent declaration rather than a string or omitted report', () => {
+    expectTypeOf<string>().not.toMatchTypeOf<(typeof MissionSchema.Encoded)['reportTo']>()
+    expectTypeOf<Omit<typeof MissionSchema.Encoded, 'reportTo'>>().not.toMatchTypeOf<
+      typeof MissionSchema.Encoded
+    >()
+    const { reportTo: _reportTo, ...unreported } = fanInMission()
+    expect(() => Schema.decodeUnknownSync(MissionSchema)(unreported)).toThrow()
+  })
+  it.each([
+    'agent/ops/watcher',
+    'person/operator',
+    'none',
+    undefined,
+    { id: '' },
+    { id: '../bad' },
+    { id: 'ops//watcher' },
+  ])('rejects invalid reporting references %j', (reportTo) => {
+    expect(() => Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo })).toThrow()
+  })
+  it('renders only the native mission-level report property and retains imported kit metadata', () => {
+    const importedSeat = { ...reporter, hold: { reason: 'Not deployed yet.' } }
+    const input = { ...fanInMission(), reportTo: importedSeat }
+    const decoded = Schema.decodeSync(MissionSchema)(input)
+    expect(decoded.reportTo).toBe(importedSeat)
+    const declaration = mission(input)
+    expect(declaration.props['report-to']).toBe('agent/ops/watcher')
+    expect(declaration.children?.some((entry) => entry.name === 'report-to')).toBe(false)
+    expect(emit([declaration])).not.toContain('Mission watcher')
+    expect(emit([declaration])).not.toContain('harness')
+  })
   it('renders AND fan-in as multiple ordered step entries in one depends-on block', () => {
     expect(emit([mission(fanInMission())])).toBe(
-      'version 2\nmission "fan-in" state="ready" {\n  goal "Join independent work."\n  step "first" {\n    agentless\n  }\n  step "second" {\n    agentless\n  }\n  step "join" {\n    agentless\n    depends-on {\n      step "first" "completed"\n      step "second" "completed"\n    }\n  }\n}\n',
+      'version 2\nmission "fan-in" report-to="agent/ops/watcher" state="ready" {\n  goal "Join independent work."\n  step "first" {\n    agentless\n  }\n  step "second" {\n    agentless\n  }\n  step "join" {\n    agentless\n    depends-on {\n      step "first" "completed"\n      step "second" "completed"\n    }\n  }\n}\n',
     )
   })
   it('preserves singleton dependency KDL with list authoring', () => {
@@ -130,6 +180,7 @@ describe('Smalltalk declarations', () => {
       mission({
         id: 'demo',
         state: 'ready',
+        reportTo: reporter,
         goal: 'go',
         steps: [{ id: 'a', agentless: true, assignedTo: 'agent/a' }],
       }),
