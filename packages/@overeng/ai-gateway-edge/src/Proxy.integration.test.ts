@@ -448,6 +448,69 @@ describe('incremental SSE transport (AIG.EDGE-R04)', () => {
       release()
     }
   })
+
+  it('cancels the open upstream request when a client aborts mid-SSE', async () => {
+    const firstEvent = 'data: {"choices":[{"delta":{"content":"first"}}]}\n\n'
+    const disconnected = Promise.withResolvers<boolean>()
+    let upstreamClosed = false
+    const upstream = Http.createServer((incoming, outgoing) => {
+      incoming.resume()
+      outgoing.once('close', () => {
+        upstreamClosed = true
+        disconnected.resolve(outgoing.writableFinished)
+      })
+      outgoing.writeHead(200, { 'content-type': 'text/event-stream' })
+      outgoing.write(firstEvent)
+      // Never end the upstream response: only cancellation can close it before
+      // fixture teardown, which deliberately happens after the assertion.
+    })
+    await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve))
+    servers.push({
+      stop: () => new Promise<void>((resolve, reject) => {
+        upstream.close((cause) => (cause ? reject(cause) : resolve()))
+        upstream.closeAllConnections()
+      }),
+    })
+    const address = upstream.address()
+    if (address === null || typeof address === 'string') throw new Error('Expected TCP address')
+    const { url } = await gateway(`http://127.0.0.1:${address.port}`)
+    const client = new AbortController()
+    try {
+      const response = await fetch(`${url}/v1/chat/completions`, {
+        method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
+        body: encodeJson({ model: 'fixture/stream', stream: true }),
+        signal: AbortSignal.any([client.signal, AbortSignal.timeout(2000)]),
+      })
+      expect(response.status).toBe(200)
+      const reader = response.body?.getReader()
+      if (reader === undefined) throw new Error('Expected streaming response body')
+      const initial: Uint8Array[] = []
+      let received = 0
+      while (received < Buffer.byteLength(firstEvent)) {
+        const chunk = await reader.read()
+        if (chunk.done) throw new Error('Upstream ended before the client abort')
+        initial.push(chunk.value)
+        received += chunk.value.byteLength
+      }
+      expect(Buffer.concat(initial).toString('utf8')).toBe(firstEvent)
+      expect(upstreamClosed).toBe(false)
+      client.abort()
+      await expect(reader.read()).rejects.toMatchObject({ name: 'AbortError' })
+      // Missing abort propagation fails this deadline instead of hanging or
+      // accidentally passing when afterEach closes the fixture's sockets.
+      const deadline = AbortSignal.timeout(2000)
+      const completedNormally = await Promise.race([
+        disconnected.promise,
+        new Promise<never>((_, reject) => {
+          deadline.addEventListener('abort', () => reject(deadline.reason), { once: true })
+        }),
+      ])
+      expect(completedNormally).toBe(false)
+      expect(upstreamClosed).toBe(true)
+    } finally {
+      client.abort()
+    }
+  })
 })
 
 const cases = await Effect.runPromise(loadCases().pipe(Effect.provide(NodeServices.layer)))

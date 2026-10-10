@@ -69,7 +69,7 @@ The package owns these case-sensitive Prometheus metric identifiers. Consumer va
 
 ## Shared conformance (AIG.EDGE-R07)
 
-`Proxy.integration.test.ts` loads `@overeng/ai-gateway-conformance` cases with `loadCases`, renders their upstream responses with `toHttpClientResponse`, and sends each request through an ephemeral loopback Node edge listener. It asserts bearer rejection before forwarding, credential stripping, unchanged endpoint/method/body except forced streaming usage, exact upstream status/content type/response bytes, and supplied usage accounting. Original integration coverage additionally exercises config decoding, malformed payloads, hop-by-hop filtering, plaintext errors and both decision paths.
+`Proxy.integration.test.ts` loads `@overeng/ai-gateway-conformance` cases with `loadCases`, renders their upstream responses with `toHttpClientResponse`, and sends each request through an ephemeral loopback Node edge listener. It asserts bearer rejection before forwarding, credential stripping, unchanged endpoint/method/body except forced streaming usage, exact upstream status/content type/response bytes, and supplied usage accounting. Additional integration coverage exercises config decoding, malformed payloads, hop-by-hop filtering, plaintext errors, both decision paths, bounded model accounting and incremental SSE delivery. The disconnect proof aborts a client after its first SSE event and requires the still-open upstream HTTP response to close before fixture teardown; a bounded deadline fails if cancellation is not propagated.
 
 All 16 current cases have edge-supported endpoints and are replayed as edge transport projections. The following case expectations are explicitly not applicable to the edge:
 
