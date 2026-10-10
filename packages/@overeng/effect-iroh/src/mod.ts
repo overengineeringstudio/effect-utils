@@ -140,40 +140,83 @@ const makeBi = ({
   const cancel = () => closeConnection(connection)
   let sendFinished = false
   let recvFinished = false
-  const readChunk = (size: number) =>
+  let sendInFlight = 0
+  let recvInFlight = 0
+  const recvOperation = <A>({ operation, start }: { operation: string; start: () => Promise<A> }) =>
     nativeCall({
+      operation,
+      start: async () => {
+        recvInFlight++
+        try {
+          return await start()
+        } catch (cause) {
+          recvFinished = true
+          throw cause
+        } finally {
+          recvInFlight--
+        }
+      },
+      cancel,
+    })
+  const sendOperation = <A>({ operation, start }: { operation: string; start: () => Promise<A> }) =>
+    nativeCall({
+      operation,
+      start: async () => {
+        sendInFlight++
+        try {
+          return await start()
+        } catch (cause) {
+          sendFinished = true
+          throw cause
+        } finally {
+          sendInFlight--
+        }
+      },
+      cancel,
+    })
+  const readChunk = (size: number) =>
+    recvOperation({
       operation: 'read',
       start: async () => {
         const bytes = await recv.read(size)
         if (bytes.length === 0) recvFinished = true
         return bytes
       },
-      cancel,
     })
   const exact = (size: number) =>
-    nativeCall({ operation: 'readExact', start: () => recv.readExact(size), cancel })
+    recvOperation({ operation: 'readExact', start: () => recv.readExact(size) })
   const writeBytes = (bytes: Uint8Array) =>
-    nativeCall({ operation: 'write', start: () => send.writeAll(Array.from(bytes)), cancel })
-  const finish = nativeCall({
+    sendOperation({ operation: 'write', start: () => send.writeAll(Array.from(bytes)) })
+  const finish = sendOperation({
     operation: 'finish',
     start: async () => {
       await send.finish()
       sendFinished = true
     },
-    cancel,
   })
   return {
-    close: Effect.promise(async () => {
-      if (connection.closeReason() !== null) return
-      if (sendFinished === false) {
-        await send.reset(0n)
-        sendFinished = true
-      }
-      if (recvFinished === false) {
-        await recv.stop(0n)
-        recvFinished = true
-      }
-    }),
+    close: Effect.tryPromise({
+      try: async () => {
+        if (connection.closeReason() !== null) return
+        if (sendInFlight > 0 || recvInFlight > 0) {
+          sendFinished = true
+          recvFinished = true
+          cancel()
+          return
+        }
+        const teardown: Promise<unknown>[] = []
+        if (sendFinished === false) {
+          sendFinished = true
+          teardown.push(send.reset(0n).catch(() => {}))
+        }
+        if (recvFinished === false) {
+          recvFinished = true
+          teardown.push(recv.stop(0n).catch(() => {}))
+        }
+        await Promise.all(teardown)
+      },
+      catch: () => undefined,
+    }).pipe(Effect.ignore),
     read: Stream.fromEffectRepeat(
       Effect.gen(function* () {
         const bytes = yield* readChunk(64 * 1024)

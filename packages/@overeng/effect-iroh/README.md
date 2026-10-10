@@ -69,6 +69,8 @@ or the **endpoint** for accept/connect/online, and awaits native settlement.
 Cancelling an accept ends that endpoint's accept loop; cancelling a read also
 ends sibling streams on that connection. This conservative behavior avoids
 abandoning Rust futures but is not per-operation cancellation.
+Closing a stream with in-flight I/O also closes its owning connection rather than
+waiting for `stop()` or `reset()` behind the pending native operation.
 
 ## Example
 

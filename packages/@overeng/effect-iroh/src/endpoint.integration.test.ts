@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest'
-import { Effect, Fiber, Layer, Option, Schema, Stream } from 'effect'
+import { Cause, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from 'effect'
 
 import { echoAlpn, roundTrip } from './echo.ts'
 import { IrohEndpoint } from './mod.ts'
@@ -97,6 +97,82 @@ describe('iroh native QUIC', () => {
         ).pipe(Effect.result)
         expect(result._tag).toBe('Failure')
         if (result._tag === 'Failure') expect(result.failure._tag).toBe('IrohProtocolError')
+      }).pipe(Effect.timeout('10 seconds')),
+    15_000,
+  )
+
+  it.live(
+    'closes a stream with a pending read without waiting for its receive mutex',
+    () =>
+      Effect.gen(function* () {
+        const server = yield* IrohEndpoint.make({
+          ...nativeOptions,
+          alpns: [echoAlpn],
+          preset: 'minimal',
+        })
+        const client = yield* IrohEndpoint.make({
+          ...nativeOptions,
+          alpns: [echoAlpn],
+          preset: 'minimal',
+        })
+        const incoming = yield* server.accept.pipe(Effect.forkScoped)
+        const connection = yield* client.connect({ addr: yield* server.address, alpn: echoAlpn })
+        const bi = yield* connection.openBi
+        const accepted = yield* Fiber.join(incoming)
+        if (Option.isNone(accepted) === true)
+          return yield* Effect.die('Expected incoming connection')
+        const receiving = yield* accepted.value.acceptBi.pipe(Effect.forkScoped)
+        yield* Stream.make(new Uint8Array([0])).pipe(Stream.run(bi.write))
+        yield* Fiber.join(receiving)
+        // The peer keeps its send half open without sending any bytes.
+        const reader = yield* bi.read.pipe(Stream.runDrain, Effect.exit, Effect.forkScoped)
+        yield* Effect.yieldNow
+        yield* bi.close.pipe(Effect.timeout('2 seconds'))
+        const result = yield* Fiber.join(reader).pipe(Effect.timeout('2 seconds'))
+        if (Exit.isFailure(result) === true) {
+          expect(Cause.hasDies(result.cause)).toBe(false)
+          const error = Cause.findErrorOption(result.cause)
+          expect(Option.isSome(error)).toBe(true)
+          if (Option.isSome(error) === true) expect(error.value._tag).toBe('IrohTransportError')
+        }
+      }).pipe(Effect.timeout('10 seconds')),
+    15_000,
+  )
+
+  it.live(
+    'reports a truncated frame as a typed error without a scoped teardown defect',
+    () =>
+      Effect.gen(function* () {
+        const result = yield* Effect.gen(function* () {
+          const server = yield* IrohEndpoint.make({
+            ...nativeOptions,
+            alpns: [echoAlpn],
+            preset: 'minimal',
+          })
+          const client = yield* IrohEndpoint.make({
+            ...nativeOptions,
+            alpns: [echoAlpn],
+            preset: 'minimal',
+          })
+          const incoming = yield* server.accept.pipe(Effect.forkScoped)
+          const connection = yield* client.connect({ addr: yield* server.address, alpn: echoAlpn })
+          const send = yield* connection.openBi
+          const accepted = yield* Fiber.join(incoming)
+          if (Option.isNone(accepted) === true)
+            return yield* Effect.die('Expected incoming connection')
+          const receiving = yield* accepted.value.acceptBi.pipe(Effect.forkScoped)
+          // Announce four payload bytes, send only one, then finish the raw sink with FIN.
+          yield* Stream.make(new Uint8Array([0, 0, 0, 4, 34])).pipe(Stream.run(send.write))
+          const bi = yield* Fiber.join(receiving)
+          yield* Stream.runCollect(bi.messages({ schema: Schema.String }).read)
+        }).pipe(Effect.scoped, Effect.exit)
+        expect(Exit.isFailure(result)).toBe(true)
+        if (Exit.isFailure(result) === true) {
+          expect(Cause.hasDies(result.cause)).toBe(false)
+          const error = Cause.findErrorOption(result.cause)
+          expect(Option.isSome(error)).toBe(true)
+          if (Option.isSome(error) === true) expect(error.value._tag).toBe('IrohTransportError')
+        }
       }).pipe(Effect.timeout('10 seconds')),
     15_000,
   )
