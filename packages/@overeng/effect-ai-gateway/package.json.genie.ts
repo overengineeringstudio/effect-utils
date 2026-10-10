@@ -7,16 +7,18 @@ import {
   privatePackageDefaults,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
+import aiGatewayConformancePkg from '../ai-gateway-conformance/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const peerDepNames = ['effect', '@effect/ai-openai-compat', '@effect/ai-typesafe'] as const
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-ai-gateway' }),
   devDependencies: {
-    workspace: [utilsDevPkg],
+    workspace: [utilsDevPkg, aiGatewayConformancePkg],
     external: {
       ...catalog.pick(
         '@effect/vitest',
+        '@effect/platform-node',
         '@types/node',
         'typescript',
         'effect',

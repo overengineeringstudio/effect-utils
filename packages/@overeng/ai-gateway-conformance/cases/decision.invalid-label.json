@@ -1,0 +1,82 @@
+{
+  "id": "decision.invalid-label",
+  "summary": "Reject a native classification label outside the caller criteria.",
+  "requirements": ["AIG-R07", "AIG-R08"],
+  "request": {
+    "method": "POST",
+    "path": "/v1/systemone",
+    "auth": "none",
+    "match": {
+      "model": "openrouter/~typesafe/jev-latest"
+    },
+    "body": {
+      "model": "openrouter/~typesafe/jev-latest",
+      "state": {
+        "ticket": "Charged twice"
+      },
+      "questions": {
+        "department": {
+          "type": "choice",
+          "instructions": "Which team should handle this?",
+          "criteria": {
+            "billing": "Payments and refunds",
+            "technical": "Bugs and outages"
+          }
+        },
+        "urgent": {
+          "type": "noul",
+          "instructions": "Needs action today?"
+        },
+        "frustration": {
+          "type": "score",
+          "instructions": "How frustrated is the customer?",
+          "criteria": ["calm", "frustrated", "angry"]
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "unexpected",
+          "probabilities": {
+            "billing": 0.9,
+            "technical": 0.1
+          },
+          "confidence": 0.8
+        },
+        "urgent": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "frustration": {
+          "type": "score",
+          "score": 1.2,
+          "probabilities": {
+            "0": 0,
+            "1": 0.8,
+            "2": 0.2
+          },
+          "legend": {
+            "0": "calm",
+            "1": "frustrated",
+            "2": "angry"
+          },
+          "confidence": 0.6
+        }
+      },
+      "usage": {
+        "input_tokens": 218,
+        "output_tokens": 39
+      }
+    }
+  },
+  "expect": {
+    "outcome": "validation-error",
+    "usage": { "input": 218, "output": 39 }
+  }
+}
