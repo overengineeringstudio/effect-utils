@@ -241,7 +241,12 @@ const writeManifest = (
   {
     variant = 'valid',
     activeWorkspaces = [],
-  }: { variant?: ManifestVariant; activeWorkspaces?: ReadonlyArray<string> } = {},
+    parkedWorkspaces = [],
+  }: {
+    variant?: ManifestVariant
+    activeWorkspaces?: ReadonlyArray<string>
+    parkedWorkspaces?: ReadonlyArray<string>
+  } = {},
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -267,13 +272,23 @@ const writeManifest = (
         expiresAt: new Date(capturedAt + 4 * 60 * 1000).toISOString(),
         complete: variant !== 'incomplete',
         errors: variant === 'incomplete' ? ['fixture: producer reported partial capture'] : [],
-        claims: activeWorkspaces.map((workspace) => ({
-          workspace,
-          sources: ['pty'],
-          agents: [],
-          activeRuntimeIds: [],
-          active: true,
-        })),
+        claims: [
+          ...activeWorkspaces.map((workspace) => ({
+            workspace,
+            sources: ['pty'],
+            agents: [],
+            activeRuntimeIds: [],
+            active: true,
+          })),
+          // Assigned seats protect worktrees even with no running runtime.
+          ...parkedWorkspaces.map((workspace) => ({
+            workspace,
+            sources: ['st3-seat'],
+            agents: ['parked-seat'],
+            activeRuntimeIds: [],
+            active: true,
+          })),
+        ],
       }),
     )
   })
@@ -860,6 +875,10 @@ if (inOwnerNamespace === true)
             expect(receipt?.['recoverPath']).toBeUndefined()
             expect(receipt).toMatchObject({ worklogPolicyPath: f.policyPath })
             expect(receipt?.['worklogPolicySha256']).toMatch(/^[0-9a-f]{64}$/u)
+            const registrations = yield* Git.listWorktrees(f.bareRepoPaths[REPO_KEY]!)
+            expect(registrations.some((entry) => entry.path.replace(/\/?$/u, '/') === w)).toBe(
+              false,
+            )
           },
           Effect.provide(NodeServices.layer),
           Effect.scoped,
@@ -882,6 +901,28 @@ if (inOwnerNamespace === true)
               reason: 'agent-liveness-unavailable',
             })
             expect(yield* exists(`${worklog}/notes.md`)).toBe(true)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+
+      it.effect(
+        'teardown "delete" keeps a merged worktree claimed by a parked seat without a runtime',
+        Effect.fnUntraced(
+          function* () {
+            const { f, w, worklog } = yield* teardownFixture({
+              teardown: 'delete',
+              prState: 'MERGED',
+            })
+            yield* writeManifest(f, { parkedWorkspaces: [w.replace(/\/$/u, '')] })
+            const result = runMr(f, [])
+            expect(result.exitCode, result.stderr).toBe(0)
+            expect(gcRow(result.stdout, w)).toMatchObject({ status: 'kept', reason: 'live' })
+            expect(yield* exists(w)).toBe(true)
+            expect(yield* exists(`${worklog}/notes.md`)).toBe(true)
+            const registrations = yield* Git.listWorktrees(f.bareRepoPaths[REPO_KEY]!)
+            expect(registrations.some((entry) => entry.path.replace(/\/?$/u, '/') === w)).toBe(true)
           },
           Effect.provide(NodeServices.layer),
           Effect.scoped,

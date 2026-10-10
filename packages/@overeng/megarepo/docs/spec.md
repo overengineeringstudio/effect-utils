@@ -777,6 +777,12 @@ the policy's optional `worklog` field is consumed only by default-GC teardown
 (step 7). Builds that have not written yet are protected only by the
 process veto until activations hold `mr store lease` (follow-up).
 
+Deletion requires Linux pinned no-follow directory resolution: capture the complete
+ancestor device/inode chain before authority checks, reject changed identities, and
+quarantine/remove through pinned parent descriptors. Budget fingerprints include this
+chain. Mutable path ancestors are never re-resolved during removal; unsupported
+platforms refuse. Worktree and merged-worklog teardown share this deletion boundary.
+
 #### `mr store activity snapshot`
 
 ```bash
