@@ -17,6 +17,13 @@ const genieContext: GenieContext = { cwd: process.cwd(), location: '' }
 
 const expectedPublications = [
   {
+    label: '//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate',
+    module: 'ai-gateway-edge.js',
+    productKind: 'cli',
+    productName: 'ai-gateway-edge',
+    runtimeKind: 'bun',
+  },
+  {
     label: '//packages/@overeng/ci-tools:ci-tools-candidate',
     module: 'ci-tools.js',
     productKind: 'cli',
@@ -109,9 +116,9 @@ const expectUnique = (values: readonly string[]): void => {
 }
 
 describe('JavaScript product registry', () => {
-  it('declares the twelve exact publication labels and product contracts', () => {
+  it('declares the thirteen exact publication labels and product contracts', () => {
     expect(javaScriptProductPublications).toEqual(expectedPublications)
-    expect(javaScriptProductPublications).toHaveLength(12)
+    expect(javaScriptProductPublications).toHaveLength(13)
   })
 
   it('keeps every publication identity and package-local target unique', () => {

@@ -1,6 +1,9 @@
 # Generated file - DO NOT EDIT
 # Source: BUCK.genie.ts
 
+load("//buck2:package_tools.bzl", "package_bin_artifact")
+load("//buck2/products:defs.bzl", "javascript_product")
+
 # Projection source: packages/@overeng/ai-gateway-edge/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
@@ -164,5 +167,25 @@ vitest_test(
 vitest_collect(
     name = "test_collect",
     package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+package_bin_artifact(
+    name = "ai-gateway-edge-candidate-module",
+    entrypoint = "src/cli.ts",
+    external = [],
+    external_capabilities = [],
+    kind = "cli",
+    output = "ai-gateway-edge.js",
+    package_tree = ":package_tree",
+    target = "bun",
+    visibility = ["PUBLIC"],
+)
+
+javascript_product(
+    name = "ai-gateway-edge-candidate",
+    module = ":ai-gateway-edge-candidate-module",
+    product_kind = "cli",
+    product_name = "ai-gateway-edge",
     visibility = ["PUBLIC"],
 )

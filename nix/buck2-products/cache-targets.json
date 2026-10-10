@@ -254,6 +254,15 @@
     },
     {
       "kind": "javascript",
+      "name": "ai-gateway-edge",
+      "outputName": "ai-gateway-edge.js",
+      "packagePath": "packages/@overeng/ai-gateway-edge",
+      "packageTreePath": "packages/@overeng/ai-gateway-edge",
+      "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate",
+      "version": "0.0.0"
+    },
+    {
+      "kind": "javascript",
       "name": "ci-tools",
       "outputName": "ci-tools.js",
       "packagePath": "packages/@overeng/ci-tools",
