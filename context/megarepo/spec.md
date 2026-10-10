@@ -171,7 +171,9 @@ The listed root members become commit worktrees and are applied recursively;
 everything below them is applied in commit mode, so fresh worktrees carry the
 freshness grant. Unlisted members stay on shared tracking worktrees and are not
 recursed into, which keeps co-development through `repos/<member>` on
-`refs/heads/*`. A nested commit worktree that existed before the invocation is
+`refs/heads/*`. `--only`/`--skip` select root members only; a listed member's
+fresh commit subtree is always applied completely or not created at all. A
+nested commit worktree that existed before the invocation is
 accepted only if its locked tree is already mounted; an incomplete one is
 refused as above. The devenv `taskModules.megarepo` option
 `setupCommitMembers` is the intended consumer path: `mr:setup` passes the list

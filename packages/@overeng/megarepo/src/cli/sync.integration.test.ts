@@ -1550,6 +1550,54 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
     { timeout: 30000 },
   )
 
+  for (const filter of [
+    ['--only', 'child'],
+    ['--skip', 'grandchild'],
+  ] as const) {
+    it.effect(
+      `keeps root ${filter.join(' ')} out of the listed member's complete commit subtree`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const fixture = yield* createSetupConsumerFixture()
+          const { consumer, env, mount } = fixture
+
+          const result = yield* runApplyCommand({
+            cwd: consumer.workspacePath,
+            args: [...setupApplyArgs, ...filter],
+            env,
+          })
+          expect(result.stdout).not.toContain('PermissionDenied')
+          expect(result.exitCode).toBe(0)
+
+          // Root filters select root members only; the fresh subtree below `child` is complete.
+          const mounts = [
+            [consumer.workspacePath, 'child', fixture.childPath, fixture.childCommit],
+            [fixture.childPath, 'grandchild', fixture.grandchildPath, fixture.grandchildCommit],
+            [fixture.grandchildPath, 'leaf', fixture.leafPath, fixture.leafCommit],
+          ] as const
+          for (const [root, name, target, commit] of mounts) {
+            expect(yield* fs.realPath(mount(root, name))).toBe(target.slice(0, -1))
+            expect(yield* runGitCommand(mount(root, name), 'rev-parse', 'HEAD')).toBe(commit)
+          }
+
+          // A later unfiltered setup sees a prepared tree, not an unrepairable partial one.
+          const unfiltered = yield* runApplyCommand({
+            cwd: consumer.workspacePath,
+            args: setupApplyArgs,
+            env,
+          })
+          expect(unfiltered.stdout).not.toContain('PermissionDenied')
+          expect(unfiltered.exitCode).toBe(0)
+          expect(yield* fixture.applyNeeded()).toBe(false)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+      { timeout: 30000 },
+    )
+  }
+
   it.effect(
     'refuses a preexisting incomplete shared commit worktree instead of granting freshness',
     Effect.fnUntraced(

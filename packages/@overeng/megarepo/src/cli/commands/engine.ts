@@ -171,7 +171,8 @@ export const syncMegarepo = <R = never>({
      * Apply only. `Root`: the listed root members become commit worktrees and are applied
      * recursively; other root members keep the selected worktree mode and are not recursed
      * into. `Tree`: a nested root reached from a listed member; all of its members use
-     * commit worktrees and nested megarepos recurse.
+     * commit worktrees and nested megarepos recurse. `--only`/`--skip` select root members
+     * only: a fresh commit subtree is always complete, never filtered.
      */
     nestedCommit?:
       | { readonly _tag: 'Root'; readonly members: ReadonlyArray<string> }
@@ -625,7 +626,13 @@ export const syncMegarepo = <R = never>({
                   megarepoRoot: nestedRoot,
                   options:
                     options.nestedCommit !== undefined
-                      ? { ...options, commitMode: true, nestedCommit: { _tag: 'Tree' as const } }
+                      ? {
+                          ...options,
+                          commitMode: true,
+                          nestedCommit: { _tag: 'Tree' as const },
+                          only: undefined,
+                          skip: undefined,
+                        }
                       : options,
                   depth: depth + 1,
                   visited,
