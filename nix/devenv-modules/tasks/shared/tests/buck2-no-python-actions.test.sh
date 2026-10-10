@@ -242,7 +242,7 @@ declare -A REFUSED_CASES=(
   [description-does-not-hide-action]='"CARGO_PKG_DESCRIPTION": "Mentions python_binary", python_binary(name = "helper")'
   [description-does-not-hide-residual]='"CARGO_PKG_DESCRIPTION": "Python shell words", runtime = require_python312_interpreter()'
   [other-cargo-metadata-not-admitted]='"CARGO_PKG_NAME": "python_helper"'
-  [multiline-description]=$'"CARGO_PKG_DESCRIPTION": "Python\\ncontinued",'
+  [multiline-description]=$'"CARGO_PKG_DESCRIPTION": "Python\ncontinued",'
   [unterminated-description]='"CARGO_PKG_DESCRIPTION": "Python'
 )
 
