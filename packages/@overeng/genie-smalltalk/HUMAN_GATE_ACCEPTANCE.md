@@ -4,36 +4,69 @@ This plan covers the q161 human-gate edges for DSL-authored `kind: 'human'` gate
 
 ## Fixture boundary
 
-The tests are the `isolated human gate:` cases in `src/mod.unit.test.ts`. Like the existing conformance round-trip, they run only when `ST_BIN` is set to a binary built from `d5e2302` or a descendant. Each case:
+The four `isolated human gate:` cases in `src/mod.unit.test.ts` require
+`ST_FIXTURE_BIN`, built from exact native revision `d5e2302` with the upstream
+`test-support` feature and distinct `st3-fixture` binary target. The existing
+production conformance round-trip is independently enabled by `ST_BIN`. Each case:
 
-- starts its own `st up` with a temporary state directory, PTY root, Unix socket, client-gateway socket, `HOME` and XDG directories, and removes them all afterwards. It never contacts a production daemon;
-- authors a mission through the DSL. The mission has an agentless `authorize` step with an approve-mode human gate (`reviewer: person('person/schickling')`, explicit question), followed by a `risky` step assigned to an imported worker that `dependsOn` `authorize` being `completed`. Fixture seats run `command "true"`, `restart "never"` and `rollout "manual"`, so no worker claims or performs anything;
-- passes `--as person/schickling` explicitly on every runtime gate mutation (publish, start, cancel, approve and reject). Under Johannes's R1 decision this is an **attributed record**. It is not a person credential and these tests do not claim credential-level security (stricter authentication: [smalltalk#2184](https://github.com/compoundingtech/smalltalk/issues/2184));
+- starts its own `st up` with precreated private (0700) state, PTY and HOME/XDG directories, Unix and client-gateway sockets, and a private (0600) `st3/config.toml` selecting only those paths. It removes them afterwards and never contacts a production daemon;
+- authors a mission through the DSL. The mission has an agentless `authorize` step with an approve-mode human gate (`reviewer: person('person/genie-human-gate-test')`, explicit question), followed by a `risky` step assigned to an imported worker that `dependsOn` `authorize` being `completed`. Fixture seats run `command "true"`, `restart "never"` and `rollout "manual"`, so no worker claims or performs anything;
+- uses a dedicated fixture person configured only in that private daemon, not Johannes or a production person. Human-gate mutations explicitly name `--as person/genie-human-gate-test`. Under Johannes's R1 decision this is an **attributed record**, not a person credential; the fixtures do not claim credential-level security (stricter authentication: [smalltalk#2184](https://github.com/compoundingtech/smalltalk/issues/2184));
 - reads the real request and episode IDs from the daemon: `/v1/reviews` gives the `gate.requested` claim ID and its `gate-operation/...` subject, `/v1/claims/by-id` gives the binding fields, and `st alerts ls --json` gives the `attention/...` card ID and episode. Waits are bounded polls (100 ms interval, 20 s deadline, 90 s for the timeout case) for a specific observed condition. Elapsed time never stands in for that condition.
 
 ### Ancestry-bound actor requirement
 
-On Linux, `d5e2302` serves the local socket with `serve_unix_bound_with_ready`. That binds every caller whose process ancestry carries `ST_AGENT=agent/...` ([api.rs `harness_ancestor`](https://github.com/compoundingtech/smalltalk/blob/d5e230201e6593a1aac00f9ff8929d0132faab49/crates/st3/src/api.rs#L5961-L5986)). A bound caller cannot name a person in an `actor` body or on `/v1/reviews/` ([api.rs `guard_bound_request`](https://github.com/compoundingtech/smalltalk/blob/d5e230201e6593a1aac00f9ff8929d0132faab49/crates/st3/src/api.rs#L6206-L6284)). The unbound client-gateway socket uses the restricted fabric router, so it does not provide a supported way around this.
+Production `st` serves the local socket with `serve_unix_bound_with_ready`.
+A managed caller cannot name a person in an `actor` body or on `/v1/reviews/`
+([api.rs](https://github.com/compoundingtech/smalltalk/blob/d5e230201e6593a1aac00f9ff8929d0132faab49/crates/st3/src/api.rs#L5961-L5986),
+[guard](https://github.com/compoundingtech/smalltalk/blob/d5e230201e6593a1aac00f9ff8929d0132faab49/crates/st3/src/api.rs#L6206-L6284)).
+An isolated config alone does not authorize a managed agent to speak as its
+fixture person.
 
-The person-attributed cases therefore:
+These **gate-semantic tests** instead use upstream's explicit test-support
+primitive. Only the separately compiled `st3-fixture` binary initializes the
+process-local fixture state; production `st` has no environment/argument switch
+([test_support.rs](https://github.com/compoundingtech/smalltalk/blob/d5e230201e6593a1aac00f9ff8929d0132faab49/crates/st3/src/test_support.rs#L1-L18),
+[main.rs](https://github.com/compoundingtech/smalltalk/blob/d5e230201e6593a1aac00f9ff8929d0132faab49/crates/st3/src/main.rs#L4646-L4650)).
+That native test mode deliberately disables host ancestry for its test listener
+([api.rs](https://github.com/compoundingtech/smalltalk/blob/d5e230201e6593a1aac00f9ff8929d0132faab49/crates/st3/src/api.rs#L5778-L5784)).
+It is confined here to fresh private daemons with a synthetic person. No
+environment identity clearing, production-listener fallback or real person
+impersonation is used. `withIsolatedSt` explicitly selects `production` or
+`fixture`; neither mode falls back to the other.
 
-1. remove `ST_AGENT` from the environment passed to the daemon and CLI, and
-2. walk `/proc` ancestry before starting, using the same rule as native `harness_ancestor`. The walk stops, unbound, at the first ancestor whose `environ` or `stat` this user cannot read (`EACCES`, `EPERM` or `ENOENT`), such as a root-owned `sshd`; the daemon runs as the same user and stops at the same place. Any other read error, or a `stat` line that does not parse, fails the fixture. If a readable ancestor carries `ST_AGENT=agent/...`, the tests **fail** with an explicit message; they do not silently skip.
-
-Run them from a shell that no st harness started, such as an operator SSH session on dev3. If the run is launched from an agent seat, the expected result is that precondition failure. These tests do not report it as a gate outcome. The existing agent-catalog round-trip keeps its previous `ST_AGENT` behavior.
+**This proves gate semantics, not production person authentication.** The
+production `ST_BIN` round-trip preserves and records the managed caller's own
+`ST_AGENT`. Stronger person-only approval remains [smalltalk#2184](https://github.com/compoundingtech/smalltalk/issues/2184).
+To exercise actual production person attribution, a genuine operator shell
+outside managed ancestry or an authenticated paired person session is still
+required; the test-support binary provides no evidence for that boundary.
 
 ## Command
 
-From the worktree root on dev3, in an operator shell outside st harness ancestry:
+From the worktree root on the designated verification host, wait for five-minute
+load below 80 and disable Nix remote builders. Supply the separately built,
+pinned fixture binary explicitly; do not substitute it for the production binary:
 
 ```sh
-ST_BIN=/path/to/st-built-from-d5e2302 devenv shell -- \
-  bash -c 'cd packages/@overeng/genie-smalltalk && vitest run src/mod.unit.test.ts -t "isolated human gate"'
+NIX_CONFIG='builders =' ST_BIN=/path/to/production-st \
+  ST_FIXTURE_BIN=/path/to/d5e2302-test-support/bin/st3-fixture \
+  gate-slot --class gate -- devenv shell -- \
+  bash -c 'cd packages/@overeng/genie-smalltalk && vitest run src/mod.unit.test.ts'
 ```
 
-Leave out `-t` to run the whole conformance file, including the round-trip.
+This runs the pure/type authoring assertions, round-trip and four real
+human-gate fixtures. The source-side dependency view must be materialized first
+through the repository's `buck2:editor:publish` task when it is absent.
+Leave both binary variables unset for the pure authoring suite. `ST_BIN` alone
+enables production conformance; `ST_FIXTURE_BIN` alone enables the four synthetic
+human-gate semantic cases. Required `check:quick` and focused package typecheck
+remain independent pre-ready checks.
 
 ## Edge matrix
+
+The table describes implemented fixture assertions, not an execution receipt.
+Record actual pinned-binary run results against the exact PR head in the PR.
 
 | q161 edge | Native `d5e2302` | Acceptance |
 | --- | --- | --- |

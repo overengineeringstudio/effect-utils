@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -102,7 +102,7 @@ describe('attributed human gates', () => {
     'operator',
     'person/with spaces',
   ])('rejects invalid person subjects %s', (subject) => {
-    expect(() => Schema.decodeUnknownSync(PersonReferenceSchema)({ kind: 'person', subject })).toThrow()
+    expect(() => Schema.decodeSync(PersonReferenceSchema)({ kind: 'person', subject })).toThrow()
   })
 
   it('lowers a separate approve checkpoint before the risky step to exact KDL', () => {
@@ -396,12 +396,12 @@ describe('Smalltalk declarations', () => {
     { checkout: { repository: 'repo', base: 'main', branch: 'work' } },
   ])('validates the complete referenced launch declaration %j', (launch) => {
     const reference = { id: 'ops/invalid', ...launch }
-    expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+    expect(() => Schema.decodeSync(AgentReferenceSchema)(reference)).toThrow()
     expect(() =>
-      Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+      Schema.decodeSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
     ).toThrow()
     expect(() =>
-      Schema.decodeUnknownSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
+      Schema.decodeSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
     ).toThrow()
     expect(() =>
       Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
@@ -446,19 +446,19 @@ describe('Smalltalk declarations', () => {
         for (const restart of ['never', 'always', undefined]) {
           const reference = { id: 'ops/worker', [kind]: [{ id: 'task', ...launch, restart }] }
           expect(() => agent(reference)).toThrow()
-          expect(() => Schema.decodeUnknownSync(AgentSchema)(reference)).toThrow()
-          expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+          expect(() => Schema.decodeSync(AgentSchema)(reference)).toThrow()
+          expect(() => Schema.decodeSync(AgentReferenceSchema)(reference)).toThrow()
           expect(() =>
-            Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+            Schema.decodeSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
           ).toThrow()
           expect(() =>
-            Schema.decodeUnknownSync(AgentSchema)({
+            Schema.decodeSync(AgentSchema)({
               id: 'ops/subordinate',
               under: [{ target: reference }],
             }),
           ).toThrow()
           expect(() =>
-            Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
+            Schema.decodeSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
           ).toThrow()
         }
       }
@@ -724,6 +724,14 @@ describe('Smalltalk declarations', () => {
 const stBin = process.env.ST_BIN
 const testWithSt = stBin !== undefined && stBin !== '' ? it : it.skip
 
+// Explicitly opt in to upstream's separate test-support executable, never a production fallback.
+// It exercises gate semantics with synthetic person attribution, not production authentication.
+const stFixtureBin = process.env.ST_FIXTURE_BIN
+const testWithStFixture = stFixtureBin !== undefined && stFixtureBin !== '' ? it : it.skip
+
+// This person exists only in each private scratch daemon's config, never in a live fleet.
+const gateReviewer = 'person/genie-human-gate-test'
+
 type IsolatedSt = {
   dir: string
   socket: string
@@ -754,58 +762,19 @@ const pollSt = async <T>(
   throw new Error(`Timed out waiting for ${description}; last observation: ${JSON.stringify(last)}`)
 }
 
-/**
- * Native Linux Unix listeners bind any request whose process ancestry carries
- * `ST_AGENT=agent/...`; a bound harness cannot name a person on `/v1/reviews/`.
- * Person-attributed fixtures must therefore start outside every st harness.
- *
- * Mirrors d5e2302 `api.rs` `harness_ancestor`: the walk ends unbound at the first ancestor
- * whose `/proc` entries this user cannot read (for example a root-owned sshd), because the
- * daemon, running as the same user, stops there too. Any other read error fails the fixture.
- */
-const boundHarnessAncestor = (): string | undefined => {
-  if (process.platform !== 'linux') return undefined
-  const readProc = (path: string) => {
-    try {
-      return readFileSync(path, 'utf8')
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code === 'EACCES' || code === 'EPERM' || code === 'ENOENT') return undefined
-      throw error
-    }
-  }
-  const seen: Record<number, true> = {}
-  for (let pid = process.pid; pid > 1 && seen[pid] === undefined; ) {
-    seen[pid] = true
-    const environment = readProc(`/proc/${pid}/environ`)
-    if (environment === undefined) return undefined
-    const agent = environment.split('\0').find((entry) => entry.startsWith('ST_AGENT=agent/'))
-    if (agent !== undefined) return `${agent.slice('ST_AGENT='.length)} (pid ${pid})`
-    const stat = readProc(`/proc/${pid}/stat`)
-    if (stat === undefined) return undefined
-    const parent = Number(stat.slice(stat.lastIndexOf(') ') + 2).split(' ')[1])
-    if (!Number.isInteger(parent)) throw new Error(`Unparseable /proc/${pid}/stat: ${stat}`)
-    pid = parent
-  }
-  return undefined
-}
-
 const withIsolatedSt = async (
-  { unbound }: { unbound: boolean },
+  { kind }: { kind: 'production' | 'fixture' },
   run: (st: IsolatedSt) => Promise<void>,
 ) => {
-  if (unbound) {
-    const bound = boundHarnessAncestor()
-    expect(
-      bound,
-      `Person-attributed gate acceptance must run outside st harness ancestry; found ${bound}`,
-    ).toBeUndefined()
-  }
+  const binary = kind === 'fixture' ? stFixtureBin : stBin
+  if (binary === undefined || binary === '')
+    throw new Error(`${kind === 'fixture' ? 'ST_FIXTURE_BIN' : 'ST_BIN'} is required for ${kind} mode`)
   const dir = mkdtempSync(join(tmpdir(), 'genie-st-'))
   const socket = join(dir, 'daemon.sock')
-  const { ST_AGENT: _inheritedAgent, ...inherited } = process.env
+  const stateDir = join(dir, 'state')
+  const ptyRoot = join(dir, 'pty')
   const isolatedEnv = {
-    ...(unbound ? inherited : process.env),
+    ...process.env,
     HOME: join(dir, 'home'),
     XDG_CONFIG_HOME: join(dir, 'config'),
     XDG_DATA_HOME: join(dir, 'data'),
@@ -818,18 +787,39 @@ const withIsolatedSt = async (
     isolatedEnv.XDG_DATA_HOME,
     isolatedEnv.XDG_STATE_HOME,
     isolatedEnv.XDG_RUNTIME_DIR,
+    stateDir,
+    ptyRoot,
   ])
-    mkdirSync(path)
+    mkdirSync(path, { mode: 0o700 })
+  const configDir = join(isolatedEnv.XDG_CONFIG_HOME, 'st3')
+  mkdirSync(configDir, { mode: 0o700 })
+  const config = join(configDir, 'config.toml')
+  writeFileSync(
+    config,
+    [
+      'node = "genie-test"',
+      `person = ${JSON.stringify(gateReviewer)}`,
+      `state_dir = ${JSON.stringify(stateDir)}`,
+      `pty_root = ${JSON.stringify(ptyRoot)}`,
+      `socket = ${JSON.stringify(socket)}`,
+      `client_gateway_socket = ${JSON.stringify(join(dir, 'gateway.sock'))}`,
+      'peers = []',
+      '',
+    ].join('\n'),
+    { mode: 0o600 },
+  )
   const daemon = spawn(
-    stBin!,
+    binary,
     [
       'up',
+      '--config',
+      config,
       '--node',
       'genie-test',
       '--state-dir',
-      join(dir, 'state'),
+      stateDir,
       '--pty-root',
-      join(dir, 'pty'),
+      ptyRoot,
       '--socket',
       socket,
       '--client-gateway-socket',
@@ -887,7 +877,7 @@ const withIsolatedSt = async (
       isolatedEnv,
       get,
       command: (...args) =>
-        spawnSync(stBin!, ['--endpoint', `unix://${socket}`, '--json', ...args], {
+        spawnSync(binary, ['--endpoint', `unix://${socket}`, '--json', ...args], {
           encoding: 'utf8',
           timeout: 30000,
           env: isolatedEnv,
@@ -916,9 +906,9 @@ const stJson = <T>(st: IsolatedSt, ...args: string[]): T => {
 testWithSt(
   'round-trips canonical mission and strict agent fields through isolated st daemon',
   async () =>
-    withIsolatedSt({ unbound: false }, async ({ dir, socket, isolatedEnv }) => {
+    withIsolatedSt({ kind: 'production' }, async ({ dir, socket, isolatedEnv }) => {
       const source = join(dir, 'mission.kdl')
-      const actor = process.env.ST_AGENT ?? 'person/genie-test'
+      const actor = process.env.ST_AGENT ?? gateReviewer
       writeFileSync(source, canonical())
       const publish = () =>
         spawnSync(
@@ -1053,7 +1043,6 @@ type NativeCard = {
   actions: string[]
 }
 
-const gateReviewer = 'person/schickling'
 const gateQuestion = 'Allow the isolated risky worker to become ready?'
 const closedReview = /review-not-requested|is not open|no pending human review/u
 const nativeStep = (run: NativeRun, id: string) => {
@@ -1240,10 +1229,10 @@ const expectRefused = (result: SpawnSyncReturns<string>, pattern: RegExp) => {
   expect(result.stderr).toMatch(pattern)
 }
 
-testWithSt(
+testWithStFixture(
   'isolated human gate: critical silence holds readiness until the named reviewer approves',
   async () =>
-    withIsolatedSt({ unbound: true }, async (st) => {
+    withIsolatedSt({ kind: 'fixture' }, async (st) => {
       const start = publishHumanFixture(st, 'acceptance/critical')
       const { run, review, card } = await pendingHumanEpisode(st, start())
       // Re-observe the same episode; unanswered critical review stays held, never approved.
@@ -1253,8 +1242,8 @@ testWithSt(
       expect(nativeStep(nativeRun(st, run.subject), 'risky').status).toBe('pending')
       expect(await nativeResults(st, review)).toEqual([])
       expectRefused(
-        st.command('alerts', 'approve', card.id, '--as', 'person/someone-else'),
-        /wrong-reviewer|requires `person\/schickling`/u,
+        st.command('alerts', 'approve', card.id, '--as', 'person/genie-human-gate-other-test'),
+        /wrong-reviewer|requires `person\/genie-human-gate-test`/u,
       )
       expect(await nativeResults(st, review)).toEqual([])
       const result = stJson<NativeClaim>(st, 'alerts', 'approve', card.id, '--as', gateReviewer)
@@ -1293,10 +1282,10 @@ testWithSt(
   120000,
 )
 
-testWithSt(
+testWithStFixture(
   'isolated human gate: an expired agentless checkpoint fails instead of approving',
   async () =>
-    withIsolatedSt({ unbound: true }, async (st) => {
+    withIsolatedSt({ kind: 'fixture' }, async (st) => {
       const start = publishHumanFixture(st, 'acceptance/timeout', '2s')
       const { run, review, card } = await pendingHumanEpisode(st, start())
       const failed = await pollSt(
@@ -1320,10 +1309,10 @@ testWithSt(
   150000,
 )
 
-testWithSt(
+testWithStFixture(
   'isolated human gate: rejection fails the checkpoint without admitting its dependent',
   async () =>
-    withIsolatedSt({ unbound: true }, async (st) => {
+    withIsolatedSt({ kind: 'fixture' }, async (st) => {
       const start = publishHumanFixture(st, 'acceptance/rejected')
       const { run, review, card } = await pendingHumanEpisode(st, start())
       expectRefused(
@@ -1368,10 +1357,10 @@ testWithSt(
   120000,
 )
 
-testWithSt(
+testWithStFixture(
   'isolated human gate: cancellation fences late decisions from a fresh run episode',
   async () =>
-    withIsolatedSt({ unbound: true }, async (st) => {
+    withIsolatedSt({ kind: 'fixture' }, async (st) => {
       const start = publishHumanFixture(st, 'acceptance/stale')
       const old = await pendingHumanEpisode(st, start())
       stJson(
