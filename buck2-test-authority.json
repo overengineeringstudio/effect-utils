@@ -177,6 +177,7 @@
       "packagePath": "packages/@overeng/devbar",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/BuildIdentitySegment.unit.test.tsx",
         "src/Devbar.unit.test.tsx",
         "src/boundary.unit.test.ts",
         "src/stories/host/production-host.unit.test.ts"
@@ -185,6 +186,7 @@
       "target": "effect_utils//packages/@overeng/devbar:test",
       "taskName": "test:devbar",
       "testFiles": [
+        "src/BuildIdentitySegment.unit.test.tsx",
         "src/Devbar.unit.test.tsx",
         "src/boundary.unit.test.ts",
         "src/stories/host/production-host.unit.test.ts"
@@ -2020,6 +2022,7 @@
       "selectedTestFiles": [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/browser/base64.unit.test.ts",
+        "src/build-identity.unit.test.ts",
         "src/isomorphic/ScopeDebugger.unit.test.ts",
         "src/isomorphic/hash.unit.test.ts",
         "src/isomorphic/lineage/mod.unit.test.ts",
@@ -2055,6 +2058,7 @@
       "testFiles": [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/browser/base64.unit.test.ts",
+        "src/build-identity.unit.test.ts",
         "src/isomorphic/ScopeDebugger.unit.test.ts",
         "src/isomorphic/hash.unit.test.ts",
         "src/isomorphic/lineage/mod.unit.test.ts",

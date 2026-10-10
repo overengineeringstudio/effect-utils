@@ -1,4 +1,5 @@
 // Checked JavaScript: Node loads Vite config dependencies from node_modules without TS stripping.
+import { formatRelativeTime } from '../build-identity.js'
 
 /** @typedef {{readonly type: 'local', readonly rev: string, readonly ts: number, readonly dirty: boolean}} LocalStamp */
 /** @typedef {{readonly type: 'nix', readonly version: string, readonly rev: string, readonly commitTs: number, readonly buildTs?: number, readonly dirty: boolean}} NixStamp */
@@ -8,25 +9,6 @@
  * @typedef {{readonly baseVersion: string, readonly displayVersion: string, readonly machineVersion: string, readonly sourceKind: 'package' | 'local' | 'nix', readonly rev?: string, readonly dirty: boolean, readonly commitTs?: number, readonly buildTs?: number}} CliBuildIdentity
  */
 /** @typedef {{readonly baseVersion: string, readonly buildStamp: string, readonly env?: Readonly<Record<string, string | undefined>>, readonly now?: number, readonly runtimeStampEnvVar?: string}} ResolveBuildIdentityOptions */
-
-/** @param {{ts: number, now: number}} options */
-const formatRelativeTime = ({ ts, now }) => {
-  const diffSeconds = now - ts
-  if (diffSeconds < 60) return 'just now'
-  const diffMinutes = Math.floor(diffSeconds / 60)
-  if (diffMinutes < 60) return `${diffMinutes} min ago`
-  const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`
-  if (diffDays < 30) {
-    const weeks = Math.floor(diffDays / 7)
-    return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`
-  }
-  const date = new Date(ts * 1000)
-  const month = date.toLocaleString('en-US', { month: 'short' })
-  return `${month} ${date.getDate()}`
-}
 
 /**
  * Parse the canonical local/Nix JSON stamp.
@@ -71,7 +53,7 @@ export const parseCliBuildStamp = (stamp) => {
 
 /** @param {{baseVersion: string, stamp: LocalStamp, now: number}} options */
 const renderLocalVersion = ({ baseVersion, stamp, now }) => {
-  const timeAgo = formatRelativeTime({ ts: stamp.ts, now })
+  const timeAgo = formatRelativeTime({ ts: stamp.ts, now, format: 'long' })
   const dirtyNote = stamp.dirty === true ? ', with uncommitted changes' : ''
   return `${baseVersion} — running from local source (${stamp.rev}, ${timeAgo}${dirtyNote})`
 }
@@ -92,9 +74,9 @@ const renderNixVersion = ({ stamp, now }) => {
   const versionStr = nixMachineVersion(stamp)
   const dirtyNote = stamp.dirty === true ? ', with uncommitted changes' : ''
   if (stamp.buildTs !== undefined) {
-    return `${versionStr} — built ${formatRelativeTime({ ts: stamp.buildTs, now })}${dirtyNote}`
+    return `${versionStr} — built ${formatRelativeTime({ ts: stamp.buildTs, now, format: 'long' })}${dirtyNote}`
   }
-  return `${versionStr} — committed ${formatRelativeTime({ ts: stamp.commitTs, now })}${dirtyNote}`
+  return `${versionStr} — committed ${formatRelativeTime({ ts: stamp.commitTs, now, format: 'long' })}${dirtyNote}`
 }
 
 /** @param {{stamp: NixStamp, now: number}} options @returns {CliBuildIdentity} */

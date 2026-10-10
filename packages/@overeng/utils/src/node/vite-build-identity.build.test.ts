@@ -37,6 +37,7 @@ it('loads installed Node config, preserving immutable Nix metadata and runtime c
     for (const name of ['cli-build-identity.js', 'vite-build-identity.js']) {
       copyFileSync(join(source, name), join(installed, 'src/node', name))
     }
+    copyFileSync(join(source, '../build-identity.js'), join(installed, 'src/build-identity.js'))
     writeFileSync(
       join(root, 'entry.js'),
       "import {buildIdentity,deploymentId} from 'virtual:build-identity'; globalThis.provenance={buildIdentity,deploymentId};",

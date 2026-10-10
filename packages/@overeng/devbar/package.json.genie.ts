@@ -55,7 +55,10 @@ const runtimeDeps = catalog.compose({
       'vitest',
     ),
   },
-  peerDependencies: { external: catalog.pick(...peerDepNames) },
+  // The optional entry consumes only utils' dependency-free formatter; the shell has no edge.
+  peerDependencies: {
+    external: { ...catalog.pick(...peerDepNames), '@overeng/utils': utilsPkg.data.version },
+  },
 })
 
 export default packageJson(
@@ -77,6 +80,10 @@ export default packageJson(
         { types: './dist/themes.d.ts', default: './src/themes.ts' },
         { environment: 'browser' },
       ),
+      './build-identity': exportEntry(
+        { types: './dist/BuildIdentitySegment.d.ts', default: './src/BuildIdentitySegment.tsx' },
+        { environment: 'browser' },
+      ),
     },
     publishConfig: {
       access: 'public',
@@ -87,8 +94,13 @@ export default packageJson(
           default: './dist/tokens.stylex.js',
         },
         './themes': { types: './dist/themes.d.ts', default: './dist/themes.js' },
+        './build-identity': {
+          types: './dist/BuildIdentitySegment.d.ts',
+          default: './dist/BuildIdentitySegment.js',
+        },
       },
     },
+    peerDependenciesMeta: { '@overeng/utils': { optional: true } },
     scripts: {
       build: 'tsc --build tsconfig.json && vite build',
       storybook: 'storybook dev -p 6018',

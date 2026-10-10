@@ -72,6 +72,83 @@ Width priority is panel toggle and panel buttons (never shrinking), then the str
 
 Keep semantic `devbarTokens` roles `canvas`, `panel`, `panelActive`, `text`, `mutedText`, `border`, `focusRing`, `fontUi`, and `fontData`; light/dark theme objects and host-created themes set those roles. No hard-coded tool palette, global theme detection, or imported explorer theme belongs in the shell. Canvas colors are meter renderer tokens; host applies shell, meter, and explorer themes on a shared ancestor when desired. Geometry-owned position cannot be replaced through `style`.
 
+## Optional build identity segment
+
+```text
+host canonical build identity
+  -> @overeng/devbar/build-identity -> @overeng/utils/build-identity
+  -> host-supplied segment.render()
+  -> short text; hover or focus reveals version/deployment detail lines
+```
+
+Traces: DT.BAR-R01, DT.BAR-R04–R07, DT.BAR-R09. The shell does not install a
+build segment by default. The optional `@overeng/devbar/build-identity` entry
+exports `BuildIdentitySegment`; the root entry does not re-export it or reach
+`@overeng/utils`. Hosts pass their canonical identity without formatting:
+
+```ts
+import type * as React from 'react'
+import type { BuildIdentity } from '@overeng/utils/build-identity'
+import type { StyleXStyles } from '@stylexjs/stylex'
+
+interface BuildIdentitySegmentProps {
+  readonly identity: BuildIdentity
+  readonly now?: number // fixed Unix seconds; omit for the mounted clock
+  readonly style?: StyleXStyles
+}
+declare const BuildIdentitySegment: (props: BuildIdentitySegmentProps) => React.ReactNode
+```
+
+```tsx
+import { BuildIdentitySegment } from '@overeng/devbar/build-identity'
+
+const segments = [
+  {
+    id: 'build',
+    render: () => <BuildIdentitySegment identity={buildIdentity} />,
+  },
+]
+```
+
+The formatter contract and bucket semantics belong to
+[build identity](../../builds/01-identity/spec.md#human-short-and-details-forms).
+The segment consumes semantic `devbarTokens` for scheme-varying values and data
+typography, inheriting host themes. Its native focusable button exposes the short
+form and associates the visible detail tooltip with `aria-describedby`. Hover
+and keyboard focus reveal identical details; users can move onto the details,
+and Escape dismisses them without closing a shell panel or removing focus.
+The tooltip is positioned above the triggering control outside the row's
+horizontal scrollport.
+
+Live segments share one sixty-second clock while at least one segment is mounted.
+Unmounting the final subscriber clears the interval; import alone schedules
+nothing. A supplied `now` is deterministic and subscribes to no clock. Storybook
+shows clean, dirty, and missing-commit-time identities in light and dark themes,
+with hover, focus, dismissal, and detail assertions.
+
+### Dependency footprint tradeoff
+
+The formatter module itself has zero runtime imports. However, `@overeng/utils`
+has package-level runtime dependencies on Effect/platform-node/opentelemetry,
+Effect distributed-lock, OTEL contract/API, noble hashes, StyleX build tooling,
+unplugin, and PostCSS. Its install-mode composition also promotes Vitest and
+Effect-Vitest into runtime dependencies. Nonoptional peers include
+Effect/platform-node/opentelemetry and Playwright. A direct
+runtime dependency would bring that installation footprint into shell-only
+hosts even though the formatter's browser module graph is small.
+
+Devbar therefore declares utils as an **optional peer** and a development
+dependency, not a runtime dependency. The optional segment is a separate
+publication entry, and its utils import remains external. Shell-only hosts do
+not need utils; hosts choosing the segment provide utils and accept its
+package-level install footprint. A boundary test traverses the root entry
+graph to prevent accidental root re-exports or utils imports.
+
+Alternative ownership models are a separate tiny formatter package, or moving
+utils' Node/tooling dependencies behind optional peers or separate packages.
+Those require broader package-contract changes; the optional entry/peer keeps
+the shell light without duplicating the formatter or silently adding that graph.
+
 ## Interaction
 
 ```text

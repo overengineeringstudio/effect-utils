@@ -7,7 +7,7 @@ import { expect } from 'vitest'
 const forbiddenModule = /^@overeng\/(?:meters|rpc-devtools|effect-rpc-[^/]+|otel-browser)(?:\/|$)/
 
 // Scan module specifiers without depending on the unavailable tsgo compiler API.
-const diagnosticImports = (options: {
+const moduleImports = (options: {
   readonly source: string
   readonly fileName: string
 }): readonly string[] => {
@@ -49,10 +49,16 @@ const diagnosticImports = (options: {
     if (ignored.some((range) => match.index >= range.start && match.index < range.end) === true)
       continue
     const specifier = match.groups?.['static'] ?? match.groups?.['call'] ?? match.groups?.['css']
-    if (specifier !== undefined && forbiddenModule.test(specifier) === true) found.push(specifier)
+    if (specifier !== undefined) found.push(specifier)
   }
   return found
 }
+
+const diagnosticImports = (options: {
+  readonly source: string
+  readonly fileName: string
+}): readonly string[] =>
+  moduleImports(options).filter((specifier) => forbiddenModule.test(specifier))
 
 describe('devbar shell dependency boundary', () => {
   it('detects forbidden static, type-only, re-export and dynamic imports', () => {
@@ -81,6 +87,32 @@ describe('devbar shell dependency boundary', () => {
       }),
     ).toEqual([])
   })
+
+  it.effect('keeps utils and the optional identity segment out of the root entry graph', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const pending = [new URL('./mod.ts', import.meta.url)]
+      const visited = new Set<string>()
+      const violations: { readonly file: string; readonly import: string }[] = []
+      while (pending.length > 0) {
+        const file = pending.pop()
+        if (file === undefined || visited.has(file.pathname) === true) continue
+        visited.add(file.pathname)
+        const source = yield* fs.readFileString(file.pathname)
+        for (const specifier of moduleImports({ source, fileName: file.pathname })) {
+          if (
+            /^@overeng\/utils(?:\/|$)/.test(specifier) === true ||
+            specifier.includes('BuildIdentitySegment') === true ||
+            /^@overeng\/devbar\/build-identity(?:\/|$)/.test(specifier) === true
+          ) {
+            violations.push({ file: file.pathname, import: specifier })
+          }
+          if (specifier.startsWith('.') === true) pending.push(new URL(specifier, file))
+        }
+      }
+      expect(violations).toEqual([])
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
 
   it.effect('keeps every non-story src file free of diagnostic package imports', () =>
     Effect.gen(function* () {

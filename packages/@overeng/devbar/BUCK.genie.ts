@@ -14,6 +14,11 @@ export const buck2TypeScriptAdmission = {
       distTarget: '//packages/@overeng/stylex-tokens:dist',
     },
     {
+      packageName: '@overeng/utils',
+      packagePath: 'packages/@overeng/utils',
+      distTarget: '//packages/@overeng/utils:dist',
+    },
+    {
       packageName: '@overeng/meters',
       packagePath: 'packages/@overeng/meters',
       distTarget: '//packages/@overeng/meters:dist',

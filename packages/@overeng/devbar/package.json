@@ -30,6 +30,10 @@
       "types": "./dist/mod.d.ts",
       "default": "./src/mod.ts"
     },
+    "./build-identity": {
+      "types": "./dist/BuildIdentitySegment.d.ts",
+      "default": "./src/BuildIdentitySegment.tsx"
+    },
     "./themes": {
       "types": "./dist/themes.d.ts",
       "default": "./src/themes.ts"
@@ -81,9 +85,15 @@
     "vitest": "5.0.3"
   },
   "peerDependencies": {
+    "@overeng/utils": "^0.1.0",
     "@stylexjs/stylex": "^0.19.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
+  },
+  "peerDependenciesMeta": {
+    "@overeng/utils": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -99,6 +109,10 @@
       "./themes": {
         "types": "./dist/themes.d.ts",
         "default": "./dist/themes.js"
+      },
+      "./build-identity": {
+        "types": "./dist/BuildIdentitySegment.d.ts",
+        "default": "./dist/BuildIdentitySegment.js"
       }
     }
   }
