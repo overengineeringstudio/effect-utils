@@ -68,7 +68,10 @@ describe('native child missions', () => {
     const authored = { ...parent, steps: [publish, execute] }
     const wire = missionWire(authored)
     expect(emit([mission(JSON.parse(JSON.stringify(wire)))])).toBe(emit([mission(authored)]))
-    expect(wire.steps).toMatchObject([nativeProducer, nativeConsumer])
+    expect(wire.steps).toMatchObject([
+      { ...nativeProducer, goal: [nativeProducer.goal] },
+      nativeConsumer,
+    ])
   })
 
   it('requires a typed producer reference rather than an ordinary step', () => {
@@ -136,12 +139,12 @@ describe('native child missions', () => {
     'rejects an unpinned or invalid revision %s',
     (invalid) => {
       expect(() =>
-        step({ id: 'execute', waitFor: { kind: 'revision', revision: invalid } }),
+        step({ id: 'execute', agentless: true, waitFor: { kind: 'revision', revision: invalid } }),
       ).toThrow()
     },
   )
 
-  it.each(['', '/child', 'child/', 'child//nested', 'child name'])(
+  it.each(['', '/child', 'child/', 'child//nested', 'child name', 'é'.repeat(81)])(
     'rejects invalid produced mission ID %s',
     (id) => {
       expect(() => step({ id: 'publish', produces: childMission`${id}` })).toThrow()
