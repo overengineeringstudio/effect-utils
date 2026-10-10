@@ -13,6 +13,7 @@ import {
   step,
   t,
 } from './mod.ts'
+import type { MissionInput, TextInput } from './mod.ts'
 
 const reporter = { id: 'example/coordinator' }
 const parent = {
@@ -24,7 +25,231 @@ const parent = {
 
 const pin = `example/child@${'a'.repeat(64)}`
 
+const textGates = (value: TextInput) => [
+  gate.exists(t`resource/example/${value}`, { name: 'exists' }),
+  gate.empty(t`mission-run/example/${value}`, { name: 'empty' }),
+  gate.has(t`message/example/${value}`, t`contains ${value}`, { name: 'has' }),
+  gate.lacks(t`doc/example/${value}`, t`absent ${value}`, { name: 'lacks' }),
+  gate.fieldIs({
+    subject: t`resource/example/${value}`,
+    path: 'sha',
+    value: t`${value}`,
+    name: 'field',
+  }),
+  gate.exists('resource/example', { name: t`${value}` }),
+  gate.human({
+    name: 'review',
+    reviewer: person('person/reviewer'),
+    review: [t`resource/example/${value}`, doc`doc/example/${value}`],
+  }),
+  gate.exec({ name: 'exec', command: 'true', host: t`${value}`, workspace: t`/work/${value}` }),
+  gate.exec({
+    name: 'env',
+    command: t`check ${value}`,
+    host: 'dev3',
+    workspace: '/work',
+    env: { CHECK: value },
+  }),
+  gate.merged(t`example/repo#${value}`, {
+    name: 'merged',
+    host: t`${value}`,
+    workspace: t`/work/${value}`,
+  }),
+  gate.ciPassed(t`check-${value}`, {
+    name: 'ci',
+    repo: t`example/${value}`,
+    branch: t`${value}`,
+    host: t`${value}`,
+    workspace: t`/work/${value}`,
+  }),
+  gate.document(doc`doc/example/proof`, { name: t`proof-${value}` }),
+]
+
+const isolatedGateTexts: readonly [
+  string,
+  (value: TextInput) => Parameters<typeof gate.render>[0],
+][] = [
+  ['exists subject', (v) => gate.exists(t`resource/example/${v}`)],
+  ['empty subject', (v) => gate.empty(t`mission-run/example/${v}`)],
+  ['has subject', (v) => gate.has(t`message/example/${v}`, 'ready')],
+  ['has text', (v) => gate.has('message/example', t`${v}`)],
+  ['lacks subject', (v) => gate.lacks(t`doc/example/${v}`, 'ready')],
+  ['lacks text', (v) => gate.lacks('doc/example', t`${v}`)],
+  [
+    'field subject',
+    (v) => gate.fieldIs({ subject: t`resource/example/${v}`, path: 'sha', value: 'ready' }),
+  ],
+  [
+    'field value',
+    (v) => gate.fieldIs({ subject: 'resource/example', path: 'sha', value: t`${v}` }),
+  ],
+  ['explicit name', (v) => gate.exists('resource/example', { name: t`${v}` })],
+  [
+    'human review text',
+    (v) => gate.human({ reviewer: person('person/reviewer'), review: [t`resource/example/${v}`] }),
+  ],
+  [
+    'human review document',
+    (v) => gate.human({ reviewer: person('person/reviewer'), review: [doc`doc/example/${v}`] }),
+  ],
+  ['exec host', (v) => gate.exec({ command: 'true', host: t`${v}`, workspace: '/work' })],
+  ['exec workspace', (v) => gate.exec({ command: 'true', host: 'dev3', workspace: t`/work/${v}` })],
+  ['exec command', (v) => gate.exec({ command: t`check ${v}`, host: 'dev3', workspace: '/work' })],
+  [
+    'exec env',
+    (v) => gate.exec({ command: 'true', host: 'dev3', workspace: '/work', env: { CHECK: v } }),
+  ],
+  ['merged host', (v) => gate.merged(t`example/repo#7`, { host: t`${v}` })],
+  ['merged workspace', (v) => gate.merged(t`example/repo#7`, { workspace: t`/work/${v}` })],
+  ['CI check', (v) => gate.ciPassed(t`check-${v}`, { repo: 'example/repo', branch: 'main' })],
+  ['CI repository', (v) => gate.ciPassed('build', { repo: t`example/${v}`, branch: 'main' })],
+  ['CI branch', (v) => gate.ciPassed('build', { repo: 'example/repo', branch: t`${v}` })],
+  [
+    'CI host',
+    (v) => gate.ciPassed('build', { repo: 'example/repo', branch: 'main', host: t`${v}` }),
+  ],
+  [
+    'CI workspace',
+    (v) =>
+      gate.ciPassed('build', { repo: 'example/repo', branch: 'main', workspace: t`/work/${v}` }),
+  ],
+  ['document name', (v) => gate.document(doc`doc/example/proof`, { name: t`proof-${v}` })],
+]
+
+const textPlacements = [
+  'constraints',
+  'exec',
+  'plain-exec',
+  'final-exec',
+  'loop-exec',
+  'loop-final-exec',
+  'attention',
+  'product',
+] as const
+const missionWithText = (
+  value: TextInput,
+  placement: (typeof textPlacements)[number],
+): MissionInput<string> => {
+  const command = {
+    id: 'command',
+    restart: 'never',
+    host: t`${value}`,
+    workspace: t`/work/${value}`,
+    command: t`git checkout ${value}`,
+  } as const
+  const worker = { id: 'work', agentless: true, exec: command } as const
+  const loopNode = {
+    id: 'iterate',
+    maxRounds: 1,
+    round: { completion: { when: 'all-steps-exhausted' }, steps: [worker] },
+  } as const
+  switch (placement) {
+    case 'constraints':
+      return { ...parent, constraints: [t`Keep ${value} fixed.`], steps: [] }
+    case 'exec':
+      return { ...parent, steps: [step(worker)] }
+    case 'plain-exec':
+      return { ...parent, steps: [worker] }
+    case 'final-exec':
+      return { ...parent, steps: [], finally: [worker] }
+    case 'loop-exec':
+      return { ...parent, steps: [loopNode] }
+    case 'loop-final-exec':
+      return {
+        ...parent,
+        steps: [{ ...loopNode, round: { ...loopNode.round, steps: [], finally: [worker] } }],
+      }
+    case 'attention':
+      return {
+        ...parent,
+        steps: [
+          {
+            ...loopNode,
+            round: { ...loopNode.round, steps: [] },
+            onExhausted: {
+              outcome: 'fail',
+              attention: {
+                title: t`Check ${value}`,
+                reviewer: person('person/reviewer'),
+                severity: 'error',
+              },
+            },
+          },
+        ],
+      }
+    case 'product': {
+      const receipt = product.resource({ kind: 'custom.proof', fields: { sha: t`${value}` } })
+      return {
+        ...parent,
+        steps: [step({ id: 'produce', assignedTo: reporter, produces: { receipt } })],
+      }
+    }
+  }
+}
+
 describe('authoring and native wire boundaries', () => {
+  it('renders declared templates in native text predicates as exact KDL', () => {
+    const value = input.text('value')
+    const gates = textGates(value)
+    const wire = missionWire({ ...parent, inputs: [value], gates, steps: [] })
+    expect(emit(wire.gates!.slice(0, 5).map(gate.render))).toBe(
+      'version 2\n' +
+        'gate "exists" {\n  exists "resource/example/${input.value}"\n}\n' +
+        'gate "empty" {\n  empty "mission-run/example/${input.value}"\n}\n' +
+        'gate "has" {\n  has "message/example/${input.value}" "contains ${input.value}"\n}\n' +
+        'gate "lacks" {\n  lacks "doc/example/${input.value}" "absent ${input.value}"\n}\n' +
+        'gate "field" {\n  field "sha" "resource/example/${input.value}" "is" "${input.value}"\n}\n',
+    )
+    expect(JSON.stringify(wire)).not.toContain('"kind":"template"')
+    expect(emit([mission(JSON.parse(JSON.stringify(wire)))])).toBe(
+      emit([mission({ ...parent, inputs: [value], gates, steps: [] })]),
+    )
+  })
+
+  it.each(isolatedGateTexts)('retains equal-name foreign input identity in %s', (_label, make) => {
+    const declared = input.text('value')
+    const foreign = input.text('value')
+    expect(() =>
+      missionWire({ ...parent, inputs: [declared], gates: [make(foreign)], steps: [] }),
+    ).toThrow('Input value is not declared by this mission')
+    expect(() =>
+      missionWire({ ...parent, inputs: [declared], gates: [make(declared)], steps: [] }),
+    ).not.toThrow()
+  })
+
+  it.each(textPlacements)(
+    'materializes declared native text in %s and preserves wire rendering',
+    (placement) => {
+      const value = input.text('value')
+      const authored = { ...missionWithText(value, placement), inputs: [value] }
+      const wire = missionWire(authored)
+      expect(JSON.stringify(wire)).not.toContain('"kind":"template"')
+      expect(emit([mission(JSON.parse(JSON.stringify(wire)))])).toBe(emit([mission(authored)]))
+      expect(JSON.stringify(wire)).toContain('${input.value}')
+    },
+  )
+
+  it.each(textPlacements)('retains equal-name foreign input identity in %s', (placement) => {
+    const declared = input.text('value')
+    const foreign = input.text('value')
+    expect(() =>
+      missionWire({ ...missionWithText(foreign, placement), inputs: [declared] }),
+    ).toThrow('Input value is not declared by this mission')
+  })
+
+  it('retains foreign product identity in text predicates and produced field values', () => {
+    const foreign = product.field({ subject: 'message/example/foreign', fields: { text: 'ready' } })
+    step({ id: 'foreign', produces: { foreign } })
+    const receipt = product.resource({ kind: 'custom.proof', fields: { text: t`${foreign}` } })
+    const produce = step({ id: 'produce', produces: { receipt } })
+    expect(() => missionWire({ ...parent, steps: [produce] })).toThrow(
+      'Product reference belongs to a step outside this mission',
+    )
+    expect(() =>
+      missionWire({ ...parent, gates: [gate.exists(t`${foreign}`)], steps: [] }),
+    ).toThrow('Product reference belongs to a step outside this mission')
+  })
+
   it('requires agentless for an exact revision waitFor too', () => {
     expect(() =>
       step({ id: 'execute', assignedTo: reporter, waitFor: { kind: 'revision', revision: pin } }),
