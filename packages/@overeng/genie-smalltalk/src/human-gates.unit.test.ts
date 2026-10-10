@@ -173,6 +173,15 @@ step "draft" {
     }
   })
 
+  it('keeps imported agent IDs authoritative over preserved person-like metadata', () => {
+    const importedWorker = { ...worker, kind: 'person', subject: operator.subject }
+    const decoded = Schema.decodeSync(StepSchema)({ id: 'work', assignedTo: importedWorker })
+    expect(decoded.assignedTo).toBe(importedWorker)
+    expect(emit([step({ id: 'work', assignedTo: importedWorker })])).toBe(
+      'version 2\nstep "work" {\n  assigned-to "agent/example/worker"\n}\n',
+    )
+  })
+
   it('lowers distinct person assignments and retains native field gate syntax', () => {
     expect(
       emit([step({ id: 'inspect', assignedTo: operator, goal: 'Inspect the plan.' })]),
