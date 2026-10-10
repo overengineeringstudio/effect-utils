@@ -35,7 +35,7 @@ Trace: DT.MET-R01–R04, R21, R28, R33.
   +-- /sources/status        host-provided status events, no transport
   +-- /canvas                pure blocks/layout + scoped canvas attachment
   +-- /headless              snapshots/brackets + optional scoped test bridge
-  +-- /react                 provider/hooks/strip/text/tooltips/Profiler
+  +-- /react                 provider/hooks/strip/text/tooltips/panel/Profiler
 ```
 
 There is no `/sources/rpc` or `/sources/rpc-explorer`: the corresponding source
@@ -860,6 +860,7 @@ host Effect/React runtime
   -> MetersProvider (scoped session lease)
        +-- useSeries / accessible output (cached external-store selection)
        +-- MeterStrip (renderer attachment only)
+       +-- MetersPanel (controlled meter list + host-rendered detail; no lease)
        +-- RenderProfiler (host-selected commit instrumentation)
 ```
 
@@ -885,6 +886,14 @@ interface MeterStripProps {
   readonly platform?: CanvasPlatform
 }
 declare const MeterStrip: (props: MeterStripProps) => React.ReactNode
+interface MetersPanelProps {
+  readonly blocks: readonly CanvasBlockSpec[]
+  readonly theme: MeterTheme
+  readonly selected: string | undefined
+  readonly onSelect: (selection: { readonly id: string }) => void
+  readonly renderDetail: (block: CanvasBlockSpec) => React.ReactNode
+}
+declare const MetersPanel: (props: MetersPanelProps) => React.ReactNode
 interface RenderProfilerProps {
   readonly instrumentation: Instrumentation
   readonly counter: CounterToken
@@ -920,6 +929,18 @@ meter selection. Focus shows the keyboard tooltip without opening a panel.
 Click and Enter/Space delegate `onOpenDetail({ id })` to the host/devbar;
 Escape dismisses the tooltip. Frozen state is controlled independently of the
 session and snapshots only that renderer's bounded histories.
+
+`MetersPanel` is the shared renderer-only list/detail composition exported from
+`/react`. It lists every supplied block in order as a native keyboard-operable
+button, exposes the selected button with `aria-pressed`, and associates buttons
+with the generated detail container through `aria-controls`. Only the block
+matching `selected` is passed to `renderDetail`; clicking a button proposes
+`onSelect({ id })` without changing controlled selection. Unknown/absent selection
+shows a selection prompt, and an empty list shows "No meters configured."
+The host reconciles removed IDs, persists selection, and supplies domain-specific
+detail content. List and detail scroll independently inside the available panel
+slot and use the supplied meter theme. No source lease, canvas attachment,
+storage access, RPC routing, or default meter selection is introduced.
 
 `RenderProfiler` wraps `React.Profiler`, increments the supplied monotonic
 counter exactly once per commit, and publishes commit fields to the same

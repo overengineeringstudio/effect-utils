@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import * as React from 'react'
-import { expect, userEvent, waitFor } from 'storybook/test'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 
 import { readHostPreference, startHostDiagnostics } from './boundary.ts'
 
@@ -74,6 +74,8 @@ const meta = {
   beforeEach: () => {
     localStorage.removeItem('host-composition.light.panel')
     localStorage.removeItem('host-composition.dark.panel')
+    localStorage.removeItem('host-composition.light.panel.meter')
+    localStorage.removeItem('host-composition.dark.panel.meter')
     localStorage.removeItem('host-composition.enabled')
   },
 } satisfies Meta<typeof HostComposition>
@@ -97,6 +99,13 @@ export const Light: Story = {
     // Await actual scoped bootstrap, including its guarded cold import, not a DOM polling deadline.
     await ready.promise
     const rpc = await canvas.findByRole('button', { name: 'RPC' })
+    const meters = canvas.getByRole('button', { name: 'Meters' })
+    const row = within(canvas.getByRole('group', { name: 'Developer bar' }))
+    const panelButtons = row
+      .getAllByRole('button')
+      .filter((button) => button.hasAttribute('aria-expanded'))
+    expect(panelButtons).toHaveLength(3)
+    expect(panelButtons.map((button) => button.textContent)).toEqual(['Dev tools', 'RPC', 'Meters'])
     expect(canvasElement.querySelector('canvas')).not.toBeNull()
     expect(canvas.getByRole('button', { name: 'Freeze meters' })).toBeVisible()
     expect(canvas.getByLabelText('durationP95')).toHaveTextContent('n/a')
@@ -131,12 +140,117 @@ export const Light: Story = {
     await expect(
       canvas.findByRole('region', { name: 'Approximate JS heap details' }),
     ).resolves.toBeVisible()
-    expect(localStorage.getItem('host-composition.light.panel')).toBe('heap')
+    expect(meters).toHaveAttribute('aria-expanded', 'true')
+    expect(rpc).toHaveAttribute('aria-expanded', 'false')
+    expect(canvas.getByRole('region', { name: 'Meters' })).toBeVisible()
+    expect(localStorage.getItem('host-composition.light.panel')).toBe('meters')
+    expect(localStorage.getItem('host-composition.light.panel.meter')).toBe('heap')
+
+    const meterList = within(canvas.getByRole('group', { name: 'Meter selection' }))
+    expect(meterList.getAllByRole('button')).toHaveLength(9)
+    expect(meterList.getByRole('button', { name: 'Approximate JS heap' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    // All meters remain reachable from the panel, independently of strip routing.
+    await userEvent.click(meterList.getByRole('button', { name: 'Active child fibers' }))
+    expect(canvas.getByRole('region', { name: 'Active child fibers details' })).toBeVisible()
+    expect(localStorage.getItem('host-composition.light.panel.meter')).toBe('fibers')
+    await userEvent.click(meterList.getByRole('button', { name: 'durationP95' }))
+    expect(canvas.getByRole('region', { name: 'durationP95 details' })).toBeVisible()
+    expect(meters).toHaveAttribute('aria-expanded', 'true')
+
+    // Focus reveals the tooltip only; Enter selects the block and keeps Meters open.
+    canvas.getByRole('button', { name: /^Frame rate:/ }).focus()
+    expect(canvas.getByRole('region', { name: 'durationP95 details' })).toBeVisible()
+    await userEvent.keyboard('{Enter}')
+    expect(canvas.getByRole('region', { name: 'Frame rate details' })).toBeVisible()
+    expect(meterList.getByRole('button', { name: 'Frame rate' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(localStorage.getItem('host-composition.light.panel')).toBe('meters')
+    expect(localStorage.getItem('host-composition.light.panel.meter')).toBe('frames')
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Close Meters panel' }))
+    expect(localStorage.getItem('host-composition.light.panel')).toBeNull()
+    expect(localStorage.getItem('host-composition.light.panel.meter')).toBe('frames')
+    await userEvent.click(meters)
+    expect(canvas.getByRole('region', { name: 'Frame rate details' })).toBeVisible()
   },
 }
 
 /** Shared ancestor applies shell, strip and lazy explorer dark themes together. */
 export const Dark: Story = { args: { dark: true } }
+
+/** The host restores both the open panel and its selected meter. */
+export const PersistedSelection: Story = {
+  play: async ({ mount }) => {
+    localStorage.setItem('host-composition.light.panel', 'meters')
+    localStorage.setItem('host-composition.light.panel.meter', 'heap')
+    const ready = Promise.withResolvers<void>()
+    const canvas = await mount(
+      <HostComposition
+        onDiagnosticsReady={(state) => {
+          if (state._tag === 'Mounted') ready.resolve()
+          else ready.reject(new Error(`Host diagnostics ${state._tag}`))
+        }}
+      />,
+    )
+    await ready.promise
+    // Scoped acquisition completes before the nested React root's first commit.
+    await expect(
+      canvas.findByRole('region', { name: 'Approximate JS heap details' }),
+    ).resolves.toBeVisible()
+    expect(canvas.getByRole('button', { name: 'Approximate JS heap' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  },
+}
+
+/** Removed meter IDs reconcile to the first supplied meter. */
+export const UnknownStoredMeter: Story = {
+  play: async ({ mount }) => {
+    localStorage.setItem('host-composition.light.panel', 'meters')
+    localStorage.setItem('host-composition.light.panel.meter', 'removed-meter')
+    const ready = Promise.withResolvers<void>()
+    const canvas = await mount(
+      <HostComposition
+        onDiagnosticsReady={(state) => {
+          if (state._tag === 'Mounted') ready.resolve()
+          else ready.reject(new Error(`Host diagnostics ${state._tag}`))
+        }}
+      />,
+    )
+    await ready.promise
+    await expect(canvas.findByRole('region', { name: 'Frame rate details' })).resolves.toBeVisible()
+    expect(canvas.getByRole('button', { name: 'Frame rate' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  },
+}
+
+/** Existing per-meter panel preferences retain their meter on cutover. */
+export const PreviousMeterPanel: Story = {
+  play: async ({ mount }) => {
+    localStorage.setItem('host-composition.light.panel', 'fibers')
+    const ready = Promise.withResolvers<void>()
+    const canvas = await mount(
+      <HostComposition
+        onDiagnosticsReady={(state) => {
+          if (state._tag === 'Mounted') ready.resolve()
+          else ready.reject(new Error(`Host diagnostics ${state._tag}`))
+        }}
+      />,
+    )
+    await ready.promise
+    const meters = await canvas.findByRole('button', { name: 'Meters' })
+    expect(meters).toHaveAttribute('aria-expanded', 'true')
+    expect(canvas.getByRole('region', { name: 'Active child fibers details' })).toBeVisible()
+  },
+}
 
 /** Light and dark host configurations with independently owned scopes and storage. */
 export const AllStates: Story = {

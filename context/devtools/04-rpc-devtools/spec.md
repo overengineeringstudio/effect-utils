@@ -244,23 +244,46 @@ The host runs `application` in its long-lived application scope. Do not return t
 The enabled-only UI module imports devbar, meters/react, and rpc-devtools/react. Its composition is:
 
 ```tsx
-const panel = rpcExplorerPanel({ client: tools.client, id: 'rpc', label: 'RPC' })
+const rpcPanel = rpcExplorerPanel({ client: tools.client, id: 'rpc', label: 'RPC' })
 const HostDiagnostics = () => {
   const [openPanel, setOpenPanel] = React.useState<string | undefined>(undefined)
+  const [selectedMeter, setSelectedMeter] = React.useState<string | undefined>(hostBlocks[0]?.id)
   const [frozen, setFrozen] = React.useState(false)
   return (
     <Devbar
-      panels={[panel]}
+      panels={[
+        rpcPanel,
+        {
+          id: 'meters',
+          label: 'Meters',
+          render: () => (
+            <MetersPanel
+              blocks={hostBlocks}
+              theme={hostMeterTheme}
+              selected={selectedMeter}
+              onSelect={({ id }) => setSelectedMeter(id)}
+              renderDetail={renderHostMeterDetail}
+            />
+          ),
+        },
+      ]}
       openPanel={openPanel}
       onOpenPanelChange={setOpenPanel}
       strip={
         <MeterStrip
           meters={meters}
-          blocks={hostRpcBlocks}
+          blocks={hostBlocks}
           theme={hostMeterTheme}
           frozen={frozen}
           onFrozenChange={setFrozen}
-          onActivateMeter={() => setOpenPanel('rpc')}
+          onOpenDetail={({ id }) => {
+            if (id.startsWith('rpc.') === true) {
+              setOpenPanel('rpc')
+            } else {
+              setSelectedMeter(id)
+              setOpenPanel('meters')
+            }
+          }}
         />
       }
       segments={hostSegments}
@@ -269,20 +292,25 @@ const HostDiagnostics = () => {
 }
 ```
 
-`hostRpcBlocks` explicitly binds canvas blocks to the selected `rpc.inFlight`, `rpc.durationP95`, and `rpc.errorsPerSecond` series using meters' block contract; it is not a default preset. The host's mount function creates the DOM root, mounts this component under its theme ancestor, and returns a function that unmounts the React root and removes its node. It must not acquire a second session lease via a provider when bootstrap already owns `meters.start`. Host segments may contain real WebSocket/sync status without moving that domain into RPC integration. The host can persist panel/freeze state itself; no package does so automatically.
+`hostBlocks` explicitly binds generic host meters and the selected `rpc.inFlight`, `rpc.durationP95`, and `rpc.errorsPerSecond` series using meters' block contract; it is not a default preset. `renderHostMeterDetail` supplies the host's per-meter detail content. The composition has three bottom-row controls: Dev tools, RPC, and Meters. The Meters panel lists all blocks, including RPC readings; only strip activation of `rpc.*` routes directly to RPC. Focus alone does not open a panel, while Enter/Space and click follow the same activation path.
+
+The host-composition story persists `openPanel` as an opaque string under its existing light/dark-specific panel storage key and the selected meter under `${storageKey}.meter`. An unknown stored meter falls back to the first supplied block; an empty block list leaves selection undefined. A stored per-meter panel ID from the previous composition opens Meters and supplies its selection when no separate meter preference exists. Unknown panel IDs render closed. Closing Meters removes only the open-panel preference, preserving the meter for reopening. Storage denial falls back to working in-memory state. The shell, RPC adapter, and `MetersPanel` own none of this persistence.
+
+The host's mount function creates the DOM root, mounts this component under its theme ancestor, and returns a function that unmounts the React root and removes its node. It must not acquire a second session lease via a provider when bootstrap already owns `meters.start`. Host segments may contain real WebSocket/sync status without moving that domain into RPC integration. Freeze remains host-controlled and renderer-only; no package persists it automatically.
 
 Disabling ends the diagnostic/application transport boundary and recreates an undecorated client transport; re-enabling recreates the decorated one. Hiding the panel is not disablement, and a disabled session cannot recover unobserved history retroactively.
 
 ## Conformance
 
-| Fixture                      | Required evidence                                                                                                                                    |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| One raw transport, two sinks | exactly one request/chunk/terminal delivery per sink; no second decoration; metadata sink receives no values                                         |
-| RPC event replay             | balanced active gauge; stream, notification, interruption, send failure, fault, dedup, window expiry, bounded capacity loss and percentile semantics |
-| Bridge                       | matching snapshot/watch/clear frames, revision/reset correctness, iterator return cancellation, scope teardown, no self-observed inspector calls     |
-| Panel                        | lazy load occurs on open only; fills available slot; internal scroll; standalone dimensions unchanged; close stops watch but not collection          |
-| Disabled host fixture        | no loader, constructor, source start, observer/metric/tracer/protocol hook, timer, frame callback, listener, or UI mount                             |
-| Production graph             | no reachable diagnostic module, chunk, or dynamic-import reference                                                                                   |
-| Rebuild fixture              | old watches/sources/coordinator released; raw protocol restored when off; one observation installation when on                                       |
+| Fixture                      | Required evidence                                                                                                                                                            |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One raw transport, two sinks | exactly one request/chunk/terminal delivery per sink; no second decoration; metadata sink receives no values                                                                 |
+| RPC event replay             | balanced active gauge; stream, notification, interruption, send failure, fault, dedup, window expiry, bounded capacity loss and percentile semantics                         |
+| Bridge                       | matching snapshot/watch/clear frames, revision/reset correctness, iterator return cancellation, scope teardown, no self-observed inspector calls                             |
+| Panel                        | lazy load occurs on open only; fills available slot; internal scroll; standalone dimensions unchanged; close stops watch but not collection                                  |
+| Host composition             | exactly Dev tools/RPC/Meters row controls; strip click/Enter selects Meters detail except `rpc.*`; all meters reachable in panel; restored selection and unknown-ID fallback |
+| Disabled host fixture        | no loader, constructor, source start, observer/metric/tracer/protocol hook, timer, frame callback, listener, or UI mount                                                     |
+| Production graph             | no reachable diagnostic module, chunk, or dynamic-import reference                                                                                                           |
+| Rebuild fixture              | old watches/sources/coordinator released; raw protocol restored when off; one observation installation when on                                                               |
 
 Traces: DT.RPC-R01–R11. Tests use real lifecycle fixtures and injected clocks; unsupported/empty evidence remains explicit unavailable. They must not infer request latency from normalization telemetry or substitute synthetic zero values.

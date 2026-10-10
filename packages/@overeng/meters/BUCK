@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/meters/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:1714983905e01d857d7af6d8157ab8b2e96715de18d90d4885d4bae1b7e15faf
+# Semantic fingerprint: sha256:bf3906815b7fe4446c1b9de626749a69616d36f2da1c1c6cb9ddad557a5da788
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/package.json.genie.ts, context/opentui/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/test-verdict.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/devbar/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-ai-gateway/package.json.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-observer/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-rust-fixture-consumer/package.json.genie.ts, packages/@overeng/effect-rust/package.json.genie.ts, packages/@overeng/effect-schema-form-aria/package.json.genie.ts, packages/@overeng/effect-schema-form/package.json.genie.ts, packages/@overeng/genie-smalltalk/package.json.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/kdl-effect/package.json.genie.ts, packages/@overeng/kdl/package.json.genie.ts, packages/@overeng/megarepo/package.json.genie.ts, packages/@overeng/meters/BUCK.genie.ts, packages/@overeng/meters/BUCK.genie.ts, packages/@overeng/meters/package.json.genie.ts, packages/@overeng/meters/package.json.genie.ts, packages/@overeng/meters/src/**/*.css, packages/@overeng/meters/src/**/*.cts, packages/@overeng/meters/src/**/*.js, packages/@overeng/meters/src/**/*.mts, packages/@overeng/meters/src/**/*.spec.cjs, packages/@overeng/meters/src/**/*.spec.jsx, packages/@overeng/meters/src/**/*.spec.mjs, packages/@overeng/meters/src/**/*.test.cjs, packages/@overeng/meters/src/**/*.test.jsx, packages/@overeng/meters/src/**/*.test.mjs, packages/@overeng/meters/src/**/*.ts, packages/@overeng/meters/src/**/*.tsx, packages/@overeng/meters/src/**/__snapshots__/*.snap, packages/@overeng/meters/tsconfig.json.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/notion-property-write/package.json.genie.ts, packages/@overeng/notion-react/package.json.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/otel-browser/BUCK.genie.ts, packages/@overeng/otel-browser/package.json.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/outline/package.json.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/react-inspector/package.json.genie.ts, packages/@overeng/restate-effect/package.json.genie.ts, packages/@overeng/rpc-devtools/package.json.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-stories/package.json.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-storybook/BUCK.genie.ts, packages/@overeng/utils-storybook/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -39,6 +39,8 @@ export_materialization_inputs([
     "src/react/commits.ts",
     "src/react/commits.unit.test.ts",
     "src/react/index.tsx",
+    "src/react/panel.tsx",
+    "src/react/panel.unit.test.tsx",
     "src/react/react.unit.test.tsx",
     "src/series/index.ts",
     "src/series/internal.ts",
@@ -129,6 +131,8 @@ package_view(
         "src/react/commits.ts": "src/react/commits.ts",
         "src/react/commits.unit.test.ts": "src/react/commits.unit.test.ts",
         "src/react/index.tsx": "src/react/index.tsx",
+        "src/react/panel.tsx": "src/react/panel.tsx",
+        "src/react/panel.unit.test.tsx": "src/react/panel.unit.test.tsx",
         "src/react/react.unit.test.tsx": "src/react/react.unit.test.tsx",
         "src/series/index.ts": "src/series/index.ts",
         "src/series/internal.ts": "src/series/internal.ts",
@@ -197,6 +201,8 @@ package_view(
         "src/react/commits.ts": "src/react/commits.ts",
         "src/react/commits.unit.test.ts": "src/react/commits.unit.test.ts",
         "src/react/index.tsx": "src/react/index.tsx",
+        "src/react/panel.tsx": "src/react/panel.tsx",
+        "src/react/panel.unit.test.tsx": "src/react/panel.unit.test.tsx",
         "src/react/react.unit.test.tsx": "src/react/react.unit.test.tsx",
         "src/series/index.ts": "src/series/index.ts",
         "src/series/internal.ts": "src/series/internal.ts",
