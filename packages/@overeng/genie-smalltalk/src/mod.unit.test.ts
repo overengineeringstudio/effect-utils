@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -30,11 +31,32 @@ import {
   StepSchema,
   smalltalkKdl,
 } from './mod.ts'
+import type { FieldIsInput, StepDependency, StepHandle } from './mod.ts'
+import {
+  childMission,
+  completed,
+  completion,
+  doc,
+  document,
+  failed,
+  gate,
+  input,
+  loop,
+  observer,
+  pr,
+  product,
+  runId,
+  subscription,
+  t,
+  terminal,
+} from './mod.ts'
+import { prLanding, prLandingFragment } from './pr-landing.fixture.ts'
+import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
 
 const operator = person('person/schickling')
 const owner = { id: 'example/owner' } satisfies typeof AgentSchema.Encoded
 const worker = { id: 'example/worker' } satisfies typeof AgentSchema.Encoded
-const gate = {
+const humanReviewGate = {
   kind: 'human',
   name: 'Approve the bounded Berlin cutover',
   reviewer: operator,
@@ -55,14 +77,29 @@ describe('attributed human gates', () => {
     expectTypeOf<PersonReference>().not.toMatchTypeOf<(typeof MissionSchema.Encoded)['reportTo']>()
     expectTypeOf<Parameters<typeof person>[0]>().toEqualTypeOf<`person/${string}`>()
     expect(() =>
-      step({ id: 'approve', agentless: true, gate: { ...gate, reviewer: owner } } as never),
+      step({
+        id: 'approve',
+        agentless: true,
+        gates: [{ ...humanReviewGate, reviewer: owner }],
+      } as never),
     ).toThrow()
   })
 
   it('requires tags and does not declare unsupported policy fields', () => {
     type Gate = typeof GateSchema.Encoded
-    expectTypeOf<Gate['kind']>().toEqualTypeOf<'field' | 'human'>()
-    expectTypeOf<Omit<typeof gate, 'kind'>>().not.toMatchTypeOf<Gate>()
+    expectTypeOf<Gate['kind']>().toEqualTypeOf<
+      | 'field'
+      | 'human'
+      | 'exists'
+      | 'document'
+      | 'empty'
+      | 'has'
+      | 'lacks'
+      | 'merged'
+      | 'ci-passed'
+      | 'exec'
+    >()
+    expectTypeOf<Omit<typeof humanReviewGate, 'kind'>>().not.toMatchTypeOf<Gate>()
     expectTypeOf<
       Extract<
         'tier' | 'scope' | 'window' | 'fallback' | 'policy' | 'humanOnly',
@@ -82,13 +119,17 @@ describe('attributed human gates', () => {
       { humanOnly: true },
     ]) {
       expect(() =>
-        step({ id: 'approve', agentless: true, gate: { ...gate, ...extra } } as never),
+        step({
+          id: 'approve',
+          agentless: true,
+          gates: [{ ...humanReviewGate, ...extra }],
+        } as never),
       ).toThrow()
     }
     expect(() =>
       step({
         id: 'verify',
-        gate: { name: 'ok', field: { kind: 'exit_code', ref: 'exec/check', is: 0 } },
+        gates: [{ name: 'ok', field: { kind: 'exit_code', ref: 'exec/check', is: 0 } }],
       } as never),
     ).toThrow()
   })
@@ -112,23 +153,28 @@ describe('attributed human gates', () => {
           id: 'home/berlin/cutover',
           state: 'ready',
           reportTo: owner,
-          goal: 'Apply only the reviewed Berlin cutover plan.',
+          goal: ['Apply only the reviewed Berlin cutover plan.'],
           steps: [
             {
               id: 'approve-cutover',
               agentless: true,
               timeout: '1d',
-              gate: {
-                ...gate,
-                question: 'Apply the reviewed configuration and rollback plan?',
-                review: [`doc/berlin-cutover@${'a'.repeat(64)}`, 'resource/example/rollback-plan'],
-              },
+              gates: [
+                {
+                  ...humanReviewGate,
+                  question: 'Apply the reviewed configuration and rollback plan?',
+                  review: [
+                    `doc/berlin-cutover@${'a'.repeat(64)}`,
+                    'resource/example/rollback-plan',
+                  ],
+                },
+              ],
             },
             {
               id: 'apply-cutover',
               assignedTo: worker,
               dependsOn: [{ step: 'approve-cutover', state: 'completed' }],
-              goal: 'Apply precisely the approved plan.',
+              goal: ['Apply precisely the approved plan.'],
             },
           ],
         }),
@@ -158,7 +204,13 @@ mission "home/berlin/cutover" report-to="agent/example/owner" state="ready" {
 
   it('lowers worker feedback without turning it into pre-work authorization', () => {
     expect(
-      emit([step({ id: 'draft', assignedTo: worker, gate: { ...gate, mode: 'feedback' } })]),
+      emit([
+        step({
+          id: 'draft',
+          assignedTo: worker,
+          gates: [{ ...humanReviewGate, mode: 'feedback' }],
+        }),
+      ]),
     ).toBe(`version 2
 step "draft" {
   assigned-to "agent/example/worker"
@@ -168,14 +220,16 @@ step "draft" {
 }
 `)
     expect(() =>
-      step({ id: 'approve', agentless: true, gate: { ...gate, mode: 'feedback' } }),
+      step({ id: 'approve', agentless: true, gates: [{ ...humanReviewGate, mode: 'feedback' }] }),
     ).toThrow('feedback human gates require a worker step')
   })
 
   it('accepts explicit approve mode and rejects invalid modes and duplicate review targets', () => {
     expect(
-      emit([step({ id: 'approve', agentless: true, gate: { ...gate, mode: 'approve' } })]),
-    ).toBe(emit([step({ id: 'approve', agentless: true, gate })]))
+      emit([
+        step({ id: 'approve', agentless: true, gates: [{ ...humanReviewGate, mode: 'approve' }] }),
+      ]),
+    ).toBe(emit([step({ id: 'approve', agentless: true, gates: [humanReviewGate] })]))
     for (const invalid of [
       { mode: 'consultative' },
       { review: ['doc/plan', 'doc/plan'] },
@@ -183,7 +237,11 @@ step "draft" {
       { reviewer: 'person/schickling' },
     ]) {
       expect(() =>
-        step({ id: 'approve', agentless: true, gate: { ...gate, ...invalid } } as never),
+        step({
+          id: 'approve',
+          agentless: true,
+          gates: [{ ...humanReviewGate, ...invalid }],
+        } as never),
       ).toThrow()
     }
   })
@@ -198,20 +256,23 @@ step "draft" {
   })
 
   it('lowers distinct person assignments and retains native field gate syntax', () => {
-    expect(
-      emit([step({ id: 'inspect', assignedTo: operator, goal: 'Inspect the plan.' })]),
-    ).toBe(
+    expect(emit([step({ id: 'inspect', assignedTo: operator, goal: ['Inspect the plan.'] })])).toBe(
       'version 2\nstep "inspect" {\n  assigned-to "person/schickling"\n  goal "Inspect the plan."\n}\n',
     )
     expect(
       emit([
         step({
           id: 'verify',
-          gate: {
-            kind: 'field',
-            name: 'Successful check',
-            field: { kind: 'exit_code', ref: 'exec/check', is: 0 },
-          },
+          gates: [
+            {
+              kind: 'field',
+              name: 'Successful check',
+              path: 'exit_code',
+              subject: 'exec/check',
+              operator: 'is',
+              value: 0,
+            },
+          ],
         }),
       ]),
     ).toBe(
@@ -233,8 +294,8 @@ const canonical = () =>
       id: 'demo',
       state: 'ready',
       reportTo: reporter,
-      goal: 'Demonstrate KDL.',
-      steps: [{ id: 'first', goal: 'Inspect input.', agentless: true }],
+      goal: ['Demonstrate KDL.'],
+      steps: [{ id: 'first', goal: ['Inspect input.'], agentless: true }],
     }),
     mission(fanInMission()),
   ])
@@ -304,8 +365,8 @@ describe('Smalltalk declarations', () => {
       id: 'assigned',
       state: 'ready',
       reportTo: reporter,
-      goal: 'Delegate work.',
-      steps: [{ id: 'inspect', assignedTo: reporter, goal: 'Inspect input.' }],
+      goal: ['Delegate work.'],
+      steps: [{ id: 'inspect', assignedTo: reporter, goal: ['Inspect input.'] }],
     } satisfies typeof MissionSchema.Encoded
     expect(emit([mission(input)])).toBe(
       'version 2\nmission "assigned" report-to="agent/ops/watcher" state="ready" {\n  goal "Delegate work."\n  step "inspect" {\n    assigned-to "agent/ops/watcher"\n    goal "Inspect input."\n  }\n}\n',
@@ -397,9 +458,7 @@ describe('Smalltalk declarations', () => {
   ])('validates the complete referenced launch declaration %j', (launch) => {
     const reference = { id: 'ops/invalid', ...launch }
     expect(() => Schema.decodeSync(AgentReferenceSchema)(reference)).toThrow()
-    expect(() =>
-      Schema.decodeSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
-    ).toThrow()
+    expect(() => Schema.decodeSync(StepSchema)({ id: 'inspect', assignedTo: reference })).toThrow()
     expect(() =>
       Schema.decodeSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
     ).toThrow()
@@ -482,13 +541,6 @@ describe('Smalltalk declarations', () => {
         { step: 'missing', state: 'completed' },
       ],
     },
-    {
-      dependsOn: [
-        { step: 'first', state: 'completed' },
-        { step: 'second', state: 'failed' },
-      ],
-    },
-    { dependsOn: { step: 'first', state: 'completed' } },
   ])('rejects invalid dependency lists %j', ({ dependsOn }) => {
     const input = fanInMission()
     expect(() =>
@@ -610,7 +662,7 @@ describe('Smalltalk declarations', () => {
         id: 'demo',
         state: 'ready',
         reportTo: reporter,
-        goal: 'go',
+        goal: ['go'],
         steps: [{ id: 'a', agentless: true, assignedTo: reporter }],
       }),
     ).toThrow()
@@ -721,6 +773,858 @@ describe('Smalltalk declarations', () => {
   })
 })
 
+const guideText = 'This immutable guide is ready.\n'
+const guideHash = createHash('sha256').update(guideText).digest('hex')
+const grammarCanonical = () =>
+  emit([
+    mission({
+      id: 'demo',
+      state: 'ready',
+      reportTo: owner,
+      goal: ['Demonstrate KDL.', 'Preserve all goals.', 'Bound goals to three.'],
+      gates: [{ name: 'exists', kind: 'exists', subject: 'resource/input' }],
+      docs: [{ id: 'example/guide', hash: guideHash }],
+      completion: { dependsOn: [{ step: 'last', state: 'completed' }] },
+      finally: [
+        {
+          id: 'cleanup',
+          agentless: true,
+          gates: [
+            {
+              name: 'cleanup',
+              kind: 'exec',
+              command: 'true',
+              host: 'local',
+              workspace: '${ST_WORKSPACE}',
+              env: { RESULT: 'ok' },
+              timeLimit: '1m',
+            },
+          ],
+        },
+        {
+          id: 'after-cleanup',
+          agentless: true,
+          dependsOn: [{ step: 'cleanup', state: 'terminal' }],
+        },
+      ],
+      steps: [
+        {
+          id: 'first',
+          goal: ['Inspect input.'],
+          agentless: true,
+          retry: { attempts: 100, backoff: '0s' },
+          documents: [`doc/example/guide@${guideHash}`],
+          gates: [
+            {
+              name: 'state',
+              kind: 'field',
+              path: 'state',
+              subject: 'resource/input',
+              operator: 'is',
+              value: 'ready',
+            },
+            {
+              name: 'prefix',
+              kind: 'field',
+              path: 'name',
+              subject: 'resource/input',
+              operator: 'starts-with',
+              value: 'input',
+            },
+            { name: 'empty', kind: 'empty', subject: 'mission-run/previous' },
+            { name: 'has', kind: 'has', subject: 'message/guide', text: 'ready' },
+            { name: 'lacks', kind: 'lacks', subject: 'file/local:/tmp/result', text: 'error' },
+            { name: 'merged', kind: 'merged', locator: 'acme/garden#7' },
+            {
+              name: 'ci',
+              kind: 'ci-passed',
+              check: 'build',
+              repo: 'acme/garden',
+              ref: { branch: 'main' },
+            },
+          ],
+        },
+        { id: 'second', agentless: true, dependsOn: [{ step: 'first', state: 'failed' }] },
+        {
+          id: 'last',
+          agentless: true,
+          dependsOn: [
+            { step: 'first', state: 'completed' },
+            { step: 'second', state: 'terminal' },
+          ],
+        },
+      ],
+    }),
+  ])
+
+describe('native mission grammar', () => {
+  it('keeps scalar and singleton goal/dependency declarations byte-identical', () => {
+    const declaration = (
+      goal: typeof MissionSchema.Encoded.goal,
+      dependsOn: NonNullable<typeof StepSchema.Encoded.dependsOn>,
+    ) =>
+      emit([
+        mission({
+          id: 'scalar-parity',
+          state: 'ready',
+          reportTo: owner,
+          goal,
+          steps: [
+            { id: 'first', agentless: true },
+            { id: 'second', agentless: true, dependsOn },
+          ],
+        }),
+      ])
+    const expected = declaration('Preserve the native graph.', 'first')
+    for (const dependsOn of [
+      'first',
+      { step: 'first', state: 'completed' },
+      ['first'],
+      [{ step: 'first', state: 'completed' }],
+    ] as const) {
+      expect(declaration('Preserve the native graph.', dependsOn)).toBe(expected)
+      expect(declaration(['Preserve the native graph.'], dependsOn)).toBe(expected)
+    }
+    const first = step({ id: 'first', missionId: 'handle-parity' })
+    expect(emit([step({ id: 'second', missionId: 'handle-parity', dependsOn: [first] })])).toBe(
+      emit([step({ id: 'second', missionId: 'handle-parity', dependsOn: [completed(first)] })]),
+    )
+    expect(() => step({ id: 'empty', goal: [] } as never)).toThrow()
+    expect(() =>
+      mission({
+        id: 'old-key',
+        state: 'ready',
+        reportTo: owner,
+        goals: ['Not an authoring alias.'],
+        steps: [],
+      } as never),
+    ).toThrow()
+  })
+  it('renders final native gate constructors and typed interpolation without an exec shim', () => {
+    const commit = input.text('commit')
+    const declaration = mission({
+      id: 'constructor-parity',
+      state: 'ready',
+      reportTo: owner,
+      inputs: [commit],
+      goal: t`Verify ${commit}.`,
+      steps: [],
+      gates: [
+        gate.ciPassed('build', { repo: 'acme/garden', commit, name: 'build' }),
+        gate.merged(pr('acme/garden', 7), { name: 'merged' }),
+        gate.document(doc`doc/report/${runId}`, { name: 'report' }),
+        gate.human({ reviewer: operator, name: 'review', question: 'Is the exact report ready?' }),
+      ],
+    })
+    const kdl = emit([declaration])
+    expect(kdl).toContain('goal "Verify ${input.commit}."')
+    expect(kdl).toContain('ci-passed "build" commit="${input.commit}" repo="acme/garden"')
+    expect(kdl).toContain('merged "acme/garden#7"')
+    expect(kdl).toContain('document "doc/report/${ST_MISSION_RUN}"')
+    expect(kdl).toContain('gate "review" mode="approve" type="human"')
+    expect(gate.merged(pr('acme/garden', 7)).name).toBe(gate.merged(pr('acme/garden', 7)).name)
+    expect(gate.ciPassed('build', { repo: 'acme/garden', commit }).name).not.toBe(
+      gate.ciPassed('test', { repo: 'acme/garden', commit }).name,
+    )
+  })
+  it('retains every native gate, retry, completion and finalization in the synthetic graph', () => {
+    const kdl = grammarCanonical()
+    expect(kdl).toContain('goal "Bound goals to three."')
+    expect(kdl).toContain('retry {\n      attempts 100\n      backoff "0s"')
+    expect(kdl).toContain('completion {\n    depends-on {\n      step "last" "completed"')
+    expect(kdl).toContain('finally {\n    step "cleanup"')
+    expect(kdl).toContain('field "name" "resource/input" "starts-with" "input"')
+    expect(kdl).toContain('lacks "file/local:/tmp/result" "error"')
+  })
+  it('renders public PR inputs and config-time fragments with the same ordered flow', () => {
+    expect(emit([prLanding()])).toContain('input "commit" kind="text"')
+    expect(emit([prLandingFragment({ number: 7, commit: 'abc' })])).toContain('repo="acme/garden"')
+    expect(upstreamRepin()).toContain('loop "await-upstream" timeout="720h"')
+    expect(upstreamRepinKdl).toContain('report-to="agent/example/owner"')
+  })
+  it('preserves native mission-level assignment without injecting it into steps', () => {
+    const imported = { ...owner, hold: { reason: 'Synthetic undeployed seat.' } }
+    const declaration = mission({
+      id: 'default-worker',
+      state: 'ready',
+      reportTo: owner,
+      assignedTo: imported,
+      goal: ['Delegate the graph.'],
+      steps: [{ id: 'work' }, { id: 'checkpoint', agentless: true }],
+    })
+    expect(declaration.children?.filter((value) => value.name === 'assigned-to')).toEqual([
+      node({ name: 'assigned-to', args: ['agent/example/owner'] }),
+    ])
+    expect(
+      declaration.children
+        ?.filter((value) => value.name === 'step')
+        .every((value) => value.children?.every((nested) => nested.name !== 'assigned-to')),
+    ).toBe(true)
+    expect(emit([declaration])).not.toContain('Synthetic undeployed')
+  })
+
+  it('accepts hyphenated resource input names in subject gates', () => {
+    const pr = input.resource({ name: 'pull-request', kind: 'vcs.pull-request' })
+    const review = step({
+      id: 'review',
+      gates: [gate.fieldIs({ name: 'open', subject: pr, path: 'state', value: 'open' })],
+    })
+    const kdl = emit([
+      mission({
+        id: 'review-pr',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['Review the PR.'],
+        inputs: [pr],
+        steps: [review],
+      }),
+    ])
+    expect(kdl).toContain('input "pull-request" kind="resource"')
+    expect(kdl).toContain('field "state" "${input.pull-request}" "is" "open"')
+  })
+  it('preserves named product types and lowers field constraints to graph products', () => {
+    const work = step({
+      id: 'work',
+      produces: {
+        report: product.resource({ kind: 'custom.garden.report', fields: { state: 'published' } }),
+        receipt: product.field({ subject: 'message/receipt', fields: { text: 'ready' } }),
+      },
+    })
+    expectTypeOf<keyof typeof work.products>().toEqualTypeOf<'report' | 'receipt'>()
+    expectTypeOf<{
+      name: string
+      subject: typeof work.products.report
+      path: 'staet'
+      value: string
+    }>().not.toExtend<FieldIsInput<typeof work.products.report.fields>>()
+    expect(emit([work])).toContain('resource "mission-run/${ST_MISSION_RUN}/work/report"')
+    expect(
+      emit([
+        gate.render(
+          gate.fieldIs({
+            name: 'ready',
+            subject: work.products.report,
+            path: 'state',
+            value: 'published',
+          }),
+        ),
+      ]),
+    ).toContain(
+      'field "state" "resource/mission-run/${ST_MISSION_RUN}/work/report" "is" "published"',
+    )
+    expect(() => step({ id: 'empty', produces: {} })).toThrow()
+    expect(() =>
+      step({
+        id: 'duplicate',
+        produces: {
+          a: product.resource({
+            kind: 'custom.garden.report',
+            subject: 'resource/report',
+            fields: {},
+          }),
+          b: product.resource({
+            kind: 'custom.garden.report',
+            subject: 'resource/report',
+            fields: {},
+          }),
+        },
+      }),
+    ).toThrow()
+    expect(() =>
+      step({ id: 'missing-kind', produces: { a: { fields: {}, subject: 'resource/a' } } } as never),
+    ).toThrow()
+  })
+  it('rejects aliasing one product handle under multiple output names', () => {
+    const report = product.resource({ kind: 'custom.garden.report', fields: { state: 'ready' } })
+    expect(() => step({ id: 'work', produces: { a: report, b: report } })).toThrow(
+      'multiple produces keys',
+    )
+    const work = step({ id: 'work', produces: { report } })
+    expect(
+      emit([
+        gate.render(
+          gate.fieldIs({
+            name: 'ready',
+            subject: work.products.report,
+            path: 'state',
+            value: 'ready',
+          }),
+        ),
+      ]),
+    ).toContain('/work/report')
+  })
+  it('validates typed references in plain steps and every loop gate placement', () => {
+    const pr = input.resource({ name: 'pr', kind: 'vcs.pull-request' })
+    const foreign = step({
+      id: 'foreign',
+      produces: {
+        report: product.resource({ kind: 'custom.garden.report', fields: { state: 'ready' } }),
+      },
+    })
+    for (const [subject, error] of [
+      [pr, 'not declared'],
+      [foreign.products.report, 'outside this mission'],
+    ] as const) {
+      const gates = [gate.fieldIs({ name: 'ready', subject, path: 'state', value: 'ready' })]
+      const raw = { id: 'work', gates }
+      expect(() =>
+        mission({ id: 'raw', state: 'ready', reportTo: owner, goal: ['Review.'], steps: [raw] }),
+      ).toThrow(error)
+      expect(() =>
+        mission({
+          id: 'raw',
+          state: 'ready',
+          reportTo: owner,
+          goal: ['Review.'],
+          steps: [],
+          finally: [raw],
+        }),
+      ).toThrow(error)
+      for (const placement of ['until', 'steps', 'finally'] as const) {
+        const round = {
+          completion: { when: 'all-steps-exhausted' as const },
+          steps: placement === 'steps' ? [raw] : [],
+          ...(placement === 'finally' ? { finally: [raw] as [typeof raw] } : {}),
+        }
+        const loopInput = {
+          id: 'rounds',
+          maxRounds: 2,
+          round,
+          ...(placement === 'until' ? { until: gates as [(typeof gates)[number]] } : {}),
+        }
+        expect(() =>
+          mission({
+            id: 'raw',
+            state: 'ready',
+            reportTo: owner,
+            goal: ['Review.'],
+            steps: [loopInput],
+          }),
+        ).toThrow(error)
+        expect(() => loop(loopInput)).toThrow('require mission assembly')
+      }
+    }
+    const open = gate.fieldIs({ name: 'open', subject: pr, path: 'state', value: 'open' })
+    expect(
+      emit([
+        mission({
+          id: 'raw-valid',
+          state: 'ready',
+          reportTo: owner,
+          goal: ['Review.'],
+          inputs: [pr],
+          steps: [
+            { id: 'work', gates: [open] },
+            {
+              id: 'rounds',
+              maxRounds: 2,
+              until: [open],
+              round: {
+                completion: { when: 'all-steps-exhausted' },
+                steps: [{ id: 'work', gates: [open] }],
+                finally: [{ id: 'cleanup', gates: [open] }],
+              },
+            },
+          ],
+        }),
+      ]),
+    ).toContain('${input.pr}')
+  })
+  it('rejects undeclared input identity, duplicate input names and foreign product handles', () => {
+    const pr = input.resource({ name: 'pr', kind: 'vcs.pull-request' })
+    const otherPr = input.resource({ name: 'pr', kind: 'vcs.pull-request' })
+    const review = step({
+      id: 'review',
+      gates: [gate.fieldIs({ name: 'open', subject: pr, path: 'state', value: 'open' })],
+    })
+    expect(() =>
+      mission({
+        id: 'inputs',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['Review.'],
+        inputs: [otherPr],
+        steps: [review],
+      }),
+    ).toThrow('not declared')
+    expect(() =>
+      mission({
+        id: 'inputs',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['Review.'],
+        inputs: [pr, otherPr],
+        steps: [review],
+      }),
+    ).toThrow()
+    const foreign = step({
+      id: 'foreign',
+      produces: {
+        report: product.resource({ kind: 'custom.garden.report', fields: { state: 'ready' } }),
+      },
+    })
+    expect(() =>
+      mission({
+        id: 'inputs',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['Review.'],
+        steps: [],
+        gates: [
+          gate.fieldIs({
+            name: 'foreign',
+            subject: foreign.products.report,
+            path: 'state',
+            value: 'ready',
+          }),
+        ],
+      }),
+    ).toThrow('outside this mission')
+    const text = input.text('note')
+    expect(
+      emit([
+        mission({
+          id: 'text',
+          state: 'ready',
+          reportTo: owner,
+          goal: ['Check the note.'],
+          inputs: [text],
+          steps: [],
+          gates: [
+            gate.exec({
+              name: 'note',
+              command: 'test -n "$NOTE"',
+              host: 'local',
+              workspace: '${ST_WORKSPACE}',
+              env: { NOTE: text },
+            }),
+          ],
+        }),
+      ]),
+    ).toContain('NOTE "${input.note}"')
+  })
+  it('renders native human reviewer requests and rejects ambiguous review targets', () => {
+    expect(
+      emit([
+        gate.render(
+          gate.human({
+            name: 'approve',
+            reviewer: person('person/reviewer'),
+            mode: 'feedback',
+            question: 'Is this ready?',
+            review: ['resource/garden', 'doc/report'],
+          }),
+        ),
+      ]),
+    ).toBe(
+      'version 2\ngate "approve" mode="feedback" type="human" {\n  reviewer "person/reviewer"\n  question "Is this ready?"\n  review "resource/garden"\n  review "doc/report"\n}\n',
+    )
+    expect(() =>
+      gate.render(gate.human({ name: 'bad', reviewer: { id: 'team/worker' } } as never)),
+    ).toThrow()
+    expect(() =>
+      gate.render(
+        gate.human({
+          name: 'bad',
+          reviewer: person('person/reviewer'),
+          review: ['resource/a', 'resource/a'],
+        }),
+      ),
+    ).toThrow()
+    expect(() =>
+      gate.render({
+        name: 'bad',
+        kind: 'human',
+        reviewer: person('person/reviewer'),
+        mode: 'unknown',
+      } as never),
+    ).toThrow()
+  })
+  it('restricts feedback review to worker step gates', () => {
+    const feedback = gate.human({
+      name: 'review',
+      reviewer: person('person/reviewer'),
+      mode: 'feedback',
+    })
+    expect(() =>
+      mission({
+        id: 'feedback',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['Review.'],
+        gates: [feedback],
+        steps: [],
+      }),
+    ).toThrow('feedback-gate-needs-step')
+    expect(() =>
+      loop({
+        id: 'review',
+        maxRounds: 2,
+        until: [feedback],
+        round: { completion: { when: 'all-steps-exhausted' }, steps: [] },
+      }),
+    ).toThrow('feedback-gate-needs-step')
+    expect(() => step({ id: 'review', agentless: true, gates: [feedback] })).toThrow(
+      'feedback human gates require a worker step',
+    )
+    expect(() =>
+      mission({
+        id: 'feedback',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['Review.'],
+        steps: [{ id: 'review', agentless: true, gates: [feedback] }],
+      }),
+    ).toThrow('feedback human gates require a worker step')
+    const worker = step({
+      id: 'review',
+      assignedTo: { id: 'team/worker' },
+      gates: [feedback],
+    })
+    expect(
+      emit([
+        mission({
+          id: 'feedback',
+          state: 'ready',
+          reportTo: owner,
+          goal: ['Review.'],
+          steps: [worker],
+        }),
+      ]),
+    ).toContain('gate "review" mode="feedback" type="human"')
+  })
+  it('lowers handle dependencies and resolved agents to the plain mission grammar', () => {
+    const first = step({
+      id: 'first',
+      missionId: 'handles',
+      assignedTo: { id: 'team/worker' },
+    })
+    const second = step({
+      id: 'second',
+      missionId: 'handles',
+      dependsOn: [completed(first), failed(first), terminal(first)],
+    })
+    expect(
+      emit([
+        mission({
+          id: 'handles',
+          state: 'ready',
+          reportTo: owner,
+          goal: ['Land work.'],
+          steps: [first, second],
+        }),
+      ]),
+    ).toBe(
+      emit([
+        mission({
+          id: 'handles',
+          state: 'ready',
+          reportTo: owner,
+          goal: ['Land work.'],
+          steps: [
+            { id: 'first', assignedTo: { id: 'team/worker' } },
+            {
+              id: 'second',
+              dependsOn: [
+                { step: 'first', state: 'completed' },
+                { step: 'first', state: 'failed' },
+                { step: 'first', state: 'terminal' },
+              ],
+            },
+          ],
+        }),
+      ]),
+    )
+    expectTypeOf<StepHandle<'handles'>>().not.toExtend<StepHandle<'other'>>()
+    expectTypeOf<{ id: 'empty'; dependsOn: readonly [] }>().not.toExtend<
+      Parameters<typeof step>[0]
+    >()
+    expectTypeOf<typeof first>().not.toExtend<
+      Parameters<typeof mission<'other'>>[0]['steps'][number]
+    >()
+    expectTypeOf<StepDependency<'handles'>>().not.toExtend<
+      Extract<
+        NonNullable<Parameters<typeof step<'other'>>[0]['dependsOn']>,
+        readonly unknown[]
+      >[number]
+    >()
+  })
+  it('rejects foreign handles even when a local step has the same explicit ID', () => {
+    const foreign = step({ id: 'review' })
+    const local = step({ id: 'review' })
+    const land = step({ id: 'land', dependsOn: [completed(foreign)] })
+    expect(() =>
+      mission({
+        id: 'landing',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['Land.'],
+        steps: [local, land],
+      }),
+    ).toThrow('same mission phase')
+    mission({ id: 'other', state: 'ready', reportTo: owner, goal: ['Review.'], steps: [foreign] })
+    expect(() =>
+      mission({
+        id: 'landing',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['Land.'],
+        steps: [foreign, land],
+      }),
+    ).toThrow('already belongs')
+    const scoped = step({ id: 'review', missionId: 'other' })
+    expect(() =>
+      mission({
+        id: 'landing',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['Land.'],
+        steps: [scoped],
+      } as never),
+    ).toThrow('belongs to mission')
+    expect(() =>
+      step({ id: 'review', assignedTo: { kind: 'mission', id: 'work' } } as never),
+    ).toThrow()
+    expect(() =>
+      step({ id: 'review', assignedTo: { kind: 'agent', url: 'file:///tree/agent.ts' } } as never),
+    ).toThrow()
+  })
+  it.each([0, 101, 1.5])('rejects invalid retry attempts %s', (attempts) => {
+    expect(() => step({ id: 'a', retry: { attempts } })).toThrow()
+  })
+  it.each([1e19, -1e19, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects unsafe integral field values %s',
+    (value) => {
+      expect(() =>
+        gate.render({
+          name: 'number',
+          kind: 'field',
+          path: 'count',
+          subject: 'resource/result',
+          operator: 'is',
+          value,
+        }),
+      ).toThrow()
+    },
+  )
+  it.each([0, 101, 1.5])('rejects invalid loop bounds %s', (maxRounds) => {
+    expect(() =>
+      loop({
+        id: 'wait',
+        maxRounds,
+        round: { completion: { when: 'all-steps-exhausted' }, steps: [] },
+      }),
+    ).toThrow()
+  })
+  it('rejects conflicting completion and final completion frontiers', () => {
+    expect(() =>
+      completion({
+        when: 'all-steps-exhausted',
+        dependsOn: [{ step: 'a', state: 'completed' }],
+      } as never),
+    ).toThrow()
+    expect(() =>
+      mission({
+        id: 'a',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['a'],
+        steps: [],
+        finally: [{ id: 'cleanup', agentless: true }],
+        completion: { dependsOn: [{ step: 'cleanup', state: 'terminal' }] },
+      }),
+    ).toThrow()
+    expect(() =>
+      mission({
+        id: 'a',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['a'],
+        steps: [{ id: 'work' }],
+        finally: [{ id: 'cleanup', dependsOn: [{ step: 'work', state: 'completed' }] }],
+      }),
+    ).toThrow()
+    expect(() => loop({ id: 'wait', maxRounds: 2, round: { steps: [] } } as never)).toThrow()
+    expect(() =>
+      loop({
+        id: 'wait',
+        maxRounds: 2,
+        round: { completion: { when: 'all-steps-exhausted' }, steps: [] },
+        onExhausted: {
+          outcome: 'succeed',
+          attention: { title: 'wrong phase', reviewer: person('person/a'), severity: 'warning' },
+        },
+      } as never),
+    ).toThrow()
+    expect(() =>
+      gate.render({
+        name: 'env',
+        kind: 'exec',
+        command: 'true',
+        host: 'local',
+        workspace: '/tmp',
+        env: { 'bad-key': 'x' },
+      }),
+    ).toThrow()
+  })
+  it.each(['ST_WORKSPACE', 'ST_MISSION', 'ST_GATE', 'ST_LOOP_ROUND', 'ST3_SUBJECT'])(
+    'rejects reserved exec-gate context key %s',
+    (key) => {
+      expect(() =>
+        gate.render({
+          name: 'env',
+          kind: 'exec',
+          command: 'true',
+          host: 'local',
+          workspace: '/tmp',
+          env: { [key]: 'x' },
+        }),
+      ).toThrow()
+    },
+  )
+  it.each(['doc/guide', 'doc/guide@abc', `doc/../guide@${'a'.repeat(64)}`])(
+    'rejects unpinned or malformed step document %s',
+    (reference) => {
+      expect(() => step({ id: 'read', documents: [reference] })).toThrow()
+    },
+  )
+  it('rejects invalid document hashes and observer/subscription field selections', () => {
+    expect(() => document({ id: 'guide', hash: 'abc' })).toThrow()
+    expect(() =>
+      gate.render({ name: 'guide', kind: 'document', subject: 'resource/guide' }),
+    ).toThrow()
+    expect(() =>
+      observer({
+        id: 'ref',
+        resource: 'resource/ref',
+        provider: 'github.ref',
+        locator: 'acme/garden@main',
+        fields: [],
+      } as never),
+    ).toThrow()
+    expect(() =>
+      observer({
+        id: 'ref',
+        resource: 'resource/ref',
+        provider: 'github.ref',
+        locator: 'acme/garden@main',
+        fields: ['head', 'head'],
+      }),
+    ).toThrow()
+    expect(() =>
+      subscription({
+        id: 'changed',
+        observer: 'resource/ref',
+        to: 'agent/worker',
+        on: ['head'],
+        delivery: 'message',
+      }),
+    ).toThrow()
+    expect(() =>
+      subscription({
+        id: 'changed',
+        observer: 'observer/ref',
+        to: 'agent/worker',
+        on: [],
+        delivery: 'message',
+      } as never),
+    ).toThrow()
+  })
+  it.each(['acme/garden', '/garden@main', 'acme/@main', 'acme/garden@', 'acme/extra/garden@main'])(
+    'rejects malformed github.ref locator %s',
+    (locator) => {
+      expect(() =>
+        observer({
+          id: 'ref',
+          resource: 'resource/ref',
+          provider: 'github.ref',
+          locator,
+          fields: ['head'],
+        }),
+      ).toThrow()
+    },
+  )
+  it.each(['state', 'checks', ''])('rejects unsupported github.ref field %s', (field) => {
+    expect(() =>
+      observer({
+        id: 'ref',
+        resource: 'resource/ref',
+        provider: 'github.ref',
+        locator: 'acme/garden@main',
+        fields: [field],
+      } as never),
+    ).toThrow()
+  })
+  it.each(['ST_WORKSPACE', 'ST_MISSION', 'ST_GATE', 'ST_LOOP_ROUND', 'ST3_SUBJECT'])(
+    'rejects reserved exec-gate context key %s',
+    (key) => {
+      expect(() =>
+        gate.render({
+          name: 'env',
+          kind: 'exec',
+          command: 'true',
+          host: 'local',
+          workspace: '/tmp',
+          env: { [key]: 'x' },
+        }),
+      ).toThrow()
+    },
+  )
+  it('rejects excessive goals, duplicate gates and missing dependencies', () => {
+    expect(() => step({ id: 'a', goal: ['a', 'b', 'c', 'd'] })).toThrow()
+    expect(() =>
+      step({
+        id: 'a',
+        gates: [
+          { name: 'same', kind: 'exists', subject: 'resource/a' },
+          { name: 'same', kind: 'exists', subject: 'resource/b' },
+        ],
+      }),
+    ).toThrow()
+    expect(() =>
+      mission({
+        id: 'a',
+        state: 'ready',
+        reportTo: owner,
+        goal: ['a'],
+        steps: [{ id: 'a', dependsOn: [{ step: 'missing', state: 'terminal' }] }],
+      }),
+    ).toThrow()
+  })
+  it('lowers predicates and built-ins without conflating them', () => {
+    expect(
+      gate.render({
+        name: 'prefix',
+        kind: 'field',
+        path: 'facts.head',
+        subject: 'resource/ref',
+        operator: 'starts-with',
+        value: 'abc',
+      }).children,
+    ).toEqual([node({ name: 'field', args: ['facts.head', 'resource/ref', 'starts-with', 'abc'] })])
+    expect(
+      gate.render({
+        name: 'ci',
+        kind: 'ci-passed',
+        check: 'build',
+        repo: 'acme/garden',
+        ref: { commit: 'abc' },
+      }).children,
+    ).toEqual([
+      node({ name: 'ci-passed', args: ['build'], props: { repo: 'acme/garden', commit: 'abc' } }),
+    ])
+    expect(() =>
+      gate.render({
+        name: 'ci',
+        kind: 'ci-passed',
+        check: 'build',
+        repo: 'acme/garden',
+        ref: { commit: 'abc', branch: 'main' },
+      } as never),
+    ).toThrow()
+  })
+})
+
 const stBin = process.env.ST_BIN
 const testWithSt = stBin !== undefined && stBin !== '' ? it : it.skip
 
@@ -768,7 +1672,9 @@ const withIsolatedSt = async (
 ) => {
   const binary = kind === 'fixture' ? stFixtureBin : stBin
   if (binary === undefined || binary === '')
-    throw new Error(`${kind === 'fixture' ? 'ST_FIXTURE_BIN' : 'ST_BIN'} is required for ${kind} mode`)
+    throw new Error(
+      `${kind === 'fixture' ? 'ST_FIXTURE_BIN' : 'ST_BIN'} is required for ${kind} mode`,
+    )
   const dir = mkdtempSync(join(tmpdir(), 'genie-st-'))
   const socket = join(dir, 'daemon.sock')
   const stateDir = join(dir, 'state')
@@ -920,6 +1826,7 @@ testWithSt(
             'missions',
             'publish',
             source,
+            '--no-gate-check',
             '--as',
             actor,
           ],
@@ -991,6 +1898,339 @@ testWithSt(
       expect(automaticShown.status, automaticShown.stderr).toBe(0)
       expect(automaticShown.stdout).not.toContain('rollout')
       expect(automaticShown.stdout).not.toContain('handles-faults')
+      const fixtureSeats = applySeat(
+        emit([
+          agent({ id: 'example/owner', workspace: dir, command: 'true', rollout: 'manual' }),
+          agent({ id: 'example/updater', workspace: dir, command: 'true', rollout: 'manual' }),
+          agent({ id: 'team/worker', workspace: dir, command: 'true', rollout: 'manual' }),
+          agent({ id: reporter.id, workspace: dir, command: 'true', rollout: 'manual' }),
+        ]),
+      )
+      expect(fixtureSeats.status, fixtureSeats.stderr).toBe(0)
+      const documentFile = join(dir, 'guide.txt')
+      writeFileSync(documentFile, guideText)
+      const storedGuide = spawnSync(
+        stBin!,
+        [
+          '--endpoint',
+          `unix://${socket}`,
+          'documents',
+          'put',
+          documentFile,
+          '--as',
+          'doc/example/guide',
+        ],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(storedGuide.status, storedGuide.stderr).toBe(0)
+      writeFileSync(source, grammarCanonical())
+      const grammarPublished = publish()
+      expect(grammarPublished.status, grammarPublished.stderr).toBe(0)
+      const grammarRepeated = publish()
+      expect(grammarRepeated.status, grammarRepeated.stderr).toBe(0)
+      expect(JSON.parse(grammarRepeated.stdout)).toMatchObject({ changed: false })
+      // Compare independent native KDL and the typed fixture by normalized revision.
+      writeFileSync(source, upstreamRepinKdl)
+      const originalFixture = publish()
+      expect(originalFixture.status, originalFixture.stderr).toBe(0)
+      writeFileSync(source, upstreamRepin())
+      const typedFixture = publish()
+      expect(typedFixture.status, typedFixture.stderr).toBe(0)
+      expect(JSON.parse(typedFixture.stdout)).toMatchObject({ changed: false })
+      const childProducer = step({
+        id: 'publish-child',
+        produces: childMission`example/child/${runId}`,
+      })
+      const childConsumer = step({
+        id: 'run-child',
+        agentless: true,
+        dependsOn: [childProducer],
+        waitFor: childProducer,
+      })
+      writeFileSync(
+        source,
+        emit([
+          mission({
+            id: 'child-output-proof',
+            state: 'ready',
+            reportTo: reporter,
+            assignedTo: reporter,
+            goal: ['Publish and use one attempt-bound child revision.'],
+            steps: [childProducer, childConsumer],
+          }),
+        ]),
+      )
+      const childPublished = publish()
+      expect(childPublished.status, childPublished.stderr).toBe(0)
+      const childRepeated = publish()
+      expect(childRepeated.status, childRepeated.stderr).toBe(0)
+      expect(JSON.parse(childRepeated.stdout)).toMatchObject({ changed: false })
+      writeFileSync(source, emit([prLanding()]))
+      const inputPublished = publish()
+      expect(inputPublished.status, inputPublished.stderr).toBe(0)
+      const observePr = (state: string) =>
+        spawnSync(
+          stBin!,
+          [
+            '--endpoint',
+            `unix://${socket}`,
+            '--json',
+            'claim',
+            'resource/acme/garden/pr-7',
+            'resource.observed',
+            '--field',
+            'kind=vcs.pull-request',
+            '--field',
+            `state=${state}`,
+            '--field',
+            'number=7',
+          ],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+      const observedPr = observePr('open')
+      expect(observedPr.status, observedPr.stderr).toBe(0)
+      const claimId = JSON.parse(observedPr.stdout).id
+      const startLanding = (values: readonly string[], id = 'input-proof') =>
+        spawnSync(
+          stBin!,
+          [
+            '--endpoint',
+            `unix://${socket}`,
+            '--json',
+            'missions',
+            'start',
+            'pr-landing',
+            '--id',
+            id,
+            '--workspace',
+            dir,
+            '--as',
+            actor,
+            ...values.flatMap((value) => ['--input', value]),
+          ],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+      const values = [
+        'pr=resource/acme/garden/pr-7',
+        `commit=${'a'.repeat(40)}`,
+        'locator=acme/garden#7',
+      ]
+      expect(startLanding([values[0]!]).status).not.toBe(0)
+      expect(startLanding([...values, 'surprise=wrong']).status).not.toBe(0)
+      const startedLanding = startLanding(values)
+      expect(startedLanding.status, startedLanding.stderr).toBe(0)
+      const StartedMission = Schema.Struct({
+        mission_run: Schema.Struct({ subject: Schema.String }),
+      })
+      const inputRun = Schema.decodeUnknownSync(StartedMission)(JSON.parse(startedLanding.stdout))
+      const pinnedPr = {
+        kind: 'resource',
+        subject: 'resource/acme/garden/pr-7',
+        value: `resource/acme/garden/pr-7@${claimId}`,
+        claim_id: claimId,
+      }
+      expect(JSON.parse(startedLanding.stdout)).toMatchObject({
+        mission_run: {
+          inputs: {
+            pr: pinnedPr,
+            commit: { kind: 'text', value: 'a'.repeat(40) },
+            locator: { kind: 'text', value: 'acme/garden#7' },
+          },
+        },
+      })
+      const capacityRejected = startLanding(values, 'input-proof-second')
+      expect(capacityRejected.status).not.toBe(0)
+      expect(capacityRejected.stderr).toContain('reached its active run limit')
+      const laterObservation = observePr('closed')
+      expect(laterObservation.status, laterObservation.stderr).toBe(0)
+      const inputShown = spawnSync(
+        stBin!,
+        [
+          '--endpoint',
+          `unix://${socket}`,
+          '--json',
+          'subject',
+          'show',
+          inputRun.mission_run.subject,
+        ],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(inputShown.status, inputShown.stderr).toBe(0)
+      expect(JSON.parse(inputShown.stdout)).toMatchObject({
+        status: { subjects: [{ actual: { inputs: { pr: pinnedPr } } }] },
+      })
+      writeFileSync(
+        source,
+        emit([
+          mission({
+            id: 'watch-proof',
+            state: 'ready',
+            reportTo: reporter,
+            goal: ['Keep the ref watch owned by this run.'],
+            resources: [{ id: 'ref', kind: 'vcs.ref' }],
+            observers: [
+              {
+                id: 'watch',
+                resource: 'resource/ref',
+                provider: 'github.ref',
+                locator: 'acme/garden@feature/proof',
+                fields: ['head', 'ancestors'],
+                every: '1h',
+              },
+            ],
+            subscriptions: [
+              {
+                id: 'changes',
+                observer: 'observer/watch',
+                to: 'agent/example/updater',
+                on: ['head'],
+                delivery: 'message',
+                when: { path: 'head', operator: 'starts-with', value: 'git:' },
+              },
+            ],
+            steps: [
+              {
+                id: 'wait',
+                agentless: true,
+                documents: [`doc/example/guide@${guideHash}`],
+                gates: [
+                  { name: 'guide', kind: 'document', subject: 'doc/example/guide' },
+                  {
+                    name: 'pinned-guide',
+                    kind: 'document',
+                    subject: `doc/example/guide@${guideHash}`,
+                  },
+                  {
+                    name: 'hold',
+                    kind: 'field',
+                    path: 'state',
+                    subject: 'resource/ref',
+                    operator: 'is',
+                    value: 'waiting-for-proof',
+                  },
+                ],
+              },
+            ],
+          }),
+        ]),
+      )
+      const watchPublished = publish()
+      expect(watchPublished.status, watchPublished.stderr).toBe(0)
+      const watchStarted = spawnSync(
+        stBin!,
+        [
+          '--endpoint',
+          `unix://${socket}`,
+          '--json',
+          'missions',
+          'start',
+          'watch-proof',
+          '--id',
+          'watch-proof',
+          '--workspace',
+          dir,
+          '--as',
+          actor,
+        ],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(watchStarted.status, watchStarted.stderr).toBe(0)
+      const watchRun = Schema.decodeUnknownSync(StartedMission)(JSON.parse(watchStarted.stdout))
+      const watchRunId = watchRun.mission_run.subject.slice('mission-run/'.length)
+      const observerSubject = `observer/${watchRunId}/watch`
+      const subscriptionSubject = `subscription/${watchRunId}/changes`
+      const OwnedProjection = Schema.Struct({
+        status: Schema.Struct({
+          subjects: Schema.Array(
+            Schema.Struct({
+              subject: Schema.String,
+              desired: Schema.optionalKey(
+                Schema.NullOr(
+                  Schema.Struct({
+                    children: Schema.Array(
+                      Schema.Struct({
+                        name: Schema.String,
+                        arguments: Schema.Array(Schema.String),
+                      }),
+                    ),
+                  }),
+                ),
+              ),
+            }),
+          ),
+        }),
+      })
+      const showOwned = (subject: string) => {
+        const result = spawnSync(
+          stBin!,
+          ['--endpoint', `unix://${socket}`, '--json', 'subject', 'show', subject],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+        expect(result.status, result.stderr).toBe(0)
+        return Schema.decodeUnknownSync(OwnedProjection)(JSON.parse(result.stdout)).status
+          .subjects[0]
+      }
+      const ownedObserver = await pollSt(
+        async () => showOwned(observerSubject),
+        (value) => value?.desired != null,
+        'run-scoped ref observer',
+      )
+      expect(ownedObserver).toMatchObject({
+        subject: observerSubject,
+        desired: {
+          children: expect.arrayContaining([
+            expect.objectContaining({ name: 'provider', arguments: ['github.ref'] }),
+            expect.objectContaining({ name: 'locator', arguments: ['acme/garden@feature/proof'] }),
+            expect.objectContaining({ name: 'field', arguments: ['head'] }),
+            expect.objectContaining({ name: 'field', arguments: ['ancestors'] }),
+          ]),
+        },
+      })
+      const ownedSubscription = await pollSt(
+        async () => showOwned(subscriptionSubject),
+        (value) => value?.desired != null,
+        'run-scoped ref subscription',
+      )
+      expect(ownedSubscription).toMatchObject({
+        subject: subscriptionSubject,
+        desired: {
+          children: expect.arrayContaining([
+            expect.objectContaining({ name: 'observer', arguments: [observerSubject] }),
+          ]),
+        },
+      })
+      const checkEnv = (env: Readonly<Record<string, string>>) => {
+        writeFileSync(
+          source,
+          emit([
+            mission({
+              id: 'environment-proof',
+              state: 'ready',
+              reportTo: reporter,
+              goal: ['Verify the actual exec-gate environment.'],
+              steps: [],
+              gates: [
+                gate.exec({
+                  name: 'environment',
+                  host: 'local',
+                  workspace: dir,
+                  timeLimit: '5s',
+                  command: 'if test "$ANSWER" = green; then exit 0; else exit 3; fi',
+                  env,
+                }),
+              ],
+            }),
+          ]),
+        )
+        return spawnSync(
+          stBin!,
+          ['--endpoint', `unix://${socket}`, 'missions', 'check', source, '--workspace', dir],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+      }
+      const supplied = checkEnv({ ANSWER: 'green', PATH: process.env.PATH ?? '/bin' })
+      expect(supplied.status, supplied.stderr).toBe(0)
+      expect(checkEnv({}).status).toBe(1)
     }),
   60000,
 )
@@ -1104,25 +2344,27 @@ const publishHumanFixture = (st: IsolatedSt, id: string, checkpointTimeout?: str
         id,
         state: 'ready',
         reportTo: observer,
-        goal: 'Exercise native current human review episodes without performing risky work.',
+        goal: ['Exercise native current human review episodes without performing risky work.'],
         steps: [
           {
             id: 'authorize',
             agentless: true,
             ...(checkpointTimeout === undefined ? {} : { timeout: checkpointTimeout }),
-            gate: {
-              name: 'Operator approves readiness',
-              kind: 'human',
-              reviewer: person(gateReviewer),
-              mode: 'approve',
-              question: gateQuestion,
-            },
+            gates: [
+              {
+                name: 'Operator approves readiness',
+                kind: 'human',
+                reviewer: person(gateReviewer),
+                mode: 'approve',
+                question: gateQuestion,
+              },
+            ],
           },
           {
             id: 'risky',
             assignedTo: worker,
             dependsOn: [{ step: 'authorize', state: 'completed' }],
-            goal: 'Become ready only after the current authorization checkpoint passes.',
+            goal: ['Become ready only after the current authorization checkpoint passes.'],
           },
         ],
       }),
@@ -1262,7 +2504,10 @@ testWithStFixture(
         'approved dependent worker readiness',
       )
       expect(nativeStep(admitted, 'authorize').status).toBe('completed')
-      expect(nativeStep(admitted, 'risky')).toMatchObject({ claimant: null, worker_reported: false })
+      expect(nativeStep(admitted, 'risky')).toMatchObject({
+        claimant: null,
+        worker_reported: false,
+      })
       await expectEpisodeClosed(st, review)
       expectRefused(
         st.command(
@@ -1410,9 +2655,7 @@ testWithStFixture(
       )
       await expectEpisodeClosed(st, fresh.review)
       expect(await nativeResults(st, old.review)).toEqual([])
-      expect((await nativeResults(st, fresh.review)).map((claim) => claim.id)).toEqual([
-        result.id,
-      ])
+      expect((await nativeResults(st, fresh.review)).map((claim) => claim.id)).toEqual([result.id])
       expect(nativeRun(st, old.run.subject).status).toBe('cancelled')
     }),
   120000,
