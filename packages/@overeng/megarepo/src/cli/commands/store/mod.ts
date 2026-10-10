@@ -71,6 +71,7 @@ import { StoreLock } from '../../../store/store-lock.ts'
 import { assessLossless } from '../../../store/store-lossless.ts'
 import {
   captureDeletionIdentity,
+  PinnedDeletionError,
   storeDeletionPlatform,
   withPinnedDeletion,
   type DeletionIdentity,
@@ -998,6 +999,13 @@ interface NamedWorktreeTarget {
 }
 
 /**
+ * In-place overlay removal already started at the original path. The receipt
+ * must say so: the remainder stays in the store for a later plan to observe.
+ */
+const isPartialDeletion = (error: unknown): error is PinnedDeletionError =>
+  error instanceof PinnedDeletionError && error.partial === true
+
+/**
  * Build a `StoreGcResult` for a cold-path outcome.
  *
  * `reason` is the stable classification tag (live/not-stale/merged/...);
@@ -1007,6 +1015,7 @@ interface NamedWorktreeTarget {
 const coldResult = ({
   target,
   status,
+  outcome,
   reason,
   message,
   recoverPath,
@@ -1018,6 +1027,7 @@ const coldResult = ({
 }: {
   target: NamedWorktreeTarget
   status: StoreGcResult['status']
+  outcome?: StoreGcResult['outcome']
   reason?: string | undefined
   message?: string | undefined
   recoverPath?: string | undefined
@@ -1032,6 +1042,7 @@ const coldResult = ({
   refType: target.worktree.refType,
   path: target.worktree.path,
   status,
+  ...(outcome !== undefined ? { outcome } : {}),
   ...(reason !== undefined ? { reason } : {}),
   ...(message !== undefined ? { message } : {}),
   ...(recoverPath !== undefined ? { recoverPath } : {}),
@@ -1731,6 +1742,7 @@ const coldReclaimRepo = ({
               Effect.succeed({
                 _tag: 'error' as const,
                 message: error instanceof Error === true ? error.message : String(error),
+                partial: isPartialDeletion(error),
               }),
             ),
           )
@@ -1754,7 +1766,9 @@ const coldReclaimRepo = ({
               coldResult({
                 target,
                 status: 'error',
-                reason: 'merged-worklog-teardown',
+                ...(teardown.partial === true
+                  ? { outcome: 'partial' as const, reason: 'deletion-partial' }
+                  : { reason: 'merged-worklog-teardown' }),
                 message: teardown.message,
                 ...policyReceipt,
               }),
@@ -2419,6 +2433,11 @@ const storeGcCommand = Cli.Command.make(
           }
           yield* Console.log(`planSha256 ${plan.planSha256}`)
         }
+        if (plan.results.some((candidate) => candidate.outcome === 'partial')) {
+          return yield* new StoreCommandError({
+            message: 'budget candidate deletion was partial; the remainder stays for a later plan',
+          })
+        }
         return
       }
 
@@ -2521,6 +2540,7 @@ const storeGcCommand = Cli.Command.make(
                   Effect.succeed({
                     _tag: 'error' as const,
                     message: error instanceof Error === true ? error.message : String(error),
+                    partial: isPartialDeletion(error),
                   }),
                 ),
               )
@@ -2543,6 +2563,9 @@ const storeGcCommand = Cli.Command.make(
                 refType: worktree.refType,
                 path: worktree.path,
                 status: 'error',
+                ...(removeResult.partial === true
+                  ? { outcome: 'partial' as const, reason: 'deletion-partial' }
+                  : {}),
                 message: removeResult.message,
               } satisfies StoreGcResult
             }
@@ -2891,11 +2914,23 @@ const storeGcCommand = Cli.Command.make(
                       message: 'candidate deletion identity is unavailable',
                     })
                   }
-                  yield* withPinnedDeletion({
+                  const partial = yield* withPinnedDeletion({
                     rootPath: store.basePath,
                     path: freshCandidate.path,
                     identity,
-                  })
+                  }).pipe(
+                    Effect.as(undefined),
+                    Effect.catchIf(isPartialDeletion, (error) => Effect.succeed(error)),
+                  )
+                  if (partial !== undefined) {
+                    return {
+                      ...freshCandidate,
+                      status: 'error' as const,
+                      outcome: 'partial' as const,
+                      reason: 'deletion-partial',
+                      message: partial.message,
+                    }
+                  }
                 } else {
                   yield* fs.remove(freshCandidate.path, { recursive: true })
                 }
@@ -3229,11 +3264,23 @@ const storeGcCommand = Cli.Command.make(
                       message: 'candidate deletion identity is unavailable',
                     })
                   }
-                  yield* withPinnedDeletion({
+                  const partial = yield* withPinnedDeletion({
                     rootPath: store.basePath,
                     path: candidate.path,
                     identity,
-                  })
+                  }).pipe(
+                    Effect.as(undefined),
+                    Effect.catchIf(isPartialDeletion, (error) => Effect.succeed(error)),
+                  )
+                  if (partial !== undefined) {
+                    return {
+                      ...candidate,
+                      status: 'error' as const,
+                      outcome: 'partial' as const,
+                      reason: 'deletion-partial',
+                      message: partial.message,
+                    }
+                  }
                 } else {
                   yield* fs.remove(candidate.path, { recursive: true })
                 }
@@ -3291,10 +3338,14 @@ const storeGcCommand = Cli.Command.make(
                 candidatePath: candidate.path,
                 lockAlreadyHeld: ownerLockHeld,
               })
+              // Merged-worklog teardown may stop mid-removal; its partial receipt
+              // is the applied result so the caller sees the remainder.
               const matching = appliedResults.filter(
                 (result) =>
                   result.path === candidate.path &&
-                  (result.status === 'archived' || result.status === 'reaped'),
+                  (result.status === 'archived' ||
+                    result.status === 'reaped' ||
+                    result.outcome === 'partial'),
               )
               if (matching.length !== 1) {
                 return yield* new StoreCommandError({
@@ -3374,7 +3425,6 @@ const storeGcCommand = Cli.Command.make(
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
         ).pipe(Effect.provide(outputModeLayer(outputMode)))
       }
-
       yield* Observability.annotateStoreGcResult({
         rootSetWorkspaceCount: liveSetForMetrics?.workspaceCount ?? 0,
         repoTotal: repoCount ?? 0,
@@ -3403,6 +3453,13 @@ const storeGcCommand = Cli.Command.make(
         ).length,
         repoConcurrency: repoConcurrencyForMetrics,
       })
+      // Partial removal is not a successful deletion: the receipt is rendered,
+      // then the command fails so callers retry from a fresh plan.
+      if (results.some((result) => result.outcome === 'partial')) {
+        return yield* new StoreCommandError({
+          message: 'store gc deletion was partial; the remainder stays for a later plan',
+        })
+      }
     }).pipe(
       Effect.provide(StoreLayer),
       Observability.withStoreGcSpan({

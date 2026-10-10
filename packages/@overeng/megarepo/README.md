@@ -169,14 +169,31 @@ JSON output is the `megarepo.build-output-budget-plan.v1` document: `planSha256`
 for exporting gauges. Application holds the owner-worktree lock and deletion lease, recaptures
 activity on the admitted epoch, replans completely, requires the same digest, and re-checks every
 idle predicate on the one candidate before deleting it.
-On Linux, deletion binds each ancestor's device/inode identity to the authorized candidate
-and pins directories with no-follow file descriptors through quarantine and recursive removal.
+On Linux, deletion pins directories with no-follow file descriptors through quarantine and
+recursive removal. Mount boundaries are identified by each pinned fd's `/proc/self/fdinfo`
+`mnt_id`, not `st_dev`: overlayfs can report underlying-layer devices for ordinary files.
+Files and symlinks are unlinked without traversing them, so their devices are irrelevant.
+Mounts above the admitted root (including a dedicated store dataset) are allowed and pinned;
+a different mount inside the deletion subtree refuses recursive traversal.
 Replacing an ancestor with a symlink cannot redirect removal outside the verified tree;
 changed identities or unavailable primitives refuse deletion. The same boundary protects
 worktree and merged-worklog teardown.
-Mounts above the admitted root (including a dedicated store dataset) are allowed and
-identity-pinned. A filesystem boundary inside the deletion subtree refuses recursive
-traversal; unlinking a symlink does not cross its referent's filesystem boundary.
+
+On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
+directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
+ancestors bind mount ID and absolute path instead. Apply re-pins the complete chain in one
+pass and binds its freshly observed device/inode identities for all subsequent race checks.
+This does not prove continuity of an overlay directory between plan and apply; budget apply
+also recomputes content fingerprints and authority under the worktree lock and deletion lease.
+Unavailable mount evidence fails closed rather than assuming device numbers imply mounts.
+Overlay directory accounting/fingerprints use mount/path rather than ephemeral inode numbers;
+directories cannot be hardlinked. File allocation remains deduplicated by device/inode.
+Lower-backed overlay directories can reject quarantine rename with `EXDEV` when directory
+redirects are disabled. Only that overlay-specific failure permits in-place removal, still
+through pinned directory fds and with mount/inode checks before descent. An observed failure
+after in-place removal starts returns `outcome: "partial"` (`reason: "deletion-partial"`),
+without claiming reclaimed bytes. A fresh plan can retry the remaining root. Abrupt process
+termination cannot emit a receipt; it likewise leaves the remaining root for a fresh plan.
 
 Build-output budgets and policy-authorized worklog deletion refuse non-Linux hosts with
 `unsupported-platform`. Existing macOS legacy GC (including dry-run, `--all`, `--force`,

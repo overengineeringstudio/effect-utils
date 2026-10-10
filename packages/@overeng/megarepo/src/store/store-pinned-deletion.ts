@@ -7,8 +7,10 @@ import {
   mkdirSync,
   openSync,
   readdirSync,
+  readFileSync,
   renameSync,
   rmdirSync,
+  statfsSync,
   unlinkSync,
   type BigIntStats,
 } from 'node:fs'
@@ -27,24 +29,47 @@ export const storeDeletionPlatform = Effect.serviceOption(StoreDeletionPlatform)
   Effect.map((platform) => Option.getOrElse(platform, () => process.platform)),
 )
 
-/** Serializable no-follow directory identities, ordered from filesystem root through the target. */
+const DecimalId = Schema.String.check(Schema.isPattern(/^[0-9]+$/u))
+
+/**
+ * Serializable no-follow directory identities, ordered from filesystem root through the target.
+ * Every entry pins the Linux mount ID. Non-overlay directories also pin exact dev/ino. Overlay
+ * directories bind by mount ID + path only: with layers on different filesystems and xino=off,
+ * overlay directory st_ino is not persistent across inode eviction, so a plan-time inode cannot be
+ * compared at apply time. Apply re-pins overlay directories and races are checked against the
+ * dev/ino observed through the held fds.
+ */
 export const DeletionIdentity = Schema.Array(
-  Schema.Struct({
-    path: Schema.NonEmptyString,
-    dev: Schema.String.check(Schema.isPattern(/^[0-9]+$/u)),
-    ino: Schema.String.check(Schema.isPattern(/^[0-9]+$/u)),
-  }),
+  Schema.Union([
+    Schema.TaggedStruct('Inode', {
+      path: Schema.NonEmptyString,
+      mountId: DecimalId,
+      dev: DecimalId,
+      ino: DecimalId,
+    }),
+    Schema.TaggedStruct('OverlayDirectory', {
+      path: Schema.NonEmptyString,
+      mountId: DecimalId,
+    }),
+  ]),
 ).annotate({ identifier: 'Megarepo.DeletionIdentity' })
-/** Exact ancestor and target identity captured before deletion authority is evaluated. */
+/** Persisted mount/path binding, with exact inode identities on non-overlay filesystems. */
 export type DeletionIdentity = typeof DeletionIdentity.Type
 
-/** Missing, replaced, unsupported, or unreadable deletion evidence always refuses removal. */
+/**
+ * Missing, replaced, unsupported, or unreadable deletion evidence always refuses removal.
+ * partial is set only when in-place overlay removal already started at the original path, so
+ * some entries there may be gone and a later plan must observe the remainder. Without partial,
+ * the original path is untouched or the target was renamed into a quarantine that keeps any
+ * remaining data out of the store path.
+ */
 export class PinnedDeletionError extends Schema.TaggedError<PinnedDeletionError>()(
   'PinnedDeletionError',
   {
     path: Schema.String,
     message: Schema.String,
     cause: Schema.optional(Schema.Defect()),
+    partial: Schema.optional(Schema.Literal(true)),
   },
 ) {}
 
@@ -63,7 +88,7 @@ export const captureDeletionIdentity = Effect.fn('store.captureDeletionIdentity'
         path,
         operation: () => {
           verifyChain(chain)
-          return chain.map((entry) => entry.identity)
+          return chain.map((entry) => entry.record)
         },
       }),
     (chain) => Effect.sync(() => closeChain(chain)),
@@ -97,13 +122,56 @@ export const withPinnedDeletion = <TError = never, TRequirements = never>({
     (chain) => Effect.sync(() => closeChain(chain)),
   )
 
+/** No-follow evidence for one directory, observed through a single held fd. */
+export type DirectoryEvidence = {
+  /** Linux mount ID from /proc/self/fdinfo; unique among mounts live in this mount namespace. */
+  readonly mountId: string
+  /** The directory lives on overlayfs, whose directory inode numbers may be non-persistent. */
+  readonly overlay: boolean
+  readonly stat: BigIntStats
+}
+
+/**
+ * Open path as a directory without following a final symlink and read mount ID, overlay
+ * membership, and fstat from that one fd. Synchronous; throws PinnedDeletionError when Linux
+ * evidence is unavailable, path is a symlink or not a directory.
+ */
+export const readDirectoryEvidence = (path: string): DirectoryEvidence => {
+  if (process.platform !== 'linux')
+    throw fail({ path, message: 'Directory mount evidence requires Linux; refusing' })
+  try {
+    const fd = openSync(path, directoryFlags)
+    try {
+      return directoryEvidence({ fd, path })
+    } finally {
+      closeSync(fd)
+    }
+  } catch (cause) {
+    throw cause instanceof PinnedDeletionError
+      ? cause
+      : new PinnedDeletionError({
+          path,
+          message: 'Directory mount evidence is unavailable; refusing',
+          cause,
+        })
+  }
+}
+
 // Effect FileSystem has no openat/no-follow directory primitive. Keep the Linux-native boundary
 // synchronous so cancellation cannot strand an acquired fd or interrupt quarantine mid-operation.
 type PinnedDirectory = {
   readonly fd: number
-  readonly identity: DeletionIdentity[number]
+  readonly path: string
+  readonly mountId: string
+  readonly overlay: boolean
+  /** Observed through the held fd during this operation, never taken from a recorded plan. */
+  readonly dev: bigint
+  readonly ino: bigint
+  readonly record: DeletionIdentity[number]
 }
+type PinnedInode = { readonly dev: bigint; readonly ino: bigint }
 const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
+const OVERLAYFS_SUPER_MAGIC = 0x794c7630n
 const fdPath = (fd: number): string => `/proc/self/fd/${fd}`
 const fail = ({ path, message }: { path: string; message: string }): PinnedDeletionError =>
   new PinnedDeletionError({ path, message })
@@ -119,28 +187,73 @@ const native = <TResult>({ path, operation }: { path: string; operation: () => T
             cause,
           }),
   })
-const sameIdentity = ({
-  info,
-  identity,
-}: {
-  info: BigIntStats
-  identity: DeletionIdentity[number]
-}): boolean => info.dev.toString() === identity.dev && info.ino.toString() === identity.ino
-const assertDirectoryIdentity = ({
+const mountIdOf = ({ fd, path }: { fd: number; path: string }): string => {
+  const mountId = /^mnt_id:\s*([0-9]+)\s*$/mu.exec(
+    readFileSync(`/proc/self/fdinfo/${fd}`, 'utf8'),
+  )?.[1]
+  if (mountId === undefined)
+    throw fail({ path, message: 'Directory mount ID is unavailable; refusing' })
+  return mountId
+}
+const directoryEvidence = ({ fd, path }: { fd: number; path: string }): DirectoryEvidence => {
+  const stat = fstatSync(fd, { bigint: true })
+  if (stat.isDirectory() === false)
+    throw fail({ path, message: 'Directory evidence requires a directory; refusing' })
+  return {
+    mountId: mountIdOf({ fd, path }),
+    overlay: statfsSync(fdPath(fd), { bigint: true }).type === OVERLAYFS_SUPER_MAGIC,
+    stat,
+  }
+}
+const assertPinnedDirectory = ({
   path,
   info,
-  identity,
+  pinned,
 }: {
   path: string
   info: BigIntStats
-  identity: DeletionIdentity[number]
+  pinned: PinnedInode
 }): void => {
-  if (info.isDirectory() === false || sameIdentity({ info, identity }) === false)
+  if (info.isDirectory() === false || info.dev !== pinned.dev || info.ino !== pinned.ino)
     throw fail({ path, message: 'Deletion directory identity changed; refusing removal' })
+}
+const recordFor = ({
+  path,
+  evidence,
+}: {
+  path: string
+  evidence: DirectoryEvidence
+}): DeletionIdentity[number] =>
+  evidence.overlay === true
+    ? { _tag: 'OverlayDirectory', path, mountId: evidence.mountId }
+    : {
+        _tag: 'Inode',
+        path,
+        mountId: evidence.mountId,
+        dev: evidence.stat.dev.toString(),
+        ino: evidence.stat.ino.toString(),
+      }
+const sameRecord = ({
+  recorded,
+  observed,
+}: {
+  recorded: DeletionIdentity[number]
+  observed: DeletionIdentity[number]
+}): boolean => {
+  if (recorded.path !== observed.path || recorded.mountId !== observed.mountId) return false
+  if (recorded._tag === 'OverlayDirectory') return observed._tag === 'OverlayDirectory'
+  return observed._tag === 'Inode' && recorded.dev === observed.dev && recorded.ino === observed.ino
 }
 const closeChain = (chain: readonly PinnedDirectory[]): void => {
   for (let index = chain.length - 1; index >= 0; index--) closeSync(chain[index]!.fd)
 }
+const anchoredEntry = ({
+  parent,
+  path,
+}: {
+  parent: PinnedDirectory | undefined
+  path: string
+}): string => (parent === undefined ? '/' : `${fdPath(parent.fd)}/${basename(path)}`)
 const pinChain = ({
   rootPath,
   path,
@@ -182,23 +295,44 @@ const pinChain = ({
   const chain: PinnedDirectory[] = []
   try {
     for (const [index, entryPath] of paths.entries()) {
-      const parent = chain[index - 1]
-      const anchoredPath =
-        parent === undefined ? '/' : `${fdPath(parent.fd)}/${basename(entryPath)}`
+      const anchoredPath = anchoredEntry({ parent: chain[index - 1], path: entryPath })
       const observed = lstatSync(anchoredPath, { bigint: true })
-      const expected = identity?.[index] ?? {
-        path: entryPath,
-        dev: observed.dev.toString(),
-        ino: observed.ino.toString(),
-      }
-      assertDirectoryIdentity({ path: entryPath, info: observed, identity: expected })
+      const recorded = identity?.[index]
+      // A strict recorded inode is checked before opening; overlay entries carry no inode.
+      if (
+        observed.isDirectory() === false ||
+        (recorded?._tag === 'Inode' &&
+          (observed.dev.toString() !== recorded.dev || observed.ino.toString() !== recorded.ino))
+      )
+        throw fail({
+          path: entryPath,
+          message: 'Deletion directory identity changed; refusing removal',
+        })
       const fd = openSync(anchoredPath, directoryFlags)
-      chain.push({ fd, identity: expected })
-      assertDirectoryIdentity({
+      let evidence: DirectoryEvidence
+      try {
+        evidence = directoryEvidence({ fd, path: entryPath })
+      } catch (cause) {
+        closeSync(fd)
+        throw cause
+      }
+      const pinned: PinnedDirectory = {
+        fd,
         path: entryPath,
-        info: fstatSync(fd, { bigint: true }),
-        identity: expected,
-      })
+        mountId: evidence.mountId,
+        overlay: evidence.overlay,
+        dev: evidence.stat.dev,
+        ino: evidence.stat.ino,
+        record: recordFor({ path: entryPath, evidence }),
+      }
+      chain.push(pinned)
+      // The opened directory must be the one observed by lstat, and match the recorded plan.
+      assertPinnedDirectory({ path: entryPath, info: observed, pinned })
+      if (recorded !== undefined && sameRecord({ recorded, observed: pinned.record }) === false)
+        throw fail({
+          path: entryPath,
+          message: 'Deletion directory identity changed; refusing removal',
+        })
     }
     verifyChain(chain)
     return chain
@@ -209,63 +343,52 @@ const pinChain = ({
 }
 const verifyChain = (chain: readonly PinnedDirectory[]): void => {
   for (const [index, entry] of chain.entries()) {
-    assertDirectoryIdentity({
-      path: entry.identity.path,
+    assertPinnedDirectory({
+      path: entry.path,
       info: fstatSync(entry.fd, { bigint: true }),
-      identity: entry.identity,
+      pinned: entry,
     })
-    const parent = chain[index - 1]
-    const anchoredPath =
-      parent === undefined ? '/' : `${fdPath(parent.fd)}/${basename(entry.identity.path)}`
-    assertDirectoryIdentity({
-      path: entry.identity.path,
-      info: lstatSync(anchoredPath, { bigint: true }),
-      identity: entry.identity,
+    assertPinnedDirectory({
+      path: entry.path,
+      info: lstatSync(anchoredEntry({ parent: chain[index - 1], path: entry.path }), {
+        bigint: true,
+      }),
+      pinned: entry,
     })
   }
 }
 const removeDirectoryContents = ({
   fd,
   path,
-  device,
+  mountId,
 }: {
   fd: number
   path: string
-  device: bigint
+  mountId: string
 }): void => {
   for (const name of readdirSync(fdPath(fd))) {
     const anchoredPath = `${fdPath(fd)}/${name}`
     const childPath = `${path}/${name}`
     const observed = lstatSync(anchoredPath, { bigint: true })
-    // Unlinking a symlink never crosses its referent's filesystem boundary.
-    if (observed.isSymbolicLink() === false && observed.dev !== device)
-      throw fail({
-        path: childPath,
-        message: 'Deletion crosses a filesystem boundary; refusing removal',
-      })
-    const identity = {
-      path: childPath,
-      dev: observed.dev.toString(),
-      ino: observed.ino.toString(),
-    }
     if (observed.isDirectory() === true) {
       const childFd = openSync(anchoredPath, directoryFlags)
       try {
-        assertDirectoryIdentity({
-          path: childPath,
-          info: fstatSync(childFd, { bigint: true }),
-          identity,
-        })
-        assertDirectoryIdentity({
+        const info = fstatSync(childFd, { bigint: true })
+        // Only traversed directories can cross mounts. mnt_id, not st_dev: overlayfs reports
+        // per-layer st_dev for non-directories and a mount can reuse the parent's device.
+        if (mountIdOf({ fd: childFd, path: childPath }) !== mountId)
+          throw fail({
+            path: childPath,
+            message: 'Deletion crosses a mount boundary; refusing removal',
+          })
+        const pinned = { dev: info.dev, ino: info.ino }
+        assertPinnedDirectory({ path: childPath, info, pinned })
+        assertPinnedDirectory({ path: childPath, info: observed, pinned })
+        removeDirectoryContents({ fd: childFd, path: childPath, mountId })
+        assertPinnedDirectory({
           path: childPath,
           info: lstatSync(anchoredPath, { bigint: true }),
-          identity,
-        })
-        removeDirectoryContents({ fd: childFd, path: childPath, device })
-        assertDirectoryIdentity({
-          path: childPath,
-          info: lstatSync(anchoredPath, { bigint: true }),
-          identity,
+          pinned,
         })
         // rmdir never follows a substituted symlink; recursion used the pinned child fd only.
         rmdirSync(anchoredPath)
@@ -273,8 +396,13 @@ const removeDirectoryContents = ({
         closeSync(childFd)
       }
     } else {
+      // Files and symlinks are never traversed, so no mount or device boundary applies.
       const current = lstatSync(anchoredPath, { bigint: true })
-      if (sameIdentity({ info: current, identity }) === false || current.mode !== observed.mode)
+      if (
+        current.dev !== observed.dev ||
+        current.ino !== observed.ino ||
+        current.mode !== observed.mode
+      )
         throw fail({ path: childPath, message: 'Deletion entry changed; refusing removal' })
       // unlink removes a symlink itself, never its referent.
       unlinkSync(anchoredPath)
@@ -284,7 +412,8 @@ const removeDirectoryContents = ({
 const quarantineAndRemove = (chain: readonly PinnedDirectory[]): void => {
   const target = chain.at(-1)!
   const parent = chain.at(-2)!
-  const targetPath = target.identity.path
+  const targetPath = target.path
+  const targetEntry = `${fdPath(parent.fd)}/${basename(targetPath)}`
   const quarantinePath = `${fdPath(parent.fd)}/.mr-delete-${randomUUID()}`
   mkdirSync(quarantinePath, { mode: 0o700 })
   let quarantineFd: number | undefined
@@ -292,43 +421,60 @@ const quarantineAndRemove = (chain: readonly PinnedDirectory[]): void => {
   let quarantineRemoved = false
   try {
     const quarantineInfo = lstatSync(quarantinePath, { bigint: true })
-    const quarantineIdentity = {
-      path: quarantinePath,
-      dev: quarantineInfo.dev.toString(),
-      ino: quarantineInfo.ino.toString(),
-    }
+    const quarantinePinned = { dev: quarantineInfo.dev, ino: quarantineInfo.ino }
     quarantineFd = openSync(quarantinePath, directoryFlags)
-    assertDirectoryIdentity({
+    assertPinnedDirectory({
       path: quarantinePath,
       info: fstatSync(quarantineFd, { bigint: true }),
-      identity: quarantineIdentity,
+      pinned: quarantinePinned,
     })
     verifyChain(chain)
     const quarantinedPath = `${fdPath(quarantineFd)}/target`
-    renameSync(`${fdPath(parent.fd)}/${basename(targetPath)}`, quarantinedPath)
-    quarantined = true
+    let removalEntry = quarantinedPath
+    try {
+      renameSync(targetEntry, quarantinedPath)
+      quarantined = true
+    } catch (cause) {
+      // Overlayfs without redirect_dir refuses renaming lower-backed directories with EXDEV.
+      // Remove in place: contents still go only through the pinned target fd, and the final
+      // rmdir neither follows a substituted symlink nor removes a nonempty replacement.
+      const exdev = cause instanceof Error && 'code' in cause && cause.code === 'EXDEV'
+      if (target.overlay === false || exdev === false) throw cause
+      removalEntry = targetEntry
+    }
     // A leaf replaced between the final check and rename is kept in quarantine, never removed.
-    assertDirectoryIdentity({
+    // Overlay copy-up on rename keeps the held inode, so the fd-observed identity stays valid.
+    assertPinnedDirectory({
       path: targetPath,
-      info: lstatSync(quarantinedPath, { bigint: true }),
-      identity: target.identity,
+      info: lstatSync(removalEntry, { bigint: true }),
+      pinned: target,
     })
-    removeDirectoryContents({
-      fd: target.fd,
-      path: targetPath,
-      device: fstatSync(target.fd, { bigint: true }).dev,
-    })
-    assertDirectoryIdentity({
-      path: targetPath,
-      info: lstatSync(quarantinedPath, { bigint: true }),
-      identity: target.identity,
-    })
-    rmdirSync(quarantinedPath)
+    try {
+      removeDirectoryContents({ fd: target.fd, path: targetPath, mountId: target.mountId })
+      assertPinnedDirectory({
+        path: targetPath,
+        info: lstatSync(removalEntry, { bigint: true }),
+        pinned: target,
+      })
+      rmdirSync(removalEntry)
+    } catch (cause) {
+      if (removalEntry === quarantinedPath) throw cause
+      // In-place traversal may already have removed entries at the original path.
+      throw new PinnedDeletionError({
+        path: cause instanceof PinnedDeletionError ? cause.path : targetPath,
+        message:
+          cause instanceof PinnedDeletionError
+            ? cause.message
+            : 'In-place overlay deletion failed after removal started; refusing further removal',
+        cause,
+        partial: true,
+      })
+    }
     quarantined = false
-    assertDirectoryIdentity({
+    assertPinnedDirectory({
       path: quarantinePath,
       info: lstatSync(quarantinePath, { bigint: true }),
-      identity: quarantineIdentity,
+      pinned: quarantinePinned,
     })
     rmdirSync(quarantinePath)
     quarantineRemoved = true

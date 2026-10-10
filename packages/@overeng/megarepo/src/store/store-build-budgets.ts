@@ -19,9 +19,12 @@ import { isInsideWorktree, readProcessReferences } from './store-inuse.ts'
 import { isPathProtected, type StoreLiveSet } from './store-liveness.ts'
 import {
   captureDeletionIdentity,
+  PinnedDeletionError,
+  readDirectoryEvidence,
   storeDeletionPlatform,
   withPinnedDeletion,
   type DeletionIdentity,
+  type DirectoryEvidence,
 } from './store-pinned-deletion.ts'
 import {
   isWorkspaceActive,
@@ -95,6 +98,7 @@ export const BudgetReason = Schema.Literals([
   'artifact-ignore-unknown',
   'artifact-scan-incomplete',
   'scan-incomplete',
+  'deletion-partial',
 ])
 /** Schema-validated accounting and eligibility for one discovered output root. */
 export const BudgetCandidate = Schema.Struct({
@@ -108,7 +112,7 @@ export const BudgetCandidate = Schema.Struct({
   reclaimableBytes: Bytes,
   mtimeMs: Schema.Finite,
   fingerprint: Schema.String,
-  outcome: Schema.Literals(['would-delete', 'keep', 'unknown', 'deleted']),
+  outcome: Schema.Literals(['would-delete', 'keep', 'unknown', 'deleted', 'partial']),
   reason: BudgetReason,
 }).annotate({ identifier: 'Megarepo.BuildOutputBudgetCandidate' })
 export type BudgetCandidate = typeof BudgetCandidate.Type
@@ -198,14 +202,22 @@ export type BudgetRepoWorktrees = ReadonlyArray<{
 
 const ENTRY_LIMIT = 100_000
 const SCAN_DEADLINE_MS = 30_000
-const fingerprint = (info: BigIntStats): string =>
-  `${info.dev}:${info.ino}:${info.mode}:${info.size}:${info.blocks}:${info.nlink}:${info.mtimeNs}:${info.ctimeNs}`
+const fingerprint = ({
+  path,
+  info,
+  directory = info.isDirectory() === true ? readDirectoryEvidence(path) : undefined,
+}: {
+  path: string
+  info: BigIntStats
+  directory?: DirectoryEvidence
+}): string =>
+  `${directory?.overlay === true ? `mount:${directory.mountId}` : `${info.dev}:${info.ino}`}:${info.mode}:${info.size}:${info.blocks}:${info.nlink}:${info.mtimeNs}:${info.ctimeNs}`
 // Array sorting requires a positional comparator.
 // eslint-disable-next-line overeng/named-args
 const comparePaths = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0
 const encode = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
-// The existing candidate fingerprint also binds every ancestor inode into the persisted plan hash.
+// The candidate fingerprint also binds every ancestor's persisted deletion evidence.
 const deletionFingerprint = ({
   artifactFingerprint,
   identity,
@@ -287,7 +299,7 @@ const discoverRoots = ({
   boundedScan({
     deadlineAt,
     scan: async ({ inspect, children }) => {
-      const root = await inspect(workspacePath)
+      const root = readDirectoryEvidence(workspacePath)
       const matches: Array<{ path: string; artifactClass: string }> = []
       const snapshots = new Map<string, string>()
       const pending = [workspacePath]
@@ -321,15 +333,16 @@ const discoverRoots = ({
           matches.push({ path, artifactClass })
           continue
         }
-        if (info.isDirectory() === false || info.isSymbolicLink() === true || info.dev !== root.dev)
-          continue
-        snapshots.set(path, fingerprint(info))
+        if (info.isDirectory() === false || info.isSymbolicLink() === true) continue
+        const directory = readDirectoryEvidence(path)
+        if (directory.mountId !== root.mountId) continue
+        snapshots.set(path, fingerprint({ path, info, directory }))
         // eslint-disable-next-line no-await-in-loop
         pending.push(...(await children(path)))
       }
       for (const [path, observed] of snapshots) {
         // eslint-disable-next-line no-await-in-loop
-        if (fingerprint(await inspect(path)) !== observed)
+        if (fingerprint({ path, info: await inspect(path) }) !== observed)
           throw fail('Discovery changed during scan')
       }
       return matches.toSorted((left, right) => comparePaths(left.path, right.path))
@@ -357,8 +370,9 @@ const scanRoot = ({
     deadlineAt,
     scan: async ({ inspect, children }) => {
       const root = await inspect(path)
-      const workspace = await inspect(workspacePath)
-      if (root.dev !== workspace.dev) throw fail('Budget root is a mount point')
+      const rootDirectory = readDirectoryEvidence(path)
+      const workspace = readDirectoryEvidence(workspacePath)
+      if (rootDirectory.mountId !== workspace.mountId) throw fail('Budget root is a mount point')
       if (root.isDirectory() === false || root.isSymbolicLink() === true)
         throw fail('Budget root is not a directory')
       const pending = [path]
@@ -382,12 +396,21 @@ const scanRoot = ({
           )
             throw fail('Artifact contains another class root')
         }
-        if (info.dev !== root.dev) throw fail('Budget root crosses a mount point')
+        const directory = info.isDirectory() === true ? readDirectoryEvidence(current) : undefined
+        if (directory !== undefined && directory.mountId !== rootDirectory.mountId)
+          throw fail('Budget root crosses a mount point')
         const allocated = Number(info.blocks * 512n)
         if (Number.isSafeInteger(allocated) === false || allocated < 0)
           throw fail('Allocated bytes overflow')
-        inodes.set(`${info.dev}:${info.ino}`, allocated)
-        snapshots.set(current, fingerprint(info))
+        // Directories cannot be hardlinked; overlay inode numbers may be recycled after
+        // dentry eviction, so key these by mount/path instead of aliasing distinct directories.
+        inodes.set(
+          directory?.overlay === true
+            ? `directory:${directory.mountId}:${current}`
+            : `${info.dev}:${info.ino}`,
+          allocated,
+        )
+        snapshots.set(current, fingerprint({ path: current, info, directory }))
         newestMtimeMs = Math.max(newestMtimeMs, Number(info.mtimeNs) / 1_000_000)
         if (info.isSymbolicLink() === true) symlink = true
         if (info.isDirectory() === true) {
@@ -403,7 +426,7 @@ const scanRoot = ({
         comparePaths(left, right),
       )) {
         // eslint-disable-next-line no-await-in-loop
-        if (fingerprint(await inspect(entry)) !== observed)
+        if (fingerprint({ path: entry, info: await inspect(entry) }) !== observed)
           throw fail('Artifact changed during scan')
         hash.update(encode([relative(path, entry), observed]))
       }
@@ -758,7 +781,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
         (row) => row.path === candidate.path && row.outcome === 'would-delete',
       )
       if (current === undefined) return yield* fail('Budget candidate no longer eligible')
-      yield* withPinnedDeletion({
+      const removal = yield* withPinnedDeletion({
         rootPath: deletionRoot,
         path: current.path,
         identity,
@@ -817,7 +840,39 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
             if (processState._tag !== 'free')
               return yield* fail('Candidate process liveness is live or unknown')
           }),
-      })
+      }).pipe(Effect.result)
+      if (removal._tag === 'Failure') {
+        if (removal.failure instanceof PinnedDeletionError && removal.failure.partial === true) {
+          // Reclamation is unknown after an interrupted in-place overlay removal; do not
+          // claim deleted bytes. The next complete plan observes the remaining root afresh.
+          const summary = fresh.classes[current.artifactClass]!
+          return {
+            ...fresh,
+            results: [
+              {
+                ...current,
+                reclaimableBytes: 0,
+                outcome: 'partial' as const,
+                reason: 'deletion-partial' as const,
+              },
+            ],
+            classes: {
+              ...fresh.classes,
+              [current.artifactClass]: {
+                ...summary,
+                evictedBytes: 0,
+                projectedBytes: summary.totalBytes,
+                scanStatus: 'scan-incomplete' as const,
+                status:
+                  summary.totalBytes <= summary.budgetBytes
+                    ? ('within-budget' as const)
+                    : ('over-budget-no-idle-candidate' as const),
+              },
+            },
+          }
+        }
+        return yield* removal.failure
+      }
       const summary = fresh.classes[current.artifactClass]!
       return {
         ...fresh,

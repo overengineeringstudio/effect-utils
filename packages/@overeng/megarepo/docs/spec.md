@@ -777,11 +777,26 @@ the policy's optional `worklog` field is consumed only by default-GC teardown
 (step 7). Builds that have not written yet are protected only by the
 process veto until activations hold `mr store lease` (follow-up).
 
-Linux deletion requires pinned no-follow directory resolution: capture the complete
-ancestor device/inode chain before authority checks, reject changed identities, and
-quarantine/remove through pinned parent descriptors. Budget fingerprints include this
-chain. Mutable path ancestors are never re-resolved during Linux removal. Budget mode
-and policy-authorized worklog deletion refuse non-Linux hosts with `unsupported-platform`.
+Linux deletion requires pinned no-follow directory resolution and mount identity from
+`/proc/self/fdinfo/<fd>` (`mnt_id`). Plans bind the complete ancestor chain: mount ID,
+path, and device/inode on ordinary filesystems; mount ID and path on overlayfs, where
+directory inode numbers can change across dentry eviction with `xino=off`. Apply re-pins
+the chain in one pass and uses fresh device/inode identities for every race check until
+quarantine/removal completes. Overlay plans do not assert directory continuity across
+plan/apply; budget apply also recomputes content fingerprints and authority under the
+worktree lock and deletion lease. Missing mount evidence refuses deletion.
+Overlay directory accounting and fingerprints use mount/path instead of ephemeral inode
+numbers (directories cannot be hardlinked); file bytes remain deduplicated by device/inode.
+Mounts above the admitted root are allowed. Only traversal into a different mount
+inside the deletion subtree refuses; files and symlinks are unlinked, never traversed,
+and their `st_dev` is not a mount test. Budget fingerprints include the ancestor binding.
+Mutable path ancestors are never re-resolved during Linux removal. Budget mode and
+policy-authorized worklog deletion refuse non-Linux hosts with `unsupported-platform`.
+Overlay-only `EXDEV` on quarantine rename (lower-backed directory, redirects disabled)
+permits in-place removal solely through pinned fds. A caught failure after that removal starts
+returns `outcome: "partial"` with `reason: "deletion-partial"` and no claimed reclaimed bytes.
+The next complete plan retries the remaining root, never using recursive path-based removal.
+An abrupt process termination cannot publish a receipt and also leaves the remainder in place.
 Legacy non-Linux GC and whole-worktree teardown retain their previous recursive
 path-based removal, including its pre-existing ancestor-symlink TOCTOU exposure.
 

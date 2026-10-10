@@ -475,10 +475,37 @@ const twoTargets = ({
 // Acceptance
 // =============================================================================
 
+const OWNER_NAMESPACE_ARGS = ['--user', '--map-current-user', '--pid', '--fork', '--mount-proc']
 const inOwnerNamespace = process.env['MEGAREPO_BUDGET_TEST_NAMESPACE'] === '1'
-if (inOwnerNamespace === false)
-  describe.skipIf(process.platform !== 'linux')(
-    'mr budget owner namespace preconditions (Linux only; budgets unsupported elsewhere)',
+if (inOwnerNamespace === false) {
+  let skipReason: string | undefined
+  if (process.platform !== 'linux') {
+    skipReason = 'Linux only; budgets unsupported elsewhere'
+  } else {
+    // Probe the same namespace creation AND /proc mount as the acceptance child.
+    // Some Linux CI sandboxes allow unshare but deny mounting /proc with EPERM.
+    const probe = spawnSync(
+      'unshare',
+      [
+        ...OWNER_NAMESPACE_ARGS,
+        process.execPath,
+        '-e',
+        'if (process.pid !== 1 || process.getuid() === 0) { console.error("fixture requires namespace PID 1 and a non-root current UID"); process.exit(1) }',
+      ],
+      { env: { ...process.env, LC_ALL: 'C' }, encoding: 'utf8', timeout: 10_000 },
+    )
+    if (probe.status !== 0) {
+      const detail =
+        probe.error?.message ??
+        (probe.stderr?.trim() || `exit ${probe.status}, signal ${probe.signal}`)
+      skipReason = `unprivileged user/PID namespaces with a mounted /proc unavailable: ${detail}`
+    }
+  }
+  if (skipReason !== undefined)
+    console.log(`Skipping mr budget owner namespace acceptance: ${skipReason}`)
+  const describeOwnerNamespace = skipReason === undefined ? describe : describe.skip
+  describeOwnerNamespace(
+    `mr budget owner namespace preconditions${skipReason === undefined ? '' : ` (skipped: ${skipReason})`}`,
     () => {
       it('runs acceptance 1-11 in an unprivileged user/PID namespace with real fixture processes', () => {
         const file = fileURLToPath(import.meta.url)
@@ -490,15 +517,16 @@ if (inOwnerNamespace === false)
         const result = spawnSync(
           'unshare',
           [
-            '--user',
-            '--map-root-user',
-            '--pid',
-            '--fork',
-            '--mount-proc',
+            ...OWNER_NAMESPACE_ARGS,
             process.execPath,
             vitestBin,
             'run',
             'src/cli/store-gc-budgets.integration.test.ts',
+            // Runner loading and disabled result caching keep readonly snapshots
+            // free of node_modules/.vite-temp and node_modules/.vite writes.
+            '--configLoader',
+            'runner',
+            '--no-cache',
             '--reporter',
             'verbose',
             '--testTimeout',
@@ -523,6 +551,7 @@ if (inOwnerNamespace === false)
       }, 240_000)
     },
   )
+}
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
     it.effect(
