@@ -6,10 +6,14 @@ import process from 'node:process'
 const vanished = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ESRCH')
 
+const inaccessibleProcessEntry = (error: unknown): boolean =>
+  vanished(error) === true ||
+  (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM'))
+
 /**
  * Concrete kernel references and state-root pins protect only the snapshots they
- * name. Editors caching closed paths must pin their generation explicitly.
- * An unreadable process inventory fails closed rather than guessing it is idle.
+ * name. Editors caching closed paths or hidden by process permissions must pin
+ * their generation explicitly. An unavailable inventory backend fails closed.
  */
 export const referencedEditorSnapshots = ({
   editorRoot,
@@ -20,6 +24,7 @@ export const referencedEditorSnapshots = ({
 }): ReadonlySet<string> | undefined => {
   const referenced = new Set<string>()
   const admit = (target: string): void => {
+    if (target.startsWith('/') === false) return
     const path = target.endsWith(' (deleted)') === true ? target.slice(0, -10) : target
     const within = relative(storeDir, path)
     if (within === '..' || within.startsWith(`..${sep}`) === true || within.startsWith(sep)) return
@@ -57,25 +62,39 @@ export const referencedEditorSnapshots = ({
             try {
               admit(readlinkSync(join(directory, entry)))
             } catch (error) {
-              if (vanished(error) === false) throw error
+              if (inaccessibleProcessEntry(error) === false) throw error
             }
           }
-          for (const fd of readdirSync(join(directory, 'fd'))) {
+          try {
+            for (const fd of readdirSync(join(directory, 'fd'))) {
+              try {
+                admit(readlinkSync(join(directory, 'fd', fd)))
+              } catch (error) {
+                if (inaccessibleProcessEntry(error) === false) throw error
+              }
+            }
+          } catch (error) {
+            if (inaccessibleProcessEntry(error) === false) throw error
+          }
+          for (const entry of ['maps', 'cmdline']) {
             try {
-              admit(readlinkSync(join(directory, 'fd', fd)))
+              const content = readFileSync(join(directory, entry), 'utf8')
+              if (entry === 'maps') {
+                for (const line of content.split('\n')) {
+                  const pathname = /^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\/.*)$/.exec(line)?.[1]
+                  if (pathname !== undefined) admit(pathname)
+                }
+              } else {
+                // A JS process may load its entry point and close that descriptor.
+                for (const argument of content.split('\0'))
+                  if (argument.startsWith(`${storeDir}/`) === true) admit(argument)
+              }
             } catch (error) {
-              if (vanished(error) === false) throw error
+              if (inaccessibleProcessEntry(error) === false) throw error
             }
           }
-          for (const line of readFileSync(join(directory, 'maps'), 'utf8').split('\n')) {
-            const pathname = /^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\/.*)$/.exec(line)?.[1]
-            if (pathname !== undefined) admit(pathname)
-          }
-          // A JS process may load its entry point and close that descriptor.
-          for (const argument of readFileSync(join(directory, 'cmdline'), 'utf8').split('\0'))
-            if (argument.startsWith(`${storeDir}/`) === true) admit(argument)
         } catch (error) {
-          if (vanished(error) === false) return undefined
+          if (inaccessibleProcessEntry(error) === false) return undefined
         }
       }
     } catch {

@@ -22,7 +22,12 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import process from 'node:process'
 
 import { referencedEditorSnapshots } from './editor-view-readers.ts'
-import { shareSnapshotFiles } from './editor-view-sharing.ts'
+import {
+  collectEditorViewContentStore,
+  defaultEditorViewContentStore,
+  recoverEditorViewContentStoreLock,
+  shareSnapshotFiles,
+} from './editor-view-sharing.ts'
 import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath } from './real-path.ts'
 import { runFingerprintTool } from './typescript-runner.ts'
@@ -116,6 +121,8 @@ export type EditorViewOptions = {
   readonly snapshotRetention: number
   /** Minimum time after supersession before collecting an unreferenced generation. */
   readonly snapshotGraceMs?: number
+  /** Host-shared immutable payload store; defaults to the common Git repository's store. */
+  readonly contentStore?: string
 }
 
 type ViewPaths = {
@@ -130,6 +137,7 @@ type ViewPaths = {
   readonly firstHopTarget: string
   readonly consumerCache: string
   readonly retentionRecord: string
+  readonly contentStore: string
 }
 
 type CheckContext = {
@@ -529,13 +537,18 @@ const canonicalTreeFingerprints = async ({
       hashes: resolvedHash === undefined ? [hash] : [hash, resolvedHash],
     })
     const after = lstatSync(absolutePath, { bigint: true })
+    const immutableSharedFile =
+      (before.mode & 0o222n) === 0n &&
+      before.mode === after.mode &&
+      (before.nlink > 1n || after.nlink > 1n)
     if (
       after.isFile() === false ||
       after.dev !== before.dev ||
       after.ino !== before.ino ||
       after.size !== before.size ||
       after.mtimeNs !== before.mtimeNs ||
-      after.ctimeNs !== before.ctimeNs
+      after.mode !== before.mode ||
+      (after.ctimeNs !== before.ctimeNs && immutableSharedFile === false)
     )
       fail(`tree changed while hashing: ${absolutePath}`)
   }
@@ -854,6 +867,14 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
     fail(
       `consumer cache must be inside the repository and outside package and snapshot views: ${consumerCache}`,
     )
+  const contentStore = canonicalizeParent(
+    resolve(options.contentStore ?? defaultEditorViewContentStore(repoRoot)),
+  )
+  if (
+    isWithin({ root: editorRoot, candidate: contentStore }) === true ||
+    isWithin({ root: contentStore, candidate: editorRoot }) === true
+  )
+    fail(`content store must be outside the editor state root: ${contentStore}`)
   const current = join(editorRoot, viewName)
   return {
     repoRoot,
@@ -867,6 +888,7 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
     firstHopTarget: relative(packageDir, join(current, 'node_modules')),
     consumerCache,
     retentionRecord: join(editorRoot, `.retention-${viewName}.json`),
+    contentStore,
   }
 }
 
@@ -1447,7 +1469,8 @@ const hardenSnapshot = (snapshotDir: string): void => {
         visit(path)
         continue
       }
-      chmodSync(path, status.mode & ~0o222)
+      // A same-mode chmod still changes a shared blob's ctime across worktrees.
+      if ((status.mode & 0o222) !== 0) chmodSync(path, status.mode & ~0o222)
     }
     const mode = statSync(directory).mode
     chmodSync(directory, mode & ~0o222)
@@ -1811,28 +1834,30 @@ const releaseLock = ({ path, token }: { path: string; token: string }): void => 
  * Tear down the package's shared editor root before removing a retired worktree.
  * This is explicit teardown, not GC: callers must first stop editor/build users.
  */
-export const releaseEditorViewRoot = (options: EditorViewOptions): void => {
+export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise<void> => {
   const paths = makePaths(options)
-  if (pathExists(paths.editorRoot) === false) return
-  requireDirectory({ path: paths.editorRoot, field: 'editor root' })
-  if (realpathSync(paths.editorRoot) !== paths.editorRoot)
-    fail(`editor root must not contain symbolic links: ${paths.editorRoot}`)
-  const lock = acquireLock({
-    editorRoot: paths.editorRoot,
-    recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
-  })
-  const retired = `${paths.editorRoot}.release-${tokenSafe(lock.token)}`
-  let lockPath = lock.path
-  try {
-    // Only directories need write permission for unlinking. The walk uses lstat,
-    // so relocated payload links and external links never change their targets.
-    makeDirectoriesWritable(paths.editorRoot)
-    renameSync(paths.editorRoot, retired)
-    lockPath = join(retired, '.publish.lock')
-    rmSync(retired, { recursive: true })
-  } finally {
-    if (pathExists(lockPath) === true) releaseLock({ path: lockPath, token: lock.token })
+  if (pathExists(paths.editorRoot) === true) {
+    requireDirectory({ path: paths.editorRoot, field: 'editor root' })
+    if (realpathSync(paths.editorRoot) !== paths.editorRoot)
+      fail(`editor root must not contain symbolic links: ${paths.editorRoot}`)
+    const lock = acquireLock({
+      editorRoot: paths.editorRoot,
+      recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
+    })
+    const retired = `${paths.editorRoot}.release-${tokenSafe(lock.token)}`
+    let lockPath = lock.path
+    try {
+      // Only directories need write permission for unlinking. The walk uses lstat,
+      // so relocated payload links and external links never change their targets.
+      makeDirectoriesWritable(paths.editorRoot)
+      renameSync(paths.editorRoot, retired)
+      lockPath = join(retired, '.publish.lock')
+      rmSync(retired, { recursive: true })
+    } finally {
+      if (pathExists(lockPath) === true) releaseLock({ path: lockPath, token: lock.token })
+    }
   }
+  await collectEditorViewContentStore({ contentStore: paths.contentStore })
 }
 
 /** Remove the publication lock only when the caller presents its exact owner token. */
@@ -2301,10 +2326,9 @@ const publishEditorViewCoordinated = async ({
       })
       writeRecord({ path: join(candidate, 'editor-view.json'), record })
       created = true
-      await shareSnapshotFiles({
-        candidate,
-        snapshots: listOwnedSnapshots({ paths, options }).map((name) => join(paths.storeDir, name)),
-      })
+      const sharing = await shareSnapshotFiles({ candidate, contentStore: paths.contentStore })
+      if (sharing.copiedFiles > 0)
+        process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
     }
     if (created === true) {
       enterPhase('harden')
@@ -2387,8 +2411,11 @@ const publishEditorViewCoordinated = async ({
 }
 
 /** Publish one view while holding the exclusive state-root lock through every proof and write. */
-export const publishEditorView = (options: EditorViewOptions): Promise<EditorViewRecord> =>
-  publishEditorViewCoordinated({ options })
+export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
+  const record = await publishEditorViewCoordinated({ options })
+  await collectEditorViewContentStore({ contentStore: makePaths(options).contentStore })
+  return record
+}
 
 /** Shared bound; one view contains suspected cross-view overlap until #1743 establishes the cause. */
 export const editorViewPublicationWorkers = 1
@@ -2476,6 +2503,11 @@ export const publishEditorViews = async ({
     await Promise.all(
       Array.from({ length: Math.min(editorViewPublicationWorkers, options.length) }, worker),
     )
+    // One shared-store census per batch, not one per view. Hashing and walks do
+    // not hold its cross-worktree lock; only bounded link/unlink batches do.
+    for (const contentStore of new Set(options.map((option) => makePaths(option).contentStore)))
+      // eslint-disable-next-line no-await-in-loop -- Distinct stores are independent maintenance units.
+      await collectEditorViewContentStore({ contentStore })
     return results.map((result) => {
       if (result.status === 'rejected') throw result.reason
       return result.value
@@ -2722,20 +2754,34 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
 }
 
 type ParsedCli = {
-  readonly command: 'publish' | 'check' | 'verify' | 'recover-lock' | 'release'
+  readonly command:
+    | 'publish'
+    | 'check'
+    | 'verify'
+    | 'recover-lock'
+    | 'release'
+    | 'collect-content'
+    | 'recover-content-lock'
   readonly options: EditorViewOptions
   readonly token: string | undefined
 }
 
-const commands = ['publish', 'check', 'verify', 'recover-lock', 'release'] as const
+const commands = [
+  'publish',
+  'check',
+  'verify',
+  'recover-lock',
+  'release',
+  'collect-content',
+  'recover-content-lock',
+] as const
 
 const isCommand = (value: string | undefined): value is ParsedCli['command'] =>
   commands.includes(value as ParsedCli['command'])
 
 const parseCli = (args: readonly string[]): ParsedCli => {
   const command = args[0]
-  if (isCommand(command) === false)
-    return fail('expected command: publish, check, verify, recover-lock, or release')
+  if (isCommand(command) === false) return fail(`expected command: ${commands.join(', ')}`)
   const values = new Map<string, string>()
   const backingRoots: string[] = []
   for (let index = 1; index < args.length; index += 2) {
@@ -2749,50 +2795,54 @@ const parseCli = (args: readonly string[]): ParsedCli => {
       values.set(flag, value)
     }
   }
-  const recover = command === 'recover-lock'
-  const maintenance = recover === true || command === 'release'
+  const recover = command === 'recover-lock' || command === 'recover-content-lock'
+  const storeMaintenance = command === 'collect-content' || command === 'recover-content-lock'
+  const maintenance = recover === true || command === 'release' || storeMaintenance === true
   const admitting = command === 'publish' || command === 'check'
   if (admitting === false && backingRoots.length > 0)
     fail(`unexpected option for ${command}: --backing-root`)
   const allowed = new Set(
-    maintenance === true
-      ? ['--repo-root', '--package', '--view-name', ...(recover === true ? ['--token'] : [])]
-      : admitting === true
-        ? [
-            '--repo-root',
-            '--package',
-            '--view-name',
-            '--cell',
-            '--target',
-            '--editor-inputs',
-            '--node-modules',
-            '--backing-root',
-            '--cp',
-            '--mv',
-            '--fingerprint-tool',
-            '--workspace-authority',
-            '--consumer-cache',
-            '--snapshot-retention',
-            '--snapshot-grace-ms',
-          ]
-        : [
-            '--repo-root',
-            '--package',
-            '--view-name',
-            '--cell',
-            '--target',
-            '--fingerprint-tool',
-            '--consumer-cache',
-            '--snapshot-retention',
-            '--snapshot-grace-ms',
-          ],
+    storeMaintenance === true
+      ? ['--repo-root', ...(recover === true ? ['--token'] : [])]
+      : maintenance === true
+        ? ['--repo-root', '--package', '--view-name', ...(recover === true ? ['--token'] : [])]
+        : admitting === true
+          ? [
+              '--repo-root',
+              '--package',
+              '--view-name',
+              '--cell',
+              '--target',
+              '--editor-inputs',
+              '--node-modules',
+              '--backing-root',
+              '--cp',
+              '--mv',
+              '--fingerprint-tool',
+              '--workspace-authority',
+              '--consumer-cache',
+              '--snapshot-retention',
+              '--snapshot-grace-ms',
+            ]
+          : [
+              '--repo-root',
+              '--package',
+              '--view-name',
+              '--cell',
+              '--target',
+              '--fingerprint-tool',
+              '--consumer-cache',
+              '--snapshot-retention',
+              '--snapshot-grace-ms',
+            ],
   )
+  allowed.add('--content-store')
   for (const flag of values.keys())
     if (allowed.has(flag) === false) fail(`unexpected option for ${command}: ${flag}`)
   const get = (flag: string): string => values.get(flag) ?? fail(`missing required option ${flag}`)
   const getUnlessMaintaining = (flag: string): string => (maintenance === true ? '' : get(flag))
   const getWhenAdmitting = (flag: string): string => (admitting === true ? get(flag) : '')
-  const packagePath = get('--package')
+  const packagePath = storeMaintenance === true ? '.' : get('--package')
   // The view name defaults to the package directory name, so existing task
   // wiring keeps publishing the same `tui-core` identity without the new flag.
   const viewName = values.get('--view-name') ?? defaultEditorViewName(packagePath)
@@ -2819,6 +2869,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
       maintenance === true ? `.devenv/vite-cache/${viewName}` : get('--consumer-cache'),
     snapshotRetention,
     snapshotGraceMs: Number(values.get('--snapshot-grace-ms') ?? '300000'),
+    ...(values.has('--content-store') === true ? { contentStore: get('--content-store') } : {}),
   }
   return { command, options, token: recover === true ? get('--token') : undefined }
 }
@@ -2873,8 +2924,19 @@ const main = async (): Promise<void> => {
       `verified ${record.package} editor snapshot ${record.byteSnapshotDigest}\n`,
     )
   } else if (parsed.command === 'release') {
-    releaseEditorViewRoot(parsed.options)
+    await releaseEditorViewRoot(parsed.options)
     process.stdout.write(`released editor dependency root for ${parsed.options.package}\n`)
+  } else if (parsed.command === 'collect-content') {
+    const collected = await collectEditorViewContentStore({
+      contentStore: makePaths(parsed.options).contentStore,
+    })
+    process.stdout.write(`collected editor content ${JSON.stringify(collected)}\n`)
+  } else if (parsed.command === 'recover-content-lock') {
+    await recoverEditorViewContentStoreLock({
+      contentStore: makePaths(parsed.options).contentStore,
+      token: parsed.token ?? fail('missing required option --token'),
+    })
+    process.stdout.write('recovered editor content-store lock\n')
   } else {
     recoverEditorViewLock({
       options: parsed.options,
