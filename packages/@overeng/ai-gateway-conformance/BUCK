@@ -1,0 +1,129 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/ai-gateway-conformance/BUCK.genie.ts
+# Projection schema version: 13
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:161e947002c2f586ec5db94fa43a70b8be2ff0c0ff8458a313257919f0e4d6d0
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, context/effect/socket/package.json.genie.ts, context/opentui/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/ai-gateway-conformance/BUCK.genie.ts, packages/@overeng/ai-gateway-conformance/BUCK.genie.ts, packages/@overeng/ai-gateway-conformance/case.schema.json, packages/@overeng/ai-gateway-conformance/cases/chat.auth.none-401.json, packages/@overeng/ai-gateway-conformance/cases/chat.stream.error-after-200.json, packages/@overeng/ai-gateway-conformance/cases/chat.stream.usage.json, packages/@overeng/ai-gateway-conformance/cases/chat.text.json, packages/@overeng/ai-gateway-conformance/cases/decision.invalid-422.json, packages/@overeng/ai-gateway-conformance/cases/decision.invalid-label.json, packages/@overeng/ai-gateway-conformance/cases/decision.triage.json, packages/@overeng/ai-gateway-conformance/cases/errors.edge-502.json, packages/@overeng/ai-gateway-conformance/cases/errors.rate-limited-429.json, packages/@overeng/ai-gateway-conformance/cases/errors.upstream-404.json, packages/@overeng/ai-gateway-conformance/cases/models.list.json, packages/@overeng/ai-gateway-conformance/cases/structured.invalid.json, packages/@overeng/ai-gateway-conformance/cases/structured.rejected-400.json, packages/@overeng/ai-gateway-conformance/cases/structured.valid.json, packages/@overeng/ai-gateway-conformance/cases/tools.call.json, packages/@overeng/ai-gateway-conformance/cases/tools.result.json, packages/@overeng/ai-gateway-conformance/package.json.genie.ts, packages/@overeng/ai-gateway-conformance/package.json.genie.ts, packages/@overeng/ai-gateway-conformance/src/**/*.css, packages/@overeng/ai-gateway-conformance/src/**/*.cts, packages/@overeng/ai-gateway-conformance/src/**/*.js, packages/@overeng/ai-gateway-conformance/src/**/*.mts, packages/@overeng/ai-gateway-conformance/src/**/*.spec.cjs, packages/@overeng/ai-gateway-conformance/src/**/*.spec.jsx, packages/@overeng/ai-gateway-conformance/src/**/*.spec.mjs, packages/@overeng/ai-gateway-conformance/src/**/*.test.cjs, packages/@overeng/ai-gateway-conformance/src/**/*.test.jsx, packages/@overeng/ai-gateway-conformance/src/**/*.test.mjs, packages/@overeng/ai-gateway-conformance/src/**/*.ts, packages/@overeng/ai-gateway-conformance/src/**/*.tsx, packages/@overeng/ai-gateway-conformance/src/**/__snapshots__/*.snap, packages/@overeng/ai-gateway-conformance/tsconfig.json.genie.ts, packages/@overeng/ai-gateway-edge/package.json.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/test-verdict.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/ci-tools/package.json.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/devbar/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-ai-gateway/package.json.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts, packages/@overeng/effect-rpc-explorer/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/effect-rust-fixture-consumer/package.json.genie.ts, packages/@overeng/effect-rust/package.json.genie.ts, packages/@overeng/effect-schema-form-aria/package.json.genie.ts, packages/@overeng/effect-schema-form/package.json.genie.ts, packages/@overeng/genie-smalltalk/package.json.genie.ts, packages/@overeng/genie/package.json.genie.ts, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/kdl-effect/package.json.genie.ts, packages/@overeng/kdl/package.json.genie.ts, packages/@overeng/megarepo/package.json.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/notion-property-write/package.json.genie.ts, packages/@overeng/notion-react/package.json.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/otel-browser/package.json.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/outline/package.json.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/react-inspector/package.json.genie.ts, packages/@overeng/restate-effect/package.json.genie.ts, packages/@overeng/stylex-tokens/package.json.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-stories/package.json.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-storybook/package.json.genie.ts, packages/@overeng/utils/package.json.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
+load("//buck2:editor_view.bzl", "editor_view_inputs")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/mod.ts",
+])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "packages/@overeng/ai-gateway-conformance",
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "repository_validation_sources",
+    prefix = "packages/@overeng/ai-gateway-conformance",
+    srcs = ["BUCK", "package.json", "tsconfig.json"] + glob(["**/*.genie.ts"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/ai-gateway-conformance",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:view_packages_overeng_ai_gateway_conformance_9e6369708c70",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_ai_gateway_conformance_9e6369708c70",
+    files = {
+        "case.schema.json": "case.schema.json",
+        "cases/chat.auth.none-401.json": "cases/chat.auth.none-401.json",
+        "cases/chat.stream.error-after-200.json": "cases/chat.stream.error-after-200.json",
+        "cases/chat.stream.usage.json": "cases/chat.stream.usage.json",
+        "cases/chat.text.json": "cases/chat.text.json",
+        "cases/decision.invalid-422.json": "cases/decision.invalid-422.json",
+        "cases/decision.invalid-label.json": "cases/decision.invalid-label.json",
+        "cases/decision.triage.json": "cases/decision.triage.json",
+        "cases/errors.edge-502.json": "cases/errors.edge-502.json",
+        "cases/errors.rate-limited-429.json": "cases/errors.rate-limited-429.json",
+        "cases/errors.upstream-404.json": "cases/errors.upstream-404.json",
+        "cases/models.list.json": "cases/models.list.json",
+        "cases/structured.invalid.json": "cases/structured.invalid.json",
+        "cases/structured.rejected-400.json": "cases/structured.rejected-400.json",
+        "cases/structured.valid.json": "cases/structured.valid.json",
+        "cases/tools.call.json": "cases/tools.call.json",
+        "cases/tools.result.json": "cases/tools.result.json",
+        "package.json": "package.json",
+        "src/mod.ts": "src/mod.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+editor_view_inputs(
+    name = "editor_view_inputs",
+    editor_inputs = ":editor_inputs",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    declaration_sources = {
+    },
+    declaration_entrypoint = "src/mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    typecheck = ":typecheck",
+    workspace_manifests = [
+    ],
+    output = "overeng-ai-gateway-conformance.tgz",
+    visibility = ["PUBLIC"],
+)

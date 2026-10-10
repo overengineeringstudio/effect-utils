@@ -2,6 +2,13 @@
 
 Backend-neutral Effect AI `LanguageModel` and `DecisionModel` layers for subscription-backed models reached through a compatible gateway. The gateway, not this package, manages provider subscriptions and model routing.
 
+The language-neutral [AI gateway contract](../../../context/ai-gateway/vision.md)
+owns the public wire and shared semantics. This package realizes its
+[Effect requirements](../../../context/ai-gateway/01-effect/requirements.md)
+and [specification](../../../context/ai-gateway/01-effect/spec.md);
+the [Rust realization](../../../context/ai-gateway/02-rust/spec.md) shares that
+contract without defining a second gateway protocol.
+
 ```ts
 import { AiGateway } from '@overeng/effect-ai-gateway'
 import { Effect, Layer } from 'effect'
@@ -58,3 +65,21 @@ console.log(result.answers, result.usage)
 `AiGateway.decisionLayer({ url, token?, model? })` accepts the same gateway origin and optional redacted bearer as chat. `decisionLayerConfig({ model? })` reads `AI_GATEWAY_URL` and optional `AI_GATEWAY_TOKEN`; both default to `openrouter/~typesafe/jev-latest` when `model` is omitted. The native `@effect/ai-typesafe` provider sends one batch to `<gateway-origin>/v1/systemone` and validates labels, probabilities, and ratings against the `Decision.make` definition. The gateway must expose that endpoint separately from Chat Completions. Decision probabilities are provider results, not inferred from chat text; malformed answers fail with `AiError`. Supply an Effect `HttpClient` layer in either case.
 
 Structured output requires gateway support for Chat Completions `response_format` and model support for the requested JSON format; not all models honor it. This package does not expose a gateway, authenticate subscription providers, translate other wire protocols, or supply an HTTP runtime. Gateway failures and provider limitations remain visible as Effect AI errors.
+
+## Wire conformance
+
+`src/ai-gateway.unit.test.ts` replays the data-only cases in
+[`@overeng/ai-gateway-conformance`](../ai-gateway-conformance/README.md) through an
+injected Effect `HttpClient`. The shared corpus covers discovery, authentication,
+chat/SSE usage, structured validation/refusal, tool exchanges, native decisions,
+and HTTP failures. Configuration tests retain the optional bearer and unchanged
+model-selection assertions. Unsupported provider behavior is listed as a named
+skip with its reason, including error data envelopes after HTTP 200 that the
+pinned compatible provider ignores.
+
+Structured cases use a finite-number caller schema whose generated JSON Schema is
+checked against the corpus. Tool prompts explicitly mark caller-executed exchanges;
+response assertions narrow parts by their `type` before inspecting tool fields.
+Validation-error cases retain billed usage expectations in the shared corpus;
+separate named skips expose the upstream structured/decision errors' missing usage
+retention without disabling the validation checks themselves.

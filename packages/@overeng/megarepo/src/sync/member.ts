@@ -24,7 +24,10 @@ import { detectRefMismatch, formatRefMismatchMessage } from '../core/issues.ts'
 import type { LockFile } from '../core/lock.ts'
 import * as Observability from '../core/observability.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../core/ref.ts'
-import { resolveStoreBranchWorktree } from '../store/store-branch-worktree.ts'
+import {
+  canonicalizeStorePath,
+  resolveStoreBranchWorktree,
+} from '../store/store-branch-worktree.ts'
 import { StoreLock } from '../store/store-lock.ts'
 import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
 import { Store } from '../store/store.ts'
@@ -1037,11 +1040,15 @@ export const syncMember = <R = never>({
       ref: worktreeRef,
       refType: worktreeRefType,
     })
-    const worktreeExists = yield* worktreePathExists(worktreePath)
 
-    if (worktreeExists === false && dryRun === false) {
+    // A visible .git can belong to a creator still running under the lock.
+    // Every commit visitor must join that flight before using its freshness.
+    if (
+      dryRun === false &&
+      (worktreeRefType === 'commit' || (yield* worktreePathExists(worktreePath)) === false)
+    ) {
       yield* storeLock
-        .withWorktreeLock(worktreePath)(
+        .withWorktreeLock(yield* canonicalizeStorePath(worktreePath))(
           Effect.gen(function* () {
             // Double-check inside lock (another process/fiber may have created it)
             const resolvedWorktreePath = yield* resolveWorktreePath({
@@ -1121,14 +1128,7 @@ export const syncMember = <R = never>({
           ref: targetCommit!,
           refType: 'commit',
         })
-        const commitWorktreeExists = yield* store.hasWorktree({
-          source,
-          ref: targetCommit!,
-          refType: 'commit',
-        })
-        if (commitWorktreeExists === true) return
-
-        yield* storeLock.withWorktreeLock(commitWorktreePath)(
+        yield* storeLock.withWorktreeLock(yield* canonicalizeStorePath(commitWorktreePath))(
           Effect.gen(function* () {
             const exists = yield* store.hasWorktree({
               source,

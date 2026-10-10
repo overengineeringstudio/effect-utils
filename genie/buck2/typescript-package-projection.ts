@@ -94,7 +94,7 @@ const safeSourceSegment = (segment: string): boolean =>
   segment.includes('\\') === false &&
   /^[A-Za-z0-9._@+$-]+$/.test(segment)
 
-const discoverPackageFiles = ({
+export const discoverPackageFiles = ({
   packagePath,
   repoRoot = process.cwd(),
   sourceRoots,
@@ -711,6 +711,8 @@ export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly projectionSource: string
   readonly rulesCell?: `@${string}`
   readonly sourceRoots: readonly string[]
+  /** Package-local data read by exported code; staged in runtime and test package views. */
+  readonly runtimeFiles?: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
   /** Generated package products participate in build, editor and runtime package views. */
   readonly generatedDependencies?: Readonly<Record<string, BuckTarget>>
@@ -733,6 +735,7 @@ export const buck2TypeScriptPackageProjection = ({
   projectionSource,
   rulesCell,
   sourceRoots,
+  runtimeFiles = [],
   workspaceSiblings = [],
   generatedDependencies = {},
   workspacePackages = rootWorkspacePackages,
@@ -1014,14 +1017,23 @@ export const buck2TypeScriptPackageProjection = ({
   ]
     .toSorted((left, right) => compareStrings({ left, right }))
     .map((file) => [file, sourceLabel(`${packagePath}/${file}`)] as const)
-  // The compile tree: typecheck, emit and the editor read it, so it carries the TypeScript
-  // census and nothing a runner alone collects. A `.jsx` spec, a snapshot baseline, a Vitest
-  // config or a committed fixture in here would widen every compile action's identity for
-  // inputs no compiler ever opens.
+  const runtimeFileEntries = [...new Set(runtimeFiles)]
+    .map((value) => requireRelativeTestPath({ field: 'Runtime package file', value }))
+    .toSorted((left, right) => compareStrings({ left, right }))
+    .map((file): readonly [string, string] => {
+      if (existsSync(path.join(process.cwd(), packagePath, file)) === false) {
+        throw new Error(`Runtime package file does not exist: ${packagePath}/${file}`)
+      }
+      return [file, sourceLabel(`${packagePath}/${file}`)]
+    })
+  // The compile/runtime tree carries the TypeScript census and explicitly declared runtime
+  // data, but nothing a runner alone collects. JSX specs, snapshots and Vitest config stay
+  // in the test tree so runner-only inputs do not widen compile action identities.
   const packageFileEntries = [
     ...sourceEntries(packageSources),
     ...sourceEntries(['package.json', 'tsconfig.json']),
     ...projectFileEntries,
+    ...runtimeFileEntries,
   ].toSorted(([left], [right]) => compareStrings({ left, right }))
   // The test tree: the compile tree plus everything only a runner reads — the collectable
   // modules the TypeScript census rejects, the baselines those modules compare against under
@@ -1107,6 +1119,7 @@ export const buck2TypeScriptPackageProjection = ({
     ...projectAuthorities.flatMap(({ projectInputs }) =>
       projectInputs.map((projectInput) => `${packagePath}/${projectInput}`),
     ),
+    ...runtimeFileEntries.map(([file]) => `${packagePath}/${file}`),
     ...sourceRoots.flatMap((sourceRoot) =>
       sourceExtensions.map((extension) => `${packagePath}/${sourceRoot}/**/*${extension}`),
     ),
@@ -1156,6 +1169,7 @@ export const buck2TypeScriptPackageProjection = ({
     projectAuthorities,
     rulesCell,
     sourceRoots,
+    runtimeFiles: runtimeFileEntries.map(([file]) => file),
     staticSourceExcludes,
     testDataFiles,
     testDataRoots,

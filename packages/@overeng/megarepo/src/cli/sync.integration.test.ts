@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Cause, Effect, Exit, Option, Schema } from 'effect'
+import { Cause, Deferred, Effect, Exit, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
@@ -22,6 +22,9 @@ import {
   updateLockedMember,
   writeLockFile,
 } from '../core/lock.ts'
+import { StoreLock } from '../store/store-lock.ts'
+import { makeStoreLayer } from '../store/store.ts'
+import { collectSyncErrors } from '../sync/mod.ts'
 import { MegarepoSyncTree, SyncErrorItem } from '../sync/schema.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
@@ -38,6 +41,7 @@ import {
   type StoreFixtureResult,
 } from '../test-utils/store-setup.ts'
 import { makeCanonicalTempDirectoryScoped } from '../test-utils/temp-root.ts'
+import { syncMegarepo } from './commands/engine.ts'
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 
@@ -1125,6 +1129,105 @@ const createColdCanonicalRecursionFixture = () =>
   })
 
 describe('apply --all canonical recursion', () => {
+  it.effect(
+    'diamond apply waits for shared commit freshness publication before a second branch recurses',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createColdCanonicalRecursionFixture()
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: {
+            left: 'https://example.com/acme/child#main',
+            right: fixture.childSource,
+          },
+          lockEntries: {
+            left: {
+              url: 'https://example.com/acme/child',
+              ref: 'main',
+              commit: fixture.childCommit,
+            },
+          },
+        })
+        const publishing = yield* Deferred.make<void>()
+        const observerArrived = yield* Deferred.make<void>()
+        let publicationBlocked = false
+        let sharedLockVisits = 0
+        let observedBeforePublication = false
+        // The old fast path reaches authorization before the creator publishes.
+        // The fixed path instead joins the creator's worktree lock.
+        const createdWorktrees = new (class extends Set<string> {
+          override has(key: string) {
+            const present = super.has(key)
+            if (key === fixture.grandchildPath.slice(0, -1) && present === false) {
+              observedBeforePublication = true
+              Deferred.doneUnsafe(observerArrived, Effect.void)
+            }
+            return present
+          }
+        })()
+        const controlledFs: FileSystem.FileSystem = {
+          ...fs,
+          realPath: (target) =>
+            Effect.gen(function* () {
+              if (target === `${workspacePath}repos/right/`) yield* Deferred.await(publishing)
+              const physical = yield* fs.realPath(target)
+              if (target === fixture.grandchildPath && publicationBlocked === false) {
+                publicationBlocked = true
+                yield* Deferred.succeed(publishing, undefined)
+                yield* Deferred.await(observerArrived)
+              }
+              return physical
+            }),
+        }
+        const result = yield* Effect.gen(function* () {
+          const storeLock = yield* StoreLock
+          return yield* syncMegarepo({
+            megarepoRoot: workspacePath,
+            createdWorktrees,
+            options: {
+              mode: 'apply',
+              dryRun: false,
+              force: false,
+              all: true,
+              only: undefined,
+              skip: undefined,
+              gitProtocol: 'https',
+              createBranches: false,
+              commitMode: true,
+              lockSyncMode: 'off',
+            },
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, controlledFs),
+            Effect.provideService(StoreLock, {
+              ...storeLock,
+              withWorktreeLock: (key) => (effect) =>
+                Effect.gen(function* () {
+                  if (key.replace(/\/$/, '') === fixture.grandchildPath.slice(0, -1)) {
+                    sharedLockVisits++
+                    if (sharedLockVisits === 2) yield* Deferred.succeed(observerArrived, undefined)
+                  }
+                  return yield* storeLock.withWorktreeLock(key)(effect)
+                }),
+            }),
+          )
+        }).pipe(Effect.provide(makeStoreLayer({ basePath: fixture.store.storePath })))
+        expect(publicationBlocked).toBe(true)
+        expect(collectSyncErrors(result)).toEqual([])
+        expect(observedBeforePublication).toBe(false)
+        expect(sharedLockVisits).toBe(2)
+        const left = `${workspacePath}repos/left/repos/grandchild`
+        const right = `${workspacePath}repos/right/repos/grandchild`
+        expect(yield* fs.realPath(left)).toBe(fixture.grandchildPath.slice(0, -1))
+        expect(yield* fs.realPath(right)).toBe(fixture.grandchildPath.slice(0, -1))
+        expect(yield* fs.realPath(`${left}/repos/leaf`)).toBe(fixture.leafPath.slice(0, -1))
+        expect(createdWorktrees.has(fixture.grandchildPath.slice(0, -1))).toBe(true)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
   it.effect(
     'cold apply --all --lock-sync off materializes nested canonical commit worktrees with zero errors',
     Effect.fnUntraced(
