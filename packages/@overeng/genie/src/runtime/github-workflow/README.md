@@ -46,7 +46,7 @@ This rejects invalid runner labels such as:
 This is mainly intended to catch CI helper API drift early. Without this validation, stale generated workflows can look superficially valid in the repo but only fail later when GitHub tries to load or schedule the workflow.
 
 Private binary-cache jobs accept the static fleet runner labels, including
-`sh-linux-x64-publish` and `sh-linux-arm64-publish` for dedicated cache publishers.
+`sh-linux-x64-publish` and `sh-linux-arm64-publish` for dedicated cache publishers and `sh-linux-x64-ai-gateway` for the self-hosted runner with the AI gateway consumer token provisioned.
 Each publisher label can be used alone or with the optional `nix` capability label;
 unknown labels are rejected.
 

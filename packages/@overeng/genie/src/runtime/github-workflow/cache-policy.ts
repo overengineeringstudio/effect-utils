@@ -42,6 +42,7 @@ const fleetLabels: Record<string, true> = {
   'sh-linux-arm64': true,
   'sh-linux-x64-publish': true,
   'sh-linux-arm64-publish': true,
+  'sh-linux-x64-ai-gateway': true,
   'sh-darwin-arm64': true,
 }
 
