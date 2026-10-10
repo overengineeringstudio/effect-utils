@@ -43,7 +43,9 @@ const normalizePath = (path: string): string => NodePath.resolve(path)
  * Resolve the deepest existing ancestor so path identity matches Git even when the store root is
  * a symlink and the final worktree path does not exist yet.
  */
-const canonicalizePath = (path: string): Effect.Effect<string, never, FileSystem.FileSystem> =>
+export const canonicalizeStorePath = (
+  path: string,
+): Effect.Effect<string, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const normalized = normalizePath(path)
@@ -82,8 +84,8 @@ export const resolveStoreBranchWorktree = ({
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const bareRepo = yield* canonicalizePath(rawBareRepo)
-    const worktreePath = yield* canonicalizePath(rawWorktreePath)
+    const bareRepo = yield* canonicalizeStorePath(rawBareRepo)
+    const worktreePath = yield* canonicalizeStorePath(rawWorktreePath)
     const registrations = yield* Git.listWorktrees(bareRepo).pipe(
       Effect.mapError((cause) =>
         failure({
@@ -100,7 +102,8 @@ export const resolveStoreBranchWorktree = ({
     if (atBranch.length === 0) {
       let registeredAtPath = 0
       for (const registration of registrations) {
-        if ((yield* canonicalizePath(registration.path)) === worktreePath) registeredAtPath += 1
+        if ((yield* canonicalizeStorePath(registration.path)) === worktreePath)
+          registeredAtPath += 1
       }
       if (registeredAtPath === 1) return asDir(worktreePath)
       const worktreeExists = yield* fs.exists(asDir(worktreePath)).pipe(
@@ -128,7 +131,8 @@ export const resolveStoreBranchWorktree = ({
       })
     }
     const registration = atBranch[0]!
-    if ((yield* canonicalizePath(registration.path)) === worktreePath) return asDir(worktreePath)
+    if ((yield* canonicalizeStorePath(registration.path)) === worktreePath)
+      return asDir(worktreePath)
     return yield* failure({
       reason: 'GitIdentityConflict',
       path: registration.path,
