@@ -1,6 +1,16 @@
 load("@prelude//:prelude.bzl", "native")
+load(":cache.bzl", "rust_cache_cxx_toolchain", "rust_cache_internal_tools")
 
-# Public Rust rule and toolchain APIs live in defs.bzl and toolchains.bzl.
+# Public Rust rule and toolchain APIs live in defs.bzl, cache.bzl, and toolchains.bzl.
+
+rust_cache_internal_tools(name = "cache_internal_tools", visibility = ["PUBLIC"])
+rust_cache_cxx_toolchain(name = "cache_cxx_toolchain", visibility = ["PUBLIC"])
+
+native.config_setting(
+    name = "cache_linux_x86_64",
+    constraint_values = ["prelude//os/constraints:linux", "prelude//cpu/constraints:x86_64"],
+    visibility = ["PUBLIC"],
+)
 
 # The product build selects this from the command line; ordinary test and
 # check targets retain the fast profile without changing their toolchain.

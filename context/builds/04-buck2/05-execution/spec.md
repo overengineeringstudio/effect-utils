@@ -253,14 +253,15 @@ scratch config, so package-local startup hooks cannot bypass the runner contract
 | JavaScript collection runner                                                                     | Admitted only for deterministic `cacheable` lanes: complete runner-relative module closure, declared package/read roots, config/selection/runtime and fingerprint tool. The runner constructs the child's env/PATH from declared tools and scratch, checks input immutability, and normalizes collected paths. A false-cacheable lane uses the default deny platform and disables uploads while retaining env scrubbing. Inherited-env collection is rejected. |
 | Package command runner, portable bundle                                                          | Admitted bundle mode: runner plus declared parser closure, complete package/read-root map, platform-gated manifest and projected Bun. A label-named hardlink farm contains resolution, emitted module comments reject host paths, and the descriptor binds the bytes.                                                                                                                                                                                          |
 | Package command runner, arbitrary check/build entrypoints                                        | Scrubbed before runner startup but **not admitted**: an arbitrary script may read undeclared files, network or host state despite receiving only literal child env and passing input-immutability checks. Launch/exec mode remains interactive and uncached.                                                                                                                                                                                                   |
-| External test orchestration, native compilation, repository validation and remaining run actions | No blanket admission. The default deny platform prevents shared reads/writes until the family's complete action closure is audited. Deterministic verdict actions have their own declared admission; flaky/host-dependent suites remain uncached.                                                                                                                                                                                                              |
+| Pure native Rust library/binary compilation and dependency argument generation                    | Admitted only on Linux x86_64 through the audited Rust façade: exact Nix compiler/linker identity and compiler/sysroot closure participate in the action env/key; declared source/dependency closure and scrubbed Prelude tool launchers. Build-script-derived inputs, volatile compiler flags, incremental compilation, Clippy diagnostics and wasm remain on the native deny platform. |
+| External test orchestration, unaudited native compilation, repository validation and remaining run actions | No blanket admission. The default deny platform prevents shared reads/writes until the family's complete action closure is audited. Deterministic verdict actions have their own declared admission; flaky/host-dependent suites remain uncached. |
 
 The prerequisite categories `pnpm_extract`, `pnpm_store_entry`,
 `pnpm_store_scc`, `pnpm_store_view`, and `package_tree` use the default
 nonremote platform under `local-materialization-policy`; `tsgo_emit` retains
 the cache-admitted TypeScript platform. Each macro owns its own admission:
-a verdict hit does not admit its ancestors. This classification does not
-admit native compilation or executable build scripts.
+a verdict hit does not admit its ancestors. Native Rust compile admission is
+separate and does not admit executable build scripts or their generated inputs.
 
 Repository `workspace-contract` and `genie-import-closure` modes are not
 promoted with the source-only checks: the former executes Cargo/Nix through a
@@ -269,6 +270,35 @@ their complete subprocess/configuration boundaries is distinct from the
 source-only modes. Product executable/support staging remains unadmitted where
 the target also owns native compilation; a copy action alone cannot admit its
 target's other actions. Rust build scripts remain host-dependent and denied.
+
+The Rust façade clones the pinned Prelude rules without replacing their
+compiler implementation or enabling the default native executor's cache.
+Only source-audited compile declarations select the hermetic twin. Genie
+audits every declared source/resource for the literal `CARGO_MANIFEST_DIR`
+token and denies crates with build scripts or unreadable generated resources;
+the result participates in the target definition and semantic fingerprint.
+Source changes re-evaluate the audit through generation freshness, including
+inactive modules, comments, `env!`, and `option_env!`. Missing audit results
+(including third-party archive declarations) default to native denial.
+Target/triple and resolved toolchain checks also fail closed. GNU `env -i` wraps Prelude's Rust and
+linker-support tools, and the compile environment carries the exact Nix
+toolchain identity plus validated compiler closure paths. Ambient worktree,
+HOME, hostname, and mutable tool discovery are not admitted key inputs.
+The pinned Prelude rustc wrapper maps both the worktree cwd and its realpath
+to `.` before compilation, normalizing `file!()` and compiler source locations.
+Native diagnostic twins retain incremental metadata and noncompilation
+subtargets (including Clippy, documentation, and profiling) on the deny platform
+without building them during ordinary compilation. Unknown future Prelude
+subtargets default to that twin. Cargo-generated first-party and Reindeer declarations use the same
+façade; executable build-script actions remain outside it.
+
+Protected publishers enable Prelude's default upload preference only with the
+existing root/platform writer guards. Fresh-root proof requires actual local
+writer uploads and reader remote hits for Rust compile/dependency actions,
+identical normalized action identities/digests, and matching library bytes,
+including an rlib that exposes `file!()`.
+Full sanitized action evidence preserves both admitted Rust rows and denied
+build-script rows; it never reclassifies native compilation as materialization.
 
 Hash-and-size-validated pnpm archive acquisition is admitted separately from
 offline extraction. The network source is an explicit CAS/registry acquisition

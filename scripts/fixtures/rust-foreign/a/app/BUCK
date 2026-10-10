@@ -4,11 +4,12 @@
 # Projection source: scripts/fixtures/rust-foreign/a/app/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:ba0d220dde784a287b0cbd2d523bf24715946744419aa823e6e5b1d5c30e2d87
+# Semantic fingerprint: sha256:4b1a0149373160479be05fbb0c5a9c5c32b3a86e0a90930be42aa19351853127
 # Semantic inputs: genie/buck2/mod.ts, rust/buck2-tools/core/cargo-buck2-package-projection.ts, scripts/fixtures/rust-foreign/a/Cargo.lock, scripts/fixtures/rust-foreign/a/Cargo.toml, scripts/fixtures/rust-foreign/a/app/BUCK.genie.ts, scripts/fixtures/rust-foreign/a/app/Cargo.toml, scripts/fixtures/rust-foreign/a/app/src/**/*.rs, scripts/fixtures/rust-foreign/a/app/tests/**/*.rs, scripts/fixtures/rust-foreign/a/foreign-packages.json, scripts/fixtures/rust-foreign/a/reindeer.toml, scripts/fixtures/rust-foreign/a/third-party/BUCK, scripts/fixtures/rust-foreign/a/third-party/cargo-resolution.json, scripts/fixtures/rust-foreign/b/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/src/**/*.rs, scripts/fixtures/rust-foreign/projection.ts
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
+load("//buck2/rust:cache.bzl", "rust_binary", "rust_library")
 load("//buck2:static_checks.bzl", "static_source_set")
 static_source_set(
     name = "static_sources",
@@ -22,10 +23,11 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
-native.rust_binary(
+rust_binary(
     name = "foreign-consumer",
     crate = "foreign_consumer",
     crate_root = "src/main.rs",
+    cache_audited = True,
     srcs = [
         "src/main.rs",
     ],

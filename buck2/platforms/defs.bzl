@@ -1,6 +1,7 @@
 """Exact native product-platform identities admitted by the public Buck kernel."""
 
 load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
+load("@prelude//:rules.bzl", "clone_rule")
 
 ProductPlatformInfo = provider(fields = {
     "abi": str,
@@ -137,6 +138,15 @@ def cache_guarded_rule(impl, attrs, cache_eligible = None, **kwargs):
     """Owns shared-cache admission at rule definition, never at a call site."""
     rule_attrs = dict(attrs)
     rule_attrs["_cache_admission_constraint"] = _cache_admission_label_attr()
+    return rule(impl = _cache_guarded_impl(impl, cache_eligible), attrs = rule_attrs, **kwargs)
+
+def cache_guarded_prelude_rule(name, impl, extra_attrs = {}, cache_eligible = None):
+    """Clones pinned Prelude cfg/plugins/attrs under the same admission guard."""
+    rule_attrs = dict(extra_attrs)
+    rule_attrs["_cache_admission_constraint"] = _cache_admission_label_attr()
+    return clone_rule(name, extra_attrs = rule_attrs, impl_override = _cache_guarded_impl(impl, cache_eligible))
+
+def _cache_guarded_impl(impl, cache_eligible):
 
     def guarded_impl(ctx):
         # Buck resolves both the built-in compatibility list and this label to
@@ -148,7 +158,7 @@ def cache_guarded_rule(impl, attrs, cache_eligible = None, **kwargs):
                 fail("this rule is not eligible for the cache-admitted execution platform")
         return impl(ctx)
 
-    return rule(impl = guarded_impl, attrs = rule_attrs, **kwargs)
+    return guarded_impl
 
 def _cache_admission_label_attr():
     return attrs.default_only(attrs.label(default = "@rules//buck2/platforms:cache_hermetic"))

@@ -4,11 +4,12 @@
 # Projection source: rust/buck2-tools/events/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:4b29da1097e07ca44832df6d40f2e62a59ed6c6de4d562908e68094721b40022
+# Semantic fingerprint: sha256:14ee2a499cdd90f21120e95a4a52428f0930e8e2b1f9df715878e55a050a0d52
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/BUCK.genie.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/events/src/**/*.rs, rust/buck2-tools/events/tests/**/*.rs, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
+load("//buck2/rust:cache.bzl", "rust_binary", "rust_library")
 load("//buck2:static_checks.bzl", "static_source_set")
 static_source_set(
     name = "static_sources",
@@ -83,10 +84,11 @@ native.export_file(
     visibility = ["PUBLIC"],
 )
 
-native.rust_library(
+rust_library(
     name = "lib",
     crate = "buck2_events",
     crate_root = "src/lib.rs",
+    cache_audited = False,
     srcs = [
         "src/gen/buck.daemon.rs",
         "src/gen/buck.data.error.rs",
@@ -130,10 +132,11 @@ native.rust_library(
     ],
 )
 
-native.rust_binary(
+rust_binary(
     name = "buck2-events",
     crate = "buck2_events",
     crate_root = "src/main.rs",
+    cache_audited = False,
     srcs = [
         "src/gen/buck.daemon.rs",
         "src/gen/buck.data.error.rs",
