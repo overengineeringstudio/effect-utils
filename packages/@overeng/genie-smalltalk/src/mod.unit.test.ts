@@ -15,7 +15,7 @@ import {
   type CodexSchema,
   emit,
   type GateSchema,
-  HumanGateSchema,
+  type HumanGateSchema,
   mission,
   MissionSchema,
   node,
@@ -749,7 +749,7 @@ const pollSt = async <T>(
   let last: T
   do {
     last = await read()
-    if (ready(last)) return last
+    if (ready(last) === true) return last
     const { promise, resolve } = Promise.withResolvers<void>()
     setTimeout(resolve, 100)
     await promise
