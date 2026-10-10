@@ -54,6 +54,35 @@ describe.skipIf(process.platform !== 'linux')('store pinned deletion', () => {
     ),
   )
 
+  it.effect(
+    'allows mounted ancestors above an admitted tmpfs root and unlinks cross-device symlinks',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const base = yield* fs.realPath(
+          yield* fs.makeTempDirectoryScoped({ directory: '/dev/shm', prefix: 'mr-pinned-device-' }),
+        )
+        const outside = yield* fs.realPath(yield* fs.makeTempDirectoryScoped({ directory: '/tmp' }))
+        const rootPath = `${base}/admitted`
+        const path = `${rootPath}/owner/output`
+        yield* fs.makeDirectory(`${path}/nested`, { recursive: true })
+        yield* fs.writeFileString(`${path}/nested/artifact`, 'remove')
+        yield* fs.writeFileString(`${outside}/sentinel`, 'outside survives')
+        yield* fs.symlink(outside, `${path}/nested/outside-link`)
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        const rootIdentity = identity.find((entry) => entry.path === rootPath)!
+        expect(rootIdentity.dev, '/dev/shm fixture must be on another device than /').not.toBe(
+          identity[0]!.dev,
+        )
+        yield* withPinnedDeletion({ rootPath, path, identity })
+        expect(yield* fs.exists(path)).toBe(false)
+        expect(yield* fs.readFileString(`${outside}/sentinel`)).toBe('outside survives')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
   for (const ancestor of ['mutable', 'mutable/admitted', 'mutable/admitted/owner']) {
     it.effect(
       `refuses an ancestor symlink swap at ${ancestor} immediately before removal`,

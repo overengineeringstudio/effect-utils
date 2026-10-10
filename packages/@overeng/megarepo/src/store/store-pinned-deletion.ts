@@ -237,7 +237,8 @@ const removeDirectoryContents = ({
     const anchoredPath = `${fdPath(fd)}/${name}`
     const childPath = `${path}/${name}`
     const observed = lstatSync(anchoredPath, { bigint: true })
-    if (observed.dev !== device)
+    // Unlinking a symlink never crosses its referent's filesystem boundary.
+    if (observed.isSymbolicLink() === false && observed.dev !== device)
       throw fail({
         path: childPath,
         message: 'Deletion crosses a filesystem boundary; refusing removal',

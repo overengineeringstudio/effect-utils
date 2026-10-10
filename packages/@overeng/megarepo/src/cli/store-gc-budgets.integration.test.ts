@@ -477,50 +477,53 @@ const twoTargets = ({
 
 const inOwnerNamespace = process.env['MEGAREPO_BUDGET_TEST_NAMESPACE'] === '1'
 if (inOwnerNamespace === false)
-  describe('mr budget owner namespace preconditions', () => {
-    it('runs acceptance 1-11 in an unprivileged user/PID namespace with real fixture processes', () => {
-      const file = fileURLToPath(import.meta.url)
-      const packageDir = dirname(dirname(dirname(file)))
-      const vitestBin = join(
-        dirname(fileURLToPath(import.meta.resolve('vitest/package.json'))),
-        'vitest.mjs',
-      )
-      const result = spawnSync(
-        'unshare',
-        [
-          '--user',
-          '--map-root-user',
-          '--pid',
-          '--fork',
-          '--mount-proc',
-          process.execPath,
-          vitestBin,
-          'run',
-          'src/cli/store-gc-budgets.integration.test.ts',
-          '--reporter',
-          'verbose',
-          '--testTimeout',
-          '240000',
-        ],
-        {
-          cwd: packageDir,
-          env: { ...process.env, MEGAREPO_BUDGET_TEST_NAMESPACE: '1' },
-          encoding: 'utf8',
-          timeout: 240_000,
-        },
-      )
-      console.log(result.stdout)
-      expect(
-        result.error,
-        'budget acceptance requires unshare and unprivileged user/PID namespaces',
-      ).toBeUndefined()
-      expect(
-        result.status,
-        `budget acceptance requires usable unprivileged user/PID namespaces and a populated /proc: ${result.stderr}`,
-      ).toBe(0)
-    }, 240_000)
-  })
-if (inOwnerNamespace === true)
+  describe.skipIf(process.platform !== 'linux')(
+    'mr budget owner namespace preconditions (Linux only; budgets unsupported elsewhere)',
+    () => {
+      it('runs acceptance 1-11 in an unprivileged user/PID namespace with real fixture processes', () => {
+        const file = fileURLToPath(import.meta.url)
+        const packageDir = dirname(dirname(dirname(file)))
+        const vitestBin = join(
+          dirname(fileURLToPath(import.meta.resolve('vitest/package.json'))),
+          'vitest.mjs',
+        )
+        const result = spawnSync(
+          'unshare',
+          [
+            '--user',
+            '--map-root-user',
+            '--pid',
+            '--fork',
+            '--mount-proc',
+            process.execPath,
+            vitestBin,
+            'run',
+            'src/cli/store-gc-budgets.integration.test.ts',
+            '--reporter',
+            'verbose',
+            '--testTimeout',
+            '240000',
+          ],
+          {
+            cwd: packageDir,
+            env: { ...process.env, MEGAREPO_BUDGET_TEST_NAMESPACE: '1' },
+            encoding: 'utf8',
+            timeout: 240_000,
+          },
+        )
+        console.log(result.stdout)
+        expect(
+          result.error,
+          'budget acceptance requires unshare and unprivileged user/PID namespaces',
+        ).toBeUndefined()
+        expect(
+          result.status,
+          `budget acceptance requires usable unprivileged user/PID namespaces and a populated /proc: ${result.stderr}`,
+        ).toBe(0)
+      }, 240_000)
+    },
+  )
+if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
     it.effect(
       '1: LRU evicts exactly the older idle root, apply removes it with the plan hash, next plan is empty',
@@ -1076,7 +1079,11 @@ if (inOwnerNamespace === true)
     )
   })
 
-if (inOwnerNamespace === false && process.env['MEGAREPO_TEST_PRIVILEGED'] === '1')
+if (
+  inOwnerNamespace === false &&
+  process.platform === 'linux' &&
+  process.env['MEGAREPO_TEST_PRIVILEGED'] === '1'
+)
   describe('privileged: root-snapshot and isolated-UID budget proof', () => {
     it.effect(
       'deployment: a root `mr store activity snapshot` covers foreign UIDs so the owner-run plan/apply can prove idleness',

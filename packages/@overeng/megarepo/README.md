@@ -174,6 +174,9 @@ and pins directories with no-follow file descriptors through quarantine and recu
 Replacing an ancestor with a symlink cannot redirect removal outside the verified tree;
 changed identities or unavailable primitives refuse deletion. The same boundary protects
 worktree and merged-worklog teardown.
+Mounts above the admitted root (including a dedicated store dataset) are allowed and
+identity-pinned. A filesystem boundary inside the deletion subtree refuses recursive
+traversal; unlinking a symlink does not cross its referent's filesystem boundary.
 
 Build-output budgets and policy-authorized worklog deletion refuse non-Linux hosts with
 `unsupported-platform`. Existing macOS legacy GC (including dry-run, `--all`, `--force`,
