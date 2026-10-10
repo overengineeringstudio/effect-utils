@@ -71,7 +71,10 @@ export const loadCases = Effect.fn('AiGatewayConformance.loadCases')(function* (
   // The source module is in src/; the shipped JS module is in dist/src/.
   // Both layouts keep the corpus as files at the package root, not module exports.
   const directory = fileURLToPath(
-    new URL(import.meta.url.endsWith('.ts') === true ? '../cases/' : '../../cases/', import.meta.url),
+    new URL(
+      import.meta.url.endsWith('.ts') === true ? '../cases/' : '../../cases/',
+      import.meta.url,
+    ),
   )
   const files = (yield* fs.readDirectory(directory))
     .filter((file) => file.endsWith('.json'))
