@@ -332,9 +332,12 @@ export const HumanGateSchema = Schema.Struct({
   question: Schema.optionalKey(Text),
   review: Schema.optionalKey(
     Schema.Array(Text).pipe(
-      Schema.refine((targets): targets is typeof targets => new Set(targets).size === targets.length, {
-        message: 'human gate review targets must be unique',
-      }),
+      Schema.refine(
+        (targets): targets is typeof targets => new Set(targets).size === targets.length,
+        {
+          message: 'human gate review targets must be unique',
+        },
+      ),
     ),
   ),
 }).annotate({ identifier: 'St.HumanGate' })
@@ -387,8 +390,7 @@ export const StepSchema = Schema.Struct({
   ),
   Schema.refine(
     (s): s is typeof s =>
-      s.gate?.kind !== 'human' ||
-      (s.gate.mode !== 'feedback' || s.agentless !== true),
+      s.gate?.kind !== 'human' || s.gate.mode !== 'feedback' || s.agentless !== true,
     { message: 'feedback human gates require a worker step' },
   ),
   Schema.annotate({ identifier: 'St.Step' }),

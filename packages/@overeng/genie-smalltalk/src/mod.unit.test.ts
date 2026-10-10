@@ -157,9 +157,8 @@ mission "home/berlin/cutover" report-to="agent/example/owner" state="ready" {
   })
 
   it('lowers worker feedback without turning it into pre-work authorization', () => {
-    expect(
-      emit([step({ id: 'draft', assignedTo: worker, gate: { ...gate, mode: 'feedback' } })]),
-    ).toBe(`version 2
+    expect(emit([step({ id: 'draft', assignedTo: worker, gate: { ...gate, mode: 'feedback' } })]))
+      .toBe(`version 2
 step "draft" {
   assigned-to "agent/example/worker"
   gate "Approve the bounded Berlin cutover" mode="feedback" type="human" {
@@ -198,9 +197,7 @@ step "draft" {
   })
 
   it('lowers distinct person assignments and retains native field gate syntax', () => {
-    expect(
-      emit([step({ id: 'inspect', assignedTo: operator, goal: 'Inspect the plan.' })]),
-    ).toBe(
+    expect(emit([step({ id: 'inspect', assignedTo: operator, goal: 'Inspect the plan.' })])).toBe(
       'version 2\nstep "inspect" {\n  assigned-to "person/schickling"\n  goal "Inspect the plan."\n}\n',
     )
     expect(
@@ -766,7 +763,9 @@ const withIsolatedSt = async (
 ) => {
   const binary = kind === 'fixture' ? stFixtureBin : stBin
   if (binary === undefined || binary === '')
-    throw new Error(`${kind === 'fixture' ? 'ST_FIXTURE_BIN' : 'ST_BIN'} is required for ${kind} mode`)
+    throw new Error(
+      `${kind === 'fixture' ? 'ST_FIXTURE_BIN' : 'ST_BIN'} is required for ${kind} mode`,
+    )
   const dir = mkdtempSync(join(tmpdir(), 'genie-st-'))
   const socket = join(dir, 'daemon.sock')
   const stateDir = join(dir, 'state')
@@ -1260,7 +1259,10 @@ testWithStFixture(
         'approved dependent worker readiness',
       )
       expect(nativeStep(admitted, 'authorize').status).toBe('completed')
-      expect(nativeStep(admitted, 'risky')).toMatchObject({ claimant: null, worker_reported: false })
+      expect(nativeStep(admitted, 'risky')).toMatchObject({
+        claimant: null,
+        worker_reported: false,
+      })
       await expectEpisodeClosed(st, review)
       expectRefused(
         st.command(
@@ -1408,9 +1410,7 @@ testWithStFixture(
       )
       await expectEpisodeClosed(st, fresh.review)
       expect(await nativeResults(st, old.review)).toEqual([])
-      expect((await nativeResults(st, fresh.review)).map((claim) => claim.id)).toEqual([
-        result.id,
-      ])
+      expect((await nativeResults(st, fresh.review)).map((claim) => claim.id)).toEqual([result.id])
       expect(nativeRun(st, old.run.subject).status).toBe('cancelled')
     }),
   120000,
