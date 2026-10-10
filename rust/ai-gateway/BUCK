@@ -1,0 +1,143 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/ai-gateway/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:00561e819553fda12d0ba8fbf2dc7c6622cb21ed9225036977ba087794e45fbc
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/BUCK.genie.ts, rust/ai-gateway/Cargo.toml, rust/ai-gateway/src/**/*.rs, rust/ai-gateway/tests/**/*.rs, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/ai-gateway",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/chat.rs",
+        "src/client.rs",
+        "src/decision.rs",
+        "src/error.rs",
+        "src/lib.rs",
+        "src/schema.rs",
+        "src/telemetry.rs",
+        "src/types.rs",
+        "tests/conformance.rs",
+        "tests/telemetry.rs",
+        "tests/tools.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/chat.rs",
+    src = "src/chat.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/client.rs",
+    src = "src/client.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/decision.rs",
+    src = "src/decision.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/error.rs",
+    src = "src/error.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/schema.rs",
+    src = "src/schema.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/telemetry.rs",
+    src = "src/telemetry.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/types.rs",
+    src = "src/types.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "ai_gateway",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/chat.rs",
+        "src/client.rs",
+        "src/decision.rs",
+        "src/error.rs",
+        "src/lib.rs",
+        "src/schema.rs",
+        "src/telemetry.rs",
+        "src/types.rs",
+    ],
+    deps = [
+        "//rust/third-party:async-openai",
+        "//rust/third-party:futures",
+        "//rust/third-party:http",
+        "//rust/third-party:jsonschema",
+        "//rust/third-party:opentelemetry",
+        "//rust/third-party:reqwest",
+        "//rust/third-party:rustls",
+        "//rust/third-party:schemars",
+        "//rust/third-party:secrecy",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:tokio",
+        "//rust/third-party:tower",
+        "//rust/third-party:tracing",
+        "//rust/third-party:tracing-opentelemetry",
+        "//rust/third-party:webpki-roots",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "ai-gateway",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "Async, typed client for the public AI gateway contract",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "ai_gateway",
+        "CARGO_MANIFEST_DIR": "rust/ai-gateway",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)

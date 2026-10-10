@@ -74,10 +74,20 @@ ALLOWED_FORMS_SED=(
   -e 's#buck2-no-python-actions#<boundary-guard>#g'
 )
 
+# This additional admitted form applies only to Reindeer's generated BUCK.
+# Match a complete single-line env entry and replace only the string contents.
+# The raw banned-form scan remains unchanged, including within descriptions.
+REINDEER_DESCRIPTION_SED=(
+  -e 's#^([[:space:]]*"?CARGO_PKG_DESCRIPTION"?[[:space:]]*[=:][[:space:]]*")([^"\\]|\\.)*(",?[[:space:]]*)$#\1<cargo-description>\3#'
+)
+
 # Returns 0 when the files carry no unadmitted Python surface.
 scan_python_surface() {
+  local scope_root="$1"
+  shift
   local status=0
   local file form matches
+  local -a admitted_forms
 
   for file in "$@"; do
     [ -f "$file" ] || continue
@@ -91,7 +101,11 @@ scan_python_surface() {
       fi
     done
 
-    matches="$(sed -E "${ALLOWED_FORMS_SED[@]}" "$file" | grep -in python || true)"
+    admitted_forms=("${ALLOWED_FORMS_SED[@]}")
+    if [ "$file" = "$scope_root/rust/third-party/BUCK" ]; then
+      admitted_forms+=("${REINDEER_DESCRIPTION_SED[@]}")
+    fi
+    matches="$(sed -E "${admitted_forms[@]}" "$file" | grep -in python || true)"
     if [ -n "$matches" ]; then
       echo "REFUSED: Python token outside decision 0028's admitted realization in $file" >&2
       echo "$matches" >&2
@@ -133,7 +147,7 @@ done < <(
   find "$ROOT/scripts" -maxdepth 1 -type f -name 'buck2*.sh' -print0 2>/dev/null
 )
 
-scan_python_surface "${buck_sources[@]}" "${projections[@]}" ||
+scan_python_surface "$ROOT" "${buck_sources[@]}" "${projections[@]}" ||
   fail "Buck graph carries Python surface outside decision 0028's hermetic python_bootstrap toolchain"
 
 # The admitted realization must actually be admitted: a guard that rejects
@@ -156,7 +170,7 @@ toolchain_alias(
     actual = "//buck2/toolchains:python_bootstrap",
 )
 ADMITTED
-scan_python_surface "$admitted" ||
+scan_python_surface "$ROOT" "$admitted" ||
   fail "guard refuses the hermetic Nix-realized python_bootstrap toolchain that decision 0028 admits"
 
 admitted_manifest="$TEMP_ROOT/admitted-manifest.json"
@@ -173,7 +187,7 @@ cat >"$admitted_manifest" <<'ADMITTED_MANIFEST'
   ]
 }
 ADMITTED_MANIFEST
-scan_python_surface "$admitted_manifest" ||
+scan_python_surface "$ROOT" "$admitted_manifest" ||
   fail "guard refuses the projected python-bootstrap capability that decision 0028 admits"
 
 admitted_projection="$TEMP_ROOT/admitted-capabilities.bzl"
@@ -187,8 +201,24 @@ CAPABILITIES = {
     },
 }
 ADMITTED_PROJECTION
-scan_python_surface "$admitted_projection" ||
+scan_python_surface "$ROOT" "$admitted_projection" ||
   fail "guard refuses the .buck2/capabilities projection of the admitted bootstrap interpreter"
+
+description_root="$TEMP_ROOT/reindeer"
+mkdir -p "$description_root/rust/third-party"
+admitted_description="$description_root/rust/third-party/BUCK"
+cat >"$admitted_description" <<'ADMITTED_DESCRIPTION'
+        "CARGO_PKG_DESCRIPTION": "Split a string into shell words, like Python's shlex.",
+        "CARGO_PKG_DESCRIPTION": "Python's \"quoted\" metadata.",
+        CARGO_PKG_DESCRIPTION = "A Python description"
+ADMITTED_DESCRIPTION
+scan_python_surface "$description_root" "$admitted_description" ||
+  fail "guard mistakes Reindeer's free-text Cargo description for a Python action"
+outside_description="$description_root/BUCK"
+cp "$admitted_description" "$outside_description"
+if scan_python_surface "$description_root" "$outside_description" 2>/dev/null; then
+  fail "guard admits description text outside rust/third-party/BUCK"
+fi
 
 # One negative case per banned form, plus the unenumerated-spelling catch-all.
 declare -A REFUSED_CASES=(
@@ -209,14 +239,19 @@ declare -A REFUSED_CASES=(
   [shebang-interpreter]='#!/usr/bin/env python3'
   [path-invocation]='    cmd = "python3 -m compileall .",'
   [unenumerated-spelling]='    interpreter = require_python312_interpreter()'
+  [description-does-not-hide-action]='"CARGO_PKG_DESCRIPTION": "Mentions python_binary", python_binary(name = "helper")'
+  [description-does-not-hide-residual]='"CARGO_PKG_DESCRIPTION": "Python shell words", runtime = require_python312_interpreter()'
+  [other-cargo-metadata-not-admitted]='"CARGO_PKG_NAME": "python_helper"'
+  [multiline-description]=$'"CARGO_PKG_DESCRIPTION": "Python\ncontinued",'
+  [unterminated-description]='"CARGO_PKG_DESCRIPTION": "Python'
 )
 
 for case_name in "${!REFUSED_CASES[@]}"; do
-  refused="$TEMP_ROOT/refused-$case_name.bzl"
+  refused="$description_root/rust/third-party/BUCK"
   printf '%s\n' "${REFUSED_CASES[$case_name]}" >"$refused"
-  if scan_python_surface "$refused" 2>/dev/null; then
+  if scan_python_surface "$description_root" "$refused" 2>/dev/null; then
     fail "guard accepted a refused Python form ($case_name): ${REFUSED_CASES[$case_name]}"
   fi
 done
 
-echo "Buck Python boundary tests passed (${#REFUSED_CASES[@]} refused forms, 3 admitted forms)."
+echo "Buck Python boundary tests passed (${#REFUSED_CASES[@]} refused forms, 4 admitted forms)."

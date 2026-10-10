@@ -1,0 +1,2 @@
+# Generate category lookup tables from the crate's committed Unicode table.
+buildscript.run = true

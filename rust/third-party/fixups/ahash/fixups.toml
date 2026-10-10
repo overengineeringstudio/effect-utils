@@ -1,0 +1,2 @@
+# Preserve target-specific folded multiplication and specialization cfg detection.
+buildscript.run = true
