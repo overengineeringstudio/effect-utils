@@ -12,6 +12,16 @@ Authoritative grammar: `compoundingtech/smalltalk`, `crates/st3/src/graph.rs` at
 
 The conformance test is opt-in with `ST_BIN` pointing to a binary built from the exact pinned upstream revision. Its scratch daemon must be isolated from the caller's runtime directories.
 
+Daemonless native KDL parsing is an upstream prerequisite for a pinned-binary
+CI parse check. At native revision `14311260cf907e9b8dabf629588314e63dec3665`,
+`st apply --dry-run` still calls the daemon's `/v1/sets/preview`, and
+`st missions check` calls `/v1/gate-checks`. The daemonless `st2 validate`
+command parses the legacy agent catalog, not the st3 mission/schedule grammar,
+so it is not a substitute. Add a native offline st3 document parse/check
+entrypoint before wiring its pinned binary into this package's CI; retain the
+existing isolated-daemon conformance test meanwhile. A binary predating native
+mission reporting must not be used to check generated `report-to` declarations.
+
 ## Step dependency fan-in
 
 Author `dependsOn` as a nonempty list of `{ step, state: 'completed' }` entries. All entries must be satisfied (AND); every target must name an existing mission step. Omit the field for independent steps. Singleton dependencies use a one-item list; the former object form is no longer accepted.
@@ -27,6 +37,18 @@ Omission, bare agent/person strings, and `reportTo: 'none'` are rejected. There 
 Native support starts at `compoundingtech/smalltalk` commit `3e7efce0663826a4e2bb517b2481b284e8df5f76` (#1984). Use that commit or a descendant for `ST_BIN` and before publishing generated missions. The daemon sends one message per failed, cancelled, or stalled run event; stalls default to 30 minutes without progress. Completion reporting and stall-duration overrides are not exposed here. Messages identify the run, mission, and relevant steps, not failure reasons or step output. An unavailable reporting agent produces a native `report-to` fault rather than a delivered message.
 
 Changing `reportTo` changes the mission revision, not an agent's launch declaration. Existing runs retain the reporter recorded when they started; new runs use the new revision. Unit tests assert required/object-only authoring, invalid-reference rejection, and the exact mission-header KDL. The opt-in native conformance fixture publishes reporting missions through an isolated daemon.
+
+## Imported agent references
+
+Author `StepSchema.assignedTo` and each `AgentSchema.under[].target` with an imported agent declaration, just like mission `reportTo`. Strings (including `` `agent/${id}` ``) are not references. IDs are structural, not a registry or global enum: independently declared valid agent IDs work without registering them.
+
+`AgentReference` exposes the structural `{ readonly id: string }` view to avoid recursively expanding agent authoring types. `AgentReferenceSchema` defers validation to the complete `AgentSchema`, including harness routing, launch conflicts, nested supervisor references, and ID validation; empty ID path segments are rejected as for `ReportToSchema`. The imported object and any kit metadata retain their identity. The existing `ReportToSchema` API continues to expose the complete agent authoring type.
+
+Lowering emits only `assigned-to "agent/ID"` or `under "agent/ID" reason="..."`, never the referenced agent's launch configuration or kit metadata. There is no separate mission-agent launch API. Unit coverage includes exact KDL, object-only authoring types, invalid IDs and launches, and retained imported metadata.
+
+## Nested agent tasks
+
+Agent `pty` and `exec` tasks accept exactly one `command` or `argv` launch form and optional `host`/`workspace`; they do not accept or render `restart`. Excess task fields are rejected even when the containing agent is referenced rather than rendered. Unit assertions cover both task authoring types and runtime rejection, including an explicitly undefined `restart`. Root agent restart policy is unchanged; mission-step `ExecSchema.restart` remains a separate modeled field.
 
 ## Root agent contract and explicit routing
 
