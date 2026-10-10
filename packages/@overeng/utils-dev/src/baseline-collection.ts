@@ -85,14 +85,39 @@ export const decodeSourceTaskScope = (decoded: unknown): ReadonlySet<string> => 
   return new Set(decoded)
 }
 
-/** A platform subset cannot suppress census errors or bounded collection evidence. */
+/** Keep census errors enforced while selecting source and bounded platform evidence. */
 export const ownershipInSourceScope = ({
   ownership,
   scope,
+  collectionTargets,
 }: {
   readonly ownership: FileOwnership
   readonly scope: ReadonlySet<string> | undefined
-}): boolean => ownership.kind !== 'source' || scope === undefined || scope.has(ownership.taskName)
+  readonly collectionTargets?: ReadonlySet<string> | undefined
+}): boolean =>
+  ownership.kind === 'source'
+    ? scope === undefined || scope.has(ownership.taskName)
+    : ownership.kind === 'buck'
+      ? collectionTargets === undefined || collectionTargets.has(ownership.collectionTarget)
+      : true
+
+/** Select declared bounded tasks without replacing the complete ownership authority. */
+export const selectTestLanes = ({
+  lanes,
+  scope,
+}: {
+  readonly lanes: readonly TestAuthorityLane[]
+  readonly scope: ReadonlySet<string> | undefined
+}): readonly TestAuthorityLane[] => {
+  if (scope === undefined) return lanes
+  const declared = new Set(lanes.map(({ taskName }) => taskName))
+  for (const task of scope) {
+    if (declared.has(task) === false) {
+      throw new Error(`Bounded test scope contains undeclared task ${task}`)
+    }
+  }
+  return lanes.filter(({ taskName }) => scope.has(taskName))
+}
 
 /**
  * Lower bound on the registry size.
