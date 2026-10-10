@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit, Option, Schema } from 'effect'
+import { Cause, Effect, Exit, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
@@ -66,7 +66,7 @@ const runMrCommand = ({
   env: Record<string, string>
 }) =>
   Effect.gen(function* () {
-    const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
+    const { consoleLayer, getStdoutLines, getStderrLines } = yield* makeConsoleCapture
     const previousEnv = yield* Effect.acquireRelease(
       Effect.sync(() => {
         const previous = new Map<string, string | undefined>()
@@ -98,6 +98,8 @@ const runMrCommand = ({
     return {
       exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
       stdout: (yield* getStdoutLines).join('\n'),
+      stderr: (yield* getStderrLines).join('\n'),
+      failure: Exit.isFailure(exit) === true ? Cause.pretty(exit.cause) : '',
       exit,
     }
   }).pipe(Effect.scoped)
@@ -493,7 +495,9 @@ describe('mr store gc', () => {
             env: { MEGAREPO_STORE: storePath },
           })
 
-          expect(applied.exitCode).toBe(0)
+          expect(applied.exitCode, `${applied.stdout}\n${applied.stderr}\n${applied.failure}`).toBe(
+            0,
+          )
           expect(decodeStoreGcJsonOutput(applied.stdout).results).toHaveLength(1)
           expect(yield* fs.exists(candidate)).toBe(false)
           expect(yield* fs.exists(sibling)).toBe(true)
@@ -516,7 +520,10 @@ describe('mr store gc', () => {
             ],
             env: { MEGAREPO_STORE: storePath },
           })
-          expect(textApplied.exitCode).toBe(0)
+          expect(
+            textApplied.exitCode,
+            `${textApplied.stdout}\n${textApplied.stderr}\n${textApplied.failure}`,
+          ).toBe(0)
           expect(textApplied.stdout.length).toBeGreaterThan(0)
           expect(yield* fs.exists(sibling)).toBe(false)
         },
@@ -639,7 +646,7 @@ describe('mr store lease', () => {
           ],
           env: { MEGAREPO_STORE: storePath },
         })
-        expect(applied.exitCode).toBe(0)
+        expect(applied.exitCode, `${applied.stdout}\n${applied.stderr}\n${applied.failure}`).toBe(0)
         expect(yield* fs.exists(candidate)).toBe(false)
         expect(yield* fs.exists(held.leasePath)).toBe(false)
       },
@@ -711,7 +718,7 @@ describe('mr store lease', () => {
           return promise
         })
         const applied = runCli(...applyArgs)
-        expect(applied.status).toBe(0)
+        expect(applied.status, `${applied.stdout}\n${applied.stderr}`).toBe(0)
         expect(yield* fs.exists(candidate)).toBe(false)
       },
       Effect.provide(NodeServices.layer),

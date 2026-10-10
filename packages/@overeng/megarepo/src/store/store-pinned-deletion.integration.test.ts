@@ -36,10 +36,10 @@ describe.skipIf(process.platform !== 'linux')('store pinned deletion', () => {
         yield* fs.symlink(outside, `${path}/nested/outside-link`)
         yield* fs.writeFileString(`${rootPath}/owner/sibling`, 'keep sibling')
         const identity = yield* captureDeletionIdentity({ rootPath, path })
-        const encoded = Schema.encodeSync(Schema.fromJsonString(DeletionIdentity))(identity)
-        const decoded = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(DeletionIdentity))(
-          encoded,
+        const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(DeletionIdentity))(
+          identity,
         )
+        const decoded = yield* Schema.decodeEffect(Schema.fromJsonString(DeletionIdentity))(encoded)
         expect(decoded[0]?.path).toBe('/')
         expect(decoded.at(-1)?.path).toBe(path)
         expect(decoded.some((entry) => entry.path === rootPath)).toBe(true)
