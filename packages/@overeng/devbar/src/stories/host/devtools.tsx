@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 
 import { darkExplorerTheme } from '@overeng/effect-rpc-explorer-react/themes'
 import { darkMeterTheme, lightMeterTheme, type CanvasBlockSpec } from '@overeng/meters/canvas'
-import { MeterStrip, RenderProfiler } from '@overeng/meters/react'
+import { MetersPanel, MeterStrip, RenderProfiler } from '@overeng/meters/react'
 import { rpcExplorerPanel } from '@overeng/rpc-devtools/react'
 
 import { Devbar, type DevbarPanel } from '../../Devbar.tsx'
@@ -163,8 +163,8 @@ const HostContent = ({ runtime }: { readonly runtime: HostRuntime }): React.Reac
         {response}
       </p>
       <p {...stylex.props(styles.muted)}>
-        Panel selection is persisted by this host in localStorage. The shell owns neither storage
-        nor enabling.
+        Panel and meter selection are persisted by this host in localStorage. The shell owns neither
+        storage nor enabling.
       </p>
     </main>
   )
@@ -177,37 +177,44 @@ const Diagnostics = ({
   readonly runtime: HostRuntime
   readonly options: HostDiagnosticsOptions
 }): React.ReactNode => {
-  const panels = React.useMemo<readonly DevbarPanel[]>(
-    () => [
+  const rpcPanel = React.useMemo(
+    () =>
       rpcExplorerPanel({
         client: runtime.tools.client,
         id: 'rpc',
         label: 'RPC',
         presentation: { layout: 'wide' },
       }),
-      ...runtime.blocks
-        .filter((block) => block.id.startsWith('rpc.') === false)
-        .map((block) => ({
-          id: block.id,
-          label: block.label,
-          render: () => <Detail runtime={runtime} block={block} />,
-        })),
-    ],
     [runtime],
   )
-  const [openPanel, setOpenPanel] = React.useState<string | undefined>(() => {
+  const meterStorageKey = `${options.storageKey}.meter`
+  const [{ openPanel, selectedMeter }, setSelection] = React.useState<{
+    readonly openPanel: string | undefined
+    readonly selectedMeter: string | undefined
+  }>(() => {
+    const firstMeter = runtime.blocks[0]?.id
     try {
-      const stored = localStorage.getItem(options.storageKey)
-      return panels.some((panel) => panel.id === stored) === true
-        ? (stored ?? undefined)
-        : undefined
+      const storedPanel = localStorage.getItem(options.storageKey)
+      const storedMeter = localStorage.getItem(meterStorageKey) ?? storedPanel
+      return {
+        openPanel:
+          storedPanel === 'rpc' || storedPanel === 'meters'
+            ? storedPanel
+            : runtime.blocks.some((block) => block.id === storedPanel) === true
+              ? 'meters'
+              : undefined,
+        selectedMeter:
+          runtime.blocks.some((block) => block.id === storedMeter) === true
+            ? (storedMeter ?? firstMeter)
+            : firstMeter,
+      }
     } catch {
-      return undefined
+      return { openPanel: undefined, selectedMeter: firstMeter }
     }
   })
   const [frozen, setFrozen] = React.useState(false)
   const selectPanel = (id: string | undefined): void => {
-    setOpenPanel(id)
+    setSelection((current) => ({ ...current, openPanel: id }))
     try {
       if (id === undefined) localStorage.removeItem(options.storageKey)
       else localStorage.setItem(options.storageKey, id)
@@ -215,6 +222,30 @@ const Diagnostics = ({
       // Storage denial does not prevent host-controlled in-memory interaction.
     }
   }
+  const selectMeter = ({ id }: { readonly id: string }): void => {
+    setSelection((current) => ({ ...current, selectedMeter: id }))
+    try {
+      localStorage.setItem(meterStorageKey, id)
+    } catch {
+      // Storage denial does not prevent host-controlled in-memory interaction.
+    }
+  }
+  const panels: readonly DevbarPanel[] = [
+    rpcPanel,
+    {
+      id: 'meters',
+      label: 'Meters',
+      render: () => (
+        <MetersPanel
+          blocks={runtime.blocks}
+          theme={options.dark === true ? darkMeterTheme : lightMeterTheme}
+          selected={selectedMeter}
+          onSelect={selectMeter}
+          renderDetail={(block) => <Detail runtime={runtime} block={block} />}
+        />
+      ),
+    },
+  ]
   return (
     <div
       {...stylex.props(
@@ -242,7 +273,14 @@ const Diagnostics = ({
             theme={options.dark === true ? darkMeterTheme : lightMeterTheme}
             frozen={frozen}
             onFrozenChange={setFrozen}
-            onOpenDetail={({ id }) => selectPanel(id.startsWith('rpc.') === true ? 'rpc' : id)}
+            onOpenDetail={({ id }) => {
+              if (id.startsWith('rpc.') === true) {
+                selectPanel('rpc')
+              } else {
+                selectMeter({ id })
+                selectPanel('meters')
+              }
+            }}
           />
         }
         segments={[{ id: 'host-sync', render: () => <SyncStatus runtime={runtime} /> }]}

@@ -17,6 +17,7 @@ import type { Meters } from '../session/index.ts'
 import { associateProfiler, type ReactCommit } from './commits.ts'
 
 export { reactCommitsSource, type ReactCommit } from './commits.ts'
+export { MetersPanel, type MetersPanelProps } from './panel.tsx'
 
 const MetersContext = React.createContext<MeterSession | undefined>(undefined)
 /** Fork one scoped program on the ambient runtime; unexpected causes are logged, unmount interruption is not. */
