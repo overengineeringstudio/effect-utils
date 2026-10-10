@@ -362,9 +362,7 @@ export const ScheduleSchema = Schema.Struct({
  * Native st reports only to agents; people must be reached through their own agent.
  * Kit metadata on the declaration is not part of the reference.
  */
-export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(
-  isAgentDeclaration,
-).pipe(
+export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(isAgentDeclaration).pipe(
   Schema.refine((a): a is typeof a => a.id.includes('//') === false, {
     message: 'report-to agent ID must not contain empty path segments',
   }),
