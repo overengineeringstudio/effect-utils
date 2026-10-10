@@ -116,9 +116,9 @@ const expectUnique = (values: readonly string[]): void => {
 }
 
 describe('JavaScript product registry', () => {
-  it('declares the twelve exact publication labels and product contracts', () => {
+  it('declares the thirteen exact publication labels and product contracts', () => {
     expect(javaScriptProductPublications).toEqual(expectedPublications)
-    expect(javaScriptProductPublications).toHaveLength(12)
+    expect(javaScriptProductPublications).toHaveLength(13)
   })
 
   it('keeps every publication identity and package-local target unique', () => {
