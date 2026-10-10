@@ -756,7 +756,7 @@ describe('editor view publisher', () => {
         target: '//:editor_inputs',
         consumerCache: '.devenv/vite-cache/root',
       }
-      const secondOptions = { ...second.options, contentStore: first.options.contentStore }
+      const secondOptions = { ...second.options, contentStore: first.options.contentStore! }
       const records = await Promise.all([
         publishEditorView(first.options),
         publishEditorView(rootOptions),

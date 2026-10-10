@@ -107,7 +107,7 @@ const regularFiles = (directory: string): readonly string[] =>
   })
 
 const expectReadonlyDirectories = (directory: string): void => {
-  expect(lstatSync(directory).isDirectory()).toBe(true)
+  expect(lstatSync(directory).isDirectory() === true).toBe(true)
   // Inspect permission bits: root/CAP_DAC_OVERRIDE runners can bypass EACCES.
   expect(mode(directory)).toBe(0o555)
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -127,7 +127,7 @@ const expectNoLock = (contentStore: string): void => {
   const prefix = `${basename(contentStore)}.lock`
   expect(
     readdirSync(dirname(contentStore)).filter(
-      (name) => name === prefix || name.startsWith(`${prefix}.`),
+      (name) => name === prefix || name.startsWith(`${prefix}.`) === true,
     ),
   ).toEqual([])
 }
@@ -216,7 +216,7 @@ const installBlob = (contentStore: string, bytes: string): string => {
     chmodSync(dirname(path), 0o755)
     linkSync(privateTemp, path)
   } finally {
-    if (exists(dirname(path))) chmodSync(dirname(path), 0o555)
+    if (exists(dirname(path)) === true) chmodSync(dirname(path), 0o555)
     chmodSync(contentStore, 0o555)
     unlinkSync(privateTemp)
   }
@@ -445,7 +445,7 @@ describe('host-wide editor snapshot content store', () => {
       const file = payload(directory, 'payload', 'racing bytes')
       const blob = blobPath(contentStore, 'racing bytes')
       let installed: BigIntStats | undefined
-      expect(exists(blob)).toBe(false)
+      expect(exists(blob) === true).toBe(false)
       const result = await shareSnapshotFiles({
         candidate: directory,
         contentStore,
@@ -550,7 +550,7 @@ describe('host-wide editor snapshot content store', () => {
         removedBlobs: 1,
         removedBytes: Buffer.byteLength('first bytes'),
       })
-      expect(exists(blobPath(contentStore, 'first bytes'))).toBe(false)
+      expect(exists(blobPath(contentStore, 'first bytes')) === true).toBe(false)
       expect(inode(shared)).toBe(inode(blobPath(contentStore, 'shared bytes')))
       expect(inode(executable)).toBe(inode(blobPath(contentStore, 'executable bytes', true)))
       expect(lstatSync(shared).nlink).toBe(2)
@@ -581,8 +581,8 @@ describe('host-wide editor snapshot content store', () => {
         }),
       ).toEqual({ removedBlobs: 0, removedBytes: 0 })
       expect(entered).toBe(false)
-      expect(exists(contentStore)).toBe(false)
-      expect(exists(`${contentStore}.lock`)).toBe(false)
+      expect(exists(contentStore) === true).toBe(false)
+      expect(exists(`${contentStore}.lock`) === true).toBe(false)
     })
   })
 
@@ -827,7 +827,7 @@ describe('host-wide editor snapshot content store', () => {
           typeof owner.token !== 'string'
         )
           throw new Error('store lock did not contain a token')
-        expect(lstatSync(lock).isFile()).toBe(true)
+        expect(lstatSync(lock).isFile() === true).toBe(true)
         expect(mode(lock)).toBe(0o444)
         await expect(
           recoverEditorViewContentStoreLock({ contentStore, token: owner.token }),
@@ -879,7 +879,7 @@ describe('host-wide editor snapshot content store', () => {
       ).rejects.toThrow('token mismatch')
       expect(readFileSync(lock, 'utf8')).toBe(lockBefore)
       await recoverEditorViewContentStoreLock({ contentStore, token })
-      expect(exists(lock)).toBe(false)
+      expect(exists(lock) === true).toBe(false)
       expectReadonlyStore(contentStore)
       const after = lstatSync(blob, { bigint: true })
       expect(after.ino).toBe(before.ino)
@@ -929,7 +929,7 @@ describe('host-wide editor snapshot content store', () => {
           if (
             error instanceof Error &&
             'code' in error &&
-            ['ENOENT', 'EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(String(error.code))
+            ['ENOENT', 'EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(String(error.code)) === true
           )
             continue
           throw error
@@ -1004,8 +1004,8 @@ describe('default editor-view content store', () => {
         expect(defaultEditorViewContentStore(first)).toBe(expected)
         expect(defaultEditorViewContentStore(second)).toBe(expected)
       })
-      expect(exists(join(root, '.editor-view-content'))).toBe(false)
-      expect(exists(expected)).toBe(false)
+      expect(exists(join(root, '.editor-view-content')) === true).toBe(false)
+      expect(exists(expected) === true).toBe(false)
     })
   })
 
@@ -1030,7 +1030,7 @@ describe('default editor-view content store', () => {
         expect(defaultEditorViewContentStore(repository)).toBe(override)
       })
       expect(process.env.EDITOR_VIEW_CONTENT_STORE).toBe(previous)
-      expect(exists(override)).toBe(false)
+      expect(exists(override) === true).toBe(false)
     })
   })
 

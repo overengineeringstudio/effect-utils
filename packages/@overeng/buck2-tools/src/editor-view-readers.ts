@@ -27,7 +27,12 @@ export const referencedEditorSnapshots = ({
     if (target.startsWith('/') === false) return
     const path = target.endsWith(' (deleted)') === true ? target.slice(0, -10) : target
     const within = relative(storeDir, path)
-    if (within === '..' || within.startsWith(`..${sep}`) === true || within.startsWith(sep)) return
+    if (
+      within === '..' ||
+      within.startsWith(`..${sep}`) === true ||
+      within.startsWith(sep) === true
+    )
+      return
     const snapshot = within.split(sep)[0]
     if (snapshot !== undefined && snapshot.length > 0) referenced.add(snapshot)
   }

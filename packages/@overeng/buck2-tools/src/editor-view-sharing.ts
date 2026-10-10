@@ -30,11 +30,11 @@ const blobNamePattern = /^([a-f0-9]{64})-(0444|0555)$/
 const shardPattern = /^[a-f0-9]{2}$/
 const temporaryPattern = /^\.tmp-([a-f0-9]{64})-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
 
-const fail = (message: string): never => {
+const fail: (message: string) => never = (message) => {
   throw new Error(`editor view sharing: ${message}`)
 }
 
-const hasCode = (error: unknown, code: string): boolean =>
+const hasCode = ({ error, code }: { readonly error: unknown; readonly code: string }): boolean =>
   error instanceof Error && 'code' in error && error.code === code
 
 const userId = (): bigint => {
@@ -46,7 +46,7 @@ const statusIfPresent = async (path: string): Promise<BigIntStats | undefined> =
   try {
     return await lstat(path, { bigint: true })
   } catch (error) {
-    if (hasCode(error, 'ENOENT')) return undefined
+    if (hasCode({ error: error, code: 'ENOENT' }) === true) return undefined
     throw error
   }
 }
@@ -55,39 +55,70 @@ const unlinkIfPresent = async (path: string): Promise<void> => {
   try {
     await unlink(path)
   } catch (error) {
-    if (hasCode(error, 'ENOENT') === false) throw error
+    if (hasCode({ error: error, code: 'ENOENT' }) === false) throw error
   }
 }
 
 const permissions = (status: BigIntStats): bigint => status.mode & 0o7777n
 const isImmutable = (status: BigIntStats): boolean =>
   permissions(status) === 0o444n || permissions(status) === 0o555n
-const sameInode = (left: BigIntStats, right: BigIntStats): boolean =>
-  left.dev === right.dev && left.ino === right.ino
+const sameInode = ({
+  left,
+  right,
+}: {
+  readonly left: BigIntStats
+  readonly right: BigIntStats
+}): boolean => left.dev === right.dev && left.ino === right.ino
 
 // Readonly hardlinks legitimately change ctime/nlink in other worktrees. Content,
 // identity and mode must still agree; writable files also require stable ctime.
-const unchanged = (left: BigIntStats, right: BigIntStats): boolean =>
-  sameInode(left, right) &&
+const unchanged = ({
+  left,
+  right,
+}: {
+  readonly left: BigIntStats
+  readonly right: BigIntStats
+}): boolean =>
+  sameInode({ left: left, right: right }) === true &&
   left.size === right.size &&
   left.mtimeNs === right.mtimeNs &&
   left.mode === right.mode &&
   left.uid === right.uid &&
-  (left.ctimeNs === right.ctimeNs || (isImmutable(left) && isImmutable(right)))
+  (left.ctimeNs === right.ctimeNs || (isImmutable(left) === true && isImmutable(right) === true))
 
-const requireOwned = (path: string, status: BigIntStats): void => {
+const requireOwned = ({
+  path,
+  status,
+}: {
+  readonly path: string
+  readonly status: BigIntStats
+}): void => {
   if (status.uid !== userId()) fail(`entry must be owned by the current user: ${path}`)
 }
 
-const requireRealDirectory = async (path: string, status: BigIntStats): Promise<void> => {
+const requireRealDirectory = async ({
+  path,
+  status,
+}: {
+  readonly path: string
+  readonly status: BigIntStats
+}): Promise<void> => {
   if (status.isDirectory() === false || (await realpath(path)) !== path)
     fail(`directory must be canonical and real, without symbolic links: ${path}`)
 }
 
-const requireBlob = (path: string, status: BigIntStats, mode: number): void => {
+const requireBlob = ({
+  path,
+  status,
+  mode,
+}: {
+  readonly path: string
+  readonly status: BigIntStats
+  readonly mode: number
+}): void => {
   if (status.isFile() === false)
     fail(`blob must be a real regular file, not a symbolic link: ${path}`)
-  requireOwned(path, status)
+  requireOwned({ path: path, status: status })
   if ((status.mode & 0o222n) !== 0n) fail(`writable blob is not trusted: ${path}`)
   if (permissions(status) !== BigInt(mode)) fail(`blob mode does not match its address: ${path}`)
 }
@@ -104,13 +135,13 @@ export const defaultEditorViewContentStore = (repoRoot: string): string => {
   try {
     gitStatus = lstatSync(gitPath, { bigint: true })
   } catch (error) {
-    if (hasCode(error, 'ENOENT'))
+    if (hasCode({ error: error, code: 'ENOENT' }) === true)
       return join(homedir(), '.cache', 'effect-utils', 'editor-view-content', 'v1')
     throw error
   }
   let gitDirectory: string
-  if (gitStatus.isDirectory()) gitDirectory = realpathSync(gitPath)
-  else if (gitStatus.isFile()) {
+  if (gitStatus.isDirectory() === true) gitDirectory = realpathSync(gitPath)
+  else if (gitStatus.isFile() === true) {
     const match = /^gitdir: (.+?)(?:\r?\n)?$/.exec(readFileSync(gitPath, 'utf8'))
     if (match === null || match[1] === undefined) fail(`invalid Git gitdir file: ${gitPath}`)
     gitDirectory = realpathSync(resolve(dirname(gitPath), match[1]))
@@ -121,10 +152,10 @@ export const defaultEditorViewContentStore = (repoRoot: string): string => {
   try {
     common = readFileSync(commonPath, 'utf8').trim()
   } catch (error) {
-    if (hasCode(error, 'ENOENT') === false) throw error
+    if (hasCode({ error: error, code: 'ENOENT' }) === false) throw error
   }
   if (common !== undefined) {
-    if (common.length === 0 || common.includes('\n') || common.includes('\r'))
+    if (common.length === 0 || common.includes('\n') === true || common.includes('\r') === true)
       fail(`invalid Git commondir file: ${commonPath}`)
     commonDirectory = realpathSync(resolve(gitDirectory, common))
   }
@@ -143,16 +174,16 @@ type Lock = { readonly path: string; readonly owner: LockOwner }
 const readOwner = async (path: string): Promise<LockOwner | undefined> => {
   const expected = await statusIfPresent(path)
   if (expected === undefined) return undefined
-  requireBlob(path, expected, 0o444)
+  requireBlob({ path: path, status: expected, mode: 0o444 })
   let file: FileHandle
   try {
     file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
   } catch (error) {
-    if (hasCode(error, 'ENOENT')) return undefined
+    if (hasCode({ error: error, code: 'ENOENT' }) === true) return undefined
     throw error
   }
   try {
-    if (unchanged(expected, await file.stat({ bigint: true })) === false)
+    if (unchanged({ left: expected, right: await file.stat({ bigint: true }) }) === false)
       fail(`content-store lock owner changed while opening: ${path}`)
     let owner: unknown
     try {
@@ -163,8 +194,8 @@ const readOwner = async (path: string): Promise<LockOwner | undefined> => {
     const named = await statusIfPresent(path)
     if (named === undefined) return undefined
     if (
-      unchanged(expected, await file.stat({ bigint: true })) === false ||
-      unchanged(expected, named) === false
+      unchanged({ left: expected, right: await file.stat({ bigint: true }) }) === false ||
+      unchanged({ left: expected, right: named }) === false
     )
       fail(`content-store lock owner changed while reading: ${path}`)
     if (
@@ -195,8 +226,8 @@ const ownerIsLive = (owner: LockOwner): boolean => {
     process.kill(owner.pid, 0)
     return true
   } catch (error) {
-    if (hasCode(error, 'ESRCH')) return false
-    if (hasCode(error, 'EPERM')) return true
+    if (hasCode({ error: error, code: 'ESRCH' }) === true) return false
+    if (hasCode({ error: error, code: 'EPERM' }) === true) return true
     throw error
   }
 }
@@ -205,12 +236,21 @@ const tokenDigest = (token: string): string => createHash('sha256').update(token
 const lockPath = (contentStore: string): string => `${contentStore}.lock`
 const recoveryPath = (contentStore: string): string => `${contentStore}.lock.recovery`
 
-const staleOwner = (path: string, owner: LockOwner): never =>
+const staleOwner: (options: { readonly path: string; readonly owner: LockOwner }) => never = ({
+  path,
+  owner,
+}) =>
   fail(
     `content-store lock owner pid=${owner.pid} is gone at ${path}; explicit recovery requires exact token ${JSON.stringify(owner.token)} (no automatic lock theft)`,
   )
 
-const prepareOwner = async (path: string, owner: LockOwner): Promise<string> => {
+const prepareOwner = async ({
+  path,
+  owner,
+}: {
+  readonly path: string
+  readonly owner: LockOwner
+}): Promise<string> => {
   const temporary = `${path}.${randomUUID()}.tmp`
   const file = await open(
     temporary,
@@ -242,10 +282,16 @@ const releaseLock = async ({ path, owner }: Lock): Promise<void> => {
   await unlink(path)
 }
 
-const acquireLock = async (contentStore: string, token: string): Promise<Lock> => {
+const acquireLock = async ({
+  contentStore,
+  token,
+}: {
+  readonly contentStore: string
+  readonly token: string
+}): Promise<Lock> => {
   const path = lockPath(contentStore)
   const owner: LockOwner = { schema: lockSchema, token, pid: process.pid }
-  const temporary = await prepareOwner(path, owner)
+  const temporary = await prepareOwner({ path: path, owner: owner })
   let installed = false
   let wake: (() => void) | undefined
   let watcherError: Error | undefined
@@ -278,19 +324,21 @@ const acquireLock = async (contentStore: string, token: string): Promise<Lock> =
           await releaseLock({ path, owner })
           installed = false
         } catch (error) {
-          if (hasCode(error, 'EEXIST') === false) throw error
+          if (hasCode({ error: error, code: 'EEXIST' }) === false) throw error
         }
       }
       if (recovery !== undefined) {
-        if (ownerIsLive(recovery) === false) staleOwner(recoveryPath(contentStore), recovery)
+        if (ownerIsLive(recovery) === false)
+          staleOwner({ path: recoveryPath(contentStore), owner: recovery })
       } else {
         const current = await readOwner(path)
         if (current === undefined) continue
         if (ownerIsLive(current) === false) {
           // Recovery may have started after the first guard read.
           const recovering = await readOwner(recoveryPath(contentStore))
-          if (recovering === undefined) staleOwner(path, current)
-          if (ownerIsLive(recovering) === false) staleOwner(recoveryPath(contentStore), recovering)
+          if (recovering === undefined) staleOwner({ path: path, owner: current })
+          if (ownerIsLive(recovering) === false)
+            staleOwner({ path: recoveryPath(contentStore), owner: recovering })
         }
       }
       // Owner death does not emit a directory event. This wakeup detects death,
@@ -305,7 +353,7 @@ const acquireLock = async (contentStore: string, token: string): Promise<Lock> =
       }
     }
   } catch (error) {
-    if (installed) await releaseLock({ path, owner })
+    if (installed === true) await releaseLock({ path, owner })
     throw error
   } finally {
     watcher?.close()
@@ -315,7 +363,13 @@ const acquireLock = async (contentStore: string, token: string): Promise<Lock> =
   }
 }
 
-const ensureParent = async (contentStore: string, create: boolean): Promise<BigIntStats> => {
+const ensureParent = async ({
+  contentStore,
+  create,
+}: {
+  readonly contentStore: string
+  readonly create: boolean
+}): Promise<BigIntStats> => {
   const parent = dirname(contentStore)
   if (parent === contentStore) fail('content store must not be the filesystem root')
   const missing: string[] = []
@@ -327,38 +381,41 @@ const ensureParent = async (contentStore: string, create: boolean): Promise<BigI
     ancestor = dirname(ancestor)
     status = await statusIfPresent(ancestor)
   }
-  await requireRealDirectory(ancestor, status)
+  await requireRealDirectory({ path: ancestor, status: status })
   for (const directory of missing.toReversed()) {
     try {
       await mkdir(directory, { mode: 0o700 })
     } catch (error) {
-      if (hasCode(error, 'EEXIST') === false) throw error
+      if (hasCode({ error: error, code: 'EEXIST' }) === false) throw error
     }
     const created = await lstat(directory, { bigint: true })
-    await requireRealDirectory(directory, created)
-    requireOwned(directory, created)
+    await requireRealDirectory({ path: directory, status: created })
+    requireOwned({ path: directory, status: created })
   }
   const parentStatus = await lstat(parent, { bigint: true })
-  await requireRealDirectory(parent, parentStatus)
+  await requireRealDirectory({ path: parent, status: parentStatus })
   const root = await statusIfPresent(contentStore)
   if (root !== undefined && root.dev !== parentStatus.dev)
     fail(
       `content store must be a child directory on the same device as its sibling control area, not a filesystem mountpoint: ${contentStore}; choose a path such as /dev/shm/editor-view-content/v1, not /dev/shm`,
     )
-  requireOwned(parent, parentStatus)
+  requireOwned({ path: parent, status: parentStatus })
   if ((parentStatus.mode & 0o022n) !== 0n)
     fail(`content-store control parent must not be group/other writable: ${parent}`)
   return parentStatus
 }
 
-const validateDirectory = async (
-  path: string,
-  contentStore: string,
-): Promise<BigIntStats | undefined> => {
+const validateDirectory = async ({
+  path,
+  contentStore,
+}: {
+  readonly path: string
+  readonly contentStore: string
+}): Promise<BigIntStats | undefined> => {
   const status = await statusIfPresent(path)
   if (status === undefined) return undefined
-  await requireRealDirectory(path, status)
-  requireOwned(path, status)
+  await requireRealDirectory({ path: path, status: status })
+  requireOwned({ path: path, status: status })
   if (permissions(status) === 0o555n) return status
   // Another valid lock owner may be installing entries while we prehash. Newly
   // created directories can also briefly reflect a restrictive process umask.
@@ -367,7 +424,8 @@ const validateDirectory = async (
       (await readOwner(lockPath(contentStore))) ?? (await readOwner(recoveryPath(contentStore)))
     if (owner !== undefined) return status
     const refreshed = await lstat(path, { bigint: true })
-    if (sameInode(status, refreshed) && permissions(refreshed) === 0o555n) return refreshed
+    if (sameInode({ left: status, right: refreshed }) === true && permissions(refreshed) === 0o555n)
+      return refreshed
   }
   return fail(`content-store directory must be readonly when unlocked: ${path}`)
 }
@@ -380,18 +438,24 @@ type OpenDirectory = {
 }
 type Directories = Map<string, OpenDirectory>
 
-const openDirectory = async (path: string, directories: Directories): Promise<OpenDirectory> => {
+const openDirectory = async ({
+  path,
+  directories,
+}: {
+  readonly path: string
+  readonly directories: Directories
+}): Promise<OpenDirectory> => {
   const previous = directories.get(path)
   if (previous !== undefined) return previous
   const status = await lstat(path, { bigint: true })
-  await requireRealDirectory(path, status)
-  requireOwned(path, status)
+  await requireRealDirectory({ path: path, status: status })
+  requireOwned({ path: path, status: status })
   if (permissions(status) !== 0o555n) fail(`content-store directory is not readonly: ${path}`)
   const file = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
   try {
     const opened = await file.stat({ bigint: true })
     if (
-      sameInode(status, opened) === false ||
+      sameInode({ left: status, right: opened }) === false ||
       opened.mode !== status.mode ||
       opened.uid !== status.uid
     )
@@ -408,24 +472,33 @@ const openDirectory = async (path: string, directories: Directories): Promise<Op
 const makeWritable = async (directory: OpenDirectory): Promise<void> => {
   if (directory.writable) return
   const current = await lstat(directory.path, { bigint: true })
-  if (sameInode(directory.status, current) === false || current.mode !== directory.status.mode)
+  if (
+    sameInode({ left: directory.status, right: current }) === false ||
+    current.mode !== directory.status.mode
+  )
     fail(`content-store directory changed before writing: ${directory.path}`)
   directory.writable = true
   await directory.file.chmod(0o755)
 }
 
-const createDirectory = async (path: string, directories: Directories): Promise<void> => {
+const createDirectory = async ({
+  path,
+  directories,
+}: {
+  readonly path: string
+  readonly directories: Directories
+}): Promise<void> => {
   await mkdir(path, { mode: 0o555 })
   // The inode is private to the held lock; normalize a restrictive umask without
   // ever opening a caller-provided symlink for chmod. Register its descriptor
   // before normalization so failure still attempts readonly restoration.
   const status = await lstat(path, { bigint: true })
-  await requireRealDirectory(path, status)
-  requireOwned(path, status)
+  await requireRealDirectory({ path: path, status: status })
+  requireOwned({ path: path, status: status })
   const file = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
   let registered = false
   try {
-    if (sameInode(status, await file.stat({ bigint: true })) === false)
+    if (sameInode({ left: status, right: await file.stat({ bigint: true }) }) === false)
       fail(`new content-store directory changed: ${path}`)
     const directory: OpenDirectory = { path, file, status, writable: true }
     directories.set(path, directory)
@@ -438,33 +511,46 @@ const createDirectory = async (path: string, directories: Directories): Promise<
   }
 }
 
-const storeDirectory = async (
-  contentStore: string,
-  directories: Directories,
-  create: boolean,
-): Promise<OpenDirectory | undefined> => {
+const storeDirectory = async ({
+  contentStore,
+  directories,
+  create,
+}: {
+  readonly contentStore: string
+  readonly directories: Directories
+  readonly create: boolean
+}): Promise<OpenDirectory | undefined> => {
   if ((await statusIfPresent(contentStore)) === undefined) {
     if (create === false) return undefined
-    await createDirectory(contentStore, directories)
+    await createDirectory({ path: contentStore, directories: directories })
   }
-  return openDirectory(contentStore, directories)
+  return openDirectory({ path: contentStore, directories: directories })
 }
 
-const shardDirectory = async (
-  contentStore: string,
-  shard: string,
-  directories: Directories,
-  create: boolean,
-): Promise<OpenDirectory | undefined> => {
-  const root = await storeDirectory(contentStore, directories, create)
+const shardDirectory = async ({
+  contentStore,
+  shard,
+  directories,
+  create,
+}: {
+  readonly contentStore: string
+  readonly shard: string
+  readonly directories: Directories
+  readonly create: boolean
+}): Promise<OpenDirectory | undefined> => {
+  const root = await storeDirectory({
+    contentStore: contentStore,
+    directories: directories,
+    create: create,
+  })
   if (root === undefined) return undefined
   const path = join(contentStore, shard)
   if ((await statusIfPresent(path)) === undefined) {
     if (create === false) return undefined
     await makeWritable(root)
-    await createDirectory(path, directories)
+    await createDirectory({ path: path, directories: directories })
   }
-  return openDirectory(path, directories)
+  return openDirectory({ path: path, directories: directories })
 }
 
 const withStoreLock = async <T>({
@@ -475,10 +561,10 @@ const withStoreLock = async <T>({
 }: {
   readonly contentStore: string
   readonly token: string
-  readonly afterStoreLock?: () => void | Promise<void>
+  readonly afterStoreLock?: (() => void | Promise<void>) | undefined
   readonly run: (directories: Directories) => Promise<T>
 }): Promise<T> => {
-  const lock = await acquireLock(contentStore, token)
+  const lock = await acquireLock({ contentStore: contentStore, token: token })
   const directories: Directories = new Map()
   try {
     await afterStoreLock?.()
@@ -489,7 +575,10 @@ const withStoreLock = async <T>({
       try {
         if (directory.writable) await directory.file.chmod(0o555)
         const current = await lstat(directory.path, { bigint: true })
-        if (sameInode(directory.status, current) === false || permissions(current) !== 0o555n)
+        if (
+          sameInode({ left: directory.status, right: current }) === false ||
+          permissions(current) !== 0o555n
+        )
           fail(`content-store directory changed while restoring readonly mode: ${directory.path}`)
       } catch (error) {
         errors.push(error)
@@ -515,7 +604,13 @@ const withStoreLock = async <T>({
 const verified = new Map<string, string>()
 const verificationKey = (status: BigIntStats): string =>
   `${status.dev}:${status.ino}:${status.size}:${status.mtimeNs}:${status.mode}:${status.uid}`
-const remember = (status: BigIntStats, digest: string): void => {
+const remember = ({
+  status,
+  digest,
+}: {
+  readonly status: BigIntStats
+  readonly digest: string
+}): void => {
   const key = verificationKey(status)
   if (verified.has(key) === false && verified.size >= 8_192) {
     const oldest = verified.keys().next().value
@@ -524,51 +619,59 @@ const remember = (status: BigIntStats, digest: string): void => {
   verified.set(key, digest)
 }
 
-const fingerprint = async (
-  path: string,
-  expected: BigIntStats,
+const fingerprint = async ({
+  path,
+  expected,
   mayDisappear = false,
-): Promise<string | undefined> => {
+}: {
+  readonly path: string
+  readonly expected: BigIntStats
+  readonly mayDisappear?: boolean
+}): Promise<string | undefined> => {
   const cached = verified.get(verificationKey(expected))
-  if (cached !== undefined && isImmutable(expected)) return cached
+  if (cached !== undefined && isImmutable(expected) === true) return cached
   let file: FileHandle
   try {
     file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
   } catch (error) {
-    if (mayDisappear && hasCode(error, 'ENOENT')) return undefined
+    if (mayDisappear && hasCode({ error: error, code: 'ENOENT' }) === true) return undefined
     throw error
   }
   try {
     const before = await file.stat({ bigint: true })
-    if (before.isFile() === false || unchanged(expected, before) === false) {
-      if (mayDisappear && sameInode(expected, before) === false) return undefined
+    if (before.isFile() === false || unchanged({ left: expected, right: before }) === false) {
+      if (mayDisappear && sameInode({ left: expected, right: before }) === false) return undefined
       fail(`payload changed before hashing: ${path}`)
     }
     const hash = createHash('sha256')
     for await (const chunk of file.createReadStream({ autoClose: false })) hash.update(chunk)
-    if (unchanged(before, await file.stat({ bigint: true })) === false)
+    if (unchanged({ left: before, right: await file.stat({ bigint: true }) }) === false)
       fail(`payload changed while hashing: ${path}`)
     const named = await statusIfPresent(path)
-    if (named === undefined || sameInode(before, named) === false) {
+    if (named === undefined || sameInode({ left: before, right: named }) === false) {
       if (mayDisappear) return undefined
       fail(`payload disappeared or was replaced while hashing: ${path}`)
     }
-    if (unchanged(before, named) === false) fail(`payload changed while hashing: ${path}`)
+    if (unchanged({ left: before, right: named }) === false)
+      fail(`payload changed while hashing: ${path}`)
     const digest = hash.digest('hex')
-    if (isImmutable(before)) remember(before, digest)
+    if (isImmutable(before) === true) remember({ status: before, digest: digest })
     return digest
   } finally {
     await file.close()
   }
 }
 
-const regularFiles = async function* (
-  directory: string,
-  root: string = directory,
-): AsyncGenerator<string> {
+const regularFiles = async function* ({
+  directory,
+  root = directory,
+}: {
+  readonly directory: string
+  readonly root?: string
+}): AsyncGenerator<string> {
   const status = await lstat(directory, { bigint: true })
-  await requireRealDirectory(directory, status)
-  requireOwned(directory, status)
+  await requireRealDirectory({ path: directory, status: status })
+  requireOwned({ path: directory, status: status })
   if ((status.mode & 0o200n) === 0n) {
     // A byte-owned copy can retain readonly source directory modes. Only its
     // private directories need write permission for atomic payload substitution;
@@ -578,10 +681,10 @@ const regularFiles = async function* (
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     )
     try {
-      if (sameInode(status, await handle.stat({ bigint: true })) === false)
+      if (sameInode({ left: status, right: await handle.stat({ bigint: true }) }) === false)
         fail(`candidate directory changed before preparation: ${directory}`)
       await handle.chmod(Number(permissions(status) | 0o200n))
-      if (sameInode(status, await lstat(directory, { bigint: true })) === false)
+      if (sameInode({ left: status, right: await lstat(directory, { bigint: true }) }) === false)
         fail(`candidate directory changed during preparation: ${directory}`)
     } finally {
       await handle.close()
@@ -589,8 +692,9 @@ const regularFiles = async function* (
   }
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name)
-    if (entry.isDirectory()) yield* regularFiles(path, root)
-    else if (entry.isFile() && (directory !== root || entry.name !== 'editor-view.json')) yield path
+    if (entry.isDirectory() === true) yield* regularFiles({ directory: path, root: root })
+    else if (entry.isFile() === true && (directory !== root || entry.name !== 'editor-view.json'))
+      yield path
     // Admitted symlinks are not payload files and are never followed or changed.
   }
 }
@@ -598,23 +702,23 @@ const regularFiles = async function* (
 const normalizeCandidate = async (path: string): Promise<BigIntStats> => {
   const expected = await lstat(path, { bigint: true })
   if (expected.isFile() === false) fail(`candidate payload is not a regular file: ${path}`)
-  requireOwned(path, expected)
+  requireOwned({ path: path, status: expected })
   const mode = (expected.mode & 0o111n) === 0n ? 0o444 : 0o555
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
     const before = await file.stat({ bigint: true })
-    if (unchanged(expected, before) === false)
+    if (unchanged({ left: expected, right: before }) === false)
       fail(`candidate payload changed before normalization: ${path}`)
     // A same-mode chmod would change ctime on an already shared readonly inode.
     if (permissions(before) !== BigInt(mode)) await file.chmod(mode)
     const after = await file.stat({ bigint: true })
     if (
-      sameInode(before, after) === false ||
+      sameInode({ left: before, right: after }) === false ||
       before.size !== after.size ||
       before.mtimeNs !== after.mtimeNs ||
       before.uid !== after.uid ||
       permissions(after) !== BigInt(mode) ||
-      unchanged(after, await lstat(path, { bigint: true })) === false
+      unchanged({ left: after, right: await lstat(path, { bigint: true }) }) === false
     )
       fail(`candidate payload changed while normalizing: ${path}`)
     return after
@@ -623,18 +727,25 @@ const normalizeCandidate = async (path: string): Promise<BigIntStats> => {
   }
 }
 
-const validateBlob = async (
-  contentStore: string,
-  path: string,
-  digest: string,
-  mode: number,
-): Promise<BigIntStats | undefined> => {
-  if ((await validateDirectory(contentStore, contentStore)) === undefined) return undefined
-  if ((await validateDirectory(dirname(path), contentStore)) === undefined) return undefined
+const validateBlob = async ({
+  contentStore,
+  path,
+  digest,
+  mode,
+}: {
+  readonly contentStore: string
+  readonly path: string
+  readonly digest: string
+  readonly mode: number
+}): Promise<BigIntStats | undefined> => {
+  if ((await validateDirectory({ path: contentStore, contentStore: contentStore })) === undefined)
+    return undefined
+  if ((await validateDirectory({ path: dirname(path), contentStore: contentStore })) === undefined)
+    return undefined
   const status = await statusIfPresent(path)
   if (status === undefined) return undefined
-  requireBlob(path, status, mode)
-  const actual = await fingerprint(path, status, true)
+  requireBlob({ path: path, status: status, mode: mode })
+  const actual = await fingerprint({ path: path, expected: status, mayDisappear: true })
   if (actual === undefined) return undefined
   if (actual !== digest) fail(`blob content does not match its address: ${path}`)
   return status
@@ -649,13 +760,17 @@ type PreparedFile = {
   copy?: { readonly path: string; readonly status: BigIntStats }
 }
 
-const prepareCopy = async (
-  contentStore: string,
-  file: PreparedFile,
-  token: string,
-): Promise<void> => {
+const prepareCopy = async ({
+  contentStore,
+  file,
+  token,
+}: {
+  readonly contentStore: string
+  readonly file: PreparedFile
+  readonly token: string
+}): Promise<void> => {
   if (file.copy !== undefined) return
-  if (unchanged(file.status, await lstat(file.path, { bigint: true })) === false)
+  if (unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false)
     fail(`candidate payload changed before copying: ${file.path}`)
   const temporary = join(
     dirname(contentStore),
@@ -670,19 +785,19 @@ const prepareCopy = async (
     } catch (error) {
       // An interrupted copy may leave a partial private inode. An EEXIST inode
       // was not created by us and must never be removed or overwritten.
-      if (hasCode(error, 'EEXIST') === false) await unlinkIfPresent(temporary)
+      if (hasCode({ error: error, code: 'EEXIST' }) === false) await unlinkIfPresent(temporary)
       throw error
     }
     copied = true
     const status = await normalizeCandidate(temporary)
-    if ((await fingerprint(temporary, status)) !== file.digest)
+    if ((await fingerprint({ path: temporary, expected: status })) !== file.digest)
       fail(`prepared cross-device blob differs from its candidate: ${file.path}`)
-    if (unchanged(file.status, await lstat(file.path, { bigint: true })) === false)
+    if (unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false)
       fail(`candidate payload changed while copying: ${file.path}`)
     file.copy = { path: temporary, status }
     copied = false
   } finally {
-    if (copied) await unlinkIfPresent(temporary)
+    if (copied === true) await unlinkIfPresent(temporary)
   }
 }
 
@@ -694,14 +809,18 @@ export type EditorViewContentSharing = {
   createdBlobs: number
 }
 
-const substituteCandidate = async (
-  file: PreparedFile,
-  blobStatus: BigIntStats,
-  sharing: EditorViewContentSharing,
-): Promise<void> => {
-  if (unchanged(file.status, await lstat(file.path, { bigint: true })) === false)
+const substituteCandidate = async ({
+  file,
+  blobStatus,
+  sharing,
+}: {
+  readonly file: PreparedFile
+  readonly blobStatus: BigIntStats
+  readonly sharing: EditorViewContentSharing
+}): Promise<void> => {
+  if (unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false)
     fail(`candidate payload changed before linking: ${file.path}`)
-  if (sameInode(file.status, blobStatus)) {
+  if (sameInode({ left: file.status, right: blobStatus }) === true) {
     sharing.linkedFiles += 1
     return
   }
@@ -711,10 +830,12 @@ const substituteCandidate = async (
     try {
       await link(file.blob, temporary)
     } catch (error) {
-      if (hasCode(error, 'EXDEV') === false) throw error
+      if (hasCode({ error: error, code: 'EXDEV' }) === false) throw error
       // The caller already proved independent byte ownership. Keeping this
       // normalized inode avoids another redundant copy of its admitted bytes.
-      if (unchanged(file.status, await lstat(file.path, { bigint: true })) === false)
+      if (
+        unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false
+      )
         fail(`candidate payload changed during cross-device fallback: ${file.path}`)
       sharing.copiedFiles += 1
       sharing.copiedBytes += Number(file.status.size)
@@ -722,15 +843,18 @@ const substituteCandidate = async (
     }
     linked = true
     const linkedStatus = await lstat(temporary, { bigint: true })
-    if (unchanged(blobStatus, linkedStatus) === false || linkedStatus.isFile() === false)
+    if (
+      unchanged({ left: blobStatus, right: linkedStatus }) === false ||
+      linkedStatus.isFile() === false
+    )
       fail(`blob changed while linking into candidate: ${file.blob}`)
-    if (unchanged(file.status, await lstat(file.path, { bigint: true })) === false)
+    if (unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false)
       fail(`candidate payload changed while linking: ${file.path}`)
     await rename(temporary, file.path)
     linked = false
     sharing.linkedFiles += 1
   } finally {
-    if (linked) await unlinkIfPresent(temporary)
+    if (linked === true) await unlinkIfPresent(temporary)
   }
 }
 
@@ -746,7 +870,7 @@ const shareBatch = async ({
   readonly files: readonly PreparedFile[]
   readonly parentStatus: BigIntStats
   readonly token: string
-  readonly afterStoreLock?: () => void | Promise<void>
+  readonly afterStoreLock?: (() => void | Promise<void>) | undefined
   readonly sharing: EditorViewContentSharing
 }): Promise<void> => {
   let pending: readonly PreparedFile[] = files
@@ -755,9 +879,14 @@ const shareBatch = async ({
       // All walks, hashes and EXDEV preparation occur before acquisition. A
       // concurrent GC may unlink a validated key; private candidate bytes remain.
       for (const file of pending) {
-        const existing = await validateBlob(contentStore, file.blob, file.digest, file.mode)
+        const existing = await validateBlob({
+          contentStore: contentStore,
+          path: file.blob,
+          digest: file.digest,
+          mode: file.mode,
+        })
         if (existing === undefined && file.status.dev !== parentStatus.dev)
-          await prepareCopy(contentStore, file, token)
+          await prepareCopy({ contentStore: contentStore, file: file, token: token })
       }
       pending = await withStoreLock({
         contentStore,
@@ -766,18 +895,21 @@ const shareBatch = async ({
         run: async (directories) => {
           const retry: PreparedFile[] = []
           for (const file of pending) {
-            if (unchanged(file.status, await lstat(file.path, { bigint: true })) === false)
-              fail(`candidate payload changed before store installation: ${file.path}`)
-            const shard = await shardDirectory(
-              contentStore,
-              file.digest.slice(0, 2),
-              directories,
-              true,
+            if (
+              unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) ===
+              false
             )
+              fail(`candidate payload changed before store installation: ${file.path}`)
+            const shard = await shardDirectory({
+              contentStore: contentStore,
+              shard: file.digest.slice(0, 2),
+              directories: directories,
+              create: true,
+            })
             if (shard === undefined) fail(`content-store shard is absent: ${file.blob}`)
             let blobStatus = await statusIfPresent(file.blob)
             if (blobStatus !== undefined) {
-              requireBlob(file.blob, blobStatus, file.mode)
+              requireBlob({ path: file.blob, status: blobStatus, mode: file.mode })
               const knownDigest = verified.get(verificationKey(blobStatus))
               if (knownDigest === undefined) {
                 retry.push(file)
@@ -794,7 +926,12 @@ const shareBatch = async ({
                 retry.push(file)
                 continue
               }
-              if (unchanged(source.status, await lstat(source.path, { bigint: true })) === false)
+              if (
+                unchanged({
+                  left: source.status,
+                  right: await lstat(source.path, { bigint: true }),
+                }) === false
+              )
                 fail(`prepared blob source changed before installation: ${source.path}`)
               await makeWritable(shard)
               const temporary = join(shard.path, `.tmp-${tokenDigest(token)}-${randomUUID()}`)
@@ -802,33 +939,39 @@ const shareBatch = async ({
               try {
                 await link(source.path, temporary)
                 linked = true
-                if (unchanged(source.status, await lstat(temporary, { bigint: true })) === false)
+                if (
+                  unchanged({
+                    left: source.status,
+                    right: await lstat(temporary, { bigint: true }),
+                  }) === false
+                )
                   fail(`prepared blob source changed while linking: ${source.path}`)
                 try {
                   // Final blob paths are never opened for writing or truncation.
                   await link(temporary, file.blob)
                   sharing.createdBlobs += 1
                 } catch (error) {
-                  if (hasCode(error, 'EEXIST') === false) throw error
+                  if (hasCode({ error: error, code: 'EEXIST' }) === false) throw error
                   const raced = await statusIfPresent(file.blob)
-                  if (raced !== undefined) requireBlob(file.blob, raced, file.mode)
+                  if (raced !== undefined)
+                    requireBlob({ path: file.blob, status: raced, mode: file.mode })
                   retry.push(file)
                   continue
                 }
                 blobStatus = await lstat(file.blob, { bigint: true })
-                requireBlob(file.blob, blobStatus, file.mode)
-                if (unchanged(source.status, blobStatus) === false)
+                requireBlob({ path: file.blob, status: blobStatus, mode: file.mode })
+                if (unchanged({ left: source.status, right: blobStatus }) === false)
                   fail(`new blob does not retain its verified source inode: ${file.blob}`)
-                remember(blobStatus, file.digest)
+                remember({ status: blobStatus, digest: file.digest })
               } finally {
-                if (linked) await unlinkIfPresent(temporary)
+                if (linked === true) await unlinkIfPresent(temporary)
               }
             }
-            await substituteCandidate(
-              file,
-              blobStatus ?? fail(`installed blob is absent: ${file.blob}`),
-              sharing,
-            )
+            await substituteCandidate({
+              file: file,
+              blobStatus: blobStatus ?? fail(`installed blob is absent: ${file.blob}`),
+              sharing: sharing,
+            })
           }
           return retry
         },
@@ -849,7 +992,7 @@ const shareBatch = async ({
   }
 }
 
-const within = (parent: string, path: string): boolean => {
+const within = ({ parent, path }: { readonly parent: string; readonly path: string }): boolean => {
   const fromParent = relative(parent, path)
   return (
     fromParent === '' ||
@@ -875,7 +1018,10 @@ export const shareSnapshotFiles = async ({
 }): Promise<EditorViewContentSharing> => {
   const root = resolve(candidate)
   const store = resolve(contentStore)
-  if (within(root, store) || within(store, root))
+  if (
+    within({ parent: root, path: store }) === true ||
+    within({ parent: store, path: root }) === true
+  )
     fail('candidate and content store must not overlap')
   const sharing: EditorViewContentSharing = {
     linkedFiles: 0,
@@ -888,14 +1034,15 @@ export const shareSnapshotFiles = async ({
   let files: PreparedFile[] = []
   const flush = async (): Promise<void> => {
     if (files.length === 0) return
-    parentStatus ??= await ensureParent(store, true)
+    parentStatus ??= await ensureParent({ contentStore: store, create: true })
     await shareBatch({ contentStore: store, files, parentStatus, token, afterStoreLock, sharing })
     files = []
   }
-  for await (const path of regularFiles(root)) {
+  for await (const path of regularFiles({ directory: root })) {
     const status = await normalizeCandidate(path)
     const digest =
-      (await fingerprint(path, status)) ?? fail(`candidate disappeared while hashing: ${path}`)
+      (await fingerprint({ path: path, expected: status })) ??
+      fail(`candidate disappeared while hashing: ${path}`)
     const mode = Number(permissions(status))
     files.push({
       path,
@@ -920,12 +1067,14 @@ type CollectionCandidate = {
 const collectionCandidates = async function* (
   contentStore: string,
 ): AsyncGenerator<CollectionCandidate> {
-  if ((await validateDirectory(contentStore, contentStore)) === undefined) return
+  if ((await validateDirectory({ path: contentStore, contentStore: contentStore })) === undefined)
+    return
   for (const shard of await readdir(contentStore, { withFileTypes: true })) {
     const shardPath = join(contentStore, shard.name)
     if (shardPattern.test(shard.name) === false || shard.isDirectory() === false)
       fail(`unknown or symbolic-link content-store shard entry: ${shardPath}`)
-    if ((await validateDirectory(shardPath, contentStore)) === undefined) continue
+    if ((await validateDirectory({ path: shardPath, contentStore: contentStore })) === undefined)
+      continue
     for (const entry of await readdir(shardPath, { withFileTypes: true })) {
       const path = join(shardPath, entry.name)
       const temporary = temporaryPattern.exec(entry.name)
@@ -933,12 +1082,13 @@ const collectionCandidates = async function* (
         const owner = await readOwner(lockPath(contentStore))
         if (
           owner !== undefined &&
-          ownerIsLive(owner) &&
+          ownerIsLive(owner) === true &&
           temporary[1] === tokenDigest(owner.token)
         ) {
           const status = await statusIfPresent(path)
           if (status === undefined) continue
-          if (status.isFile() && status.uid === userId() && isImmutable(status)) continue
+          if (status.isFile() === true && status.uid === userId() && isImmutable(status) === true)
+            continue
         }
         // A normal publisher may have already removed its private link and lock.
         if ((await statusIfPresent(path)) === undefined) continue
@@ -955,11 +1105,11 @@ const collectionCandidates = async function* (
       const status = await statusIfPresent(path)
       if (status === undefined) continue
       const mode = match[2] === '0444' ? 0o444 : 0o555
-      requireBlob(path, status, mode)
+      requireBlob({ path: path, status: status, mode: mode })
       // Linked blobs cannot be collected. Validate their structure/permissions,
       // but do not reread retained snapshot bytes just to prove non-deletability.
       if (status.nlink !== 1n) continue
-      const actual = await fingerprint(path, status, true)
+      const actual = await fingerprint({ path: path, expected: status, mayDisappear: true })
       if (actual === undefined) continue
       if (actual !== match[1]) fail(`blob content does not match its address: ${path}`)
       yield { path, status, mode, digest: actual }
@@ -978,7 +1128,7 @@ export const collectEditorViewContentStore = async ({
   const store = resolve(contentStore)
   const result = { removedBlobs: 0, removedBytes: 0 }
   if ((await statusIfPresent(store)) === undefined) return result
-  await ensureParent(store, false)
+  await ensureParent({ contentStore: store, create: false })
   const token = randomUUID()
   let candidates: CollectionCandidate[] = []
   const flush = async (): Promise<void> => {
@@ -989,17 +1139,21 @@ export const collectEditorViewContentStore = async ({
       afterStoreLock,
       run: async (directories) => {
         for (const candidate of candidates) {
-          const shard = await shardDirectory(
-            store,
-            candidate.digest.slice(0, 2),
-            directories,
-            false,
-          )
+          const shard = await shardDirectory({
+            contentStore: store,
+            shard: candidate.digest.slice(0, 2),
+            directories: directories,
+            create: false,
+          })
           if (shard === undefined) continue
           const current = await statusIfPresent(candidate.path)
           if (current === undefined) continue
-          requireBlob(candidate.path, current, candidate.mode)
-          if (unchanged(candidate.status, current) === false || current.nlink !== 1n) continue
+          requireBlob({ path: candidate.path, status: current, mode: candidate.mode })
+          if (
+            unchanged({ left: candidate.status, right: current }) === false ||
+            current.nlink !== 1n
+          )
+            continue
           await makeWritable(shard)
           await unlink(candidate.path)
           result.removedBlobs += 1
@@ -1017,32 +1171,42 @@ export const collectEditorViewContentStore = async ({
   return result
 }
 
-const recoveryGuardError = (path: string, owner: LockOwner): never =>
+const recoveryGuardError = ({
+  path,
+  owner,
+}: {
+  readonly path: string
+  readonly owner: LockOwner
+}): never =>
   fail(
-    `recovery guard already exists at ${path}; token=${JSON.stringify(owner.token)} pid=${owner.pid} status=${ownerIsLive(owner) ? 'live' : 'dead'}; fail closed: quiesce publishers, prove the guard owner dead, rehardening directories only, then explicitly retire that exact guard before retrying recovery`,
+    `recovery guard already exists at ${path}; token=${JSON.stringify(owner.token)} pid=${owner.pid} status=${ownerIsLive(owner) === true ? 'live' : 'dead'}; fail closed: quiesce publishers, prove the guard owner dead, rehardening directories only, then explicitly retire that exact guard before retrying recovery`,
   )
 
-const restoreDirectories = async (
-  path: string,
-  token: string,
-  root: string = path,
-): Promise<void> => {
+const restoreDirectories = async ({
+  path,
+  token,
+  root = path,
+}: {
+  readonly path: string
+  readonly token: string
+  readonly root?: string
+}): Promise<void> => {
   const status = await statusIfPresent(path)
   if (status === undefined) return
-  await requireRealDirectory(path, status)
-  requireOwned(path, status)
+  await requireRealDirectory({ path: path, status: status })
+  requireOwned({ path: path, status: status })
   if ((permissions(status) & ~0o755n) !== 0n)
     fail(`unsafe content-store directory mode during recovery: ${path}`)
   const file = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
   try {
-    if (sameInode(status, await file.stat({ bigint: true })) === false)
+    if (sameInode({ left: status, right: await file.stat({ bigint: true }) }) === false)
       fail(`content-store directory changed during recovery: ${path}`)
     for (const entry of await readdir(path, { withFileTypes: true })) {
       const child = join(path, entry.name)
       if (path === root) {
         if (shardPattern.test(entry.name) === false || entry.isDirectory() === false)
           fail(`unknown or symbolic-link content-store shard during recovery: ${child}`)
-        await restoreDirectories(child, token, root)
+        await restoreDirectories({ path: child, token: token, root: root })
         continue
       }
       const temporary = temporaryPattern.exec(entry.name)
@@ -1060,7 +1224,7 @@ const restoreDirectories = async (
         fail(`stale-token temporary blob is not a real same-user readonly file: ${child}`)
       await file.chmod(0o755)
       const current = await lstat(child, { bigint: true })
-      if (unchanged(payload, current) === false)
+      if (unchanged({ left: payload, right: current }) === false)
         fail(`stale-token temporary blob changed during recovery: ${child}`)
       await unlink(child)
     }
@@ -1087,36 +1251,36 @@ export const recoverEditorViewContentStoreLock = async ({
   readonly token: string
 }): Promise<void> => {
   const store = resolve(contentStore)
-  await ensureParent(store, false)
+  await ensureParent({ contentStore: store, create: false })
   const path = lockPath(store)
   const guardPath = recoveryPath(store)
   const guard = await readOwner(guardPath)
-  if (guard !== undefined) recoveryGuardError(guardPath, guard)
+  if (guard !== undefined) recoveryGuardError({ path: guardPath, owner: guard })
   const owner = await readOwner(path)
   if (owner === undefined) fail(`content-store lock does not exist: ${path}`)
   if (owner.token !== token)
     fail(`content-store lock token mismatch; lock was not removed: ${path}`)
-  if (ownerIsLive(owner))
+  if (ownerIsLive(owner) === true)
     fail(`content-store lock owner is still live: pid=${owner.pid} at ${path}`)
   const guardOwner: LockOwner = { schema: lockSchema, token, pid: process.pid }
-  const temporary = await prepareOwner(guardPath, guardOwner)
+  const temporary = await prepareOwner({ path: guardPath, owner: guardOwner })
   let installed = false
   try {
     try {
       await link(temporary, guardPath)
       installed = true
     } catch (error) {
-      if (hasCode(error, 'EEXIST') === false) throw error
+      if (hasCode({ error: error, code: 'EEXIST' }) === false) throw error
       const existing = await readOwner(guardPath)
-      if (existing !== undefined) recoveryGuardError(guardPath, existing)
+      if (existing !== undefined) recoveryGuardError({ path: guardPath, owner: existing })
       fail(`recovery guard changed during installation; retry explicitly: ${guardPath}`)
     }
     const current = await readOwner(path)
     if (current === undefined || current.token !== token || current.pid !== owner.pid)
       fail(`content-store lock ownership changed before recovery; lock was not removed: ${path}`)
-    if (ownerIsLive(current))
+    if (ownerIsLive(current) === true)
       fail(`content-store lock owner is still live: pid=${current.pid} at ${path}`)
-    await restoreDirectories(store, token)
+    await restoreDirectories({ path: store, token: token })
     const restoredOwner = await readOwner(path)
     if (
       restoredOwner === undefined ||
@@ -1124,12 +1288,12 @@ export const recoverEditorViewContentStoreLock = async ({
       restoredOwner.pid !== owner.pid
     )
       fail(`content-store lock ownership changed during recovery; lock was not removed: ${path}`)
-    if (ownerIsLive(restoredOwner))
+    if (ownerIsLive(restoredOwner) === true)
       fail(`content-store lock owner is still live: pid=${restoredOwner.pid} at ${path}`)
     await releaseLock({ path, owner: restoredOwner })
   } finally {
     try {
-      if (installed) await releaseLock({ path: guardPath, owner: guardOwner })
+      if (installed === true) await releaseLock({ path: guardPath, owner: guardOwner })
     } finally {
       await unlinkIfPresent(temporary)
     }
