@@ -201,7 +201,7 @@ const readOwner = async (path: string): Promise<LockOwner | undefined> => {
     if (
       typeof owner !== 'object' ||
       owner === null ||
-      Array.isArray(owner) ||
+      Array.isArray(owner) === true ||
       Object.keys(owner).toSorted().join(',') !== 'pid,schema,token' ||
       'schema' in owner === false ||
       owner.schema !== lockSchema ||
@@ -261,18 +261,18 @@ const prepareOwner = async ({
   try {
     await file.writeFile(`${JSON.stringify(owner)}\n`)
     await file.chmod(0o444)
+    await file.close()
     complete = true
+    return temporary
   } finally {
-    try {
-      await file.close()
-    } catch (error) {
-      complete = false
-      throw error
-    } finally {
-      if (complete === false) await unlinkIfPresent(temporary)
+    if (complete === false) {
+      try {
+        await file.close()
+      } finally {
+        await unlinkIfPresent(temporary)
+      }
     }
   }
-  return temporary
 }
 
 const releaseLock = async ({ path, owner }: Lock): Promise<void> => {
@@ -282,6 +282,7 @@ const releaseLock = async ({ path, owner }: Lock): Promise<void> => {
   await unlink(path)
 }
 
+/* eslint-disable no-await-in-loop -- Lock acquisition retries must settle before inspecting the next owner; never race ownership attempts. */
 const acquireLock = async ({
   contentStore,
   token,
@@ -362,7 +363,9 @@ const acquireLock = async ({
     await unlinkIfPresent(temporary)
   }
 }
+/* eslint-enable no-await-in-loop */
 
+/* eslint-disable no-await-in-loop -- Parent admission and creation follow ancestor order; children cannot precede verified parents. */
 const ensureParent = async ({
   contentStore,
   create,
@@ -404,6 +407,7 @@ const ensureParent = async ({
     fail(`content-store control parent must not be group/other writable: ${parent}`)
   return parentStatus
 }
+/* eslint-enable no-await-in-loop */
 
 const validateDirectory = async ({
   path,
@@ -470,7 +474,7 @@ const openDirectory = async ({
 }
 
 const makeWritable = async (directory: OpenDirectory): Promise<void> => {
-  if (directory.writable) return
+  if (directory.writable === true) return
   const current = await lstat(directory.path, { bigint: true })
   if (
     sameInode({ left: directory.status, right: current }) === false ||
@@ -553,6 +557,7 @@ const shardDirectory = async ({
   return openDirectory({ path: path, directories: directories })
 }
 
+/* eslint-disable no-await-in-loop -- Bounded owned directory handles must settle restoration before the exclusive lock is released. */
 const withStoreLock = async <T>({
   contentStore,
   token,
@@ -566,38 +571,43 @@ const withStoreLock = async <T>({
 }): Promise<T> => {
   const lock = await acquireLock({ contentStore: contentStore, token: token })
   const directories: Directories = new Map()
+  let outcome: { readonly value: T } | { readonly error: unknown }
   try {
     await afterStoreLock?.()
-    return await run(directories)
-  } finally {
-    const errors: unknown[] = []
-    for (const directory of directories.values()) {
+    outcome = { value: await run(directories) }
+  } catch (error) {
+    outcome = { error }
+  }
+  const errors: unknown[] = []
+  for (const directory of directories.values()) {
+    try {
+      if (directory.writable === true) await directory.file.chmod(0o555)
+      const current = await lstat(directory.path, { bigint: true })
+      if (
+        sameInode({ left: directory.status, right: current }) === false ||
+        permissions(current) !== 0o555n
+      )
+        fail(`content-store directory changed while restoring readonly mode: ${directory.path}`)
+    } catch (error) {
+      errors.push(error)
+    } finally {
       try {
-        if (directory.writable) await directory.file.chmod(0o555)
-        const current = await lstat(directory.path, { bigint: true })
-        if (
-          sameInode({ left: directory.status, right: current }) === false ||
-          permissions(current) !== 0o555n
-        )
-          fail(`content-store directory changed while restoring readonly mode: ${directory.path}`)
+        await directory.file.close()
       } catch (error) {
         errors.push(error)
-      } finally {
-        try {
-          await directory.file.close()
-        } catch (error) {
-          errors.push(error)
-        }
       }
     }
-    if (errors.length !== 0)
-      throw new AggregateError(
-        errors,
-        'editor view sharing: readonly restoration failed; store lock retained',
-      )
-    await releaseLock(lock)
   }
+  if (errors.length !== 0)
+    throw new AggregateError(
+      'error' in outcome ? [outcome.error, ...errors] : errors,
+      'editor view sharing: readonly restoration failed; store lock retained',
+    )
+  await releaseLock(lock)
+  if ('error' in outcome) throw outcome.error
+  return outcome.value
 }
+/* eslint-enable no-await-in-loop */
 
 // This is only an optimization of immutable inode verification, never an index.
 // Bound retained metadata and omit ctime, which readonly hardlinks change freely.
@@ -634,13 +644,15 @@ const fingerprint = async ({
   try {
     file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
   } catch (error) {
-    if (mayDisappear && hasCode({ error: error, code: 'ENOENT' }) === true) return undefined
+    if (mayDisappear === true && hasCode({ error: error, code: 'ENOENT' }) === true)
+      return undefined
     throw error
   }
   try {
     const before = await file.stat({ bigint: true })
     if (before.isFile() === false || unchanged({ left: expected, right: before }) === false) {
-      if (mayDisappear && sameInode({ left: expected, right: before }) === false) return undefined
+      if (mayDisappear === true && sameInode({ left: expected, right: before }) === false)
+        return undefined
       fail(`payload changed before hashing: ${path}`)
     }
     const hash = createHash('sha256')
@@ -649,7 +661,7 @@ const fingerprint = async ({
       fail(`payload changed while hashing: ${path}`)
     const named = await statusIfPresent(path)
     if (named === undefined || sameInode({ left: before, right: named }) === false) {
-      if (mayDisappear) return undefined
+      if (mayDisappear === true) return undefined
       fail(`payload disappeared or was replaced while hashing: ${path}`)
     }
     if (unchanged({ left: before, right: named }) === false)
@@ -858,6 +870,7 @@ const substituteCandidate = async ({
   }
 }
 
+/* eslint-disable no-await-in-loop -- Each bounded metadata transaction proves and substitutes one inode before proceeding; retries hash outside the lock. */
 const shareBatch = async ({
   contentStore,
   files,
@@ -874,6 +887,7 @@ const shareBatch = async ({
   readonly sharing: EditorViewContentSharing
 }): Promise<void> => {
   let pending: readonly PreparedFile[] = files
+  let failure: { readonly error: unknown } | undefined
   try {
     while (pending.length !== 0) {
       // All walks, hashes and EXDEV preparation occur before acquisition. A
@@ -977,20 +991,26 @@ const shareBatch = async ({
         },
       })
     }
-  } finally {
-    const errors: unknown[] = []
-    for (const file of files) {
-      if (file.copy === undefined) continue
-      try {
-        await unlinkIfPresent(file.copy.path)
-      } catch (error) {
-        errors.push(error)
-      }
-    }
-    if (errors.length !== 0)
-      throw new AggregateError(errors, 'editor view sharing: prepared blob cleanup failed')
+  } catch (error) {
+    failure = { error }
   }
+  const errors: unknown[] = []
+  for (const file of files) {
+    if (file.copy === undefined) continue
+    try {
+      await unlinkIfPresent(file.copy.path)
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  if (errors.length !== 0)
+    throw new AggregateError(
+      failure === undefined ? errors : [failure.error, ...errors],
+      'editor view sharing: prepared blob cleanup failed',
+    )
+  if (failure !== undefined) throw failure.error
 }
+/* eslint-enable no-await-in-loop */
 
 const within = ({ parent, path }: { readonly parent: string; readonly path: string }): boolean => {
   const fromParent = relative(parent, path)
@@ -1064,6 +1084,7 @@ type CollectionCandidate = {
   readonly digest: string
 }
 
+/* eslint-disable no-await-in-loop -- Stream the census and file verification without retaining a payload-sized promise set. */
 const collectionCandidates = async function* (
   contentStore: string,
 ): AsyncGenerator<CollectionCandidate> {
@@ -1116,7 +1137,9 @@ const collectionCandidates = async function* (
     }
   }
 }
+/* eslint-enable no-await-in-loop */
 
+/* eslint-disable no-await-in-loop -- Each bounded deletion rechecks its inode and link count under the publisher's metadata lock. */
 /** Delete only validated real blobs with no snapshot/control hardlink remaining. */
 export const collectEditorViewContentStore = async ({
   contentStore,
@@ -1170,6 +1193,7 @@ export const collectEditorViewContentStore = async ({
   await flush()
   return result
 }
+/* eslint-enable no-await-in-loop */
 
 const recoveryGuardError = ({
   path,
@@ -1182,6 +1206,7 @@ const recoveryGuardError = ({
     `recovery guard already exists at ${path}; token=${JSON.stringify(owner.token)} pid=${owner.pid} status=${ownerIsLive(owner) === true ? 'live' : 'dead'}; fail closed: quiesce publishers, prove the guard owner dead, rehardening directories only, then explicitly retire that exact guard before retrying recovery`,
   )
 
+/* eslint-disable no-await-in-loop -- Exact-token recovery restores admitted descendants before their parent and the main lock can be released. */
 const restoreDirectories = async ({
   path,
   token,
@@ -1236,6 +1261,7 @@ const restoreDirectories = async ({
     }
   }
 }
+/* eslint-enable no-await-in-loop */
 
 /**
  * Exact-token administrative recovery never steals a live owner. A readonly

@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   type BigIntStats,
+  accessSync,
+  constants,
   chmodSync,
   copyFileSync,
   linkSync,
@@ -30,6 +32,17 @@ import {
   recoverEditorViewContentStoreLock,
   shareSnapshotFiles,
 } from './editor-view-sharing.ts'
+
+const crossDeviceDirectories = ['/dev/shm', '/tmp', '/var/tmp'].filter((directory) => {
+  try {
+    const canonical = realpathSync(directory)
+    const status = lstatSync(canonical)
+    accessSync(canonical, constants.W_OK | constants.X_OK)
+    return status.isDirectory() === true && status.dev !== lstatSync(realpathSync(tmpdir())).dev
+  } catch {
+    return false
+  }
+})
 
 const exists = (path: string): boolean => {
   try {
@@ -911,79 +924,80 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
-  it('uses real cross-device readonly copies or reflinks and accounts every fallback file and byte', async ({
-    skip,
-  }) => {
-    await withStore(async ({ root, contentStore }) => {
-      let alternateRoot: string | undefined
-      const sourceDevice = lstatSync(root).dev
-      for (const directory of ['/dev/shm', '/tmp', '/var/tmp']) {
-        try {
-          const probe = realpathSync(mkdtempSync(join(directory, 'editor-view-content-store-')))
-          if (lstatSync(probe).dev !== sourceDevice) {
-            alternateRoot = probe
-            break
+  it.skipIf(crossDeviceDirectories.length === 0)(
+    'uses real cross-device readonly copies or reflinks and accounts every fallback file and byte',
+    async () => {
+      await withStore(async ({ root, contentStore }) => {
+        let alternateRoot: string | undefined
+        const sourceDevice = lstatSync(root).dev
+        for (const directory of crossDeviceDirectories) {
+          try {
+            const probe = realpathSync(mkdtempSync(join(directory, 'editor-view-content-store-')))
+            if (lstatSync(probe).dev !== sourceDevice) {
+              alternateRoot = probe
+              break
+            }
+            removeOwnedTree(probe)
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              'code' in error &&
+              ['ENOENT', 'EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(String(error.code)) === true
+            )
+              continue
+            throw error
           }
-          removeOwnedTree(probe)
-        } catch (error) {
-          if (
-            error instanceof Error &&
-            'code' in error &&
-            ['ENOENT', 'EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(String(error.code)) === true
+        }
+        if (alternateRoot === undefined)
+          throw new Error(
+            'The admitted cross-device filesystem became unavailable before its probe',
           )
-            continue
-          throw error
+        try {
+          const first = join(alternateRoot, 'first')
+          const second = join(alternateRoot, 'second')
+          mkdirSync(first)
+          mkdirSync(second)
+          const dataBytes = 'content: café\n'
+          const executableBytes = '#!/bin/sh\nexit 0\n'
+          const firstData = payload(first, 'data', dataBytes)
+          const firstExecutable = payload(first, 'executable', executableBytes, 0o701)
+          const secondData = payload(second, 'data', dataBytes)
+          const secondExecutable = payload(second, 'executable', executableBytes, 0o710)
+          const copiedBytes = Buffer.byteLength(dataBytes) + Buffer.byteLength(executableBytes)
+          expect(await shareSnapshotFiles({ candidate: first, contentStore })).toEqual({
+            linkedFiles: 0,
+            copiedFiles: 2,
+            copiedBytes,
+            createdBlobs: 2,
+          })
+          expect(await shareSnapshotFiles({ candidate: second, contentStore })).toEqual({
+            linkedFiles: 0,
+            copiedFiles: 2,
+            copiedBytes,
+            createdBlobs: 0,
+          })
+          for (const path of [firstData, secondData]) {
+            expect(inode(path)).not.toBe(inode(blobPath(contentStore, dataBytes)))
+            expect(mode(path)).toBe(0o444)
+            expect(readFileSync(path, 'utf8')).toBe(dataBytes)
+          }
+          for (const path of [firstExecutable, secondExecutable]) {
+            expect(inode(path)).not.toBe(inode(blobPath(contentStore, executableBytes, true)))
+            expect(mode(path)).toBe(0o555)
+            expect(readFileSync(path, 'utf8')).toBe(executableBytes)
+          }
+          expect(inode(firstData)).not.toBe(inode(secondData))
+          expect(inode(firstExecutable)).not.toBe(inode(secondExecutable))
+          expect(lstatSync(blobPath(contentStore, dataBytes)).nlink).toBe(1)
+          expect(lstatSync(blobPath(contentStore, executableBytes, true)).nlink).toBe(1)
+          expectReadonlyStore(contentStore)
+          expectNoLock(contentStore)
+        } finally {
+          removeOwnedTree(alternateRoot)
         }
-      }
-      if (alternateRoot === undefined) {
-        skip()
-        return
-      }
-      try {
-        const first = join(alternateRoot, 'first')
-        const second = join(alternateRoot, 'second')
-        mkdirSync(first)
-        mkdirSync(second)
-        const dataBytes = 'content: café\n'
-        const executableBytes = '#!/bin/sh\nexit 0\n'
-        const firstData = payload(first, 'data', dataBytes)
-        const firstExecutable = payload(first, 'executable', executableBytes, 0o701)
-        const secondData = payload(second, 'data', dataBytes)
-        const secondExecutable = payload(second, 'executable', executableBytes, 0o710)
-        const copiedBytes = Buffer.byteLength(dataBytes) + Buffer.byteLength(executableBytes)
-        expect(await shareSnapshotFiles({ candidate: first, contentStore })).toEqual({
-          linkedFiles: 0,
-          copiedFiles: 2,
-          copiedBytes,
-          createdBlobs: 2,
-        })
-        expect(await shareSnapshotFiles({ candidate: second, contentStore })).toEqual({
-          linkedFiles: 0,
-          copiedFiles: 2,
-          copiedBytes,
-          createdBlobs: 0,
-        })
-        for (const path of [firstData, secondData]) {
-          expect(inode(path)).not.toBe(inode(blobPath(contentStore, dataBytes)))
-          expect(mode(path)).toBe(0o444)
-          expect(readFileSync(path, 'utf8')).toBe(dataBytes)
-        }
-        for (const path of [firstExecutable, secondExecutable]) {
-          expect(inode(path)).not.toBe(inode(blobPath(contentStore, executableBytes, true)))
-          expect(mode(path)).toBe(0o555)
-          expect(readFileSync(path, 'utf8')).toBe(executableBytes)
-        }
-        expect(inode(firstData)).not.toBe(inode(secondData))
-        expect(inode(firstExecutable)).not.toBe(inode(secondExecutable))
-        expect(lstatSync(blobPath(contentStore, dataBytes)).nlink).toBe(1)
-        expect(lstatSync(blobPath(contentStore, executableBytes, true)).nlink).toBe(1)
-        expectReadonlyStore(contentStore)
-        expectNoLock(contentStore)
-      } finally {
-        removeOwnedTree(alternateRoot)
-      }
-    })
-  })
+      })
+    },
+  )
 })
 
 describe('default editor-view content store', () => {

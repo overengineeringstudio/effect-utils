@@ -1579,6 +1579,7 @@ describe('editor view publisher', () => {
     const first = makeFixture()
     const sibling = makeSiblingView({ fixture: first, packageName: 'tui-react' })
     try {
+      writeFileSync(join(sibling.options.nodeModules, 'dep', 'index.js'), 'export default 1\n')
       await publishEditorView(first.options)
       await publishEditorView(sibling.options)
       chmodSync(
