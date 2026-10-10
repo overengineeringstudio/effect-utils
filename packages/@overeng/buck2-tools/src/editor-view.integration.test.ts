@@ -1062,11 +1062,19 @@ describe('editor view publisher', () => {
       chmodSync(snapshotNodeModules, 0o700)
       mkdirSync(viteTemp)
       chmodSync(snapshotNodeModules, 0o555)
-      await expect(verifyEditorViewSnapshot(fixture.options)).rejects.toThrow(
-        `snapshot directory is writable: ${viteTemp}; Vite/Vitest created .vite-temp inside the read-only editor-view snapshot`,
+      const expectedViteTemp = join(
+        realpathSync(fixture.root),
+        'packages',
+        '.editor-view',
+        record.snapshot,
+        'node_modules',
+        '.vite-temp',
       )
       await expect(verifyEditorViewSnapshot(fixture.options)).rejects.toThrow(
-        `then remove ${viteTemp}`,
+        `snapshot directory is writable: ${expectedViteTemp}; Vite/Vitest created .vite-temp inside the read-only editor-view snapshot`,
+      )
+      await expect(verifyEditorViewSnapshot(fixture.options)).rejects.toThrow(
+        `then remove ${expectedViteTemp}`,
       )
     } finally {
       cleanup(fixture)
