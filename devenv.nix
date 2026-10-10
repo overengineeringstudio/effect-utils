@@ -1116,6 +1116,25 @@ in
     ];
   };
 
+  tasks."genie:cache-evidence:test" = {
+    description = "Exercise sanitized Actions and host-service cache evidence, native projection and warm99 readers";
+    exec = trace.exec "genie:cache-evidence:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun test \
+        ./genie/ci-scripts/buck2-action-evidence.integration.test.ts \
+        ./genie/ci-scripts/buck2-cache-evidence.unit.test.ts \
+        ./genie/ci-scripts/buck2-cache-evidence.integration.test.ts \
+        ./genie/ci-scripts/buck2-evidence-producer.unit.test.ts \
+        ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts \
+        ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
+    '';
+    execIfModified = [
+      "genie/ci-scripts/buck2-*.ts"
+      "scripts/buck2-cache-posture.ts"
+    ];
+  };
+
   tasks."buck2:cache-posture:test" = {
     description = "Exercise direct Buck cache/watcher admission, outages, trust precedence and scoped daemon migration";
     exec = trace.exec "buck2:cache-posture:test" ''
