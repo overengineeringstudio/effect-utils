@@ -6,6 +6,7 @@ const escapeLabel = (value: string) =>
 const label = (value: string) => `"${escapeLabel(value)}"`
 const buckets = [0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300] as const
 
+/** Bounded per-consumer Prometheus request, token and duration accounting. */
 export class Metrics {
   private readonly requests = new Map<string, { labels: Labels; status: number; count: number }>()
   private readonly tokens = new Map<string, { labels: Labels; kind: Kind; count: number }>()
@@ -17,18 +18,18 @@ export class Metrics {
   private readonly maxModelLabels: number
 
   constructor(maxModelLabels = 64) {
-    if (!Number.isSafeInteger(maxModelLabels) || maxModelLabels < 0)
+    if (Number.isSafeInteger(maxModelLabels) === false || maxModelLabels < 0)
       throw new RangeError('maxModelLabels must be a nonnegative safe integer')
     this.maxModelLabels = maxModelLabels
   }
 
-  private boundedLabels(labels: Labels, status: number): Labels {
+  private boundedLabels({ labels, status }: { labels: Labels; status: number }): Labels {
     let model: string
     if (status < 200 || status >= 300) model = '_rejected'
     else if (
       labels.model === '_other' ||
       labels.model === '_rejected' ||
-      this.models.has(labels.model)
+      this.models.has(labels.model) === true
     )
       model = labels.model
     else if (this.models.size >= this.maxModelLabels) model = '_other'
@@ -39,12 +40,12 @@ export class Metrics {
     return model === labels.model ? labels : { consumer: labels.consumer, model }
   }
 
-  record(labels: Labels, status: number, seconds: number) {
-    labels = this.boundedLabels(labels, status)
+  record({ labels, status, seconds }: { labels: Labels; status: number; seconds: number }) {
+    labels = this.boundedLabels({ labels, status })
     const key = JSON.stringify([labels.consumer, labels.model])
     const requestKey = JSON.stringify([labels.consumer, labels.model, status])
     const request = this.requests.get(requestKey)
-    if (request) request.count++
+    if (request !== undefined) request.count++
     else this.requests.set(requestKey, { labels, status, count: 1 })
     const duration = this.durations.get(key) ?? {
       labels,
@@ -60,12 +61,22 @@ export class Metrics {
     this.durations.set(key, duration)
   }
 
-  addTokens(labels: Labels, status: number, kind: Kind, count: number) {
-    if (!Number.isSafeInteger(count) || count < 0) return
-    labels = this.boundedLabels(labels, status)
+  addTokens({
+    labels,
+    status,
+    kind,
+    count,
+  }: {
+    labels: Labels
+    status: number
+    kind: Kind
+    count: number
+  }) {
+    if (Number.isSafeInteger(count) === false || count < 0) return
+    labels = this.boundedLabels({ labels, status })
     const key = JSON.stringify([labels.consumer, labels.model, kind])
     const entry = this.tokens.get(key)
-    if (entry) entry.count += count
+    if (entry !== undefined) entry.count += count
     else this.tokens.set(key, { labels, kind, count })
   }
 

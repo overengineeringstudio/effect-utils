@@ -23,7 +23,7 @@ runtime JSON -> GatewayConfig -> makeRoutes -> Node HTTP listener
 
 `GatewayConfig` decodes `{ upstream: URLFromString, consumers: Array<{ name: trimmed nonempty string, tokenSha256: lowercase hex SHA-256 }>, maxModelLabels?: nonnegative integer }`. Names and digests must each be unique. `maxModelLabels` defaults to 64 when omitted; zero aggregates every successful model into `_other`. Consumer names are deployer-owned opaque, case-sensitive strings; they are not provider accounts or request-body identities. Metric serialization escapes backslashes, quotes and newlines. The package imposes no preselected consumer vocabulary. `fixture-consumer` is an example; an empty or whitespace-padded name and a non-64-digit digest are invalid.
 
-`loadConfig(path)` requires Effect FileSystem and reports `ConfigLoadError` for read/decode errors. `makeRoutes(config, metrics?)` returns `{ router, metrics }`; `Metrics.render()` exposes the text scrape. The CLI provides:
+`loadConfig(path)` requires Effect FileSystem and reports `ConfigLoadError` for read/decode errors. `makeRoutes({ config, metrics? })` returns `{ router, metrics }`; `Metrics.render()` exposes the text scrape. Accounting methods take named objects: `Metrics.record({ labels, status, seconds })` and `Metrics.addTokens({ labels, status, kind, count })`. The CLI provides:
 
 ```text
 ai-gateway-edge serve --config <path> --bind <host:port> [--metrics-bind <host:port>]

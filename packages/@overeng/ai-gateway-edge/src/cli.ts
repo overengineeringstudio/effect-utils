@@ -18,12 +18,12 @@ const option = (flag: string) => {
 
 const bind = (value: string) => {
   const match = /^(\[[^\]]+\]|[^:]+):(\d+)$/.exec(value)
-  if (!match || Number(match[2]) > 65535) throw new Error(`Invalid bind address: ${value}`)
+  if (match === null || Number(match[2]) > 65535) throw new Error(`Invalid bind address: ${value}`)
   return { host: match[1]!.replace(/^\[|\]$/g, ''), port: Number(match[2]) }
 }
 
 const main = Effect.gen(function* () {
-  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  if (process.argv.includes('--help') === true || process.argv.includes('-h') === true) {
     console.log(usage)
     return
   }
@@ -37,13 +37,19 @@ const main = Effect.gen(function* () {
     console.log(createHash('sha256').update(token).digest('hex'))
     return
   }
-  if (command !== 'serve' || !option('--config') || !option('--bind')) {
+  if (
+    command !== 'serve' ||
+    option('--config') === undefined ||
+    option('--config') === '' ||
+    option('--bind') === undefined ||
+    option('--bind') === ''
+  ) {
     console.error(usage)
     process.exitCode = 2
     return
   }
   const config = yield* loadConfig(option('--config')!)
-  const { router, metrics } = makeRoutes(config)
+  const { router, metrics } = makeRoutes({ config: config })
   const address = bind(option('--bind')!)
   const app = HttpRouter.serve(router, { disableLogger: true, disableListenLog: true }).pipe(
     Layer.provide(NodeHttpServer.layer(() => Http.createServer(), address)),

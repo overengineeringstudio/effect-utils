@@ -33,7 +33,7 @@ const config = Schema.decodeUnknownSync(GatewayConfig)({
   upstream: 'https://upstream.example',
   consumers: [],
 })
-const { router, metrics } = makeRoutes(config)
+const { router, metrics } = makeRoutes({ config })
 // Provide router to HttpRouter.serve with a NodeHttpServer layer.
 // metrics.render() is Prometheus text exposition.
 ```

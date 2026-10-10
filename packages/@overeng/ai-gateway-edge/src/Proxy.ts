@@ -52,7 +52,7 @@ const abortOnSocketClose = (socket: Socket) => {
   socket.once('close', abort)
   return { signal: controller.signal, dispose: () => socket.removeListener('close', abort), abort }
 }
-const error = (status: number, message: string) =>
+const error = ({ status, message }: { status: number; message: string }) =>
   HttpServerResponse.jsonUnsafe(
     {
       error: {
@@ -88,17 +88,21 @@ class UsageEvents {
             }
             this.data = ''
           }
-        } else if (line.startsWith('data:') && this.data.length < 131072)
+        } else if (line.startsWith('data:') === true && this.data.length < 131072)
           this.data += `${this.data.length === 0 ? '' : '\n'}${line.slice(5).trimStart()}`
       } else if (this.line.length < 65536) this.line += char
     }
   }
 }
 
-export const makeRoutes = (
-  config: GatewayConfig,
+/** Build digest-authenticated, usage-metered forwarding routes and their metrics. */
+export const makeRoutes = ({
+  config,
   metrics = new Metrics(config.maxModelLabels ?? 64),
-) => {
+}: {
+  readonly config: GatewayConfig
+  readonly metrics?: Metrics
+}) => {
   const consumers = config.consumers.map(({ name, tokenSha256 }) => ({
     name,
     digest: Buffer.from(tokenSha256, 'hex'),
@@ -118,33 +122,55 @@ export const makeRoutes = (
     let name: string | undefined
     for (const consumer of consumers) {
       // Check every entry, including for absent/malformed tokens.
-      if (timingSafeEqual(digest, consumer.digest) && match) name = consumer.name
+      if (timingSafeEqual(digest, consumer.digest) === true && match !== null) name = consumer.name
     }
     return name
   }
 
-  const meterUsage = (consumer: string, model: string, status: number, value: unknown) => {
+  const meterUsage = ({
+    consumer,
+    model,
+    status,
+    value,
+  }: {
+    consumer: string
+    model: string
+    status: number
+    value: unknown
+  }) => {
     const parsed = decodeUsage(value)
     if (parsed._tag === 'None') return
     const usage = parsed.value
     const input = usage.prompt_tokens ?? usage.input_tokens
     const output = usage.completion_tokens ?? usage.output_tokens
-    if (input !== undefined) metrics.addTokens({ consumer, model }, status, 'input', input)
-    if (output !== undefined) metrics.addTokens({ consumer, model }, status, 'output', output)
+    if (input !== undefined)
+      metrics.addTokens({
+        labels: { consumer, model },
+        status: status,
+        kind: 'input',
+        count: input,
+      })
+    if (output !== undefined)
+      metrics.addTokens({
+        labels: { consumer, model },
+        status: status,
+        kind: 'output',
+        count: output,
+      })
     if (usage.prompt_tokens_details?.cached_tokens !== undefined)
-      metrics.addTokens(
-        { consumer, model },
-        status,
-        'cached',
-        usage.prompt_tokens_details.cached_tokens,
-      )
+      metrics.addTokens({
+        labels: { consumer, model },
+        status: status,
+        kind: 'cached',
+        count: usage.prompt_tokens_details.cached_tokens,
+      })
     if (usage.completion_tokens_details?.reasoning_tokens !== undefined)
-      metrics.addTokens(
-        { consumer, model },
-        status,
-        'reasoning',
-        usage.completion_tokens_details.reasoning_tokens,
-      )
+      metrics.addTokens({
+        labels: { consumer, model },
+        status: status,
+        kind: 'reasoning',
+        count: usage.completion_tokens_details.reasoning_tokens,
+      })
   }
 
   const forward = (
@@ -153,7 +179,8 @@ export const makeRoutes = (
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest
       const consumer = authenticate(request.headers['authorization'])
-      if (!consumer) return error(401, 'Invalid bearer token')
+      if (consumer === undefined || consumer === '')
+        return error({ status: 401, message: 'Invalid bearer token' })
       const started = performance.now()
       let model = path === '/v1/models' ? 'models' : 'unknown'
       let body: string | undefined
@@ -165,7 +192,7 @@ export const makeRoutes = (
             if (path !== '/v1/chat/completions' || value.stream !== true)
               return { model: value.model, body: text }
             const payload = decodeJson(text)
-            if (typeof payload !== 'object' || payload === null || Array.isArray(payload))
+            if (typeof payload !== 'object' || payload === null || Array.isArray(payload) === true)
               throw new Error('Expected object')
             const streamOptions = 'stream_options' in payload ? payload.stream_options : undefined
             return {
@@ -175,7 +202,7 @@ export const makeRoutes = (
                 stream_options: {
                   ...(typeof streamOptions === 'object' &&
                   streamOptions !== null &&
-                  !Array.isArray(streamOptions)
+                  Array.isArray(streamOptions) === false
                     ? streamOptions
                     : {}),
                   include_usage: true,
@@ -186,28 +213,32 @@ export const makeRoutes = (
           catch: () => 'invalid request' as const,
         }).pipe(Effect.orElseSucceed(() => undefined))
         if (parsed === undefined) {
-          metrics.record({ consumer, model }, 400, (performance.now() - started) / 1000)
-          return error(400, 'Invalid request JSON or model')
+          metrics.record({
+            labels: { consumer, model },
+            status: 400,
+            seconds: (performance.now() - started) / 1000,
+          })
+          return error({ status: 400, message: 'Invalid request JSON or model' })
         }
         model = parsed.model
         body = parsed.body
       }
       const requestHeaders = new Headers()
-      const connectionOptions = (request.headers['connection'] ?? '')
-        .split(',')
-        .map((name) => name.trim().toLowerCase())
+      const connectionOptions = new Set(
+        (request.headers['connection'] ?? '').split(',').map((name) => name.trim().toLowerCase()),
+      )
       for (const [name, value] of Object.entries(request.headers)) {
         if (
           value !== undefined &&
-          !excludedHeaders.has(name.toLowerCase()) &&
-          !connectionOptions.includes(name.toLowerCase())
+          excludedHeaders.has(name.toLowerCase()) === false &&
+          connectionOptions.has(name.toLowerCase()) === false
         )
           requestHeaders.set(name, value)
       }
       requestHeaders.set('accept-encoding', 'identity')
       const effectSignal = yield* Effect.abortSignal
       if (!('socket' in request.source) || !(request.source.socket instanceof Socket))
-        return error(500, 'Unsupported HTTP request')
+        return error({ status: 500, message: 'Unsupported HTTP request' })
       const socketAbort = abortOnSocketClose(request.source.socket)
       const url = new URL(path, upstream)
       const result = yield* Effect.tryPromise({
@@ -222,30 +253,45 @@ export const makeRoutes = (
       }).pipe(Effect.orElseSucceed(() => undefined))
       if (result === undefined) {
         socketAbort.dispose()
-        metrics.record({ consumer, model }, 502, (performance.now() - started) / 1000)
-        return error(502, 'Upstream unavailable')
+        metrics.record({
+          labels: { consumer, model },
+          status: 502,
+          seconds: (performance.now() - started) / 1000,
+        })
+        return error({ status: 502, message: 'Upstream unavailable' })
       }
       const response = result
       const responseHeaders: Record<string, string> = {}
-      const upstreamConnectionOptions = (response.headers.get('connection') ?? '')
-        .split(',')
-        .map((name) => name.trim().toLowerCase())
+      const upstreamConnectionOptions = new Set(
+        (response.headers.get('connection') ?? '')
+          .split(',')
+          .map((name) => name.trim().toLowerCase()),
+      )
       response.headers.forEach((value, name) => {
         if (
-          !excludedHeaders.has(name.toLowerCase()) &&
-          !upstreamConnectionOptions.includes(name.toLowerCase()) &&
+          excludedHeaders.has(name.toLowerCase()) === false &&
+          upstreamConnectionOptions.has(name.toLowerCase()) === false &&
           name.toLowerCase() !== 'content-encoding'
         )
           responseHeaders[name] = value
       })
-      if (!response.body) {
+      if (response.body === null) {
         socketAbort.dispose()
-        metrics.record({ consumer, model }, response.status, (performance.now() - started) / 1000)
+        metrics.record({
+          labels: { consumer, model },
+          status: response.status,
+          seconds: (performance.now() - started) / 1000,
+        })
         return HttpServerResponse.empty({ status: response.status, headers: responseHeaders })
       }
       const events = new UsageEvents((value) => {
         if (typeof value === 'object' && value !== null && 'usage' in value && value.usage !== null)
-          meterUsage(consumer, model, response.status, value.usage)
+          meterUsage({
+            consumer: consumer,
+            model: model,
+            status: response.status,
+            value: value.usage,
+          })
       })
       const isSse = response.headers.get('content-type')?.includes('text/event-stream') ?? false
       const stream = Stream.fromReadableStream({
@@ -254,22 +300,22 @@ export const makeRoutes = (
       }).pipe(
         Stream.tap((chunk) =>
           Effect.sync(() => {
-            if (isSse) events.push(chunk)
+            if (isSse === true) events.push(chunk)
           }),
         ),
         Stream.ensuring(
           Effect.sync(() => {
             socketAbort.dispose()
             socketAbort.abort()
-            metrics.record(
-              { consumer, model },
-              response.status,
-              (performance.now() - started) / 1000,
-            )
+            metrics.record({
+              labels: { consumer, model },
+              status: response.status,
+              seconds: (performance.now() - started) / 1000,
+            })
           }),
         ),
       )
-      if (isSse)
+      if (isSse === true)
         return HttpServerResponse.stream(stream, {
           status: response.status,
           headers: responseHeaders,
@@ -283,7 +329,7 @@ export const makeRoutes = (
         catch: () => undefined,
       }).pipe(Effect.orElseSucceed(() => undefined))
       if (typeof json === 'object' && json !== null && 'usage' in json && json.usage !== null)
-        meterUsage(consumer, model, response.status, json.usage)
+        meterUsage({ consumer: consumer, model: model, status: response.status, value: json.usage })
       return HttpServerResponse.uint8Array(bytes, {
         status: response.status,
         headers: responseHeaders,
@@ -295,7 +341,7 @@ export const makeRoutes = (
       try: (signal) => fetch(new URL('/healthz', upstream), { signal }),
       catch: () => 'upstream unavailable' as const,
     }).pipe(Effect.orElseSucceed(() => undefined))
-    return result?.ok
+    return result?.ok === true
       ? HttpServerResponse.jsonUnsafe({ status: 'ok' })
       : HttpServerResponse.jsonUnsafe({ status: 'unavailable' }, { status: 503 })
   })
