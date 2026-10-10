@@ -5,7 +5,7 @@ Authoritative grammar: `compoundingtech/smalltalk`, `crates/st3/src/graph.rs` at
 | Grammar node                                                                                                                                  | Status      | Notes                                                                                                                                                                                                                |
 | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `agent`                                                                                                                                       | Partial     | All 19 ALLOWED child names modeled; complex `render`, `harness`, `pty`, `exec`, authority and restart forms are **not** fully represented; avoid assuming full parser parity.                                        |
-| `mission`, `step`, `gate`, `exec`, `depends-on`, `schedule`, `work`                                                                           | Partial     | Covers finite mission, step dependencies, field gates, exec and interval schedule forms only. Mission declarations embedded within missions, calendar schedules, cancellation and additional step forms not modeled. |
+| `mission`, `step`, `gate`, `exec`, `depends-on`, `schedule`, `work`                                                                           | Partial     | Covers finite missions, step dependencies, tagged field/human gates, person assignments, exec and interval schedules. Mission-level gates, calendar schedules and additional step forms are not modeled. |
 | `resource`                                                                                                                                    | Partial     | Three resource kinds modeled; upstream accepts more kinds.                                                                                                                                                           |
 | `account`, `pty`, `host`, `doc`, `lane`, `observer`, `subscription`, `person`, `mission-run`, `planning-session`, `message`, `repair`, `stop` | Not covered | Root grammar nodes omitted.                                                                                                                                                                                          |
 | `version 2`                                                                                                                                   | Covered     | All emitted documents start with this directive.                                                                                                                                                                     |
@@ -40,11 +40,74 @@ Changing `reportTo` changes the mission revision, not an agent's launch declarat
 
 ## Imported agent references
 
-Author `StepSchema.assignedTo` and each `AgentSchema.under[].target` with an imported agent declaration, just like mission `reportTo`. Strings (including `` `agent/${id}` ``) are not references. IDs are structural, not a registry or global enum: independently declared valid agent IDs work without registering them.
+Author `StepSchema.assignedTo` with an imported agent declaration or `person('person/NAME')`. Each `AgentSchema.under[].target` and mission `reportTo` remains agent-only. Strings (including `` `agent/${id}` ``) are not references. IDs are structural, not a registry or global enum: independently declared valid agent IDs work without registering them.
 
 `AgentReference` exposes the structural `{ readonly id: string }` view to avoid recursively expanding agent authoring types. `AgentReferenceSchema` defers validation to the complete `AgentSchema`, including harness routing, launch conflicts, nested supervisor references, and ID validation; empty ID path segments are rejected as for `ReportToSchema`. The imported object and any kit metadata retain their identity. The existing `ReportToSchema` API continues to expose the complete agent authoring type.
 
 Lowering emits only `assigned-to "agent/ID"` or `under "agent/ID" reason="..."`, never the referenced agent's launch configuration or kit metadata. There is no separate mission-agent launch API. Unit coverage includes exact KDL, object-only authoring types, invalid IDs and launches, and retained imported metadata.
+
+## Attributed human gates
+
+Gates are tagged: existing field gates require `kind: 'field'`; human gates use
+`kind: 'human'`, a distinct `person()` reviewer, optional `question` and repeated
+unique `review` subjects. Omitted `mode` lowers to native `mode="approve"`.
+Approve passes on approval and fails on rejection; `mode: 'feedback'` is for
+worker completion review and can request changes on a new attempt. It is rejected
+on agentless steps. Gates on worker steps review completed work, not permission
+to begin it.
+
+For a risky action, put an **agentless approve checkpoint before the worker**
+and depend on its completion. This illustrative Berlin cutover declares no
+live operation or artifact:
+
+```ts
+import { mission, person } from '@overeng/genie-smalltalk'
+import owner from './agents/owner.ts'
+import worker from './agents/worker.ts'
+
+mission({
+  id: 'home/berlin/cutover',
+  state: 'ready',
+  reportTo: owner,
+  goal: 'Apply only the reviewed Berlin cutover plan.',
+  steps: [
+    {
+      id: 'approve-cutover',
+      agentless: true,
+      timeout: '1d',
+      gate: {
+        kind: 'human',
+        name: 'Approve the bounded cutover',
+        reviewer: person('person/schickling'),
+        question: 'Apply the reviewed configuration and rollback plan?',
+      },
+    },
+    {
+      id: 'apply-cutover',
+      assignedTo: worker,
+      dependsOn: [{ step: 'approve-cutover', state: 'completed' }],
+      goal: 'Apply precisely the approved plan.',
+    },
+  ],
+})
+```
+
+Critical is the only supported/default tier: silence never grants approval.
+The step timeout fails an unanswered agentless checkpoint; it is not a human
+consultation window. The daemon owns the current request, actor attribution,
+stale-episode fences and native attention cards. `person()` is a named reference,
+not an authenticated person credential; stronger person-only authority is tracked
+in [smalltalk#2184](https://github.com/compoundingtech/smalltalk/issues/2184).
+Existing explicit native delegation is not a timed fallback or reusable consent.
+
+There is deliberately no `tier`, `policy`, `scope`, `window`, `fallback` or
+`humanOnly` authoring field: native window/fallback and scoped consent primitives
+must exist before the DSL exposes them. A prior gate approval cannot satisfy a
+new episode. Review exact artifacts with immutable `doc/...@REVISION` subjects.
+Repin merged immutable DSL revisions and migrate all field-gate callers to the
+tagged form together; already-running native runs retain their definitions.
+See [the isolated-daemon acceptance plan](./HUMAN_GATE_ACCEPTANCE.md) before a
+risky mission relies on consent reuse or consultative fallback.
 
 ## Nested agent tasks
 
