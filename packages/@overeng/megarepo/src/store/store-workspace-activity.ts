@@ -99,6 +99,7 @@ const PtySessions = Schema.Array(
   }),
 ).annotate({ identifier: 'StoreWorkspaceActivity.PtySessions' })
 
+/** Required activity evidence cannot be read or admitted safely. */
 export class ActivityUnavailable extends Schema.TaggedError<ActivityUnavailable>()(
   'ActivityUnavailable',
   {
