@@ -15,6 +15,8 @@ describe('isFleetCacheRunner', () => {
     ['sh-linux-x64-publish', 'nix'],
     ['sh-linux-arm64-publish'],
     ['sh-linux-arm64-publish', 'nix'],
+    ['sh-linux-x64-ai-gateway'],
+    ['sh-linux-x64-ai-gateway', 'nix'],
   ])('accepts publisher runner labels %j', (...labels) => {
     expect(isFleetCacheRunner(labels)).toBe(true)
   })
