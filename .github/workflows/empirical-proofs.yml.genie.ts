@@ -37,7 +37,7 @@ export default ciWorkflow({
         CI: 'true',
         EDITOR_VIEW_TEST_PUBLICATION_WORKERS: '4',
         EDITOR_HASH_ITERATIONS: '${{ inputs.editor_hash_iterations }}',
-        EDITOR_HASH_FIX_HEAD: 'c95dea70293614c7c0b73784e29139bd98595f13',
+        EDITOR_HASH_FIX_HEAD: '51e1ac59988cd5a1b01b4f2c9a15db3971887a5b',
         ...buck2CachePostureEnv('reader'),
       },
       steps: [
