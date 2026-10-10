@@ -15,11 +15,19 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
+import { referencedEditorSnapshots } from './editor-view-readers.ts'
+import {
+  collectEditorViewContentStore,
+  defaultEditorViewContentStore,
+  recoverEditorViewContentStoreLock,
+  shareSnapshotFiles,
+} from './editor-view-sharing.ts'
 import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath } from './real-path.ts'
 import { runFingerprintTool } from './typescript-runner.ts'
@@ -67,7 +75,7 @@ export type EditorViewRecord = {
   readonly snapshot: string
   /** Digest of the admitted finite declared-root graph (legacy: dereferenced bytes). */
   readonly normalizedStoreDigest: string
-  /** Digest of the selected view exactly as admitted, links included. */
+  /** Digest of the selected view with declared links resolved to stable root owners. */
   readonly selectedViewDigest: string
   /** Digest of every byte-owned snapshot payload root and its relocated links. */
   readonly byteSnapshotDigest: string
@@ -111,6 +119,10 @@ export type EditorViewOptions = {
   readonly workspaceAuthority: string
   readonly consumerCache: string
   readonly snapshotRetention: number
+  /** Minimum time after supersession before collecting an unreferenced generation. */
+  readonly snapshotGraceMs?: number
+  /** Host-shared immutable payload store; defaults to the common Git repository's store. */
+  readonly contentStore?: string
 }
 
 type ViewPaths = {
@@ -125,6 +137,7 @@ type ViewPaths = {
   readonly firstHopTarget: string
   readonly consumerCache: string
   readonly retentionRecord: string
+  readonly contentStore: string
 }
 
 type CheckContext = {
@@ -156,7 +169,7 @@ const frame = (value: string): readonly [Buffer, Buffer] => {
   return [u64(BigInt(encoded.byteLength)), encoded]
 }
 
-const snapshotIdentitySchema = 'effect-utils/editor-view-snapshot-identity/v1' as const
+const snapshotIdentitySchema = 'effect-utils/editor-view-snapshot-identity/v2' as const
 
 /**
  * Immutable store key of one snapshot: a framed hash over BOTH admitted identities.
@@ -296,9 +309,9 @@ export const canonicalTreeFingerprint = async ({
   ).digest
 
 /**
- * Hash a tree in both canonical forms at once: the literal-link digest used for
- * record identity, and the owner-resolved-link digest used to compare an
- * admitted source tree against its materialized snapshot copy.
+ * Hash a tree in both canonical forms at once: literal link spelling for the
+ * copy-stability proof, and owner-resolved links for semantic content identity
+ * and comparison against a materialized snapshot.
  */
 export const canonicalTreeFingerprintWithResolvedLinks = async ({
   tree,
@@ -524,13 +537,18 @@ const canonicalTreeFingerprints = async ({
       hashes: resolvedHash === undefined ? [hash] : [hash, resolvedHash],
     })
     const after = lstatSync(absolutePath, { bigint: true })
+    const immutableSharedFile =
+      (before.mode & 0o222n) === 0n &&
+      before.mode === after.mode &&
+      (before.nlink > 1n || after.nlink > 1n)
     if (
       after.isFile() === false ||
       after.dev !== before.dev ||
       after.ino !== before.ino ||
       after.size !== before.size ||
       after.mtimeNs !== before.mtimeNs ||
-      after.ctimeNs !== before.ctimeNs
+      after.mode !== before.mode ||
+      (after.ctimeNs !== before.ctimeNs && immutableSharedFile === false)
     )
       fail(`tree changed while hashing: ${absolutePath}`)
   }
@@ -817,6 +835,11 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
     options.snapshotRetention > 32
   )
     fail(`snapshot retention must be an integer from 2 through 32`)
+  if (
+    Number.isSafeInteger(options.snapshotGraceMs ?? 300_000) === false ||
+    (options.snapshotGraceMs ?? 300_000) < 0
+  )
+    fail('snapshot grace must be a non-negative integer in milliseconds')
   const repoRoot = realpathSync(options.repoRoot)
   requireDirectory({ path: repoRoot, field: 'repository root' })
   const packagePath = requirePortablePackage(options.package)
@@ -844,6 +867,14 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
     fail(
       `consumer cache must be inside the repository and outside package and snapshot views: ${consumerCache}`,
     )
+  const contentStore = canonicalizeParent(
+    resolve(options.contentStore ?? defaultEditorViewContentStore(repoRoot)),
+  )
+  if (
+    isWithin({ root: editorRoot, candidate: contentStore }) === true ||
+    isWithin({ root: contentStore, candidate: editorRoot }) === true
+  )
+    fail(`content store must be outside the editor state root: ${contentStore}`)
   const current = join(editorRoot, viewName)
   return {
     repoRoot,
@@ -857,6 +888,7 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
     firstHopTarget: relative(packageDir, join(current, 'node_modules')),
     consumerCache,
     retentionRecord: join(editorRoot, `.retention-${viewName}.json`),
+    contentStore,
   }
 }
 
@@ -1087,13 +1119,8 @@ const frameDeclaredRootDigests = (
 }
 
 type DeclaredRootFingerprints = {
-  /** Combined literal-link digest recorded as the normalized store digest. */
+  /** Combined owner-resolved digest, independent of backing artifact path spelling. */
   readonly digest: string
-  /**
-   * Combined owner-resolved-link digest over the same roots; comparable with a
-   * materialized snapshot copy whose links were relocated into the snapshot.
-   */
-  readonly resolvedLinksDigest: string | undefined
   /**
    * Per-root literal link-inventory digests in declared-root order; compared
    * against the link texts the materializer actually copied, so a symlink
@@ -1147,16 +1174,12 @@ const fingerprintDeclaredRoots = async ({
     return result.value
   })
   return {
-    digest: frameDeclaredRootDigests(entries),
-    resolvedLinksDigest:
-      entries.every((entry) => entry.resolvedLinksDigest !== undefined) === true
-        ? frameDeclaredRootDigests(
-            entries.map((entry) => ({
-              digest: entry.resolvedLinksDigest ?? fail('declared root digest is absent'),
-              identity: entry.identity,
-            })),
-          )
-        : undefined,
+    digest: frameDeclaredRootDigests(
+      entries.map((entry) => ({
+        identity: entry.identity,
+        digest: entry.resolvedLinksDigest ?? fail('declared root digest is absent'),
+      })),
+    ),
     literalLinksDigests: entries.map((entry) => entry.literalLinksDigest),
   }
 }
@@ -1446,7 +1469,8 @@ const hardenSnapshot = (snapshotDir: string): void => {
         visit(path)
         continue
       }
-      chmodSync(path, status.mode & ~0o222)
+      // A same-mode chmod still changes a shared blob's ctime across worktrees.
+      if ((status.mode & 0o222) !== 0) chmodSync(path, status.mode & ~0o222)
     }
     const mode = statSync(directory).mode
     chmodSync(directory, mode & ~0o222)
@@ -1560,13 +1584,15 @@ const writeSnapshotRetention = ({
   snapshots: readonly string[]
   token: string
 }): void => {
+  const content = `${JSON.stringify({ schema: snapshotRetentionSchema, snapshots }, undefined, 2)}\n`
+  if (
+    pathExists(paths.retentionRecord) === true &&
+    readFileSync(paths.retentionRecord, 'utf8') === content
+  )
+    return
   const candidate = join(paths.editorRoot, `.retention.candidate-${token}`)
   try {
-    writeFileSync(
-      candidate,
-      `${JSON.stringify({ schema: snapshotRetentionSchema, snapshots }, undefined, 2)}\n`,
-      { flag: 'wx' },
-    )
+    writeFileSync(candidate, content, { flag: 'wx' })
     renameSync(candidate, paths.retentionRecord)
   } finally {
     if (pathExists(candidate) === true) rmSync(candidate)
@@ -1691,7 +1717,21 @@ const garbageCollectSnapshots = ({
   current: string
   token: string
 }): void => {
-  const keep = ordered.slice(0, options.snapshotRetention)
+  const retained = new Set(ordered.slice(0, options.snapshotRetention))
+  const now = Date.now()
+  const grace = options.snapshotGraceMs ?? 300_000
+  const eligible = ordered.filter(
+    (name) =>
+      retained.has(name) === false && now - statSync(join(paths.storeDir, name)).mtimeMs >= grace,
+  )
+  const referenced = eligible.length === 0 ? new Set<string>() : referencedEditorSnapshots(paths)
+  const keep = ordered.filter(
+    (name) =>
+      retained.has(name) === true ||
+      eligible.includes(name) === false ||
+      referenced === undefined ||
+      referenced.has(name) === true,
+  )
   if (keep.includes(current) === false) fail(`snapshot retention would delete current: ${current}`)
   const pointer = readlinkSync(paths.current)
   if (pointer !== `.store/${current}`)
@@ -1794,28 +1834,30 @@ const releaseLock = ({ path, token }: { path: string; token: string }): void => 
  * Tear down the package's shared editor root before removing a retired worktree.
  * This is explicit teardown, not GC: callers must first stop editor/build users.
  */
-export const releaseEditorViewRoot = (options: EditorViewOptions): void => {
+export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise<void> => {
   const paths = makePaths(options)
-  if (pathExists(paths.editorRoot) === false) return
-  requireDirectory({ path: paths.editorRoot, field: 'editor root' })
-  if (realpathSync(paths.editorRoot) !== paths.editorRoot)
-    fail(`editor root must not contain symbolic links: ${paths.editorRoot}`)
-  const lock = acquireLock({
-    editorRoot: paths.editorRoot,
-    recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
-  })
-  const retired = `${paths.editorRoot}.release-${tokenSafe(lock.token)}`
-  let lockPath = lock.path
-  try {
-    // Only directories need write permission for unlinking. The walk uses lstat,
-    // so relocated payload links and external links never change their targets.
-    makeDirectoriesWritable(paths.editorRoot)
-    renameSync(paths.editorRoot, retired)
-    lockPath = join(retired, '.publish.lock')
-    rmSync(retired, { recursive: true })
-  } finally {
-    if (pathExists(lockPath) === true) releaseLock({ path: lockPath, token: lock.token })
+  if (pathExists(paths.editorRoot) === true) {
+    requireDirectory({ path: paths.editorRoot, field: 'editor root' })
+    if (realpathSync(paths.editorRoot) !== paths.editorRoot)
+      fail(`editor root must not contain symbolic links: ${paths.editorRoot}`)
+    const lock = acquireLock({
+      editorRoot: paths.editorRoot,
+      recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
+    })
+    const retired = `${paths.editorRoot}.release-${tokenSafe(lock.token)}`
+    let lockPath = lock.path
+    try {
+      // Only directories need write permission for unlinking. The walk uses lstat,
+      // so relocated payload links and external links never change their targets.
+      makeDirectoriesWritable(paths.editorRoot)
+      renameSync(paths.editorRoot, retired)
+      lockPath = join(retired, '.publish.lock')
+      rmSync(retired, { recursive: true })
+    } finally {
+      if (pathExists(lockPath) === true) releaseLock({ path: lockPath, token: lock.token })
+    }
   }
+  await collectEditorViewContentStore({ contentStore: paths.contentStore })
 }
 
 /** Remove the publication lock only when the caller presents its exact owner token. */
@@ -1874,6 +1916,20 @@ const publishCurrentPointer = ({
   const linkTarget = `.store/${paths.viewName}-${identity}`
   if (pathExists(paths.current) === true && lstatSync(paths.current).isSymbolicLink() === false)
     fail(`current view path is not a symlink: ${paths.current}`)
+  if (pathExists(paths.current) === true) {
+    const previous = readlinkSync(paths.current)
+    if (previous === linkTarget) return
+    // The root's mtime is mutable lifecycle metadata, not payload identity.
+    // Reset it at supersession, not at creation or every unchanged publication.
+    const retired = resolve(paths.editorRoot, previous)
+    if (
+      isWithin({ root: paths.storeDir, candidate: retired }) === true &&
+      pathExists(retired) === true
+    ) {
+      const status = statSync(retired)
+      utimesSync(retired, status.atime, new Date())
+    }
+  }
   const candidate = join(paths.editorRoot, `.${paths.viewName}.candidate-${token}`)
   try {
     symlinkSync(linkTarget, candidate)
@@ -2086,13 +2142,13 @@ const publishEditorViewCoordinated = async ({
         : undefined
     const fingerprint =
       selectedFingerprints !== undefined && selectedPath === editorInputsPath
-        ? selectedFingerprints.digest
+        ? selectedFingerprints.resolvedLinksDigest
         : await canonicalTreeFingerprint({
             tree: editorInputsPath,
             fingerprintTool: options.fingerprintTool,
           })
     const selectedViewDigest =
-      selectedFingerprints?.digest ??
+      selectedFingerprints?.resolvedLinksDigest ??
       (selectedPath === editorInputsPath
         ? fingerprint
         : await canonicalTreeFingerprint({
@@ -2145,7 +2201,7 @@ const publishEditorViewCoordinated = async ({
             fingerprintTool: options.fingerprintTool,
             knownRoot: {
               source: selectedPath,
-              digest: selectedViewDigest,
+              digest: selectedFingerprints?.digest ?? selectedViewDigest,
               resolvedLinksDigest:
                 selectedFingerprints?.resolvedLinksDigest ??
                 fail('selected view link owners were not admitted for hashing'),
@@ -2242,8 +2298,8 @@ const publishEditorViewCoordinated = async ({
         // inventories the materializer recorded additionally prove every copied
         // link kept its admitted literal spelling, so a retarget to another
         // spelling of the same resolution still fails closed.
-        const before = declaredRoots.resolvedLinksDigest
-        if (before !== undefined && payload.resolvedRootsDigest !== before)
+        const before = declaredRoots.digest
+        if (payload.resolvedRootsDigest !== before)
           fail(
             `declared backing roots changed while materializing: before=${before} after=${payload.resolvedRootsDigest ?? 'absent'}`,
           )
@@ -2270,6 +2326,9 @@ const publishEditorViewCoordinated = async ({
       })
       writeRecord({ path: join(candidate, 'editor-view.json'), record })
       created = true
+      const sharing = await shareSnapshotFiles({ candidate, contentStore: paths.contentStore })
+      if (sharing.copiedFiles > 0)
+        process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
     }
     if (created === true) {
       enterPhase('harden')
@@ -2300,9 +2359,17 @@ const publishEditorViewCoordinated = async ({
         token,
       })
       enterPhase('pointers')
+      const pointerChanged =
+        pathExists(paths.current) === false ||
+        readlinkSync(paths.current) !== `.store/${snapshotName}`
+      const firstHopChanged =
+        pathExists(paths.firstHop) === false ||
+        lstatSync(paths.firstHop).isSymbolicLink() === false ||
+        readlinkSync(paths.firstHop) !== paths.firstHopTarget
       publishCurrentPointer({ paths, identity, token })
       adoptFirstHop({ paths, mv: options.mv, token })
-      signalEditorResolution({ paths, token })
+      if (pointerChanged === true || firstHopChanged === true)
+        signalEditorResolution({ paths, token })
       enterPhase('gc')
       garbageCollectSnapshots({
         paths,
@@ -2344,8 +2411,11 @@ const publishEditorViewCoordinated = async ({
 }
 
 /** Publish one view while holding the exclusive state-root lock through every proof and write. */
-export const publishEditorView = (options: EditorViewOptions): Promise<EditorViewRecord> =>
-  publishEditorViewCoordinated({ options })
+export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
+  const record = await publishEditorViewCoordinated({ options })
+  await collectEditorViewContentStore({ contentStore: makePaths(options).contentStore })
+  return record
+}
 
 /** Shared bound; one view contains suspected cross-view overlap until #1743 establishes the cause. */
 export const editorViewPublicationWorkers = 1
@@ -2433,6 +2503,11 @@ export const publishEditorViews = async ({
     await Promise.all(
       Array.from({ length: Math.min(editorViewPublicationWorkers, options.length) }, worker),
     )
+    // One shared-store census per batch, not one per view. Hashing and walks do
+    // not hold its cross-worktree lock; only bounded link/unlink batches do.
+    for (const contentStore of new Set(options.map((option) => makePaths(option).contentStore)))
+      // eslint-disable-next-line no-await-in-loop -- Distinct stores are independent maintenance units.
+      await collectEditorViewContentStore({ contentStore })
     return results.map((result) => {
       if (result.status === 'rejected') throw result.reason
       return result.value
@@ -2618,32 +2693,51 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
   })
   requireDirectory({ path: options.editorInputs, field: 'editor_inputs' })
   requireDirectory({ path: options.nodeModules, field: 'admitted node_modules' })
-  const currentFingerprint = await canonicalTreeFingerprint({
-    tree: options.editorInputs,
-    fingerprintTool: options.fingerprintTool,
-  })
+  const selectedPath = realpathSync(resolve(options.nodeModules))
+  const editorInputsPath = realpathSync(resolve(options.editorInputs))
+  const roots =
+    (options.backingRoots?.length ?? 0) > 0
+      ? declaredSnapshotRoots({
+          nodeModules: options.nodeModules,
+          backingRoots: options.backingRoots ?? [],
+        })
+      : []
+  const selectedFingerprints =
+    roots.length > 0
+      ? await canonicalTreeFingerprintWithResolvedLinks({
+          tree: selectedPath,
+          linkOwners: roots,
+          fingerprintTool: options.fingerprintTool,
+        })
+      : undefined
+  const currentFingerprint =
+    selectedFingerprints !== undefined && selectedPath === editorInputsPath
+      ? selectedFingerprints.resolvedLinksDigest
+      : await canonicalTreeFingerprint({
+          tree: editorInputsPath,
+          fingerprintTool: options.fingerprintTool,
+        })
   const context: CheckContext = { recordedFingerprint: '<missing>', currentFingerprint }
   const record = await validatePublishedView({ options, paths, context })
   if (record.editorInputsFingerprint !== currentFingerprint)
     return failCheck({ message: 'editor_inputs fingerprint mismatch', context })
-  const selectedViewDigest = await canonicalTreeFingerprint({
-    tree: options.nodeModules,
-    fingerprintTool: options.fingerprintTool,
-  })
+  const selectedViewDigest =
+    selectedFingerprints?.resolvedLinksDigest ??
+    (await canonicalTreeFingerprint({
+      tree: selectedPath,
+      fingerprintTool: options.fingerprintTool,
+    }))
   if (selectedViewDigest !== record.selectedViewDigest)
     return failCheck({
       message: `admitted node_modules view digest mismatch: recorded=${record.selectedViewDigest} admitted=${selectedViewDigest}`,
       context,
     })
   const normalizedStoreDigest =
-    (options.backingRoots?.length ?? 0) > 0
+    roots.length > 0
       ? (
           await fingerprintDeclaredRoots({
             fingerprintTool: options.fingerprintTool,
-            roots: declaredSnapshotRoots({
-              nodeModules: options.nodeModules,
-              backingRoots: options.backingRoots ?? [],
-            }),
+            roots,
           })
         ).digest
       : await canonicalTreeFingerprint({
@@ -2660,20 +2754,34 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
 }
 
 type ParsedCli = {
-  readonly command: 'publish' | 'check' | 'verify' | 'recover-lock' | 'release'
+  readonly command:
+    | 'publish'
+    | 'check'
+    | 'verify'
+    | 'recover-lock'
+    | 'release'
+    | 'collect-content'
+    | 'recover-content-lock'
   readonly options: EditorViewOptions
   readonly token: string | undefined
 }
 
-const commands = ['publish', 'check', 'verify', 'recover-lock', 'release'] as const
+const commands = [
+  'publish',
+  'check',
+  'verify',
+  'recover-lock',
+  'release',
+  'collect-content',
+  'recover-content-lock',
+] as const
 
 const isCommand = (value: string | undefined): value is ParsedCli['command'] =>
   commands.includes(value as ParsedCli['command'])
 
 const parseCli = (args: readonly string[]): ParsedCli => {
   const command = args[0]
-  if (isCommand(command) === false)
-    return fail('expected command: publish, check, verify, recover-lock, or release')
+  if (isCommand(command) === false) return fail(`expected command: ${commands.join(', ')}`)
   const values = new Map<string, string>()
   const backingRoots: string[] = []
   for (let index = 1; index < args.length; index += 2) {
@@ -2687,48 +2795,54 @@ const parseCli = (args: readonly string[]): ParsedCli => {
       values.set(flag, value)
     }
   }
-  const recover = command === 'recover-lock'
-  const maintenance = recover === true || command === 'release'
+  const recover = command === 'recover-lock' || command === 'recover-content-lock'
+  const storeMaintenance = command === 'collect-content' || command === 'recover-content-lock'
+  const maintenance = recover === true || command === 'release' || storeMaintenance === true
   const admitting = command === 'publish' || command === 'check'
   if (admitting === false && backingRoots.length > 0)
     fail(`unexpected option for ${command}: --backing-root`)
   const allowed = new Set(
-    maintenance === true
-      ? ['--repo-root', '--package', '--view-name', ...(recover === true ? ['--token'] : [])]
-      : admitting === true
-        ? [
-            '--repo-root',
-            '--package',
-            '--view-name',
-            '--cell',
-            '--target',
-            '--editor-inputs',
-            '--node-modules',
-            '--backing-root',
-            '--cp',
-            '--mv',
-            '--fingerprint-tool',
-            '--workspace-authority',
-            '--consumer-cache',
-            '--snapshot-retention',
-          ]
-        : [
-            '--repo-root',
-            '--package',
-            '--view-name',
-            '--cell',
-            '--target',
-            '--fingerprint-tool',
-            '--consumer-cache',
-            '--snapshot-retention',
-          ],
+    storeMaintenance === true
+      ? ['--repo-root', ...(recover === true ? ['--token'] : [])]
+      : maintenance === true
+        ? ['--repo-root', '--package', '--view-name', ...(recover === true ? ['--token'] : [])]
+        : admitting === true
+          ? [
+              '--repo-root',
+              '--package',
+              '--view-name',
+              '--cell',
+              '--target',
+              '--editor-inputs',
+              '--node-modules',
+              '--backing-root',
+              '--cp',
+              '--mv',
+              '--fingerprint-tool',
+              '--workspace-authority',
+              '--consumer-cache',
+              '--snapshot-retention',
+              '--snapshot-grace-ms',
+            ]
+          : [
+              '--repo-root',
+              '--package',
+              '--view-name',
+              '--cell',
+              '--target',
+              '--fingerprint-tool',
+              '--consumer-cache',
+              '--snapshot-retention',
+              '--snapshot-grace-ms',
+            ],
   )
+  allowed.add('--content-store')
   for (const flag of values.keys())
     if (allowed.has(flag) === false) fail(`unexpected option for ${command}: ${flag}`)
   const get = (flag: string): string => values.get(flag) ?? fail(`missing required option ${flag}`)
   const getUnlessMaintaining = (flag: string): string => (maintenance === true ? '' : get(flag))
   const getWhenAdmitting = (flag: string): string => (admitting === true ? get(flag) : '')
-  const packagePath = get('--package')
+  const packagePath = storeMaintenance === true ? '.' : get('--package')
   // The view name defaults to the package directory name, so existing task
   // wiring keeps publishing the same `tui-core` identity without the new flag.
   const viewName = values.get('--view-name') ?? defaultEditorViewName(packagePath)
@@ -2754,6 +2868,8 @@ const parseCli = (args: readonly string[]): ParsedCli => {
     consumerCache:
       maintenance === true ? `.devenv/vite-cache/${viewName}` : get('--consumer-cache'),
     snapshotRetention,
+    snapshotGraceMs: Number(values.get('--snapshot-grace-ms') ?? '300000'),
+    ...(values.has('--content-store') === true ? { contentStore: get('--content-store') } : {}),
   }
   return { command, options, token: recover === true ? get('--token') : undefined }
 }
@@ -2808,8 +2924,19 @@ const main = async (): Promise<void> => {
       `verified ${record.package} editor snapshot ${record.byteSnapshotDigest}\n`,
     )
   } else if (parsed.command === 'release') {
-    releaseEditorViewRoot(parsed.options)
+    await releaseEditorViewRoot(parsed.options)
     process.stdout.write(`released editor dependency root for ${parsed.options.package}\n`)
+  } else if (parsed.command === 'collect-content') {
+    const collected = await collectEditorViewContentStore({
+      contentStore: makePaths(parsed.options).contentStore,
+    })
+    process.stdout.write(`collected editor content ${JSON.stringify(collected)}\n`)
+  } else if (parsed.command === 'recover-content-lock') {
+    await recoverEditorViewContentStoreLock({
+      contentStore: makePaths(parsed.options).contentStore,
+      token: parsed.token ?? fail('missing required option --token'),
+    })
+    process.stdout.write('recovered editor content-store lock\n')
   } else {
     recoverEditorViewLock({
       options: parsed.options,

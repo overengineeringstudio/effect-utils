@@ -24,9 +24,13 @@ are not global check dependencies.
 
 Snapshot identity is computed from the admitted inputs and all declared roots
 **before copying**. An unchanged publication validates and reuses the immutable
-store entry without writing its payload. Literal symlink targets participate in
-the input hash: a Buck artifact-path change is a new admission even when package
-file bytes are unchanged, and therefore materializes a new byte-owned snapshot.
+store entry without writing payloads, pointers, retention records, or the package
+manifest's editor-resolution signal. Declared links are hashed by their root
+owner and relative destination, not the disposable Buck artifact path or literal
+link spelling. Equivalent path relocations therefore reuse one generation;
+changes to transitive workspace source, declarations, or dependency bytes still
+select a new generation. Literal link inventories remain part of the admission
+stability proof, so changing even an equivalent link while copying fails closed.
 
 Batch publication prepares one private candidate at a time and serializes
 commits within each editor state root. Independent root fingerprints within
@@ -43,16 +47,91 @@ waiting for the remaining children; the original error remains available as
 the cause.
 
 Repository tasks retain **current plus previous (two snapshots per view)**,
-not two snapshots for the entire shared store. With `N` package views the bound
-is `2 × N` completed snapshots, plus in-flight candidates. After the atomic
-pointer flip, the publisher prunes only older, validated entries owned by that
-view. Sibling views and candidates are never pruned. The preceding snapshot is
-the rollback/read-overlap window; there is no process-reference lease registry
-or idle-worktree collector. Retention runs only when that view publishes, so an
-inactive worktree keeps its last published snapshots until it is reclaimed.
+not two snapshots for the entire shared store. The publisher's
+`--snapshot-retention` option configures that total (2 through 32). Superseded
+generations also receive a **five-minute grace period from supersession**,
+configurable with `--snapshot-grace-ms`. A snapshot root's modification time is
+lifecycle metadata recording its last supersession; it is not content identity.
+Once the grace expires, publication prunes older validated entries owned by that
+view, but never current pointers, state-root symlink targets, explicit reader
+pins, or concretely process-referenced snapshots. Linux checks same-user
+`/proc` executable, working-directory, descriptor, mapped-file, and entry-point
+references; macOS uses its native `lsof` reader inventory. An unavailable
+inventory backend defers collection. Permission-hidden or closed cached paths
+require explicit reader pins; one unrelated language server does not prevent all
+collection. Sibling views and in-flight candidates are never
+pruned. The steady-state bound is the configured count per view; generations
+within grace or protected by live references are intentionally additional.
+Retention runs on publication, not on an idle-worktree background collector.
+
+Editors that cache closed paths cannot be inferred from a kernel file inventory.
+Pin the generation for the reader's lifetime, then remove the pin after closing
+or refreshing that reader. For example, from `packages/.editor-view`:
+
+```sh
+mkdir -p .pins
+ln -s "../$(readlink tui-core)" .pins/my-editor
+# After the editor no longer uses that generation:
+rm .pins/my-editor
+```
+
+Pins may target either a snapshot root or a path inside it. A later publication
+collects unpinned, unreferenced generations after their grace has expired.
 
 Snapshots deliberately own their Buck artifact bytes and remain usable after
-`buck-out` is removed. They must not hardlink or symlink to disposable artifacts.
+`buck-out` is removed. Copies use reflinks when supported. New candidates share
+regular-file payloads through a **host-shared content-addressed store**, across
+views, editor state roots, generations, and worktrees. They never hardlink or
+symlink to disposable artifacts. A payload key is its SHA-256 plus normalized
+read-only mode: **0444 for data, 0555 when any source execute bit is set**.
+Executables remain executable; write and special permission bits are removed.
+Only the snapshot-root `editor-view.json` remains independent metadata; nested
+files of that name are ordinary shareable payloads. Snapshot directories and
+relocated symlinks remain private to each generation.
+
+The default store is `.editor-view-content/v1` beside the common Git repository
+directory, so every worktree uses the same host-local data. Non-Git fixtures use
+`~/.cache/effect-utils/editor-view-content/v1`. Set `EDITOR_VIEW_CONTENT_STORE`
+or pass `--content-store <path>` to select another store. Use a child directory
+on the selected filesystem, not the mountpoint itself: the sibling control
+files must be on that same device. The store cannot overlap an editor state
+root. Existing immutable generations are validated and reused without rewriting;
+new generations populate the shared store.
+
+Store and shard directories are 0555 outside maintenance. Blobs are installed
+atomically from fully written, read-only files; an existing key is never
+truncated, overwritten, or chmodded into compliance. Admission rejects writable,
+symlinked, wrong-owner, or mismatched blobs. A sibling exclusive lock coordinates
+only short batches of hardlink/rename/unlink operations. Payload traversal,
+hashing, and cross-device copying happen **outside that lock**, so independent
+worktrees can prepare concurrently. An `EXDEV` destination keeps an independent
+read-only reflink/copy and reports `copiedFiles` and `copiedBytes`; it does not
+pretend to share an inode.
+
+Collection runs after one publication, once per distinct store after a batch,
+and after explicit release. Only validated blobs whose link count is **one**
+(the CAS entry alone) are removed, with identity and link count rechecked under
+the same short lock used by publishers. Current, retained, grace-protected,
+pinned, and concrete-reader-protected snapshots keep their blob links alive.
+Removing one worktree never chmods shared file inodes or removes another
+worktree's linked payloads. A same-user mutation of a shared inode is a real
+immutability violation for every owner, not silently repaired.
+
+Manual maintenance uses the publisher CLI:
+
+```sh
+bun packages/@overeng/buck2-tools/src/editor-view.ts collect-content --repo-root "$PWD"
+bun packages/@overeng/buck2-tools/src/editor-view.ts recover-content-lock \
+  --repo-root "$PWD" --token <exact-token-from-the-lock-error>
+```
+
+These commands also accept `--content-store`. Live content-store owners are
+waited for; a dead owner requires explicit exact-token recovery, never automatic
+lock theft. Recovery removes only verified stale-token temporary links and
+restores directory modes before releasing the lock. An existing recovery guard
+fails closed, including after an interrupted recovery: first quiesce publishers,
+prove the reported recovery PID is dead, restore only real store/shard
+directories to 0555, and retire that exact guard before retrying recovery.
 
 ### Retired worktree removal
 

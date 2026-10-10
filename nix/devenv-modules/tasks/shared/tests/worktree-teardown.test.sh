@@ -58,6 +58,10 @@ cleanup() {
     watchman --sockname="$WATCHMAN_SOCK" --no-spawn --no-local shutdown-server >/dev/null
   fi
   [ -z "$socket_dir" ] || rm -rf "$socket_dir"
+  # The ordinary Git fixture's shared CAS is beside .git and remains readonly
+  # after blob collection. Only test-owned directories need unlocking; never
+  # chmod shared payload files or follow links outside this temporary root.
+  find -P "$TEMP_ROOT" -type d -exec chmod u+w -- {} +
   rm -rf "$TEMP_ROOT"
   exit "$result"
 }

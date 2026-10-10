@@ -1,6 +1,7 @@
 //! Canonical editor-view tree fingerprints. Framing is `effect-utils/tree-digest/v1`.
 //! Instability errors include changed-field names and full before/after metadata;
-//! mode and link count are diagnostic context, not additional stability checks.
+//! Read-only shared files tolerate link-count ctime churn, but still prove bytes,
+//! inode identity, modification time, size, and unchanged permissions.
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::ffi::OsString;
@@ -68,14 +69,20 @@ fn sorted_names(directory: &Path) -> io::Result<Vec<OsString>> {
 }
 
 fn same(before: &Metadata, after: &Metadata, file: bool) -> bool {
+    // Publishers can add/remove other snapshot hardlinks while this inode is
+    // hashed. That changes ctime without modifying immutable shared bytes.
+    let immutable_shared_file = file
+        && before.mode() & 0o222 == 0
+        && before.mode() == after.mode()
+        && (before.nlink() > 1 || after.nlink() > 1);
     before.file_type() == after.file_type()
         && before.dev() == after.dev()
         && before.ino() == after.ino()
         && before.mtime() == after.mtime()
         && before.mtime_nsec() == after.mtime_nsec()
-        && before.ctime() == after.ctime()
-        && before.ctime_nsec() == after.ctime_nsec()
-        && (!file || before.size() == after.size())
+        && ((before.ctime() == after.ctime() && before.ctime_nsec() == after.ctime_nsec())
+            || immutable_shared_file)
+        && (!file || (before.size() == after.size() && before.mode() == after.mode()))
 }
 
 fn entry_type(metadata: &Metadata) -> &'static str {
@@ -534,6 +541,27 @@ mod tests {
             .unwrap()
             .split(", ")
             .collect()
+    }
+
+    #[test]
+    fn immutable_shared_files_allow_hardlink_lifetime_changes() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("blob");
+        let first = scratch.path().join("first-snapshot");
+        let second = scratch.path().join("second-snapshot");
+        fs::write(&path, b"immutable shared content").unwrap();
+        fs::set_permissions(&path, Permissions::from_mode(0o444)).unwrap();
+        fs::hard_link(&path, &first).unwrap();
+        let before = fs::symlink_metadata(&first).unwrap();
+        fs::hard_link(&path, &second).unwrap();
+        let linked = fs::symlink_metadata(&first).unwrap();
+        assert_ne!(before.nlink(), linked.nlink());
+        assert!(same(&before, &linked, true));
+        fs::remove_file(&second).unwrap();
+        let unlinked = fs::symlink_metadata(&first).unwrap();
+        assert!(same(&before, &unlinked, true));
+        fs::set_permissions(&path, Permissions::from_mode(0o644)).unwrap();
+        assert!(!same(&before, &fs::symlink_metadata(&first).unwrap(), true));
     }
 
     #[test]
