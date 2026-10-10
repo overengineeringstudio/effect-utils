@@ -208,7 +208,7 @@ describe.skipIf(inPartialNamespace === false)('store gc partial deletion (namesp
         if (Exit.isFailure(exit) === true) {
           expect(Cause.pretty(exit.cause)).toContain('deletion was partial')
         }
-        const output = Schema.decodeUnknownSync(Schema.fromJsonString(GcJsonOutput))(stdout)
+        const output = yield* Schema.decodeEffect(Schema.fromJsonString(GcJsonOutput))(stdout)
         const row = output.results.find((result) => result.path.replace(/\/$/u, '') === worktree)
         expect(row).toMatchObject({
           status: 'error',
@@ -236,10 +236,11 @@ describe.skipIf(inPartialNamespace === false)('store gc partial deletion (namesp
           '--output',
           'json',
         ]).pipe(Effect.provide(retryCapture.consoleLayer), Effect.exit)
-        expect(Exit.isSuccess(retry), Exit.isFailure(retry) ? Cause.pretty(retry.cause) : '').toBe(
-          true,
-        )
-        const retryOutput = Schema.decodeUnknownSync(Schema.fromJsonString(GcJsonOutput))(
+        expect(
+          Exit.isSuccess(retry),
+          Exit.isFailure(retry) === true ? Cause.pretty(retry.cause) : '',
+        ).toBe(true)
+        const retryOutput = yield* Schema.decodeEffect(Schema.fromJsonString(GcJsonOutput))(
           (yield* retryCapture.getStdoutLines).join('\n'),
         )
         expect(

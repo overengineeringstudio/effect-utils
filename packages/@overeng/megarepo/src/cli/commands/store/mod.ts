@@ -2433,7 +2433,7 @@ const storeGcCommand = Cli.Command.make(
           }
           yield* Console.log(`planSha256 ${plan.planSha256}`)
         }
-        if (plan.results.some((candidate) => candidate.outcome === 'partial')) {
+        if (plan.results.some((candidate) => candidate.outcome === 'partial') === true) {
           return yield* new StoreCommandError({
             message: 'budget candidate deletion was partial; the remainder stays for a later plan',
           })
@@ -3455,7 +3455,7 @@ const storeGcCommand = Cli.Command.make(
       })
       // Partial removal is not a successful deletion: the receipt is rendered,
       // then the command fails so callers retry from a fresh plan.
-      if (results.some((result) => result.outcome === 'partial')) {
+      if (results.some((result) => result.outcome === 'partial') === true) {
         return yield* new StoreCommandError({
           message: 'store gc deletion was partial; the remainder stays for a later plan',
         })

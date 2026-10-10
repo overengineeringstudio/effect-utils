@@ -209,7 +209,7 @@ const fingerprint = ({
 }: {
   path: string
   info: BigIntStats
-  directory?: DirectoryEvidence
+  directory?: DirectoryEvidence | undefined
 }): string =>
   `${directory?.overlay === true ? `mount:${directory.mountId}` : `${info.dev}:${info.ino}`}:${info.mode}:${info.size}:${info.blocks}:${info.nlink}:${info.mtimeNs}:${info.ctimeNs}`
 // Array sorting requires a positional comparator.
