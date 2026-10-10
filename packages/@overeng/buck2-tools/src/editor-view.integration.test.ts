@@ -1052,6 +1052,27 @@ describe('editor view publisher', () => {
     }
   })
 
+  it('names a Vite cache written into the snapshot and the directory to remove', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      const snapshotNodeModules = join(fixture.editorRoot, record.snapshot, 'node_modules')
+      const viteTemp = join(snapshotNodeModules, '.vite-temp')
+      // Simulates a capability-holding Vitest that bypasses the read-only modes.
+      chmodSync(snapshotNodeModules, 0o700)
+      mkdirSync(viteTemp)
+      chmodSync(snapshotNodeModules, 0o555)
+      await expect(verifyEditorViewSnapshot(fixture.options)).rejects.toThrow(
+        `snapshot directory is writable: ${viteTemp}; Vite/Vitest created .vite-temp inside the read-only editor-view snapshot`,
+      )
+      await expect(verifyEditorViewSnapshot(fixture.options)).rejects.toThrow(
+        `then remove ${viteTemp}`,
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
   it('fails closed when a declared backing root changes while materializing', async () => {
     const fixture = makeFixture()
     try {
