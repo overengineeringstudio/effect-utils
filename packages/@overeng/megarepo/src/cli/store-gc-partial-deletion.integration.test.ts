@@ -172,8 +172,8 @@ describe.skipIf(inPartialNamespace === false)('store gc partial deletion (namesp
           `lowerdir=${lower},upperdir=${upperFs}/layer,workdir=${upperFs}/work,xino=off,userxattr`,
           tmpRoot,
         ])
-        // Upper entries list before lower-only ones, so in-place removal unlinks this first.
-        const sibling = `${worktree}/upper-sibling`
+        // Name this before mnt in native readdir's ordering, proving actual partial removal.
+        const sibling = `${worktree}/000-sibling`
         yield* fs.writeFileString(sibling, 'removable sibling')
         yield* mountScoped(['-t', 'tmpfs', 'inner', mountPoint])
         yield* fs.writeFileString(`${mountPoint}/survivor`, 'inner mount survives')

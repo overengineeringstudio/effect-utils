@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process'
-import { lstatSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  closeSync,
+  constants,
+  lstatSync,
+  mkdtempSync,
+  openSync,
+  readlinkSync,
+  rmSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -387,10 +395,13 @@ const mountScoped = (args: ReadonlyArray<string>) =>
         result.status,
         `mount ${args.join(' ')}: ${result.error?.message ?? result.stderr}`,
       ).toBe(0)
+      return openSync(args.at(-1)!, constants.O_RDONLY | constants.O_DIRECTORY)
     }),
-    () =>
+    (fd) =>
       Effect.sync(() => {
-        spawnSync('umount', ['-l', args.at(-1)!], { encoding: 'utf8' })
+        // Quarantine can move a mount's ancestor; resolve its current location via this held fd.
+        spawnSync('umount', ['-l', readlinkSync(`/proc/self/fd/${fd}`)], { encoding: 'utf8' })
+        closeSync(fd)
       }),
   )
 
@@ -417,11 +428,10 @@ const overlayFixture = Effect.gen(function* () {
   yield* fs.writeFileString(`${lower}/${output}/lower-only/inner/file`, 'lower file')
   yield* fs.writeFileString(`${lower}/${output}/lower-file`, 'lower file')
   yield* fs.writeFileString(`${lower}/admitted/owner/sibling`, 'keep sibling')
-  // Partial fixture: overlay lists upper entries before lower-only ones, so in-place removal
-  // unlinks the upper sibling before reaching the lower-only mount point.
+  // Name the removable sibling before the mount point in native readdir's ordering.
   yield* fs.makeDirectory(`${lower}/admitted/owner/partial/mnt`, { recursive: true })
   yield* fs.makeDirectory(`${upper}/admitted/owner/partial`, { recursive: true })
-  yield* fs.writeFileString(`${upper}/admitted/owner/partial/sibling`, 'removable sibling')
+  yield* fs.writeFileString(`${upper}/admitted/owner/partial/000-sibling`, 'removable sibling')
   yield* fs.makeDirectory(`${upper}/${output}/nested`, { recursive: true })
   yield* fs.makeDirectory(`${upper}/${output}/upper-only`)
   yield* fs.writeFileString(`${upper}/${output}/nested/upper-artifact`, 'upper artifact')
@@ -626,13 +636,13 @@ describe.skipIf(inOverlayNamespace === false)(
           const mounted = `${path}/mnt`
           yield* mountScoped(['-t', 'tmpfs', 'inner', mounted])
           yield* fs.writeFileString(`${mounted}/sentinel`, 'mounted survives')
-          expect(yield* fs.readDirectory(path)).toEqual(['sibling', 'mnt'])
+          expect(yield* fs.readDirectory(path)).toEqual(['000-sibling', 'mnt'])
           const identity = yield* captureDeletionIdentity({ rootPath, path })
           const result = yield* withPinnedDeletion({ rootPath, path, identity }).pipe(Effect.result)
           expect(result._tag).toBe('Failure')
           expect(result._tag === 'Failure' && result.failure).toBeInstanceOf(PinnedDeletionError)
           expect(result._tag === 'Failure' && result.failure.partial).toBe(true)
-          expect(yield* fs.exists(`${path}/sibling`)).toBe(false)
+          expect(yield* fs.exists(`${path}/000-sibling`)).toBe(false)
           expect(yield* fs.readFileString(`${mounted}/sentinel`)).toBe('mounted survives')
         },
         Effect.provide(NodeServices.layer),
@@ -648,9 +658,9 @@ describe.skipIf(inOverlayNamespace === false)(
         setup: Effect.gen(function* () {
           const { fs, rootPath, path } = yield* overlayFixture
           const mounted = `${path}/nested`
-          yield* mountScoped(['-t', 'tmpfs', 'inner', mounted])
+          const mountFd = yield* mountScoped(['-t', 'tmpfs', 'inner', mounted])
           yield* fs.writeFileString(`${mounted}/sentinel`, 'mounted survives')
-          return { fs, rootPath, path, sentinel: `${mounted}/sentinel` }
+          return { fs, rootPath, path, sentinel: `/proc/self/fd/${mountFd}/sentinel` }
         }),
       },
       {
@@ -659,9 +669,9 @@ describe.skipIf(inOverlayNamespace === false)(
         setup: Effect.gen(function* () {
           const { fs, rootPath, path } = yield* fixture
           const mounted = `${path}/nested`
-          yield* mountScoped(['-t', 'tmpfs', 'inner', mounted])
+          const mountFd = yield* mountScoped(['-t', 'tmpfs', 'inner', mounted])
           yield* fs.writeFileString(`${mounted}/sentinel`, 'mounted survives')
-          return { fs, rootPath, path, sentinel: `${mounted}/sentinel` }
+          return { fs, rootPath, path, sentinel: `/proc/self/fd/${mountFd}/sentinel` }
         }),
       },
       {
