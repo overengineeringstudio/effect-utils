@@ -106,37 +106,66 @@ export const fitText = (options: {
   return best
 }
 /**
- * Lay out a block header: the right-aligned value is reserved first, then the label
- * uses the remaining space (full label, then short label, then an ellipsized label),
- * and is dropped below `minLabelWidthPx`. The runs never overlap.
+ * Try full label + full value, short label + full value, then value alone.
+ * Only after the full value fails do compact and number-only values compete;
+ * ellipsizing is the last resort. Labels are never truncated or reintroduced.
  */
 export const layoutBlockText = (options: {
   readonly rect: Rect
   readonly label: string
   readonly shortLabel?: string | undefined
   readonly value: string
+  readonly compactValue?: string | undefined
+  readonly numberValue?: string | undefined
   readonly measure: (text: string) => number
   readonly paddingPx?: number
   readonly gapPx?: number
-  readonly minLabelWidthPx?: number
 }): BlockTextLayout => {
   const padding = options.paddingPx ?? 4
   const gap = options.gapPx ?? 6
   const inner = options.rect.width - padding * 2
   const right = options.rect.x + options.rect.width - padding
-  const fittedValue = fitText({ text: options.value, maxWidth: inner, measure: options.measure })
-  const value =
-    fittedValue === undefined ? undefined : { ...fittedValue, x: right - fittedValue.width }
-  const labelSpace = inner - (value === undefined ? 0 : value.width + gap)
-  if (labelSpace < (options.minLabelWidthPx ?? 16)) return { value, label: undefined }
-  const x = options.rect.x + padding
-  const fullWidth = options.measure(options.label)
-  if (fullWidth <= labelSpace) return { value, label: { text: options.label, x, width: fullWidth } }
-  if (options.shortLabel !== undefined) {
-    const shortWidth = options.measure(options.shortLabel)
-    if (shortWidth <= labelSpace)
-      return { value, label: { text: options.shortLabel, x, width: shortWidth } }
+  const fullValueWidth = options.measure(options.value)
+  if (fullValueWidth <= inner) {
+    const value =
+      options.value.length === 0
+        ? undefined
+        : { text: options.value, x: right - fullValueWidth, width: fullValueWidth }
+    const labelSpace = inner - (value === undefined ? 0 : fullValueWidth + gap)
+    const x = options.rect.x + padding
+    const fullLabelWidth = options.measure(options.label)
+    if (options.label.length > 0 && fullLabelWidth <= labelSpace)
+      return { value, label: { text: options.label, x, width: fullLabelWidth } }
+    if (options.shortLabel !== undefined && options.shortLabel.length > 0) {
+      const shortWidth = options.measure(options.shortLabel)
+      if (shortWidth <= labelSpace)
+        return { value, label: { text: options.shortLabel, x, width: shortWidth } }
+    }
+    return { value, label: undefined }
   }
-  const label = fitText({ text: options.label, maxWidth: labelSpace, measure: options.measure })
-  return { value, label: label === undefined ? undefined : { ...label, x } }
+  if (options.compactValue !== undefined && options.compactValue.length > 0) {
+    const width = options.measure(options.compactValue)
+    if (width <= inner)
+      return { value: { text: options.compactValue, x: right - width, width }, label: undefined }
+  }
+  if (options.numberValue !== undefined && options.numberValue.length > 0) {
+    const width = options.measure(options.numberValue)
+    if (width <= inner)
+      return { value: { text: options.numberValue, x: right - width, width }, label: undefined }
+  }
+  const fittedValue = fitText({
+    text: options.numberValue ?? options.compactValue ?? options.value,
+    maxWidth: inner,
+    measure: options.measure,
+  })
+  if (fittedValue !== undefined)
+    return { value: { ...fittedValue, x: right - fittedValue.width }, label: undefined }
+  const ellipsisWidth = options.measure(ellipsis)
+  return {
+    value:
+      options.value.length > 0 && ellipsisWidth <= inner
+        ? { text: ellipsis, x: right - ellipsisWidth, width: ellipsisWidth }
+        : undefined,
+    label: undefined,
+  }
 }

@@ -672,10 +672,14 @@ the slot is too small; blocks never grow past the nominal width. The container,
 not the canvas, is measured, so sizing the canvas cannot feed back. Backing
 dimensions are `round(cssSize * actualDpr)`; use the actual fractional DPR and
 CSS-coordinate transforms, not integer DPR truncation. Block header text is laid
-out by measurement: the right-aligned value is reserved first, then the label
-takes the remaining width as the full label, the `shortLabel`, an ellipsized
-label, or nothing below a minimum width. Label and value never overlap, and text
-is never squeezed through a `fillText` maximum width.
+out by measurement, in this order: full label + full value, `shortLabel` + full
+value, full value alone, compact value alone (rounded to an integer in the same
+displayed unit, without the unit separator), then that integer without its unit.
+Only after none of these fits may the value be ellipsized, down to an ellipsis
+alone if necessary. Labels are never truncated or restored beside compact
+values. The value stays right-aligned; label and value never overlap, and text is
+never squeezed through a `fillText` maximum width. Full labels and unabridged
+values remain available through accessible outputs and tooltips.
 ResizeObserver and DPR change signals are acquired with the renderer scope;
 sizing/theme resolution happens on changes, not per frame. Strip attachment
 uses the session clock and never creates a per-grid engine.

@@ -115,20 +115,36 @@ export const block = <TValue>(options: {
     read: (store) => bind(store.read({ series: options.series })),
   }
 }
-/** Format the same scalar text used by canvas and accessible outputs. */
+type MeterValueFormat = 'full' | 'compact' | 'number'
+/** Format observed scalars; compact forms round in the same displayed unit. */
 export const formatMeterValue = (options: {
   readonly value: number
   readonly unit: Unit
+  readonly format?: MeterValueFormat
 }): string => {
+  const format = options.format ?? 'full'
+  let value = options.value
+  let unit: string = options.unit
   if (options.unit === 'bytes') {
-    if (options.value >= 1024 ** 3) return `${(options.value / 1024 ** 3).toFixed(1)} GiB`
-    if (options.value >= 1024 ** 2) return `${(options.value / 1024 ** 2).toFixed(1)} MiB`
-    if (options.value >= 1024) return `${(options.value / 1024).toFixed(1)} KiB`
-    return `${options.value.toFixed(0)} B`
+    if (value >= 1024 ** 3) {
+      value /= 1024 ** 3
+      unit = 'GiB'
+    } else if (value >= 1024 ** 2) {
+      value /= 1024 ** 2
+      unit = 'MiB'
+    } else if (value >= 1024) {
+      value /= 1024
+      unit = 'KiB'
+    } else unit = 'B'
   }
   const number =
-    Number.isInteger(options.value) === true ? String(options.value) : options.value.toFixed(1)
-  return options.unit === 'count' ? number : `${number} ${options.unit}`
+    format !== 'full' || unit === 'B'
+      ? value.toFixed(0)
+      : options.unit === 'bytes' || Number.isInteger(value) === false
+        ? value.toFixed(1)
+        : String(value)
+  if (format === 'number' || options.unit === 'count') return number
+  return `${number}${format === 'compact' ? '' : ' '}${unit}`
 }
 const noValues: readonly number[] = []
 /** Options shared by every built-in block builder. */
@@ -144,7 +160,10 @@ export interface BlockOptions<TValue> {
 export const numericBlock = <TValue>(
   options: BlockOptions<TValue> & {
     readonly values: (value: TValue) => number | readonly number[]
-    readonly describeValue?: (value: TValue) => string
+    readonly describeValue?: (options: {
+      readonly value: TValue
+      readonly format: MeterValueFormat
+    }) => string
     readonly mode?: 'Gauge' | 'Event' | 'Counter'
     readonly staleAfterMs?: number
   },
@@ -156,14 +175,20 @@ export const numericBlock = <TValue>(
     for (const part of values) sum += part
     return sum
   }
-  const describe = (history: SeriesView<TValue>): string => {
+  const describe = ({
+    history,
+    format = 'full',
+  }: {
+    readonly history: SeriesView<TValue>
+    readonly format?: MeterValueFormat
+  }): string => {
     const latest = history.latest
     if (latest === undefined) return 'n/a (NoSamples)'
     if (latest._tag === 'Unavailable') return `n/a (${latest.reason})`
     if (latest._tag === 'Gap') return `n/a (${latest.reason} gap)`
     return (
-      options.describeValue?.(latest.value) ??
-      formatMeterValue({ value: total(latest.value), unit: options.series.unit })
+      options.describeValue?.({ value: latest.value, format }) ??
+      formatMeterValue({ value: total(latest.value), unit: options.series.unit, format })
     )
   }
   return block({
@@ -171,7 +196,7 @@ export const numericBlock = <TValue>(
     series: options.series,
     shortLabel: options.shortLabel,
     widthPx: options.widthPx ?? 150,
-    describe,
+    describe: (history) => describe({ history }),
     draw: ({ ctx, rect, history, nowMs, historyMs, theme }) => {
       ctx.save()
       ctx.beginPath()
@@ -299,7 +324,9 @@ export const numericBlock = <TValue>(
         rect,
         label: options.series.label,
         shortLabel: options.shortLabel,
-        value: describe(history),
+        value: describe({ history }),
+        compactValue: describe({ history, format: 'compact' }),
+        numberValue: describe({ history, format: 'number' }),
         measure,
       })
       ctx.textAlign = 'left'
@@ -343,9 +370,9 @@ export const frameBlock = (options: BlockOptions<FpsValue>): CanvasBlockSpec =>
   numericBlock({
     ...options,
     values: (value) => (value.durationMs > 0 ? 1000 / value.durationMs : noValues),
-    describeValue: (value) =>
+    describeValue: ({ value, format }) =>
       value.durationMs > 0
-        ? formatMeterValue({ value: 1000 / value.durationMs, unit: 'fps' })
+        ? formatMeterValue({ value: 1000 / value.durationMs, unit: 'fps', format })
         : 'n/a (NoSamples)',
   })
 /** Heap usage history from actual browser observations. */
