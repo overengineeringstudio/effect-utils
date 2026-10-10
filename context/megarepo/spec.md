@@ -156,6 +156,14 @@ Recursive apply refuses canonical mutations there; freshness is neither
 persisted nor inferred from existence. The exception does not authorize lock
 rewrites, generators' authoring outputs, or a separately invoked nested apply.
 
+The invoking workspace is the one canonical root an author owns: when it is a
+branch worktree (`refs/heads/*`), top-level `mr apply` may populate its root and
+`repos/` mounts, and top-level `mr fetch` (including the fetch phase of
+`mr fetch --apply`) may additionally rewrite its own `megarepo.lock`. The grant
+covers only paths that physically resolve directly inside that root; tag and
+commit worktrees, nested megarepos visited by `--all`, and aliases into other
+store paths stay refused.
+
 Consumers prepare the dependency tree through the outer workspace's
 `mr apply --all`. Nested package-install hooks must not independently run
 `mr apply --only` inside canonical member worktrees. A consumer may instead

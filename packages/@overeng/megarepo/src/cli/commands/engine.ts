@@ -165,9 +165,12 @@ export const syncMegarepo = <R = never>({
     // Load config
     const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
 
+    // The invoking (depth 0) workspace is the author's own root: apply may mount into it and
+    // fetch may also rewrite its lock. Nested roots stay shared caches.
+    const ownsTopLevelRoot = depth === 0 && (isApplyMode === true || isFetchMode === true)
     if (dryRun === false) {
       const authorization =
-        isApplyMode === true && depth === 0
+        ownsTopLevelRoot === true
           ? { materializationRoot: megarepoRoot }
           : isApplyMode === true &&
               (options.lockSyncMode ?? 'off') === 'off' &&
@@ -441,7 +444,13 @@ export const syncMegarepo = <R = never>({
       }
 
       // Write lock file
-      yield* writeLockFile({ lockPath, lockFile })
+      yield* writeLockFile({
+        lockPath,
+        lockFile,
+        ...(ownsTopLevelRoot === true && isFetchMode === true
+          ? { materializationRoot: megarepoRoot }
+          : {}),
+      })
     }
 
     // Nix lock sync and generators only run when changing workspace (apply mode).

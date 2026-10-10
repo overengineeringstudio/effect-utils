@@ -9,11 +9,14 @@ export const assertCanonicalMutationAllowed = ({
   target,
   materializationRoot,
   materializedRoot,
+  lockFile,
 }: {
   target: string
   materializationRoot?: string
   /** Physical identity of a commit worktree freshly created by this apply invocation. */
   materializedRoot?: string
+  /** Top-level fetch also owns the invoking branch workspace's own lock file (a direct child of it). */
+  lockFile?: string
 }): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     if (process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] === '1') return
@@ -72,7 +75,8 @@ export const assertCanonicalMutationAllowed = ({
           return
         }
       }
-      // Only top-level apply owns an invoking branch workspace's mount directory.
+      // Only top-level apply/fetch owns an invoking branch workspace's mount directory,
+      // and only top-level fetch additionally owns its lock file.
       // Fresh recursive materialization never authorizes authoring outputs.
       if (materializationRoot !== undefined && materializedRoot === undefined) {
         const root = yield* fs.realPath(materializationRoot)
@@ -83,7 +87,10 @@ export const assertCanonicalMutationAllowed = ({
           root.match(/\/refs\/(commits|heads|tags)\/.+/)?.[1] === 'heads' &&
           ((targetPath === workspacePath && destination === root) ||
             (targetPath === path.join(workspacePath, 'repos') &&
-              destination === path.join(root, 'repos')))
+              destination === path.join(root, 'repos')) ||
+            (lockFile !== undefined &&
+              targetPath === path.resolve(lockFile) &&
+              destination === path.join(root, path.basename(lockFile))))
         ) {
           return
         }

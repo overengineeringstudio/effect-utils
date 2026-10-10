@@ -3653,6 +3653,150 @@ describe('mr fetch', () => {
       { timeout: 30_000 },
     )
   })
+
+  describe('author-owned branch workspace', () => {
+    /** Store remote `test-owner/test-repo` whose `main` advanced past the locked commit. */
+    const createAdvancedRemoteFixture = Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* makeCanonicalTempDirectoryScoped()}/`)
+      const sourceRepoPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('source/'))
+      yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
+      yield* initGitRepo(sourceRepoPath)
+      yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
+        Effect.catch(() => Effect.void),
+      )
+      yield* fs.writeFileString(`${sourceRepoPath}README.md`, '# Test Repo\n')
+      yield* runGitCommand(sourceRepoPath, 'add', '-A')
+      yield* runGitCommand(sourceRepoPath, 'commit', '--no-verify', '-m', 'Initial commit')
+      const initialCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+      const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+      const bareRepoPath = `${storePath}github.com/test-owner/test-repo/.bare`
+      yield* fs.makeDirectory(`${storePath}github.com/test-owner/test-repo`, { recursive: true })
+      yield* runGitCommand(tmpDir, 'clone', '--bare', sourceRepoPath, bareRepoPath)
+      yield* runGitCommand(
+        EffectPath.unsafe.absoluteDir(`${bareRepoPath}/`),
+        'config',
+        'remote.origin.fetch',
+        '+refs/heads/*:refs/remotes/origin/*',
+      )
+      yield* fs.writeFileString(`${sourceRepoPath}new-file.txt`, 'new content\n')
+      yield* runGitCommand(sourceRepoPath, 'add', '-A')
+      yield* runGitCommand(sourceRepoPath, 'commit', '--no-verify', '-m', 'Second commit')
+      const newCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+      const lockAt = (commit: string) =>
+        encodeJson({
+          version: 1,
+          members: {
+            'test-repo': {
+              url: 'https://github.com/test-owner/test-repo',
+              ref: 'main',
+              commit,
+              pinned: false,
+              lockedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        })
+      /** Write a megarepo root in the store at `refs/<kind>/<name>/`. */
+      const makeStoreRoot = (repo: string, ref: string, members: Record<string, string>) =>
+        Effect.gen(function* () {
+          const root = EffectPath.ops.join(
+            storePath,
+            EffectPath.unsafe.relativeDir(`github.com/test-owner/${repo}/refs/${ref}/`),
+          )
+          yield* fs.makeDirectory(root, { recursive: true })
+          yield* fs.writeFileString(`${root}megarepo.json`, encodeJson({ members }))
+          return root
+        })
+      return { storePath, initialCommit, newCommit, lockAt, makeStoreRoot }
+    })
+
+    for (const refKind of ['heads', 'tags', 'commits'] as const) {
+      it.effect(
+        `updates the invoking ${refKind} workspace's own lock and mounts only when it is a branch`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const { storePath, initialCommit, newCommit, lockAt, makeStoreRoot } =
+              yield* createAdvancedRemoteFixture
+            const root = yield* makeStoreRoot('workspace', `${refKind}/team/feature`, {
+              'test-repo': 'test-owner/test-repo',
+            })
+            yield* fs.writeFileString(`${root}megarepo.lock`, lockAt(initialCommit))
+
+            const result = yield* runFetchApplyCommand({
+              cwd: root,
+              args: [
+                '--output',
+                'json',
+                '--only',
+                'test-repo',
+                '--worktree-mode',
+                'commit',
+                '--lock-sync',
+                'off',
+              ],
+              env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+            })
+
+            if (refKind === 'heads') {
+              expect(result.exitCode).toBe(0)
+              expect(yield* fs.readFileString(`${root}megarepo.lock`)).toContain(
+                `"commit": "${newCommit}"`,
+              )
+              expect(yield* fs.realPath(`${root}repos/test-repo`)).toContain(
+                `/refs/commits/${newCommit}`,
+              )
+            } else {
+              expect(result.exitCode).toBe(1)
+              expect(`${result.stdout}\n${result.stderr}`).toContain(
+                'Refusing to mutate canonical worktree',
+              )
+              expect(yield* fs.readFileString(`${root}megarepo.lock`)).toBe(lockAt(initialCommit))
+              expect(yield* fs.exists(`${root}repos`)).toBe(false)
+            }
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+        { timeout: 30_000 },
+      )
+    }
+
+    it.effect(
+      'still refuses fetching into a nested canonical member from an author workspace',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath, initialCommit, lockAt, makeStoreRoot } =
+            yield* createAdvancedRemoteFixture
+          const child = yield* makeStoreRoot('child', 'heads/main', {
+            'test-repo': 'test-owner/test-repo',
+          })
+          yield* fs.writeFileString(`${child}megarepo.lock`, lockAt(initialCommit))
+          const root = yield* makeStoreRoot('workspace', 'heads/team/feature', {
+            child: child.slice(0, -1),
+          })
+          yield* fs.writeFileString(`${root}megarepo.lock`, encodeJson({ version: 1, members: {} }))
+
+          const result = yield* runFetchApplyCommand({
+            cwd: root,
+            args: ['--output', 'json', '--all', '--worktree-mode', 'commit', '--lock-sync', 'off'],
+            env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+          })
+
+          expect(result.exitCode).toBe(1)
+          expect(`${result.stdout}\n${result.stderr}`).toContain(
+            'Refusing to mutate canonical worktree',
+          )
+          expect(yield* fs.readFileString(`${child}megarepo.lock`)).toBe(lockAt(initialCommit))
+          expect(yield* fs.exists(`${child}repos`)).toBe(false)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+      { timeout: 30_000 },
+    )
+  })
 })
 
 // =============================================================================
