@@ -771,6 +771,7 @@
       "runner": "vitest",
       "selectedTestFiles": [
         "src/canvas/canvas.unit.test.ts",
+        "src/canvas/layout.unit.test.ts",
         "src/headless/headless.unit.test.ts",
         "src/instrumentation/instrumentation.unit.test.ts",
         "src/platform/browser.unit.test.ts",
@@ -793,6 +794,7 @@
       "taskName": "test:meters",
       "testFiles": [
         "src/canvas/canvas.unit.test.ts",
+        "src/canvas/layout.unit.test.ts",
         "src/headless/headless.unit.test.ts",
         "src/instrumentation/instrumentation.unit.test.ts",
         "src/platform/browser.unit.test.ts",

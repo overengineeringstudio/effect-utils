@@ -25,6 +25,8 @@ export interface DevbarProps {
   readonly panels: readonly DevbarPanel[]
   /** Host-owned renderer slot (for example a meter strip); absent means no strip work. */
   readonly strip?: React.ReactNode | undefined
+  /** Minimum strip slot width in CSS pixels before the whole row scrolls; defaults to 160. */
+  readonly stripMinWidth?: number | undefined
   readonly segments?: readonly DevbarSegment[] | undefined
   /** Selected panel ID; an unknown ID renders no panel. */
   readonly openPanel: string | undefined
@@ -96,12 +98,17 @@ const styles = stylex.create({
   },
   row: {
     display: 'flex',
+    flexWrap: 'nowrap',
     alignItems: 'center',
     flexShrink: 0,
     height: rowHeight,
     minHeight: rowHeight,
     maxHeight: rowHeight,
     boxSizing: 'border-box',
+    minWidth: 0,
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    scrollbarWidth: 'thin',
     gap: '0.5rem',
     paddingInline: '0.5rem',
     backgroundColor: devbarTokens.canvas,
@@ -109,22 +116,46 @@ const styles = stylex.create({
     borderTopStyle: 'solid',
     borderTopColor: devbarTokens.border,
   },
-  controls: { display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 },
+  controls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.25rem',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+  },
   strip: {
     display: 'flex',
     alignItems: 'center',
     alignSelf: 'stretch',
     flexGrow: 1,
     flexShrink: 1,
-    flexBasis: 0,
-    minWidth: 0,
+    flexBasis: 'auto',
     overflowX: 'auto',
     overflowY: 'hidden',
   },
-  segments: { display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 },
+  stripWidth: (minimum: number) => ({ minWidth: minimum, width: minimum }),
+  stripContent: {
+    width: '100%',
+    minWidth: 0,
+    flexShrink: 0,
+  },
+  segments: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexShrink: 1,
+    minWidth: 0,
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    scrollbarWidth: 'thin',
+    whiteSpace: 'nowrap',
+  },
+  segment: { flexShrink: 0, whiteSpace: 'nowrap' },
   button: {
     display: 'inline-flex',
     alignItems: 'center',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
     height: '1.5rem',
     paddingInline: '0.5rem',
     backgroundColor: { default: 'transparent', ':hover': devbarTokens.panel },
@@ -151,6 +182,7 @@ const activationOf = (event: React.MouseEvent): Activation =>
 export const Devbar = ({
   panels,
   strip,
+  stripMinWidth = 160,
   segments,
   openPanel,
   onOpenPanelChange,
@@ -326,11 +358,15 @@ export const Devbar = ({
             )
           })}
         </div>
-        <div {...stylex.props(styles.strip)}>{strip}</div>
+        <div {...stylex.props(styles.strip, styles.stripWidth(stripMinWidth))}>
+          <div {...stylex.props(styles.stripContent)}>{strip}</div>
+        </div>
         {segments !== undefined && segments.length > 0 && (
           <div {...stylex.props(styles.segments)}>
             {segments.map((segment) => (
-              <React.Fragment key={segment.id}>{segment.render()}</React.Fragment>
+              <div key={segment.id} {...stylex.props(styles.segment)}>
+                {segment.render()}
+              </div>
             ))}
           </div>
         )}

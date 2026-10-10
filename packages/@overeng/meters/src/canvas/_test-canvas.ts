@@ -2,10 +2,19 @@ import { vi } from 'vitest'
 
 import type { CanvasPlatform } from './index.ts'
 
+/** Deterministic monospace metric: 6 CSS px per character. */
+export const measureTestText = (text: string): number => text.length * 6
+/** One recorded `fillText` call; `maxWidth` must stay undefined (no glyph squeezing). */
+export interface DrawnText {
+  readonly text: string
+  readonly x: number
+  readonly maxWidth: number | undefined
+}
 /** Minimal injected browser drawing boundary with recorded CSS-coordinate output. */
 export const testCanvas = () => {
   const canvas = document.createElement('canvas')
   const texts: string[] = []
+  const drawnTexts: DrawnText[] = []
   const recordedTransforms: number[][] = []
   const rectangles: number[][] = []
   const context = {
@@ -25,9 +34,11 @@ export const testCanvas = () => {
       recordedTransforms.push(values)
     },
     // oxlint-disable-next-line overeng/named-args -- Native CanvasRenderingContext2D callback signature.
-    fillText: (text: string, _x: number, _y: number, _maxWidth?: number) => {
+    fillText: (text: string, x: number, _y: number, maxWidth?: number) => {
       texts.push(text)
+      drawnTexts.push({ text, x, maxWidth })
     },
+    measureText: (text: string) => ({ width: measureTestText(text) }),
     fillStyle: '',
     font: '',
     textBaseline: 'top',
@@ -37,10 +48,12 @@ export const testCanvas = () => {
   const nativeContext = context as unknown as CanvasRenderingContext2D
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(nativeContext)
   let dpr = 1.25
+  let availableWidth: number | undefined
   let observed = 0
   const listeners = new Set<() => void>()
   const platform: CanvasPlatform = {
     dpr: () => dpr,
+    availableWidth: () => availableWidth,
     observeChanges: (listener) => {
       listeners.add(listener)
       observed++
@@ -54,10 +67,15 @@ export const testCanvas = () => {
     canvas,
     platform,
     texts,
+    drawnTexts,
     rectangles,
     transforms: recordedTransforms,
     resize: (value: number) => {
       dpr = value
+      for (const listener of listeners) listener()
+    },
+    setAvailableWidth: (value: number | undefined) => {
+      availableWidth = value
       for (const listener of listeners) listener()
     },
     get observed() {

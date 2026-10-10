@@ -37,7 +37,13 @@ const runtimeDeps = catalog.compose({
       '@effect/vitest',
     ),
   },
-  peerDependencies: { external: catalog.pick(...peerDepNames) },
+  peerDependencies: {
+    external: {
+      ...catalog.pick(...peerDepNames),
+      /** Releases plus exactly the one RC verified by typecheck + unit tests; other RCs must fail the peer check. */
+      effect: '^4.0.0 || 4.0.0-rc.118',
+    },
+  },
 })
 
 type Environment = 'browser' | 'isomorphic-es2024'

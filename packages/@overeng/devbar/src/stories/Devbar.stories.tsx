@@ -19,6 +19,7 @@ const styles = stylex.create({
     backgroundColor: devbarTokens.panel,
     color: devbarTokens.text,
   },
+  narrow: { width: '600px', boxSizing: 'border-box' },
   label: { margin: '1rem', color: devbarTokens.mutedText },
   panelContent: { margin: 0, padding: '1rem' },
   strip: {
@@ -62,6 +63,22 @@ const segments: readonly DevbarSegment[] = [
         Sync: connected
       </output>
     ),
+  },
+]
+
+const crowdedSegments: readonly DevbarSegment[] = [
+  ...segments,
+  {
+    id: 'connection',
+    render: () => <output {...stylex.props(styles.segment)}>WebSocket: connected</output>,
+  },
+  {
+    id: 'queue',
+    render: () => <output {...stylex.props(styles.segment)}>Pending changes: 12</output>,
+  },
+  {
+    id: 'actions',
+    render: () => <button type="button">Reconnect host connection</button>,
   },
 ]
 
@@ -132,6 +149,34 @@ export const Collapsed: Story = {
 
 export const WithStripAndSegments: Story = {
   args: { strip: placeholderStrip, segments },
+}
+
+export const Narrow600: Story = {
+  args: { strip: placeholderStrip, segments: crowdedSegments },
+  render: (args) => (
+    <div {...stylex.props(styles.sample, styles.narrow)}>
+      <p {...stylex.props(styles.label)}>600px host container · scrollable status segments</p>
+      <ControlledDevbar {...args} placement="container" />
+    </div>
+  ),
+  play: async ({ args, canvasElement }) => {
+    const row = within(canvasElement).getByRole('group', { name: 'Developer bar' })
+    const [controls, strip, hostSegments] = Array.from(row.children)
+    const bounds = row.getBoundingClientRect()
+    const stripBounds = strip?.getBoundingClientRect()
+    const segmentBounds = hostSegments?.getBoundingClientRect()
+    await expect(bounds.width).toBe(598)
+    await expect(bounds.height).toBe(32)
+    await expect(stripBounds?.width).toBeGreaterThanOrEqual(args.stripMinWidth ?? 160)
+    await expect(strip?.firstElementChild?.getBoundingClientRect().width).toBe(stripBounds?.width)
+    await expect(segmentBounds?.left).toBeGreaterThanOrEqual(bounds.left)
+    await expect(segmentBounds?.right).toBeLessThanOrEqual(bounds.right)
+    await expect(hostSegments?.scrollWidth).toBeGreaterThan(hostSegments?.clientWidth ?? 0)
+    await expect(controls?.getBoundingClientRect().right).toBeLessThanOrEqual(
+      stripBounds?.left ?? 0,
+    )
+    await expect(stripBounds?.right).toBeLessThanOrEqual(segmentBounds?.left ?? 0)
+  },
 }
 
 export const OpenByToggle: Story = {

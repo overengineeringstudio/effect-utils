@@ -22,9 +22,9 @@ export {
   spanBlock,
   stackedBlock,
 } from './blocks.ts'
-export type { BlockReader, CanvasBlockSpec, DrawInput, MeterTheme } from './blocks.ts'
-export { historyX, layoutStrip } from './layout.ts'
-export type { Rect, StripLayout } from './layout.ts'
+export type { BlockOptions, BlockReader, CanvasBlockSpec, DrawInput, MeterTheme } from './blocks.ts'
+export { fitText, historyX, layoutBlockText, layoutStrip } from './layout.ts'
+export type { BlockTextLayout, Rect, StripLayout, TextRun } from './layout.ts'
 
 /** Renderer-only session access; never exposes a start capability to drawing. */
 export type MeterSession = Pick<Meters, 'store' | 'clock'>
@@ -69,6 +69,8 @@ export const makeStripView = (options: {
 /** Injected attachment capabilities for deterministic sizing and disposal tests. */
 export interface CanvasPlatform {
   readonly dpr: () => number
+  /** CSS width the host slot gives the strip; undefined means use nominal block widths. */
+  readonly availableWidth: () => number | undefined
   readonly observeChanges: (notify: () => void) => () => void
 }
 /** Scoped attachment; it subscribes only to the session's Draw phase. */
@@ -115,11 +117,17 @@ export const resolveMeterTheme = (options: {
 const browserCanvasPlatform = (canvas: HTMLCanvasElement): CanvasPlatform => {
   const window = canvas.ownerDocument.defaultView
   if (window === null) throw new TypeError('Canvas must belong to a window')
+  // Measure the container, never the canvas itself, so sizing the canvas cannot feed back.
+  const container = canvas.parentElement
   return {
     dpr: () => window.devicePixelRatio,
+    availableWidth: () => {
+      const width = container?.clientWidth
+      return width === undefined || width <= 0 ? undefined : width
+    },
     observeChanges: (notify) => {
       const observer = new ResizeObserver(notify)
-      observer.observe(canvas)
+      observer.observe(container ?? canvas)
       let media: MediaQueryList | undefined
       const changed = (): void => {
         media?.removeEventListener('change', changed)
@@ -159,6 +167,8 @@ export const makeCanvasStrip = (options: {
   readonly readTheme: () => MeterTheme
   readonly view?: StripView
   readonly platform?: CanvasPlatform
+  /** Receives each resolved layout (size or DPR changes only) so DOM overlays share it. */
+  readonly onLayout?: (layout: StripLayout) => void
 }): Renderer => ({
   attach: Effect.gen(function* () {
     if (options.blocks.length === 0) return
@@ -192,12 +202,14 @@ export const makeCanvasStrip = (options: {
         heightPx: options.heightPx ?? 32,
         gapPx: options.gapPx ?? 2,
         dpr: platform.dpr(),
+        availableWidthPx: platform.availableWidth(),
       })
       if (canvas.width !== layout.backingWidth) canvas.width = layout.backingWidth
       if (canvas.height !== layout.backingHeight) canvas.height = layout.backingHeight
       canvas.style.width = `${layout.widthPx}px`
       canvas.style.height = `${layout.heightPx}px`
       theme = resolveMeterTheme({ canvas, theme: options.readTheme() })
+      options.onLayout?.(layout)
       draw(options.meters.clock.now())
     }
     update()

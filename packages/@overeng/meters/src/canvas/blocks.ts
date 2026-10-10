@@ -6,7 +6,7 @@ import {
   type Unit,
 } from '../series/index.ts'
 import type { FpsValue } from '../session/frame.ts'
-import { historyX, type Rect } from './layout.ts'
+import { fitText, historyX, layoutBlockText, type Rect } from './layout.ts'
 
 /** Semantic color/font values; hosts may resolve StyleX tokens or CSS variables. */
 export interface MeterTheme {
@@ -67,6 +67,9 @@ export interface BlockReader {
 export interface CanvasBlockSpec {
   readonly id: string
   readonly label: string
+  /** Compact canvas label used only when the full label does not fit; DOM text keeps `label`. */
+  readonly shortLabel?: string | undefined
+  /** Nominal width; blocks shrink below it only when the strip has too little space. */
   readonly widthPx: number
   readonly read: (store: SeriesStore) => BlockReader
 }
@@ -74,6 +77,7 @@ export interface CanvasBlockSpec {
 export const block = <TValue>(options: {
   readonly id: string
   readonly series: Series<TValue>
+  readonly shortLabel?: string | undefined
   readonly widthPx: number
   readonly draw: (input: DrawInput<TValue>) => void
   readonly describe: (history: SeriesView<TValue>) => string
@@ -106,6 +110,7 @@ export const block = <TValue>(options: {
   return {
     id: options.id,
     label: options.series.label,
+    ...(options.shortLabel === undefined ? {} : { shortLabel: options.shortLabel }),
     widthPx: options.widthPx,
     read: (store) => bind(store.read({ series: options.series })),
   }
@@ -126,16 +131,24 @@ export const formatMeterValue = (options: {
   return options.unit === 'count' ? number : `${number} ${options.unit}`
 }
 const noValues: readonly number[] = []
-/** Build a time-based scalar or stacked presentation with explicit gaps and availability. */
-export const numericBlock = <TValue>(options: {
+/** Options shared by every built-in block builder. */
+export interface BlockOptions<TValue> {
   readonly id: string
   readonly series: Series<TValue>
-  readonly values: (value: TValue) => number | readonly number[]
-  readonly describeValue?: (value: TValue) => string
+  /** Compact canvas label; the full series label remains the accessible and tooltip text. */
+  readonly shortLabel?: string | undefined
+  /** Nominal CSS width, 150 by default. */
   readonly widthPx?: number
-  readonly mode?: 'Gauge' | 'Event' | 'Counter'
-  readonly staleAfterMs?: number
-}): CanvasBlockSpec => {
+}
+/** Build a time-based scalar or stacked presentation with explicit gaps and availability. */
+export const numericBlock = <TValue>(
+  options: BlockOptions<TValue> & {
+    readonly values: (value: TValue) => number | readonly number[]
+    readonly describeValue?: (value: TValue) => string
+    readonly mode?: 'Gauge' | 'Event' | 'Counter'
+    readonly staleAfterMs?: number
+  },
+): CanvasBlockSpec => {
   const total = (value: TValue): number => {
     const values = options.values(value)
     if (typeof values === 'number') return values
@@ -156,6 +169,7 @@ export const numericBlock = <TValue>(options: {
   return block({
     id: options.id,
     series: options.series,
+    shortLabel: options.shortLabel,
     widthPx: options.widthPx ?? 150,
     describe,
     draw: ({ ctx, rect, history, nowMs, historyMs, theme }) => {
@@ -280,10 +294,18 @@ export const numericBlock = <TValue>(options: {
       ctx.font = theme.font
       ctx.textBaseline = 'top'
       ctx.fillStyle = theme.muted
-      ctx.fillText(options.series.label, rect.x + 4, rect.y + 3, rect.width * 0.46)
+      const measure = (text: string): number => ctx.measureText(text).width
+      const header = layoutBlockText({
+        rect,
+        label: options.series.label,
+        shortLabel: options.shortLabel,
+        value: describe(history),
+        measure,
+      })
+      ctx.textAlign = 'left'
+      if (header.label !== undefined) ctx.fillText(header.label.text, header.label.x, rect.y + 3)
       ctx.fillStyle = theme.foreground
-      ctx.textAlign = 'right'
-      ctx.fillText(describe(history), rect.x + rect.width - 4, rect.y + 3, rect.width * 0.5)
+      if (header.value !== undefined) ctx.fillText(header.value.text, header.value.x, rect.y + 3)
       const latest = history.latest
       if (
         options.staleAfterMs !== undefined &&
@@ -291,39 +313,33 @@ export const numericBlock = <TValue>(options: {
         nowMs - latest.atMs > options.staleAfterMs
       ) {
         ctx.fillStyle = theme.muted
-        ctx.fillText(
-          `stale ${Math.round(nowMs - latest.atMs)}ms`,
-          rect.x + rect.width - 4,
-          chart.y,
-          chart.width,
-        )
+        const stale = fitText({
+          text: `stale ${Math.round(nowMs - latest.atMs)}ms`,
+          maxWidth: chart.width,
+          measure,
+        })
+        if (stale !== undefined)
+          ctx.fillText(stale.text, chart.x + chart.width - stale.width, chart.y)
       }
       ctx.restore()
     },
   })
 }
 /** Ordinary numeric gauge history. */
-export const numberBlock = <TValue extends { readonly value: number }>(options: {
-  readonly id: string
-  readonly series: Series<TValue>
-  readonly widthPx?: number
-  readonly mode?: 'Gauge' | 'Event' | 'Counter'
-  readonly staleAfterMs?: number
-}): CanvasBlockSpec => numericBlock({ ...options, values: (value) => value.value })
+export const numberBlock = <TValue extends { readonly value: number }>(
+  options: BlockOptions<TValue> & {
+    readonly mode?: 'Gauge' | 'Event' | 'Counter'
+    readonly staleAfterMs?: number
+  },
+): CanvasBlockSpec => numericBlock({ ...options, values: (value) => value.value })
 /** Cumulative counter increments aggregated per timestamp bin, not summed totals. */
-export const counterBlock = <TValue extends { readonly value: number }>(options: {
-  readonly id: string
-  readonly series: Series<TValue>
-  readonly widthPx?: number
-}): CanvasBlockSpec => numberBlock({ ...options, mode: 'Counter' })
+export const counterBlock = <TValue extends { readonly value: number }>(
+  options: BlockOptions<TValue>,
+): CanvasBlockSpec => numberBlock({ ...options, mode: 'Counter' })
 /** Stacked numeric history with a host-selected typed projection. */
 export const stackedBlock = numericBlock
 /** Observed frame timing expressed as FPS, without invented calibration. */
-export const frameBlock = (options: {
-  readonly id: string
-  readonly series: Series<FpsValue>
-  readonly widthPx?: number
-}): CanvasBlockSpec =>
+export const frameBlock = (options: BlockOptions<FpsValue>): CanvasBlockSpec =>
   numericBlock({
     ...options,
     values: (value) => (value.durationMs > 0 ? 1000 / value.durationMs : noValues),
@@ -333,30 +349,22 @@ export const frameBlock = (options: {
         : 'n/a (NoSamples)',
   })
 /** Heap usage history from actual browser observations. */
-export const heapBlock = <TValue extends { readonly usedBytes: number }>(options: {
-  readonly id: string
-  readonly series: Series<TValue>
-  readonly widthPx?: number
-}): CanvasBlockSpec => numericBlock({ ...options, values: (value) => value.usedBytes })
+export const heapBlock = <TValue extends { readonly usedBytes: number }>(
+  options: BlockOptions<TValue>,
+): CanvasBlockSpec => numericBlock({ ...options, values: (value) => value.usedBytes })
 /** Active child-fiber history from an injected metric context. */
-export const fiberBlock = <TValue extends { readonly activeChildFibers: number }>(options: {
-  readonly id: string
-  readonly series: Series<TValue>
-  readonly widthPx?: number
-}): CanvasBlockSpec => numericBlock({ ...options, values: (value) => value.activeChildFibers })
+export const fiberBlock = <TValue extends { readonly activeChildFibers: number }>(
+  options: BlockOptions<TValue>,
+): CanvasBlockSpec => numericBlock({ ...options, values: (value) => value.activeChildFibers })
 /** Long-frame or long-task event duration history. */
-export const jankBlock = <TValue extends { readonly durationMs: number }>(options: {
-  readonly id: string
-  readonly series: Series<TValue>
-  readonly widthPx?: number
-}): CanvasBlockSpec =>
+export const jankBlock = <TValue extends { readonly durationMs: number }>(
+  options: BlockOptions<TValue>,
+): CanvasBlockSpec =>
   numericBlock({ ...options, mode: 'Event', values: (value) => value.durationMs })
 /** Span completion-duration event history. */
 export const spanBlock = jankBlock
 /** Actual Profiler commit-duration event history. */
-export const commitBlock = <TValue extends { readonly actualDurationMs: number }>(options: {
-  readonly id: string
-  readonly series: Series<TValue>
-  readonly widthPx?: number
-}): CanvasBlockSpec =>
+export const commitBlock = <TValue extends { readonly actualDurationMs: number }>(
+  options: BlockOptions<TValue>,
+): CanvasBlockSpec =>
   numericBlock({ ...options, mode: 'Event', values: (value) => value.actualDurationMs })

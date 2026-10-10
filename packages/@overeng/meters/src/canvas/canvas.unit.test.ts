@@ -105,6 +105,56 @@ describe('canvas strip', () => {
       expect(f.surface.observed).toBe(0)
     }),
   )
+  it.effect('fills the measured slot up to nominal widths and draws fitted, unsqueezed text', () =>
+    Effect.gen(function* () {
+      const host = testPlatform()
+      const surface = testCanvas()
+      const store = makeSeriesStore()
+      const series = makeSeries<NumberValue>({
+        id: 'heap',
+        label: 'JS heap (approximate)',
+        unit: 'bytes',
+        capacity: 4,
+      })
+      store.register({ series }).append({
+        sample: { _tag: 'Value', atMs: 0, value: { _tag: 'Number', value: 156_342_272 } },
+      })
+      const meters = { store, clock: makeMeters({ sources: [], platform: host.platform }).clock }
+      const layouts: number[] = []
+      const blocks = [
+        numberBlock({ id: 'heap', series }),
+        numberBlock({ id: 'heap-short', series, shortLabel: 'Heap' }),
+      ]
+      surface.setAvailableWidth(1000)
+      const scope = yield* Scope.make()
+      yield* Scope.provide(
+        makeCanvasStrip({
+          canvas: surface.canvas,
+          meters,
+          blocks,
+          platform: surface.platform,
+          readTheme: () => lightMeterTheme,
+          onLayout: (layout) => layouts.push(layout.widthPx),
+        }).attach,
+        scope,
+      )
+      expect(layouts).toEqual([302])
+      surface.drawnTexts.length = 0
+      surface.setAvailableWidth(202)
+      expect(layouts).toEqual([302, 202])
+      expect(surface.canvas.style.width).toBe('202px')
+      expect(surface.canvas.width).toBe(253)
+      expect(surface.drawnTexts.every((text) => text.maxWidth === undefined)).toBe(true)
+      // Each 100px block: value reserved at the right, label ellipsized or shortened before it.
+      expect(surface.drawnTexts.map((text) => [text.text, text.x])).toEqual([
+        ['JS h…', 4],
+        ['149.1 MiB', 42],
+        ['Heap', 106],
+        ['149.1 MiB', 144],
+      ])
+      yield* Scope.close(scope, Exit.void)
+    }),
+  )
   it.effect(
     'draws source-phase values before Draw and keeps frozen readers independent of collection',
     () =>

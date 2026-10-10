@@ -121,7 +121,7 @@
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "^4.0.0",
+    "effect": "^4.0.0 || 4.0.0-rc.118",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

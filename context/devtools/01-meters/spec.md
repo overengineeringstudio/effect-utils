@@ -616,12 +616,14 @@ interface StripView {
 }
 interface CanvasPlatform {
   readonly dpr: () => number
+  readonly availableWidth: () => number | undefined // measured host slot width
   readonly observeChanges: (notify: () => void) => () => void
 }
 interface CanvasBlockSpec {
   readonly id: string
-  readonly label: string
-  readonly widthPx: number
+  readonly label: string // full label: accessible text and tooltip
+  readonly shortLabel?: string // canvas-only fallback when the full label does not fit
+  readonly widthPx: number // nominal width; shrinks only when the slot is too small
   readonly read: (store: SeriesStore) => BlockReader // opaque typed draw/describe/snapshot closures
 }
 declare const block: <TValue>(options: {
@@ -649,6 +651,7 @@ declare const makeCanvasStrip: (options: {
   readonly readTheme: () => MeterTheme
   readonly view?: StripView
   readonly platform?: CanvasPlatform
+  readonly onLayout?: (layout: StripLayout) => void // DOM overlays share the canvas layout
 }) => Renderer
 ```
 
@@ -663,8 +666,16 @@ For block `i`, `x[i] = sum(width[j] + gapPx, j < i)`; total width is the sum of
 block widths plus `(n - 1) * gapPx` for nonempty strips, with no trailing gap.
 Devbar sets height to 32 CSS px, typical width to approximately 150 CSS px, and
 history horizon to approximately 10000ms. Standalone strips can choose other
-sizes. Backing dimensions are `round(cssSize * actualDpr)`; use the actual
-fractional DPR and CSS-coordinate transforms, not integer DPR truncation.
+sizes. The strip fills the slot it is given: each block takes its nominal width
+when the measured slot allows it and all blocks shrink proportionally only when
+the slot is too small; blocks never grow past the nominal width. The container,
+not the canvas, is measured, so sizing the canvas cannot feed back. Backing
+dimensions are `round(cssSize * actualDpr)`; use the actual fractional DPR and
+CSS-coordinate transforms, not integer DPR truncation. Block header text is laid
+out by measurement: the right-aligned value is reserved first, then the label
+takes the remaining width as the full label, the `shortLabel`, an ellipsized
+label, or nothing below a minimum width. Label and value never overlap, and text
+is never squeezed through a `fillText` maximum width.
 ResizeObserver and DPR change signals are acquired with the renderer scope;
 sizing/theme resolution happens on changes, not per frame. Strip attachment
 uses the session clock and never creates a per-grid engine.
@@ -897,7 +908,9 @@ external-store binding with revision-cached selectors and returns an unavailable
 `NoSamples` sample before evidence exists, not an ambiguous zero.
 
 `MeterStrip` supplies DOM equivalents, focus targets, tooltips, and a separate
-freeze control around its one canvas. Defaults for presentation dimensions are
+compact freeze control (a 24px icon button named "Freeze meters"/"Resume
+meters" with `aria-pressed`) around its one canvas. The strip root grows into
+the host slot with a zero minimum width. Defaults for presentation dimensions are
 32px height, 2px gap, and 10000ms history; these are not defaults for source or
 meter selection. Focus shows the keyboard tooltip without opening a panel.
 Click and Enter/Space delegate `onOpenDetail({ id })` to the host/devbar;
