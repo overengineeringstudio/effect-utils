@@ -4,11 +4,12 @@
 # Projection source: rust/content-address-core/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:7557324e8f453281bd8efb7abee19024fd98bd230d48acbe1d2e1a5e285e2c8d
+# Semantic fingerprint: sha256:bf38c6ca110edac360d8655cc1efae7143a6c04ed9e6e6fe8cafa685884b8870
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/BUCK.genie.ts, rust/content-address-core/Cargo.toml, rust/content-address-core/src/**/*.rs, rust/content-address-core/tests/**/*.rs, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
+load("//buck2/rust:cache.bzl", "rust_binary", "rust_library")
 load("//buck2:static_checks.bzl", "static_source_set")
 static_source_set(
     name = "static_sources",
@@ -34,10 +35,11 @@ native.export_file(
     visibility = ["PUBLIC"],
 )
 
-native.rust_library(
+rust_library(
     name = "lib",
     crate = "content_address_core",
     crate_root = "src/lib.rs",
+    cache_audited = True,
     srcs = [
         "src/lib.rs",
     ],

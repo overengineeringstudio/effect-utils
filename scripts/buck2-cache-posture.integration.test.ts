@@ -51,6 +51,7 @@ describe('standalone Buck cache posture', () => {
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
+  default_allow_cache_upload = false
 [archive_origin]
   url_prefix =
   tier = public
@@ -81,6 +82,7 @@ describe('standalone Buck cache posture', () => {
 
     expect(prLane).toContain('remote_cache_enabled = true')
     expect(prLane).toContain('allow_cache_uploads = false')
+    expect(prLane).toContain('default_allow_cache_upload = false')
     expect(prLane).toContain('url_prefix =\n  tier = public')
     expect(prLane).not.toContain('http_headers')
 
@@ -91,6 +93,7 @@ describe('standalone Buck cache posture', () => {
     })
     expect(escapeHatch).toContain('remote_cache_enabled = false')
     expect(escapeHatch).toContain('allow_cache_uploads = false')
+    expect(escapeHatch).toContain('default_allow_cache_upload = false')
     expect(escapeHatch).not.toContain('remote_cache_enabled = true')
     expect(escapeHatch).not.toContain('http_headers')
   })
@@ -143,6 +146,7 @@ describe('standalone Buck cache posture', () => {
     }
     const writer = standaloneCachePostureConfig({ current: '', env, trustedOrigin })
     expect(writer).toContain('allow_cache_uploads = true')
+    expect(writer).toContain('default_allow_cache_upload = true')
     for (const field of ['action_cache_address', 'cas_address', 'engine_address'])
       expect(writer).toContain(`${field} = ${env.BUCK2_PRIVATE_CACHE_ADDRESS}`)
     expect(writer).toContain('tls = false')
@@ -160,6 +164,7 @@ describe('standalone Buck cache posture', () => {
         trustedOrigin,
       })
       expect(reader).toContain('allow_cache_uploads = false')
+      expect(reader).toContain('default_allow_cache_upload = false')
       expect(reader).not.toContain('http_headers')
       expect(reader).not.toContain('private-cache.example')
     }
@@ -186,6 +191,7 @@ describe('standalone Buck cache posture', () => {
 
     expect(reader).toContain('remote_cache_enabled = true')
     expect(reader).toContain('allow_cache_uploads = false')
+    expect(reader).toContain('default_allow_cache_upload = false')
     expect(reader).not.toContain('default_allow_cache_upload = true')
     expect(reader).not.toContain('http_headers')
     expect(reader).not.toContain('BUCK2_CACHE_WRITE_BASIC_AUTH')
@@ -204,6 +210,7 @@ describe('standalone Buck cache posture', () => {
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
+  default_allow_cache_upload = false
 [archive_origin]
   url_prefix =
   tier = public
@@ -461,5 +468,116 @@ describe('fresh-root remote build proof', () => {
     expect(missingDescriptor.stdout.toString()).toContain(
       'did not reuse the remote product descriptor',
     )
+  })
+})
+
+describe('focused native Rust fresh-root proof', () => {
+  type NativeRow = {
+    target: string
+    category: string
+    identifier: string
+    digest: string | undefined
+    configuration: string
+    executionKind: number
+    upload: number
+  }
+  const targets = [
+    'effect_utils//rust/content-address-core:lib',
+    'effect_utils//rust/buck2-tools/core:lib',
+    'effect_utils//scripts/fixtures/rust-foreign/b/crates/shared:lib',
+  ]
+  const rows = (reader: boolean): NativeRow[] =>
+    targets.flatMap((target, targetIndex) =>
+      ['rustc', 'deps'].map((category, categoryIndex) => ({
+        target,
+        category,
+        identifier: category === 'rustc' ? 'rlib-static-pic' : '3',
+        digest: `${String(targetIndex * 2 + categoryIndex).padStart(64, '0')}:123`,
+        configuration: 'linux_x86_64#a312ca1b',
+        executionKind: reader ? 3 : 1,
+        upload: reader ? 0 : 1,
+      })),
+    )
+  const replay = (writer: NativeRow[], reader: NativeRow[]) => {
+    const directory = makeRoot()
+    const logs = [writer, reader].map((actions, index) => {
+      const path = join(directory, `${index}.jsonl`)
+      writeFileSync(path, actions.map((action, spanId) => {
+        const separator = action.target.lastIndexOf(':')
+        return JSON.stringify({
+          Event: {
+            span_id: spanId + 1,
+            data: { SpanEnd: { data: { ActionExecution: {
+              key: { owner: { TargetLabel: {
+                label: {
+                  package: action.target.slice(0, separator),
+                  name: action.target.slice(separator + 1),
+                },
+                configuration: { full_name: action.configuration },
+              } } },
+              name: { category: action.category, identifier: action.identifier },
+              execution_kind: action.executionKind,
+              cache_upload_result: action.upload,
+              commands: [{ details: { command_kind: { command: {
+                [index === 0 ? 'LocalCommand' : 'RemoteCommand']: {
+                  action_digest: action.digest,
+                  argv: ['/private/root/SECRET'],
+                  env: [{ key: 'TOKEN', value: 'SECRET' }],
+                },
+              } } } }],
+            } } } },
+          },
+        })
+      }).join('\n'))
+      return path
+    })
+    const repoRoot = resolve(import.meta.dirname, '..')
+    return Bun.spawnSync([
+      'bash', join(repoRoot, 'scripts/buck2-remote-cache-proof.sh'),
+      '--assert-native-rust-proof', ...logs,
+    ], { cwd: repoRoot, env: { ...process.env, GITHUB_WORKSPACE: repoRoot } })
+  }
+
+  it('requires every focused target and both categories with matching native keys', () => {
+    expect(replay(rows(false), rows(true).reverse()).exitCode).toBe(0)
+    for (const reader of [[], rows(true).slice(1)])
+      expect(replay(rows(false), reader).exitCode).toBe(1)
+    expect(replay(rows(false).slice(1), rows(true)).exitCode).toBe(1)
+  })
+
+  it('rejects absent/changed digests, identities and locally executed or reused readers', () => {
+    for (const change of [
+      { digest: undefined },
+      { digest: 'not-an-action-digest' },
+      { digest: `${'f'.repeat(64)}:123` },
+      { configuration: 'linux_x86_64#different' },
+      { identifier: 'metadata-static-pic' },
+      ...[1, 2, 7, 8, 9, 10, 11].map((executionKind) => ({ executionKind })),
+      { upload: 1 },
+    ]) {
+      const reader = rows(true)
+      reader[0] = { ...reader[0]!, ...change }
+      expect(replay(rows(false), reader).exitCode).toBe(1)
+    }
+  })
+
+  it('requires local writer execution and successful upload for every admitted row', () => {
+    for (const change of [{ upload: 0 }, { upload: 2 }, { executionKind: 3 }]) {
+      const writer = rows(false)
+      writer[0] = { ...writer[0]!, ...change }
+      expect(replay(writer, rows(true)).exitCode).toBe(1)
+    }
+  })
+
+  it('retains native buildscript local-default-deny instead of accepting it as a remote hit', () => {
+    const buildscript: NativeRow = {
+      ...rows(false)[0]!,
+      target: 'effect_utils//rust/third-party:serde-build-script-run',
+      category: 'buildscript',
+      upload: 0,
+    }
+    expect(replay([...rows(false), buildscript], [...rows(true), buildscript]).exitCode).toBe(0)
+    expect(replay(rows(false), [...rows(true), { ...buildscript, executionKind: 3 }]).exitCode).toBe(1)
+    expect(replay([...rows(false), { ...buildscript, upload: 1 }], rows(true)).exitCode).toBe(1)
   })
 })

@@ -41,7 +41,7 @@ http_archive = "crate_archive"
 
 buckfile_imports = """
 load("//buck2/rust:defs.bzl", "buildscript_run")
-load("@prelude//rust:cargo_package.bzl", "cargo")
+load("//buck2/rust:cache.bzl", "cargo")
 load("//buck2/rust:crates.bzl", "crate_archive")
 """
 
