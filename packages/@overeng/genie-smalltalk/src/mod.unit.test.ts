@@ -206,7 +206,7 @@ describe('Smalltalk declarations', () => {
       Schema.decodeSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
     ).toThrow()
     expect(() =>
-      Schema.decodeSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
+      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
     ).toThrow()
   })
   it('validates imported supervisors recursively without losing reference identity', () => {
