@@ -8,6 +8,86 @@ import type { CacheAdmissionInvocation, CacheEvidence } from './buck2-cache-evid
 const collector = new URL('./buck2-cache-evidence.ts', import.meta.url).pathname
 
 describe('native cache evidence CLI exit policy', () => {
+  it('retains acquisition reason counts across collection and includes them in archive totals', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'buck-archive-fallback-evidence-'))
+    try {
+      const output = join(directory, 'evidence.json')
+      const events = join(directory, 'events.jsonl')
+      const summaryPath = join(directory, 'step-summary')
+      const invocationId = '2fc13b48-c94a-4a9c-936f-bc24615bc360'
+      const reasons = ['not-found', 'headers-timeout', 'connection-error', 'server-error']
+      await Bun.write(
+        events,
+        `${reasons
+          .map((reason, index) =>
+            JSON.stringify({
+              Event: {
+                trace_id: invocationId,
+                span_id: index,
+                data: {
+                  SpanEnd: {
+                    data: {
+                      ActionExecution: {
+                        kind: 'Run',
+                        name: { category: 'pnpm_archive' },
+                        execution_kind: 1,
+                        cache_upload_result: 0,
+                        commands: [
+                          {
+                            details: {
+                              cmd_stderr: `${JSON.stringify({
+                                type: 'archive-origin-fallback',
+                                reason,
+                                sha256: 'a'.repeat(64),
+                              })}\nPRIVATE_STDERR\n`,
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            }),
+          )
+          .join('\n')}\n`,
+      )
+      await Bun.write(
+        `${output}.admission.jsonl`,
+        `${JSON.stringify({
+          invocationId,
+          admissionFallbacks: { reapi: 1, archiveOrigin: 1 },
+          admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+        })}\n`,
+      )
+      for (const args of [['--events', events], ['--events', events], [], ['--finalize']]) {
+        const child = Bun.spawn([process.execPath, collector, '--output', output, ...args], {
+          env: { ...process.env, GITHUB_STEP_SUMMARY: summaryPath },
+          stdout: 'ignore',
+          stderr: 'pipe',
+        })
+        await new Response(child.stderr).text()
+        expect(await child.exited).toBe(args.includes('--finalize') ? 1 : 0)
+        const evidence: CacheEvidence = await Bun.file(output).json()
+        expect(evidence.admissionFallbacks).toEqual({ reapi: 1, archiveOrigin: 5 })
+        expect(evidence.archiveOriginFallbacks).toEqual({
+          'not-found': 1,
+          'headers-timeout': 1,
+          'connection-error': 1,
+          'server-error': 1,
+        })
+        expect(evidence.invocations).toHaveLength(1)
+        expect(JSON.stringify(evidence)).not.toContain('PRIVATE')
+      }
+      const summary = await Bun.file(summaryPath).text()
+      expect(summary).toContain('| Total | 1 | 5 | 0 | 0 |')
+      expect(summary).toContain('| 404 miss | Header timeout | Connection error | CAS 5xx |')
+      expect(summary).toContain('| 1 | 1 | 1 | 1 |')
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it('accepts nondigest local-cache/native actions but rejects missing remote cache keys', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-cache-evidence-'))
     try {
@@ -134,14 +214,11 @@ describe('entrypoint admission sidecar collection', () => {
       expect(appended.admissionRetrySuccesses).toEqual({ reapi: 1, archiveOrigin: 1 })
       const summaryPath = join(directory, 'step-summary')
       await Bun.write(summaryPath, 'Existing job summary\n')
-      const finalized = Bun.spawn(
-        [process.execPath, collector, '--output', output, '--finalize'],
-        {
-          env: { ...process.env, GITHUB_STEP_SUMMARY: summaryPath },
-          stdout: 'ignore',
-          stderr: 'pipe',
-        },
-      )
+      const finalized = Bun.spawn([process.execPath, collector, '--output', output, '--finalize'], {
+        env: { ...process.env, GITHUB_STEP_SUMMARY: summaryPath },
+        stdout: 'ignore',
+        stderr: 'pipe',
+      })
       await new Response(finalized.stderr).text()
       expect(await finalized.exited).toBe(1)
       const summaryText = await Bun.file(summaryPath).text()

@@ -1,11 +1,10 @@
+import { describe, expect, it } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { describe, expect, it } from 'bun:test'
-
-import { acquireArchive } from './acquire-archive.ts'
+import { acquireArchive, type ArchiveOriginFallback } from './acquire-archive.ts'
 
 const bytes = new TextEncoder().encode('verified archive')
 const sha256 = createHash('sha256').update(bytes).digest('hex')
@@ -21,14 +20,22 @@ const withOutput = async (run: (output: string) => Promise<void>) => {
   }
 }
 
-const options = (output: string) => ({ casUrl, output, registryUrl, sha256, size: bytes.byteLength })
+const options = (output: string) => ({
+  casUrl,
+  output,
+  registryUrl,
+  sha256,
+  size: bytes.byteLength,
+})
 
 describe('pnpm archive acquisition', () => {
-  it('recovers only a CAS 404 from the canonical registry URL and verifies the archive', async () => {
+  it('reports a CAS 404 miss, recovers from the canonical registry and verifies the archive', async () => {
     await withOutput(async (output) => {
       const urls: string[] = []
+      const fallbacks: ArchiveOriginFallback[] = []
       const source = await acquireArchive({
         ...options(output),
+        reportFallback: (fallback) => fallbacks.push(fallback),
         fetchArchive: async (url) => {
           urls.push(String(url))
           return urls.length === 1 ? new Response(undefined, { status: 404 }) : new Response(bytes)
@@ -37,6 +44,9 @@ describe('pnpm archive acquisition', () => {
       expect(source).toBe('registry')
       expect(urls).toEqual([casUrl, registryUrl])
       expect(await readFile(output)).toEqual(Buffer.from(bytes))
+      expect(fallbacks).toEqual([
+        { type: 'archive-origin-fallback', reason: 'not-found', sha256, status: 404 },
+      ])
     })
   })
 
@@ -57,19 +67,121 @@ describe('pnpm archive acquisition', () => {
     })
   })
 
-  it('does not mask a CAS error with registry fallback', async () => {
+  it.each([500, 503, 599])(
+    'reports CAS HTTP %i and cancels its body before registry recovery',
+    async (status) => {
+      await withOutput(async (output) => {
+        const urls: string[] = []
+        const fallbacks: ArchiveOriginFallback[] = []
+        let cancelled = false
+        const body = new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelled = true
+          },
+        })
+        const source = await acquireArchive({
+          ...options(output),
+          reportFallback: (fallback) => fallbacks.push(fallback),
+          fetchArchive: async (url) => {
+            urls.push(String(url))
+            if (String(url) === casUrl) return new Response(body, { status })
+            expect(cancelled).toBe(true)
+            return new Response(bytes)
+          },
+        })
+        expect(source).toBe('registry')
+        expect(urls).toEqual([casUrl, registryUrl])
+        expect(await readFile(output)).toEqual(Buffer.from(bytes))
+        expect(fallbacks).toEqual([
+          { type: 'archive-origin-fallback', reason: 'server-error', sha256, status },
+        ])
+      })
+    },
+  )
+
+  it('reports a refused CAS connection and aborts the request before registry recovery', async () => {
     await withOutput(async (output) => {
       const urls: string[] = []
+      const fallbacks: ArchiveOriginFallback[] = []
+      let casSignal: AbortSignal | undefined
+      const source = await acquireArchive({
+        ...options(output),
+        reportFallback: (fallback) => fallbacks.push(fallback),
+        fetchArchive: async (url, init) => {
+          urls.push(String(url))
+          if (String(url) === casUrl) {
+            casSignal = init?.signal ?? undefined
+            throw Object.assign(new TypeError('fetch failed'), { code: 'ECONNREFUSED' })
+          }
+          expect(casSignal?.aborted).toBe(true)
+          return new Response(bytes)
+        },
+      })
+      expect(source).toBe('registry')
+      expect(urls).toEqual([casUrl, registryUrl])
+      expect(await readFile(output)).toEqual(Buffer.from(bytes))
+      expect(fallbacks).toEqual([
+        { type: 'archive-origin-fallback', reason: 'connection-error', sha256 },
+      ])
+    })
+  })
+
+  it('fails closed on a CAS client error without registry fallback', async () => {
+    await withOutput(async (output) => {
+      const urls: string[] = []
+      const fallbacks: ArchiveOriginFallback[] = []
       await expect(
         acquireArchive({
           ...options(output),
+          reportFallback: (fallback) => fallbacks.push(fallback),
+          fetchArchive: async (url) => {
+            urls.push(String(url))
+            return new Response(undefined, { status: 403 })
+          },
+        }),
+      ).rejects.toThrow('cas returned HTTP 403')
+      expect(urls).toEqual([casUrl])
+      expect(fallbacks).toEqual([])
+    })
+  })
+
+  it('does not mask a registry failure after a reported CAS fallback', async () => {
+    await withOutput(async (output) => {
+      const urls: string[] = []
+      const fallbacks: ArchiveOriginFallback[] = []
+      await expect(
+        acquireArchive({
+          ...options(output),
+          reportFallback: (fallback) => fallbacks.push(fallback),
           fetchArchive: async (url) => {
             urls.push(String(url))
             return new Response(undefined, { status: 503 })
           },
         }),
-      ).rejects.toThrow('cas returned HTTP 503')
+      ).rejects.toThrow('registry returned HTTP 503')
+      expect(urls).toEqual([casUrl, registryUrl])
+      expect(fallbacks).toHaveLength(1)
+      expect(await readdir(dirname(output))).toEqual([])
+    })
+  })
+
+  it('fails closed on mismatched CAS bytes without registry fallback', async () => {
+    await withOutput(async (output) => {
+      const urls: string[] = []
+      const fallbacks: ArchiveOriginFallback[] = []
+      await expect(
+        acquireArchive({
+          ...options(output),
+          reportFallback: (fallback) => fallbacks.push(fallback),
+          fetchArchive: async (url) => {
+            urls.push(String(url))
+            return new Response('wrong archive')
+          },
+        }),
+      ).rejects.toThrow('archive digest mismatch')
       expect(urls).toEqual([casUrl])
+      expect(fallbacks).toEqual([])
+      expect(await readdir(dirname(output))).toEqual([])
     })
   })
 
@@ -124,25 +236,36 @@ describe('pnpm archive acquisition', () => {
       expect(await readdir(dirname(output))).toEqual([])
     })
   })
-  it('fails when CAS response headers exceed the request deadline, without trying the registry', async () => {
+  it('reports a CAS response-header timeout, then tries and verifies the registry', async () => {
     await withOutput(async (output) => {
-      let calls = 0
-      await expect(
-        acquireArchive({
-          ...options(output),
-          headersTimeoutMs: 20,
-          fetchArchive: (_url, init) => {
-            calls += 1
-            return new Promise<Response>((_resolve, reject) => {
-              init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {
-                once: true,
-              })
+      const urls: string[] = []
+      const fallbacks: ArchiveOriginFallback[] = []
+      let casSignal: AbortSignal | undefined
+      const source = await acquireArchive({
+        ...options(output),
+        headersTimeoutMs: 20,
+        reportFallback: (fallback) => fallbacks.push(fallback),
+        fetchArchive: (url, init) => {
+          urls.push(String(url))
+          if (String(url) === registryUrl) {
+            expect(casSignal?.aborted).toBe(true)
+            return Promise.resolve(new Response(bytes))
+          }
+          casSignal = init?.signal ?? undefined
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {
+              once: true,
             })
-          },
-        }),
-      ).rejects.toThrow('response headers timed out')
-      expect(calls).toBe(1)
-      expect(await readdir(dirname(output))).toEqual([])
+          })
+        },
+      })
+      expect(source).toBe('registry')
+      expect(urls).toEqual([casUrl, registryUrl])
+      expect(await readFile(output)).toEqual(Buffer.from(bytes))
+      expect(await readdir(dirname(output))).toEqual(['package.tgz'])
+      expect(fallbacks).toEqual([
+        { type: 'archive-origin-fallback', reason: 'headers-timeout', sha256 },
+      ])
     })
   })
 
