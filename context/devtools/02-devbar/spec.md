@@ -40,6 +40,7 @@ export interface DevbarSegment {
 export interface DevbarProps {
   readonly panels: readonly DevbarPanel[]
   readonly strip?: React.ReactNode
+  readonly stripMinWidth?: number
   readonly segments?: readonly DevbarSegment[]
   readonly openPanel: string | undefined
   readonly onOpenPanelChange: (id: string | undefined) => void
@@ -55,17 +56,19 @@ The shell retains only ephemeral last-valid-panel bookkeeping for toggling, neve
 
 ## Geometry and token contract
 
-| Region         | Contract                                                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Bottom row     | `height: 32px`; no growth when panel opens                                                                                       |
-| Viewport root  | fixed, bottom/left/right zero; existing default z-index 200                                                                      |
-| Container root | absolute, bottom/left/right zero relative to host positioned ancestor                                                            |
-| Panel          | above row; `height: min(48vh, 32rem)`; minimum height bounded by available container/viewport space rather than forcing overflow |
-| Panel body     | flex column; `min-height: 0`, `min-width: 0`; selected content fills available space                                             |
-| Strip slot     | flexible width, `min-width: 0`; horizontal scrolling when blocks do not fit                                                      |
-| Host segments  | host-owned status/action layout; essential controls remain reachable                                                             |
+| Region         | Contract                                                                                                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bottom row     | `height: 32px`; single nonwrapping line; no growth when panel opens; horizontal row scrolling rather than clipping when controls and strip minimum cannot fit                    |
+| Viewport root  | fixed, bottom/left/right zero; existing default z-index 200                                                                                                                      |
+| Container root | absolute, bottom/left/right zero relative to host positioned ancestor                                                                                                            |
+| Panel          | above row; `height: min(48vh, 32rem)`; minimum height bounded by available container/viewport space rather than forcing overflow                                                 |
+| Panel body     | flex column; `min-height: 0`, `min-width: 0`; selected content fills available space                                                                                             |
+| Strip slot     | `flex: 1 1 auto`; configurable `stripMinWidth` in CSS pixels, default `160`; child container receives the full allocated flex width; horizontal scrolling when blocks do not fit |
+| Host segments  | shrink before controls or the strip minimum; `min-width: 0`; horizontal scrolling within the group with a thin scrollbar; each segment does not shrink or wrap                   |
 
 Traces: DT.BAR-R01, DT.BAR-R08–R09. Container panel height is additionally capped by the containing block's available height above the row. Host panel content owns internal table/detail scrolling. Opening a panel overlays host content rather than expanding the bottom inset. Only enabled placement reserves the row inset, under host control.
+
+Width priority is panel toggle and panel buttons (never shrinking), then the strip's minimum, then host segments. The strip grows into remaining space. Segments yield width first and keep their status/actions reachable through their own horizontal scroll area. If the controls plus strip minimum do not fit, the entire row scrolls horizontally, remains 32px tall, and clips overflow to its scrollport: no slot may paint outside the row or overlap another slot.
 
 Keep semantic `devbarTokens` roles `canvas`, `panel`, `panelActive`, `text`, `mutedText`, `border`, `focusRing`, `fontUi`, and `fontData`; light/dark theme objects and host-created themes set those roles. No hard-coded tool palette, global theme detection, or imported explorer theme belongs in the shell. Canvas colors are meter renderer tokens; host applies shell, meter, and explorer themes on a shared ancestor when desired. Geometry-owned position cannot be replaced through `style`.
 

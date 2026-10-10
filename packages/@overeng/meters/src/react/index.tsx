@@ -9,6 +9,7 @@ import {
   type CanvasPlatform,
   type MeterSession,
   type MeterTheme,
+  type StripLayout,
 } from '../canvas/index.ts'
 import type { CounterToken, Instrumentation } from '../instrumentation/index.ts'
 import type { Sample, Series, SeriesSnapshot } from '../series/index.ts'
@@ -123,12 +124,30 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
   const texts = useExternalStore(view)
   const heightPx = props.heightPx ?? 32
   const gapPx = props.gapPx ?? 2
-  const layout = layoutStrip({
+  // The canvas attachment owns measurement; DOM overlays reuse its resolved layout.
+  const [measured, setMeasured] = React.useState<StripLayout | undefined>(undefined)
+  const nominal = layoutStrip({
     widths: props.blocks.map((item) => item.widthPx),
     heightPx,
     gapPx,
     dpr: 1,
   })
+  const layout =
+    measured !== undefined && measured.rects.length === props.blocks.length ? measured : nominal
+  const onLayout = React.useCallback((next: StripLayout) => {
+    // Re-render overlays only when CSS geometry changes; DPR-only changes keep identity.
+    setMeasured((current) =>
+      current !== undefined &&
+      current.heightPx === next.heightPx &&
+      current.rects.length === next.rects.length &&
+      current.rects.every(
+        // oxlint-disable-next-line overeng/named-args -- Native Array.every callback signature.
+        (rect, index) => rect.x === next.rects[index]?.x && rect.width === next.rects[index]?.width,
+      ) === true
+        ? current
+        : next,
+    )
+  }, [])
   const attach = React.useCallback(
     (canvas: HTMLCanvasElement | null) => {
       if (canvas === null) return
@@ -143,6 +162,7 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
           ...(props.historyMs === undefined ? {} : { historyMs: props.historyMs }),
           ...(props.platform === undefined ? {} : { platform: props.platform }),
           readTheme: () => props.theme,
+          onLayout,
         }).attach.pipe(Effect.andThen(Effect.never)),
       )
     },
@@ -155,6 +175,7 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
       view,
       heightPx,
       gapPx,
+      onLayout,
     ],
   )
   const activeIndex =
@@ -166,13 +187,27 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
       style={{
         display: 'flex',
         alignItems: 'center',
+        gap: 4,
+        flexGrow: 1,
+        flexShrink: 1,
+        flexBasis: 0,
+        minWidth: 0,
         height: heightPx,
         color: props.theme.foreground,
         background: props.theme.background,
         font: props.theme.font,
       }}
     >
-      <div style={{ position: 'relative', width: layout.widthPx, height: heightPx }}>
+      <div
+        style={{
+          position: 'relative',
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: 0,
+          minWidth: 0,
+          height: heightPx,
+        }}
+      >
         <canvas ref={attach} aria-hidden="true" style={{ display: 'block' }} />
         {props.blocks.map(
           // oxlint-disable-next-line overeng/named-args -- Native Array.map callback signature.
@@ -204,7 +239,7 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
                 position: 'absolute',
                 left: layout.rects[index]?.x,
                 top: 0,
-                width: item.widthPx,
+                width: layout.rects[index]?.width ?? item.widthPx,
                 height: heightPx,
                 padding: 0,
                 border: 0,
@@ -250,17 +285,37 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
       </div>
       <button
         type="button"
+        aria-label={props.frozen === true ? 'Resume meters' : 'Freeze meters'}
         aria-pressed={props.frozen}
+        title={props.frozen === true ? 'Resume meters' : 'Freeze meters'}
         onClick={() => props.onFrozenChange(props.frozen === false)}
         style={{
-          height: heightPx,
-          color: props.theme.foreground,
-          background: props.theme.background,
-          border: `1px solid ${props.theme.border}`,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          width: 24,
+          height: 24,
+          padding: 0,
+          borderWidth: 0,
+          borderRadius: 4,
+          cursor: 'pointer',
+          color: props.frozen === true ? props.theme.foreground : props.theme.muted,
+          background: props.frozen === true ? props.theme.border : 'transparent',
           outlineColor: props.theme.focus,
+          outlineOffset: -2,
         }}
       >
-        {props.frozen === true ? 'Resume meters' : 'Freeze meters'}
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+          {props.frozen === true ? (
+            <path d="M3 1.5v9l7.5-4.5z" />
+          ) : (
+            <>
+              <rect x="2.5" y="1.5" width="2.5" height="9" rx="0.5" />
+              <rect x="7" y="1.5" width="2.5" height="9" rx="0.5" />
+            </>
+          )}
+        </svg>
       </button>
     </div>
   )

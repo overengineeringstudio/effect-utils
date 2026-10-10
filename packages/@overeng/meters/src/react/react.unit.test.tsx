@@ -92,6 +92,47 @@ describe('React meter strip', () => {
     }),
   )
   it.effect(
+    'fills the measured slot, shrinks overlays with the canvas, and keeps freeze compact',
+    () =>
+      Effect.gen(function* () {
+        const f = fixture()
+        const blocks = [
+          f.blocks[0]!,
+          numberBlock({ id: 'work-2', series: f.series }),
+          numberBlock({ id: 'work-3', series: f.series }),
+        ]
+        f.canvas.setAvailableWidth(1200)
+        yield* Effect.promise(() =>
+          act(async () => {
+            render(
+              <MeterStrip
+                meters={f.meters}
+                blocks={blocks}
+                theme={lightMeterTheme}
+                frozen={false}
+                onFrozenChange={() => {}}
+                onOpenDetail={() => {}}
+                platform={f.canvas.platform}
+              />,
+            )
+          }),
+        )
+        const widths = () =>
+          screen.getAllByRole('button', { name: /^Work:/ }).map((button) => button.style.width)
+        expect(widths()).toEqual(['150px', '150px', '150px'])
+        expect(document.querySelector('canvas')?.style.width).toBe('454px')
+        act(() => f.canvas.setAvailableWidth(304))
+        expect(widths()).toEqual(['100px', '100px', '100px'])
+        expect(document.querySelector('canvas')?.style.width).toBe('304px')
+        expect(document.querySelector('canvas')?.width).toBe(380)
+        const freeze = screen.getByRole('button', { name: 'Freeze meters' })
+        expect(freeze.getAttribute('aria-pressed')).toBe('false')
+        expect(freeze.textContent).toBe('')
+        expect(freeze.style.width).toBe('24px')
+        expect(freeze.style.height).toBe('24px')
+      }),
+  )
+  it.effect(
     'shows keyboard tooltips without opening detail; click, Enter, and Space activate the host',
     () =>
       Effect.gen(function* () {
