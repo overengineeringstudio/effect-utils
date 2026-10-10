@@ -1,5 +1,4 @@
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -15,6 +14,10 @@ import { syncNixLocks } from '../core/nix-lock/mod.ts'
 import { generateSchema } from '../generators/schema.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import { abbreviateStorePath, assertCanonicalMutationAllowed } from './store-path.ts'
+
+// Buck's TMPDIR can sit beneath an enclosing canonical refs/heads checkout.
+// Owned/shared fixture identities must not inherit that checkout's identity.
+const fixtureTempRoot = '/tmp'
 
 describe('abbreviateStorePath', () => {
   test('branch ref', () => {
@@ -63,7 +66,9 @@ describe('canonical mutation write boundaries', () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const temp = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+        const temp = yield* fs.realPath(
+          yield* fs.makeTempDirectoryScoped({ directory: fixtureTempRoot }),
+        )
         const canonical = `${temp}/store/example.com/org/repo/refs/commits/${'a'.repeat(40)}`
         yield* fs.makeDirectory(canonical, { recursive: true })
         const deny = (target: string, materializedRoot = canonical) =>
@@ -125,7 +130,9 @@ describe('canonical mutation write boundaries', () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        const temp = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+        const temp = yield* fs.realPath(
+          yield* fs.makeTempDirectoryScoped({ directory: fixtureTempRoot }),
+        )
         const canonical = `${temp}/store/example.com/org/repo/refs/commits/${'a'.repeat(40)}`
         const owned = `${temp}/owned`
         const otherCanonical = `${temp}/store/example.com/org/other/refs/commits/${'b'.repeat(40)}`
@@ -162,7 +169,7 @@ describe('canonical mutation write boundaries', () => {
   })
 
   test('materialization permission cannot escape through self or dangling repos aliases', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'mr-materialize-guard-'))
+    const root = await mkdtemp(path.join(fixtureTempRoot, 'mr-materialize-guard-'))
     try {
       const canonical = path.join(root, 'store/example.com/org/repo/refs/heads/team/feature')
       await mkdir(canonical, { recursive: true })
@@ -192,7 +199,7 @@ describe('canonical mutation write boundaries', () => {
   })
 
   test('denies canonical aliases and missing outputs, but writes owned files', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'mr-write-guard-'))
+    const root = await mkdtemp(path.join(fixtureTempRoot, 'mr-write-guard-'))
     const previousOverride = process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION']
     process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] = 'true'
     try {
@@ -254,7 +261,7 @@ describe('canonical mutation write boundaries', () => {
   })
 
   test('preflights file aliases before rewriting other owned member outputs', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'mr-lock-preflight-'))
+    const root = await mkdtemp(path.join(fixtureTempRoot, 'mr-lock-preflight-'))
     const previousOverride = process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION']
     process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] = '0'
     try {
