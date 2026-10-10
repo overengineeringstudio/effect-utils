@@ -18,4 +18,6 @@ pub use chat::{ChatBuilder, ChatStream};
 pub use client::{Client, ClientBuilder};
 pub use decision::{DecisionAnswer, DecisionResponse, DecisionSpec, Question};
 pub use error::{Error, Result};
-pub use types::{ChatResponse, Message, ModelInfo, StreamEvent, StructuredResponse, Tool, ToolCall, Usage};
+pub use types::{
+    ChatResponse, Message, ModelInfo, StreamEvent, StructuredResponse, Tool, ToolCall, Usage,
+};

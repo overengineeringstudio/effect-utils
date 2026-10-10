@@ -1,8 +1,8 @@
 use std::fmt;
 
+use crate::Usage;
 use async_openai::error::OpenAIError;
 use serde_json::Value;
-use crate::Usage;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -15,21 +15,40 @@ pub enum Error {
         raw_body: String,
         retry_after: Option<String>,
     },
-    Stream { message: String, raw_body: Option<String> },
+    Stream {
+        message: String,
+        raw_body: Option<String>,
+    },
     /// Local rejection; usage is retained when the provider already billed a response.
-    Validation { errors: Vec<String>, usage: Option<Usage> },
-    Transport { message: String },
-    Config { message: String },
+    Validation {
+        errors: Vec<String>,
+        usage: Option<Usage>,
+    },
+    Transport {
+        message: String,
+    },
+    Config {
+        message: String,
+    },
 }
 
 impl Error {
     /// A classification hint only. The client never retries (AIG.RS-R03).
     pub fn is_retryable(&self) -> bool {
-        matches!(self, Self::Http { status: 429 | 500..=599, .. } | Self::Transport { .. })
+        matches!(
+            self,
+            Self::Http {
+                status: 429 | 500..=599,
+                ..
+            } | Self::Transport { .. }
+        )
     }
 
     pub(crate) fn validation(message: impl Into<String>) -> Self {
-        Self::Validation { errors: vec![message.into()], usage: None }
+        Self::Validation {
+            errors: vec![message.into()],
+            usage: None,
+        }
     }
 
     pub(crate) fn with_usage(mut self, usage: Option<Usage>) -> Self {
@@ -42,10 +61,26 @@ impl Error {
     pub(crate) fn http(status: u16, raw_body: String, retry_after: Option<String>) -> Self {
         let parsed = serde_json::from_str::<Value>(&raw_body).ok();
         let error = parsed.as_ref().and_then(|v| v.get("error"));
-        let kind = error.and_then(|v| v.get("type")).and_then(Value::as_str).map(str::to_owned);
-        let message = error.and_then(|v| v.get("message").and_then(Value::as_str).or_else(|| v.as_str()))
-            .or_else(|| parsed.as_ref().and_then(Value::as_str)).unwrap_or(&raw_body).to_owned();
-        Self::Http { status, r#type: kind, message, raw_body, retry_after }
+        let kind = error
+            .and_then(|v| v.get("type"))
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let message = error
+            .and_then(|v| {
+                v.get("message")
+                    .and_then(Value::as_str)
+                    .or_else(|| v.as_str())
+            })
+            .or_else(|| parsed.as_ref().and_then(Value::as_str))
+            .unwrap_or(&raw_body)
+            .to_owned();
+        Self::Http {
+            status,
+            r#type: kind,
+            message,
+            raw_body,
+            retry_after,
+        }
     }
 
     pub(crate) fn from_sdk(error: OpenAIError) -> Self {
@@ -55,8 +90,13 @@ impl Error {
             }
         }
         match error {
-            OpenAIError::Reqwest(error) => Self::Transport { message: error.to_string() },
-            OpenAIError::StreamError(error) => Self::Stream { message: error.to_string(), raw_body: None },
+            OpenAIError::Reqwest(error) => Self::Transport {
+                message: error.to_string(),
+            },
+            OpenAIError::StreamError(error) => Self::Stream {
+                message: error.to_string(),
+                raw_body: None,
+            },
             error => Self::validation(error.to_string()),
         }
     }
@@ -75,9 +115,13 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Http { status, message, .. } => write!(formatter, "HTTP {status}: {message}"),
+            Self::Http {
+                status, message, ..
+            } => write!(formatter, "HTTP {status}: {message}"),
             Self::Stream { message, .. } => write!(formatter, "stream: {message}"),
-            Self::Validation { errors, .. } => write!(formatter, "validation: {}", errors.join("; ")),
+            Self::Validation { errors, .. } => {
+                write!(formatter, "validation: {}", errors.join("; "))
+            }
             Self::Transport { message } => write!(formatter, "transport: {message}"),
             Self::Config { message } => write!(formatter, "configuration: {message}"),
         }
@@ -92,10 +136,22 @@ mod tests {
 
     #[test]
     fn unknown_error_bodies_remain_http_failures() {
-        for raw in ["upstream unavailable", "\"upstream unavailable\"", "{\"error\":\"upstream unavailable\"}"] {
+        for raw in [
+            "upstream unavailable",
+            "\"upstream unavailable\"",
+            "{\"error\":\"upstream unavailable\"}",
+        ] {
             let error = Error::http(502, raw.into(), Some("5".into()));
             assert!(error.is_retryable());
-            let Error::Http { raw_body, status, message, .. } = error else { panic!("HTTP error required") };
+            let Error::Http {
+                raw_body,
+                status,
+                message,
+                ..
+            } = error
+            else {
+                panic!("HTTP error required")
+            };
             assert_eq!(raw_body, raw);
             assert_eq!(status, 502);
             assert!(!message.is_empty());
@@ -107,7 +163,14 @@ mod tests {
         assert!(!Error::validation("invalid answer").is_retryable());
         assert!(!Error::http(401, "denied".into(), None).is_retryable());
         assert!(Error::http(429, "busy".into(), None).is_retryable());
-        assert!(Error::Transport { message: "disconnected".into() }.is_retryable());
-        assert!(!Error::Stream { message: "incomplete".into(), raw_body: None }.is_retryable());
+        assert!(Error::Transport {
+            message: "disconnected".into()
+        }
+        .is_retryable());
+        assert!(!Error::Stream {
+            message: "incomplete".into(),
+            raw_body: None
+        }
+        .is_retryable());
     }
 }

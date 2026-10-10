@@ -41,14 +41,21 @@ pub struct Tool {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    System { content: String },
-    User { content: String },
+    System {
+        content: String,
+    },
+    User {
+        content: String,
+    },
     Assistant {
         content: Option<String>,
         #[serde(default)]
         tool_calls: Vec<ToolCall>,
     },
-    Tool { tool_call_id: String, content: String },
+    Tool {
+        tool_call_id: String,
+        content: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -61,7 +68,9 @@ pub struct ChatResponse {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StreamEvent {
-    Delta { text: String },
+    Delta {
+        text: String,
+    },
     ToolCallDelta {
         index: u32,
         id: Option<String>,
@@ -69,7 +78,9 @@ pub enum StreamEvent {
         arguments: String,
     },
     /// Emitted only after the wire completion sentinel, never on premature EOF.
-    Done { usage: Option<Usage> },
+    Done {
+        usage: Option<Usage>,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -93,8 +104,14 @@ impl Usage {
             input: Some(u64::from(value.prompt_tokens)),
             output: Some(u64::from(value.completion_tokens)),
             total: Some(u64::from(value.total_tokens)),
-            cached: value.prompt_tokens_details.and_then(|v| v.cached_tokens).map(u64::from),
-            reasoning: value.completion_tokens_details.and_then(|v| v.reasoning_tokens).map(u64::from),
+            cached: value
+                .prompt_tokens_details
+                .and_then(|v| v.cached_tokens)
+                .map(u64::from),
+            reasoning: value
+                .completion_tokens_details
+                .and_then(|v| v.reasoning_tokens)
+                .map(u64::from),
             cost: None,
         }
     }

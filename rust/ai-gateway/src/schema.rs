@@ -2,12 +2,15 @@
 
 use std::collections::BTreeSet;
 
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 use crate::{Error, Result};
 
 fn invalid(message: impl Into<String>) -> Error {
-    Error::Validation { errors: vec![message.into()], usage: None }
+    Error::Validation {
+        errors: vec![message.into()],
+        usage: None,
+    }
 }
 
 /// Resolve local references and close strict objects without changing `original`.
@@ -24,18 +27,26 @@ fn project_node(node: &Value, root: &Value, active: &mut BTreeSet<String>) -> Re
         };
     };
     if let Some(reference) = object.get("$ref") {
-        let reference = reference.as_str().ok_or_else(|| invalid("$ref must be a string"))?;
+        let reference = reference
+            .as_str()
+            .ok_or_else(|| invalid("$ref must be a string"))?;
         let pointer = reference.strip_prefix('#').ok_or_else(|| {
-            invalid(format!("Only internal JSON Schema references are supported: {reference}"))
+            invalid(format!(
+                "Only internal JSON Schema references are supported: {reference}"
+            ))
         })?;
         if !pointer.is_empty() && !pointer.starts_with('/') {
-            return Err(invalid(format!("Reference is not an internal JSON pointer: {reference}")));
+            return Err(invalid(format!(
+                "Reference is not an internal JSON pointer: {reference}"
+            )));
         }
-        let target = root.pointer(pointer).ok_or_else(|| {
-            invalid(format!("Unresolved JSON Schema reference: {reference}"))
-        })?;
+        let target = root
+            .pointer(pointer)
+            .ok_or_else(|| invalid(format!("Unresolved JSON Schema reference: {reference}")))?;
         if !active.insert(reference.to_owned()) {
-            return Err(invalid(format!("Cyclic JSON Schema reference: {reference}")));
+            return Err(invalid(format!(
+                "Cyclic JSON Schema reference: {reference}"
+            )));
         }
         let resolved = project_node(target, root, active)?;
         let mut siblings = object.clone();
@@ -63,13 +74,27 @@ fn project_node(node: &Value, root: &Value, active: &mut BTreeSet<String>) -> Re
     }
     for keyword in ["allOf", "anyOf", "oneOf", "prefixItems"] {
         if let Some(value) = projected.get_mut(keyword) {
-            let schemas = value.as_array_mut().ok_or_else(|| invalid(format!("{keyword} must be an array")))?;
+            let schemas = value
+                .as_array_mut()
+                .ok_or_else(|| invalid(format!("{keyword} must be an array")))?;
             for schema in schemas {
                 *schema = project_node(schema, root, active)?;
             }
         }
     }
-    for keyword in ["items", "additionalItems", "contains", "not", "if", "then", "else", "propertyNames", "additionalProperties", "unevaluatedProperties", "unevaluatedItems"] {
+    for keyword in [
+        "items",
+        "additionalItems",
+        "contains",
+        "not",
+        "if",
+        "then",
+        "else",
+        "propertyNames",
+        "additionalProperties",
+        "unevaluatedProperties",
+        "unevaluatedItems",
+    ] {
         if let Some(value) = projected.get_mut(keyword) {
             if keyword == "items" && value.is_array() {
                 for schema in value.as_array_mut().expect("array checked") {
@@ -82,7 +107,9 @@ fn project_node(node: &Value, root: &Value, active: &mut BTreeSet<String>) -> Re
     }
     for keyword in ["patternProperties", "dependentSchemas"] {
         if let Some(value) = projected.get_mut(keyword) {
-            let schemas = value.as_object_mut().ok_or_else(|| invalid(format!("{keyword} must be an object")))?;
+            let schemas = value
+                .as_object_mut()
+                .ok_or_else(|| invalid(format!("{keyword} must be an object")))?;
             for schema in schemas.values_mut() {
                 *schema = project_node(schema, root, active)?;
             }
@@ -92,26 +119,46 @@ fn project_node(node: &Value, root: &Value, active: &mut BTreeSet<String>) -> Re
         projected.insert("anyOf".into(), value);
     }
     let is_object = object.contains_key("properties")
-        || object.get("type").is_some_and(|kind| kind == "object" || kind.as_array().is_some_and(|kinds| kinds.iter().any(|kind| kind == "object")));
+        || object.get("type").is_some_and(|kind| {
+            kind == "object"
+                || kind
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "object"))
+        });
     if is_object {
         let required: BTreeSet<&str> = match object.get("required") {
             None => BTreeSet::new(),
-            Some(value) => value.as_array().ok_or_else(|| invalid("required must be an array"))?
-                .iter().map(|name| name.as_str().ok_or_else(|| invalid("required names must be strings")))
+            Some(value) => value
+                .as_array()
+                .ok_or_else(|| invalid("required must be an array"))?
+                .iter()
+                .map(|name| {
+                    name.as_str()
+                        .ok_or_else(|| invalid("required names must be strings"))
+                })
                 .collect::<Result<_>>()?,
         };
         let mut properties = Map::new();
         if let Some(value) = object.get("properties") {
-            for (name, schema) in value.as_object().ok_or_else(|| invalid("properties must be an object"))? {
+            for (name, schema) in value
+                .as_object()
+                .ok_or_else(|| invalid("properties must be an object"))?
+            {
                 let schema = project_node(schema, root, active)?;
-                properties.insert(name.clone(), if required.contains(name.as_str()) {
-                    schema
-                } else {
-                    json!({"anyOf": [schema, {"type": "null"}]})
-                });
+                properties.insert(
+                    name.clone(),
+                    if required.contains(name.as_str()) {
+                        schema
+                    } else {
+                        json!({"anyOf": [schema, {"type": "null"}]})
+                    },
+                );
             }
         }
-        projected.insert("required".into(), Value::Array(properties.keys().cloned().map(Value::String).collect()));
+        projected.insert(
+            "required".into(),
+            Value::Array(properties.keys().cloned().map(Value::String).collect()),
+        );
         projected.insert("properties".into(), Value::Object(properties));
         projected.insert("additionalProperties".into(), Value::Bool(false));
     }
@@ -122,8 +169,18 @@ fn project_node(node: &Value, root: &Value, active: &mut BTreeSet<String>) -> Re
 pub(crate) fn validate(schema: &Value, value: &Value) -> Result<()> {
     let validator = jsonschema::validator_for(schema)
         .map_err(|error| invalid(format!("Invalid original JSON Schema: {error}")))?;
-    let errors: Vec<String> = validator.iter_errors(value).map(|error| error.to_string()).collect();
-    if errors.is_empty() { Ok(()) } else { Err(Error::Validation { errors, usage: None }) }
+    let errors: Vec<String> = validator
+        .iter_errors(value)
+        .map(|error| error.to_string())
+        .collect();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation {
+            errors,
+            usage: None,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -159,7 +216,12 @@ mod tests {
 
     #[test]
     fn unresolved_external_and_cyclic_references_fail() {
-        for schema in [json!({"$ref":"#/$defs/missing"}), json!({"$ref":"https://example.com/schema"}), json!({"$ref":"#"}), json!({"$defs":{"a":{"$ref":"#/$defs/b"},"b":{"$ref":"#/$defs/a"}},"$ref":"#/$defs/a"})] {
+        for schema in [
+            json!({"$ref":"#/$defs/missing"}),
+            json!({"$ref":"https://example.com/schema"}),
+            json!({"$ref":"#"}),
+            json!({"$defs":{"a":{"$ref":"#/$defs/b"},"b":{"$ref":"#/$defs/a"}},"$ref":"#/$defs/a"}),
+        ] {
             assert!(matches!(project(&schema), Err(Error::Validation { .. })));
         }
     }

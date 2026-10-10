@@ -24,11 +24,27 @@ impl Operation {
         Self { span, ended: false }
     }
 
-    pub(crate) fn metadata(&self, model: Option<&str>, id: Option<&str>, reason: Option<&str>, usage: Option<&Usage>) {
-        if let Some(model) = model { self.span.set_attribute("gen_ai.response.model", model.to_owned()); }
-        if let Some(id) = id { self.span.set_attribute("gen_ai.response.id", id.to_owned()); }
+    pub(crate) fn metadata(
+        &self,
+        model: Option<&str>,
+        id: Option<&str>,
+        reason: Option<&str>,
+        usage: Option<&Usage>,
+    ) {
+        if let Some(model) = model {
+            self.span
+                .set_attribute("gen_ai.response.model", model.to_owned());
+        }
+        if let Some(id) = id {
+            self.span.set_attribute("gen_ai.response.id", id.to_owned());
+        }
         if let Some(reason) = reason {
-            self.span.set_attribute("gen_ai.response.finish_reasons", opentelemetry::Value::Array(opentelemetry::Array::String(vec![reason.to_owned().into()])));
+            self.span.set_attribute(
+                "gen_ai.response.finish_reasons",
+                opentelemetry::Value::Array(opentelemetry::Array::String(vec![reason
+                    .to_owned()
+                    .into()])),
+            );
         }
         if let Some(usage) = usage {
             for (key, value) in [
@@ -39,7 +55,9 @@ impl Operation {
             ] {
                 if let Some(value) = value {
                     // OTel integer values are signed; do not invent a wrapped negative count.
-                    if let Ok(value) = i64::try_from(value) { self.span.set_attribute(key, value); }
+                    if let Ok(value) = i64::try_from(value) {
+                        self.span.set_attribute(key, value);
+                    }
                 }
             }
         }
@@ -47,7 +65,9 @@ impl Operation {
 
     pub(crate) fn finish<T>(&mut self, result: &crate::Result<T>) {
         match result {
-            Ok(_) => { self.span.record("otel.status_code", "OK"); },
+            Ok(_) => {
+                self.span.record("otel.status_code", "OK");
+            }
             Err(error) => self.error(error),
         }
         self.ended = true;
