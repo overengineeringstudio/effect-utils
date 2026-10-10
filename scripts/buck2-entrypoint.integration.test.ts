@@ -436,6 +436,93 @@ console.log(JSON.stringify(outcomes));`,
     expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
   })
 
+  it('keeps only credential-authorized writes for paired native read-disable flags without a REAPI read probe', async () => {
+    const args = ['build', '--local-only', '--no-remote-cache', '--write-to-cache-anyway', '//:app']
+    for (const writerEnv of [
+      { BUCK2_CACHE_WRITE_BASIC_AUTH: 'publisher-credential' },
+      {
+        BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: 'private-credential',
+        BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://127.0.0.1:1',
+      },
+    ]) {
+      // RE-only root with an unreachable endpoint: a strict writer would throw
+      // if read admission were probed, but actual native uploads remain required
+      // by the proof's LOCAL+uploaded event assertions.
+      const root = fixture()
+      const tracked = readFileSync(join(root, '.buckconfig'), 'utf8')
+      writeFileSync(join(root, '.buckconfig'), tracked.slice(0, tracked.indexOf('[archive_origin]')))
+      const evidence = join(root, 'evidence.json')
+      const result = await directBuckArguments({
+        ...options(root),
+        env: {
+          ...writerEnv,
+          CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+          BUCK_WRAPPER_UUID: '00000000-0000-0000-0000-000000000033',
+        },
+        args,
+      })
+      expect(result.slice(0, args.length)).toEqual(args)
+      const values = effective(result)
+      expect(values['buck2.allow_cache_uploads']).toBe('true')
+      expect(values['buck2.default_allow_cache_upload']).toBe('true')
+      expect(values['buck2.remote_cache_enabled']).not.toBe('false')
+      const overlay = readFileSync(join(root, '.buckconfig.local'), 'utf8')
+      expect(overlay).toContain('allow_cache_uploads = true')
+      expect(overlay).toContain('http_headers = authorization: Basic $BUCK2_')
+      expect(overlay).not.toContain('publisher-credential')
+      expect(overlay).not.toContain('private-credential')
+      const admission: CacheAdmissionInvocation = JSON.parse(
+        readFileSync(`${evidence}.admission.jsonl`, 'utf8').trim(),
+      )
+      expect(admission.admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
+      expect(admission.admissionRetrySuccesses).toEqual({ reapi: 0, archiveOrigin: 0 })
+    }
+  })
+
+  it('does not elevate paired flags past readers, absent credentials or the explicit no-cache escape hatch', async () => {
+    const args = ['build', '--no-remote-cache', '--write-to-cache-anyway', '//:app']
+    for (const env of [
+      {},
+      { BUCK2_PUBLIC_CACHE_READ_ONLY: '1', BUCK2_CACHE_WRITE_BASIC_AUTH: 'credential' },
+      { BUCK2_NO_REMOTE_CACHE: '1', BUCK2_CACHE_WRITE_BASIC_AUTH: 'credential' },
+    ]) {
+      const root = fixture()
+      const tracked = readFileSync(join(root, '.buckconfig'), 'utf8')
+      writeFileSync(join(root, '.buckconfig'), tracked.slice(0, tracked.indexOf('[archive_origin]')))
+      const result = await directBuckArguments({ ...options(root), args, env })
+      const values = effective(result)
+      expect(values['buck2.allow_cache_uploads']).not.toBe('true')
+      expect(values['buck2.default_allow_cache_upload']).not.toBe('true')
+      expect(watcherLocal(root)).not.toContain('http_headers')
+      if ('BUCK2_NO_REMOTE_CACHE' in env) {
+        expect(values['buck2.remote_cache_enabled']).toBe('false')
+        expect(values['buck2.allow_cache_uploads']).toBe('false')
+        expect(values['buck2.default_allow_cache_upload']).toBe('false')
+      }
+    }
+    const root = fixture()
+    const result = await directBuckArguments({
+      ...options(root),
+      args: [...args, '-c', 'buck2.remote_cache_enabled=false'],
+      env: { BUCK2_CACHE_WRITE_BASIC_AUTH: 'credential' },
+    })
+    expect(effective(result)['buck2.allow_cache_uploads']).toBe('false')
+    expect(effective(result)['buck2.default_allow_cache_upload']).toBe('false')
+    expect(watcherLocal(root)).not.toContain('http_headers')
+  })
+
+  it('does not treat a program argument as the paired native write flag', async () => {
+    const root = fixture()
+    const result = await directBuckArguments({
+      ...options(root),
+      args: ['run', '--no-remote-cache', '//:app', '--', '--write-to-cache-anyway'],
+      env: { BUCK2_CACHE_WRITE_BASIC_AUTH: 'credential' },
+    })
+    expect(effective(result)['buck2.allow_cache_uploads']).toBe('false')
+    expect(effective(result)['buck2.default_allow_cache_upload']).toBe('false')
+    expect(result.slice(result.indexOf('--'))).toEqual(['--', '--write-to-cache-anyway'])
+  })
+
   it('still rejects invalid trusted origins when cache disabling is only a run argument', async () => {
     const root = fixture('$BUCK2_CACHE_ADDRESS', '$BUCK2_ARCHIVE_ORIGIN_URL_PREFIX')
     await expect(

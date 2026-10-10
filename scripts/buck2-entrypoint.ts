@@ -271,11 +271,16 @@ export const directBuckArguments = async ({
           if (key.startsWith('buck2_re_client.') === false) cliValues[key] = configValue
     }
   }
-  // Fixed-source builds use Buck's native no-cache flag. Resolve cache selection
-  // before parsing archive trust metadata that cache-less sandboxes never use.
+  // Native --no-remote-cache normally disables both directions. With the
+  // explicit paired write flag it disables reads only: keep the existing
+  // credential-selected writer posture, never grant upload rights from flags.
+  // The environment escape hatch and explicit root cache disabling still win.
+  const nativeCacheReadsDisabled = configArgs.includes('--no-remote-cache') === true
+  const nativeCacheWritesRetained =
+    nativeCacheReadsDisabled && configArgs.includes('--write-to-cache-anyway') === true
   const cacheDisabled =
     env['BUCK2_NO_REMOTE_CACHE'] === '1' ||
-    configArgs.includes('--no-remote-cache') === true ||
+    (nativeCacheReadsDisabled && nativeCacheWritesRetained === false) ||
     (cliValues['buck2.remote_cache_enabled'] ?? base['buck2.remote_cache_enabled']) === 'false'
   const postureEnv = cacheDisabled === true ? { ...env, BUCK2_NO_REMOTE_CACHE: '1' } : env
   const trustedOrigin =
@@ -333,7 +338,7 @@ export const directBuckArguments = async ({
     return available
   }
   const [remoteAvailable, archiveAvailable] = await Promise.all([
-    remote === false
+    remote === false || nativeCacheReadsDisabled
       ? true
       : cachedProbe({
           cacheDirectory,

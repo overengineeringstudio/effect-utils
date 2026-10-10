@@ -240,6 +240,45 @@ const renderCargoFixture = ({
   }
 }
 
+describe('Cargo native cache source audit', () => {
+  const renderAudit = (prepareFixture?: (root: string) => void, buildScript = false) =>
+    renderCargoFixture({
+      members: {
+        pkg: {
+          manifest: '[package]\nname = "pkg"',
+          files: ['src/lib.rs', 'src/unselected.rs', ...(buildScript === true ? ['build.rs'] : [])],
+        },
+      },
+      render: 'pkg',
+      prepareFixture,
+    })
+
+  it('admits file! but denies the manifest token in any declared source', () => {
+    const portable = renderAudit((root) =>
+      writeFileSync(path.join(root, 'rust/pkg/src/lib.rs'), 'pub const SOURCE: &str = file!();\n'),
+    )
+    expect(portable).toContain('    cache_audited = True,')
+    for (const source of [
+      'pub const ROOT: &str = env!("CARGO_MANIFEST_DIR");\n',
+      'pub const ROOT: Option<&str> = option_env!("CARGO_MANIFEST_DIR");\n',
+      '// CARGO_MANIFEST_DIR is conservatively denied even in an inactive module.\n',
+    ]) {
+      const denied = renderAudit((root) =>
+        writeFileSync(path.join(root, 'rust/pkg/src/unselected.rs'), source),
+      )
+      expect(denied).toContain('    cache_audited = False,')
+      expect(denied.match(/^# Semantic fingerprint: (.+)$/m)?.[1]).not.toBe(
+        portable.match(/^# Semantic fingerprint: (.+)$/m)?.[1],
+      )
+    }
+    expect(renderAudit()).toContain('    cache_audited = True,')
+  })
+
+  it('keeps crates with build scripts outside source-only admission', () => {
+    expect(renderAudit(undefined, true)).toContain('    cache_audited = False,')
+  })
+})
+
 describe('Cargo compile-time resources', () => {
   const renderResource = (
     resources: NonNullable<CargoBuck2PackageProjectionOptions['compileTimeResources']>,
@@ -258,7 +297,12 @@ describe('Cargo compile-time resources', () => {
   it('changes freshness for local bytes, destinations and generated targets', () => {
     const local = [{ path: 'rust/pkg/schema.json' }]
     const fingerprint = (output: string) => output.match(/^# Semantic fingerprint: (.+)$/m)?.[1]
-    const initial = fingerprint(renderResource(local))
+    const output = renderResource(local)
+    expect(output).toContain('load("//buck2/rust:cache.bzl", "rust_binary", "rust_library")')
+    expect(output).toContain('\nrust_library(')
+    expect(output).not.toContain('native.rust_library(')
+    expect(output).not.toContain('native.rust_binary(')
+    const initial = fingerprint(output)
     expect(
       fingerprint(
         renderResource(local, (root) =>
@@ -276,6 +320,21 @@ describe('Cargo compile-time resources', () => {
     ).not.toBe(
       fingerprint(renderResource([{ label: '//generated:other', destination: 'schema.json' }])),
     )
+  })
+
+  it('denies manifest tokens in resources and unaudited generated resource labels', () => {
+    const local = [{ path: 'rust/pkg/schema.json' }]
+    expect(renderResource(local)).toContain('    cache_audited = True,')
+    const denied = renderResource(local, (root) =>
+      writeFileSync(path.join(root, 'rust/pkg/schema.json'), 'CARGO_MANIFEST_DIR\n'),
+    )
+    expect(denied).toContain('    cache_audited = False,')
+    expect(denied.match(/^# Semantic fingerprint: (.+)$/m)?.[1]).not.toBe(
+      renderResource(local).match(/^# Semantic fingerprint: (.+)$/m)?.[1],
+    )
+    expect(
+      renderResource([{ label: '//generated:schema', destination: 'schema.json' }]),
+    ).toContain('    cache_audited = False,')
   })
 
   it('rejects traversal, unsafe destinations and Rust/resource collisions', () => {
@@ -350,12 +409,12 @@ describe('Cargo compile-time resources', () => {
   })
 })
 
-/** The rendered `native.*` rule blocks keyed by target name. */
+/** The rendered Rust façade rule blocks keyed by target name. */
 const renderedRules = (rendered: string): Readonly<Record<string, string>> =>
   Object.fromEntries(
     [
       ...rendered.matchAll(
-        /^native\.(rust_library|rust_binary)\(\n {4}name = "([^"]+)",\n([\s\S]*?)^\)$/gm,
+        /^(rust_library|rust_binary)\(\n {4}name = "([^"]+)",\n([\s\S]*?)^\)$/gm,
       ),
     ].map((match) => [match[2], `${match[1]}\n${match[3]}`]),
   )
@@ -577,10 +636,10 @@ describe('Cargo target discovery', () => {
     expect(rules['my-tool']).toContain('crate = "my_tool",\n    crate_root = "src/main.rs",')
     expect(rules['my-tool']).toContain('deps = [\n        ":lib",\n    ],')
     expect(rules.extra).toContain(
-      'crate_root = "src/bin/extra.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
+      'crate_root = "src/bin/extra.rs",\n    cache_audited = True,\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
     )
     expect(rules.multi).toContain(
-      'crate_root = "src/bin/multi/main.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
+      'crate_root = "src/bin/multi/main.rs",\n    cache_audited = True,\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
     )
   })
 
@@ -603,10 +662,10 @@ describe('Cargo target discovery', () => {
     )
     expect(Object.keys(rules)).toEqual(['dir', 'helper', 'tool'])
     expect(rules.tool).toContain(
-      'crate_root = "src/bin/tool.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
+      'crate_root = "src/bin/tool.rs",\n    cache_audited = True,\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
     )
     expect(rules.dir).toContain(
-      'crate_root = "src/bin/dir/main.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
+      'crate_root = "src/bin/dir/main.rs",\n    cache_audited = True,\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
     )
   })
 
@@ -639,7 +698,7 @@ describe('Cargo target discovery', () => {
     )
     expect(Object.keys(rules)).toEqual(['tool', 'app'])
     expect(rules.app).toContain(
-      'crate_root = "src/main.rs",\n    srcs = [\n        "src/main.rs",\n        "src/tool.rs",\n    ],',
+      'crate_root = "src/main.rs",\n    cache_audited = True,\n    srcs = [\n        "src/main.rs",\n        "src/tool.rs",\n    ],',
     )
   })
 
@@ -672,7 +731,7 @@ describe('Cargo target discovery', () => {
     )
     expect(Object.keys(rules)).toEqual(['app', 'mod'])
     expect(rules.app).toContain(
-      'crate_root = "src/main.rs",\n    srcs = [\n        "src/bin/mod.rs",\n        "src/main.rs",\n    ],',
+      'crate_root = "src/main.rs",\n    cache_audited = True,\n    srcs = [\n        "src/bin/mod.rs",\n        "src/main.rs",\n    ],',
     )
   })
 
@@ -691,10 +750,10 @@ describe('Cargo target discovery', () => {
     )
     expect(Object.keys(rules)).toEqual(['lib', 'one', 'two'])
     expect(rules.lib).toContain(
-      'crate_root = "src/shared.rs",\n    srcs = [\n        "src/shared.rs",\n    ],',
+      'crate_root = "src/shared.rs",\n    cache_audited = True,\n    srcs = [\n        "src/shared.rs",\n    ],',
     )
     expect(rules.two).toContain(
-      'crate_root = "src/shared.rs",\n    srcs = [\n        "src/shared.rs",\n    ],',
+      'crate_root = "src/shared.rs",\n    cache_audited = True,\n    srcs = [\n        "src/shared.rs",\n    ],',
     )
   })
 

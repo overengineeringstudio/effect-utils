@@ -31,6 +31,7 @@ const nativeLog = (
   localCache = false,
   category = 'typescript_check',
   executionKind = 1,
+  target = 'effect_utils//pkg:check',
 ): string => {
   const records: unknown[] = [event(buildId, 'SpanStart', 1, 1700000000 + offset, { Command: {} })]
   for (let index = 0; index < 100; index++) {
@@ -38,7 +39,10 @@ const nativeLog = (
       key: {
         owner: {
           TargetLabel: {
-            label: { package: 'effect_utils//pkg', name: 'check' },
+            label: {
+              package: target.slice(0, target.lastIndexOf(':')),
+              name: target.slice(target.lastIndexOf(':') + 1),
+            },
             configuration: { full_name: 'linux_x86_64#a312ca1b' },
           },
         },
@@ -61,7 +65,7 @@ const nativeLog = (
                 details: {
                   command_kind: {
                     command: {
-                      LocalCommand: {
+                      [executionKind === 3 ? 'RemoteCommand' : 'LocalCommand']: {
                         action_digest: `${index.toString(16).padStart(64, '0')}:123`,
                         argv: ['/private/root/SECRET_ARG'],
                         env: [{ key: 'TOKEN', value: 'SECRET_VALUE' }],
@@ -133,6 +137,90 @@ describe('complete normalized action artifact CLI', () => {
       expect(full.actions.filter((action) => action.category === 'tsgo_emit').every((action) =>
         action.exclusionReason === null,
       )).toBe(true)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('retains q33 native rustc/deps writer-reader rows without reclassifying native buildscript or materialization', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'buck-actions-native-rust-'))
+    try {
+      const events = join(directory, 'native.jsonl')
+      const output = join(directory, 'buck2-cache-evidence.json')
+      const targets = [
+        'effect_utils//rust/content-address-core:lib',
+        'effect_utils//rust/buck2-tools/core:lib',
+        'effect_utils//scripts/fixtures/rust-foreign/b/crates/shared:lib',
+      ]
+      let invocation = 0
+      for (const context of ['proof-a-build', 'proof-b-build']) {
+        for (const target of targets) {
+          for (const category of ['rustc', 'deps']) {
+            await Bun.write(events, nativeLog(
+              `native-${invocation++}`, 0, false, category, context === 'proof-a-build' ? 1 : 3, target,
+            ))
+            const child = Bun.spawn([
+              process.execPath, collector, '--events', events, '--output', output,
+              '--context', context, '--fresh-root',
+            ], { env: fixtureEnv, stdout: 'ignore', stderr: 'pipe' })
+            expect(await new Response(child.stderr).text()).toBe('')
+            expect(await child.exited).toBe(0)
+          }
+        }
+      }
+      for (const category of ['buildscript', 'pnpm_extract']) {
+        // A native buildscript is retained as local, not a fabricated cache hit
+        // or a newly blanket-excluded Rust category.
+        await Bun.write(events, nativeLog(`native-${invocation++}`, 0, false, category, 1)
+          .replaceAll('"cache_upload_result":1', '"cache_upload_result":0'))
+        const child = Bun.spawn([
+          process.execPath, collector, '--events', events, '--output', output,
+          '--context', 'proof-b-build', '--fresh-root',
+        ], { env: fixtureEnv, stdout: 'ignore', stderr: 'pipe' })
+        expect(await new Response(child.stderr).text()).toBe('')
+        expect(await child.exited).toBe(0)
+      }
+      const finalize = Bun.spawn([process.execPath, collector, '--output', output, '--finalize'], {
+        env: fixtureEnv, stdout: 'ignore', stderr: 'pipe',
+      })
+      expect(await new Response(finalize.stderr).text()).toBe('')
+      expect(await finalize.exited).toBe(0)
+      const summary: CacheEvidence = await Bun.file(output).json()
+      const bytes = new Uint8Array(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer())
+      const raw = gunzipSync(bytes).toString('utf8')
+      const full = decodeEvidence(bytes, summary, 'main-writer')
+      expect(full.header.complete).toBe(true)
+      expect(full.actions).toHaveLength(1400)
+      expect(summary.counts.uploaded).toBe(600)
+      expect(summary.counts['remote-hit']).toBe(600)
+      expect(summary.counts.local).toBe(200)
+      expect(summary.excludedByDesign).toEqual({ 'local-materialization-policy': 100 })
+      for (const target of targets) {
+        for (const category of ['rustc', 'deps']) {
+          const writer = full.actions.filter((action) =>
+            action.target === target && action.category === category && action.context === 'proof-a-build',
+          )
+          const reader = full.actions.filter((action) =>
+            action.target === target && action.category === category && action.context === 'proof-b-build',
+          )
+          expect(writer).toHaveLength(100)
+          expect(reader).toHaveLength(100)
+          expect(writer.every((action) =>
+            action.executionKind === 1 && action.cacheUploadResult === 1 && action.exclusionReason === null,
+          )).toBe(true)
+          expect(reader.every((action) =>
+            action.executionKind === 3 && action.cacheUploadResult === 0 && action.exclusionReason === null,
+          )).toBe(true)
+          expect(reader.map((action) => [action.target, action.category, action.configuration, action.digest]))
+            .toEqual(writer.map((action) => [action.target, action.category, action.configuration, action.digest]))
+        }
+      }
+      expect(full.actions.filter((action) => action.category === 'buildscript').every((action) =>
+        action.executionKind === 1 && action.cacheUploadResult === 0 &&
+        action.cacheOutcome === 'local' && action.exclusionReason === null,
+      )).toBe(true)
+      for (const secret of ['SECRET', '/private/', 'argv', '"env"', 'LocalCommand', 'RemoteCommand'])
+        expect(raw).not.toContain(secret)
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

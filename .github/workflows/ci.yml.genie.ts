@@ -1108,9 +1108,9 @@ const extraJobs: Record<string, any> = {
     ],
   },
   /**
-   * Trusted-only proof that a second plain checkout can consume an action
-   * uploaded by an independent standalone root through the public cache tier.
-   * Protected main is the tier's only writer (decision 0033).
+   * Trusted-only proof that a second plain checkout can consume JS/test and
+   * focused Linux x86_64 native Rust rustc/deps actions uploaded by an independent
+   * root. Protected main is the strict seed home (decision 0033).
    */
   'trusted-buck2-remote-cache-proof': {
     if: trustedSecretCiIf,
@@ -1132,7 +1132,7 @@ const extraJobs: Record<string, any> = {
       validateNixStoreStep,
       {
         [publisherWriteSecret]: buck2PublicCacheWriteSecret,
-        name: 'Prove fresh-root remote action and test-cache hits',
+        name: 'Prove fresh-root remote JS, native Rust and test-cache hits',
         env: {
           ...githubTokenEnv(),
           BUCK2_PUBLIC_CACHE_WRITE_AUTH: '${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}',

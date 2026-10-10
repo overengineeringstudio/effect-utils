@@ -4,11 +4,12 @@
 # Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:5622f3ad99e84bd7657f9de523bdc336b15b6309ee2ebb3283efb5b7cddceb96
+# Semantic fingerprint: sha256:78f5526991c9d9b65df630ef51b45de100a97f4c651c87fcf37881a80e195b2b
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
+load("//buck2/rust:cache.bzl", "rust_binary", "rust_library")
 load("//buck2:static_checks.bzl", "static_source_set")
 load("//buck2/products:defs.bzl", "build_product")
 load("//buck2/platforms:defs.bzl", "host_platform_label")
@@ -94,10 +95,11 @@ native.export_file(
     visibility = ["PUBLIC"],
 )
 
-native.rust_library(
+rust_library(
     name = "lib",
     crate = "otel_scrape",
     crate_root = "src/lib.rs",
+    cache_audited = True,
     srcs = [
         "src/adapters/deadnix.rs",
         "src/adapters/mod.rs",
@@ -141,10 +143,11 @@ native.rust_library(
     ],
 )
 
-native.rust_binary(
+rust_binary(
     name = "otel-scrape",
     crate = "otel_scrape",
     crate_root = "src/main.rs",
+    cache_audited = True,
     srcs = [
         "src/adapters/deadnix.rs",
         "src/adapters/mod.rs",

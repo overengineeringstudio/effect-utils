@@ -68,6 +68,7 @@ const PUBLIC_READ_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
   remote_cache_enabled = true
   allow_cache_uploads = false
+  default_allow_cache_upload = false
 [archive_origin]
   url_prefix =
   tier = public
@@ -78,6 +79,7 @@ const NO_REMOTE_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
+  default_allow_cache_upload = false
 [archive_origin]
   url_prefix =
   tier = public
@@ -90,6 +92,9 @@ ${MANAGED_END}`
  * config file. Publishers run off the tailnet, so archives come from the public
  * registry rather than the private trusted origin.
  */
+// Pinned run.rs defers allow_cache_upload=None (Prelude rustc/deps) to this
+// knob; RunActionKnobs derives Default, so the upstream default is false.
+// Platform admission and the root allow_cache_uploads guard still apply.
 const PUBLISHER_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
   allow_cache_uploads = true
@@ -124,6 +129,7 @@ const privateWriterCacheBlock = ({
 [buck2]
   remote_cache_enabled = true
   allow_cache_uploads = true
+  default_allow_cache_upload = true
 [buck2_re_client]
   action_cache_address = ${address}
   cas_address = ${address}
