@@ -11,6 +11,24 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/ai-gateway-conformance",
+      "outputName": "overeng-ai-gateway-conformance.tgz",
+      "packagePath": "packages/@overeng/ai-gateway-conformance",
+      "packageTreePath": "packages/@overeng/ai-gateway-conformance",
+      "target": "effect_utils//packages/@overeng/ai-gateway-conformance:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/ai-gateway-edge",
+      "outputName": "overeng-ai-gateway-edge.tgz",
+      "packagePath": "packages/@overeng/ai-gateway-edge",
+      "packageTreePath": "packages/@overeng/ai-gateway-edge",
+      "target": "effect_utils//packages/@overeng/ai-gateway-edge:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/content-address",
       "outputName": "overeng-content-address.tgz",
       "packagePath": "packages/@overeng/content-address",

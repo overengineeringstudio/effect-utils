@@ -135,6 +135,36 @@ registration agrees: the branch is registered exactly at `P`, or nowhere while
 as ambiguous rather than shadowed. A member path that is a real directory or
 file rather than a symlink is foreign and refused before replacement.
 
+### Recursive materialization ownership
+
+```text
+create commit worktree → publish physical identity → release worktree lock
+                              ↑
+                  all recursive branches share freshness
+```
+
+`mr apply --all --lock-sync off` shares its visited roots and freshly created
+commit-worktree identities across the entire invocation. Every commit-worktree
+visit joins the same physical-path creation lock, including a visit that already
+sees `.git` on disk: existence can precede completion of creation and publication
+of freshness. Only the creator publishes freshness under that lock. Recursive
+apply may populate the root and `repos/` mounts of those fresh commit worktrees;
+a second recursive visit to the same physical root is a no-op.
+
+Worktrees that existed before the invocation remain shared, not owned.
+Recursive apply refuses canonical mutations there; freshness is neither
+persisted nor inferred from existence. The exception does not authorize lock
+rewrites, generators' authoring outputs, or a separately invoked nested apply.
+
+Consumers prepare the dependency tree through the outer workspace's
+`mr apply --all`. Nested package-install hooks must not independently run
+`mr apply --only` inside canonical member worktrees. A consumer may instead
+check that the already prepared member has the locked commit and fail with
+instructions to prepare it from the owning workspace. Cached preexisting
+canonical worktrees must already have their nested mounts prepared; an
+incomplete shared tree requires an owned workspace or explicit administrative
+repair, not a freshness grant.
+
 `mr store worktree new` creates standalone worktrees only. The composed
 workspace shape — an owned worktree at `P/repos/<owned>`, read-only `cp -a`
 mounts, dist overlays, per-workspace capability projection, and a synthesized

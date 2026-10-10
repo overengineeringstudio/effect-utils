@@ -47,6 +47,7 @@ describe('nested Buck package ownership', () => {
         },
       ],
       testDataRoots: [{ root: 'data', extensions: ['.json'] }],
+      runtimeFiles: ['config.json'],
     }).stringify(genieContext)
 
   it('keeps parent and child destinations while depending on the nearest owner', () => {
@@ -78,6 +79,18 @@ describe('nested Buck package ownership', () => {
     for (const file of ['vitest.config.ts', 'config.json', 'package.json', 'tsconfig.json']) {
       expect(rendered).toContain(`"${file}": "${file}",`)
     }
+  })
+
+  it('carries declared runtime data in both package trees and rejects missing inputs', () => {
+    const rendered = output()
+    expect(stagedFilesOf({ output: rendered, tree: 'package_tree' })).toContain('config.json')
+    expect(stagedFilesOf({ output: rendered, tree: 'test_package_tree' })).toContain('config.json')
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.aiGatewayConformance,
+        runtimeFiles: ['missing.json'],
+      }),
+    ).toThrow('Runtime package file does not exist')
   })
 })
 

@@ -17,7 +17,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
 import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
@@ -1468,6 +1468,18 @@ const requireReadOnlySnapshotRoot = (snapshotDir: string): void => {
     fail(`snapshot record must be a read-only regular file: ${recordPath}`)
 }
 
+/**
+ * Vite writes its dependency cache (`.vite`) and bundled config (`.vite-temp`) below the
+ * nearest `node_modules`, which for a package is this snapshot. Read-only modes normally
+ * make Vite fall back elsewhere; a process with CAP_DAC_OVERRIDE (namespace root) does not.
+ */
+const viteWriteDiagnostic = (directory: string): string => {
+  const name = basename(directory)
+  return name === '.vite' || name === '.vite-temp'
+    ? `; Vite/Vitest created ${name} inside the read-only editor-view snapshot, typically a Vitest run with capabilities that bypass the read-only modes (for example root in a user namespace). Run Vitest with \`--configLoader runner\` and a cacheDir outside node_modules, then remove ${directory}`
+    : ''
+}
+
 /** Complete immutability proof: every directory, file, and link of the snapshot payload. */
 const requireReadOnlySnapshot = (snapshotDir: string): void => {
   const finite = pathExists(join(snapshotDir, '.backing'))
@@ -1475,7 +1487,8 @@ const requireReadOnlySnapshot = (snapshotDir: string): void => {
     const status = lstatSync(directory)
     if (status.isDirectory() === false || status.isSymbolicLink() === true)
       fail(`snapshot directory must be a real directory: ${directory}`)
-    if ((status.mode & 0o222) !== 0) fail(`snapshot directory is writable: ${directory}`)
+    if ((status.mode & 0o222) !== 0)
+      fail(`snapshot directory is writable: ${directory}${viteWriteDiagnostic(directory)}`)
     for (const name of readdirSync(directory)) {
       const path = join(directory, name)
       const entry = lstatSync(path)

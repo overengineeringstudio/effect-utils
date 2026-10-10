@@ -117,7 +117,7 @@ export const syncMegarepo = <R = never>({
   }
   depth?: number
   visited?: Set<string>
-  /** Invocation-local physical identities; never persisted or granted to authoring writers. */
+  /** Shared across every recursive branch; published by the creator before releasing its worktree lock. */
   createdWorktrees?: Set<string>
   /** Handle for dispatching progress updates */
   progressHandle?: SyncUIHandle

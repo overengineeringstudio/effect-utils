@@ -39,6 +39,8 @@ const javascriptProducts = [
 
 const packageProducts = [
   '@overeng/agent-session-ingest',
+  '@overeng/ai-gateway-conformance',
+  '@overeng/ai-gateway-edge',
   '@overeng/content-address',
   '@overeng/devbar',
   '@overeng/effect-ai-claude-cli',
