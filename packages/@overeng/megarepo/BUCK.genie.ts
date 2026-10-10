@@ -70,6 +70,8 @@ export const buck2TypeScriptAdmission = {
         'src/cli/store-gc-cold.integration.test.ts',
         'src/cli/store-gc-generated.integration.test.ts',
         'src/cli/store-gc-otel.integration.test.ts',
+        // Mount/user-namespace CLI fixture: collected only by the source unbounded complement.
+        'src/cli/store-gc-partial-deletion.integration.test.ts',
         'src/cli/store.integration.test.ts',
         'src/cli/sync.integration.test.ts',
         'src/core/git-memory.integration.test.ts',
