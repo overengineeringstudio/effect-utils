@@ -21,7 +21,7 @@ runtime JSON -> GatewayConfig -> makeRoutes -> Node HTTP listener
                            optional metrics listener
 ```
 
-`GatewayConfig` decodes `{ upstream: URLFromString, consumers: Array<{ name: trimmed nonempty string, tokenSha256: lowercase hex SHA-256 }> }`. Names and digests must each be unique. Consumer names are deployer-owned opaque, case-sensitive strings; they are not provider accounts or request-body identities. Metric serialization escapes backslashes, quotes and newlines. The package imposes no preselected consumer vocabulary. `fixture-consumer` is an example; an empty or whitespace-padded name and a non-64-digit digest are invalid.
+`GatewayConfig` decodes `{ upstream: URLFromString, consumers: Array<{ name: trimmed nonempty string, tokenSha256: lowercase hex SHA-256 }>, maxModelLabels?: nonnegative integer }`. Names and digests must each be unique. `maxModelLabels` defaults to 64 when omitted; zero aggregates every successful model into `_other`. Consumer names are deployer-owned opaque, case-sensitive strings; they are not provider accounts or request-body identities. Metric serialization escapes backslashes, quotes and newlines. The package imposes no preselected consumer vocabulary. `fixture-consumer` is an example; an empty or whitespace-padded name and a non-64-digit digest are invalid.
 
 `loadConfig(path)` requires Effect FileSystem and reports `ConfigLoadError` for read/decode errors. `makeRoutes(config, metrics?)` returns `{ router, metrics }`; `Metrics.render()` exposes the text scrape. The CLI provides:
 
@@ -58,7 +58,14 @@ bearer -> digest comparison -> decode model -> force stream usage -> upstream
 | `request_duration_seconds_bucket` | `consumer, model, le` | Cumulative duration histogram |
 | `request_duration_seconds_sum`, `request_duration_seconds_count` | `consumer, model` | Duration aggregate |
 
-The package owns these case-sensitive Prometheus metric identifiers. Consumer values are escaped configuration values; model values retain the request model (`models` for discovery, `unknown` for failed decoding). Histogram bounds are 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300 seconds and `+Inf`. Counts accept only nonnegative safe integers. Request duration ends at body completion/cancellation; no prompt, bearer, tool payload, or provider cost is a label.
+The package owns these case-sensitive Prometheus metric identifiers. Consumer values are escaped configuration values. Request, token and duration metrics share one model-label admission set per `Metrics` instance:
+
+1. Non-2xx responses, including local 400/502 errors, use `_rejected` and do not admit request model values.
+2. Upstream 2xx responses may retain at most `maxModelLabels` distinct model values across all configured consumers. Discovery's synthetic `models` value also consumes one slot.
+3. Once the cap is reached, newly observed successful models use `_other`; previously admitted models retain their own label. `_other` and `_rejected` are reserved aggregate values, not admission-set entries.
+4. The cap bounds all model-keyed maps and Prometheus series; it does not rewrite, reject, or constrain the model sent upstream. Optional supplied usage on an error response is counted under `_rejected`.
+
+`new Metrics(maxModelLabels = 64)` accepts a nonnegative safe integer. Names are never evicted from its bounded admission set, so repeated model values keep a stable bucket. Histogram bounds are 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300 seconds and `+Inf`. Token counts accept only nonnegative safe integers. Request duration ends at body completion/cancellation; no prompt, bearer, tool payload, or provider cost is a label.
 
 ## Shared conformance (AIG.EDGE-R07)
 

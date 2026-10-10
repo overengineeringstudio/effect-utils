@@ -23,6 +23,8 @@ The ports above are illustrative. All listener addresses and the upstream are ru
 
 Names and verifier digests must each be unique. Removing a verifier and restarting revokes only that consumer. The edge never forwards consumer Authorization to the upstream. Deployment must protect the optional metrics listener; it has no consumer auth.
 
+`maxModelLabels` is an optional nonnegative integer, defaulting to 64. Request, duration and token metrics retain model labels only for upstream 2xx responses, admit at most this many distinct values, and aggregate further models as `_other`. All non-2xx responses use `_rejected` without consuming the cap. Forwarded model IDs are never rewritten. Set the cap to zero to aggregate all successful models.
+
 ## Compose
 
 ```ts

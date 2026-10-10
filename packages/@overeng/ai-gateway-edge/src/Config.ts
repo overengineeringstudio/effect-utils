@@ -8,6 +8,7 @@ const Consumer = Schema.Struct({
 export const GatewayConfig = Schema.Struct({
   upstream: Schema.URLFromString,
   consumers: Schema.Array(Consumer),
+  maxModelLabels: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 }).annotate({ identifier: 'AiGatewayEdge.Config' })
 
 export type GatewayConfig = typeof GatewayConfig.Type

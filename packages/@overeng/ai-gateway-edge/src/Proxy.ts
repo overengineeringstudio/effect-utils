@@ -95,7 +95,7 @@ class UsageEvents {
   }
 }
 
-export const makeRoutes = (config: GatewayConfig, metrics = new Metrics()) => {
+export const makeRoutes = (config: GatewayConfig, metrics = new Metrics(config.maxModelLabels ?? 64)) => {
   const consumers = config.consumers.map(({ name, tokenSha256 }) => ({
     name,
     digest: Buffer.from(tokenSha256, 'hex'),
@@ -120,19 +120,20 @@ export const makeRoutes = (config: GatewayConfig, metrics = new Metrics()) => {
     return name
   }
 
-  const meterUsage = (consumer: string, model: string, value: unknown) => {
+  const meterUsage = (consumer: string, model: string, status: number, value: unknown) => {
     const parsed = decodeUsage(value)
     if (parsed._tag === 'None') return
     const usage = parsed.value
     const input = usage.prompt_tokens ?? usage.input_tokens
     const output = usage.completion_tokens ?? usage.output_tokens
-    if (input !== undefined) metrics.addTokens({ consumer, model }, 'input', input)
-    if (output !== undefined) metrics.addTokens({ consumer, model }, 'output', output)
+    if (input !== undefined) metrics.addTokens({ consumer, model }, status, 'input', input)
+    if (output !== undefined) metrics.addTokens({ consumer, model }, status, 'output', output)
     if (usage.prompt_tokens_details?.cached_tokens !== undefined)
-      metrics.addTokens({ consumer, model }, 'cached', usage.prompt_tokens_details.cached_tokens)
+      metrics.addTokens({ consumer, model }, status, 'cached', usage.prompt_tokens_details.cached_tokens)
     if (usage.completion_tokens_details?.reasoning_tokens !== undefined)
       metrics.addTokens(
         { consumer, model },
+        status,
         'reasoning',
         usage.completion_tokens_details.reasoning_tokens,
       )
@@ -236,7 +237,7 @@ export const makeRoutes = (config: GatewayConfig, metrics = new Metrics()) => {
       }
       const events = new UsageEvents((value) => {
         if (typeof value === 'object' && value !== null && 'usage' in value && value.usage !== null)
-          meterUsage(consumer, model, value.usage)
+          meterUsage(consumer, model, response.status, value.usage)
       })
       const isSse = response.headers.get('content-type')?.includes('text/event-stream') ?? false
       const stream = Stream.fromReadableStream({
@@ -274,7 +275,7 @@ export const makeRoutes = (config: GatewayConfig, metrics = new Metrics()) => {
         catch: () => undefined,
       }).pipe(Effect.orElseSucceed(() => undefined))
       if (typeof json === 'object' && json !== null && 'usage' in json && json.usage !== null)
-        meterUsage(consumer, model, json.usage)
+        meterUsage(consumer, model, response.status, json.usage)
       return HttpServerResponse.uint8Array(bytes, {
         status: response.status,
         headers: responseHeaders,

@@ -9,8 +9,30 @@ export class Metrics {
   private readonly requests = new Map<string, { labels: Labels; status: number; count: number }>()
   private readonly tokens = new Map<string, { labels: Labels; kind: Kind; count: number }>()
   private readonly durations = new Map<string, { labels: Labels; count: number; sum: number; buckets: number[] }>()
+  private readonly models = new Set<string>()
+  private readonly maxModelLabels: number
+
+  constructor(maxModelLabels = 64) {
+    if (!Number.isSafeInteger(maxModelLabels) || maxModelLabels < 0)
+      throw new RangeError('maxModelLabels must be a nonnegative safe integer')
+    this.maxModelLabels = maxModelLabels
+  }
+
+  private boundedLabels(labels: Labels, status: number): Labels {
+    let model: string
+    if (status < 200 || status >= 300) model = '_rejected'
+    else if (labels.model === '_other' || labels.model === '_rejected' || this.models.has(labels.model))
+      model = labels.model
+    else if (this.models.size >= this.maxModelLabels) model = '_other'
+    else {
+      this.models.add(labels.model)
+      model = labels.model
+    }
+    return model === labels.model ? labels : { consumer: labels.consumer, model }
+  }
 
   record(labels: Labels, status: number, seconds: number) {
+    labels = this.boundedLabels(labels, status)
     const key = JSON.stringify([labels.consumer, labels.model])
     const requestKey = JSON.stringify([labels.consumer, labels.model, status])
     const request = this.requests.get(requestKey)
@@ -23,8 +45,9 @@ export class Metrics {
     this.durations.set(key, duration)
   }
 
-  addTokens(labels: Labels, kind: Kind, count: number) {
+  addTokens(labels: Labels, status: number, kind: Kind, count: number) {
     if (!Number.isSafeInteger(count) || count < 0) return
+    labels = this.boundedLabels(labels, status)
     const key = JSON.stringify([labels.consumer, labels.model, kind])
     const entry = this.tokens.get(key)
     if (entry) entry.count += count
