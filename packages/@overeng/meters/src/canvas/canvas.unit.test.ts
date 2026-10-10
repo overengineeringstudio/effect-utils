@@ -5,10 +5,13 @@ import { vi } from 'vitest'
 
 import { makeSeries, makeSeriesStore, type NumberValue } from '../series/index.ts'
 import { testPlatform } from '../session/_test-platform.ts'
+import type { FpsValue } from '../session/frame.ts'
 import { makeMeters, makeSource } from '../session/index.ts'
 import { testCanvas } from './_test-canvas.ts'
 import {
   counterBlock,
+  formatMeterValue,
+  frameBlock,
   layoutStrip,
   lightMeterTheme,
   makeCanvasStrip,
@@ -139,15 +142,20 @@ describe('canvas strip', () => {
         scope,
       )
       expect(layouts).toEqual([302])
+      // At nominal 150px, use the short label rather than truncating the full heap label.
+      expect(surface.drawnTexts.map((text) => text.text)).toEqual([
+        '149.1 MiB',
+        'Heap',
+        '149.1 MiB',
+      ])
       surface.drawnTexts.length = 0
       surface.setAvailableWidth(202)
       expect(layouts).toEqual([302, 202])
       expect(surface.canvas.style.width).toBe('202px')
       expect(surface.canvas.width).toBe(253)
       expect(surface.drawnTexts.every((text) => text.maxWidth === undefined)).toBe(true)
-      // Each 100px block: value reserved at the right, label ellipsized or shortened before it.
+      // At 100px, drop a label that cannot fit; keep a supplied short label intact.
       expect(surface.drawnTexts.map((text) => [text.text, text.x])).toEqual([
-        ['JS h…', 4],
         ['149.1 MiB', 42],
         ['Heap', 106],
         ['149.1 MiB', 144],
@@ -210,6 +218,101 @@ describe('canvas strip', () => {
       expect(f.surface.texts).toEqual([])
     }),
   )
+  it('formats compact values from observed scalars in the same displayed unit', () => {
+    for (const [value, unit, full, compact, number] of [
+      [59.9, 'fps', '59.9 fps', '60fps', '60'],
+      [526, 'ms', '526 ms', '526ms', '526'],
+      [95.3 * 1024 ** 2, 'bytes', '95.3 MiB', '95MiB', '95'],
+      [1.6 * 1024 ** 3, 'bytes', '1.6 GiB', '2GiB', '2'],
+      [1.6 * 1024, 'bytes', '1.6 KiB', '2KiB', '2'],
+      [526, 'bytes', '526 B', '526B', '526'],
+      [12.6, 'count', '12.6', '13', '13'],
+      [-12.6, 'ms', '-12.6 ms', '-13ms', '-13'],
+      [0, 'fps', '0 fps', '0fps', '0'],
+    ] as const) {
+      expect(formatMeterValue({ value, unit })).toBe(full)
+      expect(formatMeterValue({ value, unit, format: 'compact' })).toBe(compact)
+      expect(formatMeterValue({ value, unit, format: 'number' })).toBe(number)
+    }
+  })
+  it('draws compact scalars before ellipsizing while retaining full accessible descriptions', () => {
+    const surface = testCanvas()
+    const ctx = surface.canvas.getContext('2d')
+    if (ctx === null) throw new TypeError('Injected canvas context is required')
+    for (const [unit, value, width, full, drawn] of [
+      ['fps', 59.9, 50, '59.9 fps', '60fps'],
+      ['ms', 526, 40, '526 ms', '526ms'],
+      ['bytes', 95.3 * 1024 ** 2, 50, '95.3 MiB', '95MiB'],
+      ['fps', 59.9, 20, '59.9 fps', '60'],
+    ] as const) {
+      const series = makeSeries<NumberValue>({
+        id: 'scalar',
+        label: 'Measured value',
+        unit,
+        capacity: 4,
+      })
+      const store = makeSeriesStore()
+      store.register({ series }).append({
+        sample: { _tag: 'Value', atMs: 0, value: { _tag: 'Number', value } },
+      })
+      const reader = numberBlock({ id: 'scalar', series, shortLabel: 'Value' }).read(store)
+      surface.drawnTexts.length = 0
+      reader.draw({
+        ctx,
+        rect: { x: 0, y: 0, width, height: 32 },
+        nowMs: 0,
+        historyMs: 100,
+        theme: lightMeterTheme,
+      })
+      expect(surface.drawnTexts.map((text) => text.text)).toEqual([drawn])
+      expect(surface.drawnTexts.every((text) => text.maxWidth === undefined)).toBe(true)
+      expect(reader.describe()).toBe(full)
+    }
+  })
+  it('compacts actual frame timing without substituting calibration or missing samples', () => {
+    const surface = testCanvas()
+    const ctx = surface.canvas.getContext('2d')
+    if (ctx === null) throw new TypeError('Injected canvas context is required')
+    const series = makeSeries<FpsValue>({
+      id: 'frames',
+      label: 'Frame rate',
+      unit: 'fps',
+      capacity: 4,
+    })
+    const store = makeSeriesStore()
+    const writer = store.register({ series })
+    const value: FpsValue = {
+      _tag: 'Fps',
+      durationMs: 1000 / 59.9,
+      skippedFrames: { _tag: 'Unavailable', atMs: 0, reason: 'NoSamples' },
+      framesCaptured: 1,
+      calibration: { _tag: 'Calibrated', bucket: 240 },
+    }
+    writer.append({ sample: { _tag: 'Value', atMs: 0, value } })
+    const reader = frameBlock({ id: 'frames', series, shortLabel: 'FPS' }).read(store)
+    reader.draw({
+      ctx,
+      rect: { x: 0, y: 0, width: 50, height: 32 },
+      nowMs: 0,
+      historyMs: 100,
+      theme: lightMeterTheme,
+    })
+    expect(surface.drawnTexts.map((text) => text.text)).toEqual(['60fps'])
+    expect(reader.describe()).toBe('59.9 fps')
+    writer.append({
+      sample: { _tag: 'Value', atMs: 1, value: { ...value, durationMs: 0 } },
+    })
+    surface.drawnTexts.length = 0
+    reader.draw({
+      ctx,
+      rect: { x: 0, y: 0, width: 150, height: 32 },
+      nowMs: 1,
+      historyMs: 100,
+      theme: lightMeterTheme,
+    })
+    expect(surface.drawnTexts.map((text) => text.text)).toEqual(['FPS', 'n/a (NoSamples)'])
+    expect(reader.describe()).toBe('n/a (NoSamples)')
+  })
   it('aggregates cumulative counter increments by timestamp bin and overlays explicit gap durations', () => {
     const surface = testCanvas()
     const series = makeSeries<NumberValue>({

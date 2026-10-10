@@ -1,9 +1,7 @@
 import { describe, expect, it } from '@effect/vitest'
 
+import { measureTestText as measure } from './_test-canvas.ts'
 import { fitText, layoutBlockText, layoutStrip } from './layout.ts'
-
-/** Deterministic monospace metric: 6 CSS px per character. */
-const measure = (text: string): number => text.length * 6
 
 describe('responsive strip layout', () => {
   it('keeps nominal widths when the slot is wider, and never grows past them', () => {
@@ -45,13 +43,13 @@ describe('block header text', () => {
 
   it('never overlaps label and value at any narrow width, and stays inside the block', () => {
     for (let width = 20; width <= 160; width++) {
-      for (const [label, value] of [
-        ['Frame rate', '59.5 fps'],
-        ['JS heap (approximate)', '149.1 MiB'],
-        ['Long frames', '285.1 ms'],
+      for (const [label, value, compactValue, numberValue] of [
+        ['Frame rate', '59.5 fps', '60fps', '60'],
+        ['JS heap (approximate)', '149.1 MiB', '149MiB', '149'],
+        ['Long frames', '285.1 ms', '285ms', '285'],
       ] as const) {
         const rect = { x: 10, y: 0, width, height: 32 }
-        const header = layoutBlockText({ rect, label, value, measure })
+        const header = layoutBlockText({ rect, label, value, compactValue, numberValue, measure })
         expect(overlaps(header)).toBe(false)
         for (const run of [header.label, header.value]) {
           if (run === undefined) continue
@@ -62,19 +60,78 @@ describe('block header text', () => {
       }
     }
   })
-  it('reserves the value first, then prefers the full label, a short label, an ellipsis, or nothing', () => {
+  it('degrades through full label, short label, full value, compact value, number, and ellipsis', () => {
     const rect = (width: number) => ({ x: 0, y: 0, width, height: 32 })
-    const base = { label: 'JS heap (approximate)', shortLabel: 'Heap', value: '149.1 MiB', measure }
-    expect(layoutBlockText({ ...base, rect: rect(200) }).label?.text).toBe('JS heap (approximate)')
-    expect(layoutBlockText({ ...base, rect: rect(100) })).toEqual({
-      value: { text: '149.1 MiB', x: 42, width: 54 },
-      label: { text: 'Heap', x: 4, width: 24 },
-    })
-    const ellipsized = layoutBlockText({ ...base, shortLabel: undefined, rect: rect(110) }).label
-    expect(ellipsized?.text).toBe('JS hea…')
-    expect(layoutBlockText({ ...base, rect: rect(70) })).toEqual({
-      value: { text: '149.1 MiB', x: 12, width: 54 },
+    const base = {
+      label: 'JS heap (approx)',
+      shortLabel: 'Heap',
+      value: '95.3 MiB',
+      compactValue: '95MiB',
+      numberValue: '95',
+      measure,
+    }
+    for (const [width, label, value] of [
+      [200, 'JS heap (approx)', '95.3 MiB'],
+      [150, 'Heap', '95.3 MiB'],
+      [70, undefined, '95.3 MiB'],
+      [50, undefined, '95MiB'],
+      [20, undefined, '95'],
+      [14, undefined, '…'],
+      [13, undefined, undefined],
+    ] as const) {
+      const header = layoutBlockText({ ...base, rect: rect(width) })
+      expect(header.label?.text).toBe(label)
+      expect(header.value?.text).toBe(value)
+      expect(overlaps(header)).toBe(false)
+    }
+    expect(
+      layoutBlockText({ ...base, shortLabel: undefined, rect: rect(150) }).label,
+    ).toBeUndefined()
+  })
+  it('keeps the full value before compacting, without restoring labels for compact values', () => {
+    const base = {
+      label: 'Frame rate',
+      shortLabel: 'FPS',
+      value: '59.9 fps',
+      compactValue: '60fps',
+      numberValue: '60',
+      measure,
+    }
+    expect(layoutBlockText({ ...base, rect: { x: 10, y: 0, width: 70, height: 32 } })).toEqual({
+      value: { text: '59.9 fps', x: 28, width: 48 },
       label: undefined,
+    })
+    expect(layoutBlockText({ ...base, rect: { x: 10, y: 0, width: 50, height: 32 } })).toEqual({
+      value: { text: '60fps', x: 26, width: 30 },
+      label: undefined,
+    })
+  })
+  it('ellipsizes only after even the number cannot fit', () => {
+    expect(
+      layoutBlockText({
+        rect: { x: 0, y: 0, width: 26, height: 32 },
+        label: 'Duration',
+        value: '123456.7 ms',
+        compactValue: '123457ms',
+        numberValue: '123457',
+        measure,
+      }),
+    ).toEqual({
+      value: { text: '12…', x: 4, width: 18 },
+      label: undefined,
+    })
+  })
+  it('can show an intact label when no value text is provided', () => {
+    expect(
+      layoutBlockText({
+        rect: { x: 0, y: 0, width: 50, height: 32 },
+        label: 'Heap',
+        value: '',
+        measure,
+      }),
+    ).toEqual({
+      value: undefined,
+      label: { text: 'Heap', x: 4, width: 24 },
     })
   })
   it('fits by measuring and ellipsizing, never by reporting an over-wide run', () => {
