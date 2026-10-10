@@ -507,6 +507,8 @@ lib  ref changed but old worktree has 1 uncommitted changes (use --force to over
 
 In `tracking` mode, if the branch worktree is behind the locked commit, it is fast-forwarded. If the branch has advanced past the locked commit (fast-forward not possible), `mr apply` falls back to a commit worktree to ensure correct content without detaching the branch worktree.
 
+`mr apply --commit-members <a,b>` (apply only, requires `--lock-sync off`, exclusive with `--all`) materializes the listed root members as commit worktrees and applies their nested megarepos recursively in commit mode; unlisted members keep `--worktree-mode` and are not recursed into. `--only`/`--skip` select root members only and never filter a listed member's subtree, so a fresh commit subtree is complete or absent. It is the local path for consumers whose nested hooks only validate prepared trees (devenv option `setupCommitMembers`). Recursion populates only commit worktrees created by the invocation; a preexisting nested commit worktree is accepted when its locked tree is already mounted and refused otherwise.
+
 **CI usage:** In CI environments (`CI=true`), `mr apply` defaults to `commit` mode, creating `refs/commits/<sha>/` worktrees for deterministic builds. The lock file is never modified.
 
 #### `mr pin <member> [-c <ref>]`
