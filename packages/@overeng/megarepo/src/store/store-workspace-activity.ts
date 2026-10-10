@@ -99,9 +99,12 @@ const PtySessions = Schema.Array(
   }),
 ).annotate({ identifier: 'StoreWorkspaceActivity.PtySessions' })
 
-class ActivityUnavailable extends Schema.TaggedError<ActivityUnavailable>()('ActivityUnavailable', {
-  message: Schema.String,
-}) {}
+export class ActivityUnavailable extends Schema.TaggedError<ActivityUnavailable>()(
+  'ActivityUnavailable',
+  {
+    message: Schema.String,
+  },
+) {}
 const unavailable = (message: string) => new ActivityUnavailable({ message })
 
 const COMMAND_BYTES = 2 * 1024 * 1024
