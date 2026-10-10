@@ -3,9 +3,10 @@
  *
  * Commands for managing the shared git store.
  *
- * Directory deletion captures the absolute ancestor chain before authority probes
- * and uses the shared Linux fd-pinned quarantine boundary. Missing/replaced chains
- * and unsupported platforms refuse deletion; plan hashes bind the captured identity.
+ * Linux directory deletion captures the absolute ancestor chain before authority
+ * probes and uses the shared fd-pinned quarantine boundary; plan hashes bind that
+ * identity. Other platforms retain legacy path-based recursive GC, but refuse
+ * build-output budgets and merged worklog-delete teardown.
  */
 
 import { createHash } from 'node:crypto'
@@ -70,6 +71,7 @@ import { StoreLock } from '../../../store/store-lock.ts'
 import { assessLossless } from '../../../store/store-lossless.ts'
 import {
   captureDeletionIdentity,
+  storeDeletionPlatform,
   withPinnedDeletion,
   type DeletionIdentity,
 } from '../../../store/store-pinned-deletion.ts'
@@ -140,12 +142,12 @@ type GcWorktreeDecision =
       readonly worktree: CollectedWorktree
       readonly action: 'status_failed'
       readonly message: string
-      readonly identity: DeletionIdentity
+      readonly identity?: DeletionIdentity | undefined
     }
   | {
       readonly worktree: CollectedWorktree
       readonly action: 'check'
-      readonly identity: DeletionIdentity
+      readonly identity?: DeletionIdentity | undefined
       readonly status: {
         readonly isDirty: boolean
         readonly hasUnpushed: boolean
@@ -217,7 +219,9 @@ const planSha256For = ({
       workspacePath: result.workspacePath,
       outcome: result.outcome,
       mtimeMs: result.mtimeMs,
-      deletionIdentity: deletionIdentities.get(result.path),
+      ...(deletionIdentities.has(result.path) === true
+        ? { deletionIdentity: deletionIdentities.get(result.path) }
+        : {}),
     }))
     .toSorted((left, right) => compareCanonicalPlanPaths({ left: left.path, right: right.path }))
   return createHash('sha256').update(encodeCanonicalPlan(canonicalPlan)).digest('hex')
@@ -252,6 +256,7 @@ const planGeneratedArtifacts = ({
   FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
+    const platform = yield* storeDeletionPlatform
     const generatedResults: StoreGcResult[] = []
     const deletionIdentities = new Map<string, DeletionIdentity>()
     const initialActivity =
@@ -267,9 +272,10 @@ const planGeneratedArtifacts = ({
           if ((yield* fs.exists(artifactPath)) === false) {
             continue
           }
-          const identity = yield* captureDeletionIdentity({ rootPath, path: artifactPath }).pipe(
-            Effect.option,
-          )
+          const identity =
+            platform === 'linux'
+              ? yield* captureDeletionIdentity({ rootPath, path: artifactPath }).pipe(Effect.option)
+              : Option.none<DeletionIdentity>()
           if (Option.isSome(identity) === true) {
             deletionIdentities.set(artifactPath, identity.value)
           }
@@ -319,7 +325,7 @@ const planGeneratedArtifacts = ({
               ? 'generated-artifacts-disabled'
               : agentActivity === undefined
                 ? 'agent-liveness-unavailable'
-                : Option.isNone(identity) === true ||
+                : (platform === 'linux' && Option.isNone(identity) === true) ||
                     canonicalWorktree === undefined ||
                     contained === false
                   ? 'artifact-scan-incomplete'
@@ -891,17 +897,22 @@ const classifyGcWorktree = ({
   all: boolean
 }) =>
   Effect.gen(function* () {
-    // Bind the entire absolute chain before any policy or Git authority probe.
-    // Even --force cannot authorize deletion of an unreadable/replaced chain.
-    const identity = yield* captureDeletionIdentity({ rootPath, path: worktree.path }).pipe(
-      Effect.result,
-    )
-    if (identity._tag === 'Failure') {
-      return {
-        worktree,
-        action: 'identity_failed' as const,
-        message: identity.failure.message,
+    const platform = yield* storeDeletionPlatform
+    let identity: DeletionIdentity | undefined
+    if (platform === 'linux') {
+      // Bind the absolute chain before policy or Git authority probes on Linux.
+      // Even --force cannot authorize deletion of an unreadable/replaced chain.
+      const captured = yield* captureDeletionIdentity({ rootPath, path: worktree.path }).pipe(
+        Effect.result,
+      )
+      if (captured._tag === 'Failure') {
+        return {
+          worktree,
+          action: 'identity_failed' as const,
+          message: captured.failure.message,
+        }
       }
+      identity = captured.success
     }
     const policy = classifyStoreWorktreePolicy({
       liveSet,
@@ -920,7 +931,7 @@ const classifyGcWorktree = ({
     if (worktree.broken === true) {
       return {
         worktree,
-        identity: identity.success,
+        identity,
         action: 'check' as const,
         status: { isDirty: false, hasUnpushed: false, changesCount: 0 },
       }
@@ -938,7 +949,7 @@ const classifyGcWorktree = ({
     if (statusResult._tag === 'status_failed') {
       return {
         worktree,
-        identity: identity.success,
+        identity,
         action: 'status_failed' as const,
         message: statusResult.message,
       }
@@ -946,7 +957,7 @@ const classifyGcWorktree = ({
 
     return {
       worktree,
-      identity: identity.success,
+      identity,
       action: 'check' as const,
       status: statusResult.status,
     }
@@ -1303,6 +1314,12 @@ const coldReclaimRepo = ({
   lockAlreadyHeld?: boolean | undefined
 }) =>
   Effect.gen(function* () {
+    const platform = yield* storeDeletionPlatform
+    if (platform !== 'linux' && worklogPolicy !== undefined) {
+      return yield* new StoreCommandError({
+        message: `merged worklog-delete teardown is unsupported on platform '${platform}'; requires Linux fd-pinned deletion`,
+      })
+    }
     const results: StoreGcResult[] = []
 
     // Fetch --prune so `refs/remotes/*` is fresh (the reachability + PR-prune
@@ -1351,7 +1368,7 @@ const coldReclaimRepo = ({
       // must not turn those predicates into authority over a different tree.
       const plannedIdentity = deletionIdentities.get(worktree.path)
       const deletionIdentity =
-        worklogPolicy === undefined
+        platform !== 'linux' || worklogPolicy === undefined
           ? undefined
           : plannedIdentity !== undefined
             ? Option.some(plannedIdentity)
@@ -2216,6 +2233,7 @@ const storeGcCommand = Cli.Command.make(
       const store = yield* Store
       const storeLock = yield* StoreLock
       const fs = yield* FileSystem.FileSystem
+      const platform = yield* storeDeletionPlatform
 
       let root = Option.none<AbsoluteDirPath>()
       let liveSetForMetrics: StoreLiveSet | undefined
@@ -2233,6 +2251,11 @@ const storeGcCommand = Cli.Command.make(
       ) {
         return yield* new StoreCommandError({
           message: '--budgets is incompatible with --generated-artifacts, --all and --force',
+        })
+      }
+      if (Option.isSome(budgets) === true && platform !== 'linux') {
+        return yield* new StoreCommandError({
+          message: `store gc --budgets is unsupported on platform '${platform}'; requires Linux fd-pinned deletion`,
         })
       }
       // Decode before collecting or reconciling store state. Invalid policy is
@@ -2272,6 +2295,15 @@ const storeGcCommand = Cli.Command.make(
         return yield* new StoreCommandError({
           message: '--generated-artifacts mutation requires --expected-plan and --candidate-path',
         })
+      }
+      if (platform !== 'linux' && all === false && generatedArtifacts === false) {
+        const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+        const worklogPolicy = yield* loadWorklogTeardownPolicy(config.buildOutputBudgetsPath)
+        if (worklogPolicy !== undefined) {
+          return yield* new StoreCommandError({
+            message: `merged worklog-delete teardown is unsupported on platform '${platform}'; requires Linux fd-pinned deletion`,
+          })
+        }
       }
 
       if (budgetPolicy !== undefined && Option.isSome(budgets) === true) {
@@ -2467,11 +2499,20 @@ const storeGcCommand = Cli.Command.make(
                     return { _tag: 'skipped_live' as const, message: removalPolicy.message }
                   }
 
-                  yield* withPinnedDeletion({
-                    rootPath: store.basePath,
-                    path: worktree.path,
-                    identity: decision.identity,
-                  })
+                  if (platform === 'linux') {
+                    if (decision.identity === undefined) {
+                      return yield* new StoreCommandError({
+                        message: 'candidate deletion identity is unavailable',
+                      })
+                    }
+                    yield* withPinnedDeletion({
+                      rootPath: store.basePath,
+                      path: worktree.path,
+                      identity: decision.identity,
+                    })
+                  } else {
+                    yield* fs.remove(worktree.path, { recursive: true })
+                  }
                   return { _tag: 'removed' as const }
                 }),
               )
@@ -2734,7 +2775,7 @@ const storeGcCommand = Cli.Command.make(
               // so the final liveness classification below cannot be overtaken.
               const applied = yield* Effect.gen(function* () {
                 const identity = generatedPlan.deletionIdentities.get(selected[0]!.path)
-                if (identity === undefined) {
+                if (platform === 'linux' && identity === undefined) {
                   return yield* new StoreCommandError({
                     message: 'candidate deletion identity is unavailable',
                   })
@@ -2844,11 +2885,20 @@ const storeGcCommand = Cli.Command.make(
                 if (holder !== undefined) {
                   return yield* new StoreCommandError({ message: inUseMessage(holder) })
                 }
-                yield* withPinnedDeletion({
-                  rootPath: store.basePath,
-                  path: freshCandidate.path,
-                  identity,
-                })
+                if (platform === 'linux') {
+                  if (identity === undefined) {
+                    return yield* new StoreCommandError({
+                      message: 'candidate deletion identity is unavailable',
+                    })
+                  }
+                  yield* withPinnedDeletion({
+                    rootPath: store.basePath,
+                    path: freshCandidate.path,
+                    identity,
+                  })
+                } else {
+                  yield* fs.remove(freshCandidate.path, { recursive: true })
+                }
                 return { ...freshCandidate, outcome: 'deleted' as const }
               }).pipe(
                 withDeletionLease({
@@ -3018,8 +3068,9 @@ const storeGcCommand = Cli.Command.make(
                                 all,
                               })
                               if (
-                                decision.action === 'check' ||
-                                decision.action === 'status_failed'
+                                (decision.action === 'check' ||
+                                  decision.action === 'status_failed') &&
+                                decision.identity !== undefined
                               ) {
                                 deletionIdentities.set(worktree.path, decision.identity)
                               }
@@ -3139,7 +3190,7 @@ const storeGcCommand = Cli.Command.make(
             const applied: StoreGcResult = yield* Effect.gen(function* () {
               if (candidate.status === 'removed') {
                 const identity = deletionIdentities.get(candidate.path)
-                if (identity === undefined) {
+                if (platform === 'linux' && identity === undefined) {
                   return yield* new StoreCommandError({
                     message: 'candidate deletion identity is unavailable',
                   })
@@ -3172,11 +3223,20 @@ const storeGcCommand = Cli.Command.make(
                     message: `candidate is in use: ${inUseMessage(holder)}`,
                   })
                 }
-                yield* withPinnedDeletion({
-                  rootPath: store.basePath,
-                  path: candidate.path,
-                  identity,
-                })
+                if (platform === 'linux') {
+                  if (identity === undefined) {
+                    return yield* new StoreCommandError({
+                      message: 'candidate deletion identity is unavailable',
+                    })
+                  }
+                  yield* withPinnedDeletion({
+                    rootPath: store.basePath,
+                    path: candidate.path,
+                    identity,
+                  })
+                } else {
+                  yield* fs.remove(candidate.path, { recursive: true })
+                }
                 const pruneWarning = yield* Git.pruneWorktrees(owner.bareRepoPath).pipe(
                   Effect.as(undefined),
                   Effect.catch((error) =>

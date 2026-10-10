@@ -14,7 +14,18 @@ import {
 } from 'node:fs'
 import { basename, isAbsolute, normalize, relative } from 'node:path'
 
-import { Effect, Schema } from 'effect'
+import { Context, Effect, Option, Schema } from 'effect'
+
+/** Injectable host platform for deletion policy; production uses the actual Node platform. */
+export class StoreDeletionPlatform extends Context.Service<
+  StoreDeletionPlatform,
+  NodeJS.Platform
+>()('megarepo/StoreDeletionPlatform') {}
+
+/** Resolve the deletion-policy platform without requiring a service at the CLI boundary. */
+export const storeDeletionPlatform = Effect.serviceOption(StoreDeletionPlatform).pipe(
+  Effect.map((platform) => Option.getOrElse(platform, () => process.platform)),
+)
 
 /** Serializable no-follow directory identities, ordered from filesystem root through the target. */
 export const DeletionIdentity = Schema.Array(

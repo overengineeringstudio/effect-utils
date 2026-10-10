@@ -169,11 +169,16 @@ JSON output is the `megarepo.build-output-budget-plan.v1` document: `planSha256`
 for exporting gauges. Application holds the owner-worktree lock and deletion lease, recaptures
 activity on the admitted epoch, replans completely, requires the same digest, and re-checks every
 idle predicate on the one candidate before deleting it.
-Deletion binds each ancestor's device/inode identity to the authorized candidate and pins
-directories with Linux no-follow file descriptors through quarantine and recursive removal.
+On Linux, deletion binds each ancestor's device/inode identity to the authorized candidate
+and pins directories with no-follow file descriptors through quarantine and recursive removal.
 Replacing an ancestor with a symlink cannot redirect removal outside the verified tree;
-changed identities or unavailable primitives refuse deletion rather than falling back to
-absolute-path removal. The same boundary protects worktree and merged-worklog teardown.
+changed identities or unavailable primitives refuse deletion. The same boundary protects
+worktree and merged-worklog teardown.
+
+Build-output budgets and policy-authorized worklog deletion refuse non-Linux hosts with
+`unsupported-platform`. Existing macOS legacy GC (including dry-run, `--all`, `--force`,
+and whole-worktree teardown) retains its previous recursive path-based removal and its
+pre-existing ancestor-symlink TOCTOU exposure; this behavior is unchanged.
 
 `--budgets` itself never removes worktrees or worklogs; budget mode evicts build-output roots
 only. The optional `worklog` field is consumed by default GC teardown (below).

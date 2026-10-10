@@ -19,6 +19,7 @@ import { isInsideWorktree, readProcessReferences } from './store-inuse.ts'
 import { isPathProtected, type StoreLiveSet } from './store-liveness.ts'
 import {
   captureDeletionIdentity,
+  storeDeletionPlatform,
   withPinnedDeletion,
   type DeletionIdentity,
 } from './store-pinned-deletion.ts'
@@ -443,6 +444,8 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   now: number
   ignoreLeaseOwner?: string | undefined
 }) {
+  if ((yield* storeDeletionPlatform) !== 'linux')
+    return yield* fail('unsupported-platform: build-output budgets require Linux pinned deletion')
   const fs = yield* FileSystem.FileSystem
   const canonicalStore = yield* fs.realPath(storeBasePath)
   const admittedRoots = yield* Effect.forEach(policy.storeRoots, (root) =>
@@ -705,6 +708,8 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     candidatePath: string
     activityConfig: BudgetActivityConfig
   }) {
+    if ((yield* storeDeletionPlatform) !== 'linux')
+      return yield* fail('unsupported-platform: build-output budgets require Linux pinned deletion')
     const fs = yield* FileSystem.FileSystem
     const policy = yield* loadBuildOutputBudgets({ path: policyPath })
     const activity = yield* readBudgetWorkspaceActivity({ fs, config: activityConfig })
