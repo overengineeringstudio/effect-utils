@@ -53,7 +53,7 @@ export interface ResourceInput<TName extends string = string, TKind extends stri
 /** A mission's typed text or resource input declaration. */
 export type InputHandle = TextInput | ResourceInput
 /** Scalar graph-field constraints carried by a product. */
-export type ProductFields = Readonly<Record<string, string | number | boolean>>
+export type ProductFields = Readonly<Record<string, string | number | boolean | TextTemplate>>
 /** Identity-bearing graph product assigned to exactly one producing step. */
 export interface ProductHandle<TFields extends ProductFields = ProductFields> {
   readonly [productBrand]: true

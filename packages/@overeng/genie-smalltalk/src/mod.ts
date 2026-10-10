@@ -1093,34 +1093,66 @@ const withReferences = <TGate extends object>({
   gateReferences.set(value, references)
   return value
 }
-type ReviewTarget = string | ResourceInput | ProductHandle
+type AuthoredText = string | TextTemplate
+type AuthoredGoal = AuthoredText | readonly [AuthoredText, ...AuthoredText[]]
+type ReviewTarget = AuthoredText | DocumentReference | RunReference
+type GateOptions = { readonly name?: AuthoredText }
+type ExecutionOptions = {
+  readonly host?: AuthoredText
+  readonly workspace?: AuthoredText
+  readonly timeLimit?: typeof Duration.Encoded
+}
+type Named<TGate extends { readonly name: string }> = Omit<TGate, 'name'> & GateOptions
+
 /** A graph-field gate retaining the known field names of typed products. */
 export type FieldIsInput<TFields extends ProductFields = ProductFields> = Omit<
   FieldGate,
-  'kind' | 'operator' | 'subject' | 'path' | 'name'
-> & { readonly name?: string } & (
-    | { readonly subject: string | ResourceInput; readonly path: string }
+  'kind' | 'operator' | 'subject' | 'path' | 'name' | 'value'
+> &
+  GateOptions & {
+    readonly value: FieldGate['value'] | TextTemplate
+  } & (
+    | { readonly subject: AuthoredText | ResourceInput; readonly path: string }
     | {
         readonly subject: ProductHandle<TFields>
         readonly path: Extract<keyof NoInfer<TFields>, string>
       }
   )
 
-type Named<TGate extends { readonly name: string }> = Omit<TGate, 'name'> & {
-  readonly name?: string
-}
-
-const derivedGateName = (kind: string, identity: string): string => {
-  const name = `${kind}:${identity}`
-  return Buffer.byteLength(name, 'utf8') <= 160
-    ? name
+const derivedGateName = (kind: string, identity: string, name?: AuthoredText): string => {
+  if (name !== undefined) return templateText(name)
+  const derived = `${kind}:${identity}`
+  return Buffer.byteLength(derived, 'utf8') <= 160
+    ? derived
     : `${kind}:${createHash('sha256').update(identity).digest('hex')}`
 }
-
-type AuthoredText = string | TextTemplate
-type AuthoredGoal = AuthoredText | readonly [AuthoredText, ...AuthoredText[]]
 const referencesInText = (value: AuthoredText): readonly RunReference[] =>
   typeof value === 'string' ? [] : templateReferences(value)
+const referencesInName = (options: GateOptions): readonly RunReference[] =>
+  options.name === undefined ? [] : referencesInText(options.name)
+const targetText = (value: ReviewTarget): string => {
+  if (typeof value === 'string') return value
+  if ('kind' in value && value.kind === 'template') return templateText(value)
+  if ('kind' in value && value.kind === 'document') return value.subject
+  return referenceText(value)
+}
+const targetReferences = (value: ReviewTarget): readonly RunReference[] =>
+  typeof value === 'string'
+    ? []
+    : 'kind' in value && (value.kind === 'template' || value.kind === 'document')
+      ? templateReferences(value)
+      : [value]
+const executionFields = (
+  options: ExecutionOptions,
+): Pick<MergedGate, 'host' | 'workspace' | 'timeLimit'> => ({
+  ...(options.host === undefined ? {} : { host: templateText(options.host) }),
+  ...(options.workspace === undefined ? {} : { workspace: templateText(options.workspace) }),
+  ...(options.timeLimit === undefined ? {} : { timeLimit: options.timeLimit }),
+})
+const executionReferences = (options: ExecutionOptions): readonly RunReference[] => [
+  ...(options.host === undefined ? [] : referencesInText(options.host)),
+  ...(options.workspace === undefined ? [] : referencesInText(options.workspace)),
+]
 
 const human = (
   input: Named<Omit<HumanGate, 'kind' | 'review' | 'question'>> & {
@@ -1133,108 +1165,107 @@ const human = (
   return withReferences<HumanGate>({
     value: {
       ...rest,
-      name:
-        input.name ?? derivedGateName('human', `${input.reviewer.subject}:${questionText ?? ''}`),
+      name: derivedGateName('human', `${input.reviewer.subject}:${questionText ?? ''}`, input.name),
       kind: 'human',
       ...(questionText === undefined ? {} : { question: questionText }),
-      ...(review === undefined
-        ? {}
-        : {
-            review: review.map((value) =>
-              typeof value === 'string' ? value : referenceText(value),
-            ),
-          }),
+      ...(review === undefined ? {} : { review: review.map(targetText) }),
     },
     references: [
+      ...referencesInName(input),
       ...(question === undefined ? [] : referencesInText(question)),
-      ...(review ?? []).filter(
-        (value): value is ResourceInput | ProductHandle => typeof value !== 'string',
-      ),
+      ...(review ?? []).flatMap(targetReferences),
     ],
   })
 }
 
 const exec = (
-  input: Named<Omit<ExecGate, 'kind' | 'env' | 'command'>> & {
+  input: Named<Omit<ExecGate, 'kind' | 'env' | 'command' | 'host' | 'workspace'>> & {
     readonly command: AuthoredText
-    readonly env?: Readonly<Record<string, string | RunReference | TextTemplate>>
+    readonly host: AuthoredText
+    readonly workspace: AuthoredText
+    readonly env?: Readonly<Record<string, AuthoredText | RunReference>>
   },
 ): ExecGate => {
-  const { env, command, ...rest } = input
+  const { env, command, host, workspace, ...rest } = input
   const commandText = templateText(command)
+  const hostText = templateText(host)
+  const workspaceText = templateText(workspace)
   return withReferences<ExecGate>({
     value: {
       ...rest,
-      name:
-        input.name ?? derivedGateName('exec', `${input.host}:${input.workspace}:${commandText}`),
+      name: derivedGateName('exec', `${hostText}:${workspaceText}:${commandText}`, input.name),
       kind: 'exec',
       command: commandText,
+      host: hostText,
+      workspace: workspaceText,
       ...(env === undefined
         ? {}
         : {
             env: Object.fromEntries(
-              Object.entries(env).map(([name, value]) => [
-                name,
-                typeof value === 'string'
-                  ? value
-                  : 'kind' in value && value.kind === 'template'
-                    ? templateText(value)
-                    : referenceText(value),
-              ]),
+              Object.entries(env).map(([name, value]) => [name, targetText(value)]),
             ),
           }),
     },
     references: [
+      ...referencesInName(input),
       ...referencesInText(command),
-      ...Object.values(env ?? {}).flatMap((value) =>
-        typeof value === 'string'
-          ? []
-          : 'kind' in value && value.kind === 'template'
-            ? templateReferences(value)
-            : [value],
-      ),
+      ...referencesInText(host),
+      ...referencesInText(workspace),
+      ...Object.values(env ?? {}).flatMap(targetReferences),
     ],
   })
 }
 
 const fieldIs = <const TFields extends ProductFields>(input: FieldIsInput<TFields>): FieldGate => {
-  const subject = typeof input.subject === 'string' ? input.subject : referenceText(input.subject)
+  const subject = targetText(input.subject)
+  const value = typeof input.value === 'object' ? templateText(input.value) : input.value
   return withReferences<FieldGate>({
     value: {
       ...input,
-      name: input.name ?? derivedGateName('field', `${subject}:${input.path}:${input.value}`),
+      name: derivedGateName('field', `${subject}:${input.path}:${value}`, input.name),
       kind: 'field',
       operator: 'is',
       subject,
+      value,
     },
-    references: typeof input.subject === 'string' ? [] : [input.subject],
+    references: [
+      ...referencesInName(input),
+      ...targetReferences(input.subject),
+      ...(typeof input.value === 'object' ? templateReferences(input.value) : []),
+    ],
   })
 }
 
 const merged = (
   target: PullRequestReference | TextTemplate,
-  options: Named<Omit<MergedGate, 'kind' | 'locator'>> = {},
+  options: GateOptions & ExecutionOptions = {},
 ): MergedGate => {
+  const { host: _host, workspace: _workspace, ...rest } = options
   const locator =
     target.kind === 'pull-request' ? `${target.repo}#${target.number}` : templateText(target)
   return withReferences<MergedGate>({
     value: {
-      ...options,
-      name: options.name ?? derivedGateName('merged', locator),
+      ...rest,
+      ...executionFields(options),
+      name: derivedGateName('merged', locator, options.name),
       kind: 'merged',
       locator,
     },
-    references: target.kind === 'pull-request' ? [] : templateReferences(target),
+    references: [
+      ...referencesInName(options),
+      ...executionReferences(options),
+      ...(target.kind === 'pull-request' ? [] : templateReferences(target)),
+    ],
   })
 }
 
-type CiPassedOptions = Named<Omit<CiPassedGate, 'kind' | 'check' | 'ref'>> &
-  (
-    | { readonly commit: string | TextInput | TextTemplate; readonly branch?: never }
-    | { readonly branch: string | TextInput | TextTemplate; readonly commit?: never }
+type CiPassedOptions = GateOptions &
+  ExecutionOptions & { readonly repo: AuthoredText } & (
+    | { readonly commit: AuthoredText | TextInput; readonly branch?: never }
+    | { readonly branch: AuthoredText | TextInput; readonly commit?: never }
   )
-const ciPassed = (check: string, options: CiPassedOptions): CiPassedGate => {
-  const { commit, branch, ...rest } = options
+const ciPassed = (check: AuthoredText, options: CiPassedOptions): CiPassedGate => {
+  const { commit, branch, host: _host, workspace: _workspace, ...rest } = options
   const value = commit ?? branch
   if (value === undefined || (commit !== undefined && branch !== undefined))
     throw new TypeError('ciPassed requires exactly one commit or branch')
@@ -1244,16 +1275,29 @@ const ciPassed = (check: string, options: CiPassedOptions): CiPassedGate => {
       : isInputHandle(value)
         ? referenceText(value)
         : templateText(value)
+  const checkText = templateText(check)
+  const repo = templateText(options.repo)
   return withReferences<CiPassedGate>({
     value: {
       ...rest,
-      name: options.name ?? derivedGateName('ci-passed', `${options.repo}:${check}:${text}`),
+      ...executionFields(options),
+      name: derivedGateName('ci-passed', `${repo}:${checkText}:${text}`, options.name),
       kind: 'ci-passed',
-      check,
+      repo,
+      check: checkText,
       ref: commit === undefined ? { branch: text } : { commit: text },
     },
-    references:
-      typeof value === 'string' ? [] : isInputHandle(value) ? [value] : templateReferences(value),
+    references: [
+      ...referencesInName(options),
+      ...executionReferences(options),
+      ...referencesInText(check),
+      ...referencesInText(options.repo),
+      ...(typeof value === 'string'
+        ? []
+        : isInputHandle(value)
+          ? [value]
+          : templateReferences(value)),
+    ],
   })
 }
 
@@ -1266,52 +1310,86 @@ export const gate = {
   ciPassed,
   document: (
     target: DocumentReference,
-    options: { readonly name?: string } = {},
+    options: GateOptions = {},
   ): Extract<typeof GateSchema.Encoded, { readonly kind: 'document' }> =>
     withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'document' }>>({
       value: {
         kind: 'document',
-        name: options.name ?? derivedGateName('document', target.subject),
+        name: derivedGateName('document', target.subject, options.name),
         subject: target.subject,
       },
-      references: templateReferences(target),
+      references: [...referencesInName(options), ...templateReferences(target)],
     }),
   exists: (
-    subject: string,
-    options: { readonly name?: string } = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'exists' }> => ({
-    kind: 'exists',
-    name: options.name ?? derivedGateName('exists', subject),
-    subject,
-  }),
+    subject: ReviewTarget,
+    options: GateOptions = {},
+  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'exists' }> => {
+    const rendered = targetText(subject)
+    return withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'exists' }>>({
+      value: {
+        kind: 'exists',
+        name: derivedGateName('exists', rendered, options.name),
+        subject: rendered,
+      },
+      references: [...referencesInName(options), ...targetReferences(subject)],
+    })
+  },
   empty: (
-    subject: string,
-    options: { readonly name?: string } = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'empty' }> => ({
-    kind: 'empty',
-    name: options.name ?? derivedGateName('empty', subject),
-    subject,
-  }),
+    subject: AuthoredText,
+    options: GateOptions = {},
+  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'empty' }> => {
+    const rendered = templateText(subject)
+    return withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'empty' }>>({
+      value: {
+        kind: 'empty',
+        name: derivedGateName('empty', rendered, options.name),
+        subject: rendered,
+      },
+      references: [...referencesInName(options), ...referencesInText(subject)],
+    })
+  },
   has: (
-    subject: string,
-    text: string,
-    options: { readonly name?: string } = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }> => ({
-    kind: 'has',
-    name: options.name ?? derivedGateName('has', `${subject}:${text}`),
-    subject,
-    text,
-  }),
+    subject: ReviewTarget,
+    text: AuthoredText,
+    options: GateOptions = {},
+  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }> => {
+    const rendered = targetText(subject)
+    const renderedText = templateText(text)
+    return withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }>>({
+      value: {
+        kind: 'has',
+        name: derivedGateName('has', `${rendered}:${renderedText}`, options.name),
+        subject: rendered,
+        text: renderedText,
+      },
+      references: [
+        ...referencesInName(options),
+        ...targetReferences(subject),
+        ...referencesInText(text),
+      ],
+    })
+  },
   lacks: (
-    subject: string,
-    text: string,
-    options: { readonly name?: string } = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }> => ({
-    kind: 'lacks',
-    name: options.name ?? derivedGateName('lacks', `${subject}:${text}`),
-    subject,
-    text,
-  }),
+    subject: ReviewTarget,
+    text: AuthoredText,
+    options: GateOptions = {},
+  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }> => {
+    const rendered = targetText(subject)
+    const renderedText = templateText(text)
+    return withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }>>({
+      value: {
+        kind: 'lacks',
+        name: derivedGateName('lacks', `${rendered}:${renderedText}`, options.name),
+        subject: rendered,
+        text: renderedText,
+      },
+      references: [
+        ...referencesInName(options),
+        ...targetReferences(subject),
+        ...referencesInText(text),
+      ],
+    })
+  },
   render: lowerGate,
 }
 
@@ -1427,9 +1505,34 @@ type StepDependencyInput<TMission extends string> =
   | typeof DependencyItem.Encoded
   | StepDependency<NoInfer<TMission>>
   | StepHandle<NoInfer<TMission>>
+type AuthoredExec = Omit<typeof ExecSchema.Encoded, 'host' | 'workspace' | 'command'> & {
+  readonly host: AuthoredText
+  readonly workspace: AuthoredText
+  readonly command: AuthoredText
+}
+type AuthoredStep = Omit<typeof StepSchema.Encoded, 'goal' | 'exec'> & {
+  readonly goal?: AuthoredGoal
+  readonly exec?: AuthoredExec
+}
+type Exhaustion = NonNullable<(typeof LoopSchema.Encoded)['onExhausted']>
+type FailureExhaustion = Extract<Exhaustion, { readonly outcome: 'fail' }>
+/** A loop retains authored native text until mission assembly. */
+export type LoopInput = Omit<typeof LoopSchema.Encoded, 'round' | 'onExhausted'> & {
+  readonly round: Omit<typeof RoundSchema.Encoded, 'steps' | 'finally'> & {
+    readonly steps: readonly AuthoredStep[]
+    readonly finally?: readonly [AuthoredStep, ...AuthoredStep[]]
+  }
+  readonly onExhausted?:
+    | Extract<Exhaustion, { readonly outcome: 'succeed' }>
+    | (Omit<FailureExhaustion, 'attention'> & {
+        readonly attention?: Omit<NonNullable<FailureExhaustion['attention']>, 'title'> & {
+          readonly title: AuthoredText
+        }
+      })
+}
 /** Step authoring data with scoped dependencies, resolved workers and named products. */
 export type StepInput<TMission extends string, TProducts extends Products = Products> = Omit<
-  typeof StepSchema.Encoded,
+  AuthoredStep,
   'goal' | 'dependsOn' | 'produces' | 'producesMission' | 'usesMission'
 > & {
   readonly missionId?: TMission
@@ -1445,17 +1548,18 @@ export type StepInput<TMission extends string, TProducts extends Products = Prod
 /** Mission authoring data retaining typed input and step identities until assembly. */
 export type MissionInput<TMission extends string> = Omit<
   typeof MissionSchema.Encoded,
-  'id' | 'goal' | 'steps' | 'finally' | 'inputs'
+  'id' | 'goal' | 'steps' | 'finally' | 'inputs' | 'constraints'
 > & {
   readonly id: TMission
   readonly goal: AuthoredGoal
+  readonly constraints?: readonly AuthoredText[]
   readonly inputs?: readonly (InputHandle | typeof MissionInputSchema.Encoded)[]
   readonly steps: readonly (
-    | ((typeof StepSchema.Encoded | typeof LoopSchema.Encoded) & { readonly [stepBrand]?: never })
+    | ((AuthoredStep | LoopInput) & { readonly [stepBrand]?: never })
     | StepHandle<NoInfer<TMission>>
   )[]
   readonly finally?: readonly (
-    | (typeof StepSchema.Encoded & { readonly [stepBrand]?: never })
+    | (AuthoredStep & { readonly [stepBrand]?: never })
     | StepHandle<NoInfer<TMission>>
   )[]
 }
@@ -1558,12 +1662,18 @@ export function step(input: StepInput<string>): StepHandle {
         : {
             produces: materializedProducts.map(({ subject, value }) => ({
               subject,
-              fields: value.fields,
+              fields: Object.fromEntries(
+                Object.entries(value.fields).map(([name, field]) => [
+                  name,
+                  typeof field === 'object' ? templateText(field) : field,
+                ]),
+              ),
             })),
           }),
       ...(childOutput === undefined ? {} : { producesMission: childOutput.id }),
       ...(assignedTo === undefined ? {} : { assignedTo }),
       ...(goal === undefined ? {} : { goal: goalValues.map(templateText) }),
+      ...(input.exec === undefined ? {} : { exec: authoredExecWire(input.exec) }),
       ...(waitFor === undefined
         ? {}
         : {
@@ -1605,8 +1715,12 @@ export function step(input: StepInput<string>): StepHandle {
     wire,
     dependencies,
     references: [
-      ...(input.gates ?? []).flatMap((g) => gateReferences.get(g) ?? []),
-      ...goalValues.flatMap(referencesInText),
+      ...authoredStepReferences(input),
+      ...Object.values(products).flatMap((value) =>
+        Object.values(value.fields).flatMap((field) =>
+          typeof field === 'object' ? templateReferences(field) : [],
+        ),
+      ),
       ...(childOutput === undefined ? [] : templateReferences(childOutput)),
     ],
     ...(missionOutput === undefined ? {} : { missionOutput }),
@@ -1630,11 +1744,80 @@ export const completion = (input: typeof CompletionSchema.Encoded): Node => {
   })
 }
 
+const authoredExecWire = (value: AuthoredExec): typeof ExecSchema.Encoded => ({
+  ...value,
+  host: templateText(value.host),
+  workspace: templateText(value.workspace),
+  command: templateText(value.command),
+})
+const authoredStepReferences = (
+  value: Pick<AuthoredStep, 'goal' | 'exec' | 'gates'>,
+): readonly RunReference[] => [
+  ...referencesInGates(value.gates),
+  ...(value.goal === undefined
+    ? []
+    : typeof value.goal === 'string' || 'kind' in value.goal
+      ? [value.goal]
+      : value.goal
+  ).flatMap(referencesInText),
+  ...(value.exec === undefined
+    ? []
+    : [
+        ...referencesInText(value.exec.host),
+        ...referencesInText(value.exec.workspace),
+        ...referencesInText(value.exec.command),
+      ]),
+]
+const authoredStepWire = (value: AuthoredStep): typeof StepSchema.Encoded => {
+  const { goal, exec, ...rest } = value
+  return {
+    ...rest,
+    ...(goal === undefined
+      ? {}
+      : {
+          goal: (typeof goal === 'string' || 'kind' in goal ? [goal] : goal).map(templateText),
+        }),
+    ...(exec === undefined ? {} : { exec: authoredExecWire(exec) }),
+  }
+}
+const authoredExhaustionWire = (value: NonNullable<LoopInput['onExhausted']>): Exhaustion => {
+  if (value.outcome === 'succeed') return value
+  const { attention, ...rest } = value
+  return {
+    ...rest,
+    ...(attention === undefined
+      ? {}
+      : {
+          attention: { ...attention, title: templateText(attention.title) },
+        }),
+  }
+}
+const authoredLoopWire = (value: LoopInput): typeof LoopSchema.Encoded => {
+  const { onExhausted, ...rest } = value
+  const { finally: finalSteps, ...round } = value.round
+  return {
+    ...rest,
+    ...(onExhausted === undefined ? {} : { onExhausted: authoredExhaustionWire(onExhausted) }),
+    round: {
+      ...round,
+      steps: round.steps.map(authoredStepWire),
+      ...(finalSteps === undefined
+        ? {}
+        : {
+            finally: [
+              authoredStepWire(finalSteps[0]),
+              ...finalSteps.slice(1).map(authoredStepWire),
+            ] as const,
+          }),
+    },
+  }
+}
+
 /** Lowers a loop and its explicitly completed round mission. */
-export const loop = (input: typeof LoopSchema.Encoded): Node => {
+export const loop = (input: LoopInput): Node => {
   if (loopReferences(input).length > 0)
     throw new TypeError('Typed references in loops require mission assembly')
-  const l = decode({ schema: LoopSchema, input })
+  const l = decode({ schema: LoopSchema, input: authoredLoopWire(input) })
   return node({
     name: 'loop',
     args: [l.id],
@@ -1688,10 +1871,13 @@ export const loop = (input: typeof LoopSchema.Encoded): Node => {
 const referencesInGates = (
   gates: readonly (typeof GateSchema.Encoded)[] = [],
 ): readonly RunReference[] => gates.flatMap((value) => gateReferences.get(value) ?? [])
-const loopReferences = (input: typeof LoopSchema.Encoded): readonly RunReference[] => [
+const loopReferences = (input: LoopInput): readonly RunReference[] => [
   ...referencesInGates(input.until),
-  ...input.round.steps.flatMap((value) => referencesInGates(value.gates)),
-  ...(input.round.finally ?? []).flatMap((value) => referencesInGates(value.gates)),
+  ...input.round.steps.flatMap(authoredStepReferences),
+  ...(input.round.finally ?? []).flatMap(authoredStepReferences),
+  ...(input.onExhausted?.outcome !== 'fail' || input.onExhausted.attention === undefined
+    ? []
+    : referencesInText(input.onExhausted.attention.title)),
 ]
 
 const assembleMission = <const TMission extends string>(
@@ -1703,12 +1889,13 @@ const assembleMission = <const TMission extends string>(
     ...(typeof input.goal === 'string' || 'kind' in input.goal ? [input.goal] : input.goal).flatMap(
       referencesInText,
     ),
+    ...(input.constraints ?? []).flatMap(referencesInText),
     ...[...input.steps, ...(input.finally ?? [])].flatMap((value) =>
       isStepHandle(value) === true
         ? stepData.get(value)!.references
         : 'round' in value
           ? loopReferences(value)
-          : referencesInGates(value.gates),
+          : authoredStepReferences(value),
     ),
   ]
   for (const ref of referenced) {
@@ -1751,6 +1938,9 @@ const assembleMission = <const TMission extends string>(
     input: {
       ...input,
       goal: goalValues.map(templateText),
+      ...(input.constraints === undefined
+        ? {}
+        : { constraints: input.constraints.map(templateText) }),
       ...(input.inputs === undefined
         ? {}
         : {
@@ -1758,12 +1948,18 @@ const assembleMission = <const TMission extends string>(
               isInputHandle(value) === true ? { name: value.name, kind: value.kind } : value,
             ),
           }),
-      steps: input.steps.map((s) => (isStepHandle(s) === true ? stepData.get(s)!.wire : s)),
+      steps: input.steps.map((s) =>
+        isStepHandle(s) === true
+          ? stepData.get(s)!.wire
+          : 'round' in s
+            ? authoredLoopWire(s)
+            : authoredStepWire(s),
+      ),
       ...(input.finally === undefined
         ? {}
         : {
             finally: input.finally.map((s) =>
-              isStepHandle(s) === true ? stepData.get(s)!.wire : s,
+              isStepHandle(s) === true ? stepData.get(s)!.wire : authoredStepWire(s),
             ),
           }),
     },
