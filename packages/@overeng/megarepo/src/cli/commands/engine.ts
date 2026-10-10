@@ -379,7 +379,8 @@ export const syncMegarepo = <R = never>({
             gitProtocol,
             createBranches,
             ...(options.commitMode === true ||
-            (options.nestedCommit?._tag === 'Root' && options.nestedCommit.members.includes(name))
+            (options.nestedCommit?._tag === 'Root' &&
+              options.nestedCommit.members.includes(name) === true)
               ? { commitMode: true }
               : {}),
             ...(isApplyMode === true && all === true && (options.lockSyncMode ?? 'off') === 'off'
