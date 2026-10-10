@@ -118,7 +118,10 @@ describe('Smalltalk declarations', () => {
       emit([
         agent({
           id: 'ops/worker',
-          under: [{ target: reporter, reason: 'Delegated work.' }, { target: { id: 'other/manager' } }],
+          under: [
+            { target: reporter, reason: 'Delegated work.' },
+            { target: { id: 'other/manager' } },
+          ],
         }),
       ]),
     ).toBe(
@@ -140,14 +143,20 @@ describe('Smalltalk declarations', () => {
     })
     expect(assigned.assignedTo).toBe(importedSeat)
     expect(subordinate.under?.[0]?.target).toBe(importedSeat)
-    expect(Schema.decodeSync(MissionSchema)({ ...fanInMission(), reportTo: importedSeat }).reportTo).toBe(
-      importedSeat,
-    )
+    expect(
+      Schema.decodeSync(MissionSchema)({ ...fanInMission(), reportTo: importedSeat }).reportTo,
+    ).toBe(importedSeat)
     const kdl = emit([
       step({ id: 'inspect', assignedTo: importedSeat }),
       agent({ id: 'ops/worker', under: [{ target: importedSeat }] }),
     ])
-    for (const metadata of ['harness', 'Mission watcher', 'KIT_SESSION_HOME', 'hold', 'returnFacts']) {
+    for (const metadata of [
+      'harness',
+      'Mission watcher',
+      'KIT_SESSION_HOME',
+      'hold',
+      'returnFacts',
+    ]) {
       expect(kdl).not.toContain(metadata)
     }
   })
@@ -169,7 +178,9 @@ describe('Smalltalk declarations', () => {
     null,
   ])('rejects invalid imported agent references in every position %j', (reference) => {
     expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
-    expect(() => Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference })).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+    ).toThrow()
     expect(() =>
       Schema.decodeUnknownSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
     ).toThrow()
@@ -190,7 +201,9 @@ describe('Smalltalk declarations', () => {
   ])('validates the complete referenced launch declaration %j', (launch) => {
     const reference = { id: 'ops/invalid', ...launch }
     expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
-    expect(() => Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference })).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+    ).toThrow()
     expect(() =>
       Schema.decodeUnknownSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
     ).toThrow()
@@ -201,9 +214,9 @@ describe('Smalltalk declarations', () => {
   it('validates imported supervisors recursively without losing reference identity', () => {
     const supervisor = { id: 'ops/supervisor', under: [{ target: reporter }] }
     expect(Schema.decodeSync(AgentReferenceSchema)(supervisor)).toBe(supervisor)
-    expect(
-      emit([agent({ id: 'ops/worker', under: [{ target: supervisor }] })]),
-    ).toBe('version 2\nagent "ops/worker" {\n  under "agent/ops/supervisor"\n}\n')
+    expect(emit([agent({ id: 'ops/worker', under: [{ target: supervisor }] })])).toBe(
+      'version 2\nagent "ops/worker" {\n  under "agent/ops/supervisor"\n}\n',
+    )
     expect(() =>
       Schema.decodeUnknownSync(AgentReferenceSchema)({
         ...supervisor,
@@ -230,25 +243,31 @@ describe('Smalltalk declarations', () => {
       'version 2\nagent "ops/worker" {\n  restart "always"\n  pty "shell" {\n    command "sh"\n  }\n  exec "check" {\n    host "local"\n    workspace "/tmp"\n    argv "true"\n  }\n}\n',
     )
   })
-  it.each(['pty', 'exec'] as const)('rejects excess restart on nested %s tasks at runtime', (kind) => {
-    for (const launch of [{ command: 'true' }, { argv: ['true'] }]) {
-      for (const restart of ['never', 'always', undefined]) {
-        const reference = { id: 'ops/worker', [kind]: [{ id: 'task', ...launch, restart }] }
-        expect(() => agent(reference)).toThrow()
-        expect(() => Schema.decodeUnknownSync(AgentSchema)(reference)).toThrow()
-        expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
-        expect(() =>
-          Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
-        ).toThrow()
-        expect(() =>
-          Schema.decodeUnknownSync(AgentSchema)({ id: 'ops/subordinate', under: [{ target: reference }] }),
-        ).toThrow()
-        expect(() =>
-          Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
-        ).toThrow()
+  it.each(['pty', 'exec'] as const)(
+    'rejects excess restart on nested %s tasks at runtime',
+    (kind) => {
+      for (const launch of [{ command: 'true' }, { argv: ['true'] }]) {
+        for (const restart of ['never', 'always', undefined]) {
+          const reference = { id: 'ops/worker', [kind]: [{ id: 'task', ...launch, restart }] }
+          expect(() => agent(reference)).toThrow()
+          expect(() => Schema.decodeUnknownSync(AgentSchema)(reference)).toThrow()
+          expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+          expect(() =>
+            Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+          ).toThrow()
+          expect(() =>
+            Schema.decodeUnknownSync(AgentSchema)({
+              id: 'ops/subordinate',
+              under: [{ target: reference }],
+            }),
+          ).toThrow()
+          expect(() =>
+            Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
+          ).toThrow()
+        }
       }
-    }
-  })
+    },
+  )
   it('renders AND fan-in as multiple ordered step entries in one depends-on block', () => {
     expect(emit([mission(fanInMission())])).toBe(
       'version 2\nmission "fan-in" report-to="agent/ops/watcher" state="ready" {\n  goal "Join independent work."\n  step "first" {\n    agentless\n  }\n  step "second" {\n    agentless\n  }\n  step "join" {\n    agentless\n    depends-on {\n      step "first" "completed"\n      step "second" "completed"\n    }\n  }\n}\n',
