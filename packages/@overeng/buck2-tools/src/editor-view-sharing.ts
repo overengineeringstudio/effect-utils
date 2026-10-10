@@ -569,6 +569,24 @@ const regularFiles = async function* (
   const status = await lstat(directory, { bigint: true })
   await requireRealDirectory(directory, status)
   requireOwned(directory, status)
+  if ((status.mode & 0o200n) === 0n) {
+    // A byte-owned copy can retain readonly source directory modes. Only its
+    // private directories need write permission for atomic payload substitution;
+    // the publisher hardens them again before promoting any pointer.
+    const handle = await open(
+      directory,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    )
+    try {
+      if (sameInode(status, await handle.stat({ bigint: true })) === false)
+        fail(`candidate directory changed before preparation: ${directory}`)
+      await handle.chmod(Number(permissions(status) | 0o200n))
+      if (sameInode(status, await lstat(directory, { bigint: true })) === false)
+        fail(`candidate directory changed during preparation: ${directory}`)
+    } finally {
+      await handle.close()
+    }
+  }
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name)
     if (entry.isDirectory()) yield* regularFiles(path, root)

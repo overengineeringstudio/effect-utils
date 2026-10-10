@@ -2,6 +2,7 @@ import { buck2TypeScriptAdmission as effectSocketAdmission } from '../../context
 import { buck2TypeScriptAdmission as opentuiAdmission } from '../../context/opentui/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as agentSessionIngestAdmission } from '../../packages/@overeng/agent-session-ingest/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as aiGatewayConformanceAdmission } from '../../packages/@overeng/ai-gateway-conformance/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as aiGatewayEdgeAdmission } from '../../packages/@overeng/ai-gateway-edge/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/@overeng/buck2-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
@@ -87,6 +88,7 @@ export const buck2TypeScriptAdmissions = {
   opentui: opentuiAdmission,
   agentSessionIngest: agentSessionIngestAdmission,
   aiGatewayConformance: aiGatewayConformanceAdmission,
+  aiGatewayEdge: aiGatewayEdgeAdmission,
   buck2Tools: buck2ToolsAdmission,
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,

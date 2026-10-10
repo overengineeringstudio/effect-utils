@@ -342,6 +342,24 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
+  it('prepares private readonly copied directories without changing shared file modes', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('readonly-candidate')
+      const file = payload(directory, 'dependency/payload', 'readonly copied bytes', 0o444)
+      chmodSync(dirname(file), 0o555)
+      chmodSync(directory, 0o555)
+      expect(await shareSnapshotFiles({ candidate: directory, contentStore })).toEqual({
+        linkedFiles: 1,
+        copiedFiles: 0,
+        copiedBytes: 0,
+        createdBlobs: 1,
+      })
+      expect(inode(file)).toBe(inode(blobPath(contentStore, 'readonly copied bytes')))
+      expect(mode(file)).toBe(0o444)
+      expectReadonlyStore(contentStore)
+    })
+  })
+
   it('leaves symlinks and admitted/external source inodes, links, and permissions untouched', async () => {
     await withStore(async ({ root, contentStore, candidate }) => {
       const admitted = candidate('admitted')
