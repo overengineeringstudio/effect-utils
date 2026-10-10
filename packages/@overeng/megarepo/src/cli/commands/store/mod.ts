@@ -917,7 +917,7 @@ const classifyGcWorktree = ({
     if (worktree.broken === true) {
       return {
         worktree,
-        identity: identity.value,
+        identity: identity.success,
         action: 'check' as const,
         status: { isDirty: false, hasUnpushed: false, changesCount: 0 },
       }
@@ -935,7 +935,7 @@ const classifyGcWorktree = ({
     if (statusResult._tag === 'status_failed') {
       return {
         worktree,
-        identity: identity.value,
+        identity: identity.success,
         action: 'status_failed' as const,
         message: statusResult.message,
       }
@@ -943,7 +943,7 @@ const classifyGcWorktree = ({
 
     return {
       worktree,
-      identity: identity.value,
+      identity: identity.success,
       action: 'check' as const,
       status: statusResult.status,
     }
