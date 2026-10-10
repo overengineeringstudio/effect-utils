@@ -139,7 +139,6 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
   let server: ViteDevServer | undefined
   let sourceUpdated: (() => void) | undefined
-  let watcherReady: Promise<void> | undefined
   try {
     git('init', '--quiet')
     writeFileSync(join(root, '.gitignore'), 'node_modules/\ndist/\n')
@@ -166,11 +165,6 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       plugins: [
         {
           name: 'identity-fixture-update-barrier',
-          configureServer(server) {
-            const { promise, resolve } = Promise.withResolvers<void>()
-            watcherReady = promise
-            server.watcher.once('ready', resolve)
-          },
           handleHotUpdate() {
             sourceUpdated?.()
           },
@@ -179,7 +173,10 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       ],
       server: { host: '127.0.0.1', port: 0 },
     })
-    await watcherReady
+    // Vite starts scanning before configureServer hooks run, so its one-shot
+    // ready event may already have fired. Wait for the source watch's durable
+    // state instead; this also bounds failures before any fixture writes.
+    await waitForWatchUpdate(() => expect(server!.watcher.getWatched()[root]).toContain('entry.js'))
     await server.listen()
     const probeUrl = new URL('build-identity.json', server.resolvedUrls!.local[0]!)
     const response = await fetch(probeUrl)
@@ -210,10 +207,12 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     const now = Date.now
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + 60_000)
     try {
-      const { promise: updated, resolve } = Promise.withResolvers<void>()
-      sourceUpdated = resolve
+      let updated = false
+      sourceUpdated = () => {
+        updated = true
+      }
       writeFileSync(join(root, 'entry.js'), 'export const value = 3\n')
-      await updated
+      await waitForWatchUpdate(() => expect(updated).toBe(true))
       expect(await (await fetch(probeUrl)).json()).toEqual(dirtyIdentity)
       expect(await identity()).toEqual(dirtyIdentity)
     } finally {
