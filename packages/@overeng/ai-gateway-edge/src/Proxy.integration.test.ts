@@ -345,7 +345,7 @@ describe('shared wire conformance through the edge', () => {
       replayCase.request.auth === 'none' && replayCase.response.status === 401
     // Client fixtures may omit auth on a fake transport. The protected edge
     // projection supplies a fixture bearer except for the actual auth refusal.
-    const body: typeof Schema.JsonObject.Type = {
+    const body: Schema.JsonObject = {
       model: replayCase.request.match?.model ?? 'fixture/model',
       stream: replayCase.request.match?.stream ?? false,
       messages: [{ role: 'user', content: 'Fixture request' }],

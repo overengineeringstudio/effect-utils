@@ -1,8 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { Socket } from 'node:net'
-import { Readable } from 'node:stream'
 
-import { NodeStream } from '@effect/platform-node'
 import { Data, Effect, Schema, Stream } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 
@@ -71,7 +69,10 @@ class UsageEvents {
   private readonly decoder = new TextDecoder()
   private line = ''
   private data = ''
-  constructor(private readonly record: (value: unknown) => void) {}
+  private readonly record: (value: unknown) => void
+  constructor(record: (value: unknown) => void) {
+    this.record = record
+  }
   push(bytes: Uint8Array) {
     const text = this.decoder.decode(bytes, { stream: true })
     for (const char of text) {
@@ -238,8 +239,8 @@ export const makeRoutes = (config: GatewayConfig, metrics = new Metrics()) => {
           meterUsage(consumer, model, value.usage)
       })
       const isSse = response.headers.get('content-type')?.includes('text/event-stream') ?? false
-      const stream = NodeStream.fromReadable({
-        evaluate: () => Readable.fromWeb(response.body!),
+      const stream = Stream.fromReadableStream({
+        evaluate: () => response.body!,
         onError: (cause) => new UpstreamStreamError({ cause }),
       }).pipe(
         Stream.tap((chunk) =>
