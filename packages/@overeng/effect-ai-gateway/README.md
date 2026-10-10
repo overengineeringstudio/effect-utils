@@ -2,6 +2,13 @@
 
 Backend-neutral Effect AI `LanguageModel` and `DecisionModel` layers for subscription-backed models reached through a compatible gateway. The gateway, not this package, manages provider subscriptions and model routing.
 
+The language-neutral [AI gateway contract](../../../context/ai-gateway/vision.md)
+owns the public wire and shared semantics. This package realizes its
+[Effect requirements](../../../context/ai-gateway/01-effect/requirements.md)
+and [specification](../../../context/ai-gateway/01-effect/spec.md);
+the [Rust realization](../../../context/ai-gateway/02-rust/spec.md) shares that
+contract without defining a second gateway protocol.
+
 ```ts
 import { AiGateway } from '@overeng/effect-ai-gateway'
 import { Effect, Layer } from 'effect'
