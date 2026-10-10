@@ -4,16 +4,36 @@ import { Effect } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { systemError, type PlatformError } from 'effect/PlatformError'
 
+/**
+ * Whether a branch worktree root is an author workspace rather than the shared consumer cache.
+ * The store's default-branch worktree is the cache; the default comes from the store bare repo's
+ * HEAD (set at clone time to the remote's default). Unresolvable defaults are not authored.
+ */
+const isAuthorBranchWorkspace = (root: string) =>
+  Effect.gen(function* () {
+    const workspace = root.match(/^(.+?)\/refs\/heads\/(.+)$/)
+    if (workspace?.[1] === undefined || workspace[2] === undefined) return false
+    const fs = yield* FileSystem.FileSystem
+    const head = yield* fs
+      .readFileString(path.join(workspace[1], '.bare', 'HEAD'))
+      .pipe(Effect.orElseSucceed(() => ''))
+    const defaultBranch = head.match(/^ref: refs\/heads\/(.+)\n?$/)?.[1]
+    return defaultBranch !== undefined && defaultBranch !== workspace[2]
+  })
+
 /** Ref worktrees are shared. Resolve aliases and missing output parents before authorizing writes. */
 export const assertCanonicalMutationAllowed = ({
   target,
   materializationRoot,
   materializedRoot,
+  lockFile,
 }: {
   target: string
   materializationRoot?: string
   /** Physical identity of a commit worktree freshly created by this apply invocation. */
   materializedRoot?: string
+  /** Top-level fetch also owns the invoking branch workspace's own lock file (a direct child of it). */
+  lockFile?: string
 }): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     if (process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] === '1') return
@@ -72,7 +92,8 @@ export const assertCanonicalMutationAllowed = ({
           return
         }
       }
-      // Only top-level apply owns an invoking branch workspace's mount directory.
+      // Only top-level apply/fetch owns an invoking non-default branch workspace's mount
+      // directory, and only top-level fetch additionally owns its lock file.
       // Fresh recursive materialization never authorizes authoring outputs.
       if (materializationRoot !== undefined && materializedRoot === undefined) {
         const root = yield* fs.realPath(materializationRoot)
@@ -83,7 +104,11 @@ export const assertCanonicalMutationAllowed = ({
           root.match(/\/refs\/(commits|heads|tags)\/.+/)?.[1] === 'heads' &&
           ((targetPath === workspacePath && destination === root) ||
             (targetPath === path.join(workspacePath, 'repos') &&
-              destination === path.join(root, 'repos')))
+              destination === path.join(root, 'repos')) ||
+            (lockFile !== undefined &&
+              targetPath === path.resolve(lockFile) &&
+              destination === path.join(root, path.basename(lockFile)))) &&
+          (yield* isAuthorBranchWorkspace(root)) === true
         ) {
           return
         }

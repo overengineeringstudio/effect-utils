@@ -180,7 +180,8 @@ describe('canonical mutation write boundaries', () => {
   test('materialization permission cannot escape through self or dangling repos aliases', async () => {
     const root = await makeFixtureRoot('mr-materialize-guard-')
     try {
-      const canonical = path.join(root, 'store/example.com/org/repo/refs/heads/team/feature')
+      const repo = path.join(root, 'store/example.com/org/repo')
+      const canonical = path.join(repo, 'refs/heads/team/feature')
       await mkdir(canonical, { recursive: true })
       const run = (target: string, materializationRoot = canonical) =>
         Effect.runPromise(
@@ -188,6 +189,15 @@ describe('canonical mutation write boundaries', () => {
             Effect.provide(NodeServices.layer),
           ),
         )
+      // Without a resolvable default branch, a branch root is not an author workspace.
+      await expect(run(canonical)).rejects.toThrow(canonical)
+      await mkdir(path.join(repo, '.bare'))
+      await writeFile(path.join(repo, '.bare/HEAD'), 'ref: refs/heads/main\n')
+      // The default-branch worktree is the shared consumer cache.
+      const defaultBranch = path.join(repo, 'refs/heads/main')
+      await mkdir(defaultBranch, { recursive: true })
+      await expect(run(defaultBranch, defaultBranch)).rejects.toThrow(defaultBranch)
+      await expect(run(`${defaultBranch}/repos`, defaultBranch)).rejects.toThrow(defaultBranch)
       await run(canonical)
       await run(`${canonical}/repos`)
       await symlink(canonical, `${canonical}/repos`)
