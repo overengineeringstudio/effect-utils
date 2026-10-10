@@ -658,6 +658,28 @@ describe('shared wire conformance through the edge (AIG.EDGE-R07)', () => {
         error: { type: replayCase.expect.error?.type, code: null },
       })
       expect(metrics.render()).not.toContain('consumer=')
+      return
+    }
+    expect(forwarded).toBe(1)
+    expect(bytes).toBe(expectedBytes)
+    expect(response.headers.get('content-type')).toBe(fakeResponse.headers['content-type'])
+    const model =
+      response.status >= 200 && response.status < 300
+        ? replayCase.request.method === 'GET'
+          ? 'models'
+          : body.model
+        : '_rejected'
+    expect(metrics.render()).toContain(
+      `requests_total{consumer="fixture-consumer",model="${model}",status="${response.status}"} 1`,
+    )
+    if (replayCase.expect.usage !== undefined) {
+      const usage = replayCase.expect.usage
+      expect(metrics.render()).toContain(
+        `tokens_total{consumer="fixture-consumer",model="${model}",kind="input"} ${usage.input}`,
+      )
+      expect(metrics.render()).toContain(
+        `tokens_total{consumer="fixture-consumer",model="${model}",kind="output"} ${usage.output}`,
+      )
     }
   })
 })
