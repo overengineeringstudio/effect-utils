@@ -1,7 +1,16 @@
+import { Buffer } from 'node:buffer'
+
 import { Schema } from 'effect'
 
 const Name = Schema.String.pipe(
-  Schema.refine((value): value is string => value.length > 0 && !/[\s/]/u.test(value)),
+  Schema.refine(
+    (value): value is string =>
+      value.length > 0 && Buffer.byteLength(value, 'utf8') <= 160 && !/[\s/]/u.test(value),
+    {
+      message:
+        'mission input name must be nonempty, slash/whitespace-free and at most 160 UTF-8 bytes',
+    },
+  ),
 )
 const Scalar = Schema.Union([Schema.String, Schema.Boolean, Schema.Finite])
 
@@ -65,23 +74,58 @@ export interface ContextReference {
 /** The attempt-independent run ID used in child-mission and document names. */
 export const runId: ContextReference = { kind: 'context', name: 'ST_MISSION_RUN' }
 
-type TemplateValue = string | number | boolean | RunReference | ContextReference
-const interpolate = (strings: TemplateStringsArray, values: readonly TemplateValue[]): string =>
-  strings.reduce((text, part, index) => {
-    const value = values[index]
-    if (value === undefined) return text + part
-    const rendered =
-      typeof value !== 'object'
-        ? String(value)
-        : 'kind' in value && value.kind === 'context'
-          ? `\${${value.name}}`
-          : referenceText(value)
-    return text + part + rendered
-  }, '')
+/** Identity-bearing authored text, resolved only at the native wire boundary. */
+export interface TextTemplate {
+  readonly kind: 'template'
+  readonly text: string
+}
+
+const referencesByTemplate = new WeakMap<object, readonly RunReference[]>()
+const noReferences: readonly RunReference[] = []
+
+/** Resolves authored text without discarding its identity before assembly. */
+export const templateText = (value: string | TextTemplate): string =>
+  typeof value === 'string' ? value : value.text
+
+/** Exact input/product objects retained by text, document and child-mission tags. */
+export const templateReferences = (value: object): readonly RunReference[] =>
+  referencesByTemplate.get(value) ?? noReferences
+
+type TemplateValue = string | number | boolean | RunReference | ContextReference | TextTemplate
+const interpolate = (
+  strings: TemplateStringsArray,
+  values: readonly TemplateValue[],
+): { readonly text: string; readonly references: readonly RunReference[] } => {
+  let text = strings[0] ?? ''
+  const references: RunReference[] = []
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index]!
+    if (typeof value !== 'object') {
+      text += String(value)
+    } else if ('kind' in value && value.kind === 'context') {
+      text += `\${${value.name}}`
+    } else if ('kind' in value && value.kind === 'template') {
+      text += value.text
+      references.push(...templateReferences(value))
+    } else {
+      text += referenceText(value)
+      references.push(value)
+    }
+    text += strings[index + 1] ?? ''
+  }
+  return { text, references }
+}
 
 /** Typed text interpolation; input references render as `${input.NAME}`. */
-export const t = (strings: TemplateStringsArray, ...values: readonly TemplateValue[]): string =>
-  interpolate(strings, values)
+export const t = (
+  strings: TemplateStringsArray,
+  ...values: readonly TemplateValue[]
+): TextTemplate => {
+  const { text, references } = interpolate(strings, values)
+  const value: TextTemplate = { kind: 'template', text }
+  referencesByTemplate.set(value, references)
+  return value
+}
 
 export interface DocumentReference {
   readonly kind: 'document'
@@ -92,7 +136,12 @@ export interface DocumentReference {
 export const doc = (
   strings: TemplateStringsArray,
   ...values: readonly TemplateValue[]
-): DocumentReference => ({ kind: 'document', subject: interpolate(strings, values) })
+): DocumentReference => {
+  const { text, references } = interpolate(strings, values)
+  const value: DocumentReference = { kind: 'document', subject: text }
+  referencesByTemplate.set(value, references)
+  return value
+}
 
 export interface ChildMission {
   readonly kind: 'child-mission'
@@ -107,7 +156,12 @@ export const isChildMission = (value: ChildMission | Products): value is ChildMi
 export const childMission = (
   strings: TemplateStringsArray,
   ...values: readonly TemplateValue[]
-): ChildMission => ({ kind: 'child-mission', id: interpolate(strings, values) })
+): ChildMission => {
+  const { text, references } = interpolate(strings, values)
+  const value: ChildMission = { kind: 'child-mission', id: text }
+  referencesByTemplate.set(value, references)
+  return value
+}
 
 export interface PullRequestReference {
   readonly kind: 'pull-request'

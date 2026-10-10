@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 
 import { Schema, SchemaGetter } from 'effect'
@@ -15,6 +16,7 @@ import type {
   RunReference,
   TextInput,
   PullRequestReference,
+  TextTemplate,
 } from './run-values.ts'
 import {
   isChildMission,
@@ -23,6 +25,8 @@ import {
   ProductSchema,
   productSubjects,
   referenceText,
+  templateReferences,
+  templateText,
 } from './run-values.ts'
 export { childMission, doc, input, pr, product, runId, t } from './run-values.ts'
 export type {
@@ -35,6 +39,7 @@ export type {
   Products,
   ResourceInput,
   TextInput,
+  TextTemplate,
 } from './run-values.ts'
 
 /** A KDL argument or property value. */
@@ -126,9 +131,13 @@ const SubjectId = Schema.String.pipe(
 )
 
 const LocalId = Schema.String.pipe(
-  Schema.refine((s): s is string => s.length > 0 && s.length <= 160 && /[\s/]/u.test(s) === false, {
-    message: 'invalid local ID',
-  }),
+  Schema.refine(
+    (s): s is string =>
+      s.length > 0 && Buffer.byteLength(s, 'utf8') <= 160 && /[\s/]/u.test(s) === false,
+    {
+      message: 'invalid local ID',
+    },
+  ),
   Schema.brand('LocalId'),
 )
 
@@ -136,7 +145,7 @@ const MissionId = Schema.String.pipe(
   Schema.refine(
     (s): s is string =>
       s.length > 0 &&
-      s.length <= 160 &&
+      Buffer.byteLength(s, 'utf8') <= 160 &&
       s.startsWith('/') === false &&
       s.endsWith('/') === false &&
       s.includes('//') === false &&
@@ -175,9 +184,11 @@ const UtcAnchor = Schema.String.pipe(
 
 const Revision = Schema.String.pipe(
   Schema.refine(
-    (s): s is string =>
-      /^[^@\s/][^@\s]*@[a-fA-F0-9]{64}$/u.test(s) === true &&
-      s.slice(0, s.lastIndexOf('@')).endsWith('/') === false,
+    (s): s is string => {
+      const at = s.lastIndexOf('@')
+      const id = s.slice(0, at).replace(/^mission\//u, '')
+      return at > 0 && Schema.is(MissionId)(id) && /^[a-fA-F0-9]{64}$/u.test(s.slice(at + 1))
+    },
     { message: 'expected mission@64-hex revision' },
   ),
   Schema.brand('Revision'),
@@ -344,9 +355,7 @@ export const AgentSchema = AgentSchemaFields.pipe(
 
 const isAgentDeclaration = Schema.is(AgentSchema)
 
-const GateName = Text.pipe(
-  Schema.refine((s): s is string => new TextEncoder().encode(s).length <= 160),
-)
+const GateName = Text.pipe(Schema.refine((s): s is string => Buffer.byteLength(s, 'utf8') <= 160))
 const validName = ({
   value: s,
   full,
@@ -1103,23 +1112,31 @@ type Named<TGate extends { readonly name: string }> = Omit<TGate, 'name'> & {
 
 const derivedGateName = (kind: string, identity: string): string => {
   const name = `${kind}:${identity}`
-  return new TextEncoder().encode(name).length <= 160
+  return Buffer.byteLength(name, 'utf8') <= 160
     ? name
     : `${kind}:${createHash('sha256').update(identity).digest('hex')}`
 }
 
+type AuthoredText = string | TextTemplate
+type AuthoredGoal = AuthoredText | readonly [AuthoredText, ...AuthoredText[]]
+const referencesInText = (value: AuthoredText): readonly RunReference[] =>
+  typeof value === 'string' ? [] : templateReferences(value)
+
 const human = (
-  input: Named<Omit<HumanGate, 'kind' | 'review'>> & {
+  input: Named<Omit<HumanGate, 'kind' | 'review' | 'question'>> & {
+    readonly question?: AuthoredText
     readonly review?: readonly ReviewTarget[]
   },
 ): HumanGate => {
-  const { review, ...rest } = input
+  const { review, question, ...rest } = input
+  const questionText = question === undefined ? undefined : templateText(question)
   return withReferences<HumanGate>({
     value: {
       ...rest,
       name:
-        input.name ?? derivedGateName('human', `${input.reviewer.subject}:${input.question ?? ''}`),
+        input.name ?? derivedGateName('human', `${input.reviewer.subject}:${questionText ?? ''}`),
       kind: 'human',
+      ...(questionText === undefined ? {} : { question: questionText }),
       ...(review === undefined
         ? {}
         : {
@@ -1128,38 +1145,55 @@ const human = (
             ),
           }),
     },
-    references: (review ?? []).filter(
-      (value): value is ResourceInput | ProductHandle => typeof value !== 'string',
-    ),
+    references: [
+      ...(question === undefined ? [] : referencesInText(question)),
+      ...(review ?? []).filter(
+        (value): value is ResourceInput | ProductHandle => typeof value !== 'string',
+      ),
+    ],
   })
 }
 
 const exec = (
-  input: Named<Omit<ExecGate, 'kind' | 'env'>> & {
-    readonly env?: Readonly<Record<string, string | RunReference>>
+  input: Named<Omit<ExecGate, 'kind' | 'env' | 'command'>> & {
+    readonly command: AuthoredText
+    readonly env?: Readonly<Record<string, string | RunReference | TextTemplate>>
   },
 ): ExecGate => {
-  const { env, ...rest } = input
+  const { env, command, ...rest } = input
+  const commandText = templateText(command)
   return withReferences<ExecGate>({
     value: {
       ...rest,
       name:
-        input.name ?? derivedGateName('exec', `${input.host}:${input.workspace}:${input.command}`),
+        input.name ?? derivedGateName('exec', `${input.host}:${input.workspace}:${commandText}`),
       kind: 'exec',
+      command: commandText,
       ...(env === undefined
         ? {}
         : {
             env: Object.fromEntries(
               Object.entries(env).map(([name, value]) => [
                 name,
-                typeof value === 'string' ? value : referenceText(value),
+                typeof value === 'string'
+                  ? value
+                  : 'kind' in value && value.kind === 'template'
+                    ? templateText(value)
+                    : referenceText(value),
               ]),
             ),
           }),
     },
-    references: Object.values(env ?? {}).filter(
-      (value): value is RunReference => typeof value !== 'string',
-    ),
+    references: [
+      ...referencesInText(command),
+      ...Object.values(env ?? {}).flatMap((value) =>
+        typeof value === 'string'
+          ? []
+          : 'kind' in value && value.kind === 'template'
+            ? templateReferences(value)
+            : [value],
+      ),
+    ],
   })
 }
 
@@ -1178,26 +1212,38 @@ const fieldIs = <const TFields extends ProductFields>(input: FieldIsInput<TField
 }
 
 const merged = (
-  target: PullRequestReference,
+  target: PullRequestReference | TextTemplate,
   options: Named<Omit<MergedGate, 'kind' | 'locator'>> = {},
-): MergedGate => ({
-  ...options,
-  name: options.name ?? derivedGateName('merged', `${target.repo}#${target.number}`),
-  kind: 'merged',
-  locator: `${target.repo}#${target.number}`,
-})
+): MergedGate => {
+  const locator =
+    target.kind === 'pull-request' ? `${target.repo}#${target.number}` : templateText(target)
+  return withReferences<MergedGate>({
+    value: {
+      ...options,
+      name: options.name ?? derivedGateName('merged', locator),
+      kind: 'merged',
+      locator,
+    },
+    references: target.kind === 'pull-request' ? [] : templateReferences(target),
+  })
+}
 
 type CiPassedOptions = Named<Omit<CiPassedGate, 'kind' | 'check' | 'ref'>> &
   (
-    | { readonly commit: string | TextInput; readonly branch?: never }
-    | { readonly branch: string | TextInput; readonly commit?: never }
+    | { readonly commit: string | TextInput | TextTemplate; readonly branch?: never }
+    | { readonly branch: string | TextInput | TextTemplate; readonly commit?: never }
   )
 const ciPassed = (check: string, options: CiPassedOptions): CiPassedGate => {
   const { commit, branch, ...rest } = options
   const value = commit ?? branch
   if (value === undefined || (commit !== undefined && branch !== undefined))
     throw new TypeError('ciPassed requires exactly one commit or branch')
-  const text = typeof value === 'string' ? value : referenceText(value)
+  const text =
+    typeof value === 'string'
+      ? value
+      : isInputHandle(value)
+        ? referenceText(value)
+        : templateText(value)
   return withReferences<CiPassedGate>({
     value: {
       ...rest,
@@ -1206,7 +1252,8 @@ const ciPassed = (check: string, options: CiPassedOptions): CiPassedGate => {
       check,
       ref: commit === undefined ? { branch: text } : { commit: text },
     },
-    references: typeof value === 'string' ? [] : [value],
+    references:
+      typeof value === 'string' ? [] : isInputHandle(value) ? [value] : templateReferences(value),
   })
 }
 
@@ -1220,11 +1267,15 @@ export const gate = {
   document: (
     target: DocumentReference,
     options: { readonly name?: string } = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'document' }> => ({
-    kind: 'document',
-    name: options.name ?? derivedGateName('document', target.subject),
-    subject: target.subject,
-  }),
+  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'document' }> =>
+    withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'document' }>>({
+      value: {
+        kind: 'document',
+        name: options.name ?? derivedGateName('document', target.subject),
+        subject: target.subject,
+      },
+      references: templateReferences(target),
+    }),
   exists: (
     subject: string,
     options: { readonly name?: string } = {},
@@ -1379,9 +1430,10 @@ type StepDependencyInput<TMission extends string> =
 /** Step authoring data with scoped dependencies, resolved workers and named products. */
 export type StepInput<TMission extends string, TProducts extends Products = Products> = Omit<
   typeof StepSchema.Encoded,
-  'dependsOn' | 'produces' | 'producesMission' | 'usesMission'
+  'goal' | 'dependsOn' | 'produces' | 'producesMission' | 'usesMission'
 > & {
   readonly missionId?: TMission
+  readonly goal?: AuthoredGoal
   readonly dependsOn?:
     | StepDependencyInput<TMission>
     | readonly [StepDependencyInput<TMission>, ...StepDependencyInput<TMission>[]]
@@ -1393,9 +1445,10 @@ export type StepInput<TMission extends string, TProducts extends Products = Prod
 /** Mission authoring data retaining typed input and step identities until assembly. */
 export type MissionInput<TMission extends string> = Omit<
   typeof MissionSchema.Encoded,
-  'id' | 'steps' | 'finally' | 'inputs'
+  'id' | 'goal' | 'steps' | 'finally' | 'inputs'
 > & {
   readonly id: TMission
+  readonly goal: AuthoredGoal
   readonly inputs?: readonly (InputHandle | typeof MissionInputSchema.Encoded)[]
   readonly steps: readonly (
     | ((typeof StepSchema.Encoded | typeof LoopSchema.Encoded) & { readonly [stepBrand]?: never })
@@ -1450,17 +1503,19 @@ export function step<const TMission extends string = never, const TProducts exte
   input: StepInput<TMission, TProducts>,
 ): StepHandle<TMission, TProducts>
 export function step(input: StepInput<string>): StepHandle {
-  const { missionId, assignedTo, dependsOn, produces, waitFor, ...rest } = input
+  const { missionId, assignedTo, dependsOn, produces, waitFor, goal, ...rest } = input
+  const goalValues: readonly AuthoredText[] =
+    goal === undefined ? [] : typeof goal === 'string' || 'kind' in goal ? [goal] : goal
   const childOutput = produces !== undefined && isChildMission(produces) ? produces : undefined
   const missionOutput = waitFor !== undefined && isStepHandle(waitFor) ? waitFor : undefined
   if (waitFor !== undefined && isStepHandle(waitFor) === false && waitFor.kind !== 'revision')
     throw new TypeError('waitFor must reference a producing step or an exact mission revision')
+  if (waitFor !== undefined && input.agentless !== true)
+    throw new TypeError('A child-mission waitFor step must be agentless')
   if (missionOutput !== undefined) {
     const producer = stepData.get(missionOutput)!
     if (producer.wire.producesMission === undefined)
       throw new TypeError('waitFor target does not produce a child mission')
-    if (input.agentless !== true)
-      throw new TypeError('A child-mission waitFor step must be agentless')
   }
   const dependencyInputs: readonly StepDependencyInput<string>[] =
     dependsOn === undefined
@@ -1508,6 +1563,7 @@ export function step(input: StepInput<string>): StepHandle {
           }),
       ...(childOutput === undefined ? {} : { producesMission: childOutput.id }),
       ...(assignedTo === undefined ? {} : { assignedTo }),
+      ...(goal === undefined ? {} : { goal: goalValues.map(templateText) }),
       ...(waitFor === undefined
         ? {}
         : {
@@ -1548,7 +1604,11 @@ export function step(input: StepInput<string>): StepHandle {
     ...(missionId === undefined ? {} : { missionId }),
     wire,
     dependencies,
-    references: (input.gates ?? []).flatMap((g) => gateReferences.get(g) ?? []),
+    references: [
+      ...(input.gates ?? []).flatMap((g) => gateReferences.get(g) ?? []),
+      ...goalValues.flatMap(referencesInText),
+      ...(childOutput === undefined ? [] : templateReferences(childOutput)),
+    ],
     ...(missionOutput === undefined ? {} : { missionOutput }),
   })
   return handle
@@ -1640,6 +1700,9 @@ const assembleMission = <const TMission extends string>(
   const allHandles = [...input.steps, ...(input.finally ?? [])].filter(isStepHandle)
   const referenced = [
     ...referencesInGates(input.gates),
+    ...(typeof input.goal === 'string' || 'kind' in input.goal ? [input.goal] : input.goal).flatMap(
+      referencesInText,
+    ),
     ...[...input.steps, ...(input.finally ?? [])].flatMap((value) =>
       isStepHandle(value) === true
         ? stepData.get(value)!.references
@@ -1681,10 +1744,13 @@ const assembleMission = <const TMission extends string>(
       }
     }
   }
+  const goalValues: readonly AuthoredText[] =
+    typeof input.goal === 'string' || 'kind' in input.goal ? [input.goal] : input.goal
   const m = decode({
     schema: MissionSchema,
     input: {
       ...input,
+      goal: goalValues.map(templateText),
       ...(input.inputs === undefined
         ? {}
         : {
@@ -1705,7 +1771,7 @@ const assembleMission = <const TMission extends string>(
   const inputNames = new Set((m.inputs ?? []).map((value) => value.name))
   const validateInputText = (value: unknown): void => {
     if (typeof value === 'string') {
-      for (const match of value.matchAll(/\$\{input\.([^}]+)\}/gu)) {
+      for (const match of value.matchAll(/(?<!\$)\$\{input\.([^}]+)\}/gu)) {
         if (inputNames.has(match[1]!) === false)
           throw new TypeError(`Input ${match[1]} is not declared by this mission`)
       }
@@ -1722,10 +1788,47 @@ const assembleMission = <const TMission extends string>(
   return m
 }
 
+const wireStep = (value: typeof StepSchema.Type): typeof StepSchema.Type =>
+  value.assignedTo !== undefined && 'id' in value.assignedTo
+    ? { ...value, assignedTo: { id: value.assignedTo.id } }
+    : value
+
+const wireFinalSteps = (
+  values: readonly [typeof StepSchema.Type, ...(typeof StepSchema.Type)[]],
+): readonly [typeof StepSchema.Type, ...(typeof StepSchema.Type)[]] => {
+  const result: [typeof StepSchema.Type, ...(typeof StepSchema.Type)[]] = [wireStep(values[0])]
+  for (let index = 1; index < values.length; index++) result.push(wireStep(values[index]!))
+  return result
+}
+
 /** Validates authoring references and materializes plain wire data before serialization. */
 export const missionWire = <const TMission extends string>(
   input: MissionInput<TMission>,
-): typeof MissionSchema.Encoded => assembleMission(input)
+): typeof MissionSchema.Encoded => {
+  const m = assembleMission(input)
+  return {
+    ...m,
+    reportTo: { id: m.reportTo.id },
+    ...(m.assignedTo !== undefined && 'id' in m.assignedTo
+      ? { assignedTo: { id: m.assignedTo.id } }
+      : {}),
+    steps: m.steps.map((value) =>
+      'maxRounds' in value
+        ? {
+            ...value,
+            round: {
+              ...value.round,
+              steps: value.round.steps.map(wireStep),
+              ...(value.round.finally === undefined
+                ? {}
+                : { finally: wireFinalSteps(value.round.finally) }),
+            },
+          }
+        : wireStep(value),
+    ),
+    ...(m.finally === undefined ? {} : { finally: wireFinalSteps(m.finally) }),
+  }
+}
 
 /** Decodes and renders a mission, including its validated steps and native gates. */
 export const mission = <const TMission extends string>(input: MissionInput<TMission>): Node => {

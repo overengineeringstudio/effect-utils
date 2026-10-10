@@ -58,7 +58,7 @@ export const prLanding = (): Node => {
         fields: { text: 'The PR was landed.' },
       }),
     },
-    gates: [{ kind: 'merged', name: 'merged', locator: t`${locator}` }],
+    gates: [gate.merged(t`${locator}`, { name: 'merged' })],
   })
   return mission({
     id: 'pr-landing',
