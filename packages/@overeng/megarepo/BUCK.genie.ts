@@ -66,9 +66,12 @@ export const buck2TypeScriptAdmission = {
         'src/cli/pin.integration.test.ts',
         'src/cli/prompt-select-pty.test.ts',
         'src/cli/status.integration.test.ts',
+        'src/cli/store-gc-budgets.integration.test.ts',
         'src/cli/store-gc-cold.integration.test.ts',
         'src/cli/store-gc-generated.integration.test.ts',
         'src/cli/store-gc-otel.integration.test.ts',
+        // Mount/user-namespace CLI fixture: collected only by the source unbounded complement.
+        'src/cli/store-gc-partial-deletion.integration.test.ts',
         'src/cli/store.integration.test.ts',
         'src/cli/sync.integration.test.ts',
         'src/core/git-memory.integration.test.ts',
@@ -81,6 +84,7 @@ export const buck2TypeScriptAdmission = {
         'src/store/store-inuse.integration.test.ts',
         'src/store/store-liveness.integration.test.ts',
         'src/store/store-lossless.integration.test.ts',
+        'src/store/store-workspace-activity.integration.test.ts',
         'src/test-utils/store-setup.integration.test.ts',
       ],
       sourceOwners: {

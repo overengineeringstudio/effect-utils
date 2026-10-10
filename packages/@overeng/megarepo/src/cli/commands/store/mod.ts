@@ -2,14 +2,19 @@
  * Store Commands
  *
  * Commands for managing the shared git store.
+ *
+ * Linux directory deletion captures the absolute ancestor chain before authority
+ * probes and uses the shared fd-pinned quarantine boundary; plan hashes bind that
+ * identity. Other platforms retain legacy path-based recursive GC, but refuse
+ * build-output budgets and merged worklog-delete teardown.
  */
 
 import { createHash } from 'node:crypto'
 import type { Dir, Stats } from 'node:fs'
 import { lstat, opendir } from 'node:fs/promises'
-import { isAbsolute, normalize } from 'node:path'
+import { dirname, isAbsolute, normalize } from 'node:path'
 
-import { Clock, Effect, Option, Schedule, Schema, Stream } from 'effect'
+import { Clock, Console, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
@@ -36,6 +41,13 @@ import {
   reapArchive,
   scanArchives,
 } from '../../../store/store-archive.ts'
+import {
+  applyBuildOutputBudgetCandidate,
+  BudgetPlan,
+  loadBuildOutputBudgetPolicyReceipt,
+  loadBuildOutputBudgets,
+  planBuildOutputBudgets,
+} from '../../../store/store-build-budgets.ts'
 import { canonicalizeOwnerPath, withDeletionLease } from '../../../store/store-deletion-lease.ts'
 import {
   loadStoreGcConfig,
@@ -58,14 +70,25 @@ import {
 import { StoreLock } from '../../../store/store-lock.ts'
 import { assessLossless } from '../../../store/store-lossless.ts'
 import {
+  captureDeletionIdentity,
+  PinnedDeletionError,
+  storeDeletionPlatform,
+  withPinnedDeletion,
+  type DeletionIdentity,
+} from '../../../store/store-pinned-deletion.ts'
+import {
   makePrStateResolverLayer,
   PrStateResolver,
   type PrStateInfo,
   type PrStateResolverService,
 } from '../../../store/store-pr-state.ts'
 import {
+  captureProcessActivityManifest,
   isWorkspaceActive,
   readWorkspaceActivity,
+  readBudgetWorkspaceActivity,
+  readBudgetWorktreeInUse,
+  writeWorkspaceActivityManifest,
   type WorkspaceActivityEpoch,
 } from '../../../store/store-workspace-activity.ts'
 import {
@@ -113,12 +136,19 @@ type GcWorktreeDecision =
     }
   | {
       readonly worktree: CollectedWorktree
-      readonly action: 'status_failed'
+      readonly action: 'identity_failed'
       readonly message: string
     }
   | {
       readonly worktree: CollectedWorktree
+      readonly action: 'status_failed'
+      readonly message: string
+      readonly identity?: DeletionIdentity | undefined
+    }
+  | {
+      readonly worktree: CollectedWorktree
       readonly action: 'check'
+      readonly identity?: DeletionIdentity | undefined
       readonly status: {
         readonly isDirty: boolean
         readonly hasUnpushed: boolean
@@ -170,7 +200,13 @@ type GeneratedArtifactRepoWorktrees = ReadonlyArray<{
 
 const encodeCanonicalPlan = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
-const planSha256For = (results: ReadonlyArray<StoreGcResult>): string => {
+const planSha256For = ({
+  results,
+  deletionIdentities,
+}: {
+  results: ReadonlyArray<StoreGcResult>
+  deletionIdentities: ReadonlyMap<string, DeletionIdentity>
+}): string => {
   const canonicalPlan = results
     .map((result) => ({
       repo: result.repo,
@@ -184,6 +220,9 @@ const planSha256For = (results: ReadonlyArray<StoreGcResult>): string => {
       workspacePath: result.workspacePath,
       outcome: result.outcome,
       mtimeMs: result.mtimeMs,
+      ...(deletionIdentities.has(result.path) === true
+        ? { deletionIdentity: deletionIdentities.get(result.path) }
+        : {}),
     }))
     .toSorted((left, right) => compareCanonicalPlanPaths({ left: left.path, right: right.path }))
   return createHash('sha256').update(encodeCanonicalPlan(canonicalPlan)).digest('hex')
@@ -192,6 +231,7 @@ const planSha256For = (results: ReadonlyArray<StoreGcResult>): string => {
 const planGeneratedArtifacts = ({
   config,
   fs,
+  rootPath,
   liveSet,
   now,
   onArtifact,
@@ -200,6 +240,7 @@ const planGeneratedArtifacts = ({
 }: {
   config: StoreGcConfig
   fs: FileSystem.FileSystem
+  rootPath: string
   liveSet: StoreLiveSet
   now: number
   onArtifact?: ((result: StoreGcResult) => Effect.Effect<void>) | undefined
@@ -209,22 +250,21 @@ const planGeneratedArtifacts = ({
   {
     readonly results: ReadonlyArray<StoreGcResult>
     readonly planSha256: string
+    readonly deletionIdentities: ReadonlyMap<string, DeletionIdentity>
     readonly activityEpoch?: WorkspaceActivityEpoch | undefined
   },
   PlatformError,
   FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
+    const platform = yield* storeDeletionPlatform
     const generatedResults: StoreGcResult[] = []
+    const deletionIdentities = new Map<string, DeletionIdentity>()
     const initialActivity =
       config.generatedArtifacts.enabled === true ? yield* readWorkspaceActivity({ fs }) : undefined
     for (const { repo, worktrees } of repoWorktrees) {
       for (const worktree of worktrees) {
         if (worktree.broken === true) continue
-        const removalStatus = yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
-          Effect.map((status) => ({ _tag: 'known' as const, status })),
-          Effect.orElseSucceed(() => ({ _tag: 'unknown' as const })),
-        )
         for (const artifactClass of config.generatedArtifacts.allowlist) {
           const artifactPath = EffectPath.ops.join(
             worktree.path,
@@ -233,6 +273,17 @@ const planGeneratedArtifacts = ({
           if ((yield* fs.exists(artifactPath)) === false) {
             continue
           }
+          const identity =
+            platform === 'linux'
+              ? yield* captureDeletionIdentity({ rootPath, path: artifactPath }).pipe(Effect.option)
+              : Option.none<DeletionIdentity>()
+          if (Option.isSome(identity) === true) {
+            deletionIdentities.set(artifactPath, identity.value)
+          }
+          const removalStatus = yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
+            Effect.map((status) => ({ _tag: 'known' as const, status })),
+            Effect.orElseSucceed(() => ({ _tag: 'unknown' as const })),
+          )
           const ignored = yield* Git.runCommand({
             args: ['check-ignore', '--quiet', '--', artifactClass],
             cwd: worktree.path,
@@ -275,7 +326,9 @@ const planGeneratedArtifacts = ({
               ? 'generated-artifacts-disabled'
               : agentActivity === undefined
                 ? 'agent-liveness-unavailable'
-                : canonicalWorktree === undefined || contained === false
+                : (platform === 'linux' && Option.isNone(identity) === true) ||
+                    canonicalWorktree === undefined ||
+                    contained === false
                   ? 'artifact-scan-incomplete'
                   : tracked === undefined
                     ? 'artifact-tracked-unknown'
@@ -420,7 +473,8 @@ const planGeneratedArtifacts = ({
     }
     return {
       results: generatedResults,
-      planSha256: planSha256For(generatedResults),
+      deletionIdentities,
+      planSha256: planSha256For({ results: generatedResults, deletionIdentities }),
       ...(initialActivity === undefined ? {} : { activityEpoch: initialActivity.epoch }),
     }
   })
@@ -834,14 +888,33 @@ const collectRepoStoreWorktrees = ({
 
 const classifyGcWorktree = ({
   worktree,
+  rootPath,
   liveSet,
   all,
 }: {
   worktree: CollectedWorktree
+  rootPath: string
   liveSet: StoreLiveSet
   all: boolean
 }) =>
   Effect.gen(function* () {
+    const platform = yield* storeDeletionPlatform
+    let identity: DeletionIdentity | undefined
+    if (platform === 'linux') {
+      // Bind the absolute chain before policy or Git authority probes on Linux.
+      // Even --force cannot authorize deletion of an unreadable/replaced chain.
+      const captured = yield* captureDeletionIdentity({ rootPath, path: worktree.path }).pipe(
+        Effect.result,
+      )
+      if (captured._tag === 'Failure') {
+        return {
+          worktree,
+          action: 'identity_failed' as const,
+          message: captured.failure.message,
+        }
+      }
+      identity = captured.success
+    }
     const policy = classifyStoreWorktreePolicy({
       liveSet,
       mode: all === true ? 'all' : 'default',
@@ -859,6 +932,7 @@ const classifyGcWorktree = ({
     if (worktree.broken === true) {
       return {
         worktree,
+        identity,
         action: 'check' as const,
         status: { isDirty: false, hasUnpushed: false, changesCount: 0 },
       }
@@ -876,12 +950,18 @@ const classifyGcWorktree = ({
     if (statusResult._tag === 'status_failed') {
       return {
         worktree,
+        identity,
         action: 'status_failed' as const,
         message: statusResult.message,
       }
     }
 
-    return { worktree, action: 'check' as const, status: statusResult.status }
+    return {
+      worktree,
+      identity,
+      action: 'check' as const,
+      status: statusResult.status,
+    }
   }).pipe(
     Observability.withStoreWorktreeSpan({
       name: 'megarepo/store/gc/classify-worktree',
@@ -919,6 +999,13 @@ interface NamedWorktreeTarget {
 }
 
 /**
+ * In-place overlay removal already started at the original path. The receipt
+ * must say so: the remainder stays in the store for a later plan to observe.
+ */
+const isPartialDeletion = (error: unknown): error is PinnedDeletionError =>
+  error instanceof PinnedDeletionError && error.partial === true
+
+/**
  * Build a `StoreGcResult` for a cold-path outcome.
  *
  * `reason` is the stable classification tag (live/not-stale/merged/...);
@@ -928,30 +1015,42 @@ interface NamedWorktreeTarget {
 const coldResult = ({
   target,
   status,
+  outcome,
   reason,
   message,
   recoverPath,
   pathRef,
   actualHeadBranch,
+  worklogBytesRemoved,
+  worklogPolicyPath,
+  worklogPolicySha256,
 }: {
   target: NamedWorktreeTarget
   status: StoreGcResult['status']
+  outcome?: StoreGcResult['outcome']
   reason?: string | undefined
   message?: string | undefined
   recoverPath?: string | undefined
   pathRef?: string | undefined
   actualHeadBranch?: string | undefined
+  worklogBytesRemoved?: number | undefined
+  worklogPolicyPath?: string | undefined
+  worklogPolicySha256?: string | undefined
 }): StoreGcResult => ({
   repo: target.repoRelativePath,
   ref: target.worktree.ref,
   refType: target.worktree.refType,
   path: target.worktree.path,
   status,
+  ...(outcome !== undefined ? { outcome } : {}),
   ...(reason !== undefined ? { reason } : {}),
   ...(message !== undefined ? { message } : {}),
   ...(recoverPath !== undefined ? { recoverPath } : {}),
   ...(pathRef !== undefined ? { pathRef } : {}),
   ...(actualHeadBranch !== undefined ? { actualHeadBranch } : {}),
+  ...(worklogBytesRemoved !== undefined ? { worklogBytesRemoved } : {}),
+  ...(worklogPolicyPath !== undefined ? { worklogPolicyPath } : {}),
+  ...(worklogPolicySha256 !== undefined ? { worklogPolicySha256 } : {}),
 })
 
 /**
@@ -1007,6 +1106,171 @@ const inUseMessage = (holder: InUseHolder): string =>
     ? `live process pid ${holder.pid} has its cwd inside the worktree (${holder.path})`
     : `in-use state could not be determined, kept conservatively (${holder.path})`
 
+/** Worklog teardown authority resolved from the strict build-output budgets policy. */
+interface WorklogTeardownPolicy {
+  readonly path: string
+  readonly policyPath: string
+  readonly policySha256: string
+}
+
+/**
+ * Resolve teardown authority from `gc-config.json` `buildOutputBudgetsPath`.
+ * No path, no `worklog`, or `retain` keeps worklogs; a configured but
+ * unreadable/invalid policy fails the run rather than silently retaining.
+ */
+const loadWorklogTeardownPolicy = Effect.fn('megarepo/store/gc/load-worklog-policy')(function* (
+  policyPath: string | undefined,
+) {
+  if (policyPath === undefined) return undefined
+  const receipt = yield* loadBuildOutputBudgetPolicyReceipt({ path: policyPath })
+  const worklog = receipt.policy.worklog
+  if (worklog === undefined || worklog.teardown !== 'delete') return undefined
+  return {
+    path: worklog.path,
+    policyPath: receipt.policyPath,
+    policySha256: receipt.policySha256,
+  } satisfies WorklogTeardownPolicy
+})
+
+/** Rebuildable ignored content Git may delete with a merged worktree. */
+const TEARDOWN_REBUILDABLE_DIRS: Record<string, true> = {
+  dist: true,
+  node_modules: true,
+  '.devenv': true,
+  '.direnv': true,
+  'buck-out': true,
+  target: true,
+}
+
+/**
+ * Measure an authorized worklog without following symlinks. Allocated bytes are
+ * counted once per inode; incomplete or boundary-crossing scans keep the tree.
+ */
+const scanTeardownWorklog = Effect.fn('megarepo/store/gc/scan-worklog')(function* (path: string) {
+  return yield* Effect.tryPromise({
+    try: async () => {
+      const root = await lstat(path)
+      const parent = await lstat(dirname(path))
+      if (root.isDirectory() === false || parent.isDirectory() === false) {
+        throw new Error('worklog or its parent is not a real directory')
+      }
+      const deadline = performance.now() + GENERATED_SCAN_TIMEOUT_MS
+      const pending = [path]
+      const seen = new Set<string>()
+      let allocatedBytes = 0
+      let count = 0
+      while (pending.length > 0) {
+        count += 1
+        if (performance.now() > deadline || count > GENERATED_SCAN_ENTRY_CAP) {
+          throw new Error('worklog scan incomplete')
+        }
+        const current = pending.pop()!
+        // Sequential traversal bounds outstanding IO and memory.
+        // eslint-disable-next-line no-await-in-loop
+        const info = await lstat(current)
+        if (
+          info.dev !== root.dev ||
+          (info.isDirectory() === false &&
+            info.isFile() === false &&
+            info.isSymbolicLink() === false)
+        ) {
+          throw new Error('worklog crosses a mount or contains a special file')
+        }
+        const inode = `${info.dev}:${info.ino}`
+        if (seen.has(inode) === false) {
+          seen.add(inode)
+          allocatedBytes += info.blocks * 512
+        }
+        if (info.isDirectory() === true) {
+          // eslint-disable-next-line no-await-in-loop
+          const directory = await opendir(current)
+          // eslint-disable-next-line no-await-in-loop
+          for await (const entry of directory) pending.push(`${current}/${entry.name}`)
+        }
+      }
+      return allocatedBytes
+    },
+    catch: (cause) =>
+      new StoreCommandError({
+        message: `unable to inspect worklog ${path}: ${cause instanceof Error === true ? cause.message : String(cause)}`,
+      }),
+  })
+})
+
+/**
+ * Gates beyond the cold classifier for deleting a merged worktree with its
+ * worklog. `undefined` means eligible; every reason falls back to archiving.
+ */
+const checkMergedWorklogTeardown = Effect.fn('megarepo/store/gc/check-worklog-teardown')(
+  function* ({
+    worktreePath,
+    bareRepoPath,
+    expectedHead,
+    defaultBranch,
+    worklogPath,
+  }: {
+    worktreePath: AbsoluteDirPath
+    bareRepoPath: AbsoluteDirPath
+    expectedHead: string
+    defaultBranch: string | undefined
+    worklogPath: string
+  }) {
+    if (defaultBranch === undefined) return 'default-branch-unavailable'
+    const head = yield* Git.getCurrentCommit(worktreePath)
+    if (head !== expectedHead) return 'head-changed'
+    const reachable = yield* Git.runCommand({
+      cwd: bareRepoPath,
+      args: ['merge-base', '--is-ancestor', head, `refs/remotes/origin/${defaultBranch}`],
+    }).pipe(
+      Effect.as(true),
+      Effect.orElseSucceed(() => false),
+    )
+    if (reachable === false) return 'head-not-on-default'
+    const tracked = yield* Git.hasTrackedFiles({ cwd: worktreePath, path: worklogPath })
+    if (tracked === true) return 'tracked-worklog'
+    const exclude = `:(exclude)${worklogPath}`
+    const changes = yield* Git.runCommand({
+      cwd: worktreePath,
+      args: ['status', '--porcelain', '--untracked-files=all', '--', '.', exclude],
+    })
+    if (changes.length > 0) return 'other-dirty-content'
+    const ignored = yield* Git.runCommand({
+      cwd: worktreePath,
+      args: [
+        'ls-files',
+        '--others',
+        '--ignored',
+        '--exclude-standard',
+        '--directory',
+        '--',
+        '.',
+        exclude,
+      ],
+    })
+    for (const entry of ignored.split('\n')) {
+      if (entry.length === 0) continue
+      const segments = entry.replace(/\/$/u, '').split('/')
+      const name = segments.at(-1)!
+      if (
+        segments.some((segment) => TEARDOWN_REBUILDABLE_DIRS[segment] === true) === false &&
+        name.startsWith('result') === false &&
+        name.endsWith('.tsbuildinfo') === false &&
+        name !== '.oxlint-with-plugins.json'
+      ) {
+        return 'other-ignored-content'
+      }
+    }
+    const registrations = yield* Git.listWorktrees(bareRepoPath)
+    const matches = registrations.filter(
+      (entry) => normalizeStorePath(entry.path) === normalizeStorePath(worktreePath),
+    )
+    if (matches.length !== 1 || Option.isSome(matches[0]!.lockReason) === true) {
+      return 'worktree-registration-unknown'
+    }
+    return undefined
+  },
+)
+
 /**
  * Cold reclamation for ONE repo's named worktrees (decisions 0001–0010).
  *
@@ -1037,6 +1301,8 @@ const coldReclaimRepo = ({
   now,
   dryRun,
   candidatePath,
+  worklogPolicy,
+  deletionIdentities,
   lockAlreadyHeld = false,
 }: {
   store: Effect.Success<typeof Store>
@@ -1053,9 +1319,18 @@ const coldReclaimRepo = ({
   now: number
   dryRun: boolean
   candidatePath?: string | undefined
+  /** Teardown authority from the strict budgets policy; `undefined` retains worklogs. */
+  worklogPolicy?: WorklogTeardownPolicy | undefined
+  deletionIdentities: Map<string, DeletionIdentity>
   lockAlreadyHeld?: boolean | undefined
 }) =>
   Effect.gen(function* () {
+    const platform = yield* storeDeletionPlatform
+    if (platform !== 'linux' && worklogPolicy !== undefined) {
+      return yield* new StoreCommandError({
+        message: `merged worklog-delete teardown is unsupported on platform '${platform}'; requires Linux fd-pinned deletion`,
+      })
+    }
     const results: StoreGcResult[] = []
 
     // Fetch --prune so `refs/remotes/*` is fresh (the reachability + PR-prune
@@ -1100,6 +1375,21 @@ const coldReclaimRepo = ({
       if (candidatePath !== undefined && target.worktree.path !== candidatePath) continue
       if (classify === false) break
       const { worktree } = target
+      // Capture before HEAD/PR/lossless checks. A later ancestor substitution
+      // must not turn those predicates into authority over a different tree.
+      const plannedIdentity = deletionIdentities.get(worktree.path)
+      const deletionIdentity =
+        platform !== 'linux' || worklogPolicy === undefined
+          ? undefined
+          : plannedIdentity !== undefined
+            ? Option.some(plannedIdentity)
+            : yield* captureDeletionIdentity({
+                rootPath: store.basePath,
+                path: worktree.path,
+              }).pipe(Effect.option)
+      if (deletionIdentity !== undefined && Option.isSome(deletionIdentity) === true) {
+        deletionIdentities.set(worktree.path, deletionIdentity.value)
+      }
       // Only `refs/heads/*` carries a branch identity to reclaim; tags have no
       // PR/branch to free, so they are always kept by the cold path.
       if (worktree.refType !== 'heads') {
@@ -1326,6 +1616,177 @@ const coldReclaimRepo = ({
       if (decision._tag === 'keep') {
         results.push(coldResult({ target, status: 'kept', reason: decision.reason }))
         continue
+      }
+
+      // Merged teardown (budgets policy `worklog.teardown: "delete"`): the
+      // classifier has already proven merged PR, grace, liveness, and the
+      // lossless floor. Remove the worktree with its worklog only when HEAD is
+      // also on the remote default and the worklog is the sole untracked
+      // non-rebuildable content; any other blocker falls back to archiving.
+      if (decision.reason === 'merged' && worklogPolicy !== undefined) {
+        const fs = yield* FileSystem.FileSystem
+        const worklogPath = `${normalizeStorePath(worktree.path)}/${worklogPolicy.path}`
+        const policyReceipt = {
+          worklogPolicyPath: worklogPolicy.policyPath,
+          worklogPolicySha256: worklogPolicy.policySha256,
+        }
+        if (deletionIdentity === undefined || Option.isNone(deletionIdentity) === true) {
+          results.push(
+            coldResult({
+              target,
+              status: 'kept',
+              reason: 'deletion-identity-unavailable',
+              ...policyReceipt,
+            }),
+          )
+          continue
+        }
+        const identity = deletionIdentity.value
+        const teardownBlocker = checkMergedWorklogTeardown({
+          worktreePath: worktree.path,
+          bareRepoPath,
+          expectedHead: worktreeHead,
+          defaultBranch,
+          worklogPath: worklogPolicy.path,
+        }).pipe(Effect.orElseSucceed(() => 'teardown-check-failed'))
+        const worklogPresent = yield* fs.exists(worklogPath).pipe(Effect.orElseSucceed(() => false))
+        const blocker = worklogPresent === false ? 'no-worklog' : yield* teardownBlocker
+        const estimatedBytes =
+          blocker === undefined
+            ? yield* scanTeardownWorklog(worklogPath).pipe(Effect.option)
+            : Option.none<number>()
+        if (Option.isSome(estimatedBytes) === true) {
+          if (dryRun === true) {
+            results.push(
+              coldResult({
+                target,
+                status: 'reaped',
+                reason: 'merged-worklog-teardown',
+                worklogBytesRemoved: estimatedBytes.value,
+                ...policyReceipt,
+              }),
+            )
+            continue
+          }
+          const teardownAction = Effect.gen(function* () {
+            const freshPolicy = yield* loadWorklogTeardownPolicy(worklogPolicy.policyPath)
+            if (freshPolicy?.policySha256 !== worklogPolicy.policySha256) {
+              return { _tag: 'kept-teardown' as const, reason: 'worklog-policy-changed' }
+            }
+            const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
+            if (isPathProtected({ liveSet: freshLiveSet, path: worktree.path }) === true) {
+              return { _tag: 'kept-live' as const }
+            }
+            // Whole-worktree deletion requires admitted agent/PTY/process
+            // activity (unknown keeps), then the strict cwd/root/fd/maps probe;
+            // a trusted all-uid root manifest covers foreign processes.
+            const activity = yield* readBudgetWorkspaceActivity({
+              fs,
+              config: config.generatedArtifacts,
+            })
+            if (activity === undefined) {
+              return { _tag: 'kept-teardown' as const, reason: 'agent-liveness-unavailable' }
+            }
+            const canonicalWorktree = yield* fs.realPath(worktree.path)
+            if (isWorkspaceActive({ activity, canonicalWorktree }) === true) {
+              return { _tag: 'kept-live' as const }
+            }
+            const references = yield* readBudgetWorktreeInUse({
+              worktreePath: canonicalWorktree,
+              activity,
+            })
+            if (references._tag !== 'free') {
+              const holder =
+                references._tag === 'in-use'
+                  ? references.holder
+                  : { pid: -1, path: `unknown: ${references.reason}` }
+              return { _tag: 'kept-in-use' as const, holder }
+            }
+            const freshBlocker = yield* teardownBlocker
+            if (freshBlocker !== undefined) {
+              return { _tag: 'kept-teardown' as const, reason: freshBlocker }
+            }
+            const worklogBytesRemoved = yield* scanTeardownWorklog(worklogPath)
+            // Quarantine only after every predicate passes. Git's recursive
+            // worktree remove re-resolves ancestors, so it must not delete here.
+            yield* withPinnedDeletion({ rootPath: store.basePath, path: worktree.path, identity })
+            const pruneWarning = yield* Git.pruneWorktrees(bareRepoPath).pipe(
+              Effect.as(undefined),
+              Effect.catch((error) =>
+                Effect.succeed(
+                  `worktree removed, but git worktree prune failed: ${
+                    error instanceof Error === true ? error.message : String(error)
+                  }`,
+                ),
+              ),
+            )
+            return { _tag: 'removed' as const, worklogBytesRemoved, pruneWarning }
+          })
+          // A plan-bound application already holds this owner's lock and lease.
+          const teardown = yield* (
+            lockAlreadyHeld === true
+              ? teardownAction
+              : Effect.gen(function* () {
+                  const leaseOwnerPath = yield* canonicalizeOwnerPath(worktree.path)
+                  return yield* teardownAction.pipe(
+                    withDeletionLease({
+                      storeBasePath: store.basePath,
+                      ownerPath: leaseOwnerPath,
+                      now,
+                    }),
+                    storeLock.withWorktreeLock(worktree.path),
+                  )
+                })
+          ).pipe(
+            Effect.catch((error) =>
+              Effect.succeed({
+                _tag: 'error' as const,
+                message: error instanceof Error === true ? error.message : String(error),
+                partial: isPartialDeletion(error),
+              }),
+            ),
+          )
+          if (teardown._tag === 'kept-live') {
+            results.push(coldResult({ target, status: 'kept', reason: 'live' }))
+          } else if (teardown._tag === 'kept-in-use') {
+            results.push(
+              coldResult({
+                target,
+                status: 'kept',
+                reason: 'process-in-use',
+                message: inUseMessage(teardown.holder),
+              }),
+            )
+          } else if (teardown._tag === 'kept-teardown') {
+            results.push(
+              coldResult({ target, status: 'kept', reason: teardown.reason, ...policyReceipt }),
+            )
+          } else if (teardown._tag === 'error') {
+            results.push(
+              coldResult({
+                target,
+                status: 'error',
+                ...(teardown.partial === true
+                  ? { outcome: 'partial' as const, reason: 'deletion-partial' }
+                  : { reason: 'merged-worklog-teardown' }),
+                message: teardown.message,
+                ...policyReceipt,
+              }),
+            )
+          } else {
+            results.push(
+              coldResult({
+                target,
+                status: 'reaped',
+                reason: 'merged-worklog-teardown',
+                worklogBytesRemoved: teardown.worklogBytesRemoved,
+                ...(teardown.pruneWarning === undefined ? {} : { message: teardown.pruneWarning }),
+                ...policyReceipt,
+              }),
+            )
+          }
+          continue
+        }
       }
 
       // Archive decision: serialize under the worktree lock and re-check the live
@@ -1764,6 +2225,12 @@ const storeGcCommand = Cli.Command.make(
       Cli.Flag.withDescription('Plan configured generated-artifact cleanup'),
       Cli.Flag.withDefault(false),
     ),
+    budgets: Cli.Flag.String('budgets').pipe(
+      Cli.Flag.withDescription(
+        'Plan allocated-byte LRU eviction using a strict build-output policy file',
+      ),
+      Cli.Flag.optional,
+    ),
     expectedPlan: Cli.Flag.String('expected-plan').pipe(
       Cli.Flag.withDescription('Apply only the exact generated-artifact dry-run plan'),
       Cli.Flag.optional,
@@ -1773,13 +2240,14 @@ const storeGcCommand = Cli.Command.make(
       Cli.Flag.optional,
     ),
   },
-  ({ output, dryRun, force, all, generatedArtifacts, expectedPlan, candidatePath }) =>
+  ({ output, dryRun, force, all, generatedArtifacts, budgets, expectedPlan, candidatePath }) =>
     Effect.gen(function* () {
       const outputMode = yield* resolveOutputOption(output)
       const cwd = yield* Cwd
       const store = yield* Store
       const storeLock = yield* StoreLock
       const fs = yield* FileSystem.FileSystem
+      const platform = yield* storeDeletionPlatform
 
       let root = Option.none<AbsoluteDirPath>()
       let liveSetForMetrics: StoreLiveSet | undefined
@@ -1791,6 +2259,25 @@ const storeGcCommand = Cli.Command.make(
         Option.isSome(expectedPlan) === true || Option.isSome(candidatePath) === true
       const planningOnly = dryRun === true || targetedApply === true
 
+      if (
+        Option.isSome(budgets) === true &&
+        (generatedArtifacts === true || all === true || force === true)
+      ) {
+        return yield* new StoreCommandError({
+          message: '--budgets is incompatible with --generated-artifacts, --all and --force',
+        })
+      }
+      if (Option.isSome(budgets) === true && platform !== 'linux') {
+        return yield* new StoreCommandError({
+          message: `store gc --budgets is unsupported on platform '${platform}'; requires Linux fd-pinned deletion`,
+        })
+      }
+      // Decode before collecting or reconciling store state. Invalid policy is
+      // an error, never an implicit fallback to ordinary whole-worktree GC.
+      const budgetPolicy =
+        Option.isSome(budgets) === true
+          ? yield* loadBuildOutputBudgets({ path: budgets.value })
+          : undefined
       if (generatedArtifacts === true && (all === true || force === true)) {
         return yield* new StoreCommandError({
           message: '--generated-artifacts is incompatible with --all and --force',
@@ -1823,6 +2310,136 @@ const storeGcCommand = Cli.Command.make(
           message: '--generated-artifacts mutation requires --expected-plan and --candidate-path',
         })
       }
+      if (platform !== 'linux' && all === false && generatedArtifacts === false) {
+        const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+        const worklogPolicy = yield* loadWorklogTeardownPolicy(config.buildOutputBudgetsPath)
+        if (worklogPolicy !== undefined) {
+          return yield* new StoreCommandError({
+            message: `merged worklog-delete teardown is unsupported on platform '${platform}'; requires Linux fd-pinned deletion`,
+          })
+        }
+      }
+
+      if (budgetPolicy !== undefined && Option.isSome(budgets) === true) {
+        if (dryRun === false && targetedApply === false) {
+          return yield* new StoreCommandError({
+            message: '--budgets mutation requires --expected-plan and --candidate-path',
+          })
+        }
+        const now = yield* Clock.currentTimeMillis
+        const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+        const activityConfig = config.generatedArtifacts
+        const collectBudgetInputs = Effect.gen(function* () {
+          const workspaceRoot = yield* findMegarepoRoot(cwd)
+          const liveSet = yield* collectStoreLiveSet({
+            store,
+            ...(Option.isSome(workspaceRoot) === true
+              ? { currentWorkspaceRoot: workspaceRoot.value }
+              : {}),
+            pruneStaleRegistry: false,
+            refreshCurrentWorkspace: false,
+            now,
+          })
+          const repos = yield* store.listRepos
+          const repoWorktrees = yield* Effect.forEach(
+            repos,
+            (repo) =>
+              Effect.gen(function* () {
+                const bareRepoPath = EffectPath.ops.join(
+                  repo.fullPath,
+                  EffectPath.unsafe.relativeDir('.bare/'),
+                )
+                const worktrees = yield* collectRepoStoreWorktrees({
+                  fs,
+                  repoPath: repo.fullPath,
+                  bareRepoPath,
+                })
+                return { repo, bareRepoPath, worktrees }
+              }),
+            { concurrency: gcRepoConcurrency() },
+          )
+          return { liveSet, repoWorktrees }
+        })
+        const inputs = yield* collectBudgetInputs
+        const activity = yield* readBudgetWorkspaceActivity({ fs, config: activityConfig })
+        let plan = yield* planBuildOutputBudgets({
+          policy: budgetPolicy,
+          storeBasePath: store.basePath,
+          ...inputs,
+          activity,
+          now,
+        })
+        // Activity must stay on the admitted epoch across discovery and
+        // accounting; a replaced or expired capture makes every row unknown.
+        if (activity !== undefined) {
+          const afterScan = yield* readBudgetWorkspaceActivity({
+            fs,
+            config: activityConfig,
+            admittedEpoch: activity.epoch,
+          })
+          if (afterScan === undefined) {
+            plan = yield* planBuildOutputBudgets({
+              policy: budgetPolicy,
+              storeBasePath: store.basePath,
+              ...inputs,
+              activity: undefined,
+              now,
+            })
+          }
+        }
+        if (Option.isSome(expectedPlan) === true && Option.isSome(candidatePath) === true) {
+          const expectedPlanValue = expectedPlan.value
+          const candidatePathValue = candidatePath.value
+          if (plan.planSha256 !== expectedPlanValue) {
+            return yield* new StoreCommandError({
+              message: 'store gc budget plan changed; refusing candidate application',
+            })
+          }
+          const selected = plan.results.filter(
+            (candidate) =>
+              candidate.path === candidatePathValue && candidate.outcome === 'would-delete',
+          )
+          if (selected.length !== 1) {
+            return yield* new StoreCommandError({
+              message: 'budget candidate is missing, ambiguous, or no longer eligible',
+            })
+          }
+          plan = yield* storeLock.withWorktreeLock(selected[0]!.workspacePath)(
+            Effect.gen(function* () {
+              const freshInputs = yield* collectBudgetInputs
+              return yield* applyBuildOutputBudgetCandidate({
+                policyPath: budgets.value,
+                storeBasePath: store.basePath,
+                ...freshInputs,
+                now: yield* Clock.currentTimeMillis,
+                expectedPlan: expectedPlanValue,
+                candidatePath: candidatePathValue,
+                activityConfig,
+              })
+            }),
+          )
+        }
+        const mode = yield* OutputModeTag.pipe(Effect.provide(outputModeLayer(outputMode)))
+        if (mode._tag === 'json') {
+          yield* Console.log(yield* Schema.encodeEffect(Schema.fromJsonString(BudgetPlan))(plan))
+        } else {
+          for (const [name, summary] of Object.entries(plan.classes)) {
+            yield* Console.log(
+              `${name}: ${summary.status} · ${summary.scanStatus} · ${summary.totalBytes} allocated bytes / ${summary.budgetBytes} budget · ${summary.evictedBytes} eviction bytes · ${summary.projectedBytes} projected bytes`,
+            )
+          }
+          for (const candidate of plan.results) {
+            yield* Console.log(`${candidate.outcome} ${candidate.path} (${candidate.reason})`)
+          }
+          yield* Console.log(`planSha256 ${plan.planSha256}`)
+        }
+        if (plan.results.some((candidate) => candidate.outcome === 'partial') === true) {
+          return yield* new StoreCommandError({
+            message: 'budget candidate deletion was partial; the remainder stays for a later plan',
+          })
+        }
+        return
+      }
 
       const processGcDecision = ({
         decision,
@@ -1844,6 +2461,17 @@ const storeGcCommand = Cli.Command.make(
               path: worktree.path,
               status: 'skipped_in_use',
               ...(decision.message !== undefined ? { message: decision.message } : {}),
+            } satisfies StoreGcResult
+          }
+
+          if (decision.action === 'identity_failed') {
+            return {
+              repo: repoRelativePath,
+              ref: worktree.ref,
+              refType: worktree.refType,
+              path: worktree.path,
+              status: 'error',
+              message: decision.message,
             } satisfies StoreGcResult
           }
 
@@ -1890,7 +2518,20 @@ const storeGcCommand = Cli.Command.make(
                     return { _tag: 'skipped_live' as const, message: removalPolicy.message }
                   }
 
-                  yield* fs.remove(worktree.path, { recursive: true })
+                  if (platform === 'linux') {
+                    if (decision.identity === undefined) {
+                      return yield* new StoreCommandError({
+                        message: 'candidate deletion identity is unavailable',
+                      })
+                    }
+                    yield* withPinnedDeletion({
+                      rootPath: store.basePath,
+                      path: worktree.path,
+                      identity: decision.identity,
+                    })
+                  } else {
+                    yield* fs.remove(worktree.path, { recursive: true })
+                  }
                   return { _tag: 'removed' as const }
                 }),
               )
@@ -1899,6 +2540,7 @@ const storeGcCommand = Cli.Command.make(
                   Effect.succeed({
                     _tag: 'error' as const,
                     message: error instanceof Error === true ? error.message : String(error),
+                    partial: isPartialDeletion(error),
                   }),
                 ),
               )
@@ -1921,6 +2563,9 @@ const storeGcCommand = Cli.Command.make(
                 refType: worktree.refType,
                 path: worktree.path,
                 status: 'error',
+                ...(removeResult.partial === true
+                  ? { outcome: 'partial' as const, reason: 'deletion-partial' }
+                  : {}),
                 message: removeResult.message,
               } satisfies StoreGcResult
             }
@@ -1945,6 +2590,8 @@ const storeGcCommand = Cli.Command.make(
         )
 
       const results: StoreGcResult[] = []
+      // Identities participate in plan hashes without changing deletion receipts.
+      const deletionIdentities = new Map<string, DeletionIdentity>()
       let lastProgressResultCount = 0
       let completedRepoCount = 0
       let discoveredWorktreeCount = 0
@@ -2099,6 +2746,7 @@ const storeGcCommand = Cli.Command.make(
             const generatedPlan = yield* planGeneratedArtifacts({
               config,
               fs,
+              rootPath: store.basePath,
               liveSet,
               now,
               ...(progressive === true && targetedApply === false
@@ -2149,6 +2797,12 @@ const storeGcCommand = Cli.Command.make(
               // lease additionally excludes external activation of this worktree,
               // so the final liveness classification below cannot be overtaken.
               const applied = yield* Effect.gen(function* () {
+                const identity = generatedPlan.deletionIdentities.get(selected[0]!.path)
+                if (platform === 'linux' && identity === undefined) {
+                  return yield* new StoreCommandError({
+                    message: 'candidate deletion identity is unavailable',
+                  })
+                }
                 const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
                 const freshConfig = yield* loadStoreGcConfig({
                   storeBasePath: store.basePath,
@@ -2174,6 +2828,7 @@ const storeGcCommand = Cli.Command.make(
                 const freshPlan = yield* planGeneratedArtifacts({
                   config: freshConfig,
                   fs,
+                  rootPath: store.basePath,
                   liveSet: freshLiveSet,
                   now,
                   repoWorktrees: freshRepoWorktrees,
@@ -2253,7 +2908,32 @@ const storeGcCommand = Cli.Command.make(
                 if (holder !== undefined) {
                   return yield* new StoreCommandError({ message: inUseMessage(holder) })
                 }
-                yield* fs.remove(freshCandidate.path, { recursive: true })
+                if (platform === 'linux') {
+                  if (identity === undefined) {
+                    return yield* new StoreCommandError({
+                      message: 'candidate deletion identity is unavailable',
+                    })
+                  }
+                  const partial = yield* withPinnedDeletion({
+                    rootPath: store.basePath,
+                    path: freshCandidate.path,
+                    identity,
+                  }).pipe(
+                    Effect.as(undefined),
+                    Effect.catchIf(isPartialDeletion, (error) => Effect.succeed(error)),
+                  )
+                  if (partial !== undefined) {
+                    return {
+                      ...freshCandidate,
+                      status: 'error' as const,
+                      outcome: 'partial' as const,
+                      reason: 'deletion-partial',
+                      message: partial.message,
+                    }
+                  }
+                } else {
+                  yield* fs.remove(freshCandidate.path, { recursive: true })
+                }
                 return { ...freshCandidate, outcome: 'deleted' as const }
               }).pipe(
                 withDeletionLease({
@@ -2316,6 +2996,7 @@ const storeGcCommand = Cli.Command.make(
                   )
 
             const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+            const worklogPolicy = yield* loadWorklogTeardownPolicy(config.buildOutputBudgetsPath)
 
             // Use an injected `PrStateResolver` when present (tests provide a stub
             // layer); otherwise build the live `gh`-shelling resolver here so the
@@ -2362,6 +3043,8 @@ const storeGcCommand = Cli.Command.make(
                       config,
                       now,
                       dryRun: planningOnly,
+                      worklogPolicy,
+                      deletionIdentities,
                     }).pipe(
                       Effect.ensuring(
                         Effect.sync(() => {
@@ -2415,9 +3098,17 @@ const storeGcCommand = Cli.Command.make(
                             yield* Effect.gen(function* () {
                               const decision = yield* classifyGcWorktree({
                                 worktree,
+                                rootPath: store.basePath,
                                 liveSet,
                                 all,
                               })
+                              if (
+                                (decision.action === 'check' ||
+                                  decision.action === 'status_failed') &&
+                                decision.identity !== undefined
+                              ) {
+                                deletionIdentities.set(worktree.path, decision.identity)
+                              }
                               const result = yield* processGcDecision({
                                 decision,
                                 repoRelativePath: repo.relativePath,
@@ -2488,7 +3179,7 @@ const storeGcCommand = Cli.Command.make(
           }
 
           if (generatedArtifacts === false && planningOnly === true) {
-            planSha256 = planSha256For(results)
+            planSha256 = planSha256For({ results, deletionIdentities })
           }
 
           if (
@@ -2533,6 +3224,12 @@ const storeGcCommand = Cli.Command.make(
             const leaseOwnerPath = yield* canonicalizeOwnerPath(candidate.path)
             const applied: StoreGcResult = yield* Effect.gen(function* () {
               if (candidate.status === 'removed') {
+                const identity = deletionIdentities.get(candidate.path)
+                if (platform === 'linux' && identity === undefined) {
+                  return yield* new StoreCommandError({
+                    message: 'candidate deletion identity is unavailable',
+                  })
+                }
                 const worktree = owner.worktrees.filter((entry) => entry.path === candidate.path)
                 if (worktree.length !== 1) {
                   return yield* new StoreCommandError({
@@ -2542,6 +3239,7 @@ const storeGcCommand = Cli.Command.make(
                 const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
                 const decision = yield* classifyGcWorktree({
                   worktree: worktree[0]!,
+                  rootPath: store.basePath,
                   liveSet: freshLiveSet,
                   all,
                 })
@@ -2560,7 +3258,32 @@ const storeGcCommand = Cli.Command.make(
                     message: `candidate is in use: ${inUseMessage(holder)}`,
                   })
                 }
-                yield* fs.remove(candidate.path, { recursive: true })
+                if (platform === 'linux') {
+                  if (identity === undefined) {
+                    return yield* new StoreCommandError({
+                      message: 'candidate deletion identity is unavailable',
+                    })
+                  }
+                  const partial = yield* withPinnedDeletion({
+                    rootPath: store.basePath,
+                    path: candidate.path,
+                    identity,
+                  }).pipe(
+                    Effect.as(undefined),
+                    Effect.catchIf(isPartialDeletion, (error) => Effect.succeed(error)),
+                  )
+                  if (partial !== undefined) {
+                    return {
+                      ...candidate,
+                      status: 'error' as const,
+                      outcome: 'partial' as const,
+                      reason: 'deletion-partial',
+                      message: partial.message,
+                    }
+                  }
+                } else {
+                  yield* fs.remove(candidate.path, { recursive: true })
+                }
                 const pruneWarning = yield* Git.pruneWorktrees(owner.bareRepoPath).pipe(
                   Effect.as(undefined),
                   Effect.catch((error) =>
@@ -2605,18 +3328,24 @@ const storeGcCommand = Cli.Command.make(
                 repoFullPath: owner.repo.fullPath,
                 bareRepoPath: owner.bareRepoPath,
                 namedWorktrees,
+                deletionIdentities,
                 liveSet,
                 ledger,
                 config,
                 now,
                 dryRun: false,
+                worklogPolicy: yield* loadWorklogTeardownPolicy(config.buildOutputBudgetsPath),
                 candidatePath: candidate.path,
                 lockAlreadyHeld: ownerLockHeld,
               })
+              // Merged-worklog teardown may stop mid-removal; its partial receipt
+              // is the applied result so the caller sees the remainder.
               const matching = appliedResults.filter(
                 (result) =>
                   result.path === candidate.path &&
-                  (result.status === 'archived' || result.status === 'reaped'),
+                  (result.status === 'archived' ||
+                    result.status === 'reaped' ||
+                    result.outcome === 'partial'),
               )
               if (matching.length !== 1) {
                 return yield* new StoreCommandError({
@@ -2653,6 +3382,7 @@ const storeGcCommand = Cli.Command.make(
           const lockCandidate = yield* executeGc({ progressive })
           if (lockCandidate === undefined) return
           results.splice(0, results.length)
+          deletionIdentities.clear()
           completedRepoCount = 0
           discoveredWorktreeCount = 0
           repoCount = undefined
@@ -2695,7 +3425,6 @@ const storeGcCommand = Cli.Command.make(
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
         ).pipe(Effect.provide(outputModeLayer(outputMode)))
       }
-
       yield* Observability.annotateStoreGcResult({
         rootSetWorkspaceCount: liveSetForMetrics?.workspaceCount ?? 0,
         repoTotal: repoCount ?? 0,
@@ -2724,6 +3453,13 @@ const storeGcCommand = Cli.Command.make(
         ).length,
         repoConcurrency: repoConcurrencyForMetrics,
       })
+      // Partial removal is not a successful deletion: the receipt is rendered,
+      // then the command fails so callers retry from a fresh plan.
+      if (results.some((result) => result.outcome === 'partial') === true) {
+        return yield* new StoreCommandError({
+          message: 'store gc deletion was partial; the remainder stays for a later plan',
+        })
+      }
     }).pipe(
       Effect.provide(StoreLayer),
       Observability.withStoreGcSpan({
@@ -3364,6 +4100,51 @@ const storeLeaseCommand = Cli.Command.make(
     ),
 ).pipe(Cli.Command.withDescription('Run a command while holding a store deletion lease'))
 
+/**
+ * `mr store activity snapshot --output <file>`
+ *
+ * Root producer for foreign-process evidence: captures every process cwd/root/
+ * fd/map under the store root into a `megarepo.workspace-activity.v2` manifest
+ * (producer `mr-process`, TTL ≤ 5 min). Partial `/proc` visibility still writes
+ * the manifest, marked `complete: false`, which consumers treat as unknown.
+ * Runs no hooks or external commands.
+ */
+const storeActivitySnapshotCommand = Cli.Command.make(
+  'snapshot',
+  {
+    outputPath: Cli.Flag.String('output').pipe(
+      Cli.Flag.withDescription('Absolute manifest file path to write atomically (mode 0644)'),
+    ),
+  },
+  ({ outputPath }) =>
+    Effect.gen(function* () {
+      if (isNormalizedAbsolutePath(outputPath) === false) {
+        return yield* new StoreCommandError({
+          message: '--output must be a normalized absolute file path',
+        })
+      }
+      const store = yield* Store
+      const fs = yield* FileSystem.FileSystem
+      const manifest = yield* captureProcessActivityManifest({
+        fs,
+        storeRoots: [normalizeStorePath(store.basePath)],
+      })
+      yield* writeWorkspaceActivityManifest({ fs, path: outputPath, manifest })
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Observability.withCommandSpan({
+        name: 'megarepo/store/activity/snapshot',
+        command: 'store activity snapshot',
+      }),
+    ),
+).pipe(Cli.Command.withDescription('Write a process-activity manifest for the store (run as root)'))
+
+/** Activity subcommand group */
+const storeActivityCommand = Cli.Command.make('activity', {}).pipe(
+  Cli.Command.withSubcommands([storeActivitySnapshotCommand]),
+  Cli.Command.withDescription('Produce workspace-activity evidence for store reclamation'),
+)
+
 /** Store subcommand group */
 export const storeCommand = Cli.Command.make('store', {}).pipe(
   Cli.Command.withSubcommands([
@@ -3374,6 +4155,7 @@ export const storeCommand = Cli.Command.make('store', {}).pipe(
     storeGcCommand,
     storeFixCommand,
     storeLeaseCommand,
+    storeActivityCommand,
     storeWorktreeCommand,
   ]),
   Cli.Command.withDescription('Manage the shared git store'),

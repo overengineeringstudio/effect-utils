@@ -166,6 +166,7 @@ SUBCOMMANDS
   gc          Garbage collect unused worktrees
   fix         Fix store issues
   lease       Run a command while holding a store deletion lease
+  activity    Produce workspace-activity evidence for store reclamation
   worktree    Manage worktrees in the store
 ",
 }
