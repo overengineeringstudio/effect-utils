@@ -1,10 +1,7 @@
 {
   "id": "structured.rejected-400",
   "summary": "Unsupported structured formatting is an HTTP refusal, not unconstrained success.",
-  "requirements": [
-    "AIG-R05",
-    "AIG-R10"
-  ],
+  "requirements": ["AIG-R05", "AIG-R10"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",
@@ -48,11 +45,7 @@
         }
       }
     },
-    "required": [
-      "name",
-      "age",
-      "tags"
-    ],
+    "required": ["name", "age", "tags"],
     "additionalProperties": false
   }
 }

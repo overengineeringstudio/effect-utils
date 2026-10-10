@@ -48,10 +48,15 @@ export const Case = Schema.Struct({
       }),
     ),
     toolCalls: Schema.optionalKey(
-      Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, arguments: Schema.Json })),
+      Schema.Array(
+        Schema.Struct({ id: Schema.String, name: Schema.String, arguments: Schema.Json }),
+      ),
     ),
     error: Schema.optionalKey(
-      Schema.Struct({ status: Schema.optionalKey(Schema.Int), type: Schema.optionalKey(Schema.String) }),
+      Schema.Struct({
+        status: Schema.optionalKey(Schema.Int),
+        type: Schema.optionalKey(Schema.String),
+      }),
     ),
     decision: Schema.optionalKey(Schema.JsonObject),
   }),
@@ -66,11 +71,11 @@ export const loadCases = Effect.fn('AiGatewayConformance.loadCases')(function* (
   const directory = fileURLToPath(
     new URL('./cases/', import.meta.resolve('@overeng/ai-gateway-conformance/case.schema.json')),
   )
-  const files = (yield* fs.readDirectory(directory)).filter((file) => file.endsWith('.json')).toSorted()
+  const files = (yield* fs.readDirectory(directory))
+    .filter((file) => file.endsWith('.json'))
+    .toSorted()
   return yield* Effect.forEach(files, (file) =>
-    fs.readFileString(`${directory}/${file}`).pipe(
-      Effect.flatMap(decodeCase),
-    ),
+    fs.readFileString(`${directory}/${file}`).pipe(Effect.flatMap(decodeCase)),
   )
 })
 
@@ -84,9 +89,12 @@ export const toHttpClientResponse = ({
 }): HttpClientResponse.HttpClientResponse => {
   const response = replayCase.response
   const streaming = 'sse' in response
-  const body = streaming === true
-    ? response.sse.map((payload) => `data: ${payload === '[DONE]' ? payload : encodeJson(payload)}\n\n`).join('')
-    : encodeJson(response.json)
+  const body =
+    streaming === true
+      ? response.sse
+          .map((payload) => `data: ${payload === '[DONE]' ? payload : encodeJson(payload)}\n\n`)
+          .join('')
+      : encodeJson(response.json)
   return HttpClientResponse.fromWeb(
     request,
     new Response(body, {
@@ -100,4 +108,6 @@ export const toHttpClientResponse = ({
 }
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Json))
-const decodeCase = Schema.decodeUnknownEffect(Schema.fromJsonString(Case), { onExcessProperty: 'error' })
+const decodeCase = Schema.decodeUnknownEffect(Schema.fromJsonString(Case), {
+  onExcessProperty: 'error',
+})

@@ -76,3 +76,10 @@ and HTTP failures. Configuration tests retain the optional bearer and unchanged
 model-selection assertions. Unsupported provider behavior is listed as a named
 skip with its reason, including error data envelopes after HTTP 200 that the
 pinned compatible provider ignores.
+
+Structured cases use a finite-number caller schema whose generated JSON Schema is
+checked against the corpus. Tool prompts explicitly mark caller-executed exchanges;
+response assertions narrow parts by their `type` before inspecting tool fields.
+Validation-error cases retain billed usage expectations in the shared corpus;
+separate named skips expose the upstream structured/decision errors' missing usage
+retention without disabling the validation checks themselves.

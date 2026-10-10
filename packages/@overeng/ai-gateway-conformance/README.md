@@ -23,6 +23,8 @@ Each `cases/<id>.json` file describes one exchange:
   and error status/type. It does not prescribe language-specific error classes.
 - Structured-output cases include `schema`, the caller's original JSON Schema.
   Local validation must enforce its numeric constraints as well as field types.
+  Billed token counts remain expected even when output validation fails:
+  `structured.invalid` and `decision.invalid-label` carry usage expectations.
 
 [`case.schema.json`](./case.schema.json) is the JSON Schema 2020-12 contract.
 `src/mod.ts` exports its Effect realization (`Case`), `loadCases()` (requiring a
@@ -53,6 +55,8 @@ unknown contract fields. Cases are loaded in filename order.
   The pinned compatible provider ignores unknown SSE events, including error data
   envelopes after HTTP 200; `chat.stream.error-after-200` is explicitly skipped
   with that reason. No shared case is silently dropped.
+  Both invalid-output cases still replay validation, but separate named skips
+  identify missing billed-usage retention in Effect's structured/decision errors.
 - **Rust:** the `ai-gateway` crate at `rust/ai-gateway` consumes the same JSON corpus
   with a Rust-owned replay harness. No TypeScript fake server or shared fake binary
   is required by the wire contract.

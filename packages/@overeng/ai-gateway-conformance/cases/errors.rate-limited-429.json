@@ -1,9 +1,7 @@
 {
   "id": "errors.rate-limited-429",
   "summary": "Surface the gateway/provider error status and wire type.",
-  "requirements": [
-    "AIG-R10"
-  ],
+  "requirements": ["AIG-R10"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",

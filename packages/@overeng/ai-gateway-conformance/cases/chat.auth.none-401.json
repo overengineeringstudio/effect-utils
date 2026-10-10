@@ -1,10 +1,7 @@
 {
   "id": "chat.auth.none-401",
   "summary": "Omit Authorization when no bearer is supplied and surface the edge refusal.",
-  "requirements": [
-    "AIG-R02",
-    "AIG-R10"
-  ],
+  "requirements": ["AIG-R02", "AIG-R10"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",

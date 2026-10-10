@@ -1,9 +1,7 @@
 {
   "id": "chat.stream.error-after-200",
   "summary": "An error data payload after partial output remains a stream failure, without DONE.",
-  "requirements": [
-    "AIG-R10"
-  ],
+  "requirements": ["AIG-R10"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",

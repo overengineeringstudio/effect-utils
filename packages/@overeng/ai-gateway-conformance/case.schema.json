@@ -21,20 +21,14 @@
       "type": "object",
       "properties": {
         "method": {
-          "enum": [
-            "GET",
-            "POST"
-          ]
+          "enum": ["GET", "POST"]
         },
         "path": {
           "type": "string",
           "pattern": "^/"
         },
         "auth": {
-          "enum": [
-            "bearer",
-            "none"
-          ]
+          "enum": ["bearer", "none"]
         },
         "match": {
           "type": "object",
@@ -46,11 +40,7 @@
               "type": "boolean"
             },
             "responseFormat": {
-              "enum": [
-                "text",
-                "json_object",
-                "json_schema"
-              ]
+              "enum": ["text", "json_object", "json_schema"]
             },
             "hasToolResult": {
               "type": "boolean"
@@ -64,11 +54,7 @@
           "additionalProperties": true
         }
       },
-      "required": [
-        "method",
-        "path",
-        "auth"
-      ],
+      "required": ["method", "path", "auth"],
       "additionalProperties": false
     },
     "response": {
@@ -89,29 +75,19 @@
           "items": {}
         }
       },
-      "required": [
-        "status"
-      ],
+      "required": ["status"],
       "additionalProperties": false,
       "oneOf": [
         {
-          "required": [
-            "json"
-          ],
+          "required": ["json"],
           "not": {
-            "required": [
-              "sse"
-            ]
+            "required": ["sse"]
           }
         },
         {
-          "required": [
-            "sse"
-          ],
+          "required": ["sse"],
           "not": {
-            "required": [
-              "json"
-            ]
+            "required": ["json"]
           }
         }
       ]
@@ -120,12 +96,7 @@
       "type": "object",
       "properties": {
         "outcome": {
-          "enum": [
-            "success",
-            "http-error",
-            "stream-error",
-            "validation-error"
-          ]
+          "enum": ["success", "http-error", "stream-error", "validation-error"]
         },
         "text": {
           "type": "string"
@@ -147,10 +118,7 @@
               "type": "integer"
             }
           },
-          "required": [
-            "input",
-            "output"
-          ],
+          "required": ["input", "output"],
           "additionalProperties": false
         },
         "toolCalls": {
@@ -166,11 +134,7 @@
               },
               "arguments": {}
             },
-            "required": [
-              "id",
-              "name",
-              "arguments"
-            ],
+            "required": ["id", "name", "arguments"],
             "additionalProperties": false
           }
         },
@@ -192,9 +156,7 @@
           "additionalProperties": true
         }
       },
-      "required": [
-        "outcome"
-      ],
+      "required": ["outcome"],
       "additionalProperties": false
     },
     "schema": {
@@ -202,13 +164,6 @@
       "additionalProperties": true
     }
   },
-  "required": [
-    "id",
-    "summary",
-    "requirements",
-    "request",
-    "response",
-    "expect"
-  ],
+  "required": ["id", "summary", "requirements", "request", "response", "expect"],
   "additionalProperties": false
 }

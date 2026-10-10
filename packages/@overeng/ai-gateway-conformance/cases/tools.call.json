@@ -1,9 +1,7 @@
 {
   "id": "tools.call",
   "summary": "Return tool-call IDs, names and decoded arguments without executing the tool.",
-  "requirements": [
-    "AIG-R11"
-  ],
+  "requirements": ["AIG-R11"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",
@@ -26,9 +24,7 @@
                   "type": "string"
                 }
               },
-              "required": [
-                "city"
-              ],
+              "required": ["city"],
               "additionalProperties": false
             }
           }

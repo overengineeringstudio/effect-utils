@@ -1,11 +1,7 @@
 {
   "id": "decision.triage",
   "summary": "Batch classification, probability and rating with native supplied usage.",
-  "requirements": [
-    "AIG-R07",
-    "AIG-R08",
-    "AIG-R03"
-  ],
+  "requirements": ["AIG-R07", "AIG-R08", "AIG-R03"],
   "request": {
     "method": "POST",
     "path": "/v1/systemone",
@@ -34,11 +30,7 @@
         "frustration": {
           "type": "score",
           "instructions": "How frustrated is the customer?",
-          "criteria": [
-            "calm",
-            "frustrated",
-            "angry"
-          ]
+          "criteria": ["calm", "frustrated", "angry"]
         }
       }
     }

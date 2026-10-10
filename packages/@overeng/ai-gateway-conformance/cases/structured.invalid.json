@@ -1,10 +1,7 @@
 {
   "id": "structured.invalid",
   "summary": "Reject both a numeric minimum violation and an incorrect array type.",
-  "requirements": [
-    "AIG-R05",
-    "AIG-R06"
-  ],
+  "requirements": ["AIG-R05", "AIG-R06"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",
@@ -44,7 +41,8 @@
     }
   },
   "expect": {
-    "outcome": "validation-error"
+    "outcome": "validation-error",
+    "usage": { "input": 12, "output": 3, "total": 15 }
   },
   "schema": {
     "type": "object",
@@ -63,11 +61,7 @@
         }
       }
     },
-    "required": [
-      "name",
-      "age",
-      "tags"
-    ],
+    "required": ["name", "age", "tags"],
     "additionalProperties": false
   }
 }

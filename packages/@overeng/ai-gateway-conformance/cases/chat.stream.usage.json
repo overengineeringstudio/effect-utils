@@ -1,9 +1,7 @@
 {
   "id": "chat.stream.usage",
   "summary": "Retain incremental text and the choices-empty usage chunk before DONE.",
-  "requirements": [
-    "AIG-R03"
-  ],
+  "requirements": ["AIG-R03"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",

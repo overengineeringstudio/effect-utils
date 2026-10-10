@@ -1,11 +1,7 @@
 {
   "id": "chat.text",
   "summary": "Decode ordinary chat text and supplied usage without rewriting the selected model.",
-  "requirements": [
-    "AIG-R01",
-    "AIG-R02",
-    "AIG-R03"
-  ],
+  "requirements": ["AIG-R01", "AIG-R02", "AIG-R03"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",

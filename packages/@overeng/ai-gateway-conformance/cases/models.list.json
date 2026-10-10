@@ -1,10 +1,7 @@
 {
   "id": "models.list",
   "summary": "Discover unchanged provider-prefixed model IDs and gateway catalog metadata.",
-  "requirements": [
-    "AIG-R01",
-    "AIG-R04"
-  ],
+  "requirements": ["AIG-R01", "AIG-R04"],
   "request": {
     "method": "GET",
     "path": "/v1/models",
@@ -21,10 +18,7 @@
           "owned_by": "anthropic",
           "api": "anthropic-messages",
           "display_name": "Claude Haiku 4.5",
-          "input_modalities": [
-            "text",
-            "image"
-          ],
+          "input_modalities": ["text", "image"],
           "context_length": 200000
         },
         {
@@ -33,9 +27,7 @@
           "owned_by": "openrouter",
           "api": "systemone",
           "display_name": "jev",
-          "input_modalities": [
-            "text"
-          ],
+          "input_modalities": ["text"],
           "kind": "judgment"
         }
       ]
@@ -52,10 +44,7 @@
           "owned_by": "anthropic",
           "api": "anthropic-messages",
           "display_name": "Claude Haiku 4.5",
-          "input_modalities": [
-            "text",
-            "image"
-          ],
+          "input_modalities": ["text", "image"],
           "context_length": 200000
         },
         {
@@ -64,9 +53,7 @@
           "owned_by": "openrouter",
           "api": "systemone",
           "display_name": "jev",
-          "input_modalities": [
-            "text"
-          ],
+          "input_modalities": ["text"],
           "kind": "judgment"
         }
       ]

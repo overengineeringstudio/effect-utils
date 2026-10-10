@@ -1,10 +1,7 @@
 {
   "id": "decision.invalid-label",
   "summary": "Reject a native classification label outside the caller criteria.",
-  "requirements": [
-    "AIG-R07",
-    "AIG-R08"
-  ],
+  "requirements": ["AIG-R07", "AIG-R08"],
   "request": {
     "method": "POST",
     "path": "/v1/systemone",
@@ -33,11 +30,7 @@
         "frustration": {
           "type": "score",
           "instructions": "How frustrated is the customer?",
-          "criteria": [
-            "calm",
-            "frustrated",
-            "angry"
-          ]
+          "criteria": ["calm", "frustrated", "angry"]
         }
       }
     }
@@ -83,6 +76,7 @@
     }
   },
   "expect": {
-    "outcome": "validation-error"
+    "outcome": "validation-error",
+    "usage": { "input": 218, "output": 39 }
   }
 }

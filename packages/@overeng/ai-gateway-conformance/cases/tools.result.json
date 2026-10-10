@@ -1,9 +1,7 @@
 {
   "id": "tools.result",
   "summary": "Send a prior tool result and decode the continuation text.",
-  "requirements": [
-    "AIG-R11"
-  ],
+  "requirements": ["AIG-R11"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",

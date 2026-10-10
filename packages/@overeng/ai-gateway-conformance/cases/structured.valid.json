@@ -1,10 +1,7 @@
 {
   "id": "structured.valid",
   "summary": "Validate structured output against the caller original schema.",
-  "requirements": [
-    "AIG-R05",
-    "AIG-R06"
-  ],
+  "requirements": ["AIG-R05", "AIG-R06"],
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",
@@ -48,9 +45,7 @@
     "object": {
       "name": "Ada",
       "age": 36,
-      "tags": [
-        "math"
-      ]
+      "tags": ["math"]
     },
     "usage": {
       "input": 12,
@@ -76,11 +71,7 @@
         }
       }
     },
-    "required": [
-      "name",
-      "age",
-      "tags"
-    ],
+    "required": ["name", "age", "tags"],
     "additionalProperties": false
   }
 }
