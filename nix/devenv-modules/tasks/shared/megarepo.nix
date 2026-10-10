@@ -4,7 +4,8 @@
 #
 # Tasks:
 # - mr:bootstrap - Materialize the minimal lock-based members needed for local tooling
-# - mr:setup - Materialize committed root members without fetching or rewriting locks
+# - mr:setup - Materialize committed root members without fetching or rewriting locks.
+#   Members use tracking worktrees, except `setupCommitMembers` (see Options).
 # - mr:fetch-apply - Fetch latest refs and apply to workspace (mr fetch --apply)
 # - mr:lock - Record the current workspace into megarepo.lock (mr lock)
 # - mr:apply - Apply megarepo.lock to the workspace (explicit apply operation)
@@ -13,13 +14,20 @@
 #
 # Options:
 # - syncAll: Whether explicit update/apply tasks use `--all` (recursive nested
-#   sync). Default: true for backwards compatibility.
+#   sync). Default: true for backwards compatibility. mr:setup does not use it.
 #   Set to false in CI where root members are already synced and nested sync
 #   may fail due to credential scoping or version mismatches.
 # - bootstrapMembers: Minimal members that must exist before tooling like genie
 #   can evaluate. Uses lock-based `mr apply --only ...` and never fetches remote
 #   refs. Default: [ ] (task becomes a no-op)
 # - disabledTasks: Task names omitted from this module instance. Default: [ ].
+# - setupCommitMembers: Root members that mr:setup materializes as fresh commit
+#   worktrees with their nested megarepo trees prepared in the same invocation
+#   (`mr apply --commit-members ...`); mr:setup readiness then uses
+#   `mr status --all`, including on the outer setup cache-hit path. Use it for
+#   members whose own repos/ must exist locally (validation-only nested hooks).
+#   Other members stay on shared tracking worktrees. Default: [ ] (setup
+#   behaves as plain tracking apply).
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add dependencies in their devenv.nix:
@@ -29,6 +37,7 @@
   syncAll ? true,
   bootstrapMembers ? [ ],
   disabledTasks ? [ ],
+  setupCommitMembers ? [ ],
   # Real derivation/path backing the `mr` guard. When set, the guard owns
   # `bin/mr` and exec's this by absolute path under passthrough (see
   # cli-guard.nix). Required for source-mode `mr` (no node_modules/.bin
@@ -43,6 +52,8 @@ let
   bootstrapOnlyArgs = lib.concatMapStringsSep " " (
     member: "--only ${lib.escapeShellArg member}"
   ) bootstrapMembers;
+  setupNestedTrees = setupCommitMembers != [ ];
+  setupCommitArgs = lib.optionalString setupNestedTrees " --commit-members ${lib.escapeShellArg (lib.concatStringsSep "," setupCommitMembers)}";
   cacheRoot = ".devenv/task-cache/mr-apply";
   membersFile = "${cacheRoot}/members.txt";
   recordWorkspaceMembers = ''
@@ -137,25 +148,29 @@ let
     | .[].name
   '';
 
-  mrStatusCheck = ''
+  mkMrStatusCheck = recursive: ''
     # Use the already-installed source CLI here. `nix run ...#megarepo` adds a
     # second eval/build hop to every warm status check.
     if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
       exit 0
     fi
 
-    if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
-      ${checkWorkspaceMembersScript}
-      exit 0
-    fi
-
+    ${lib.optionalString (!recursive) ''
+      if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+        ${checkWorkspaceMembersScript}
+        exit 0
+      fi
+    ''}
     ${checkWorkspaceMembersScript}
 
-    status_json=$(mr status --output json 2>/dev/null) || exit 1
+    # Recursive readiness also covers nested repos/ mounts, so it runs on the
+    # outer setup cache-hit path too: a root symlink alone is not a prepared tree.
+    status_json=$(mr status${lib.optionalString recursive " --all"} --output json 2>/dev/null) || exit 1
     echo "$status_json" \
       | ${jq} -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
       >/dev/null 2>&1
   '';
+  mrStatusCheck = mkMrStatusCheck false;
 
   allTasks = {
     "mr:bootstrap" = {
@@ -207,10 +222,10 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr apply --worktree-mode tracking --lock-sync off "''${MR_SKIP_ARGS[@]}"
+        mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
-      status = trace.status "mr:setup" "binary" mrStatusCheck;
+      status = trace.status "mr:setup" "binary" (mkMrStatusCheck setupNestedTrees);
     };
 
     "mr:fetch-apply" = {

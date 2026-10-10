@@ -1415,6 +1415,208 @@ describe('apply --all canonical recursion', () => {
   )
 })
 
+/**
+ * The consumer shape behind `mr:setup` with `setupCommitMembers`: a nested megarepo member
+ * (`child` → `grandchild` → `leaf`) next to an ordinary member (`plain`, the leaf repo).
+ * Local runs (`CI=false`) with the canonical-mutation bypass explicitly disabled.
+ */
+const createSetupConsumerFixture = () =>
+  Effect.gen(function* () {
+    const fixture = yield* createColdCanonicalRecursionFixture()
+    const consumer = yield* createWorkspaceWithLock({
+      members: {
+        child: 'https://example.com/acme/child#main',
+        plain: 'https://example.com/acme/leaf#main',
+      },
+      lockEntries: {
+        child: { url: 'https://example.com/acme/child', ref: 'main', commit: fixture.childCommit },
+        plain: { url: 'https://example.com/acme/leaf', ref: 'main', commit: fixture.leafCommit },
+      },
+    })
+    const headsMain = (repo: string) =>
+      `${fixture.store.storePath}example.com/acme/${repo}/refs/heads/main`
+    const env = {
+      CI: 'false',
+      MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
+      MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+    }
+    const mount = (root: string, name: string) =>
+      EffectPath.ops.join(
+        EffectPath.unsafe.absoluteDir(root.endsWith('/') === true ? root : `${root}/`),
+        EffectPath.unsafe.relativeDir(`repos/${name}/`),
+      )
+    const applyNeeded = Effect.fnUntraced(function* () {
+      const status = yield* runMrCommand({
+        cwd: consumer.workspacePath,
+        command: ['status'],
+        args: ['--all', '--output', 'json'],
+        env,
+      })
+      const out = yield* Schema.decodeEffect(
+        Schema.fromJsonString(Schema.Struct({ applyNeeded: Schema.Boolean })),
+      )(status.stdout.trim())
+      return out.applyNeeded
+    })
+    return { ...fixture, consumer, headsMain, env, mount, applyNeeded }
+  })
+
+const setupApplyArgs = [
+  '--output',
+  'json',
+  '--worktree-mode',
+  'tracking',
+  '--commit-members',
+  'child',
+  '--lock-sync',
+  'off',
+]
+
+describe('apply --commit-members (mr:setup nested trees)', () => {
+  it.effect(
+    'prepares listed nested trees in fresh commit worktrees and keeps other members on tracking heads',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createSetupConsumerFixture()
+        const { consumer, env, mount } = fixture
+        const lockPath = `${consumer.workspacePath}${LOCK_FILE_NAME}`
+        const lockBefore = yield* fs.readFileString(lockPath)
+
+        // Without the option, setup is the plain tracking apply: the nested member shares
+        // refs/heads/main, its repos/ never exists, and recursive readiness reports it.
+        const plainSetup = yield* runApplyCommand({
+          cwd: consumer.workspacePath,
+          args: ['--output', 'json', '--worktree-mode', 'tracking', '--lock-sync', 'off'],
+          env,
+        })
+        expect(plainSetup.exitCode).toBe(0)
+        expect(yield* fs.realPath(mount(consumer.workspacePath, 'child'))).toBe(
+          fixture.headsMain('child'),
+        )
+        expect(yield* fs.exists(`${fixture.headsMain('child')}/repos`)).toBe(false)
+        expect(yield* fixture.applyNeeded()).toBe(true)
+        const headsEntries = yield* fs.readDirectory(fixture.headsMain('child'))
+
+        const result = yield* runApplyCommand({
+          cwd: consumer.workspacePath,
+          args: setupApplyArgs,
+          env,
+        })
+        expect(result.stdout).not.toContain('PermissionDenied')
+        const out = yield* Schema.decodeEffect(
+          Schema.fromJsonString(
+            Schema.Struct({
+              syncErrorCount: Schema.Finite,
+              syncErrors: Schema.Array(SyncErrorItem),
+            }),
+          ),
+        )(result.stdout.trim())
+        expect(result.exitCode).toBe(0)
+        expect(out.syncErrors).toEqual([])
+
+        // Only the listed member switches; the ordinary member stays on its tracking worktree.
+        expect(yield* fs.realPath(mount(consumer.workspacePath, 'plain'))).toBe(
+          fixture.headsMain('leaf'),
+        )
+        const mounts = [
+          [consumer.workspacePath, 'child', fixture.childPath, fixture.childCommit],
+          [fixture.childPath, 'grandchild', fixture.grandchildPath, fixture.grandchildCommit],
+          [fixture.grandchildPath, 'leaf', fixture.leafPath, fixture.leafCommit],
+        ] as const
+        for (const [root, name, target, commit] of mounts) {
+          expect(yield* fs.realPath(mount(root, name))).toBe(target.slice(0, -1))
+          expect(yield* runGitCommand(mount(root, name), 'rev-parse', 'HEAD')).toBe(commit)
+        }
+
+        // The shared tracking worktree was not mutated and the lock was not rewritten.
+        expect(yield* fs.readDirectory(fixture.headsMain('child'))).toEqual(headsEntries)
+        expect(yield* fs.exists(`${fixture.headsMain('child')}/repos`)).toBe(false)
+        expect(yield* fs.readFileString(lockPath)).toBe(lockBefore)
+        expect(yield* fixture.applyNeeded()).toBe(false)
+
+        // A warm rerun accepts the already prepared, now preexisting commit worktrees.
+        const warm = yield* runApplyCommand({
+          cwd: consumer.workspacePath,
+          args: setupApplyArgs,
+          env,
+        })
+        expect(warm.stdout).not.toContain('PermissionDenied')
+        expect(warm.exitCode).toBe(0)
+        expect(yield* fixture.applyNeeded()).toBe(false)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  it.effect(
+    'refuses a preexisting incomplete shared commit worktree instead of granting freshness',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createSetupConsumerFixture()
+        const childBare = fixture.store.bareRepoPaths['example.com/acme/child']
+        if (childBare === undefined) throw new Error('Missing child bare repo')
+        yield* fs.makeDirectory(path.dirname(fixture.childPath.slice(0, -1)), { recursive: true })
+        yield* runGitCommand(
+          childBare,
+          'worktree',
+          'add',
+          '--detach',
+          fixture.childPath,
+          fixture.childCommit,
+        )
+
+        const result = yield* runApplyCommand({
+          cwd: fixture.consumer.workspacePath,
+          args: setupApplyArgs,
+          env: fixture.env,
+        })
+        expect(result.exitCode).toBe(1)
+        expect(result.stdout).toContain('Refusing to mutate canonical worktree')
+        expect(
+          yield* fs.exists(
+            EffectPath.ops.join(fixture.childPath, EffectPath.unsafe.relativeDir('repos/')),
+          ),
+        ).toBe(false)
+        expect(yield* fs.exists(fixture.grandchildPath)).toBe(false)
+        expect(yield* fs.realPath(fixture.mount(fixture.consumer.workspacePath, 'plain'))).toBe(
+          fixture.headsMain('leaf'),
+        )
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  it.effect(
+    'rejects unknown members and lock sync',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createSetupConsumerFixture()
+        for (const args of [
+          ['--commit-members', 'missing', '--lock-sync', 'off'],
+          ['--commit-members', 'child', '--lock-sync', 'direct'],
+          ['--commit-members', 'child', '--all'],
+        ]) {
+          const result = yield* runApplyCommand({
+            cwd: fixture.consumer.workspacePath,
+            args: ['--output', 'json', '--worktree-mode', 'tracking', ...args],
+            env: fixture.env,
+          })
+          expect(result.exitCode).toBe(1)
+          expect(yield* fixture.applyNeeded()).toBe(true)
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+})
+
 describe('--all nested error reporting', () => {
   it.effect(
     'should include nested member errors in JSON output',

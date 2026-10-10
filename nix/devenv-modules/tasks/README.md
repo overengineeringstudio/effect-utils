@@ -99,6 +99,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     apps, while `"**"` explicitly exempts an entire repository. A reason is
     required; other library paths remain guarded.
 - `megarepo.nix` - Megarepo workspace tasks
+  - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` makes
+    `mr:setup` prepare those members' nested megarepo trees in fresh commit
+    worktrees (readiness via `mr status --all`); unlisted members stay on
+    tracking worktrees. Default `[ ]` keeps the plain tracking setup.
 - `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
   - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`
     selects the lockfiles and only defines `nix:flake-lock:check-duplicates`.

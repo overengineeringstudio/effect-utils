@@ -165,6 +165,20 @@ canonical worktrees must already have their nested mounts prepared; an
 incomplete shared tree requires an owned workspace or explicit administrative
 repair, not a freshness grant.
 
+Local setup that needs nested trees names the members explicitly:
+`mr apply --worktree-mode tracking --commit-members <a,b> --lock-sync off`.
+The listed root members become commit worktrees and are applied recursively;
+everything below them is applied in commit mode, so fresh worktrees carry the
+freshness grant. Unlisted members stay on shared tracking worktrees and are not
+recursed into, which keeps co-development through `repos/<member>` on
+`refs/heads/*`. A nested commit worktree that existed before the invocation is
+accepted only if its locked tree is already mounted; an incomplete one is
+refused as above. The devenv `taskModules.megarepo` option
+`setupCommitMembers` is the intended consumer path: `mr:setup` passes the list
+and checks readiness with `mr status --all`, also on the outer setup cache-hit
+path. The option is empty by default, leaving `mr:setup` a plain tracking
+apply.
+
 `mr store worktree new` creates standalone worktrees only. The composed
 workspace shape — an owned worktree at `P/repos/<owned>`, read-only `cp -a`
 mounts, dist overlays, per-workspace capability projection, and a synthesized

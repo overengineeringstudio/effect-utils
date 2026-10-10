@@ -35,6 +35,12 @@ export const applyCommand = Cli.Command.make(
       Cli.Flag.withDescription('Recursively apply nested megarepos'),
       Cli.Flag.withDefault(false),
     ),
+    commitMembers: Cli.Flag.String('commit-members').pipe(
+      Cli.Flag.withDescription(
+        'Apply these root members (comma-separated) as fresh commit worktrees and prepare their nested megarepo trees recursively; other members keep --worktree-mode (requires --lock-sync off)',
+      ),
+      Cli.Flag.optional,
+    ),
     only: Cli.Flag.String('only').pipe(
       Cli.Flag.withDescription('Only apply specified members (comma-separated)'),
       Cli.Flag.optional,
@@ -58,7 +64,19 @@ export const applyCommand = Cli.Command.make(
     lockSync: lockSyncOption,
     verbose: verboseOption,
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, worktreeMode, lockSync, verbose }) =>
+  ({
+    output,
+    dryRun,
+    force,
+    all,
+    commitMembers,
+    only,
+    skip,
+    gitProtocol,
+    worktreeMode,
+    lockSync,
+    verbose,
+  }) =>
     resolveOutputOption(output).pipe(
       Effect.flatMap((outputMode) =>
         runCommand({
@@ -74,6 +92,7 @@ export const applyCommand = Cli.Command.make(
           verbose,
           worktreeMode,
           lockSyncMode: lockSync,
+          commitMembers,
         }),
       ),
     ),

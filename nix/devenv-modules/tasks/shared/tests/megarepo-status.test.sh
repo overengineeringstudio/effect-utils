@@ -201,7 +201,7 @@ echo ""
 echo "Test 7: shared mutation tasks select worktree strategies explicitly"
 for command in \
   'mr apply --worktree-mode commit' \
-  'mr apply --worktree-mode tracking --lock-sync off' \
+  'mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off' \
   'mr fetch --apply --worktree-mode tracking' \
   'mr apply --worktree-mode tracking${if syncAll'
 do
