@@ -54,6 +54,13 @@ let
       // options
     );
 
+  ai-gateway-edge = mk "ai-gateway-edge" {
+    binaryName = "ai-gateway-edge";
+    expectedProductKind = "cli";
+    generateCompletions = false;
+    smokeTestArgs = [ "--help" ];
+  };
+
   # `oxfmt` is on PATH because genie calls the executable formatter interface.
   # `actionlint`, the export type-proof compiler and the matching TypeScript API
   # server are absolute binaries, so generated-file checks never depend on PATH.
@@ -218,6 +225,7 @@ let
   # unpublished product surfaces as a missing attribute instead of a candidate
   # wired to absent bytes.
   requiredProducts = {
+    ai-gateway-edge = [ "ai-gateway-edge" ];
     ci-tools = [ "ci-tools" ];
     genie = [ "genie" ];
     genie-bootstrap-closure-check = [ "genie-bootstrap-closure-check" ];
@@ -237,6 +245,7 @@ let
   };
   candidates = {
     inherit
+      ai-gateway-edge
       ci-tools
       genie
       genie-bootstrap-closure-check

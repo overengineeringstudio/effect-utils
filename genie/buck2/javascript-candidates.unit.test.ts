@@ -17,6 +17,13 @@ const genieContext: GenieContext = { cwd: process.cwd(), location: '' }
 
 const expectedPublications = [
   {
+    label: '//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate',
+    module: 'ai-gateway-edge.js',
+    productKind: 'cli',
+    productName: 'ai-gateway-edge',
+    runtimeKind: 'bun',
+  },
+  {
     label: '//packages/@overeng/ci-tools:ci-tools-candidate',
     module: 'ci-tools.js',
     productKind: 'cli',
