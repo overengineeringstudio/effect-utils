@@ -46,6 +46,8 @@ Author `StepSchema.assignedTo` and each `AgentSchema.under[].target` with an imp
 
 Lowering emits only `assigned-to "agent/ID"` or `under "agent/ID" reason="..."`, never the referenced agent's launch configuration or kit metadata. There is no separate mission-agent launch API. Unit coverage includes exact KDL, object-only authoring types, invalid IDs and launches, and retained imported metadata.
 
+Runtime rejection tests use `Schema.decodeSync` when the authored input already satisfies the schema's encoded TypeScript shape; semantic launch/ID violations still throw at runtime. Inputs outside that shape retain `decodeUnknownSync`. This keeps compile-time decoder checking without weakening rejection coverage.
+
 ## Nested agent tasks
 
 Agent `pty` and `exec` tasks accept exactly one `command` or `argv` launch form and optional `host`/`workspace`; they do not accept or render `restart`. Excess task fields are rejected even when the containing agent is referenced rather than rendered. Unit assertions cover both task authoring types and runtime rejection, including an explicitly undefined `restart`. Root agent restart policy is unchanged; mission-step `ExecSchema.restart` remains a separate modeled field.

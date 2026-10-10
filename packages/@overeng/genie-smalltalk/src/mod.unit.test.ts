@@ -200,15 +200,13 @@ describe('Smalltalk declarations', () => {
     { checkout: { repository: 'repo', base: 'main', branch: 'work' } },
   ])('validates the complete referenced launch declaration %j', (launch) => {
     const reference = { id: 'ops/invalid', ...launch }
-    expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+    expect(() => Schema.decodeSync(AgentReferenceSchema)(reference)).toThrow()
+    expect(() => Schema.decodeSync(StepSchema)({ id: 'inspect', assignedTo: reference })).toThrow()
     expect(() =>
-      Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+      Schema.decodeSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
     ).toThrow()
     expect(() =>
-      Schema.decodeUnknownSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
-    ).toThrow()
-    expect(() =>
-      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
+      Schema.decodeSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
     ).toThrow()
   })
   it('validates imported supervisors recursively without losing reference identity', () => {
@@ -250,19 +248,19 @@ describe('Smalltalk declarations', () => {
         for (const restart of ['never', 'always', undefined]) {
           const reference = { id: 'ops/worker', [kind]: [{ id: 'task', ...launch, restart }] }
           expect(() => agent(reference)).toThrow()
-          expect(() => Schema.decodeUnknownSync(AgentSchema)(reference)).toThrow()
-          expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+          expect(() => Schema.decodeSync(AgentSchema)(reference)).toThrow()
+          expect(() => Schema.decodeSync(AgentReferenceSchema)(reference)).toThrow()
           expect(() =>
-            Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+            Schema.decodeSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
           ).toThrow()
           expect(() =>
-            Schema.decodeUnknownSync(AgentSchema)({
+            Schema.decodeSync(AgentSchema)({
               id: 'ops/subordinate',
               under: [{ target: reference }],
             }),
           ).toThrow()
           expect(() =>
-            Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
+            Schema.decodeSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
           ).toThrow()
         }
       }
