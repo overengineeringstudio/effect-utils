@@ -247,11 +247,14 @@ describe('Smalltalk declarations', () => {
         report: product.resource({ kind: 'custom.garden.report', fields: { state: 'ready' } }),
       },
     })
-    for (const [subject, error] of [
-      [pr, 'not declared'],
-      [foreign.products.report, 'outside this mission'],
+    for (const [reference, error] of [
+      [fieldIs({ name: 'ready', subject: pr, path: 'state', value: 'ready' }), 'not declared'],
+      [
+        fieldIs({ name: 'ready', subject: foreign.products.report, path: 'state', value: 'ready' }),
+        'outside this mission',
+      ],
     ] as const) {
-      const gates = [fieldIs({ name: 'ready', subject, path: 'state', value: 'ready' })]
+      const gates = [reference]
       const raw = { id: 'work', gates }
       expect(() =>
         mission({ id: 'raw', state: 'ready', goals: ['Review.'], steps: [raw] }),
