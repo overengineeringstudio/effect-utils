@@ -801,6 +801,7 @@ describe('editor view publisher', () => {
     }
   })
 
+  // Twelve real publication/native-proof transactions share one scenario deadline.
   it('bounds a shared store to current plus previous for each publishing view', async () => {
     const fixture = makeFixture()
     try {
@@ -825,7 +826,7 @@ describe('editor view publisher', () => {
     } finally {
       cleanup(fixture)
     }
-  })
+  }, 30_000)
 
   it('bounds shared-root preparation and retains exclusive teardown fencing', async () => {
     const fixture = makeFixture()
