@@ -162,7 +162,11 @@ store bare repo's default branch, its `HEAD`): top-level `mr apply` may populate
 its root and `repos/` mounts, and top-level `mr fetch` (including the fetch phase
 of `mr fetch --apply`) may additionally rewrite its own `megarepo.lock`. The
 default-branch worktree is the shared consumer cache and stays refused, as does a
-branch root whose default branch cannot be resolved. The grant covers only paths
+branch root whose default branch cannot be resolved. Ownership is proven offline
+from Git metadata, not from the path suffix: the root must be the top of a
+worktree of the store's `.bare` whose `HEAD` is `refs/heads/<branch>` and which
+sits at exactly `refs/heads/<branch>`; subdirectories of any worktree, detached
+or mismatched worktrees stay refused. The grant covers only paths
 that physically resolve directly inside that root; tag and commit worktrees,
 nested megarepos visited by `--all`, and aliases into other store paths stay
 refused. Accepted limitation: mr cannot tell one author's feature branch from

@@ -5,20 +5,35 @@ import * as FileSystem from 'effect/FileSystem'
 import { systemError, type PlatformError } from 'effect/PlatformError'
 
 /**
- * Whether a branch worktree root is an author workspace rather than the shared consumer cache.
- * The store's default-branch worktree is the cache; the default comes from the store bare repo's
- * HEAD (set at clone time to the remote's default). Unresolvable defaults are not authored.
+ * Whether a physical root is an author workspace rather than the shared consumer cache.
+ * Offline proof from Git metadata, never from the path suffix: the root is the top of a
+ * worktree of `<repo>/.bare`, its HEAD is `refs/heads/<B>`, it sits at the canonical
+ * `<repo>/refs/heads/<B>`, and `<B>` is not the store's default branch (the bare's HEAD,
+ * set at clone time to the remote's default). Subdirectories, detached or mismatched
+ * worktrees and unresolvable defaults are not authored.
  */
 const isAuthorBranchWorkspace = (root: string) =>
   Effect.gen(function* () {
-    const workspace = root.match(/^(.+?)\/refs\/heads\/(.+)$/)
-    if (workspace?.[1] === undefined || workspace[2] === undefined) return false
+    const repo = root.match(/^(.+?)\/refs\/heads\/.+$/)?.[1]
+    if (repo === undefined) return false
     const fs = yield* FileSystem.FileSystem
-    const head = yield* fs
-      .readFileString(path.join(workspace[1], '.bare', 'HEAD'))
-      .pipe(Effect.orElseSucceed(() => ''))
-    const defaultBranch = head.match(/^ref: refs\/heads\/(.+)\n?$/)?.[1]
-    return defaultBranch !== undefined && defaultBranch !== workspace[2]
+    const read = (file: string) => fs.readFileString(file).pipe(Effect.orElseSucceed(() => ''))
+    const real = (file: string) =>
+      fs.realPath(file).pipe(Effect.orElseSucceed((): string | undefined => undefined))
+    const gitdirLink = (yield* read(path.join(root, '.git'))).match(/^gitdir: (.+)\n?$/)?.[1]
+    if (gitdirLink === undefined) return false
+    const gitdir = yield* real(path.resolve(root, gitdirLink))
+    const bare = yield* real(path.join(repo, '.bare'))
+    if (gitdir === undefined || bare === undefined) return false
+    if (path.dirname(gitdir) !== path.join(bare, 'worktrees')) return false
+    const branch = (yield* read(path.join(gitdir, 'HEAD'))).match(
+      /^ref: refs\/heads\/(.+)\n?$/,
+    )?.[1]
+    if (branch === undefined || path.join(repo, 'refs', 'heads', branch) !== root) return false
+    const defaultBranch = (yield* read(path.join(bare, 'HEAD'))).match(
+      /^ref: refs\/heads\/(.+)\n?$/,
+    )?.[1]
+    return defaultBranch !== undefined && defaultBranch !== branch
   })
 
 /** Ref worktrees are shared. Resolve aliases and missing output parents before authorizing writes. */
