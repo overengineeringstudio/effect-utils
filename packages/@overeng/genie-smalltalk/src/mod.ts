@@ -294,7 +294,14 @@ export const StepSchema = Schema.Struct({
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
   assignedTo: Schema.optionalKey(SubjectId),
-  dependsOn: Schema.optionalKey(DependsOnSchema),
+  dependsOn: Schema.optionalKey(
+    Schema.Array(DependsOnSchema).pipe(
+      Schema.refine(
+        (dependencies): dependencies is typeof dependencies => dependencies.length > 0,
+        { message: 'dependsOn needs at least one dependency' },
+      ),
+    ),
+  ),
   goal: Schema.optionalKey(Text),
   exec: Schema.optionalKey(ExecSchema),
   gate: Schema.optionalKey(GateSchema),
@@ -338,7 +345,9 @@ export const MissionSchema = Schema.Struct({
       m.steps.length > 0 &&
       new Set(m.steps.map((s) => s.id)).size === m.steps.length &&
       m.steps.every(
-        (s) => s.dependsOn === undefined || m.steps.some((p) => p.id === s.dependsOn?.step),
+        (s) =>
+          s.dependsOn === undefined ||
+          s.dependsOn.every((dependency) => m.steps.some((p) => p.id === dependency.step)),
       ),
     { message: 'mission needs unique steps and existing dependencies' },
   ),
@@ -416,7 +425,9 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
     children.push(
       block({
         name: 'depends-on',
-        children: [node({ name: 'step', args: [s.dependsOn.step, s.dependsOn.state] })],
+        children: s.dependsOn.map((dependency) =>
+          node({ name: 'step', args: [dependency.step, dependency.state] }),
+        ),
       }),
     )
   }
