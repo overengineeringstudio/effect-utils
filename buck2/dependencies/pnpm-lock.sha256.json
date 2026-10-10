@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:e2148400a599980b8dd82a312228e3249613a386d61f2b43b7611dadac21c9b3",
+  "lockfileFingerprint": "sha256:7cbfe183926637b9f344584b7f2032374081b2d110420e142d5413ef9ea6133c",
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
@@ -1178,6 +1178,114 @@
       "registryUrl": "https://registry.npmjs.org/@nodelib/fs.walk/-/fs.walk-1.2.8.tgz",
       "sha256": "cbf9621f69b822ce97f71e842fea8e7bf9c7e986f01285689ede282092727d3d",
       "sizeBytes": 7360
+    },
+    "@number0/iroh-android-arm-eabi@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-PcrwZUGdqEnR0/tus0ehulEa68wVrJRJzFjZN5iBV1Jjhgy00oQ5hKtRdCam1lYAQp3jWmRGktLHF2ejj0xAMg==",
+      "packageIdentity": "@number0/iroh-android-arm-eabi@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-android-arm-eabi/-/iroh-android-arm-eabi-1.1.0.tgz",
+      "sha256": "1f025014e4b9fe00f8f173df6751118e4ce56b5b539c0585706a0159321ecc88",
+      "sizeBytes": 6433037
+    },
+    "@number0/iroh-android-arm64@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-wmnWLRNIHYARAecXbXPwZwduoFkmI+Bt75RSa+NZ3mdXiU+hBwWbHt7x0OEDtG8sMOgGgM22nqWemeU9r+UPqA==",
+      "packageIdentity": "@number0/iroh-android-arm64@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-android-arm64/-/iroh-android-arm64-1.1.0.tgz",
+      "sha256": "aa3bc9fe47f107d304f0c0b901a4a1548bdaa96a8e42a0ab2826706292106fae",
+      "sizeBytes": 6927214
+    },
+    "@number0/iroh-darwin-arm64@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-CM6gaQ+6r9K0HRswc2gOKeGL8XYUHUbz7ESkgOltBFin9OsYKmIo+JVYFxlahH8C7ypGEKq1ybU22Ifcf2kXnQ==",
+      "packageIdentity": "@number0/iroh-darwin-arm64@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-darwin-arm64/-/iroh-darwin-arm64-1.1.0.tgz",
+      "sha256": "12a238c6ae9b4564227072ca679a24ac02b343c01d365025b4795f614b316f50",
+      "sizeBytes": 5799208
+    },
+    "@number0/iroh-linux-arm-gnueabihf@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-5K4Kaz4gzyPo5s5LLAFO0zLXc2F0EZ3BXeMKzQc5zuPaeHQt4XqdwxozXVtn0/3EiUYqFNH1JIowagpwahxAlw==",
+      "packageIdentity": "@number0/iroh-linux-arm-gnueabihf@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-linux-arm-gnueabihf/-/iroh-linux-arm-gnueabihf-1.1.0.tgz",
+      "sha256": "718bdc809f2a4c4d69dd94eede3b5f2c9270439e322b1f5ad16d5e0def73fa3d",
+      "sizeBytes": 7573913
+    },
+    "@number0/iroh-linux-arm-musleabihf@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-Bz/vWWauI9t96imq8Jq1a2La4u5K9jVTjuCgm6gjpcFIp7wivfv4syZ4HlbgVD61C3Aqjb89lnlhzMd5qE/w0w==",
+      "packageIdentity": "@number0/iroh-linux-arm-musleabihf@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-linux-arm-musleabihf/-/iroh-linux-arm-musleabihf-1.1.0.tgz",
+      "sha256": "f40bcd41dea3656df066bb912136bcf074f3df937fa04e40fd9679f72a4a7b5e",
+      "sizeBytes": 7544087
+    },
+    "@number0/iroh-linux-arm64-gnu@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-AZHpCKQEcJdXya9llNld5u+S2Cz+ehWgGzILtpEJ1qljNYJAClDovzA+5ehUVaXEc+P7ZUNQ+pIjMcWXM0cAug==",
+      "packageIdentity": "@number0/iroh-linux-arm64-gnu@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-linux-arm64-gnu/-/iroh-linux-arm64-gnu-1.1.0.tgz",
+      "sha256": "3ad94e90f6c9777c4b93b1fb22c0a92e50c938967bc020b6ea2d538f7c9430e8",
+      "sizeBytes": 7288780
+    },
+    "@number0/iroh-linux-arm64-musl@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-4ZS/U2L4+zk2E5cn5WmxxuUDTkdwWiyxRq0NFArRQNFbuH7mjtQok2aDIbOIFOIrTTB4x1hwb4Gt0OJw4om4SQ==",
+      "packageIdentity": "@number0/iroh-linux-arm64-musl@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-linux-arm64-musl/-/iroh-linux-arm64-musl-1.1.0.tgz",
+      "sha256": "5f7aa93ed43685480333f019db44e8055a3828a5f58276b21c6396153c8cd9e6",
+      "sizeBytes": 6543540
+    },
+    "@number0/iroh-linux-x64-gnu@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-P2mo734gUjrfJgwbma1fHAyfeWqtY5IHTx53b1peei2/05JKZ2JJ4LS/YzI4qYW20mVtLKD9GS0T3q/iFYVC9Q==",
+      "packageIdentity": "@number0/iroh-linux-x64-gnu@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-linux-x64-gnu/-/iroh-linux-x64-gnu-1.1.0.tgz",
+      "sha256": "b1407978f4e67f3061ad09e9dbe85a2a9f649dc1da1a37046bcb45f59d6635d5",
+      "sizeBytes": 7464158
+    },
+    "@number0/iroh-linux-x64-musl@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-GTnr8v59AeS5iGmXLyqcgLCsTAFW2w6tdfDzjyyCYr6iO3h4vZuBv9HG3CwaVU+vOzzig9ojDzauDLgl96nniw==",
+      "packageIdentity": "@number0/iroh-linux-x64-musl@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-linux-x64-musl/-/iroh-linux-x64-musl-1.1.0.tgz",
+      "sha256": "08586fb54225ca28da282f95060e1512f669b0980d1a3410fc437509d521dcb0",
+      "sizeBytes": 6886043
+    },
+    "@number0/iroh-win32-arm64-msvc@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-LvG4Vcw8D7tFAxZpuZsh6rmyW1YmtS3McDIQjEUNhf9VNBFzQ7WHyEIxdr1GAg/HvC8rmPJ1MQBM24RCDbdUew==",
+      "packageIdentity": "@number0/iroh-win32-arm64-msvc@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-win32-arm64-msvc/-/iroh-win32-arm64-msvc-1.1.0.tgz",
+      "sha256": "8115ef86dd0d8d74b813ec7482ba92256933455a0141078ee658a67ef545f875",
+      "sizeBytes": 6265170
+    },
+    "@number0/iroh-win32-x64-msvc@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-1eSztLtesLu2tHdAgr9KNPBsSVdiz2+MDHNvCVDtH+UQAN8F+21YqAAbRJB0ctBvB5zcGeTwYawGaqVMTyRVJg==",
+      "packageIdentity": "@number0/iroh-win32-x64-msvc@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh-win32-x64-msvc/-/iroh-win32-x64-msvc-1.1.0.tgz",
+      "sha256": "4f6348e7cecd4eb92b95d8696a264e9ac2c750cb6e47f10cc4beb910c1970bf9",
+      "sizeBytes": 6616922
+    },
+    "@number0/iroh@1.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-DlrJ4Sza5MiI+WwQg63lg+7eSbxlfQR2Bd+wVDjo7XTqenALD2OCRoSfPTuD12IhcvDbVHr4l7qH48DilocqYA==",
+      "packageIdentity": "@number0/iroh@1.1.0",
+      "registryUrl": "https://registry.npmjs.org/@number0/iroh/-/iroh-1.1.0.tgz",
+      "sha256": "b243921359af6d82953159d8e18615e25a68cd8328ba413dd02e5f675548450e",
+      "sizeBytes": 22000
     },
     "@oozcitak/dom@2.0.2": {
       "bins": {},
@@ -6658,5 +6766,5 @@
       "sizeBytes": 4529
     }
   },
-  "fingerprint": "sha256:30c90e12c0a933ba024b7dc8a794f807e6c25ea98a5dfd467af427a024338117"
+  "fingerprint": "sha256:69e95014a2521085db6f1df797890aaee462ea972672514a6d12a5ba0fcffea5"
 }

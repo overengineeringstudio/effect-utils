@@ -213,6 +213,20 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-iroh:test_collect",
+      "excludes": [],
+      "packageName": "effect-iroh",
+      "packagePath": "packages/@overeng/effect-iroh",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/endpoint.integration.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-iroh:test",
+      "taskName": "test:effect-iroh",
+      "testFiles": ["src/endpoint.integration.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/effect-path:test_collect",
       "excludes": [],
       "packageName": "effect-path",

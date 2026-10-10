@@ -124,6 +124,16 @@ schema-first `OtelMetric` contracts, preserving their exported metric identities
 - **OTEL spans** - Automatic tracing with cross-process trace propagation
 - **Test helpers** - `withTestCtx` for automatic layer provision in Playwright tests
 
+### Peer-to-peer QUIC
+
+Effect 4 bindings for authenticated peer-to-peer QUIC and schema-framed messages
+in Node and Bun desktop/server applications.
+See the [package README](./packages/@overeng/effect-iroh/README.md) for usage and limitations.
+
+| Package                                                       | Description                         |
+| ------------------------------------------------------------- | ----------------------------------- |
+| [@overeng/effect-iroh](./packages/@overeng/effect-iroh)           | Effect wrapper for the iroh binding |
+
 ### Utilities
 
 | Package                                     | Description                                          |

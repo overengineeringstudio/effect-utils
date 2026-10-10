@@ -196,6 +196,11 @@
       "description": "@overeng/effect-distributed-lock package · Set: manual"
     },
     {
+      "name": "system:effect-iroh",
+      "color": "a371f7",
+      "description": "@overeng/effect-iroh package · Set: manual"
+    },
+    {
       "name": "system:effect-path",
       "color": "a371f7",
       "description": "@overeng/effect-path package · Set: manual"
