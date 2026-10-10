@@ -1,5 +1,6 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -13,10 +14,15 @@ import {
   AgentSchema,
   type CodexSchema,
   emit,
+  type GateSchema,
+  HumanGateSchema,
   mission,
   MissionSchema,
   node,
   omp,
+  person,
+  type PersonReference,
+  PersonReferenceSchema,
   type OmpSchema,
   resource,
   schedule,
@@ -24,6 +30,196 @@ import {
   StepSchema,
   smalltalkKdl,
 } from './mod.ts'
+
+const operator = person('person/schickling')
+const owner = { id: 'example/owner' } satisfies typeof AgentSchema.Encoded
+const worker = { id: 'example/worker' } satisfies typeof AgentSchema.Encoded
+const gate = {
+  kind: 'human',
+  name: 'Approve the bounded Berlin cutover',
+  reviewer: operator,
+} satisfies typeof HumanGateSchema.Encoded
+
+// These are authoring contracts, not assertions about person authentication.
+describe('attributed human gates', () => {
+  it('keeps person references distinct from imported agent references', () => {
+    type Reviewer = (typeof HumanGateSchema.Encoded)['reviewer']
+    type AssignedTo = NonNullable<(typeof StepSchema.Encoded)['assignedTo']>
+    type UnderTarget = NonNullable<(typeof AgentSchema.Encoded)['under']>[number]['target']
+    expectTypeOf<PersonReference>().not.toMatchTypeOf<AgentReference>()
+    expectTypeOf<AgentReference>().not.toMatchTypeOf<PersonReference>()
+    expectTypeOf<typeof owner>().not.toMatchTypeOf<Reviewer>()
+    expectTypeOf<string>().not.toMatchTypeOf<Reviewer>()
+    expectTypeOf<PersonReference>().toMatchTypeOf<AssignedTo>()
+    expectTypeOf<PersonReference>().not.toMatchTypeOf<UnderTarget>()
+    expectTypeOf<PersonReference>().not.toMatchTypeOf<(typeof MissionSchema.Encoded)['reportTo']>()
+    expectTypeOf<Parameters<typeof person>[0]>().toEqualTypeOf<`person/${string}`>()
+    expect(() =>
+      step({ id: 'approve', agentless: true, gate: { ...gate, reviewer: owner } } as never),
+    ).toThrow()
+  })
+
+  it('requires tags and does not declare unsupported policy fields', () => {
+    type Gate = typeof GateSchema.Encoded
+    expectTypeOf<Gate['kind']>().toEqualTypeOf<'field' | 'human'>()
+    expectTypeOf<Omit<typeof gate, 'kind'>>().not.toMatchTypeOf<Gate>()
+    expectTypeOf<
+      Extract<
+        'tier' | 'scope' | 'window' | 'fallback' | 'policy' | 'humanOnly',
+        keyof typeof HumanGateSchema.Encoded
+      >
+    >().toBeNever()
+    expectTypeOf<NonNullable<(typeof HumanGateSchema.Encoded)['mode']>>().toEqualTypeOf<
+      'approve' | 'feedback'
+    >()
+    for (const extra of [
+      { tier: 'critical' },
+      { tier: 'consultative' },
+      { scope: 'Berlin configuration' },
+      { window: '1h' },
+      { fallback: owner },
+      { policy: 'consent/example' },
+      { humanOnly: true },
+    ]) {
+      expect(() =>
+        step({ id: 'approve', agentless: true, gate: { ...gate, ...extra } } as never),
+      ).toThrow()
+    }
+    expect(() =>
+      step({
+        id: 'verify',
+        gate: { name: 'ok', field: { kind: 'exit_code', ref: 'exec/check', is: 0 } },
+      } as never),
+    ).toThrow()
+  })
+
+  it.each([
+    'person/',
+    'person//operator',
+    'person/operator/',
+    'person/../operator',
+    'agent/operator',
+    'operator',
+    'person/with spaces',
+  ])('rejects invalid person subjects %s', (subject) => {
+    expect(() => Schema.decodeSync(PersonReferenceSchema)({ kind: 'person', subject })).toThrow()
+  })
+
+  it('lowers a separate approve checkpoint before the risky step to exact KDL', () => {
+    expect(
+      emit([
+        mission({
+          id: 'home/berlin/cutover',
+          state: 'ready',
+          reportTo: owner,
+          goal: 'Apply only the reviewed Berlin cutover plan.',
+          steps: [
+            {
+              id: 'approve-cutover',
+              agentless: true,
+              timeout: '1d',
+              gate: {
+                ...gate,
+                question: 'Apply the reviewed configuration and rollback plan?',
+                review: [`doc/berlin-cutover@${'a'.repeat(64)}`, 'resource/example/rollback-plan'],
+              },
+            },
+            {
+              id: 'apply-cutover',
+              assignedTo: worker,
+              dependsOn: [{ step: 'approve-cutover', state: 'completed' }],
+              goal: 'Apply precisely the approved plan.',
+            },
+          ],
+        }),
+      ]),
+    ).toBe(`version 2
+mission "home/berlin/cutover" report-to="agent/example/owner" state="ready" {
+  goal "Apply only the reviewed Berlin cutover plan."
+  step "approve-cutover" timeout="1d" {
+    agentless
+    gate "Approve the bounded Berlin cutover" mode="approve" type="human" {
+      reviewer "person/schickling"
+      question "Apply the reviewed configuration and rollback plan?"
+      review "doc/berlin-cutover@${'a'.repeat(64)}"
+      review "resource/example/rollback-plan"
+    }
+  }
+  step "apply-cutover" {
+    assigned-to "agent/example/worker"
+    depends-on {
+      step "approve-cutover" "completed"
+    }
+    goal "Apply precisely the approved plan."
+  }
+}
+`)
+  })
+
+  it('lowers worker feedback without turning it into pre-work authorization', () => {
+    expect(
+      emit([step({ id: 'draft', assignedTo: worker, gate: { ...gate, mode: 'feedback' } })]),
+    ).toBe(`version 2
+step "draft" {
+  assigned-to "agent/example/worker"
+  gate "Approve the bounded Berlin cutover" mode="feedback" type="human" {
+    reviewer "person/schickling"
+  }
+}
+`)
+    expect(() =>
+      step({ id: 'approve', agentless: true, gate: { ...gate, mode: 'feedback' } }),
+    ).toThrow('feedback human gates require a worker step')
+  })
+
+  it('accepts explicit approve mode and rejects invalid modes and duplicate review targets', () => {
+    expect(
+      emit([step({ id: 'approve', agentless: true, gate: { ...gate, mode: 'approve' } })]),
+    ).toBe(emit([step({ id: 'approve', agentless: true, gate })]))
+    for (const invalid of [
+      { mode: 'consultative' },
+      { review: ['doc/plan', 'doc/plan'] },
+      { question: '' },
+      { reviewer: 'person/schickling' },
+    ]) {
+      expect(() =>
+        step({ id: 'approve', agentless: true, gate: { ...gate, ...invalid } } as never),
+      ).toThrow()
+    }
+  })
+
+  it('keeps imported agent IDs authoritative over preserved person-like metadata', () => {
+    const importedWorker = { ...worker, kind: 'person', subject: operator.subject }
+    const decoded = Schema.decodeSync(StepSchema)({ id: 'work', assignedTo: importedWorker })
+    expect(decoded.assignedTo).toBe(importedWorker)
+    expect(emit([step({ id: 'work', assignedTo: importedWorker })])).toBe(
+      'version 2\nstep "work" {\n  assigned-to "agent/example/worker"\n}\n',
+    )
+  })
+
+  it('lowers distinct person assignments and retains native field gate syntax', () => {
+    expect(
+      emit([step({ id: 'inspect', assignedTo: operator, goal: 'Inspect the plan.' })]),
+    ).toBe(
+      'version 2\nstep "inspect" {\n  assigned-to "person/schickling"\n  goal "Inspect the plan."\n}\n',
+    )
+    expect(
+      emit([
+        step({
+          id: 'verify',
+          gate: {
+            kind: 'field',
+            name: 'Successful check',
+            field: { kind: 'exit_code', ref: 'exec/check', is: 0 },
+          },
+        }),
+      ]),
+    ).toBe(
+      'version 2\nstep "verify" {\n  gate "Successful check" {\n    field "exit_code" "exec/check" "is" 0\n  }\n}\n',
+    )
+    expect(() => step({ id: 'inspect', agentless: true, assignedTo: operator })).toThrow()
+  })
+})
 
 const reporter = {
   id: 'ops/watcher',
@@ -200,12 +396,12 @@ describe('Smalltalk declarations', () => {
     { checkout: { repository: 'repo', base: 'main', branch: 'work' } },
   ])('validates the complete referenced launch declaration %j', (launch) => {
     const reference = { id: 'ops/invalid', ...launch }
-    expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+    expect(() => Schema.decodeSync(AgentReferenceSchema)(reference)).toThrow()
     expect(() =>
-      Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+      Schema.decodeSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
     ).toThrow()
     expect(() =>
-      Schema.decodeUnknownSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
+      Schema.decodeSync(AgentSchema)({ id: 'ops/worker', under: [{ target: reference }] }),
     ).toThrow()
     expect(() =>
       Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
@@ -250,19 +446,19 @@ describe('Smalltalk declarations', () => {
         for (const restart of ['never', 'always', undefined]) {
           const reference = { id: 'ops/worker', [kind]: [{ id: 'task', ...launch, restart }] }
           expect(() => agent(reference)).toThrow()
-          expect(() => Schema.decodeUnknownSync(AgentSchema)(reference)).toThrow()
-          expect(() => Schema.decodeUnknownSync(AgentReferenceSchema)(reference)).toThrow()
+          expect(() => Schema.decodeSync(AgentSchema)(reference)).toThrow()
+          expect(() => Schema.decodeSync(AgentReferenceSchema)(reference)).toThrow()
           expect(() =>
-            Schema.decodeUnknownSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
+            Schema.decodeSync(StepSchema)({ id: 'inspect', assignedTo: reference }),
           ).toThrow()
           expect(() =>
-            Schema.decodeUnknownSync(AgentSchema)({
+            Schema.decodeSync(AgentSchema)({
               id: 'ops/subordinate',
               under: [{ target: reference }],
             }),
           ).toThrow()
           expect(() =>
-            Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
+            Schema.decodeSync(MissionSchema)({ ...fanInMission(), reportTo: reference }),
           ).toThrow()
         }
       }
@@ -527,52 +723,193 @@ describe('Smalltalk declarations', () => {
 
 const stBin = process.env.ST_BIN
 const testWithSt = stBin !== undefined && stBin !== '' ? it : it.skip
+
+// Explicitly opt in to upstream's separate test-support executable, never a production fallback.
+// It exercises gate semantics with synthetic person attribution, not production authentication.
+const stFixtureBin = process.env.ST_FIXTURE_BIN
+const testWithStFixture = stFixtureBin !== undefined && stFixtureBin !== '' ? it : it.skip
+
+// This person exists only in each private scratch daemon's config, never in a live fleet.
+const gateReviewer = 'person/genie-human-gate-test'
+
+type IsolatedSt = {
+  dir: string
+  socket: string
+  isolatedEnv: NodeJS.ProcessEnv
+  command: (...args: string[]) => SpawnSyncReturns<string>
+  get: <T>(path: string) => Promise<T>
+}
+
+/**
+ * Polls real daemon projections until a condition is observed. The isolated daemon has no
+ * deterministic clock seam; the elapsed time never stands in for the asserted condition.
+ */
+const pollSt = async <T>(
+  read: () => Promise<T>,
+  ready: (value: T) => boolean,
+  description: string,
+  timeoutMs = 20000,
+): Promise<T> => {
+  const deadline = Date.now() + timeoutMs
+  let last: T
+  do {
+    last = await read()
+    if (ready(last)) return last
+    const { promise, resolve } = Promise.withResolvers<void>()
+    setTimeout(resolve, 100)
+    await promise
+  } while (Date.now() < deadline)
+  throw new Error(`Timed out waiting for ${description}; last observation: ${JSON.stringify(last)}`)
+}
+
+const withIsolatedSt = async (
+  { kind }: { kind: 'production' | 'fixture' },
+  run: (st: IsolatedSt) => Promise<void>,
+) => {
+  const binary = kind === 'fixture' ? stFixtureBin : stBin
+  if (binary === undefined || binary === '')
+    throw new Error(`${kind === 'fixture' ? 'ST_FIXTURE_BIN' : 'ST_BIN'} is required for ${kind} mode`)
+  const dir = mkdtempSync(join(tmpdir(), 'genie-st-'))
+  const socket = join(dir, 'daemon.sock')
+  const stateDir = join(dir, 'state')
+  const ptyRoot = join(dir, 'pty')
+  const isolatedEnv = {
+    ...process.env,
+    HOME: join(dir, 'home'),
+    XDG_CONFIG_HOME: join(dir, 'config'),
+    XDG_DATA_HOME: join(dir, 'data'),
+    XDG_STATE_HOME: join(dir, 'xdg-state'),
+    XDG_RUNTIME_DIR: join(dir, 'runtime'),
+  }
+  for (const path of [
+    isolatedEnv.HOME,
+    isolatedEnv.XDG_CONFIG_HOME,
+    isolatedEnv.XDG_DATA_HOME,
+    isolatedEnv.XDG_STATE_HOME,
+    isolatedEnv.XDG_RUNTIME_DIR,
+    stateDir,
+    ptyRoot,
+  ])
+    mkdirSync(path, { mode: 0o700 })
+  const configDir = join(isolatedEnv.XDG_CONFIG_HOME, 'st3')
+  mkdirSync(configDir, { mode: 0o700 })
+  const config = join(configDir, 'config.toml')
+  writeFileSync(
+    config,
+    [
+      'node = "genie-test"',
+      `person = ${JSON.stringify(gateReviewer)}`,
+      `state_dir = ${JSON.stringify(stateDir)}`,
+      `pty_root = ${JSON.stringify(ptyRoot)}`,
+      `socket = ${JSON.stringify(socket)}`,
+      `client_gateway_socket = ${JSON.stringify(join(dir, 'gateway.sock'))}`,
+      'peers = []',
+      '',
+    ].join('\n'),
+    { mode: 0o600 },
+  )
+  const daemon = spawn(
+    binary,
+    [
+      'up',
+      '--config',
+      config,
+      '--node',
+      'genie-test',
+      '--state-dir',
+      stateDir,
+      '--pty-root',
+      ptyRoot,
+      '--socket',
+      socket,
+      '--client-gateway-socket',
+      join(dir, 'gateway.sock'),
+    ],
+    { env: isolatedEnv, stdio: 'pipe' },
+  )
+  const exited = Promise.withResolvers<void>()
+  daemon.once('exit', () => exited.resolve())
+  let daemonLog = ''
+  let daemonError: Error | undefined
+  daemon.on('error', (error) => {
+    daemonError = error
+    exited.resolve()
+  })
+  const capture = (chunk: Buffer) => {
+    daemonLog = (daemonLog + chunk.toString()).slice(-16000)
+  }
+  daemon.stdout.on('data', capture)
+  daemon.stderr.on('data', capture)
+  try {
+    await pollSt(
+      async () => {
+        if (daemonError !== undefined) throw daemonError
+        if (daemon.exitCode !== null || daemon.signalCode !== null)
+          throw new Error(`Isolated daemon exited during startup: ${daemonLog}`)
+        return existsSync(socket)
+      },
+      Boolean,
+      'isolated daemon socket',
+    )
+    const get = <T>(path: string): Promise<T> => {
+      const { promise, resolve, reject } = Promise.withResolvers<T>()
+      const req = request({ socketPath: socket, path, method: 'GET' }, (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk: string) => {
+          body += chunk
+        })
+        response.on('error', reject)
+        response.on('end', () => {
+          if (response.statusCode !== 200)
+            reject(new Error(`${path} returned ${response.statusCode}: ${body}\n${daemonLog}`))
+          else resolve(JSON.parse(body) as T)
+        })
+      })
+      req.on('error', reject)
+      req.setTimeout(5000, () => req.destroy(new Error(`Timed out reading ${path}`)))
+      req.end()
+      return promise
+    }
+    await run({
+      dir,
+      socket,
+      isolatedEnv,
+      get,
+      command: (...args) =>
+        spawnSync(binary, ['--endpoint', `unix://${socket}`, '--json', ...args], {
+          encoding: 'utf8',
+          timeout: 30000,
+          env: isolatedEnv,
+        }),
+    })
+  } finally {
+    if (daemon.pid !== undefined && daemon.exitCode === null && daemon.signalCode === null) {
+      const timer = setTimeout(() => daemon.kill('SIGKILL'), 5000)
+      daemon.kill('SIGTERM')
+      await exited.promise
+      clearTimeout(timer)
+    }
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
+  }
+}
+
+const stJson = <T>(st: IsolatedSt, ...args: string[]): T => {
+  const result = st.command(...args)
+  expect(
+    result.status,
+    `${args.join(' ')}: ${result.error ?? ''}\n${result.stderr}\n${result.stdout}`,
+  ).toBe(0)
+  return JSON.parse(result.stdout) as T
+}
+
 testWithSt(
   'round-trips canonical mission and strict agent fields through isolated st daemon',
-  async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'genie-st-'))
-    const socket = join(dir, 'daemon.sock')
-    const gateway = join(dir, 'gateway.sock')
-    const source = join(dir, 'mission.kdl')
-    const actor = process.env.ST_AGENT ?? 'person/genie-test'
-    const isolatedEnv = {
-      ...process.env,
-      HOME: join(dir, 'home'),
-      XDG_CONFIG_HOME: join(dir, 'config'),
-      XDG_DATA_HOME: join(dir, 'data'),
-      XDG_STATE_HOME: join(dir, 'xdg-state'),
-      XDG_RUNTIME_DIR: join(dir, 'runtime'),
-    }
-    for (const path of [
-      isolatedEnv.HOME,
-      isolatedEnv.XDG_CONFIG_HOME,
-      isolatedEnv.XDG_DATA_HOME,
-      isolatedEnv.XDG_STATE_HOME,
-      isolatedEnv.XDG_RUNTIME_DIR,
-    ])
-      mkdirSync(path)
-    writeFileSync(source, canonical())
-    const daemon = spawn(
-      stBin!,
-      [
-        'up',
-        '--node',
-        'genie-test',
-        '--state-dir',
-        join(dir, 'state'),
-        '--pty-root',
-        join(dir, 'pty'),
-        '--socket',
-        socket,
-        '--client-gateway-socket',
-        gateway,
-      ],
-      { env: isolatedEnv, stdio: 'pipe' },
-    )
-    try {
-      for (let i = 0; i < 100 && existsSync(socket) === false && daemon.exitCode === null; i++)
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      expect(existsSync(socket)).toBe(true)
+  async () =>
+    withIsolatedSt({ kind: 'production' }, async ({ dir, socket, isolatedEnv }) => {
+      const source = join(dir, 'mission.kdl')
+      const actor = process.env.ST_AGENT ?? gateReviewer
+      writeFileSync(source, canonical())
       const publish = () =>
         spawnSync(
           stBin!,
@@ -654,15 +991,429 @@ testWithSt(
       expect(automaticShown.status, automaticShown.stderr).toBe(0)
       expect(automaticShown.stdout).not.toContain('rollout')
       expect(automaticShown.stdout).not.toContain('handles-faults')
-    } finally {
-      if (daemon.exitCode === null && daemon.signalCode === null) {
-        const { promise, resolve } = Promise.withResolvers<void>()
-        daemon.once('exit', () => resolve())
-        daemon.kill('SIGTERM')
-        await promise
-      }
-      rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
-    }
-  },
+    }),
   60000,
+)
+
+// Human gate acceptance; plan and blocked edges: ../HUMAN_GATE_ACCEPTANCE.md.
+type NativeStep = {
+  subject: string
+  step: string
+  definition_hash: string
+  status: string
+  attempt: number
+  claimant: string | null
+  worker_reported: boolean
+}
+type NativeRun = {
+  subject: string
+  generation: string
+  revision: string
+  status: string
+  steps: NativeStep[]
+}
+type NativeReview = {
+  operation: string
+  request: string
+  owner: string
+  mission_run: string
+  generation: string
+  reviewer: string
+  mode: string
+  question: string
+  attempt: number
+  decisions: string[]
+}
+type NativeClaim = {
+  id: string
+  subject: string
+  kind: string
+  actor: string | null
+  body: { fields: Record<string, unknown>; evidence: string[] }
+}
+type NativeCard = {
+  kind: string
+  id: string
+  episode: string
+  attention_kind: string
+  source_id: string
+  person_id: string
+  review_mode: string | null
+  mission_run_id: string | null
+  actions: string[]
+}
+
+const gateQuestion = 'Allow the isolated risky worker to become ready?'
+const closedReview = /review-not-requested|is not open|no pending human review/u
+const nativeStep = (run: NativeRun, id: string) => {
+  const found = run.steps.find((candidate) => candidate.step === id)
+  expect(found, `${run.subject} must contain step ${id}`).toBeDefined()
+  return found!
+}
+const nativeRun = (st: IsolatedSt, subject: string) =>
+  stJson<NativeRun>(st, 'missions', 'show', subject)
+const nativeReviews = (st: IsolatedSt) =>
+  st.get<NativeReview[]>(`/v1/reviews?reviewer=${encodeURIComponent(gateReviewer)}`)
+const nativeCards = (st: IsolatedSt) => {
+  const page = stJson<{ value: { items: NativeCard[]; page: { has_more: boolean } } }>(
+    st,
+    'alerts',
+    'ls',
+    '--as',
+    gateReviewer,
+    '--limit',
+    '200',
+  )
+  expect(page.value.page.has_more).toBe(false)
+  return page.value.items.filter((item) => item.kind === 'attention')
+}
+/** Every recorded answer bound to this exact native request episode. */
+const nativeResults = async (st: IsolatedSt, review: NativeReview) => {
+  const page = await st.get<{ claims: NativeClaim[]; next_cursor: number | null }>(
+    `/v1/claims?subject=${encodeURIComponent(review.operation)}&limit=500`,
+  )
+  expect(page.next_cursor).toBeNull()
+  return page.claims.filter(
+    (claim) => claim.kind === 'gate.result' && claim.body.fields.request === review.request,
+  )
+}
+
+/**
+ * Publishes an agentless critical approval checkpoint before a risky worker step.
+ * Every mutation names the person explicitly; this is R1 attribution, not a person credential.
+ */
+const publishHumanFixture = (st: IsolatedSt, id: string, checkpointTimeout?: string) => {
+  const seat = (seatId: string) =>
+    ({
+      id: seatId,
+      command: 'true',
+      workspace: st.dir,
+      restart: 'never',
+      rollout: 'manual',
+    }) as const
+  const worker = seat('acceptance/worker')
+  const observer = seat('acceptance/observer')
+  const seats = join(st.dir, 'human-gate-agents.kdl')
+  writeFileSync(seats, emit([agent(worker), agent(observer)]))
+  stJson(st, 'agents', 'apply', seats, '--as', gateReviewer)
+  const source = join(st.dir, `${id.replace('/', '-')}.kdl`)
+  writeFileSync(
+    source,
+    emit([
+      mission({
+        id,
+        state: 'ready',
+        reportTo: observer,
+        goal: 'Exercise native current human review episodes without performing risky work.',
+        steps: [
+          {
+            id: 'authorize',
+            agentless: true,
+            ...(checkpointTimeout === undefined ? {} : { timeout: checkpointTimeout }),
+            gate: {
+              name: 'Operator approves readiness',
+              kind: 'human',
+              reviewer: person(gateReviewer),
+              mode: 'approve',
+              question: gateQuestion,
+            },
+          },
+          {
+            id: 'risky',
+            assignedTo: worker,
+            dependsOn: [{ step: 'authorize', state: 'completed' }],
+            goal: 'Become ready only after the current authorization checkpoint passes.',
+          },
+        ],
+      }),
+    ]),
+  )
+  stJson(st, 'missions', 'publish', source, '--as', gateReviewer)
+  return () =>
+    stJson<{ mission_run: NativeRun }>(
+      st,
+      'missions',
+      'start',
+      `mission/${id}`,
+      '--workspace',
+      st.dir,
+      '--as',
+      gateReviewer,
+    ).mission_run
+}
+
+/** Captures the current native request, its exact binding, and its person attention card. */
+const pendingHumanEpisode = async (st: IsolatedSt, started: NativeRun) => {
+  const reviews = await pollSt(
+    () => nativeReviews(st),
+    (items) => items.some((item) => item.mission_run === started.subject),
+    `human request for ${started.subject}`,
+  )
+  const review = reviews.find((item) => item.mission_run === started.subject)!
+  const run = nativeRun(st, started.subject)
+  const checkpoint = nativeStep(run, 'authorize')
+  expect(review).toMatchObject({
+    owner: checkpoint.subject,
+    generation: run.generation,
+    reviewer: gateReviewer,
+    mode: 'approve',
+    question: gateQuestion,
+    attempt: checkpoint.attempt,
+    decisions: ['approved', 'rejected'],
+  })
+  expect(checkpoint.status).toBe('working')
+  expect(nativeStep(run, 'risky')).toMatchObject({
+    status: 'pending',
+    claimant: null,
+    worker_reported: false,
+  })
+  const requested = await st.get<NativeClaim>(
+    `/v1/claims/by-id/${encodeURIComponent(review.request)}`,
+  )
+  expect(requested).toMatchObject({
+    id: review.request,
+    subject: review.operation,
+    kind: 'gate.requested',
+    body: {
+      fields: {
+        owner: checkpoint.subject,
+        reviewer: gateReviewer,
+        mode: 'approve',
+        mission_revision: run.revision,
+        step_definition: checkpoint.definition_hash,
+        attempt: checkpoint.attempt,
+      },
+    },
+  })
+  const cards = await pollSt(
+    async () => nativeCards(st),
+    (items) => items.some((item) => item.episode === review.request),
+    `attention card for ${review.request}`,
+  )
+  const card = cards.find((item) => item.episode === review.request)!
+  expect(card.id).toMatch(/^attention\//u)
+  expect(card).toMatchObject({
+    attention_kind: 'human-gate',
+    source_id: checkpoint.subject,
+    person_id: gateReviewer,
+    review_mode: 'approve',
+    mission_run_id: run.subject,
+  })
+  expect(card.actions).toEqual(expect.arrayContaining(['review.approve', 'review.reject']))
+  expect(card.actions).not.toContain('review.request-changes')
+  expect(stJson(st, 'alerts', 'show', card.id, '--as', gateReviewer)).toMatchObject({
+    episode: review.request,
+    kind: 'human-gate',
+    subject: checkpoint.subject,
+    person: gateReviewer,
+  })
+  expect(await nativeResults(st, review)).toEqual([])
+  return { run, review, card }
+}
+
+const expectEpisodeClosed = async (st: IsolatedSt, review: NativeReview) => {
+  await pollSt(
+    () => nativeReviews(st),
+    (items) => items.every((item) => item.request !== review.request),
+    `closed human request ${review.request}`,
+  )
+  await pollSt(
+    async () => nativeCards(st),
+    (items) => items.every((item) => item.episode !== review.request),
+    `removed attention card for ${review.request}`,
+  )
+}
+
+const expectRefused = (result: SpawnSyncReturns<string>, pattern: RegExp) => {
+  expect(result.status, result.stdout).not.toBe(0)
+  expect(result.stderr).toMatch(pattern)
+}
+
+testWithStFixture(
+  'isolated human gate: critical silence holds readiness until the named reviewer approves',
+  async () =>
+    withIsolatedSt({ kind: 'fixture' }, async (st) => {
+      const start = publishHumanFixture(st, 'acceptance/critical')
+      const { run, review, card } = await pendingHumanEpisode(st, start())
+      // Re-observe the same episode; unanswered critical review stays held, never approved.
+      expect(
+        (await nativeReviews(st)).filter((item) => item.request === review.request),
+      ).toHaveLength(1)
+      expect(nativeStep(nativeRun(st, run.subject), 'risky').status).toBe('pending')
+      expect(await nativeResults(st, review)).toEqual([])
+      expectRefused(
+        st.command('alerts', 'approve', card.id, '--as', 'person/genie-human-gate-other-test'),
+        /wrong-reviewer|requires `person\/genie-human-gate-test`/u,
+      )
+      expect(await nativeResults(st, review)).toEqual([])
+      const result = stJson<NativeClaim>(st, 'alerts', 'approve', card.id, '--as', gateReviewer)
+      expect(result).toMatchObject({
+        subject: review.operation,
+        kind: 'gate.result',
+        actor: gateReviewer,
+        body: {
+          fields: { request: review.request, decision: 'approved', verdict: 'pass' },
+          evidence: expect.arrayContaining([review.request]),
+        },
+      })
+      const admitted = await pollSt(
+        async () => nativeRun(st, run.subject),
+        (value) => nativeStep(value, 'risky').status === 'ready',
+        'approved dependent worker readiness',
+      )
+      expect(nativeStep(admitted, 'authorize').status).toBe('completed')
+      expect(nativeStep(admitted, 'risky')).toMatchObject({ claimant: null, worker_reported: false })
+      await expectEpisodeClosed(st, review)
+      expectRefused(
+        st.command(
+          'alerts',
+          'reject',
+          card.id,
+          '--reason',
+          'Late conflicting decision.',
+          '--as',
+          gateReviewer,
+        ),
+        closedReview,
+      )
+      expect((await nativeResults(st, review)).map((claim) => claim.id)).toEqual([result.id])
+      expect(nativeStep(nativeRun(st, run.subject), 'risky').status).toBe('ready')
+    }),
+  120000,
+)
+
+testWithStFixture(
+  'isolated human gate: an expired agentless checkpoint fails instead of approving',
+  async () =>
+    withIsolatedSt({ kind: 'fixture' }, async (st) => {
+      const start = publishHumanFixture(st, 'acceptance/timeout', '2s')
+      const { run, review, card } = await pendingHumanEpisode(st, start())
+      const failed = await pollSt(
+        async () => nativeRun(st, run.subject),
+        (value) => value.status === 'failed',
+        'agentless checkpoint timeout failure',
+        90000,
+      )
+      expect(nativeStep(failed, 'authorize').status).toBe('failed')
+      expect(nativeStep(failed, 'risky')).toMatchObject({
+        status: 'cancelled',
+        claimant: null,
+        worker_reported: false,
+      })
+      expect(await nativeResults(st, review)).toEqual([])
+      await expectEpisodeClosed(st, review)
+      expectRefused(st.command('alerts', 'approve', card.id, '--as', gateReviewer), closedReview)
+      expect(await nativeResults(st, review)).toEqual([])
+      expect(nativeRun(st, run.subject).status).toBe('failed')
+    }),
+  150000,
+)
+
+testWithStFixture(
+  'isolated human gate: rejection fails the checkpoint without admitting its dependent',
+  async () =>
+    withIsolatedSt({ kind: 'fixture' }, async (st) => {
+      const start = publishHumanFixture(st, 'acceptance/rejected')
+      const { run, review, card } = await pendingHumanEpisode(st, start())
+      expectRefused(
+        st.command('alerts', 'reject', card.id, '--as', gateReviewer),
+        /missing-review-reason|needs a reason|--reason/u,
+      )
+      const reason = 'The isolated plan is not authorized.'
+      const result = stJson<NativeClaim>(
+        st,
+        'alerts',
+        'reject',
+        card.id,
+        '--reason',
+        reason,
+        '--as',
+        gateReviewer,
+      )
+      expect(result).toMatchObject({
+        kind: 'gate.result',
+        actor: gateReviewer,
+        body: {
+          fields: { request: review.request, decision: 'rejected', verdict: 'fail', reason },
+          evidence: expect.arrayContaining([review.request]),
+        },
+      })
+      const stopped = await pollSt(
+        async () => nativeRun(st, run.subject),
+        (value) => value.status === 'failed',
+        'rejected mission failure',
+      )
+      expect(nativeStep(stopped, 'authorize').status).toBe('failed')
+      expect(nativeStep(stopped, 'risky')).toMatchObject({
+        status: 'cancelled',
+        claimant: null,
+        worker_reported: false,
+      })
+      await expectEpisodeClosed(st, review)
+      expectRefused(st.command('alerts', 'approve', card.id, '--as', gateReviewer), closedReview)
+      expect((await nativeResults(st, review)).map((claim) => claim.id)).toEqual([result.id])
+      expect(nativeRun(st, run.subject).status).toBe('failed')
+    }),
+  120000,
+)
+
+testWithStFixture(
+  'isolated human gate: cancellation fences late decisions from a fresh run episode',
+  async () =>
+    withIsolatedSt({ kind: 'fixture' }, async (st) => {
+      const start = publishHumanFixture(st, 'acceptance/stale')
+      const old = await pendingHumanEpisode(st, start())
+      stJson(
+        st,
+        'missions',
+        'cancel',
+        old.run.subject,
+        '--reason',
+        'Close the old authorization episode.',
+        '--as',
+        gateReviewer,
+      )
+      await pollSt(
+        async () => nativeRun(st, old.run.subject),
+        (value) => value.status === 'cancelled',
+        'cancelled old run',
+      )
+      await expectEpisodeClosed(st, old.review)
+      const fresh = await pendingHumanEpisode(st, start())
+      expect(fresh.run.subject).not.toBe(old.run.subject)
+      expect(fresh.review.request).not.toBe(old.review.request)
+      expect(fresh.review.operation).not.toBe(old.review.operation)
+      expect(fresh.card.id).not.toBe(old.card.id)
+      expectRefused(
+        st.command('alerts', 'approve', old.card.id, '--as', gateReviewer),
+        closedReview,
+      )
+      expect(await nativeResults(st, old.review)).toEqual([])
+      expect(await nativeResults(st, fresh.review)).toEqual([])
+      expect(nativeRun(st, old.run.subject).status).toBe('cancelled')
+      expect(nativeStep(nativeRun(st, fresh.run.subject), 'risky').status).toBe('pending')
+      expect(
+        (await nativeReviews(st)).filter((item) => item.request === fresh.review.request),
+      ).toHaveLength(1)
+      const result = stJson<NativeClaim>(
+        st,
+        'alerts',
+        'approve',
+        fresh.card.id,
+        '--as',
+        gateReviewer,
+      )
+      await pollSt(
+        async () => nativeRun(st, fresh.run.subject),
+        (value) => nativeStep(value, 'risky').status === 'ready',
+        'fresh episode dependent readiness',
+      )
+      await expectEpisodeClosed(st, fresh.review)
+      expect(await nativeResults(st, old.review)).toEqual([])
+      expect((await nativeResults(st, fresh.review)).map((claim) => claim.id)).toEqual([
+        result.id,
+      ])
+      expect(nativeRun(st, old.run.subject).status).toBe('cancelled')
+    }),
+  120000,
 )

@@ -221,6 +221,27 @@ export const AgentReferenceSchema = Schema.declare<AgentReference>(isAgentRefere
   identifier: 'St.AgentReference',
 })
 
+/** A person subject, distinct from the ID view of an imported agent declaration. */
+export const PersonReferenceSchema = Schema.Struct({
+  kind: Schema.Literal('person'),
+  subject: Schema.String.pipe(
+    Schema.refine(
+      (subject): subject is `person/${string}` =>
+        subject.startsWith('person/') &&
+        subject.length > 'person/'.length &&
+        subject.includes('//') === false &&
+        Schema.is(SubjectId)(subject),
+      { message: 'invalid person subject' },
+    ),
+  ),
+}).annotate({ identifier: 'St.PersonReference' })
+
+export type PersonReference = typeof PersonReferenceSchema.Type
+
+/** References a named person; it is attribution, not a person credential. */
+export const person = (subject: `person/${string}`): PersonReference =>
+  decode({ schema: PersonReferenceSchema, input: { kind: 'person', subject } })
+
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
   identity: Schema.optionalKey(Text),
@@ -289,14 +310,39 @@ export const AgentSchema = AgentSchemaFields.pipe(
 const isAgentDeclaration = Schema.is(AgentSchema)
 
 /** A step gate on an exit code or subject state. */
-export const GateSchema = Schema.Struct({
+export const FieldGateSchema = Schema.Struct({
+  kind: Schema.Literal('field'),
   name: Text,
   field: Schema.Struct({
     kind: Schema.Literals(['exit_code', 'state']),
     ref: Text,
     is: Schema.Union([Schema.String, Schema.Finite]),
   }),
-}).annotate({ identifier: 'St.Gate' })
+}).annotate({ identifier: 'St.FieldGate' })
+
+/**
+ * A current-episode attributed review. Critical is the default: silence never passes.
+ * TODO: authenticated-person-only decisions: https://github.com/compoundingtech/smalltalk/issues/2184
+ */
+export const HumanGateSchema = Schema.Struct({
+  kind: Schema.Literal('human'),
+  name: Text,
+  reviewer: PersonReferenceSchema,
+  mode: Schema.optionalKey(Schema.Literals(['approve', 'feedback'])),
+  question: Schema.optionalKey(Text),
+  review: Schema.optionalKey(
+    Schema.Array(Text).pipe(
+      Schema.refine((targets): targets is typeof targets => new Set(targets).size === targets.length, {
+        message: 'human gate review targets must be unique',
+      }),
+    ),
+  ),
+}).annotate({ identifier: 'St.HumanGate' })
+
+/** Tagged native gate variants; unsupported consent/window policies are not authorable. */
+export const GateSchema = Schema.Union([FieldGateSchema, HumanGateSchema]).annotate({
+  identifier: 'St.Gate',
+})
 
 /** An agentless command a step runs. */
 export const ExecSchema = Schema.Struct({
@@ -320,7 +366,7 @@ export const StepSchema = Schema.Struct({
   id: LocalId,
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
-  assignedTo: Schema.optionalKey(AgentReferenceSchema),
+  assignedTo: Schema.optionalKey(Schema.Union([AgentReferenceSchema, PersonReferenceSchema])),
   dependsOn: Schema.optionalKey(
     Schema.Array(DependsOnSchema).pipe(
       Schema.refine(
@@ -338,6 +384,12 @@ export const StepSchema = Schema.Struct({
     {
       message: 'agentless and assigned-to conflict',
     },
+  ),
+  Schema.refine(
+    (s): s is typeof s =>
+      s.gate?.kind !== 'human' ||
+      (s.gate.mode !== 'feedback' || s.agentless !== true),
+    { message: 'feedback human gates require a worker step' },
   ),
   Schema.annotate({ identifier: 'St.Step' }),
 )
@@ -461,7 +513,12 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
   const children: Node[] = []
   if (s.agentless === true) children.push(node({ name: 'agentless' }))
   if (s.assignedTo !== undefined) {
-    children.push(child({ name: 'assigned-to', value: `agent/${s.assignedTo.id}` }))
+    children.push(
+      child({
+        name: 'assigned-to',
+        value: 'id' in s.assignedTo ? `agent/${s.assignedTo.id}` : s.assignedTo.subject,
+      }),
+    )
   }
   if (s.dependsOn !== undefined) {
     children.push(
@@ -489,13 +546,26 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
     )
   }
   if (s.gate !== undefined) {
-    const field = s.gate.field
+    const gate = s.gate
     children.push(
-      node({
-        name: 'gate',
-        args: [s.gate.name],
-        children: [node({ name: 'field', args: [field.kind, field.ref, 'is', field.is] })],
-      }),
+      gate.kind === 'field'
+        ? node({
+            name: 'gate',
+            args: [gate.name],
+            children: [
+              node({ name: 'field', args: [gate.field.kind, gate.field.ref, 'is', gate.field.is] }),
+            ],
+          })
+        : node({
+            name: 'gate',
+            args: [gate.name],
+            props: { type: 'human', mode: gate.mode ?? 'approve' },
+            children: [
+              child({ name: 'reviewer', value: gate.reviewer.subject }),
+              ...optionalChild({ name: 'question', value: gate.question }),
+              ...(gate.review ?? []).map((target) => child({ name: 'review', value: target })),
+            ],
+          }),
     )
   }
   return node({
