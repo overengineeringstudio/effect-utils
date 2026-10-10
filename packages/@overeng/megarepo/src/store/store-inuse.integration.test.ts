@@ -16,6 +16,8 @@
  */
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
+import { unlinkSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
@@ -88,24 +90,38 @@ const runReferenceFixture = ({
   code: string
   asRoot?: boolean
 }) => {
-  const result = spawnSync(
-    'sudo',
-    [
-      '-n',
-      ...(asRoot === true ? [] : ['-u', 'nobody']),
-      '/usr/bin/env',
-      `PATH=${process.env['PATH'] ?? ''}`,
-      'bun',
-      '--eval',
-      `
-        import { NodeServices, Effect, FileSystem, parseProcStat, parseProcUids, readProcessReferences, readWorktreeReferencesInUse, encodeJson } from ${encodeJson(`${cwd}/../reference-runtime.mjs`)}
-        ${code}
-      `,
-    ],
-    { cwd, encoding: 'utf8', timeout: 120_000 },
+  // Root process coverage can exceed Linux's per-argument limit on a busy host.
+  // Keep the real fixture program in the scoped filesystem, not a giant --eval argument.
+  const scriptPath = `${cwd}/../reference-fixture-${randomUUID()}.mjs`
+  writeFileSync(
+    scriptPath,
+    `
+      import { NodeServices, Effect, FileSystem, parseProcStat, parseProcUids, readProcessReferences, readWorktreeReferencesInUse, encodeJson } from ${encodeJson(`${cwd}/../reference-runtime.mjs`)}
+      ${code}
+    `,
+    { mode: 0o644 },
   )
-  expect(result.status, `sudo fixture failed: ${result.stderr}`).toBe(0)
-  return decodeJson(result.stdout.trim())
+  try {
+    const result = spawnSync(
+      'sudo',
+      [
+        '-n',
+        ...(asRoot === true ? [] : ['-u', 'nobody']),
+        '/usr/bin/env',
+        `PATH=${process.env['PATH'] ?? ''}`,
+        'bun',
+        scriptPath,
+      ],
+      { cwd, encoding: 'utf8', timeout: 120_000 },
+    )
+    expect(
+      result.status,
+      `sudo fixture failed: ${result.error?.message ?? ''}; signal=${result.signal}; ${result.stderr}`,
+    ).toBe(0)
+    return decodeJson(result.stdout.trim())
+  } finally {
+    unlinkSync(scriptPath)
+  }
 }
 
 /** PR_SET_DUMPABLE=0 denies even same-UID cwd/root/fd/maps reads, but not stat. */
