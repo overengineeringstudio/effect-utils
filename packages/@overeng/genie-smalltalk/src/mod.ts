@@ -516,7 +516,7 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
     children.push(
       child({
         name: 'assigned-to',
-        value: 'subject' in s.assignedTo ? s.assignedTo.subject : `agent/${s.assignedTo.id}`,
+        value: 'id' in s.assignedTo ? `agent/${s.assignedTo.id}` : s.assignedTo.subject,
       }),
     )
   }
