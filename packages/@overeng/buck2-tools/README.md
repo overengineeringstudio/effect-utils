@@ -24,9 +24,13 @@ are not global check dependencies.
 
 Snapshot identity is computed from the admitted inputs and all declared roots
 **before copying**. An unchanged publication validates and reuses the immutable
-store entry without writing its payload. Literal symlink targets participate in
-the input hash: a Buck artifact-path change is a new admission even when package
-file bytes are unchanged, and therefore materializes a new byte-owned snapshot.
+store entry without writing payloads, pointers, retention records, or the package
+manifest's editor-resolution signal. Declared links are hashed by their root
+owner and relative destination, not the disposable Buck artifact path or literal
+link spelling. Equivalent path relocations therefore reuse one generation;
+changes to transitive workspace source, declarations, or dependency bytes still
+select a new generation. Literal link inventories remain part of the admission
+stability proof, so changing even an equivalent link while copying fails closed.
 
 Batch publication prepares one private candidate at a time and serializes
 commits within each editor state root. Independent root fingerprints within
@@ -43,16 +47,43 @@ waiting for the remaining children; the original error remains available as
 the cause.
 
 Repository tasks retain **current plus previous (two snapshots per view)**,
-not two snapshots for the entire shared store. With `N` package views the bound
-is `2 × N` completed snapshots, plus in-flight candidates. After the atomic
-pointer flip, the publisher prunes only older, validated entries owned by that
-view. Sibling views and candidates are never pruned. The preceding snapshot is
-the rollback/read-overlap window; there is no process-reference lease registry
-or idle-worktree collector. Retention runs only when that view publishes, so an
-inactive worktree keeps its last published snapshots until it is reclaimed.
+not two snapshots for the entire shared store. The publisher's
+`--snapshot-retention` option configures that total (2 through 32). Superseded
+generations also receive a **five-minute grace period from supersession**,
+configurable with `--snapshot-grace-ms`. A snapshot root's modification time is
+lifecycle metadata recording its last supersession; it is not content identity.
+Once the grace expires, publication prunes older validated entries owned by that
+view, but never current pointers, state-root symlink targets, explicit reader
+pins, or concretely process-referenced snapshots. Linux checks same-user
+`/proc` executable, working-directory, descriptor, mapped-file, and entry-point
+references; macOS uses its native `lsof` reader inventory. An unavailable
+inventory defers collection. Sibling views and in-flight candidates are never
+pruned. The steady-state bound is the configured count per view; generations
+within grace or protected by live references are intentionally additional.
+Retention runs on publication, not on an idle-worktree background collector.
+
+Editors that cache closed paths cannot be inferred from a kernel file inventory.
+Pin the generation for the reader's lifetime, then remove the pin after closing
+or refreshing that reader. For example, from `packages/.editor-view`:
+
+```sh
+mkdir -p .pins
+ln -s "../$(readlink tui-core)" .pins/my-editor
+# After the editor no longer uses that generation:
+rm .pins/my-editor
+```
+
+Pins may target either a snapshot root or a path inside it. A later publication
+collects unpinned, unreferenced generations after their grace has expired.
 
 Snapshots deliberately own their Buck artifact bytes and remain usable after
-`buck-out` is removed. They must not hardlink or symlink to disposable artifacts.
+`buck-out` is removed. Copies use reflinks when supported. On changed publication,
+identical read-only regular files are content-hashed and hardlinked **between
+publisher-owned generations only**, with read, execute, and special permission
+bits preserved. They never hardlink or symlink to disposable artifacts.
+Snapshot metadata stays independent; removing a generation releases a payload
+inode only when its last snapshot link disappears. This shares retained payload
+bytes without adding a separate blob store or garbage-collection authority.
 
 ### Retired worktree removal
 

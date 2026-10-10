@@ -1,9 +1,11 @@
 import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
+  closeSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readlinkSync,
   readdirSync,
@@ -12,6 +14,7 @@ import {
   statSync,
   symlinkSync,
   writeFileSync,
+  utimesSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -99,6 +102,7 @@ const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}
     workspaceAuthority,
     consumerCache,
     snapshotRetention: 2,
+    snapshotGraceMs: 0,
     mv,
   }
   return {
@@ -380,15 +384,16 @@ describe('editor view publisher', () => {
 
         // A warm publication must not invoke cp or enter materialization, even
         // for finite closures. Compare every store file, not just the record.
-        await expect(
-          publishEditorView({
-            ...options,
-            cp: falseTool,
-            beforeMaterialize: () => {
-              throw new Error('unchanged publication attempted materialization')
-            },
-          }),
-        ).resolves.toEqual(record)
+        for (let publication = 0; publication < 10; publication++)
+          await expect(
+            publishEditorView({
+              ...options,
+              cp: falseTool,
+              beforeMaterialize: () => {
+                throw new Error('unchanged publication attempted materialization')
+              },
+            }),
+          ).resolves.toEqual(record)
         const after = storeFiles(store)
         const previous = new Map(before.map((file) => [file.path, file]))
         const writtenBytes = after.reduce((bytes, file) => {
@@ -407,6 +412,45 @@ describe('editor view publisher', () => {
       }
     },
   )
+
+  it('reuses canonical content when equivalent backing artifacts move or link spelling changes', async () => {
+    const fixture = makeFixture()
+    try {
+      const firstRoot = join(fixture.root, 'inputs', 'artifact-first')
+      const secondRoot = join(fixture.root, 'inputs', 'artifact-second')
+      const view = join(fixture.root, 'inputs', 'artifact-view')
+      for (const root of [firstRoot, secondRoot]) {
+        mkdirSync(join(root, 'dep'), { recursive: true })
+        writeFileSync(join(root, 'dep', 'index.js'), 'export default "stable"\n')
+      }
+      mkdirSync(view)
+      symlinkSync(join(firstRoot, 'dep'), join(view, 'dep'))
+      const firstOptions = {
+        ...fixture.options,
+        editorInputs: view,
+        nodeModules: view,
+        backingRoots: [firstRoot],
+      }
+      const first = await publishEditorView(firstOptions)
+      const before = storeFiles(join(fixture.editorRoot, '.store'))
+      rmSync(join(view, 'dep'))
+      symlinkSync(`${secondRoot}/./dep`, join(view, 'dep'))
+      const movedOptions = { ...firstOptions, backingRoots: [secondRoot] }
+      for (let publication = 0; publication < 10; publication++)
+        await expect(publishEditorView({ ...movedOptions, cp: falseTool })).resolves.toEqual(first)
+      expect(storeFiles(join(fixture.editorRoot, '.store'))).toEqual(before)
+      expect(ownedSnapshots(fixture)).toEqual([storeName(first.snapshot)])
+      await expect(checkEditorView(movedOptions)).resolves.toEqual(first)
+      // Relocation is not permission to ignore meaningful transitive payload changes.
+      writeFileSync(join(secondRoot, 'dep', 'index.js'), 'export default "changed"\n')
+      const changed = await publishEditorView(movedOptions)
+      expect(changed.editorInputsFingerprint).toBe(first.editorInputsFingerprint)
+      expect(changed.normalizedStoreDigest).not.toBe(first.normalizedStoreDigest)
+      expect(changed.snapshot).not.toBe(first.snapshot)
+    } finally {
+      cleanup(fixture)
+    }
+  })
 
   it('publishes the source-generator dependency closure at the repository root', async () => {
     const fixture = makeFixture()
@@ -526,6 +570,66 @@ describe('editor view publisher', () => {
       expect(retention.snapshots).toHaveLength(2)
       expect(retention.snapshots[0]).toBe(currentTarget(fixture).replace('.store/', ''))
     } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('waits five minutes from supersession before enforcing configured retention', async () => {
+    const fixture = makeFixture()
+    try {
+      const options = { ...fixture.options, snapshotGraceMs: 300_000, snapshotRetention: 3 }
+      const oldest = await publishEditorView(options)
+      for (let revision = 2; revision <= 6; revision++) {
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
+        await publishEditorView(options)
+      }
+      expect(ownedSnapshots(fixture)).toHaveLength(6)
+      const oldestRoot = join(fixture.editorRoot, oldest.snapshot)
+      expect(Date.now() - statSync(oldestRoot).mtimeMs).toBeLessThan(300_000)
+      const expired = new Date(Date.now() - 300_001)
+      for (const name of ownedSnapshots(fixture)) {
+        const root = join(fixture.editorRoot, '.store', name)
+        utimesSync(root, statSync(root).atime, expired)
+      }
+      const current = currentTarget(fixture)
+      await publishEditorView(options)
+      expect(ownedSnapshots(fixture)).toHaveLength(3)
+      expect(currentTarget(fixture)).toBe(current)
+      expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('preserves explicit reader pins and concrete open descriptors beyond retention', async () => {
+    const fixture = makeFixture()
+    let descriptor: number | undefined
+    try {
+      const pinned = await publishEditorView(fixture.options)
+      const pins = join(fixture.editorRoot, '.pins')
+      mkdirSync(pins)
+      symlinkSync(`../${pinned.snapshot}`, join(pins, 'editor'))
+      writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), 'second\n')
+      const opened = await publishEditorView(fixture.options)
+      descriptor = openSync(
+        join(fixture.editorRoot, opened.snapshot, 'node_modules', 'dep', 'index.js'),
+        'r',
+      )
+      for (let revision = 3; revision <= 5; revision++) {
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
+        await publishEditorView(fixture.options)
+      }
+      expect(ownedSnapshots(fixture)).toContain(storeName(pinned.snapshot))
+      expect(ownedSnapshots(fixture)).toContain(storeName(opened.snapshot))
+      closeSync(descriptor)
+      descriptor = undefined
+      rmSync(join(pins, 'editor'))
+      await publishEditorView(fixture.options)
+      expect(ownedSnapshots(fixture)).toHaveLength(2)
+      expect(ownedSnapshots(fixture)).not.toContain(storeName(pinned.snapshot))
+      expect(ownedSnapshots(fixture)).not.toContain(storeName(opened.snapshot))
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor)
       cleanup(fixture)
     }
   })
