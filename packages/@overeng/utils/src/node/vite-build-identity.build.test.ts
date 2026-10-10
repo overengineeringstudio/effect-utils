@@ -1,5 +1,14 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unwatchFile,
+  watchFile,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -138,7 +147,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
   let server: ViteDevServer | undefined
-  let sourceUpdated: (() => void) | undefined
+  const plugin = createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' })
   try {
     git('init', '--quiet')
     writeFileSync(join(root, '.gitignore'), 'node_modules/\ndist/\n')
@@ -162,15 +171,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       root,
       logLevel: 'silent',
       optimizeDeps: { noDiscovery: true },
-      plugins: [
-        {
-          name: 'identity-fixture-update-barrier',
-          handleHotUpdate() {
-            sourceUpdated?.()
-          },
-        },
-        createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
-      ],
+      plugins: [plugin],
       server: { host: '127.0.0.1', port: 0 },
     })
     // Vite starts scanning before configureServer hooks run, so its one-shot
@@ -191,41 +192,69 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     const identity = async () =>
       (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
     expect((await identity()).dirty).toBe(false)
-    writeFileSync(join(root, 'new.txt'), 'untracked\n')
-    // This integration probe checks absence of refresh across the real fs
-    // polling/debounce window; fake timers cannot drive native fs.watchFile.
-    await delay(250)
+    const afterSourceUpdate = async (event: 'add' | 'change', file: string, update: () => void) => {
+      const { promise, resolve } = Promise.withResolvers<void>()
+      const onEvent = (path: string) => {
+        if (path === file) resolve()
+      }
+      server!.watcher.on(event, onEvent)
+      try {
+        update()
+        await promise
+        await plugin.api.waitForRefresh()
+      } finally {
+        server!.watcher.off(event, onEvent)
+      }
+    }
+    const index = git('rev-parse', '--path-format=absolute', '--git-path', 'index')
+    const afterGitUpdate = async (update: () => void) => {
+      const { promise, resolve } = Promise.withResolvers<void>()
+      const onChange = () => resolve()
+      // Node shares the existing index poller. The plugin subscribed first,
+      // so its refresh is requested before this observer resumes.
+      watchFile(index, { persistent: false, interval: 100 }, onChange)
+      try {
+        update()
+        await promise
+        await plugin.api.waitForRefresh()
+      } finally {
+        unwatchFile(index, onChange)
+      }
+    }
+    await afterSourceUpdate('add', join(root, 'new.txt'), () =>
+      writeFileSync(join(root, 'new.txt'), 'untracked\n'),
+    )
     expect((await identity()).dirty).toBe(false)
-    git('add', 'new.txt')
-    await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(true))
-    git('reset', '--quiet', '--', 'new.txt')
-    rmSync(join(root, 'new.txt'))
-    await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(false))
-    writeFileSync(join(root, 'entry.js'), 'export const value = 2\n')
-    await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(true))
+    await afterGitUpdate(() => git('add', 'new.txt'))
+    expect((await identity()).dirty).toBe(true)
+    await afterGitUpdate(() => {
+      git('reset', '--quiet', '--', 'new.txt')
+      rmSync(join(root, 'new.txt'))
+    })
+    expect((await identity()).dirty).toBe(false)
+    await afterSourceUpdate('change', join(root, 'entry.js'), () =>
+      writeFileSync(join(root, 'entry.js'), 'export const value = 2\n'),
+    )
+    expect((await identity()).dirty).toBe(true)
     const dirtyIdentity = await identity()
     const now = Date.now
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + 60_000)
     try {
-      let updated = false
-      sourceUpdated = () => {
-        updated = true
-      }
-      writeFileSync(join(root, 'entry.js'), 'export const value = 3\n')
-      await waitForWatchUpdate(() => expect(updated).toBe(true))
+      await afterSourceUpdate('change', join(root, 'entry.js'), () =>
+        writeFileSync(join(root, 'entry.js'), 'export const value = 3\n'),
+      )
       expect(await (await fetch(probeUrl)).json()).toEqual(dirtyIdentity)
       expect(await identity()).toEqual(dirtyIdentity)
     } finally {
-      sourceUpdated = undefined
       clock.mockRestore()
     }
-    git('add', '.')
-    git(...commitArgs)
-    const revision = git('rev-parse', 'HEAD')
-    await waitForWatchUpdate(async () => {
-      expect((await identity()).rev).toBe(revision)
-      expect((await identity()).dirty).toBe(false)
+    await afterGitUpdate(() => {
+      git('add', '.')
+      git(...commitArgs)
     })
+    const revision = git('rev-parse', 'HEAD')
+    expect((await identity()).rev).toBe(revision)
+    expect((await identity()).dirty).toBe(false)
     expect(await (await fetch(probeUrl)).json()).toEqual(await identity())
   } finally {
     await server?.close()

@@ -40,6 +40,12 @@ mode, Git reads are asynchronous, debounced and single-flight. Only the served
 worktree's HEAD, current branch ref and index are watched; sibling worktree
 commits do not recompute its identity.
 
+After observing a source or Git watcher event, `plugin.api.waitForRefresh()`
+awaits the requested snapshot and any events coalesced while it runs. This is
+an observation barrier: it does not initiate a refresh or wait for future
+watcher events. Integration probes can then assert the served snapshot without
+racing the debounce or Git subprocesses against an arbitrary polling deadline.
+
 For packaged apps, the static host injects `globalThis.__BUILD_DEPLOYMENT_ID__`
 before browser modules execute. It identifies the serving package's real Nix
 store path or the deployment manifest handle; it is not a build-time static asset

@@ -8,6 +8,13 @@ export interface BuildIdentityPluginOptions {
 /** Structural plugin boundary permits consumers on a different Vite major. */
 export interface BuildIdentityVitePlugin {
   name: string
+  readonly api: {
+    /**
+     * Await the latest requested source-serving refresh, including coalesced events.
+     * Observe a watcher event first: this neither requests a refresh nor waits for future events.
+     */
+    readonly waitForRefresh: () => Promise<void>
+  }
 }
 
 /**

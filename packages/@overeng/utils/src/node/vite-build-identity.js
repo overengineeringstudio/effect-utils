@@ -34,7 +34,7 @@ const localStamp = async (root) => ({
  * A declared deployment injects its closure identity before browser modules execute.
  * Local source identity is read from Vite's root, not a possibly stale shell's stamp.
  * @param {import('./vite-build-identity-types.d.ts').BuildIdentityPluginOptions} options
- * @returns {import('vite').Plugin}
+ * @returns {import('vite').Plugin & import('./vite-build-identity-types.d.ts').BuildIdentityVitePlugin}
  */
 export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   /** @type {import('./cli-build-identity.js').CliBuildIdentity} */
@@ -46,6 +46,8 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   const embedded = parseCliBuildStamp(buildStamp)
   /** @type {Array<() => Promise<void>>} */
   const cleanup = []
+  /** @type {Promise<void> | undefined} */
+  let refreshFlight
   const resolveIdentity = async (preserveSnapshot = false) => {
     const options = {
       baseVersion,
@@ -75,6 +77,11 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   }
   return {
     name: 'overeng:build-identity',
+    api: {
+      async waitForRefresh() {
+        await refreshFlight
+      },
+    },
     async configResolved(config) {
       root = config.root
       serving = config.command === 'serve'
@@ -181,6 +188,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         })().finally(() => {
           flight = undefined
         })
+        refreshFlight = flight
         return flight
       }
       const onSourceEvent = () => {
