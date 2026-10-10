@@ -4,7 +4,7 @@ This document specifies the Rust client realization. It builds on [requirements.
 
 ## Status
 
-Draft. The crate is `ai-gateway` at `rust/ai-gateway`, with library import name `ai_gateway` (naming decision q7). This node specifies the selected design, not an assertion of released implementation.
+Draft. The crate is `ai-gateway` at `rust/ai-gateway`, with library import name `ai_gateway`. This node specifies the selected design, not an assertion of released implementation.
 
 ## Scope
 
@@ -19,7 +19,7 @@ Rust consumer -> wrapper -> async-openai client -> shared gateway wire
                     +-> BYOT: model listing and native decisions
 ```
 
-[Decision 0001](./.decisions/0001-async-openai-foundation.md) selects async-openai as the foundation (decision q2, record `evlo3v`). Its typed Chat Completions surface supplies ordinary/streaming generation, response formats, and tool-call messages. All operations are async; the wrapper does not start a runtime or bridge to a blocking client.
+[Decision 0001](./.decisions/0001-async-openai-foundation.md) selects async-openai as the foundation. Its typed Chat Completions surface supplies ordinary/streaming generation, response formats, and tool-call messages. All operations are async; the wrapper does not start a runtime or bridge to a blocking client.
 
 The connection builder accepts an origin and an optional secret bearer and has an environment form using `AI_GATEWAY_URL` / `AI_GATEWAY_TOKEN`. It strips trailing slashes and sets the API base to the origin plus `/v1`. Absent token means absent Authorization, not an empty or dummy bearer. Diagnostic formatting redacts a supplied token. The HTTP stack selects rustls with the ring crypto provider; native-tls and platform TLS are not part of the supported feature set.
 

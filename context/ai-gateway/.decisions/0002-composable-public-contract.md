@@ -32,7 +32,7 @@ The root owns the vision, language-neutral requirements, public wire, and shared
 ontology. `01-effect`, `02-rust`, and `03-edge` refine root IDs and own their mechanisms.
 The edge realization owns source-level authentication, forwarding, and per-consumer
 accounting. Deployment facts (hosts, network, consumer table values, fork pin,
-and dashboards) remain in the private deployment VRS (decision q5).
+and dashboards) remain in the private deployment VRS.
 The root owns the Chat Completions choice; language-specific foundation choices
 belong to their realization's decision records.
 
