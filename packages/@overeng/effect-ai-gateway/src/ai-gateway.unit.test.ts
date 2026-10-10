@@ -3,7 +3,7 @@ import { NodeFileSystem } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { ConfigProvider, Effect, Layer, Redacted, Schema, Stream } from 'effect'
 import { Decision, DecisionModel, LanguageModel, Prompt, Tool, Toolkit } from 'effect/ai'
-import * as AiError from 'effect/ai/AiError'
+import type * as AiError from 'effect/ai/AiError'
 import type * as Response from 'effect/ai/Response'
 import * as HttpClient from 'effect/http/HttpClient'
 import { expect } from 'vitest'
@@ -285,7 +285,7 @@ describe('AiGateway shared wire conformance', () => {
           if (finish !== undefined) assertUsage({ case: replayCase, usage: finish.usage })
         } else {
           const operation = Effect.gen(function* () {
-            if (replayCase.id.startsWith('tools.')) {
+            if (replayCase.id.startsWith('tools.') === true) {
               return yield* LanguageModel.generateText({
                 prompt:
                   replayCase.request.match?.hasToolResult === true ? toolResultPrompt : 'Greet me',
