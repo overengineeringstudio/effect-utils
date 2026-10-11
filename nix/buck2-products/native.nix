@@ -151,8 +151,13 @@ builtins.listToAttrs (
             if [ -d "$out/share" ]; then chmod -R u+w "$out/share"; fi
             for shell in bash zsh fish; do
               COMPLETE="$shell" "$out/bin/${product.name}" > "$shell.completion"
-              installShellCompletion --cmd ${pkgs.lib.escapeShellArg product.name} \
-                "--$shell" "$shell.completion"
+              # installShellCompletion consumes $1 until shift fails; its API
+              # requires nounset disabled. Keep the native builder strict outside it.
+              (
+                set +u
+                installShellCompletion --cmd ${pkgs.lib.escapeShellArg product.name} \
+                  "--$shell" "$shell.completion"
+              )
             done
             chmod -R a-w "$out/share"
             chmod a-w "$out"

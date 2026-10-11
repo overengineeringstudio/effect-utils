@@ -335,6 +335,8 @@ const checkWorkspaceContract = ({
     'math-interop',
     'otel-scrape',
     'otelite',
+    'pingping',
+    'pingping-netinfo-macos',
   ]
   const cargoPackageNames: string[] = []
   for (const memberPath of cargoMemberPaths) {
