@@ -497,6 +497,11 @@ const resolveEdge = ({
   owner: string
 }): PnpmStoreEdge | undefined => {
   if (reference.kind === 'workspace') {
+    if (
+      optional === true &&
+      availability.get(`importer:${reference.path}`)?.has(platform) === false
+    )
+      return undefined
     return {
       kind: 'workspace',
       workspaceKey: workspaceKey(reference.path),
@@ -511,6 +516,11 @@ const resolveEdge = ({
   if (packageMetadata.resolution === 'workspace') {
     const path = packageMetadata.workspacePath
     if (path === undefined) return fail(`workspace package ${snapshot.package} has no path`)
+    if (
+      (optional === true || snapshot.optional === true) &&
+      availability.get(`importer:${path}`)?.has(platform) === false
+    )
+      return undefined
     return { kind: 'workspace', workspaceKey: workspaceKey(path), workspacePath: path }
   }
   if (availability.get(`snapshot:${reference.snapshot}`)?.has(platform) === true) {

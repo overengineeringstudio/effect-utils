@@ -118,6 +118,11 @@ projecting store edges:
    remains present in every such configuration. An optional edge is retained
    only when its resolved dependency is available there, including that
    dependency's own required closure; its absence does not remove the owner.
+   Linked and injected optional workspace references use their resolved importer
+   availability when represented in the lockfile. Importer `workspace_trees`
+   and `workspace_dependencies` declarations select only that configuration's
+   surviving edges; an omitted optional workspace must not remain a Buck
+   dependency that triggers analysis of an unavailable workspace closure.
 
 Missing referenced package or snapshot metadata, integrity, or patch metadata remains a
 global generation error, including for an unavailable configuration or an

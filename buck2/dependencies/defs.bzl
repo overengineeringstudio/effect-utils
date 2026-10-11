@@ -837,8 +837,10 @@ def pnpm_store_view(
         direct_by_platform = None,
         bins = None,
         bins_by_platform = None,
-        workspace_trees = {},
-        workspace_dependencies = {},
+        workspace_trees = None,
+        workspace_trees_by_platform = None,
+        workspace_dependencies = None,
+        workspace_dependencies_by_platform = None,
         unavailable_by_platform = None,
         **kwargs):
     """Declares one metadata-only importer dependency view over the shared store."""
@@ -849,8 +851,8 @@ def pnpm_store_view(
         direct = _exactly_one(direct, direct_by_platform, "pnpm_store_view direct"),
         runtime = runtime,
         unavailable = "" if unavailable_by_platform == None else _platform_select(unavailable_by_platform, "pnpm_store_view unavailable"),
-        workspace_dependencies = workspace_dependencies,
-        workspace_trees = workspace_trees,
+        workspace_dependencies = {} if workspace_dependencies == None and workspace_dependencies_by_platform == None else _exactly_one(workspace_dependencies, workspace_dependencies_by_platform, "pnpm_store_view workspace dependencies"),
+        workspace_trees = {} if workspace_trees == None and workspace_trees_by_platform == None else _exactly_one(workspace_trees, workspace_trees_by_platform, "pnpm_store_view workspace trees"),
         exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )

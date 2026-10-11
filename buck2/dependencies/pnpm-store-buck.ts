@@ -187,9 +187,11 @@ const renderUnavailablePlatforms = ({
 
 const renderView = ({
   targetByStoreKey,
+  entryByStoreKey,
   view,
 }: {
   targetByStoreKey: ReadonlyMap<string, string>
+  entryByStoreKey: ReadonlyMap<string, PnpmStoreEntry>
   view: PnpmStoreView
 }): readonly string[] => {
   const variantFor = (platform: PnpmPlatform) => {
@@ -215,11 +217,22 @@ const renderView = ({
     ),
   )
   const bins = byPlatform((platform) => variantFor(platform)?.bins ?? {})
-  const workspaceDependencies = invariantRecord({
-    field: `view ${view.importer} workspace dependencies`,
-    values: byPlatform((platform) =>
-      workspaceEdges(variantFor(platform)?.direct ?? view.variants[0]?.direct ?? {}),
-    ),
+  const workspaceDependencies = byPlatform((platform) =>
+    workspaceEdges(variantFor(platform)?.direct ?? {}),
+  )
+  const workspaceTrees = byPlatform((platform) => {
+    const variant = variantFor(platform)
+    const keys = new Set(Object.values(workspaceDependencies[platform]))
+    for (const storeKey of variant?.closure ?? []) {
+      const entry = entryByStoreKey.get(storeKey) ?? fail(`unknown store entry ${storeKey}`)
+      for (const key of Object.values(workspaceEdges(edgesFor({ entry, platform })))) keys.add(key)
+    }
+    return Object.fromEntries(
+      [...keys].toSorted().map((key) => [
+        key,
+        view.workspaceTrees[key] ?? fail(`view ${view.importer} has no workspace tree ${key}`),
+      ]),
+    )
   })
   return [
     'pnpm_store_view(',
@@ -229,8 +242,8 @@ const renderView = ({
     ...renderMaybeSelected({ byPlatform: direct, field: 'direct' }),
     ...renderMaybeSelected({ byPlatform: closure, field: 'closure' }),
     ...renderMaybeSelected({ byPlatform: bins, field: 'bins' }),
-    `    workspace_trees = ${renderDict({ indent: 4, record: view.workspaceTrees })},`,
-    `    workspace_dependencies = ${renderDict({ indent: 4, record: workspaceDependencies })},`,
+    ...renderMaybeSelected({ byPlatform: workspaceTrees, field: 'workspace_trees' }),
+    ...renderMaybeSelected({ byPlatform: workspaceDependencies, field: 'workspace_dependencies' }),
     '    visibility = ["PUBLIC"],',
     ')',
     '',
@@ -472,7 +485,7 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
   }
 
   for (const view of projection.views) {
-    lines.push(...renderView({ targetByStoreKey, view }))
+    lines.push(...renderView({ entryByStoreKey, targetByStoreKey, view }))
   }
   return lines.join('\n')
 }

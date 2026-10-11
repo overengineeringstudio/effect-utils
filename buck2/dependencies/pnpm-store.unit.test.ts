@@ -368,6 +368,67 @@ describe('required-edge platform availability', () => {
     }
   })
 
+  it.each(['linked', 'injected'] as const)(
+    'filters an optional %s workspace against its required native closure',
+    async (kind) => {
+      const metadata = translatePnpmLock({
+        workspaceText,
+        lockfileText: lock({
+          importers: `  packages/app:
+    optionalDependencies:
+      workspace-lib:
+        specifier: workspace:*
+        version: ${kind === 'linked' ? 'link:../lib' : 'file:packages/lib'}
+  packages/lib:
+    dependencies:
+      native:
+        specifier: 1.0.0
+        version: 1.0.0`,
+          packages: `  native@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    os: [linux]${kind === 'injected' ? '\n  workspace-lib@file:packages/lib:\n    resolution: {directory: packages/lib, type: directory}' : ''}`,
+          snapshots: `  native@1.0.0: {}${kind === 'injected' ? '\n  workspace-lib@file:packages/lib: {}' : ''}`,
+        }),
+      })
+      const sidecar = await generatePnpmSha256Sidecar({
+        metadata,
+        fetchArchive: async () => nativeEdgeArchive,
+      })
+      const projection = makePnpmStoreProjection({ metadata, sidecar })
+      const owner = projection.views.find((view) => view.importer === 'packages/app')!
+      const dependency = projection.views.find((view) => view.importer === 'packages/lib')!
+      const key = workspaceKey('packages/lib')
+      expect(owner.platforms).toEqual(pnpmPlatforms)
+      expect(dependency.platforms).toEqual(linuxPlatforms)
+      for (const platform of pnpmPlatforms) {
+        const direct = owner.variants.find((variant) => variant.platforms.includes(platform))!.direct
+        expect(direct).toEqual(
+          linuxPlatforms.includes(platform)
+            ? {
+                'workspace-lib': {
+                  kind: 'workspace',
+                  workspaceKey: key,
+                  workspacePath: 'packages/lib',
+                },
+              }
+            : {},
+        )
+      }
+      const block = renderedRule(renderPnpmStoreBuck(projection), owner.target)
+      expect(block).not.toContain('unavailable_by_platform')
+      for (const field of ['workspace_trees', 'workspace_dependencies']) {
+        const selected = block.split(`${field}_by_platform = {`)[1]!.split('\n    },')[0]!
+        for (const platform of pnpmPlatforms) {
+          const branch = selected.match(
+            new RegExp(`"${platform}": \\{([\\s\\S]*?)\\n        \\},`),
+          )![1]!
+          if (linuxPlatforms.includes(platform)) expect(branch).toContain(key)
+          else expect(branch.trim()).toBe('')
+        }
+      }
+    },
+  )
+
   it('leaves an unrelated supported importer projection and rendered rule byte-stable', async () => {
     const before = (await requiredNativeFixture({ gated: false })).projection
     const after = (await requiredNativeFixture()).projection
