@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   type BigIntStats,
@@ -17,7 +17,6 @@ import {
   rmSync,
   symlinkSync,
   unlinkSync,
-  watch,
   writeFileSync,
 } from 'node:fs'
 import * as fsPromises from 'node:fs/promises'
@@ -30,9 +29,19 @@ import {
   type EditorViewContentSharing,
   collectEditorViewContentStore,
   defaultEditorViewContentStore,
-  recoverEditorViewContentStoreLock,
   shareSnapshotFiles,
 } from './editor-view-sharing.ts'
+
+/** Reads one Buck-declared immutable tool path; nothing resolves through an ambient PATH. */
+const requireTool = (name: string): string => {
+  const tool = process.env[name]
+  if (tool === undefined || tool === '')
+    throw new Error(`declared test tool is unavailable: ${name}`)
+  return tool
+}
+
+const bun = requireTool('BUN_BIN')
+const sharingModule = new URL('./editor-view-sharing.ts', import.meta.url)
 
 const crossDeviceDirectories = ['/dev/shm', '/tmp', '/var/tmp'].filter((directory) => {
   try {
@@ -137,11 +146,23 @@ const expectReadonlyStore = (contentStore: string): void => {
   }
 }
 
-const expectNoLock = (contentStore: string): void => {
-  const prefix = `${basename(contentStore)}.lock`
+/**
+ * The persistent flock file is the only lock artifact. It is never unlinked, so
+ * an idle store keeps it as a private regular file and no transient controls.
+ */
+const expectIdleStoreLock = (contentStore: string): void => {
+  const lock = lstatSync(`${contentStore}.flock`)
+  expect(lock.isFile() === true).toBe(true)
+  expect(lock.uid).toBe(process.getuid?.())
+  expect(lock.nlink).toBe(1)
+  expect(lock.mode & 0o7777).toBe(0o600)
+  const base = basename(contentStore)
   expect(
     readdirSync(dirname(contentStore)).filter(
-      (name) => name === prefix || name.startsWith(`${prefix}.`) === true,
+      (name) =>
+        name === `${base}.lock` ||
+        name.startsWith(`${base}.lock.`) === true ||
+        name.startsWith(`.${base}.blob-`) === true,
     ),
   ).toEqual([])
 }
@@ -158,57 +179,6 @@ const withContentStoreEnv = (value: string | undefined, run: () => void): void =
   }
 }
 
-type StoreLockObservation = {
-  readonly entered: Promise<string>
-  readonly close: () => void
-}
-
-/** A persistent contender temp is real evidence that another acquisition has started. */
-const observeContender = (contentStore: string) => {
-  const directory = dirname(contentStore)
-  const previous = new Set(readdirSync(directory))
-  const entered = Promise.withResolvers<string>()
-  const scan = (): void => {
-    try {
-      const name = readdirSync(directory).find(
-        (entry) =>
-          previous.has(entry) === false &&
-          entry.startsWith(`${basename(contentStore)}.lock.`) === true &&
-          entry.endsWith('.tmp') === true,
-      )
-      if (name === undefined) return
-      const path = join(directory, name)
-      const status = lstatSync(path)
-      if (status.isFile() === false || (status.mode & 0o7777) !== 0o444) return
-      let owner: unknown
-      try {
-        owner = JSON.parse(readFileSync(path, 'utf8'))
-      } catch (error) {
-        // Creation can notify before the async owner-record write completes.
-        if (error instanceof SyntaxError) return
-        throw error
-      }
-      if (
-        typeof owner === 'object' &&
-        owner !== null &&
-        'schema' in owner &&
-        owner.schema === 'editor-view-content-store-lock/v1' &&
-        'token' in owner &&
-        typeof owner.token === 'string' &&
-        'pid' in owner &&
-        owner.pid === process.pid
-      )
-        entered.resolve(path)
-    } catch (error) {
-      entered.reject(error)
-    }
-  }
-  const watcher = watch(directory, scan)
-  watcher.on('error', entered.reject)
-  scan()
-  return { entered: entered.promise, close: () => watcher.close() }
-}
-
 const reachBarrier = async (
   barrier: Promise<unknown>,
   operation: Promise<unknown>,
@@ -219,6 +189,128 @@ const reachBarrier = async (
       throw new Error('operation completed before reaching its filesystem barrier')
     }),
   ])
+}
+
+type CrashedInstall = {
+  readonly pid: number
+  readonly blob: string
+  readonly temporary: string
+  readonly preparedCopy?: string
+}
+
+const fail = (message: string): never => {
+  throw new Error(message)
+}
+
+/**
+ * Runs one real publisher in a Bun child that parks inside its install batch,
+ * right after the canonical CAS link, then SIGKILLs it. The kernel closes its
+ * flock descriptor; repair evidence (writable shard, shard temp, staging inode)
+ * stays exactly as the crashed process left it.
+ */
+const crashAtBlobInstall = async ({
+  root,
+  candidate,
+  contentStore,
+}: {
+  readonly root: string
+  readonly candidate: string
+  readonly contentStore: string
+}): Promise<CrashedInstall> => {
+  const script = join(root, 'crash-at-blob-install.ts')
+  writeFileSync(
+    script,
+    [
+      `import { shareSnapshotFiles } from ${JSON.stringify(sharingModule.href)}`,
+      'const [candidate, contentStore] = process.argv.slice(2)',
+      'await shareSnapshotFiles({',
+      '  candidate,',
+      '  contentStore,',
+      '  afterBlobInstall: async (installed) => {',
+      // The parent's open stdin pipe keeps the event loop alive until SIGKILL.
+      '    process.stdin.resume()',
+      '    process.stdout.write(`${JSON.stringify(installed)}\\n`)',
+      '    await Promise.withResolvers().promise',
+      '  },',
+      '})',
+      '',
+    ].join('\n'),
+  )
+  const child = spawn(bun, [script, candidate, contentStore], {
+    cwd: root,
+    stdio: ['pipe', 'pipe', 'inherit'],
+  })
+  const exited = Promise.withResolvers<{ code: number | null; signal: NodeJS.Signals | null }>()
+  const installed = Promise.withResolvers<Omit<CrashedInstall, 'pid'>>()
+  child.once('error', (error) => {
+    exited.reject(error)
+    installed.reject(error)
+  })
+  child.once('exit', (code, signal) => {
+    exited.resolve({ code, signal })
+    // A no-op once the install barrier was reached.
+    installed.reject(
+      new Error(`publisher exited before its blob-install barrier: ${code ?? signal}`),
+    )
+  })
+  let output = ''
+  child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+    output += chunk
+    const newline = output.indexOf('\n')
+    if (newline === -1) return
+    try {
+      installed.resolve(JSON.parse(output.slice(0, newline)))
+    } catch (error) {
+      installed.reject(error)
+    }
+  })
+  try {
+    const install = await installed.promise
+    const pid = child.pid ?? fail('publisher child has no pid')
+    expect(child.kill('SIGKILL')).toBe(true)
+    expect(await exited.promise).toEqual({ code: null, signal: 'SIGKILL' })
+    return { pid, ...install }
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+    await exited.promise.catch(() => undefined)
+  }
+}
+
+/** A writable store directory left behind by an interrupted metadata transaction. */
+const isWritable = (path: string): boolean => (lstatSync(path).mode & 0o222) !== 0
+
+/** Real directory on another device than the store fixture, for genuine EXDEV publishing. */
+const withCrossDeviceRoot = async (
+  root: string,
+  run: (alternateRoot: string) => Promise<void>,
+): Promise<void> => {
+  let alternateRoot: string | undefined
+  const sourceDevice = lstatSync(root).dev
+  for (const directory of crossDeviceDirectories) {
+    try {
+      const probe = realpathSync(mkdtempSync(join(directory, 'editor-view-content-store-')))
+      if (lstatSync(probe).dev !== sourceDevice) {
+        alternateRoot = probe
+        break
+      }
+      removeOwnedTree(probe)
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        ['ENOENT', 'EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(String(error.code)) === true
+      )
+        continue
+      throw error
+    }
+  }
+  if (alternateRoot === undefined)
+    throw new Error('The admitted cross-device filesystem became unavailable before its probe')
+  try {
+    await run(alternateRoot)
+  } finally {
+    removeOwnedTree(alternateRoot)
+  }
 }
 
 const installBlob = (contentStore: string, bytes: string): string => {
@@ -277,6 +369,8 @@ describe('host-wide editor snapshot content store', () => {
         copiedBytes: 0,
         createdBlobs: 1,
       })
+      // The flock file persists across acquisitions; releasing never unlinks it.
+      const lock = inode(`${contentStore}.flock`)
       for (const directory of [sibling, otherWorktree]) {
         expect(await shareSnapshotFiles({ candidate: directory, contentStore })).toEqual({
           linkedFiles: 1,
@@ -285,6 +379,7 @@ describe('host-wide editor snapshot content store', () => {
           createdBlobs: 0,
         })
       }
+      expect(inode(`${contentStore}.flock`)).toBe(lock)
       const blob = blobPath(contentStore, 'same payload')
       for (const path of [firstFile, renamed, siblingFile, otherFile]) {
         expect(inode(path)).toBe(inode(blob))
@@ -293,7 +388,7 @@ describe('host-wide editor snapshot content store', () => {
       expect(lstatSync(blob).nlink).toBe(5)
       expect(regularFiles(contentStore)).toEqual([blob])
       expectReadonlyStore(contentStore)
-      expectNoLock(contentStore)
+      expectIdleStoreLock(contentStore)
     })
   })
 
@@ -480,7 +575,7 @@ describe('host-wide editor snapshot content store', () => {
       expect(inode(file)).toBe(inode(blob))
       expect(result).toEqual({ linkedFiles: 1, copiedFiles: 0, copiedBytes: 0, createdBlobs: 0 })
       expectReadonlyStore(contentStore)
-      expectNoLock(contentStore)
+      expectIdleStoreLock(contentStore)
     })
   })
 
@@ -514,7 +609,7 @@ describe('host-wide editor snapshot content store', () => {
         expect(externalAfter.mode).toBe(externalBefore.mode)
         expect(externalAfter.ctimeNs).toBe(externalBefore.ctimeNs)
         expectReadonlyDirectories(contentStore)
-        expectNoLock(contentStore)
+        expectIdleStoreLock(contentStore)
       })
     })
   }
@@ -537,7 +632,7 @@ describe('host-wide editor snapshot content store', () => {
         }),
       ).rejects.toBe(failure)
       expectReadonlyStore(contentStore)
-      expectNoLock(contentStore)
+      expectIdleStoreLock(contentStore)
       await shareSnapshotFiles({ candidate: directory, contentStore })
       expect(readFileSync(blobPath(contentStore, 'retained'), 'utf8')).toBe('retained')
       expectReadonlyStore(contentStore)
@@ -579,7 +674,7 @@ describe('host-wide editor snapshot content store', () => {
       })
       expect(regularFiles(contentStore)).toEqual([])
       expectReadonlyStore(contentStore)
-      expectNoLock(contentStore)
+      expectIdleStoreLock(contentStore)
     })
   })
 
@@ -596,7 +691,7 @@ describe('host-wide editor snapshot content store', () => {
       ).toEqual({ removedBlobs: 0, removedBytes: 0 })
       expect(entered).toBe(false)
       expect(exists(contentStore) === true).toBe(false)
-      expect(exists(`${contentStore}.lock`) === true).toBe(false)
+      expect(exists(`${contentStore}.flock`) === true).toBe(false)
     })
   })
 
@@ -625,7 +720,7 @@ describe('host-wide editor snapshot content store', () => {
         expect(externalAfter.mode).toBe(externalBefore.mode)
         expect(externalAfter.ctimeNs).toBe(externalBefore.ctimeNs)
         expectReadonlyDirectories(contentStore)
-        expectNoLock(contentStore)
+        expectIdleStoreLock(contentStore)
       })
     })
   }
@@ -643,7 +738,7 @@ describe('host-wide editor snapshot content store', () => {
       expect(inode(unknown)).toBe(before)
       expect(readFileSync(unknown, 'utf8')).toBe('must not delete')
       expectReadonlyDirectories(contentStore)
-      expectNoLock(contentStore)
+      expectIdleStoreLock(contentStore)
     })
   })
 
@@ -666,7 +761,7 @@ describe('host-wide editor snapshot content store', () => {
       ).rejects.toBe(failure)
       expect(inode(blob)).toBe(before)
       expectReadonlyStore(contentStore)
-      expectNoLock(contentStore)
+      expectIdleStoreLock(contentStore)
       expect(await collectEditorViewContentStore({ contentStore })).toEqual({
         removedBlobs: 1,
         removedBytes: Buffer.byteLength('dangling bytes'),
@@ -687,6 +782,7 @@ describe('host-wide editor snapshot content store', () => {
       const file = payload(directory, 'payload', 'racing bytes')
       const entered = Promise.withResolvers<void>()
       const proceed = Promise.withResolvers<void>()
+      const gcContended = Promise.withResolvers<void>()
       let gcEntered = false
       let gcSettled = false
       const publication = shareSnapshotFiles({
@@ -698,14 +794,13 @@ describe('host-wide editor snapshot content store', () => {
         },
       })
       let collection: Promise<unknown> | undefined
-      let observation: StoreLockObservation | undefined
       try {
         await reachBarrier(entered.promise, publication)
         expectReadonlyStore(contentStore)
-        expect(mode(`${contentStore}.lock`)).toBe(0o444)
-        observation = observeContender(contentStore)
+        expect(lstatSync(`${contentStore}.flock`).isFile() === true).toBe(true)
         collection = collectEditorViewContentStore({
           contentStore,
+          afterStoreLockContended: () => gcContended.resolve(),
           afterStoreLock: async () => {
             gcEntered = true
           },
@@ -718,12 +813,11 @@ describe('host-wide editor snapshot content store', () => {
             gcSettled = true
           },
         )
-        await reachBarrier(observation.entered, collection)
+        await reachBarrier(gcContended.promise, collection)
         await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
         expect(gcEntered).toBe(false)
         expect(gcSettled).toBe(false)
         expect(lstatSync(blob).nlink).toBe(1)
-        observation.close()
         proceed.resolve()
         expect(await publication).toEqual({
           linkedFiles: 1,
@@ -736,16 +830,15 @@ describe('host-wide editor snapshot content store', () => {
         expect(inode(file)).toBe(inode(blob))
         expect(lstatSync(blob).nlink).toBe(2)
         expectReadonlyStore(contentStore)
-        expectNoLock(contentStore)
+        expectIdleStoreLock(contentStore)
       } finally {
-        observation?.close()
         proceed.resolve()
         await Promise.allSettled([publication, ...(collection === undefined ? [] : [collection])])
       }
     })
   })
 
-  it('waits for a live owner and serializes two independent publishers', async () => {
+  it('blocks a contending publisher on the held flock and serializes two independent publishers', async () => {
     await withStore(async ({ contentStore, candidate }) => {
       const seed = candidate('seed')
       payload(seed, 'payload', 'shared bytes')
@@ -759,6 +852,7 @@ describe('host-wide editor snapshot content store', () => {
       const proceed = Promise.withResolvers<void>()
       const acquisitions: string[] = []
       let secondSettled = false
+      const secondContended = Promise.withResolvers<void>()
       const firstPublication = shareSnapshotFiles({
         candidate: first,
         contentStore,
@@ -769,13 +863,12 @@ describe('host-wide editor snapshot content store', () => {
         },
       })
       let secondPublication: Promise<EditorViewContentSharing> | undefined
-      let observation: StoreLockObservation | undefined
       try {
         await reachBarrier(entered.promise, firstPublication)
-        observation = observeContender(contentStore)
         secondPublication = shareSnapshotFiles({
           candidate: second,
           contentStore,
+          afterStoreLockContended: () => secondContended.resolve(),
           afterStoreLock: async () => {
             acquisitions.push('second')
           },
@@ -788,11 +881,10 @@ describe('host-wide editor snapshot content store', () => {
             secondSettled = true
           },
         )
-        await reachBarrier(observation.entered, secondPublication)
+        await reachBarrier(secondContended.promise, secondPublication)
         await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
         expect(acquisitions).toEqual(['first'])
         expect(secondSettled).toBe(false)
-        observation.close()
         proceed.resolve()
         const results = await Promise.all([firstPublication, secondPublication])
         expect(results).toEqual([
@@ -803,9 +895,8 @@ describe('host-wide editor snapshot content store', () => {
         expect(inode(firstFile)).toBe(inode(secondFile))
         expect(lstatSync(blobPath(contentStore, 'shared bytes')).nlink).toBe(3)
         expectReadonlyStore(contentStore)
-        expectNoLock(contentStore)
+        expectIdleStoreLock(contentStore)
       } finally {
-        observation?.close()
         proceed.resolve()
         await Promise.allSettled([
           firstPublication,
@@ -815,233 +906,125 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
-  it('refuses exact-token recovery of an actual live store-lock owner', async () => {
-    await withStore(async ({ contentStore, candidate }) => {
-      const directory = candidate('candidate')
-      payload(directory, 'payload', 'live bytes')
-      const entered = Promise.withResolvers<void>()
-      const proceed = Promise.withResolvers<void>()
-      const publication = shareSnapshotFiles({
-        candidate: directory,
-        contentStore,
-        afterStoreLock: async () => {
-          entered.resolve()
-          await proceed.promise
-        },
+  it('repairs a publisher SIGKILLed mid-batch on the next acquisition before any callback', async () => {
+    await withStore(async ({ root, contentStore, candidate }) => {
+      const seed = candidate('seed')
+      payload(seed, 'payload', 'seed bytes')
+      await shareSnapshotFiles({ candidate: seed, contentStore })
+      const lock = inode(`${contentStore}.flock`)
+      const crashed = candidate('crashed')
+      const crashedFile = payload(crashed, 'payload', 'crashed bytes')
+      const install = await crashAtBlobInstall({ root, candidate: crashed, contentStore })
+      expect(install.blob).toBe(blobPath(contentStore, 'crashed bytes'))
+      expect(install.preparedCopy).toBeUndefined()
+      expect(dirname(install.temporary)).toBe(dirname(install.blob))
+      expect(basename(install.temporary)).toMatch(/^\.tmp-/)
+      // The crash left real repair work: a writable shard and a linked shard temp.
+      expect(inode(install.temporary)).toBe(inode(install.blob))
+      expect(isWritable(dirname(install.blob))).toBe(true)
+      let repairedBeforeCallback = false
+      expect(
+        await collectEditorViewContentStore({
+          contentStore,
+          afterStoreLockContended: () => fail('the SIGKILLed publisher retained the store lock'),
+          afterStoreLock: () => {
+            expect(exists(install.temporary) === true).toBe(false)
+            expectReadonlyStore(contentStore)
+            repairedBeforeCallback = true
+          },
+        }),
+      ).toEqual({ removedBlobs: 0, removedBytes: 0 })
+      expect(repairedBeforeCallback).toBe(true)
+      expect(inode(crashedFile)).toBe(inode(install.blob))
+      expect(readFileSync(install.blob, 'utf8')).toBe('crashed bytes')
+      expect(inode(`${contentStore}.flock`)).toBe(lock)
+      expectIdleStoreLock(contentStore)
+      removeOwnedTree(crashed)
+      expect(await collectEditorViewContentStore({ contentStore })).toEqual({
+        removedBlobs: 1,
+        removedBytes: Buffer.byteLength('crashed bytes'),
       })
-      try {
-        await reachBarrier(entered.promise, publication)
-        const lock = `${contentStore}.lock`
-        const bytes = readFileSync(lock, 'utf8')
-        const owner: unknown = JSON.parse(bytes)
-        if (
-          typeof owner !== 'object' ||
-          owner === null ||
-          'token' in owner === false ||
-          typeof owner.token !== 'string'
-        )
-          throw new Error('store lock did not contain a token')
-        expect(lstatSync(lock).isFile() === true).toBe(true)
-        expect(mode(lock)).toBe(0o444)
-        await expect(
-          recoverEditorViewContentStoreLock({ contentStore, token: owner.token }),
-        ).rejects.toThrow('owner is still live')
-        expect(readFileSync(lock, 'utf8')).toBe(bytes)
-        proceed.resolve()
-        await publication
-        expectReadonlyStore(contentStore)
-        expectNoLock(contentStore)
-      } finally {
-        proceed.resolve()
-        await publication.catch(() => undefined)
-      }
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
     })
   })
 
-  it.each(['replacement', 'same-inode mutation'] as const)(
-    'handles lock owner %s between open and read without trusting the old token',
-    async (change) => {
-      await withStore(async ({ contentStore, candidate }) => {
-        const seed = candidate('seed')
-        payload(seed, 'payload', 'lock turnover bytes')
-        await shareSnapshotFiles({ candidate: seed, contentStore })
-        const lock = `${contentStore}.lock`
-        const token = 'original-owner'
-        const ownerBytes = (ownerToken: string): string =>
-          JSON.stringify({
-            schema: 'editor-view-content-store-lock/v1',
-            token: ownerToken,
-            pid: process.pid,
-          })
-        writeFileSync(lock, ownerBytes(token), { mode: 0o444 })
-        const originalInode = inode(lock)
-        const file = await fsPromises.open(lock, constants.O_RDONLY | constants.O_NOFOLLOW)
-        const originalRead = file.readFile.bind(file)
-        const read = vi.spyOn(file, 'readFile').mockImplementationOnce(async () => {
-          if (change === 'replacement') {
-            unlinkSync(lock)
-            writeFileSync(lock, ownerBytes('successor-owner'), { mode: 0o444 })
-            expect(inode(lock)).not.toBe(originalInode)
-          } else {
-            chmodSync(lock, 0o644)
-            writeFileSync(lock, ownerBytes('mutated-owner-with-different-size'))
-            chmodSync(lock, 0o444)
-            expect(inode(lock)).toBe(originalInode)
-          }
-          return originalRead('utf8')
-        })
-        const open = vi.spyOn(fsPromises, 'open').mockResolvedValueOnce(file)
-        try {
-          await expect(recoverEditorViewContentStoreLock({ contentStore, token })).rejects.toThrow(
-            change === 'replacement'
-              ? 'content-store lock does not exist'
-              : 'content-store lock owner changed while reading',
-          )
-          expect(read).toHaveBeenCalledTimes(1)
-          expect(readFileSync(lock, 'utf8')).toBe(
-            ownerBytes(
-              change === 'replacement' ? 'successor-owner' : 'mutated-owner-with-different-size',
-            ),
-          )
-        } finally {
-          open.mockRestore()
-          read.mockRestore()
-        }
-      })
-    },
-  )
-
-  it('rechecks a writable directory under exclusion after its owner turns over during prehash', async () => {
+  it('releases the flock when directory restoration fails and repairs on the next acquisition', async () => {
     await withStore(async ({ contentStore, candidate }) => {
       const seed = candidate('seed')
-      payload(seed, 'payload', 'directory turnover bytes')
+      payload(seed, 'payload', 'seed bytes')
       await shareSnapshotFiles({ candidate: seed, contentStore })
-      const next = candidate('next')
-      payload(next, 'payload', 'directory turnover bytes', 0o444)
-      const lock = `${contentStore}.lock`
-      const ownerBytes = (token: string): string =>
-        JSON.stringify({ schema: 'editor-view-content-store-lock/v1', token, pid: process.pid })
-      writeFileSync(lock, ownerBytes('departing-owner'), { mode: 0o444 })
-      chmodSync(contentStore, 0o755)
-      const file = await fsPromises.open(lock, constants.O_RDONLY | constants.O_NOFOLLOW)
-      const originalRead = file.readFile.bind(file)
-      const read = vi.spyOn(file, 'readFile').mockImplementationOnce(async () => {
-        unlinkSync(lock)
-        writeFileSync(lock, ownerBytes('successor-owner'), { mode: 0o444 })
-        return originalRead('utf8')
-      })
+      const directory = candidate('next')
+      const file = payload(directory, 'payload', 'restoration bytes')
+      const failure = new Error('injected content-store directory restoration failure')
+      const inStore = (path: unknown): path is string =>
+        typeof path === 'string' &&
+        (path === contentStore || path.startsWith(`${contentStore}/`) === true)
+      let unrestored: string | undefined
       const originalOpen = fsPromises.open
-      let intercepted = false
+      // Fault only the first readonly restoration of a store directory handle.
       const open = vi.spyOn(fsPromises, 'open').mockImplementation(async (...args) => {
-        if (args[0] === lock && intercepted === false) {
-          intercepted = true
-          return file
+        const handle = await originalOpen(...args)
+        const path = args[0]
+        if (inStore(path) === true) {
+          const originalChmod = handle.chmod.bind(handle)
+          vi.spyOn(handle, 'chmod').mockImplementation(async (next) => {
+            if (unrestored === undefined && next === 0o555) {
+              unrestored = path
+              throw failure
+            }
+            return originalChmod(next)
+          })
         }
-        return originalOpen(...args)
+        return handle
       })
-      const observation = observeContender(contentStore)
-      const publication = shareSnapshotFiles({ candidate: next, contentStore })
       try {
-        await reachBarrier(observation.entered, publication)
-        expect(read).toHaveBeenCalledTimes(1)
-        expect(readFileSync(lock, 'utf8')).toBe(ownerBytes('successor-owner'))
-        // Complete the successor's real metadata protocol before releasing it.
-        chmodSync(contentStore, 0o555)
-        unlinkSync(lock)
-        expect((await publication).linkedFiles).toBe(1)
-        expectReadonlyStore(contentStore)
-        expectNoLock(contentStore)
+        await expect(shareSnapshotFiles({ candidate: directory, contentStore })).rejects.toThrow()
       } finally {
-        observation.close()
         open.mockRestore()
-        read.mockRestore()
-        chmodSync(contentStore, 0o555)
-        if (exists(lock) && readFileSync(lock, 'utf8') === ownerBytes('successor-owner'))
-          unlinkSync(lock)
-        await Promise.allSettled([publication])
       }
-    })
-  })
-
-  it('still rejects a writable directory with no owner after the exclusion recheck', async () => {
-    await withStore(async ({ contentStore, candidate }) => {
-      const seed = candidate('seed')
-      payload(seed, 'payload', 'unlocked directory bytes')
-      await shareSnapshotFiles({ candidate: seed, contentStore })
-      const next = candidate('next')
-      payload(next, 'payload', 'unlocked directory bytes')
-      chmodSync(contentStore, 0o755)
-      await expect(shareSnapshotFiles({ candidate: next, contentStore })).rejects.toThrow(
-        'content-store directory must be readonly when unlocked',
-      )
-      expect(mode(contentStore)).toBe(0o755)
-      expectNoLock(contentStore)
-    })
-  })
-
-  it('requires explicit exact-token stale recovery and restores interrupted writable directories', async () => {
-    await withStore(async ({ contentStore, candidate }) => {
-      const seed = candidate('seed')
-      payload(seed, 'payload', 'recoverable bytes')
-      await shareSnapshotFiles({ candidate: seed, contentStore })
-      removeOwnedTree(seed)
-      const blob = blobPath(contentStore, 'recoverable bytes')
-      const before = lstatSync(blob, { bigint: true })
-      const child = spawnSync(process.execPath, ['-e', ''], { stdio: 'ignore' })
-      if (child.error !== undefined) throw child.error
-      expect(child.status).toBe(0)
-      expect(child.pid).toBeGreaterThan(0)
-      const token = 'df015735-617a-44cb-a27a-9b5d02a97eba'
-      const lock = `${contentStore}.lock`
-      writeFileSync(
-        lock,
-        JSON.stringify({ schema: 'editor-view-content-store-lock/v1', token, pid: child.pid }),
-      )
-      chmodSync(lock, 0o444)
-      const lockBefore = readFileSync(lock, 'utf8')
-      chmodSync(contentStore, 0o755)
-      chmodSync(dirname(blob), 0o755)
-      const next = candidate('next')
-      const nextFile = payload(next, 'payload', 'recoverable bytes')
-      await expect(shareSnapshotFiles({ candidate: next, contentStore })).rejects.toThrow(
-        'explicit recovery',
-      )
-      await expect(collectEditorViewContentStore({ contentStore })).rejects.toThrow(
-        'explicit recovery',
-      )
-      await expect(
-        recoverEditorViewContentStoreLock({ contentStore, token: 'wrong-token' }),
-      ).rejects.toThrow('token mismatch')
-      expect(readFileSync(lock, 'utf8')).toBe(lockBefore)
-      await recoverEditorViewContentStoreLock({ contentStore, token })
-      expect(exists(lock) === true).toBe(false)
+      const failedDirectory =
+        unrestored ?? fail('no content-store directory restoration was faulted')
+      expect(isWritable(failedDirectory)).toBe(true)
+      let repairedBeforeCallback = false
+      expect(
+        await collectEditorViewContentStore({
+          contentStore,
+          afterStoreLockContended: () => fail('failed restoration retained the store lock'),
+          afterStoreLock: () => {
+            expect(mode(failedDirectory)).toBe(0o555)
+            expectReadonlyStore(contentStore)
+            repairedBeforeCallback = true
+          },
+        }),
+      ).toEqual({ removedBlobs: 0, removedBytes: 0 })
+      expect(repairedBeforeCallback).toBe(true)
+      await shareSnapshotFiles({ candidate: directory, contentStore })
+      expect(inode(file)).toBe(inode(blobPath(contentStore, 'restoration bytes')))
       expectReadonlyStore(contentStore)
-      const after = lstatSync(blob, { bigint: true })
-      expect(after.ino).toBe(before.ino)
-      expect(after.mode).toBe(before.mode)
-      expect(after.nlink).toBe(before.nlink)
-      await shareSnapshotFiles({ candidate: next, contentStore })
-      expect(inode(nextFile)).toBe(inode(blob))
-      expectReadonlyStore(contentStore)
-      expectNoLock(contentStore)
+      expectIdleStoreLock(contentStore)
     })
   })
 
-  it('never overwrites a malformed existing control lock', async () => {
+  it('refuses a symbolic-link flock without following or replacing it', async () => {
     await withStore(async ({ contentStore, candidate }) => {
       const seed = candidate('seed')
       payload(seed, 'payload', 'seed')
       await shareSnapshotFiles({ candidate: seed, contentStore })
-      const lock = `${contentStore}.lock`
-      writeFileSync(lock, '')
-      chmodSync(lock, 0o444)
-      const before = lstatSync(lock, { bigint: true })
+      const lock = `${contentStore}.flock`
+      const target = payload(candidate('external'), 'lock-target', 'external bytes', 0o600)
+      const before = lstatSync(target, { bigint: true })
+      unlinkSync(lock)
+      symlinkSync(target, lock)
       const next = candidate('next')
       payload(next, 'payload', 'next')
       await expect(shareSnapshotFiles({ candidate: next, contentStore })).rejects.toThrow()
-      expect(lstatSync(lock, { bigint: true }).ino).toBe(before.ino)
-      expect(readFileSync(lock, 'utf8')).toBe('')
-      expect(mode(lock)).toBe(0o444)
+      expect(readlinkSync(lock)).toBe(target)
+      const after = lstatSync(target, { bigint: true })
+      expect(after.ino).toBe(before.ino)
+      expect(after.mode).toBe(before.mode)
+      expect(after.mtimeNs).toBe(before.mtimeNs)
+      expect(readFileSync(target, 'utf8')).toBe('external bytes')
       expectReadonlyStore(contentStore)
     })
   })
@@ -1050,31 +1033,7 @@ describe('host-wide editor snapshot content store', () => {
     'uses real cross-device readonly copies or reflinks and accounts every fallback file and byte',
     async () => {
       await withStore(async ({ root, contentStore }) => {
-        let alternateRoot: string | undefined
-        const sourceDevice = lstatSync(root).dev
-        for (const directory of crossDeviceDirectories) {
-          try {
-            const probe = realpathSync(mkdtempSync(join(directory, 'editor-view-content-store-')))
-            if (lstatSync(probe).dev !== sourceDevice) {
-              alternateRoot = probe
-              break
-            }
-            removeOwnedTree(probe)
-          } catch (error) {
-            if (
-              error instanceof Error &&
-              'code' in error &&
-              ['ENOENT', 'EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(String(error.code)) === true
-            )
-              continue
-            throw error
-          }
-        }
-        if (alternateRoot === undefined)
-          throw new Error(
-            'The admitted cross-device filesystem became unavailable before its probe',
-          )
-        try {
+        await withCrossDeviceRoot(root, async (alternateRoot) => {
           const first = join(alternateRoot, 'first')
           const second = join(alternateRoot, 'second')
           mkdirSync(first)
@@ -1113,10 +1072,59 @@ describe('host-wide editor snapshot content store', () => {
           expect(lstatSync(blobPath(contentStore, dataBytes)).nlink).toBe(1)
           expect(lstatSync(blobPath(contentStore, executableBytes, true)).nlink).toBe(1)
           expectReadonlyStore(contentStore)
-          expectNoLock(contentStore)
-        } finally {
-          removeOwnedTree(alternateRoot)
-        }
+          expectIdleStoreLock(contentStore)
+        })
+      })
+    },
+  )
+
+  it.skipIf(crossDeviceDirectories.length === 0)(
+    'removes the orphaned EXDEV staging inode of a SIGKILLed publisher so GC can collect its blob',
+    async () => {
+      await withStore(async ({ root, contentStore, candidate }) => {
+        await withCrossDeviceRoot(root, async (alternateRoot) => {
+          const crashed = join(alternateRoot, 'crashed')
+          mkdirSync(crashed)
+          const crashedFile = payload(crashed, 'payload', 'staged bytes')
+          const install = await crashAtBlobInstall({ root, candidate: crashed, contentStore })
+          const staging =
+            install.preparedCopy ?? fail('cross-device publisher did not stage a copy')
+          expect(install.blob).toBe(blobPath(contentStore, 'staged bytes'))
+          expect(dirname(staging)).toBe(join(contentStore, '.staging'))
+          expect(basename(staging).startsWith(`${install.pid}-`)).toBe(true)
+          expect(basename(staging).endsWith('.tmp')).toBe(true)
+          // The canonical key already shares the staged inode; only repair can drop the orphan.
+          expect(inode(staging)).toBe(inode(install.blob))
+          expect(inode(crashedFile)).not.toBe(inode(install.blob))
+          expect(lstatSync(install.blob).nlink).toBeGreaterThan(1)
+          const next = candidate('next')
+          payload(next, 'payload', 'next bytes')
+          let repairedBeforeCallback = false
+          expect(
+            await shareSnapshotFiles({
+              candidate: next,
+              contentStore,
+              afterStoreLockContended: () =>
+                fail('the SIGKILLed publisher retained the store lock'),
+              afterStoreLock: () => {
+                expect(readdirSync(dirname(staging))).toEqual([])
+                expect(exists(install.temporary) === true).toBe(false)
+                expectReadonlyStore(contentStore)
+                repairedBeforeCallback = true
+              },
+            }),
+          ).toEqual({ linkedFiles: 1, copiedFiles: 0, copiedBytes: 0, createdBlobs: 1 })
+          expect(repairedBeforeCallback).toBe(true)
+          expect(lstatSync(install.blob).nlink).toBe(1)
+          expect(await collectEditorViewContentStore({ contentStore })).toEqual({
+            removedBlobs: 1,
+            removedBytes: Buffer.byteLength('staged bytes'),
+          })
+          expect(exists(install.blob) === true).toBe(false)
+          expect(readFileSync(crashedFile, 'utf8')).toBe('staged bytes')
+          expectReadonlyStore(contentStore)
+          expectIdleStoreLock(contentStore)
+        })
       })
     },
   )

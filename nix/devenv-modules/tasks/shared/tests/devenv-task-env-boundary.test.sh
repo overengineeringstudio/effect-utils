@@ -10,7 +10,7 @@ if grep -q 'tasks\."test:buck2-tools"\.env' <<< "$TASK_BLOCK"; then
   exit 1
 fi
 
-for variable in CP_BIN MV_BIN FALSE_BIN; do
+for variable in CP_BIN MV_BIN FALSE_BIN BUN_BIN; do
   if ! grep -q "export $variable=" <<< "$TASK_BLOCK"; then
     echo "FAIL: test:buck2-tools exec does not realize $variable lazily" >&2
     exit 1

@@ -25,18 +25,22 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it, vi } from 'vitest'
 
+import type { EditorViewPinRecord } from './editor-view-readers.ts'
 import { readEditorViewSourceManifest } from './editor-view-sharing.ts'
 import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
   editorViewPublicationWorkers,
+  pinEditorView,
   publishEditorView,
   publishEditorViews,
   recoverEditorViewLock,
   releaseEditorViewRoot,
+  unpinEditorView,
   verifyEditorViewSnapshot,
   type EditorViewOptions,
+  type EditorViewRecord,
 } from './editor-view.ts'
 import * as fingerprintRunner from './typescript-runner.ts'
 
@@ -706,14 +710,12 @@ describe('editor view publisher', () => {
     }
   })
 
-  it('preserves explicit reader pins and concrete open descriptors beyond retention', async () => {
+  it('preserves managed reader pins and advisory open descriptors beyond retention', async () => {
     const fixture = makeFixture()
     let descriptor: number | undefined
     try {
       const pinned = await publishEditorView(fixture.options)
-      const pins = join(fixture.editorRoot, '.pins')
-      mkdirSync(pins)
-      symlinkSync(`../${pinned.snapshot}`, join(pins, 'editor'))
+      await pinEditorView({ options: fixture.options, name: 'editor', snapshot: pinned.snapshot })
       writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), 'second\n')
       const opened = await publishEditorView(fixture.options)
       descriptor = openSync(
@@ -728,13 +730,252 @@ describe('editor view publisher', () => {
       expect(ownedSnapshots(fixture)).toContain(storeName(opened.snapshot))
       closeSync(descriptor)
       descriptor = undefined
-      rmSync(join(pins, 'editor'))
+      await unpinEditorView({ options: fixture.options, name: 'editor' })
       await publishEditorView(fixture.options)
       expect(ownedSnapshots(fixture)).toHaveLength(2)
       expect(ownedSnapshots(fixture)).not.toContain(storeName(pinned.snapshot))
       expect(ownedSnapshots(fixture)).not.toContain(storeName(opened.snapshot))
     } finally {
       if (descriptor !== undefined) closeSync(descriptor)
+      cleanup(fixture)
+    }
+  })
+
+  it('pins the current generation and explicitly selected rollback generations through the CLI', async () => {
+    const fixture = makeFixture()
+    try {
+      const first = await publishEditorView(fixture.options)
+      const run = (command: 'pin' | 'unpin', flags: readonly string[]) =>
+        spawnSync(
+          process.execPath,
+          [
+            fileURLToPath(new URL('./editor-view.ts', import.meta.url)),
+            command,
+            '--repo-root',
+            fixture.root,
+            '--package',
+            fixture.options.package,
+            '--content-store',
+            fixture.options.contentStore!,
+            ...flags,
+          ],
+          { encoding: 'utf8' },
+        )
+      const pinned = run('pin', ['--name', 'current-reader'])
+      expect({ status: pinned.status, stderr: pinned.stderr }).toEqual({ status: 0, stderr: '' })
+      expect(pinned.stdout).toBe(`pinned editor view current-reader ${first.snapshot}\n`)
+      const pinPath = join(fixture.editorRoot, '.pins', 'current-reader.json')
+      expect(JSON.parse(readFileSync(pinPath, 'utf8'))).toEqual({
+        schema: 'effect-utils/editor-view-pin/v1',
+        name: 'current-reader',
+        snapshot: first.snapshot,
+      })
+      expect(lstatSync(pinPath).isFile()).toBe(true)
+      for (let revision = 2; revision <= 4; revision++) {
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
+        await publishEditorView(fixture.options)
+      }
+      const rollback = run('pin', ['--name', 'rollback-reader', '--snapshot', first.snapshot])
+      expect({ status: rollback.status, stderr: rollback.stderr }).toEqual({
+        status: 0,
+        stderr: '',
+      })
+      expect(rollback.stdout).toBe(`pinned editor view rollback-reader ${first.snapshot}\n`)
+      const unpinned = run('unpin', ['--name', 'current-reader'])
+      expect({ status: unpinned.status, stderr: unpinned.stderr }).toEqual({
+        status: 0,
+        stderr: '',
+      })
+      expect(unpinned.stdout).toBe('unpinned editor view current-reader\n')
+      expect(existsSync(pinPath)).toBe(false)
+      await publishEditorView(fixture.options)
+      expect(ownedSnapshots(fixture)).toContain(storeName(first.snapshot))
+      const released = run('unpin', ['--name', 'rollback-reader'])
+      expect({ status: released.status, stderr: released.stderr }).toEqual({
+        status: 0,
+        stderr: '',
+      })
+      await publishEditorView(fixture.options)
+      expect(ownedSnapshots(fixture)).not.toContain(storeName(first.snapshot))
+      const missing = run('pin', ['--name', 'too-late', '--snapshot', first.snapshot])
+      expect(missing.status).not.toBe(0)
+      expect(missing.stderr).toContain('pin snapshot is missing')
+      expect(existsSync(join(fixture.editorRoot, '.pins', 'too-late.json'))).toBe(false)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('rejects unsafe pin names, malformed generations and registrations owned by another view', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      for (const name of ['', '../outside', 'reader.json', '.hidden', 'x'.repeat(65)])
+        await expect(pinEditorView({ options: fixture.options, name })).rejects.toThrow('pin name')
+      for (const snapshot of [
+        '../outside',
+        `${record.snapshot}/node_modules`,
+        `.store/other-${'a'.repeat(64)}`,
+        `.store/${fixture.options.viewName}-invalid`,
+      ])
+        await expect(
+          pinEditorView({ options: fixture.options, name: 'reader', snapshot }),
+        ).rejects.toThrow('pin snapshot must name a generation')
+      await expect(
+        pinEditorView({
+          options: fixture.options,
+          name: 'reader',
+          snapshot: `.store/${fixture.options.viewName}-${'a'.repeat(64)}`,
+        }),
+      ).rejects.toThrow('pin snapshot is missing')
+      expect(existsSync(join(fixture.editorRoot, '.pins'))).toBe(false)
+      mkdirSync(join(fixture.editorRoot, '.pins'))
+      const path = join(fixture.editorRoot, '.pins', 'reader.json')
+      writeFileSync(
+        path,
+        JSON.stringify({
+          schema: 'effect-utils/editor-view-pin/v1',
+          name: 'reader',
+          snapshot: `.store/other-${'a'.repeat(64)}`,
+        }),
+      )
+      await expect(pinEditorView({ options: fixture.options, name: 'reader' })).rejects.toThrow(
+        'belongs to another view',
+      )
+      await expect(unpinEditorView({ options: fixture.options, name: 'reader' })).rejects.toThrow(
+        'belongs to another view',
+      )
+      expect(JSON.parse(readFileSync(path, 'utf8')).snapshot).toBe(`.store/other-${'a'.repeat(64)}`)
+      rmSync(path)
+      symlinkSync(join(fixture.root, 'workspace-authority.json'), path)
+      await expect(pinEditorView({ options: fixture.options, name: 'reader' })).rejects.toThrow(
+        'managed pin must be a regular file',
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('serializes a winning managed pin with real snapshot retirement under the store flock', async () => {
+    const fixture = makeFixture()
+    const entered = Promise.withResolvers<void>()
+    const proceed = Promise.withResolvers<void>()
+    let pin: Promise<EditorViewPinRecord> | undefined
+    let publication: Promise<EditorViewRecord> | undefined
+    try {
+      const retainedOptions = { ...fixture.options, snapshotRetention: 32 }
+      const oldest = await publishEditorView(retainedOptions)
+      for (const revision of [2, 3]) {
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
+        await publishEditorView(retainedOptions)
+      }
+      pin = pinEditorView({
+        options: fixture.options,
+        name: 'racing-reader',
+        snapshot: oldest.snapshot,
+        afterStoreLock: async () => {
+          entered.resolve()
+          await proceed.promise
+        },
+      })
+      await entered.promise
+      // The pin already owns the real flock but has not written its registration.
+      publication = publishEditorView(fixture.options)
+      expect(existsSync(join(fixture.editorRoot, '.pins', 'racing-reader.json'))).toBe(false)
+      proceed.resolve()
+      await expect(pin).resolves.toMatchObject({ snapshot: oldest.snapshot })
+      await publication
+      expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
+      await unpinEditorView({ options: fixture.options, name: 'racing-reader' })
+      await publishEditorView(fixture.options)
+      expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
+    } finally {
+      proceed.resolve()
+      await Promise.allSettled([pin, publication])
+      cleanup(fixture)
+    }
+  })
+
+  it('rejects a losing managed pin after retirement instead of registering a dangling generation', async () => {
+    const fixture = makeFixture()
+    const entered = Promise.withResolvers<void>()
+    const proceed = Promise.withResolvers<void>()
+    const cleanupEntered = Promise.withResolvers<void>()
+    const cleanupProceed = Promise.withResolvers<void>()
+    let pinOutcome: Promise<unknown> | undefined
+    let publication: Promise<EditorViewRecord> | undefined
+    try {
+      const retainedOptions = { ...fixture.options, snapshotRetention: 32 }
+      const oldest = await publishEditorView(retainedOptions)
+      for (const revision of [2, 3]) {
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
+        await publishEditorView(retainedOptions)
+      }
+      publication = publishEditorView({
+        ...fixture.options,
+        beforeSnapshotRetirement: async () => {
+          entered.resolve()
+          await proceed.promise
+        },
+        beforeSnapshotCleanup: async () => {
+          cleanupEntered.resolve()
+          await cleanupProceed.promise
+        },
+      })
+      await entered.promise
+      // Retirement owns the actual flock after its managed-pin census. Admission
+      // must wait and then recheck existence, not register against the stale name.
+      pinOutcome = pinEditorView({
+        options: fixture.options,
+        name: 'too-late',
+        snapshot: oldest.snapshot,
+      }).then(
+        (value) => value,
+        (error: unknown) => error,
+      )
+      proceed.resolve()
+      await cleanupEntered.promise
+      // The canonical generation has retired, but recursive cleanup is paused.
+      // Admission can acquire the flock now and must reject the hidden name.
+      expect(
+        readdirSync(fixture.editorRoot).some(
+          (name) => name.startsWith('.gc-') === true && name.endsWith(storeName(oldest.snapshot)),
+        ),
+      ).toBe(true)
+      const failure = await pinOutcome
+      expect(failure).toBeInstanceOf(Error)
+      expect(failure instanceof Error ? failure.message : undefined).toContain(
+        'pin snapshot is missing',
+      )
+      expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
+      expect(existsSync(join(fixture.editorRoot, '.pins', 'too-late.json'))).toBe(false)
+      cleanupProceed.resolve()
+      await publication
+      expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+    } finally {
+      proceed.resolve()
+      cleanupProceed.resolve()
+      await Promise.allSettled([pinOutcome, publication])
+      cleanup(fixture)
+    }
+  })
+
+  it('treats shell symlinks as advisory retention observations', async () => {
+    const fixture = makeFixture()
+    try {
+      const oldest = await publishEditorView(fixture.options)
+      const link = join(fixture.editorRoot, 'shell-reader')
+      symlinkSync(oldest.snapshot, link)
+      for (const revision of [2, 3]) {
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
+        await publishEditorView(fixture.options)
+      }
+      expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
+      expect(existsSync(join(fixture.editorRoot, '.pins', 'shell-reader.json'))).toBe(false)
+      rmSync(link)
+      await publishEditorView(fixture.options)
+      expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
+    } finally {
       cleanup(fixture)
     }
   })
@@ -1221,8 +1462,8 @@ describe('editor view publisher', () => {
         writableRoot,
       )
       const commit = source.slice(
-        source.indexOf('const commit = (): EditorViewRecord =>'),
-        source.indexOf('return coordinator === undefined ? commit()'),
+        source.indexOf('const commit = async (): Promise<EditorViewRecord> =>'),
+        source.indexOf('return await (coordinator === undefined ? commit()'),
       )
       const promotion = commit.indexOf('renameReadOnlySnapshot({')
       const hardening = commit.indexOf(

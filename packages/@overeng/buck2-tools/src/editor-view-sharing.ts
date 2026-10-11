@@ -1,3 +1,5 @@
+import { dlopen, read as ffiRead } from 'bun:ffi'
+import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID, webcrypto } from 'node:crypto'
 import {
   constants,
@@ -5,12 +7,9 @@ import {
   lstatSync,
   readFileSync,
   realpathSync,
-  watch,
   type BigIntStats,
-  type FSWatcher,
 } from 'node:fs'
 import {
-  copyFile,
   link,
   lstat,
   mkdir,
@@ -23,13 +22,12 @@ import {
 } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import { clearTimeout, setTimeout } from 'node:timers'
+import { setTimeout } from 'node:timers/promises'
 
-const lockSchema = 'editor-view-content-store-lock/v1' as const
 const batchSize = 128
 const blobNamePattern = /^([a-f0-9]{64})-(0444|0555)$/
 const shardPattern = /^[a-f0-9]{2}$/
-const temporaryPattern = /^\.tmp-([a-f0-9]{64})-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
+const temporaryPattern = /^\.tmp-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
 export const editorViewSourceManifestName = 'editor-view-sources-v1.json'
 export type EditorViewSourceFile = {
   readonly sourceKey: string
@@ -213,214 +211,72 @@ export const defaultEditorViewContentStore = (repoRoot: string): string => {
   return join(dirname(commonDirectory), '.editor-view-content', 'v1')
 }
 
-type LockOwner = {
-  readonly schema: typeof lockSchema
-  readonly token: string
-  readonly pid: number
-}
-type Lock = { readonly path: string; readonly owner: LockOwner }
+const lockPath = (contentStore: string): string => `${contentStore}.flock`
+const libcPath =
+  process.platform === 'darwin'
+    ? '/usr/lib/libSystem.B.dylib'
+    : process.platform === 'linux'
+      ? 'libc.so.6'
+      : fail(`flock content stores require Linux or macOS: ${process.platform}`)
+const libc = dlopen(libcPath, {
+  flock: { args: ['i32', 'i32'], returns: 'i32' },
+  fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
+})
+const errnoAddress =
+  process.platform === 'darwin'
+    ? dlopen(libcPath, { __error: { args: [], returns: 'ptr' } }).symbols.__error
+    : dlopen(libcPath, { __errno_location: { args: [], returns: 'ptr' } }).symbols.__errno_location
+const closeOnExec = process.platform === 'darwin' ? 0x1000000 : 0x80000
 
-const readOwner = async (path: string): Promise<LockOwner | undefined> => {
-  const expected = await statusIfPresent(path)
-  if (expected === undefined) return undefined
-  requireBlob({ path: path, status: expected, mode: 0o444 })
-  let file: FileHandle
-  try {
-    file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
-  } catch (error) {
-    if (hasCode({ error: error, code: 'ENOENT' }) === true) return undefined
-    throw error
-  }
-  try {
-    if (unchanged({ left: expected, right: await file.stat({ bigint: true }) }) === false) {
-      const named = await statusIfPresent(path)
-      if (named === undefined || sameInode({ left: expected, right: named }) === false)
-        return undefined
-      fail(`content-store lock owner changed while opening: ${path}`)
-    }
-    let owner: unknown
-    try {
-      owner = JSON.parse(await file.readFile('utf8'))
-    } catch (error) {
-      return fail(`cannot decode content-store lock owner at ${path}: ${String(error)}`)
-    }
-    const named = await statusIfPresent(path)
-    // A completed owner may be replaced between open/read and this name check.
-    // Never use its token for recovery; acquisition must observe the new owner.
-    if (named === undefined || sameInode({ left: expected, right: named }) === false)
-      return undefined
-    if (
-      unchanged({ left: expected, right: await file.stat({ bigint: true }) }) === false ||
-      unchanged({ left: expected, right: named }) === false
-    ) {
-      const current = await statusIfPresent(path)
-      if (current === undefined || sameInode({ left: expected, right: current }) === false)
-        return undefined
-      fail(`content-store lock owner changed while reading: ${path}`)
-    }
-    if (
-      typeof owner !== 'object' ||
-      owner === null ||
-      Array.isArray(owner) === true ||
-      Object.keys(owner).toSorted().join(',') !== 'pid,schema,token' ||
-      'schema' in owner === false ||
-      owner.schema !== lockSchema ||
-      'token' in owner === false ||
-      typeof owner.token !== 'string' ||
-      owner.token.length === 0 ||
-      'pid' in owner === false ||
-      typeof owner.pid !== 'number' ||
-      Number.isSafeInteger(owner.pid) === false ||
-      owner.pid <= 0 ||
-      owner.pid > 0x7fffffff
-    )
-      return fail(`content-store lock owner does not conform to ${lockSchema}: ${path}`)
-    return { schema: lockSchema, token: owner.token, pid: owner.pid }
-  } finally {
-    await file.close()
-  }
-}
-
-const ownerIsLive = (owner: LockOwner): boolean => {
-  try {
-    process.kill(owner.pid, 0)
-    return true
-  } catch (error) {
-    if (hasCode({ error: error, code: 'ESRCH' }) === true) return false
-    if (hasCode({ error: error, code: 'EPERM' }) === true) return true
-    throw error
-  }
-}
-
-const tokenDigest = (token: string): string => createHash('sha256').update(token).digest('hex')
-const lockPath = (contentStore: string): string => `${contentStore}.lock`
-const recoveryPath = (contentStore: string): string => `${contentStore}.lock.recovery`
-
-const staleOwner: (options: { readonly path: string; readonly owner: LockOwner }) => never = ({
-  path,
-  owner,
-}) =>
-  fail(
-    `content-store lock owner pid=${owner.pid} is gone at ${path}; explicit recovery requires exact token ${JSON.stringify(owner.token)} (no automatic lock theft)`,
-  )
-
-const prepareOwner = async ({
-  path,
-  owner,
-}: {
-  readonly path: string
-  readonly owner: LockOwner
-}): Promise<string> => {
-  const temporary = `${path}.${randomUUID()}.tmp`
-  const file = await open(
-    temporary,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-    0o444,
-  )
-  let complete = false
-  try {
-    await file.writeFile(`${JSON.stringify(owner)}\n`)
-    await file.chmod(0o444)
-    await file.close()
-    complete = true
-    return temporary
-  } finally {
-    if (complete === false) {
-      try {
-        await file.close()
-      } finally {
-        await unlinkIfPresent(temporary)
-      }
-    }
-  }
-}
-
-const releaseLock = async ({ path, owner }: Lock): Promise<void> => {
-  const current = await readOwner(path)
-  if (current === undefined || current.token !== owner.token || current.pid !== owner.pid)
-    fail(`content-store lock ownership changed; lock was not removed: ${path}`)
-  await unlink(path)
-}
-
-/* eslint-disable no-await-in-loop -- Lock acquisition retries must settle before inspecting the next owner; never race ownership attempts. */
+/* eslint-disable no-await-in-loop -- The kernel lock arbitrates ownership; the delay only avoids busy-waiting and lets same-process holders finish. */
 const acquireLock = async ({
   contentStore,
-  token,
+  afterStoreLockContended,
 }: {
   readonly contentStore: string
-  readonly token: string
-}): Promise<Lock> => {
+  readonly afterStoreLockContended?: () => void | Promise<void>
+}): Promise<FileHandle> => {
   const path = lockPath(contentStore)
-  const owner: LockOwner = { schema: lockSchema, token, pid: process.pid }
-  const temporary = await prepareOwner({ path: path, owner: owner })
-  let installed = false
-  let wake: (() => void) | undefined
-  let watcherError: Error | undefined
-  let timer: NodeJS.Timeout | undefined
-  let watcher: FSWatcher | undefined
+  const file = await open(
+    path,
+    constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW | closeOnExec,
+    0o600,
+  )
+  let acquired = false
   try {
-    // Watch before any acquisition attempt: a release between EEXIST and reading
-    // its owner must not become a lost wakeup.
-    watcher = watch(dirname(path), () => wake?.())
-    watcher.on('error', (error) => {
-      watcherError = error
-      wake?.()
-    })
-    for (;;) {
-      if (watcherError !== undefined) throw watcherError
-      const changed = new Promise<void>((done) => {
-        wake = done
-      })
-      let recovery = await readOwner(recoveryPath(contentStore))
-      if (recovery === undefined) {
-        try {
-          await link(temporary, path)
-          installed = true
-          // A recovery guard remains authoritative until its final unlink.
-          recovery = await readOwner(recoveryPath(contentStore))
-          if (recovery === undefined) {
-            await unlink(temporary)
-            return { path, owner }
-          }
-          await releaseLock({ path, owner })
-          installed = false
-        } catch (error) {
-          if (hasCode({ error: error, code: 'EEXIST' }) === false) throw error
-        }
+    const status = await file.stat({ bigint: true })
+    requireOwned({ path, status })
+    if (
+      status.isFile() === false ||
+      permissions(status) !== 0o600n ||
+      status.nlink !== 1n ||
+      status.size > 1n
+    )
+      fail(`flock control must be a private same-user regular file: ${path}`)
+    const descriptorFlags = libc.symbols.fcntl(file.fd, 1, 0)
+    if (descriptorFlags < 0 || (descriptorFlags & 1) !== 1)
+      fail(`flock control descriptor is not close-on-exec: ${path}`)
+    let contended = false
+    while (libc.symbols.flock(file.fd, 2 | 4) !== 0) {
+      const pointer = errnoAddress()
+      if (pointer === null) fail('libc did not expose flock errno')
+      const errno = ffiRead.i32(pointer)
+      if (errno === 4) continue
+      if (errno !== (process.platform === 'darwin' ? 35 : 11))
+        fail(`flock failed for ${path}: errno=${errno}`)
+      if (contended === false) {
+        contended = true
+        await afterStoreLockContended?.()
       }
-      if (recovery !== undefined) {
-        if (ownerIsLive(recovery) === false)
-          staleOwner({ path: recoveryPath(contentStore), owner: recovery })
-      } else {
-        const current = await readOwner(path)
-        if (current === undefined) continue
-        if (ownerIsLive(current) === false) {
-          // Recovery may have started after the first guard read.
-          const recovering = await readOwner(recoveryPath(contentStore))
-          if (recovering === undefined) staleOwner({ path: path, owner: current })
-          if (ownerIsLive(recovering) === false)
-            staleOwner({ path: recoveryPath(contentStore), owner: recovering })
-        }
-      }
-      // Owner death does not emit a directory event. This wakeup detects death,
-      // not lock ownership: only exclusive hardlink creation arbitrates access.
-      timer = setTimeout(() => wake?.(), 1_000)
-      timer.unref()
-      try {
-        await changed
-      } finally {
-        clearTimeout(timer)
-        timer = undefined
-      }
+      await setTimeout(5)
     }
-  } catch (error) {
-    if (installed === true) await releaseLock({ path, owner })
-    throw error
+    const named = await lstat(path, { bigint: true })
+    if (sameInode({ left: status, right: named }) === false || named.nlink !== 1n)
+      fail(`persistent flock control was replaced or linked: ${path}`)
+    acquired = true
+    return file
   } finally {
-    watcher?.close()
-    wake = undefined
-    clearTimeout(timer)
-    await unlinkIfPresent(temporary)
+    if (acquired === false) await file.close()
   }
 }
 /* eslint-enable no-await-in-loop */
@@ -478,38 +334,21 @@ const validateDirectory = async ({
 }): Promise<BigIntStats | undefined> => {
   const status = await statusIfPresent(path)
   if (status === undefined) return undefined
-  await requireRealDirectory({ path: path, status: status })
-  requireOwned({ path: path, status: status })
+  await requireRealDirectory({ path, status })
+  requireOwned({ path, status })
   if (permissions(status) === 0o555n) return status
-  // Another valid lock owner may be installing entries while we prehash. Newly
-  // created directories can also briefly reflect a restrictive process umask.
-  if ((permissions(status) & ~0o755n) === 0n) {
-    const owner =
-      (await readOwner(lockPath(contentStore))) ?? (await readOwner(recoveryPath(contentStore)))
-    if (owner !== undefined) return status
-    const refreshed = await lstat(path, { bigint: true })
-    if (sameInode({ left: status, right: refreshed }) === true && permissions(refreshed) === 0o555n)
-      return refreshed
-    // Lock turnover makes an unlocked observation non-atomic with directory
-    // mode changes. Resolve that ambiguity under exclusion, without hashing or
-    // changing the directory. A genuinely writable unlocked store still fails.
-    return withStoreLock({
-      contentStore,
-      token: randomUUID(),
-      run: async () => {
-        const current = await statusIfPresent(path)
-        if (current === undefined) return undefined
-        await requireRealDirectory({ path, status: current })
-        requireOwned({ path, status: current })
-        if (sameInode({ left: status, right: current }) === false)
-          fail(`content-store directory changed during validation: ${path}`)
-        if (permissions(current) !== 0o555n)
-          fail(`content-store directory must be readonly when unlocked: ${path}`)
-        return current
-      },
-    })
-  }
-  return fail(`content-store directory must be readonly when unlocked: ${path}`)
+  // A concurrent batch or interrupted writer may leave a writable directory.
+  // Only kernel exclusion and its repair step can disambiguate that observation.
+  return withStoreLock({
+    contentStore,
+    run: async () => {
+      const current = await statusIfPresent(path)
+      if (current === undefined) return undefined
+      if (sameInode({ left: status, right: current }) === false || permissions(current) !== 0o555n)
+        fail(`content-store directory changed during locked validation: ${path}`)
+      return current
+    },
+  })
 }
 
 type OpenDirectory = {
@@ -638,54 +477,81 @@ const shardDirectory = async ({
 /* eslint-disable no-await-in-loop -- Bounded owned directory handles must settle restoration before the exclusive lock is released. */
 const withStoreLock = async <T>({
   contentStore,
-  token,
   afterStoreLock,
+  afterStoreLockContended,
   run,
 }: {
   readonly contentStore: string
-  readonly token: string
   readonly afterStoreLock?: (() => void | Promise<void>) | undefined
+  readonly afterStoreLockContended?: (() => void | Promise<void>) | undefined
   readonly run: (directories: Directories) => Promise<T>
 }): Promise<T> => {
-  const lock = await acquireLock({ contentStore: contentStore, token: token })
-  const directories: Directories = new Map()
-  let outcome: { readonly value: T } | { readonly error: unknown }
+  await ensureParent({ contentStore, create: true })
+  const lock = await acquireLock({ contentStore, afterStoreLockContended })
   try {
-    await afterStoreLock?.()
-    outcome = { value: await run(directories) }
-  } catch (error) {
-    outcome = { error }
-  }
-  const errors: unknown[] = []
-  for (const directory of directories.values()) {
+    const marker = Buffer.alloc(1)
+    const { bytesRead } = await lock.read(marker, 0, 1, 0)
+    if (bytesRead === 1 && marker[0] !== 48 && marker[0] !== 49)
+      fail(`invalid flock dirty marker: ${lockPath(contentStore)}`)
+    // Mark before repair too: a crash during repair must leave the next holder
+    // able to finish it. Only successful directory restoration clears this byte.
+    await lock.write('1', 0, 'utf8')
+    await repairStore({ contentStore, dirty: bytesRead === 0 || marker[0] === 49 })
+    const directories: Directories = new Map()
+    let outcome: { readonly value: T } | { readonly error: unknown }
     try {
-      if (directory.writable === true) await directory.file.chmod(0o555)
-      const current = await lstat(directory.path, { bigint: true })
-      if (
-        sameInode({ left: directory.status, right: current }) === false ||
-        permissions(current) !== 0o555n
-      )
-        fail(`content-store directory changed while restoring readonly mode: ${directory.path}`)
+      await afterStoreLock?.()
+      outcome = { value: await run(directories) }
     } catch (error) {
-      errors.push(error)
-    } finally {
+      outcome = { error }
+    }
+    const errors: unknown[] = []
+    for (const directory of directories.values()) {
       try {
-        await directory.file.close()
+        if (directory.writable === true) await directory.file.chmod(0o555)
+        const current = await lstat(directory.path, { bigint: true })
+        if (
+          sameInode({ left: directory.status, right: current }) === false ||
+          permissions(current) !== 0o555n
+        )
+          fail(`content-store directory changed while restoring readonly mode: ${directory.path}`)
       } catch (error) {
         errors.push(error)
+      } finally {
+        try {
+          await directory.file.close()
+        } catch (error) {
+          errors.push(error)
+        }
       }
     }
+    if (errors.length !== 0)
+      throw new AggregateError(
+        'error' in outcome ? [outcome.error, ...errors] : errors,
+        'editor view sharing: readonly restoration failed; next flock acquire repairs the store',
+      )
+    if ('error' in outcome) throw outcome.error
+    await lock.write('0', 0, 'utf8')
+    return outcome.value
+  } finally {
+    // flock ownership belongs to this open description, never to a pathname or
+    // owner record. Close releases it on success, failure, and process death.
+    await lock.close()
   }
-  if (errors.length !== 0)
-    throw new AggregateError(
-      'error' in outcome ? [outcome.error, ...errors] : errors,
-      'editor view sharing: readonly restoration failed; store lock retained',
-    )
-  await releaseLock(lock)
-  if ('error' in outcome) throw outcome.error
-  return outcome.value
 }
 /* eslint-enable no-await-in-loop */
+
+/** Serialize generation pins/retirement with the same metadata exclusion as CAS links and GC. */
+export const withEditorViewContentStoreLock = async <T>({
+  contentStore,
+  afterStoreLockContended,
+  run,
+}: {
+  readonly contentStore: string
+  readonly afterStoreLockContended?: () => void | Promise<void>
+  readonly run: () => Promise<T>
+}): Promise<T> =>
+  withStoreLock({ contentStore: resolve(contentStore), afterStoreLockContended, run })
 
 // This is only an optimization of immutable inode verification, never an index.
 // Bound retained metadata; only readonly shared inodes may omit their mutable ctime.
@@ -866,46 +732,141 @@ type PreparedFile = {
   copy?: { readonly path: string; readonly status: BigIntStats }
 }
 
+const stagingDirectory = async ({
+  contentStore,
+  directories,
+  create,
+}: {
+  readonly contentStore: string
+  readonly directories: Directories
+  readonly create: boolean
+}): Promise<OpenDirectory | undefined> => {
+  const root = await storeDirectory({ contentStore, directories, create })
+  if (root === undefined) return undefined
+  const path = join(contentStore, stagingDirectoryName)
+  if ((await statusIfPresent(path)) === undefined) {
+    if (create === false) return undefined
+    await makeWritable(root)
+    await createDirectory({ path, directories })
+  }
+  return openDirectory({ path, directories })
+}
+
+const removePreparedCopies = async ({
+  contentStore,
+  paths,
+}: {
+  readonly contentStore: string
+  readonly paths: readonly string[]
+}): Promise<void> => {
+  if (paths.length === 0) return
+  await withStoreLock({
+    contentStore,
+    run: async (directories) => {
+      const directory = await stagingDirectory({ contentStore, directories, create: false })
+      if (directory === undefined) return
+      for (const path of paths) {
+        if (dirname(path) !== directory.path || stagingPattern.test(basename(path)) === false)
+          fail(`prepared copy is outside recognized staging: ${path}`)
+        const status = await statusIfPresent(path)
+        if (status === undefined) continue
+        if (status.isFile() === false) fail(`prepared copy is not a regular file: ${path}`)
+        requireOwned({ path, status })
+        await makeWritable(directory)
+        await unlink(path)
+      }
+    },
+  })
+}
+
+/* eslint-disable no-await-in-loop -- Cross-device bytes stream through one reusable buffer outside metadata exclusion. */
 const prepareCopy = async ({
   contentStore,
   file,
-  token,
 }: {
   readonly contentStore: string
   readonly file: PreparedFile
-  readonly token: string
 }): Promise<void> => {
   if (file.copy !== undefined) return
-  if (unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false)
-    fail(`candidate payload changed before copying: ${file.path}`)
+  const identity = creatorIdentity(process.pid)
+  if (identity === 'dead') fail('copy creator unexpectedly has no live process incarnation')
   const temporary = join(
-    dirname(contentStore),
-    `.${basename(contentStore)}.blob-${tokenDigest(token)}-${randomUUID()}.tmp`,
+    contentStore,
+    stagingDirectoryName,
+    `${process.pid}-${identity}-${randomUUID()}.tmp`,
   )
-  let copied = false
+  let created: FileHandle | undefined
+  let complete = false
   try {
-    // The source has already been normalized readonly. COPYFILE_EXCL prevents
-    // following or truncating a preexisting destination; FICLONE falls back to copy.
+    const destination = await withStoreLock({
+      contentStore,
+      run: async (directories) => {
+        const directory = await stagingDirectory({ contentStore, directories, create: true })
+        if (directory === undefined) fail(`staging directory is absent: ${temporary}`)
+        await makeWritable(directory)
+        const output = await open(
+          temporary,
+          constants.O_WRONLY |
+            constants.O_CREAT |
+            constants.O_EXCL |
+            constants.O_NOFOLLOW |
+            closeOnExec,
+          0o600,
+        )
+        created = output
+        await output.chmod(0o600)
+        return output
+      },
+    })
+    const source = await open(file.path, constants.O_RDONLY | constants.O_NOFOLLOW)
     try {
-      await copyFile(file.path, temporary, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
-    } catch (error) {
-      // An interrupted copy may leave a partial private inode. An EEXIST inode
-      // was not created by us and must never be removed or overwritten.
-      if (hasCode({ error: error, code: 'EEXIST' }) === false) await unlinkIfPresent(temporary)
-      throw error
+      if (unchanged({ left: file.status, right: await source.stat({ bigint: true }) }) === false)
+        fail(`candidate payload changed before copying: ${file.path}`)
+      const buffer = Buffer.allocUnsafe(64 * 1_024)
+      let position = 0
+      for (;;) {
+        const { bytesRead } = await source.read(buffer, 0, buffer.length, position)
+        if (bytesRead === 0) break
+        let written = 0
+        while (written < bytesRead) {
+          const { bytesWritten } = await destination.write(
+            buffer,
+            written,
+            bytesRead - written,
+            position + written,
+          )
+          if (bytesWritten === 0) fail(`copy made no progress: ${temporary}`)
+          written += bytesWritten
+        }
+        position += bytesRead
+      }
+      if (
+        unchanged({ left: file.status, right: await source.stat({ bigint: true }) }) === false ||
+        unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false
+      )
+        fail(`candidate payload changed while copying: ${file.path}`)
+    } finally {
+      await source.close()
     }
-    copied = true
-    const status = await normalizeCandidate(temporary)
+    await destination.chmod(file.mode)
+    const status = await destination.stat({ bigint: true })
+    if (
+      sameInode({ left: status, right: await lstat(temporary, { bigint: true }) }) === false ||
+      status.nlink !== 1n
+    )
+      fail(`private staged copy changed during preparation: ${temporary}`)
+    requireBlob({ path: temporary, status, mode: file.mode })
     if ((await fingerprint({ path: temporary, expected: status })) !== file.digest)
       fail(`prepared cross-device blob differs from its candidate: ${file.path}`)
-    if (unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false)
-      fail(`candidate payload changed while copying: ${file.path}`)
     file.copy = { path: temporary, status }
-    copied = false
+    complete = true
   } finally {
-    if (copied === true) await unlinkIfPresent(temporary)
+    await created?.close()
+    if (created !== undefined && complete === false)
+      await removePreparedCopies({ contentStore, paths: [temporary] })
   }
 }
+/* eslint-enable no-await-in-loop */
 
 /** Observed sharing/fallback work for one byte-owned candidate. */
 export type EditorViewContentSharing = {
@@ -969,15 +930,23 @@ const shareBatch = async ({
   contentStore,
   files,
   parentStatus,
-  token,
   afterStoreLock,
+  afterStoreLockContended,
+  afterBlobInstall,
   sharing,
 }: {
   readonly contentStore: string
   readonly files: readonly PreparedFile[]
   readonly parentStatus: BigIntStats
-  readonly token: string
   readonly afterStoreLock?: (() => void | Promise<void>) | undefined
+  readonly afterStoreLockContended?: (() => void | Promise<void>) | undefined
+  readonly afterBlobInstall?:
+    | ((installed: {
+        blob: string
+        temporary: string
+        preparedCopy?: string
+      }) => void | Promise<void>)
+    | undefined
   readonly sharing: EditorViewContentSharing
 }): Promise<void> => {
   let pending: readonly PreparedFile[] = files
@@ -996,15 +965,15 @@ const shareBatch = async ({
               mode: file.mode,
             })
             if (existing === undefined && file.status.dev !== parentStatus.dev)
-              await prepareCopy({ contentStore, file, token })
+              await prepareCopy({ contentStore, file })
           }),
         )
         for (const result of prepared) if (result.status === 'rejected') throw result.reason
       }
       pending = await withStoreLock({
         contentStore,
-        token,
         afterStoreLock,
+        afterStoreLockContended,
         run: async (directories) => {
           const retry: PreparedFile[] = []
           for (const file of pending) {
@@ -1047,7 +1016,7 @@ const shareBatch = async ({
               )
                 fail(`prepared blob source changed before installation: ${source.path}`)
               await makeWritable(shard)
-              const temporary = join(shard.path, `.tmp-${tokenDigest(token)}-${randomUUID()}`)
+              const temporary = join(shard.path, `.tmp-${randomUUID()}`)
               let linked = false
               try {
                 await link(source.path, temporary)
@@ -1076,6 +1045,11 @@ const shareBatch = async ({
                 if (unchanged({ left: source.status, right: blobStatus }) === false)
                   fail(`new blob does not retain its verified source inode: ${file.blob}`)
                 remember({ status: blobStatus, digest: file.digest })
+                await afterBlobInstall?.({
+                  blob: file.blob,
+                  temporary,
+                  preparedCopy: file.copy?.path,
+                })
               } finally {
                 if (linked === true) await unlinkIfPresent(temporary)
               }
@@ -1094,13 +1068,13 @@ const shareBatch = async ({
     failure = { error }
   }
   const errors: unknown[] = []
-  for (const file of files) {
-    if (file.copy === undefined) continue
-    try {
-      await unlinkIfPresent(file.copy.path)
-    } catch (error) {
-      errors.push(error)
-    }
+  try {
+    await removePreparedCopies({
+      contentStore,
+      paths: files.flatMap((file) => (file.copy === undefined ? [] : [file.copy.path])),
+    })
+  } catch (error) {
+    errors.push(error)
   }
   if (errors.length !== 0)
     throw new AggregateError(
@@ -1131,6 +1105,8 @@ export const shareSnapshotFiles = async ({
   candidate,
   contentStore,
   afterStoreLock,
+  afterStoreLockContended,
+  afterBlobInstall,
   reusedFiles,
   candidateFiles,
   onSharedFile,
@@ -1138,6 +1114,12 @@ export const shareSnapshotFiles = async ({
   readonly candidate: string
   readonly contentStore: string
   readonly afterStoreLock?: () => void | Promise<void>
+  readonly afterStoreLockContended?: () => void | Promise<void>
+  readonly afterBlobInstall?: (installed: {
+    blob: string
+    temporary: string
+    preparedCopy?: string
+  }) => void | Promise<void>
   readonly reusedFiles?: ReadonlySet<string>
   readonly candidateFiles?: Iterable<string>
   readonly onSharedFile?: (file: {
@@ -1160,7 +1142,6 @@ export const shareSnapshotFiles = async ({
     copiedBytes: 0,
     createdBlobs: 0,
   }
-  const token = randomUUID()
   let parentStatus: BigIntStats | undefined
   // Group bounded link transactions by shard, so each transaction opens and
   // restores one shard instead of most of the store's 256 directories.
@@ -1168,7 +1149,15 @@ export const shareSnapshotFiles = async ({
   const flush = async (shard: string, files: PreparedFile[]): Promise<void> => {
     if (files.length === 0) return
     parentStatus ??= await ensureParent({ contentStore: store, create: true })
-    await shareBatch({ contentStore: store, files, parentStatus, token, afterStoreLock, sharing })
+    await shareBatch({
+      contentStore: store,
+      files,
+      parentStatus,
+      afterStoreLock,
+      afterStoreLockContended,
+      afterBlobInstall,
+      sharing,
+    })
     for (const file of files)
       onSharedFile?.({
         path: file.path,
@@ -1240,13 +1229,11 @@ export const reuseEditorViewSourceFiles = async ({
     entries.push(file)
     shards.set(shard, entries)
   }
-  const token = randomUUID()
   for (const entries of shards.values()) {
     for (let index = 0; index < entries.length; index += batchSize) {
       // eslint-disable-next-line no-await-in-loop -- Each short metadata batch settles before the next shard transaction.
       await withStoreLock({
         contentStore: store,
-        token,
         run: async (directories) => {
           const shard = await shardDirectory({
             contentStore: store,
@@ -1303,6 +1290,10 @@ const collectionCandidates = async function* (
     return
   for (const shard of await readdir(contentStore, { withFileTypes: true })) {
     const shardPath = join(contentStore, shard.name)
+    if (shard.name === stagingDirectoryName) {
+      await validateDirectory({ path: shardPath, contentStore })
+      continue
+    }
     if (shardPattern.test(shard.name) === false || shard.isDirectory() === false)
       fail(`unknown or symbolic-link content-store shard entry: ${shardPath}`)
     if ((await validateDirectory({ path: shardPath, contentStore: contentStore })) === undefined)
@@ -1311,20 +1302,13 @@ const collectionCandidates = async function* (
       const path = join(shardPath, entry.name)
       const temporary = temporaryPattern.exec(entry.name)
       if (temporary !== null) {
-        const owner = await readOwner(lockPath(contentStore))
-        if (
-          owner !== undefined &&
-          ownerIsLive(owner) === true &&
-          temporary[1] === tokenDigest(owner.token)
-        ) {
-          const status = await statusIfPresent(path)
-          if (status === undefined) continue
-          if (status.isFile() === true && status.uid === userId() && isImmutable(status) === true)
-            continue
-        }
-        // A normal publisher may have already removed its private link and lock.
-        if ((await statusIfPresent(path)) === undefined) continue
-        fail(`unknown temporary blob entry requires explicit recovery: ${path}`)
+        // A live batch may have installed this recognized private link since
+        // the initial repair. It is not a canonical blob and is never hashed.
+        const status = await statusIfPresent(path)
+        if (status === undefined) continue
+        if (status.isFile() === false || status.uid !== userId() || isImmutable(status) === false)
+          fail(`temporary blob must be a real same-user readonly file: ${path}`)
+        continue
       }
       const match = blobNamePattern.exec(entry.name)
       if (
@@ -1355,22 +1339,31 @@ const collectionCandidates = async function* (
 export const collectEditorViewContentStore = async ({
   contentStore,
   afterStoreLock,
+  afterStoreLockContended,
 }: {
   readonly contentStore: string
   readonly afterStoreLock?: () => void | Promise<void>
+  readonly afterStoreLockContended?: () => void | Promise<void>
 }): Promise<{ removedBlobs: number; removedBytes: number }> => {
   const store = resolve(contentStore)
   const result = { removedBlobs: 0, removedBytes: 0 }
   if ((await statusIfPresent(store)) === undefined) return result
   await ensureParent({ contentStore: store, create: false })
-  const token = randomUUID()
+  // Repair orphan copies before nlink-based admission; otherwise their hardlink
+  // would hide a collectable blob from the outside-lock census.
+  await withStoreLock({
+    contentStore: store,
+    afterStoreLock,
+    afterStoreLockContended,
+    run: async () => undefined,
+  })
   let candidates: CollectionCandidate[] = []
   const flush = async (): Promise<void> => {
     if (candidates.length === 0) return
     await withStoreLock({
       contentStore: store,
-      token,
       afterStoreLock,
+      afterStoreLockContended,
       run: async (directories) => {
         for (const candidate of candidates) {
           const shard = await shardDirectory({
@@ -1406,133 +1399,144 @@ export const collectEditorViewContentStore = async ({
 }
 /* eslint-enable no-await-in-loop */
 
-const recoveryGuardError = ({
-  path,
-  owner,
-}: {
-  readonly path: string
-  readonly owner: LockOwner
-}): never =>
-  fail(
-    `recovery guard already exists at ${path}; token=${JSON.stringify(owner.token)} pid=${owner.pid} status=${ownerIsLive(owner) === true ? 'live' : 'dead'}; fail closed: quiesce publishers, prove the guard owner dead, rehardening directories only, then explicitly retire that exact guard before retrying recovery`,
-  )
+const stagingDirectoryName = '.staging'
+const stagingPattern =
+  /^([1-9][0-9]*)-(linux-[a-f0-9]{32}-[0-9]+|darwin-[a-f0-9]{64}|unknown)-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\.tmp$/
+const unknownCreatorGraceMs = 5 * 60 * 1_000
 
-/* eslint-disable no-await-in-loop -- Exact-token recovery restores admitted descendants before their parent and the main lock can be released. */
-const restoreDirectories = async ({
+/** Process incarnation is used only to reclaim pre-lock copies, never to arbitrate a lock. */
+const creatorIdentity = (pid: number): string => {
+  if (process.platform === 'linux') {
+    let boot: string
+    try {
+      boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim().replaceAll('-', '')
+      if (/^[a-f0-9]{32}$/.test(boot) === false) return 'unknown'
+    } catch {
+      return 'unknown'
+    }
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+      const fields = stat
+        .slice(stat.lastIndexOf(')') + 2)
+        .trim()
+        .split(/\s+/)
+      const start = fields[19]
+      if (start === undefined || /^[0-9]+$/.test(start) === false) return 'unknown'
+      if (fields[0] === 'Z' || fields[0] === 'X') return 'dead'
+      return `linux-${boot}-${start}`
+    } catch (error) {
+      return hasCode({ error, code: 'ENOENT' }) ? 'dead' : 'unknown'
+    }
+  }
+  if (process.platform === 'darwin') {
+    const result = spawnSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8' })
+    const start = result.stdout?.trim()
+    if (result.status === 0 && start !== undefined && start !== '')
+      return `darwin-${createHash('sha256').update(start).digest('hex')}`
+    try {
+      process.kill(pid, 0)
+    } catch (error) {
+      if (hasCode({ error, code: 'ESRCH' })) return 'dead'
+    }
+  }
+  return 'unknown'
+}
+
+/* eslint-disable no-await-in-loop -- Crash repair is an excluded metadata-only walk, not a payload census or hash pass. */
+const repairDirectory = async ({
   path,
-  token,
-  root = path,
+  root,
+  scan,
+  staging = false,
 }: {
   readonly path: string
-  readonly token: string
-  readonly root?: string
+  readonly root: string
+  readonly scan: boolean
+  readonly staging?: boolean
 }): Promise<void> => {
   const status = await statusIfPresent(path)
   if (status === undefined) return
-  await requireRealDirectory({ path: path, status: status })
-  requireOwned({ path: path, status: status })
+  await requireRealDirectory({ path, status })
+  requireOwned({ path, status })
   if ((permissions(status) & ~0o755n) !== 0n)
-    fail(`unsafe content-store directory mode during recovery: ${path}`)
+    fail(`unsafe content-store directory mode during repair: ${path}`)
   const file = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
+  let writable = permissions(status) !== 0o555n
   try {
     if (sameInode({ left: status, right: await file.stat({ bigint: true }) }) === false)
-      fail(`content-store directory changed during recovery: ${path}`)
+      fail(`content-store directory changed during repair: ${path}`)
+    if (path !== root && scan === false && writable === false && staging === false) return
     for (const entry of await readdir(path, { withFileTypes: true })) {
       const child = join(path, entry.name)
       if (path === root) {
-        if (shardPattern.test(entry.name) === false || entry.isDirectory() === false)
-          fail(`unknown or symbolic-link content-store shard during recovery: ${child}`)
-        await restoreDirectories({ path: child, token: token, root: root })
+        if (
+          (shardPattern.test(entry.name) === false && entry.name !== stagingDirectoryName) ||
+          entry.isDirectory() === false
+        )
+          fail(`unknown or symbolic-link content-store directory during repair: ${child}`)
+        const childStatus = lstatSync(child, { bigint: true })
+        requireOwned({ path: child, status: childStatus })
+        if (childStatus.isDirectory() === false)
+          fail(`content-store directory changed during repair: ${child}`)
+        const isStaging = entry.name === stagingDirectoryName
+        // The normal path checks only the bounded shard directory set. A dirty
+        // acquisition additionally scans shard metadata for abandoned links.
+        if (scan === false && permissions(childStatus) === 0o555n && isStaging === false) continue
+        await repairDirectory({ path: child, root, scan, staging: isStaging })
         continue
       }
-      const temporary = temporaryPattern.exec(entry.name)
-      if (temporary === null) {
-        const blob = blobNamePattern.exec(entry.name)
-        if (blob === null || blob[1]?.slice(0, 2) !== basename(path) || entry.isFile() === false)
-          fail(`unknown or symbolic-link content-store blob during recovery: ${child}`)
-        continue
-      }
-      if (temporary[1] !== tokenDigest(token))
-        fail(`temporary blob does not belong to the exact stale lock token: ${child}`)
       const payload = await statusIfPresent(child)
       if (payload === undefined) continue
-      if (payload.isFile() === false || payload.uid !== userId() || isImmutable(payload) === false)
-        fail(`stale-token temporary blob is not a real same-user readonly file: ${child}`)
-      await file.chmod(0o755)
-      const current = await lstat(child, { bigint: true })
-      if (unchanged({ left: payload, right: current }) === false)
-        fail(`stale-token temporary blob changed during recovery: ${child}`)
+      if (payload.isFile() === false || payload.uid !== userId())
+        fail(`repair entry must be a real same-user regular file: ${child}`)
+      let remove = false
+      if (staging) {
+        const match = stagingPattern.exec(entry.name)
+        if (match === null || match[1] === undefined || match[2] === undefined)
+          fail(`unknown content-store staging entry: ${child}`)
+        if (permissions(payload) !== 0o600n && isImmutable(payload) === false)
+          fail(`unsafe staging file mode during repair: ${child}`)
+        const actual = creatorIdentity(Number(match[1]))
+        const unknown = actual === 'unknown' || match[2] === 'unknown'
+        remove =
+          actual === 'dead' ||
+          (unknown === false && actual !== match[2]) ||
+          (unknown && Date.now() - Number(payload.mtimeMs) >= unknownCreatorGraceMs)
+      } else if (temporaryPattern.test(entry.name)) {
+        if (isImmutable(payload) === false)
+          fail(`temporary blob must be readonly during repair: ${child}`)
+        remove = true
+      } else {
+        const blob = blobNamePattern.exec(entry.name)
+        if (blob === null || blob[1]?.slice(0, 2) !== basename(path))
+          fail(`unknown content-store blob during repair: ${child}`)
+        requireBlob({ path: child, status: payload, mode: blob[2] === '0444' ? 0o444 : 0o555 })
+      }
+      if (remove === false) continue
+      if (writable === false) {
+        await file.chmod(0o755)
+        writable = true
+      }
+      if (unchanged({ left: payload, right: await lstat(child, { bigint: true }) }) === false)
+        fail(`staging inode changed during repair: ${child}`)
       await unlink(child)
     }
   } finally {
     try {
-      await file.chmod(0o555)
+      if (writable) await file.chmod(0o555)
     } finally {
       await file.close()
     }
   }
 }
-/* eslint-enable no-await-in-loop */
 
-/**
- * Exact-token administrative recovery never steals a live owner. A readonly
- * sibling guard fences publishers until directory-only rehardening is complete.
- * Interrupted recovery guards require operator quiescence and explicit retirement
- * after proving their PID dead; replacing guards automatically is not safe CAS.
- */
-export const recoverEditorViewContentStoreLock = async ({
+const repairStore = async ({
   contentStore,
-  token,
+  dirty,
 }: {
   readonly contentStore: string
-  readonly token: string
+  readonly dirty: boolean
 }): Promise<void> => {
-  const store = resolve(contentStore)
-  await ensureParent({ contentStore: store, create: false })
-  const path = lockPath(store)
-  const guardPath = recoveryPath(store)
-  const guard = await readOwner(guardPath)
-  if (guard !== undefined) recoveryGuardError({ path: guardPath, owner: guard })
-  const owner = await readOwner(path)
-  if (owner === undefined) fail(`content-store lock does not exist: ${path}`)
-  if (owner.token !== token)
-    fail(`content-store lock token mismatch; lock was not removed: ${path}`)
-  if (ownerIsLive(owner) === true)
-    fail(`content-store lock owner is still live: pid=${owner.pid} at ${path}`)
-  const guardOwner: LockOwner = { schema: lockSchema, token, pid: process.pid }
-  const temporary = await prepareOwner({ path: guardPath, owner: guardOwner })
-  let installed = false
-  try {
-    try {
-      await link(temporary, guardPath)
-      installed = true
-    } catch (error) {
-      if (hasCode({ error: error, code: 'EEXIST' }) === false) throw error
-      const existing = await readOwner(guardPath)
-      if (existing !== undefined) recoveryGuardError({ path: guardPath, owner: existing })
-      fail(`recovery guard changed during installation; retry explicitly: ${guardPath}`)
-    }
-    const current = await readOwner(path)
-    if (current === undefined || current.token !== token || current.pid !== owner.pid)
-      fail(`content-store lock ownership changed before recovery; lock was not removed: ${path}`)
-    if (ownerIsLive(current) === true)
-      fail(`content-store lock owner is still live: pid=${current.pid} at ${path}`)
-    await restoreDirectories({ path: store, token: token })
-    const restoredOwner = await readOwner(path)
-    if (
-      restoredOwner === undefined ||
-      restoredOwner.token !== token ||
-      restoredOwner.pid !== owner.pid
-    )
-      fail(`content-store lock ownership changed during recovery; lock was not removed: ${path}`)
-    if (ownerIsLive(restoredOwner) === true)
-      fail(`content-store lock owner is still live: pid=${restoredOwner.pid} at ${path}`)
-    await releaseLock({ path, owner: restoredOwner })
-  } finally {
-    try {
-      if (installed === true) await releaseLock({ path: guardPath, owner: guardOwner })
-    } finally {
-      await unlinkIfPresent(temporary)
-    }
-  }
+  await repairDirectory({ path: contentStore, root: contentStore, scan: dirty })
 }
+/* eslint-enable no-await-in-loop */

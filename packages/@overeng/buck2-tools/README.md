@@ -46,37 +46,59 @@ failures capture these states when the first fingerprint child fails, before
 waiting for the remaining children; the original error remains available as
 the cause.
 
-Repository tasks retain **current plus previous (two snapshots per view)**,
-not two snapshots for the entire shared store. The publisher's
-`--snapshot-retention` option configures that total (2 through 32). Superseded
-generations also receive a **five-minute grace period from supersession**,
-configurable with `--snapshot-grace-ms`. A snapshot root's modification time is
-lifecycle metadata recording its last supersession; it is not content identity.
-Once the grace expires, publication prunes older validated entries owned by that
-view, but never current pointers, state-root symlink targets, explicit reader
-pins, or concretely process-referenced snapshots. Linux checks same-user
-`/proc` executable, working-directory, descriptor, mapped-file, and entry-point
-references; macOS uses its native `lsof` reader inventory. An unavailable
-inventory backend defers collection. Permission-hidden or closed cached paths
-require explicit reader pins; one unrelated language server does not prevent all
-collection. Sibling views and in-flight candidates are never
-pruned. The steady-state bound is the configured count per view; generations
-within grace or protected by live references are intentionally additional.
-Retention runs on publication, not on an idle-worktree background collector.
+The **guaranteed retention contract** is the current generation plus the configured
+number of previous generations, a **five-minute grace period from supersession**,
+and any **managed reader pins**. Repository tasks retain current plus one previous
+generation (two snapshots per view), not two snapshots for the entire shared store.
+The publisher's `--snapshot-retention` option configures that total (2 through 32);
+`--snapshot-grace-ms` configures the grace. A snapshot root's modification time is
+lifecycle metadata recording its last supersession, not content identity. Sibling
+views and in-flight candidates are never pruned. Retention runs on publication,
+not on an idle-worktree background collector.
 
-Editors that cache closed paths cannot be inferred from a kernel file inventory.
-Pin the generation for the reader's lifetime, then remove the pin after closing
-or refreshing that reader. For example, from `packages/.editor-view`:
+The kernel census and shell-created symlinks are **advisory observations only**,
+not guaranteed reader registration: a reference can appear after inspection,
+process permissions can hide it, and editors can cache paths after closing files.
+Linux observes same-user `/proc` executable, working-directory, descriptor,
+mapped-file, and entry-point references; macOS uses native `lsof`. Observed references
+and state-root symlink targets defer retirement, and an unavailable inventory backend
+defers collection. None of those observations replaces a managed pin for a reader
+that requires guaranteed retention.
+
+Register a managed pin **before using a generation**, and unpin only after closing
+or refreshing that reader. From the repository root:
 
 ```sh
-mkdir -p .pins
-ln -s "../$(readlink tui-core)" .pins/my-editor
+bun packages/@overeng/buck2-tools/src/editor-view.ts pin \
+  --repo-root "$PWD" --package packages/@overeng/tui-core --name my-editor
+# The command reports the admitted .store/tui-core-<digest> generation.
+# To select an existing rollback generation, also pass:
+#   --snapshot .store/tui-core-<64-hex-digest>
 # After the editor no longer uses that generation:
-rm .pins/my-editor
+bun packages/@overeng/buck2-tools/src/editor-view.ts unpin \
+  --repo-root "$PWD" --package packages/@overeng/tui-core --name my-editor
 ```
 
-Pins may target either a snapshot root or a path inside it. A later publication
-collects unpinned, unreferenced generations after their grace has expired.
+`pin` defaults to the selected view's current generation; `--view-name` selects a
+nondefault view. `--name` is a portable identifier without dots, up to 64 characters,
+unique within the shared editor state root. Managed records are regular JSON files
+at `.pins/<name>.json`, distinct from shell symlinks. Reusing a name atomically
+retargets that pin, so first stop using its old generation. `unpin` is idempotent.
+Both commands accept `--content-store`; use the same store as publication.
+The exported APIs are `pinEditorView({ options, name, snapshot? })` and
+`unpinEditorView({ options, name })`; `pinEditorView` returns the admitted pin record.
+
+Pin admission validates the generation's name, ownership record, and existence
+while holding the CAS store flock. Retirement inspects managed records and atomically
+renames eligible generations out of their canonical names under that same flock;
+recursive directory permission changes and payload unlinking happen afterward,
+outside the flock. A pin that wins this race protects its generation; one that loses
+fails instead of creating a dangling registration, even while private retired-tree
+cleanup is still running. Cleanup failure rehardens owned directories outside the
+flock before reacquiring it to restore any remaining canonical generations. Pin operations
+take only the CAS flock, while publishers keep their explicit-token publication
+lock and acquire CAS afterward; no path inverts that lock order. A later publication
+collects unpinned generations once their retention and grace protection expire.
 
 Snapshots deliberately own their Buck artifact bytes and remain usable after
 `buck-out` is removed. Copies use reflinks when supported. New candidates share
@@ -101,12 +123,17 @@ new generations populate the shared store.
 Store and shard directories are 0555 outside maintenance. Blobs are installed
 atomically from fully written, read-only files; an existing key is never
 truncated, overwritten, or chmodded into compliance. Admission rejects writable,
-symlinked, wrong-owner, or mismatched blobs. A sibling exclusive lock coordinates
-only short batches of hardlink/rename/unlink operations. Payload traversal,
+symlinked, wrong-owner, or mismatched blobs. A persistent sibling
+`${contentStore}.flock` file coordinates short metadata transactions with the
+kernel's exclusive `flock`; **the lock file is never unlinked**. Payload traversal,
 hashing, and cross-device copying happen **outside that lock**, so independent
-worktrees can prepare concurrently. An `EXDEV` destination keeps an independent
-read-only reflink/copy and reports `copiedFiles` and `copiedBytes`; it does not
-pretend to share an inode.
+worktrees can prepare concurrently. Cross-device store copies use owner-identified
+`.staging/<pid>-<starttime>-<uuid>.tmp` files, with directory write permissions changed
+only under the flock. An `EXDEV` destination keeps an independent read-only
+reflink/copy and reports `copiedFiles` and `copiedBytes`; it does not pretend to
+share an inode.
+The descriptor is opened with `O_CLOEXEC` and verified close-on-exec; children
+cannot retain a parent's ownership. Bun FFI calls libc on Linux and macOS.
 
 Admission groups at most 128 files per shard into a metadata transaction, avoiding
 reopening most shards for each batch. Pending shard queues retain at most
@@ -133,8 +160,8 @@ per changed store after a batch, and after explicit release. A genuinely unchang
 publication still evaluates retention, but skips a redundant CAS census when it
 unlinks nothing. Only validated blobs whose link count is **one**
 (the CAS entry alone) are removed, with identity and link count rechecked under
-the same short lock used by publishers. Current, retained, grace-protected,
-pinned, and concrete-reader-protected snapshots keep their blob links alive.
+the same short flock used by publishers. Current, retained, grace-protected,
+managed-pinned, and advisory-reference-protected snapshots keep their blob links alive.
 Removing one worktree never chmods shared file inodes or removes another
 worktree's linked payloads. A same-user mutation of a shared inode is a real
 immutability violation for every owner, not silently repaired.
@@ -143,17 +170,21 @@ Manual maintenance uses the publisher CLI:
 
 ```sh
 bun packages/@overeng/buck2-tools/src/editor-view.ts collect-content --repo-root "$PWD"
-bun packages/@overeng/buck2-tools/src/editor-view.ts recover-content-lock \
-  --repo-root "$PWD" --token <exact-token-from-the-lock-error>
 ```
 
-These commands also accept `--content-store`. Live content-store owners are
-waited for; a dead owner requires explicit exact-token recovery, never automatic
-lock theft. Recovery removes only verified stale-token temporary links and
-restores directory modes before releasing the lock. An existing recovery guard
-fails closed, including after an interrupted recovery: first quiesce publishers,
-prove the reported recovery PID is dead, restore only real store/shard
-directories to 0555, and retire that exact guard before retrying recovery.
+`collect-content` also accepts `--content-store`. Live content-store holders are
+waited for, and the kernel releases ownership automatically when a holder exits
+or crashes. Every acquisition repairs interrupted metadata work under the flock:
+real store directories are rehardened to 0555, recognized shard-local temporary
+files are removed, and `.staging` files belonging to dead process identities are
+removed. Linux identities use `/proc` start time; macOS identities use `ps lstart`.
+Unknown-owner staging files are removed only after five minutes. No exact-token
+content-store recovery command, owner record, watcher, or recovery guard remains.
+The separate per-view publication lock still requires explicit exact-token recovery.
+The persistent control file records a dirty byte before repair/mutation and clears
+it only after successful restoration. Normal acquisitions inspect the bounded
+directory set and staging metadata; dirty acquisitions also scan shard metadata
+for abandoned temporary links. Repair never rewrites or chmods payload inodes.
 
 ### Retired worktree removal
 

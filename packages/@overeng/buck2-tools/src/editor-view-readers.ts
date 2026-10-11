@@ -10,10 +10,78 @@ const inaccessibleProcessEntry = (error: unknown): boolean =>
   vanished(error) === true ||
   (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM'))
 
+/** Durable managed-reader contract, separate from advisory shell symlinks. */
+export const editorViewPinSchema = 'effect-utils/editor-view-pin/v1' as const
+
+export type EditorViewPinRecord = {
+  readonly schema: typeof editorViewPinSchema
+  readonly name: string
+  readonly snapshot: string
+}
+
+/** Pin names are single portable path components shared by an editor state root. */
+export const requireEditorViewPinName = (name: string): string => {
+  if (/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(name) === false)
+    throw new Error(`editor view: pin name must be a portable identifier without dots: ${name}`)
+  return name
+}
+
+/** Decode a named registration; callers hold the content-store flock. */
+export const readEditorViewPinRecord = ({
+  path,
+  name,
+}: {
+  readonly path: string
+  readonly name: string
+}): EditorViewPinRecord => {
+  requireEditorViewPinName(name)
+  if (lstatSync(path).isFile() === false)
+    throw new Error(`editor view: managed pin must be a regular file: ${path}`)
+  const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value) === true ||
+    Object.keys(value).toSorted().join(',') !== 'name,schema,snapshot' ||
+    'schema' in value === false ||
+    value.schema !== editorViewPinSchema ||
+    'name' in value === false ||
+    value.name !== name ||
+    'snapshot' in value === false ||
+    typeof value.snapshot !== 'string' ||
+    /^\.store\/[A-Za-z0-9][A-Za-z0-9_-]{0,63}-[0-9a-f]{64}$/.test(value.snapshot) === false
+  )
+    throw new Error(`editor view: managed pin does not conform to ${editorViewPinSchema}: ${path}`)
+  return { schema: editorViewPinSchema, name, snapshot: value.snapshot }
+}
+
+/** Inspect only managed JSON registrations while holding the content-store flock. */
+export const managedEditorViewSnapshots = (editorRoot: string): ReadonlySet<string> => {
+  const referenced = new Set<string>()
+  const directory = join(editorRoot, '.pins')
+  try {
+    const status = lstatSync(directory)
+    if (status.isDirectory() === false)
+      throw new Error(`editor view: managed pins must be a real directory: ${directory}`)
+  } catch (error) {
+    if (vanished(error) === true) return referenced
+    throw error
+  }
+  for (const file of readdirSync(directory)) {
+    if (file.endsWith('.json') === false) continue
+    const record = readEditorViewPinRecord({
+      path: join(directory, file),
+      name: file.slice(0, -'.json'.length),
+    })
+    referenced.add(record.snapshot.slice('.store/'.length))
+  }
+  return referenced
+}
+
 /**
- * Concrete kernel references and state-root pins protect only the snapshots they
- * name. Editors caching closed paths or hidden by process permissions must pin
- * their generation explicitly. An unavailable inventory backend fails closed.
+ * This census is advisory: kernel references and shell symlinks can appear after
+ * inspection, and permissions can hide readers. Guaranteed retention requires a
+ * managed pin admitted under the content-store flock before using a generation.
  */
 export const referencedEditorSnapshots = ({
   editorRoot,
@@ -36,21 +104,27 @@ export const referencedEditorSnapshots = ({
     const snapshot = within.split(sep)[0]
     if (snapshot !== undefined && snapshot.length > 0) referenced.add(snapshot)
   }
-  // Pins are ordinary symlinks anywhere under the state root outside the store.
-  // Do not follow directory links: a pin may point into a payload or another root.
+  // Shell-created symlinks are advisory observations, not managed registrations.
+  // Do not follow directory links: a link may point into a payload or another root.
   const pins = (directory: string): void => {
     for (const name of readdirSync(directory)) {
       const path = join(directory, name)
       if (path === storeDir) continue
-      const status = lstatSync(path)
-      if (status.isSymbolicLink() === true) {
-        admit(resolve(directory, readlinkSync(path)))
-        try {
-          admit(realpathSync(path))
-        } catch (error) {
-          if (vanished(error) === false) throw error
-        }
-      } else if (status.isDirectory() === true) pins(path)
+      try {
+        const status = lstatSync(path)
+        if (status.isSymbolicLink() === true) {
+          admit(resolve(directory, readlinkSync(path)))
+          try {
+            admit(realpathSync(path))
+          } catch (error) {
+            if (vanished(error) === false) throw error
+          }
+        } else if (status.isDirectory() === true) pins(path)
+      } catch (error) {
+        // Managed registrations are atomically renamed while this advisory walk
+        // runs outside the flock. A vanished observation is not a failed census.
+        if (vanished(error) === false) throw error
+      }
     }
   }
   pins(editorRoot)
@@ -60,8 +134,8 @@ export const referencedEditorSnapshots = ({
         if (/^[0-9]+$/.test(pid) === false) continue
         const directory = join('/proc', pid)
         try {
-          // Publication is user-owned; other users' processes cannot participate
-          // in this worktree's reader contract without an explicit readable pin.
+          // Publication is user-owned; only same-user process references are
+          // advisory evidence. Managed pins do not depend on process visibility.
           if (lstatSync(directory).uid !== process.getuid?.()) continue
           for (const entry of ['exe', 'cwd']) {
             try {

@@ -23,11 +23,18 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
-import { referencedEditorSnapshots } from './editor-view-readers.ts'
+import {
+  editorViewPinSchema,
+  managedEditorViewSnapshots,
+  readEditorViewPinRecord,
+  referencedEditorSnapshots,
+  requireEditorViewPinName,
+  type EditorViewPinRecord,
+} from './editor-view-readers.ts'
 import {
   collectEditorViewContentStore,
   defaultEditorViewContentStore,
-  recoverEditorViewContentStoreLock,
+  withEditorViewContentStoreLock,
   shareSnapshotFiles,
   editorViewSourceManifestName,
   editorViewSourceKey,
@@ -119,6 +126,10 @@ export type EditorViewOptions = {
    * changed inside that window are caught by the publication stability check.
    */
   readonly beforeMaterialize?: () => void | Promise<void>
+  /** Metadata barrier after managed-pin inspection, while retirement holds the CAS flock. */
+  readonly beforeSnapshotRetirement?: () => void | Promise<void>
+  /** Barrier after retirement releases the CAS flock, before private-tree unlinking. */
+  readonly beforeSnapshotCleanup?: () => void | Promise<void>
   readonly cp: string
   readonly fingerprintTool: string
   readonly mv: string
@@ -1724,6 +1735,14 @@ const makeDirectoriesWritable = (root: string): void => {
   }
 }
 
+const makeDirectoriesReadOnly = (root: string): void => {
+  for (const name of readdirSync(root)) {
+    const path = join(root, name)
+    if (lstatSync(path).isDirectory() === true) makeDirectoriesReadOnly(path)
+  }
+  chmodSync(root, statSync(root).mode & ~0o222)
+}
+
 const renameReadOnlySnapshot = ({
   source,
   destination,
@@ -1741,7 +1760,7 @@ const renameReadOnlySnapshot = ({
   }
 }
 
-const garbageCollectSnapshots = ({
+const garbageCollectSnapshots = async ({
   paths,
   options,
   ordered,
@@ -1753,7 +1772,7 @@ const garbageCollectSnapshots = ({
   ordered: readonly string[]
   current: string
   token: string
-}): boolean => {
+}): Promise<boolean> => {
   const retained = new Set(ordered.slice(0, options.snapshotRetention))
   const now = Date.now()
   const grace = options.snapshotGraceMs ?? 300_000
@@ -1762,42 +1781,72 @@ const garbageCollectSnapshots = ({
       retained.has(name) === false && now - statSync(join(paths.storeDir, name)).mtimeMs >= grace,
   )
   const referenced = eligible.length === 0 ? new Set<string>() : referencedEditorSnapshots(paths)
-  const keep = ordered.filter(
-    (name) =>
-      retained.has(name) === true ||
-      eligible.includes(name) === false ||
-      referenced === undefined ||
-      referenced.has(name) === true,
-  )
-  if (keep.includes(current) === false) fail(`snapshot retention would delete current: ${current}`)
-  const pointer = readlinkSync(paths.current)
-  if (pointer !== `.store/${current}`)
-    fail(`current pointer changed during snapshot retention: ${pointer}`)
-  const keepSet = new Set(keep)
-  let removed = false
-  for (const name of ordered.filter((entry) => keepSet.has(entry) === false)) {
-    if (name === current || name.startsWith('.candidate-') === true)
-      fail(`snapshot retention refused protected entry: ${name}`)
-    const snapshotDir = join(paths.storeDir, name)
-    if (pathExists(snapshotDir) === false) continue
-    const garbage = join(paths.editorRoot, `.gc-${token}-${name}`)
-    renameReadOnlySnapshot({ source: snapshotDir, destination: garbage })
-    try {
-      chmodSync(join(garbage, 'editor-view.json'), 0o600)
+  const retired: { readonly snapshotDir: string; readonly garbage: string }[] = []
+  try {
+    // The census is advisory and runs outside the flock. Only managed-pin
+    // inspection, canonical-name retirement and retention metadata are locked.
+    await withEditorViewContentStoreLock({
+      contentStore: paths.contentStore,
+      run: async () => {
+        const pinned = managedEditorViewSnapshots(paths.editorRoot)
+        await options.beforeSnapshotRetirement?.()
+        const keep = ordered.filter(
+          (name) =>
+            retained.has(name) === true ||
+            eligible.includes(name) === false ||
+            pinned.has(name) === true ||
+            referenced === undefined ||
+            referenced.has(name) === true,
+        )
+        if (keep.includes(current) === false)
+          fail(`snapshot retention would delete current: ${current}`)
+        const pointer = readlinkSync(paths.current)
+        if (pointer !== `.store/${current}`)
+          fail(`current pointer changed during snapshot retention: ${pointer}`)
+        const keepSet = new Set(keep)
+        for (const name of ordered.filter((entry) => keepSet.has(entry) === false)) {
+          if (name === current || name.startsWith('.candidate-') === true)
+            fail(`snapshot retention refused protected entry: ${name}`)
+          const snapshotDir = join(paths.storeDir, name)
+          if (pathExists(snapshotDir) === false) continue
+          const garbage = join(paths.editorRoot, `.gc-${token}-${name}`)
+          renameReadOnlySnapshot({ source: snapshotDir, destination: garbage })
+          retired.push({ snapshotDir, garbage })
+          chmodSync(garbage, statSync(garbage).mode & ~0o222)
+        }
+        writeSnapshotRetention({ paths, snapshots: keep, token })
+      },
+    })
+    // Recursive chmod/unlink can visit thousands of entries. The canonical
+    // generation is already gone, so pins fail while private cleanup runs.
+    if (retired.length > 0) await options.beforeSnapshotCleanup?.()
+    for (const { garbage } of retired) {
       makeDirectoriesWritable(garbage)
       rmSync(garbage, { recursive: true })
-      removed = true
-    } catch (error) {
-      if (pathExists(garbage) === true) {
-        hardenSnapshot(garbage)
-        renameReadOnlySnapshot({ source: garbage, destination: snapshotDir })
-        hardenSnapshot(snapshotDir)
-      }
-      throw error
     }
+    return retired.length > 0
+  } catch (error) {
+    const remaining = retired.filter(({ garbage }) => pathExists(garbage))
+    // Reharden only owned directories, never shared payload inodes, outside
+    // the flock. Restoring a canonical name is another metadata transaction.
+    for (const { garbage } of remaining) makeDirectoriesReadOnly(garbage)
+    if (remaining.length > 0)
+      await withEditorViewContentStoreLock({
+        contentStore: paths.contentStore,
+        run: async () => {
+          for (const { snapshotDir, garbage } of remaining) {
+            renameReadOnlySnapshot({ source: garbage, destination: snapshotDir })
+            chmodSync(snapshotDir, statSync(snapshotDir).mode & ~0o222)
+          }
+          writeSnapshotRetention({
+            paths,
+            snapshots: ordered.filter((name) => pathExists(join(paths.storeDir, name))),
+            token,
+          })
+        },
+      })
+    throw error
   }
-  writeSnapshotRetention({ paths, snapshots: keep, token })
-  return removed
 }
 
 type LockOwner = {
@@ -1868,6 +1917,109 @@ const releaseLock = ({ path, token }: { path: string; token: string }): void => 
   const owner = readLockOwner(join(path, 'owner.json'))
   if (owner.token !== token) fail(`publication lock ownership changed: ${path}`)
   rmSync(path, { recursive: true })
+}
+
+/**
+ * Register guaranteed retention before using a generation. Registration and
+ * retirement share the CAS flock; this operation never takes a publication lock.
+ * Snapshot names are the exact `.store/<view>-<digest>` pointers in view records.
+ */
+export const pinEditorView = async ({
+  options,
+  name,
+  snapshot,
+  afterStoreLock,
+}: {
+  readonly options: EditorViewOptions
+  readonly name: string
+  readonly snapshot?: string
+  /** Metadata-only synchronization hook invoked after locked crash repair. */
+  readonly afterStoreLock?: () => void | Promise<void>
+}): Promise<EditorViewPinRecord> => {
+  requireEditorViewPinName(name)
+  const paths = makePaths(options)
+  return withEditorViewContentStoreLock({
+    contentStore: paths.contentStore,
+    run: async () => {
+      await afterStoreLock?.()
+      requireDirectory({ path: paths.editorRoot, field: 'editor root' })
+      if (realpathSync(paths.editorRoot) !== paths.editorRoot)
+        fail(`editor root must not contain symbolic links: ${paths.editorRoot}`)
+      requireDirectory({ path: paths.storeDir, field: 'snapshot store' })
+      let generation = snapshot
+      if (generation === undefined) {
+        if (pathExists(paths.current) === false) fail(`current view is missing: ${paths.current}`)
+        if (lstatSync(paths.current).isSymbolicLink() === false)
+          fail(`current view path is not a symlink: ${paths.current}`)
+        generation = readlinkSync(paths.current)
+      }
+      if (
+        generation.startsWith('.store/') === false ||
+        snapshotNamePattern(paths.viewName).test(generation.slice('.store/'.length)) === false
+      )
+        fail(`pin snapshot must name a generation of ${paths.viewName}: ${generation}`)
+      const snapshotDir = join(paths.editorRoot, generation)
+      requireDirectory({ path: snapshotDir, field: 'pin snapshot' })
+      requireReadOnlySnapshotRoot(snapshotDir)
+      const record = readRecord(join(snapshotDir, 'editor-view.json'))
+      if (record.snapshot !== generation || record.package !== options.package)
+        fail(`pin snapshot ownership mismatch: ${snapshotDir}`)
+      const pin: EditorViewPinRecord = { schema: editorViewPinSchema, name, snapshot: generation }
+      const directory = join(paths.editorRoot, '.pins')
+      ensureRealDirectory({ path: directory, field: 'managed pins' })
+      const path = join(directory, `${name}.json`)
+      if (pathExists(path) === true) {
+        const previous = readEditorViewPinRecord({ path, name })
+        if (
+          snapshotNamePattern(paths.viewName).test(previous.snapshot.slice('.store/'.length)) ===
+          false
+        )
+          fail(`managed pin ${name} belongs to another view: ${previous.snapshot}`)
+        if (previous.snapshot === generation) return previous
+      }
+      const candidate = join(directory, `.candidate-${randomUUID()}`)
+      try {
+        writeFileSync(candidate, `${JSON.stringify(pin, undefined, 2)}\n`, {
+          flag: 'wx',
+          mode: 0o600,
+        })
+        renameSync(candidate, path)
+      } finally {
+        if (pathExists(candidate) === true) rmSync(candidate)
+      }
+      return pin
+    },
+  })
+}
+
+/** End a managed reader's retention contract after closing or refreshing it. */
+export const unpinEditorView = async ({
+  options,
+  name,
+}: {
+  readonly options: EditorViewOptions
+  readonly name: string
+}): Promise<void> => {
+  requireEditorViewPinName(name)
+  const paths = makePaths(options)
+  await withEditorViewContentStoreLock({
+    contentStore: paths.contentStore,
+    run: async () => {
+      if (pathExists(paths.editorRoot) === false) return
+      requireDirectory({ path: paths.editorRoot, field: 'editor root' })
+      if (realpathSync(paths.editorRoot) !== paths.editorRoot)
+        fail(`editor root must not contain symbolic links: ${paths.editorRoot}`)
+      const directory = join(paths.editorRoot, '.pins')
+      if (pathExists(directory) === false) return
+      requireDirectory({ path: directory, field: 'managed pins' })
+      const path = join(directory, `${name}.json`)
+      if (pathExists(path) === false) return
+      const pin = readEditorViewPinRecord({ path, name })
+      if (snapshotNamePattern(paths.viewName).test(pin.snapshot.slice('.store/'.length)) === false)
+        fail(`managed pin ${name} belongs to another view: ${pin.snapshot}`)
+      rmSync(path)
+    },
+  })
 }
 
 /**
@@ -2075,7 +2227,7 @@ type PublicationWorkerState = {
 
 type PublicationCoordinator = {
   readonly lock: { readonly path: string; readonly token: string }
-  readonly commit: <T>(operation: () => T) => Promise<T>
+  readonly commit: <T>(operation: () => T | Promise<T>) => Promise<T>
   readonly workers: Map<string, PublicationWorkerState>
 }
 
@@ -2423,7 +2575,7 @@ const publishEditorViewCoordinated = async ({
       hardenSnapshot(prepared)
       requireReadOnlySnapshot(prepared)
     }
-    const commit = (): EditorViewRecord => {
+    const commit = async (): Promise<EditorViewRecord> => {
       if (created === true) {
         // Darwin directory rename updates the source's `..` entry and therefore
         // needs owner-write on the directory itself. Keep its payload hardened,
@@ -2459,19 +2611,19 @@ const publishEditorViewCoordinated = async ({
         signalEditorResolution({ paths, token })
       enterPhase('gc')
       if (
-        garbageCollectSnapshots({
+        (await garbageCollectSnapshots({
           paths,
           options,
           ordered: retention,
           current: snapshotName,
           token,
-        }) === true
+        })) === true
       )
         onContentChanged()
       emitPhaseSpan({ created })
       return record
     }
-    return coordinator === undefined ? commit() : await coordinator.commit(commit)
+    return await (coordinator === undefined ? commit() : coordinator.commit(commit))
   } catch (error) {
     // Payload failures capture siblings immediately, before waiting for other children to settle.
     // Other failures are captured here, before cleanup can mutate the candidate's metadata.
@@ -2866,9 +3018,12 @@ type ParsedCli = {
     | 'recover-lock'
     | 'release'
     | 'collect-content'
-    | 'recover-content-lock'
+    | 'pin'
+    | 'unpin'
   readonly options: EditorViewOptions
   readonly token: string | undefined
+  readonly name: string | undefined
+  readonly snapshot: string | undefined
 }
 
 const commands = [
@@ -2878,7 +3033,8 @@ const commands = [
   'recover-lock',
   'release',
   'collect-content',
-  'recover-content-lock',
+  'pin',
+  'unpin',
 ] as const
 
 const isCommand = (value: string | undefined): value is ParsedCli['command'] =>
@@ -2900,17 +3056,26 @@ const parseCli = (args: readonly string[]): ParsedCli => {
       values.set(flag, value)
     }
   }
-  const recover = command === 'recover-lock' || command === 'recover-content-lock'
-  const storeMaintenance = command === 'collect-content' || command === 'recover-content-lock'
-  const maintenance = recover === true || command === 'release' || storeMaintenance === true
+  const recover = command === 'recover-lock'
+  const storeMaintenance = command === 'collect-content'
+  const managingPins = command === 'pin' || command === 'unpin'
+  const maintenance =
+    recover === true || command === 'release' || storeMaintenance === true || managingPins === true
   const admitting = command === 'publish' || command === 'check'
   if (admitting === false && backingRoots.length > 0)
     fail(`unexpected option for ${command}: --backing-root`)
   const allowed = new Set(
     storeMaintenance === true
-      ? ['--repo-root', ...(recover === true ? ['--token'] : [])]
+      ? ['--repo-root']
       : maintenance === true
-        ? ['--repo-root', '--package', '--view-name', ...(recover === true ? ['--token'] : [])]
+        ? [
+            '--repo-root',
+            '--package',
+            '--view-name',
+            ...(recover === true ? ['--token'] : []),
+            ...(managingPins === true ? ['--name'] : []),
+            ...(command === 'pin' ? ['--snapshot'] : []),
+          ]
         : admitting === true
           ? [
               '--repo-root',
@@ -2976,7 +3141,13 @@ const parseCli = (args: readonly string[]): ParsedCli => {
     snapshotGraceMs: Number(values.get('--snapshot-grace-ms') ?? '300000'),
     ...(values.has('--content-store') === true ? { contentStore: get('--content-store') } : {}),
   }
-  return { command, options, token: recover === true ? get('--token') : undefined }
+  return {
+    command,
+    options,
+    token: recover === true ? get('--token') : undefined,
+    name: managingPins === true ? get('--name') : undefined,
+    snapshot: command === 'pin' ? values.get('--snapshot') : undefined,
+  }
 }
 
 const main = async (): Promise<void> => {
@@ -3036,12 +3207,17 @@ const main = async (): Promise<void> => {
       contentStore: makePaths(parsed.options).contentStore,
     })
     process.stdout.write(`collected editor content ${JSON.stringify(collected)}\n`)
-  } else if (parsed.command === 'recover-content-lock') {
-    await recoverEditorViewContentStoreLock({
-      contentStore: makePaths(parsed.options).contentStore,
-      token: parsed.token ?? fail('missing required option --token'),
+  } else if (parsed.command === 'pin') {
+    const pin = await pinEditorView({
+      options: parsed.options,
+      name: parsed.name ?? fail('missing required option --name'),
+      ...(parsed.snapshot !== undefined ? { snapshot: parsed.snapshot } : {}),
     })
-    process.stdout.write('recovered editor content-store lock\n')
+    process.stdout.write(`pinned editor view ${pin.name} ${pin.snapshot}\n`)
+  } else if (parsed.command === 'unpin') {
+    const name = parsed.name ?? fail('missing required option --name')
+    await unpinEditorView({ options: parsed.options, name })
+    process.stdout.write(`unpinned editor view ${name}\n`)
   } else {
     recoverEditorViewLock({
       options: parsed.options,

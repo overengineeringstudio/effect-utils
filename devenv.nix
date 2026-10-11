@@ -1092,6 +1092,7 @@ in
       export CP_BIN=${pkgs.coreutils}/bin/cp
       export MV_BIN=${pkgs.coreutils}/bin/mv
       export FALSE_BIN=${pkgs.coreutils}/bin/false
+      export BUN_BIN=${pkgs.bun}/bin/bun
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
