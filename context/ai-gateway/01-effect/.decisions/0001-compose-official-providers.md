@@ -16,11 +16,11 @@ error, and transport behavior in Effect AI rather than duplicating it locally.
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
-| Official compatible and TypeSafe providers (selected) | Thin wrapper; upstream owns decoding and validation contracts. |
-| Custom Effect provider | Duplicates provider schemas, errors, streaming, and transport maintenance. |
-| Native-provider wrapper | Cannot consume this gateway's shared chat wire reliably. |
+| Option                                                | Tradeoff                                                                   |
+| ----------------------------------------------------- | -------------------------------------------------------------------------- |
+| Official compatible and TypeSafe providers (selected) | Thin wrapper; upstream owns decoding and validation contracts.             |
+| Custom Effect provider                                | Duplicates provider schemas, errors, streaming, and transport maintenance. |
+| Native-provider wrapper                               | Cannot consume this gateway's shared chat wire reliably.                   |
 
 ## Decision
 

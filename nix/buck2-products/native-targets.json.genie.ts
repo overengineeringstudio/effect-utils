@@ -1,3 +1,4 @@
+import { productBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
 import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
 import { nixOnlyPackages } from '../../genie/packages.ts'
 import geniePkg from '../../packages/@overeng/genie/package.json.genie.ts'
@@ -7,7 +8,7 @@ import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mo
 const products = [
   ...nixOnlyPackages.map(({ name, cratePath }) => ({
     cargoWorkspaceRoot: 'rust',
-    kind: 'native',
+    kind: 'native' as const,
     name,
     outputName: 'artifact.tar',
     sourcePaths: [cratePath, 'rust/Cargo.toml', 'rust/Cargo.lock', 'rust/third-party'].toSorted(),
@@ -15,7 +16,7 @@ const products = [
     version: '0.0.0',
   })),
   {
-    kind: 'native',
+    kind: 'native' as const,
     name: 'typescript-api-server',
     outputName: 'artifact.tar',
     sourcePaths: projectBuckProductSourcePaths({
@@ -25,7 +26,9 @@ const products = [
     target: 'effect_utils//packages/@overeng/genie:typescript-api-server-product',
     version: '0.0.0',
   },
-].toSorted((left, right) => left.name.localeCompare(right.name))
+]
+  .map((product) => ({ ...product, buildCapabilities: productBuildCapabilities(product) }))
+  .toSorted((left, right) => left.name.localeCompare(right.name))
 
 export default projectionArtifact.json({
   schemaVersion: 1,

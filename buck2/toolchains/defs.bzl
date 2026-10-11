@@ -207,6 +207,8 @@ def nix_python_bootstrap_toolchain(name, capabilities, generation, **kwargs):
     if "exec_compatible_with" in kwargs:
         fail("nix_python_bootstrap_toolchain owns execution compatibility")
     platform = host_capability_platform()
+    if "python-bootstrap" not in capabilities.get(platform, {}):
+        return
     interpreter = require_capability(
         capabilities,
         generation,
@@ -243,6 +245,8 @@ def bun_toolchain(name, capabilities, generation, **kwargs):
     if "exec_compatible_with" in kwargs:
         fail("bun_toolchain owns execution compatibility")
     platform = host_capability_platform()
+    if "bun" not in capabilities.get(platform, {}):
+        return
     executable = require_capability(capabilities, generation, platform, "bun")["executableStorePath"]
     _require_nix_store_binary(executable, "bun", "Bun")
     _bun_toolchain(
@@ -286,6 +290,8 @@ def effect_tsgo_toolchain(name, capabilities, generation, runner, **kwargs):
     if "exec_compatible_with" in kwargs:
         fail("effect_tsgo_toolchain owns execution compatibility")
     platform = host_capability_platform()
+    if "effect-tsgo" not in capabilities.get(platform, {}):
+        return
     bun = require_capability(capabilities, generation, platform, "bun")["executableStorePath"]
     executable = require_capability(
         capabilities,
@@ -354,6 +360,8 @@ def nix_go_bootstrap_toolchain(name, capabilities, generation, **kwargs):
     if "exec_compatible_with" in kwargs:
         fail("nix_go_bootstrap_toolchain owns execution compatibility")
     platform = host_capability_platform()
+    if "go" not in capabilities.get(platform, {}):
+        return
     go = require_capability(capabilities, generation, platform, "go")["executableStorePath"]
     _require_nix_store_binary(go, "go", "Go")
     go_os, go_arch = go_platform_pair()

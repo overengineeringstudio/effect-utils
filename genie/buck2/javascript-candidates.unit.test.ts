@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import process from 'node:process'
 
 import { describe, expect, it } from 'vitest'
@@ -201,6 +202,49 @@ describe('JavaScript product registry', () => {
 })
 
 describe('JavaScript candidate projection wrapper', () => {
+  it('routes all thirteen portable products and the compiled ci-tools module through source-only views', () => {
+    const admissions = Object.values(buck2TypeScriptAdmissions)
+    let count = 0
+    for (const packagePath of productPackagePaths) {
+      const admission = admissions.find((candidate) => candidate.packagePath === packagePath)
+      if (admission === undefined) throw new Error(`missing admission for ${packagePath}`)
+      const products = javaScriptProductsFor(packagePath as keyof typeof javaScriptProductRegistry)
+      const output = withJavaScriptCandidates({
+        projection: buck2TypeScriptPackageProjection(admission),
+        products,
+      }).stringify(genieContext)
+      for (const product of products) {
+        const module = output.split(
+          `package_bin_artifact(\n    name = "${product.targetName}-module",\n`,
+        )[1]?.split('\n)\n')[0]
+        expect(module).toContain(
+          `package_tree = "${product.packageTree ?? ':product_package_tree'}"`,
+        )
+        expect(module).not.toContain('package_tree = ":package_tree"')
+        expect(module).not.toContain(':dist"')
+        count += 1
+      }
+      if (packagePath === 'packages/@overeng/ci-tools') {
+        expect(output).toContain('    module = ":ci-tools-candidate-module",')
+        expect(output).toContain('    name = "ci-tools-compiled-product",')
+      }
+    }
+    expect(count).toBe(13)
+  })
+
+  it('keeps baseline portable layout names without normalizing action identities and rejects collisions', () => {
+    const rules = readFileSync('buck2/package_tools.bzl', 'utf8')
+    const names = rules.split('def _closure_root_name(artifact):')[1]?.split(
+      'def _package_bundle_impl(ctx):',
+    )[0]
+    expect(names).toContain('if name == "product_package_tree":\n        name = "package_tree"')
+    expect(names).toContain('elif name.startswith("product_view_")')
+    expect(rules).toContain('if closure_name in closure_names:')
+    expect(rules).toContain('portable closure roots share logical name')
+    expect(rules).toContain('ctx.attrs.package_tree.label,')
+    expect(rules).toContain('args.add(cmd_args(hidden = package_tree.read_roots))')
+  })
+
   it('preserves the normalized and editor projection while appending two targets per product', () => {
     const admission = buck2TypeScriptAdmissions.notionCli
     const projection = buck2TypeScriptPackageProjection(admission)

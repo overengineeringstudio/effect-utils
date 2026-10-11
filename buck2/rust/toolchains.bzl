@@ -308,6 +308,8 @@ def _compile_env(metadata, target_triple):
 def native_rust_toolchains(capabilities, generation, target_platform):
     """Declares host-native C/C++ and a product-selectable native/wasm Rust pair."""
     capability_platform = host_capability_platform()
+    if "rust-compiler" not in capabilities.get(capability_platform, {}):
+        return
     metadata = {}
     for tool_id in _TOOL_IDS:
         metadata[tool_id] = require_capability(

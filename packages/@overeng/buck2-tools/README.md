@@ -101,6 +101,36 @@ owned directories writable before removal. It never follows snapshot symlinks
 or changes external dependency targets. Neither release nor teardown is ever a
 dependency of setup, tests, or checks; republishing recreates a released root.
 
+## Package action capabilities
+
+`package_bin_artifact` builds portable JavaScript bundles without a fingerprint
+executable, manifest, or `--fingerprint-tool` argument. Bundle parsing rejects
+that argument rather than silently accepting an unused capability. Its inputs
+remain the declared package tree, closure roots, runner closure, Bun toolchain,
+and platform-gated package manifest; bundling does not execute the entrypoint.
+The subsequent compiled-product action likewise consumes the portable module
+without invoking the fingerprint tool.
+
+Non-bundle package execution (`exec`, `check`, `native-check`, and `build-dir`)
+still requires an explicitly declared immutable `/nix/store/.../bin/buck2-fingerprint`
+executable and fingerprints its declared read roots before and after the child
+process to reject source mutation. TypeScript emit and typecheck retain the same
+real fingerprint requirement. There is no ambient-tool lookup or no-op fallback.
+
+The generated native, compiled, and cache product inventories carry
+`buildCapabilities`, derived by `genie/buck2/product-capabilities.ts` from their
+rule kinds. Nix projects only those producer realizations and their transitive
+store closures. Tools absent from a scoped projection are absent Buck targets;
+requesting one fails analysis rather than falling back to the development
+shell. `nix/buck2-products/capability-closure.test.sh` checks a real native
+product with its declared packager, then proves omission rejects that target.
+
+Native and compiled imports use independently projected source paths and a
+separate Buck root, without commit-addressed provenance. The independent
+`buck2-fingerprint` crate does not enter the shared packager/archive helper
+crate or the events tool's stage-zero source fileset. Npm products retain
+fingerprint because their emission/typecheck prerequisites execute it.
+
 ## Test collection
 
 The JavaScript runner loads test modules when collecting their inventory without

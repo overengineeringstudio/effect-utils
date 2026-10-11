@@ -1,6 +1,14 @@
 {
   "products": [
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/agent-session-ingest",
       "outputName": "overeng-agent-session-ingest.tgz",
@@ -10,6 +18,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/ai-gateway-conformance",
       "outputName": "overeng-ai-gateway-conformance.tgz",
@@ -19,6 +35,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/ai-gateway-edge",
       "outputName": "overeng-ai-gateway-edge.tgz",
@@ -28,6 +52,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/content-address",
       "outputName": "overeng-content-address.tgz",
@@ -37,6 +69,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/devbar",
       "outputName": "overeng-devbar.tgz",
@@ -46,6 +86,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/effect-ai-claude-cli",
       "outputName": "overeng-effect-ai-claude-cli.tgz",
@@ -55,6 +103,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/effect-ai-gateway",
       "outputName": "overeng-effect-ai-gateway.tgz",
@@ -64,6 +120,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/effect-distributed-lock",
       "outputName": "overeng-effect-distributed-lock.tgz",
@@ -73,6 +137,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/effect-react",
       "outputName": "overeng-effect-react.tgz",
@@ -82,6 +154,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/effect-rpc-explorer",
       "outputName": "overeng-effect-rpc-explorer.tgz",
@@ -91,6 +171,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/effect-rpc-explorer-react",
       "outputName": "overeng-effect-rpc-explorer-react.tgz",
@@ -100,6 +188,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/effect-rust",
       "outputName": "overeng-effect-rust.tgz",
@@ -109,6 +205,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/genie",
       "outputName": "overeng-genie.tgz",
@@ -118,6 +222,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/notion-core",
       "outputName": "overeng-notion-core.tgz",
@@ -127,6 +239,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/notion-effect-client",
       "outputName": "overeng-notion-effect-client.tgz",
@@ -136,6 +256,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/notion-effect-schema",
       "outputName": "overeng-notion-effect-schema.tgz",
@@ -145,6 +273,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/notion-md",
       "outputName": "overeng-notion-md.tgz",
@@ -154,6 +290,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/notion-property-write",
       "outputName": "overeng-notion-property-write.tgz",
@@ -163,6 +307,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/notion-react",
       "outputName": "overeng-notion-react.tgz",
@@ -172,6 +324,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/otel-contract",
       "outputName": "overeng-otel-contract.tgz",
@@ -181,6 +341,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/outline",
       "outputName": "overeng-outline.tgz",
@@ -190,6 +358,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/restate-effect",
       "outputName": "overeng-restate-effect.tgz",
@@ -199,6 +375,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/stylex-tokens",
       "outputName": "overeng-stylex-tokens.tgz",
@@ -208,6 +392,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/tui-core",
       "outputName": "overeng-tui-core.tgz",
@@ -217,6 +409,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/tui-react",
       "outputName": "overeng-tui-react.tgz",
@@ -226,6 +426,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/utils",
       "outputName": "overeng-utils.tgz",
@@ -235,6 +443,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/utils-dev",
       "outputName": "overeng-utils-dev.tgz",
@@ -244,6 +460,14 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product"
+      ],
       "kind": "package",
       "name": "@overeng/utils-storybook",
       "outputName": "overeng-utils-storybook.tgz",
@@ -253,6 +477,7 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "ai-gateway-edge",
       "outputName": "ai-gateway-edge.js",
@@ -262,6 +487,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "ci-tools",
       "outputName": "ci-tools.js",
@@ -271,6 +497,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "genie",
       "outputName": "genie.js",
@@ -280,6 +507,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "genie-bootstrap-closure-check",
       "outputName": "genie-bootstrap-closure-check.js",
@@ -289,6 +517,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "gh-ci-utils",
       "outputName": "gh-ci-utils.js",
@@ -298,6 +527,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "megarepo",
       "outputName": "mr.js",
@@ -307,6 +537,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "notion-cli",
       "outputName": "notion.js",
@@ -316,6 +547,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "notion-db-runtime",
       "outputName": "notion-db.js",
@@ -325,6 +557,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "notion-md",
       "outputName": "notion-md.js",
@@ -334,6 +567,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "npm-release",
       "outputName": "npm-release.js",
@@ -343,6 +577,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "oxc-config",
       "outputName": "oxc-config.js",
@@ -352,6 +587,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "oxc-config-stylex-upstream-plugin",
       "outputName": "oxc-config-stylex-upstream-plugin.js",
@@ -361,6 +597,7 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun"],
       "kind": "javascript",
       "name": "tui-stories",
       "outputName": "tui-stories.js",

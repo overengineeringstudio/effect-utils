@@ -56,6 +56,10 @@ _support_tool = cache_guarded_rule(
 
 def support_tool(name, protocol, tool_id, **kwargs):
     platform = host_capability_platform()
+    # Scoped product roots do not declare tools outside their capability closure.
+    # A rule that requests one of these absent targets fails Buck analysis.
+    if tool_id not in CAPABILITIES.get(platform, {}):
+        return
     metadata = CAPABILITIES[platform][tool_id]
     capability = "capabilities//generations/{}/{}/{}".format(metadata["generation"], platform, tool_id)
     _support_tool(

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import cacheTargets from '../../nix/buck2-products/cache-targets.json.genie.ts'
 import { assertPublishedPackageClosure } from './package-product-inventory.ts'
+import { productBuildCapabilities } from './product-capabilities.ts'
 
 const workspaceNames = new Set(['@overeng/content-address', '@overeng/effect-rust'])
 const contentAddress = {
@@ -13,6 +14,7 @@ const effectRust = { name: '@overeng/effect-rust' }
 describe('published package product inventory', () => {
   it('publishes the content-address runtime dependency as a package product', () => {
     expect(cacheTargets.data).toContainEqual({
+      buildCapabilities: ['action-env', 'archive-tool', 'buck2-fingerprint', 'bun', 'effect-tsgo', 'product'],
       kind: 'package',
       name: '@overeng/effect-rust',
       outputName: 'overeng-effect-rust.tgz',
@@ -55,5 +57,31 @@ describe('published package product inventory', () => {
     expect(() =>
       assertPublishedPackageClosure({ packages: [packageWithBuildTools], workspaceNames }),
     ).not.toThrow()
+  })
+})
+
+describe('product capability inventory', () => {
+  it('keeps the fingerprint mutation proof only on npm emission/typecheck', () => {
+    expect(productBuildCapabilities({ kind: 'package' })).toContain('buck2-fingerprint')
+    for (const product of [
+      { kind: 'native', cargoWorkspaceRoot: 'rust' },
+      { kind: 'native' },
+      { kind: 'compiled-executable' },
+      { kind: 'javascript' },
+    ] as const) {
+      expect(productBuildCapabilities(product)).not.toContain('buck2-fingerprint')
+    }
+  })
+
+  it('declares only the pnpm tree and Bun action capabilities for portable bundles', () => {
+    for (const product of cacheTargets.data.filter((product) => product.kind === 'javascript')) {
+      expect(product.buildCapabilities).toEqual(['action-env', 'archive-tool', 'bun'])
+    }
+  })
+
+  it('projects deterministic unique capability lists for every inventory product', () => {
+    for (const product of cacheTargets.data) {
+      expect(product.buildCapabilities).toEqual([...new Set(product.buildCapabilities)].toSorted())
+    }
   })
 })

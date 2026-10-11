@@ -118,6 +118,39 @@ the root Cargo workspace and the strict Reindeer graph; a Cargo library declares
   and records a verdict artifact; `//:all` includes the fixture smokes under
   `rust/effect-rust-fixtures` for both runtimes.
 
+## Portable JavaScript Source Graph
+
+```text
+package_bin_artifact -> product_package_tree -> product_view_<importer>
+                              |                       |
+                              +-> sibling sources     +-> immutable external store
+                              +-> recursive product_package_tree views
+                              +-> declared generated package products
+```
+
+The portable module prerequisite for BUILD.BUCK.EXEC-R06 and
+BUILD.BUCK.EXEC-R07 uses a dedicated source-only view. The package projection
+stages its declared source roots and runtime files; declaration-backed
+workspace sibling source roots derive from the workspace package generator's
+runtime exports and binaries, not `publishConfig` or guessed directories.
+Sibling sources retain their recursive package-view links and full read-root
+closure. Missing source metadata or exported sources fails closed.
+
+`product_view_<importer>` preserves the ordinary importer's external direct
+links, bins, closure and platform maps, but workspace links target
+`:product_package_tree`. These product trees have no sibling `:dist` overlays.
+Generated packages remain real action dependencies: Rust interop services and
+their package artifacts are not replaced by source placeholders.
+
+The portable farm names `product_package_tree` and `product_view_<importer>`
+using the corresponding `package_tree` and `view_<importer>` layout names,
+so separating declaration generation does not rename unchanged bundled
+modules. Actual action dependencies and identities retain the product target
+names; logical-name collisions fail analysis. The ordinary npm/editor
+`package_tree` and `view_<importer>` graph, declaration overlays, emit/typecheck
+mutation proof and npm archive prerequisites remain unchanged. Compiled
+JavaScript products consume the same source-only portable module.
+
 ## Compiled JavaScript Executables
 
 `bun_compiled_product_executable` refines BUILD.BUCK.PLAT-R01, BUILD.BUCK.PLAT-R02, BUILD.BUCK.EXEC-R06,

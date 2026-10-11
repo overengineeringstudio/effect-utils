@@ -27,20 +27,20 @@ retry failures, send an empty bearer without custom configuration, and lose raw
 transport service, and error-body middleware. It supplied wrapper-owned GenAI
 spans and was built and run using rustls with ring.
 
-Evidence citations: *Rust AI landscape*, *Rust LLM foundations: research step*,
-and *Rust AI gateway bakeoff*, all dated 2026-10-09. They are internal research
+Evidence citations: _Rust AI landscape_, _Rust LLM foundations: research step_,
+and _Rust AI gateway bakeoff_, all dated 2026-10-09. They are internal research
 records; only the public-safe conclusions above are reproduced. Foundation
 selection: decision q2, record `evlo3v`. Capability selection: q28. These opaque
 record identifiers are provenance, not public URLs or deployment coordinates.
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
-| async-openai (selected) | Best wire fidelity and one BYOT client; custom auth, retry replacement, error preservation, local validation, and semantic telemetry are required. |
-| genai | Good native error fidelity and no hidden retries, but stable telemetry is absent and the prototype loses stream model/cached-zero fidelity; native decisions need separate request code. |
-| rig | Existing agent/tool machinery and native spans, but a larger framework surface, higher MSRV/release churn, and telemetry corrections exceed a thin client's needs. |
-| Plain HTTP/SSE | Fewer SDK constraints but duplicates chat types, streaming decoding, and provider-compatible transport already supplied by async-openai. |
+| Option                  | Tradeoff                                                                                                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| async-openai (selected) | Best wire fidelity and one BYOT client; custom auth, retry replacement, error preservation, local validation, and semantic telemetry are required.                                       |
+| genai                   | Good native error fidelity and no hidden retries, but stable telemetry is absent and the prototype loses stream model/cached-zero fidelity; native decisions need separate request code. |
+| rig                     | Existing agent/tool machinery and native spans, but a larger framework surface, higher MSRV/release churn, and telemetry corrections exceed a thin client's needs.                       |
+| Plain HTTP/SSE          | Fewer SDK constraints but duplicates chat types, streaming decoding, and provider-compatible transport already supplied by async-openai.                                                 |
 
 ## Decision
 

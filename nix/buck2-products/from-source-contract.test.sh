@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
 bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
+bash "$repo_root/nix/buck2-products/capability-closure.test.sh" "$repo_root"
 contract="$(nix eval --impure --json --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
@@ -13,7 +14,7 @@ contract="$(nix eval --impure --json --expr '
     product = packages.buck-product-megarepo-from-source;
   in {
     capabilities = toString product.capabilities;
-    registeredCapabilities = toString packages.buck2-capabilities;
+    registeredCapabilities = toString (packages.buck2-capabilities.select [ "action-env" "archive-tool" "bun" ]);
     pnpmArchives = toString product.pnpmArchives;
     registeredArchives = toString packages.buck2-pnpm-archives;
     hasPreparedDeps = product ? preparedDeps;
@@ -30,7 +31,7 @@ has_standalone_root="$(jq -r .hasStandaloneRoot <<<"$contract")"
 source="$(jq -r .source <<<"$contract")"
 
 [[ "$capabilities" == "$registered_capabilities" ]] || {
-  printf 'megarepo source product did not select the registered capability projection\n' >&2
+  printf 'megarepo source product did not select its declared capability closure\n' >&2
   exit 1
 }
 [[ "$pnpm_archives" == "$registered_archives" ]] || {

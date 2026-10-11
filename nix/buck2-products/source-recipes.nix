@@ -19,12 +19,12 @@ builtins.listToAttrs (
     name = product.name;
     value = mkBuckProductFromSource {
       inherit
-        capabilities
         pnpmArchives
         product
         producerCommit
         repositoryRoot
         ;
+      capabilities = capabilities.select product.buildCapabilities;
     };
   }) inventory.products
 )

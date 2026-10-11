@@ -3,6 +3,7 @@
   src,
   capabilityPackages,
   extraCapabilities ? { },
+  requiredCapabilities ? null,
 }:
 
 let
@@ -73,19 +74,41 @@ let
       nixOutputPath = package;
       closurePathsFile = "${closure}/store-paths";
     }
-  ) capabilities;
+  ) (
+    if requiredCapabilities == null then
+      capabilities
+    else
+      builtins.filter (capability: builtins.elem capability.toolId requiredCapabilities) capabilities
+  );
   input = pkgs.writeText "buck2-capability-projection-input.json" (builtins.toJSON projectionInputs);
   platform =
     if pkgs.stdenv.hostPlatform.isDarwin then "aarch64-macos" else pkgs.stdenv.hostPlatform.system;
 in
 assert pkgs.lib.assertMsg _validExtras
   "buck2-capabilities: extra capabilities must be unique, named lowercase-kebab, and declare kind, package, protocol, and executable for executable inputs";
+assert pkgs.lib.assertMsg (
+  requiredCapabilities == null
+  || (
+    builtins.isList requiredCapabilities
+    && requiredCapabilities != [ ]
+    && builtins.all builtins.isString requiredCapabilities
+    && builtins.length requiredCapabilities == builtins.length (pkgs.lib.unique requiredCapabilities)
+    && builtins.all (
+      name: builtins.elem name (map (capability: capability.toolId) capabilities)
+    ) requiredCapabilities
+  )
+) "buck2-capabilities: required capabilities must be nonempty, unique, and declared by the producer";
 pkgs.runCommand "buck2-capabilities"
   {
     nativeBuildInputs = [ pkgs.bun ];
     passthru = {
       inherit capabilityPackages;
       src = projectionSource;
+      inherit requiredCapabilities;
+      select = names: import ./buck2-capabilities.nix {
+        inherit pkgs src capabilityPackages extraCapabilities;
+        requiredCapabilities = names;
+      };
     };
   }
   ''

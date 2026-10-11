@@ -1,10 +1,24 @@
 {
   "products": [
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "bun-compile-runtime", "product"],
       "kind": "compiled-executable",
       "name": "ci-tools",
       "outputName": "artifact.tar",
       "packagePath": "packages/@overeng/ci-tools",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/ci-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-compiled-product",
       "version": "0.0.0"
     }
