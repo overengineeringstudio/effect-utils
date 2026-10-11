@@ -147,7 +147,10 @@ it('refreshes served identity after creating, deleting, and committing worktree 
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
   let server: ViteDevServer | undefined
-  const plugin = createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' })
+  const plugin = createBuildIdentityPlugin({
+    baseVersion: '1.2.3',
+    buildStamp: '__CLI_BUILD_STAMP__',
+  })
   try {
     git('init', '--quiet')
     writeFileSync(join(root, '.gitignore'), 'node_modules/\ndist/\n')

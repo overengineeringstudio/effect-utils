@@ -48,8 +48,8 @@ export const readWorktreeGitMetadata = async (root, subscribe) => {
         const info = await stat(candidate)
         gitDir = info.isDirectory()
           ? candidate
-          // oxlint-disable-next-line eslint/no-await-in-loop -- gitdir files resolve relative to their repository
-          : resolve(directory, (await readFile(candidate, 'utf8')).trim().replace(/^gitdir: /, ''))
+          : // oxlint-disable-next-line eslint/no-await-in-loop -- gitdir files resolve relative to their repository
+            resolve(directory, (await readFile(candidate, 'utf8')).trim().replace(/^gitdir: /, ''))
       } catch (error) {
         if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
         const parent = dirname(directory)
@@ -111,7 +111,12 @@ export const readWorktreeGitMetadata = async (root, subscribe) => {
     watch(headPath)
     watch(indexPath)
     if (branch !== 'HEAD') {
-      watch(await readGit({ root, args: ['rev-parse', '--path-format=absolute', '--git-path', branch] }))
+      watch(
+        await readGit({
+          root,
+          args: ['rev-parse', '--path-format=absolute', '--git-path', branch],
+        }),
+      )
     }
     if (refFormat === 'reftable') {
       watch(

@@ -26,10 +26,16 @@ it('resolves linked-worktree HEAD and index separately from the common branch re
     writeFileSync(join(common, 'HEAD'), `ref: refs/heads/main\n`)
     writeFileSync(join(common, 'refs/heads/main'), `${otherRevision}\n`)
     const subscribed: string[] = []
-    const result = await readWorktreeGitMetadata(join(linked, 'app'), (path) => subscribed.push(path))
+    const result = await readWorktreeGitMetadata(join(linked, 'app'), (path) =>
+      subscribed.push(path),
+    )
     expect(result.rev).toBe(revision)
     expect(result.paths).toEqual(
-      new Set([join(gitDir, 'HEAD'), join(gitDir, 'index'), join(common, 'refs/heads/nested/branch')]),
+      new Set([
+        join(gitDir, 'HEAD'),
+        join(gitDir, 'index'),
+        join(common, 'refs/heads/nested/branch'),
+      ]),
     )
     expect(subscribed).toEqual([...result.paths])
   } finally {
@@ -68,7 +74,10 @@ it('reads a detached HEAD with a readable loose object without resolving any bra
     mkdirSync(join(gitDir, 'objects', revision.slice(0, 2)), { recursive: true })
     writeFileSync(join(gitDir, 'config'), '[core]\nrepositoryformatversion = 0\n')
     writeFileSync(join(gitDir, 'HEAD'), `${revision}\n`)
-    writeFileSync(join(gitDir, 'objects', revision.slice(0, 2), revision.slice(2)), 'object fixture')
+    writeFileSync(
+      join(gitDir, 'objects', revision.slice(0, 2), revision.slice(2)),
+      'object fixture',
+    )
     const result = await readWorktreeGitMetadata(root)
     expect(result.rev).toBe(revision)
     expect(result.paths).toEqual(new Set([join(gitDir, 'HEAD'), join(gitDir, 'index')]))
