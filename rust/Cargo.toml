@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "../packages/@overeng/otel-scrape",
   "../packages/@overeng/otelite",
+  "ai-gateway",
   "buck2-tools/archive-tool",
   "buck2-tools/core",
   "buck2-tools/events",

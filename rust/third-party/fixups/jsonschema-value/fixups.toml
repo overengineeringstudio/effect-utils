@@ -1,0 +1,2 @@
+# The script only configures the optional pyo3 feature, which is not enabled.
+buildscript.run = false

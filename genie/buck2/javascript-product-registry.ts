@@ -8,6 +8,17 @@ import type { JavaScriptProduct } from './javascript-candidates.ts'
  * drift into separate inventories.
  */
 export const javaScriptProductRegistry = {
+  'packages/@overeng/ai-gateway-edge': [
+    {
+      entrypoint: 'src/cli.ts',
+      kind: 'cli',
+      output: 'ai-gateway-edge.js',
+      productName: 'ai-gateway-edge',
+      runtime: 'bun',
+      smokeArgs: ['--help'],
+      targetName: 'ai-gateway-edge-candidate',
+    },
+  ],
   'packages/@overeng/ci-tools': [
     {
       // In-repo proof of the compiled-executable product kind (context/builds/04-buck2/05-execution).

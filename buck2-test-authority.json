@@ -40,6 +40,20 @@
       "unboundedTaskName": "test:agent-session-ingest:unbounded"
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/ai-gateway-edge:test_collect",
+      "excludes": [],
+      "packageName": "ai-gateway-edge",
+      "packagePath": "packages/@overeng/ai-gateway-edge",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/Proxy.integration.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/ai-gateway-edge:test",
+      "taskName": "test:ai-gateway-edge",
+      "testFiles": ["src/Proxy.integration.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/ci-tools:test_collect",
       "excludes": [
         "src/deploy-netlify.e2e.test.ts",

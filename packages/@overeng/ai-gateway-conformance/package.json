@@ -1,0 +1,36 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/ai-gateway-conformance"
+    ]
+  },
+  "name": "@overeng/ai-gateway-conformance",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.5.0",
+    "effect": "4.0.0",
+    "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "effect": "^4.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      }
+    }
+  }
+}

@@ -17,7 +17,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
 import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
@@ -464,10 +464,10 @@ const canonicalTreeFingerprints = async ({
         ancestors: new Set([...ancestors, identity]),
       })
       const after = lstatSync(absolutePath, { bigint: true })
+      // Overlayfs may reassign directory inodes without a content or timestamp change.
       if (
         after.isDirectory() === false ||
         after.dev !== before.dev ||
-        after.ino !== before.ino ||
         after.mtimeNs !== before.mtimeNs ||
         after.ctimeNs !== before.ctimeNs
       )
@@ -570,7 +570,6 @@ const canonicalTreeFingerprints = async ({
   if (
     rootAfter.isDirectory() === false ||
     rootAfter.dev !== rootBefore.dev ||
-    rootAfter.ino !== rootBefore.ino ||
     rootAfter.mtimeNs !== rootBefore.mtimeNs ||
     rootAfter.ctimeNs !== rootBefore.ctimeNs
   )
@@ -1469,6 +1468,18 @@ const requireReadOnlySnapshotRoot = (snapshotDir: string): void => {
     fail(`snapshot record must be a read-only regular file: ${recordPath}`)
 }
 
+/**
+ * Vite writes its dependency cache (`.vite`) and bundled config (`.vite-temp`) below the
+ * nearest `node_modules`, which for a package is this snapshot. Read-only modes normally
+ * make Vite fall back elsewhere; a process with CAP_DAC_OVERRIDE (namespace root) does not.
+ */
+const viteWriteDiagnostic = (directory: string): string => {
+  const name = basename(directory)
+  return name === '.vite' || name === '.vite-temp'
+    ? `; Vite/Vitest created ${name} inside the read-only editor-view snapshot, typically a Vitest run with capabilities that bypass the read-only modes (for example root in a user namespace). Run Vitest with \`--configLoader runner\` and a cacheDir outside node_modules, then remove ${directory}`
+    : ''
+}
+
 /** Complete immutability proof: every directory, file, and link of the snapshot payload. */
 const requireReadOnlySnapshot = (snapshotDir: string): void => {
   const finite = pathExists(join(snapshotDir, '.backing'))
@@ -1476,7 +1487,8 @@ const requireReadOnlySnapshot = (snapshotDir: string): void => {
     const status = lstatSync(directory)
     if (status.isDirectory() === false || status.isSymbolicLink() === true)
       fail(`snapshot directory must be a real directory: ${directory}`)
-    if ((status.mode & 0o222) !== 0) fail(`snapshot directory is writable: ${directory}`)
+    if ((status.mode & 0o222) !== 0)
+      fail(`snapshot directory is writable: ${directory}${viteWriteDiagnostic(directory)}`)
     for (const name of readdirSync(directory)) {
       const path = join(directory, name)
       const entry = lstatSync(path)
@@ -2334,8 +2346,8 @@ const publishEditorViewCoordinated = async ({
 export const publishEditorView = (options: EditorViewOptions): Promise<EditorViewRecord> =>
   publishEditorViewCoordinated({ options })
 
-/** Shared bound; one view contains suspected cross-view overlap until #1743 establishes the cause. */
-export const editorViewPublicationWorkers = 1
+/** Shared bound for independent private preparations; commits remain serialized per state root. */
+export const editorViewPublicationWorkers = 4
 
 /**
  * Prepare a bounded set of independent views under exclusive state-root locks.

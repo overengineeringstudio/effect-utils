@@ -1,0 +1,31 @@
+{
+  "id": "chat.auth.none-401",
+  "summary": "Omit Authorization when no bearer is supplied and surface the edge refusal.",
+  "requirements": ["AIG-R02", "AIG-R10"],
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "auth": "none",
+    "match": {
+      "model": "anthropic/claude-haiku-4-5",
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 401,
+    "json": {
+      "error": {
+        "message": "invalid or missing bearer token",
+        "type": "authentication_error",
+        "code": null
+      }
+    }
+  },
+  "expect": {
+    "outcome": "http-error",
+    "error": {
+      "status": 401,
+      "type": "authentication_error"
+    }
+  }
+}

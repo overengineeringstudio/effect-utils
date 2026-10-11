@@ -2762,6 +2762,7 @@ const resolveWorkspaceFeatures = ({
 const effectUtilsWorkspaceMemberManifestPaths = [
   'packages/@overeng/otel-scrape/Cargo.toml',
   'packages/@overeng/otelite/Cargo.toml',
+  'rust/ai-gateway/Cargo.toml',
   'rust/buck2-tools/archive-tool/Cargo.toml',
   'rust/buck2-tools/core/Cargo.toml',
   'rust/buck2-tools/events/Cargo.toml',
