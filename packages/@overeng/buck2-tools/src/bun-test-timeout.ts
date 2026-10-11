@@ -45,7 +45,7 @@ export const sampleHostLoad = async (): Promise<HostLoad> => {
   } catch {
     // PSI is Linux-only and may be unavailable inside an executor sandbox.
   }
-  return { load1: loadavg()[0], cpus: availableParallelism(), memPsiFullAvg10 }
+  return { load1: loadavg()[0]!, cpus: availableParallelism(), memPsiFullAvg10 }
 }
 
 /** Explicit test deadlines use the same run-start factor as the CLI default. */
