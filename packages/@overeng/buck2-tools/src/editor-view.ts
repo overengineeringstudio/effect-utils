@@ -1428,15 +1428,16 @@ const materializeDeclaredRoots = async ({
   const sourceFiles = new Map<string, { source: string; sourceKey: string }>()
   const manifest = new Map<string, EditorViewSourceFile>()
   const reusable: { path: string; entry: EditorViewSourceFile }[] = []
-  const visit = (source: string, destination: string): void => {
+  const visit = ({ source, destination }: { source: string; destination: string }): void => {
     mkdirSync(destination, { recursive: true })
     for (const name of readdirSync(source)) {
       const sourcePath = join(source, name)
       const destinationPath = join(destination, name)
       const status = lstatSync(sourcePath, { bigint: true })
-      if (status.isDirectory()) visit(sourcePath, destinationPath)
-      else if (status.isSymbolicLink()) symlinkSync(readlinkSync(sourcePath), destinationPath)
-      else if (status.isFile()) {
+      if (status.isDirectory() === true) visit({ source: sourcePath, destination: destinationPath })
+      else if (status.isSymbolicLink() === true)
+        symlinkSync(readlinkSync(sourcePath), destinationPath)
+      else if (status.isFile() === true) {
         const sourceKey = editorViewSourceKey(status)
         sourceFiles.set(destinationPath, { source: sourcePath, sourceKey })
         const previous = previousManifest.get(relative(candidate, destinationPath))
@@ -1454,10 +1455,11 @@ const materializeDeclaredRoots = async ({
       } else fail(`declared root contains unsupported special file: ${sourcePath}`)
     }
   }
-  for (const root of roots) visit(root.source, join(candidate, root.destination))
+  for (const root of roots)
+    visit({ source: root.source, destination: join(candidate, root.destination) })
   const reusedFiles = await reuseEditorViewSourceFiles({ contentStore, files: reusable })
   for (const file of reusable) {
-    if (reusedFiles.has(file.path)) continue
+    if (reusedFiles.has(file.path) === true) continue
     const source = sourceFiles.get(file.path) ?? fail(`source file mapping is absent: ${file.path}`)
     manifest.delete(relative(candidate, file.path))
     copyFileSync(source.source, file.path, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
@@ -1650,9 +1652,11 @@ const writeSnapshotRetention = ({
 const listOwnedSnapshots = ({
   paths,
   options,
+  validatedSnapshot,
 }: {
   paths: ViewPaths
   options: EditorViewOptions
+  validatedSnapshot: string
 }): readonly string[] => {
   const pattern = snapshotNamePattern(paths.viewName)
   const snapshots: string[] = []
@@ -1695,7 +1699,10 @@ const listOwnedSnapshots = ({
       recordsEqual({ left: record, right: { ...expected, snapshot: `.store/${name}` } }) === false
     )
       fail(`retained snapshot ownership mismatch: ${snapshotDir}`)
-    requireReadOnlySnapshot(snapshotDir)
+    // The selected generation was already proved in full before commit. Older
+    // generations remain immutable by publication contract; prove their payload
+    // again only before use or retirement, not on every unrelated warm publish.
+    if (name !== validatedSnapshot) requireReadOnlySnapshotRoot(snapshotDir)
     snapshots.push(name)
   }
   return snapshots
@@ -1712,7 +1719,7 @@ const prepareSnapshotRetention = ({
   current: string
   token: string
 }): readonly string[] => {
-  const discovered = listOwnedSnapshots({ paths, options })
+  const discovered = listOwnedSnapshots({ paths, options, validatedSnapshot: current })
   const discoveredSet = new Set(discovered)
   const recorded = readSnapshotRetention({
     path: paths.retentionRecord,
@@ -1776,11 +1783,19 @@ const garbageCollectSnapshots = async ({
   const retained = new Set(ordered.slice(0, options.snapshotRetention))
   const now = Date.now()
   const grace = options.snapshotGraceMs ?? 300_000
+  const pinnedBeforeRetirement = managedEditorViewSnapshots(paths.editorRoot)
   const eligible = ordered.filter(
     (name) =>
-      retained.has(name) === false && now - statSync(join(paths.storeDir, name)).mtimeMs >= grace,
+      retained.has(name) === false &&
+      pinnedBeforeRetirement.has(name) === false &&
+      now - statSync(join(paths.storeDir, name)).mtimeMs >= grace,
   )
-  const referenced = eligible.length === 0 ? new Set<string>() : referencedEditorSnapshots(paths)
+  if (eligible.length === 0) return false
+  // Payload validation and the advisory census must not hold the CAS flock.
+  // A pin admitted meanwhile is checked again before the canonical rename;
+  // a concurrent unpin may conservatively defer retirement until next time.
+  for (const name of eligible) requireReadOnlySnapshot(join(paths.storeDir, name))
+  const referenced = referencedEditorSnapshots(paths)
   const retired: { readonly snapshotDir: string; readonly garbage: string }[] = []
   try {
     // The census is advisory and runs outside the flock. Only managed-pin
@@ -2455,7 +2470,7 @@ const publishEditorViewCoordinated = async ({
       if (finite === true) {
         await options.beforeMaterialize?.()
         const previousSnapshot =
-          pathExists(paths.current) && lstatSync(paths.current).isSymbolicLink()
+          pathExists(paths.current) === true && lstatSync(paths.current).isSymbolicLink() === true
             ? realpathSync(paths.current)
             : undefined
         if (
@@ -2543,16 +2558,21 @@ const publishEditorViewCoordinated = async ({
       writeRecord({ path: join(candidate, 'editor-view.json'), record })
       created = true
       onContentChanged()
+      const sharedCandidate = candidate
       const sharing = await shareSnapshotFiles({
         candidate,
         contentStore: paths.contentStore,
-        reusedFiles: materializedRoots?.reusedFiles,
-        candidateFiles: materializedRoots?.sourceFiles.keys(),
+        ...(materializedRoots === undefined
+          ? {}
+          : {
+              reusedFiles: materializedRoots.reusedFiles,
+              candidateFiles: materializedRoots.sourceFiles.keys(),
+            }),
         onSharedFile: (file) => {
           if (materializedRoots === undefined) return
           const source = materializedRoots.sourceFiles.get(file.path)
           if (source !== undefined)
-            materializedRoots.manifest.set(relative(candidate, file.path), {
+            materializedRoots.manifest.set(relative(sharedCandidate, file.path), {
               sourceKey: source.sourceKey,
               digest: file.digest,
               mode: file.mode,
@@ -2655,14 +2675,14 @@ const publishEditorViewCoordinated = async ({
 
 /** Publish one view while holding the exclusive state-root lock through every proof and write. */
 export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
-  let contentChanged = false
+  const contentChanges = { changed: false }
   const record = await publishEditorViewCoordinated({
     options,
     onContentChanged: () => {
-      contentChanged = true
+      contentChanges.changed = true
     },
   })
-  if (contentChanged === true)
+  if (contentChanges.changed === true)
     await collectEditorViewContentStore({ contentStore: makePaths(options).contentStore })
   return record
 }

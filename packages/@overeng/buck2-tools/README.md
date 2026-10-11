@@ -64,6 +64,11 @@ mapped-file, and entry-point references; macOS uses native `lsof`. Observed refe
 and state-root symlink targets defer retirement, and an unavailable inventory backend
 defers collection. None of those observations replaces a managed pin for a reader
 that requires guaranteed retention.
+Retention reuses the selected generation's full validation from the same publication.
+Older protected generations receive only ownership and root-permission checks;
+their complete permission proof runs outside the CAS flock before retirement.
+When no unpinned generation is eligible, retention skips both the advisory process
+census and the CAS flock. Every generation is still fully checked before reuse.
 
 Register a managed pin **before using a generation**, and unpin only after closing
 or refreshing that reader. From the repository root:
@@ -182,6 +187,8 @@ real store directories are rehardened to 0555, recognized shard-local temporary
 files are removed, and `.staging` files belonging to dead process identities are
 removed. Linux identities use numeric `/proc/<pid>/stat` field 22 and the boot ID;
 macOS probes `ps lstart` with an otherwise empty environment, `TZ=UTC`, and `LC_ALL=C`.
+Its one-second resolution can conservatively retain an orphan after same-PID,
+same-second reuse; it never deletes a concretely protected staging copy.
 Unknown-owner staging files are removed only after five minutes. No exact-token
 content-store recovery command, owner record, watcher, or recovery guard remains.
 The separate per-view publication lock still requires explicit exact-token recovery.

@@ -28,14 +28,18 @@ const batchSize = 128
 const blobNamePattern = /^([a-f0-9]{64})-(0444|0555)$/
 const shardPattern = /^[a-f0-9]{2}$/
 const temporaryPattern = /^\.tmp-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
+/** Private, rebuildable source-stat hints stored in each finite generation. */
 export const editorViewSourceManifestName = 'editor-view-sources-v1.json'
+/** A source inode key and its proved immutable content-store address. */
 export type EditorViewSourceFile = {
   readonly sourceKey: string
   readonly digest: string
   readonly mode: number
   readonly blobKey: string
 }
+/** Encode source metadata, omitting ctime only for immutable shared inodes. */
 export const editorViewSourceKey = (status: BigIntStats): string => verificationKey(status)
+/** Read validated source hints; every reuse still requires the full payload proof. */
 export const readEditorViewSourceManifest = (path: string): Map<string, EditorViewSourceFile> => {
   let raw: unknown
   try {
@@ -43,10 +47,10 @@ export const readEditorViewSourceManifest = (path: string): Map<string, EditorVi
     requireBlob({ path, status, mode: 0o444 })
     raw = JSON.parse(readFileSync(path, 'utf8'))
   } catch (error) {
-    if (hasCode({ error, code: 'ENOENT' })) return new Map()
+    if (hasCode({ error, code: 'ENOENT' }) === true) return new Map()
     throw error
   }
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw) === true)
     return fail(`invalid source manifest: ${path}`)
   const entries = new Map<string, EditorViewSourceFile>()
   for (const [source, entry] of Object.entries(raw)) {
@@ -57,7 +61,7 @@ export const readEditorViewSourceManifest = (path: string): Map<string, EditorVi
       typeof entry.sourceKey !== 'string' ||
       !('digest' in entry) ||
       typeof entry.digest !== 'string' ||
-      !/^[a-f0-9]{64}$/.test(entry.digest) ||
+      /^[a-f0-9]{64}$/.test(entry.digest) === false ||
       !('mode' in entry) ||
       (entry.mode !== 0o444 && entry.mode !== 0o555) ||
       !('blobKey' in entry) ||
@@ -222,10 +226,12 @@ const libc = dlopen(libcPath, {
   flock: { args: ['i32', 'i32'], returns: 'i32' },
   fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
 })
+/* eslint-disable no-underscore-dangle -- These exported errno symbol names are fixed by the native libc ABI. */
 const errnoAddress =
   process.platform === 'darwin'
     ? dlopen(libcPath, { __error: { args: [], returns: 'ptr' } }).symbols.__error
     : dlopen(libcPath, { __errno_location: { args: [], returns: 'ptr' } }).symbols.__errno_location
+/* eslint-enable no-underscore-dangle */
 const closeOnExec = process.platform === 'darwin' ? 0x1000000 : 0x80000
 
 /* eslint-disable no-await-in-loop -- The kernel lock arbitrates ownership; the delay only avoids busy-waiting and lets same-process holders finish. */
@@ -234,7 +240,7 @@ const acquireLock = async ({
   afterStoreLockContended,
 }: {
   readonly contentStore: string
-  readonly afterStoreLockContended?: () => void | Promise<void>
+  readonly afterStoreLockContended?: (() => void | Promise<void>) | undefined
 }): Promise<FileHandle> => {
   const path = lockPath(contentStore)
   const file = await open(
@@ -557,7 +563,7 @@ export const withEditorViewContentStoreLock = async <T>({
 // Bound retained metadata; only readonly shared inodes may omit their mutable ctime.
 const verified = new Map<string, string>()
 const verificationKey = (status: BigIntStats): string =>
-  `${status.dev}:${status.ino}:${status.size}:${status.mtimeNs}:${status.mode}:${status.uid}:${isImmutable(status) && status.nlink > 1n ? '' : status.ctimeNs}`
+  `${status.dev}:${status.ino}:${status.size}:${status.mtimeNs}:${status.mode}:${status.uid}:${isImmutable(status) === true && status.nlink > 1n ? '' : status.ctimeNs}`
 const remember = ({
   status,
   digest,
@@ -752,6 +758,7 @@ const stagingDirectory = async ({
   return openDirectory({ path, directories })
 }
 
+/* eslint-disable no-await-in-loop -- Recognized staged links are removed serially under the bounded metadata lock. */
 const removePreparedCopies = async ({
   contentStore,
   paths,
@@ -778,6 +785,7 @@ const removePreparedCopies = async ({
     },
   })
 }
+/* eslint-enable no-await-in-loop */
 
 /* eslint-disable no-await-in-loop -- Cross-device bytes stream through one reusable buffer outside metadata exclusion. */
 const prepareCopy = async ({
@@ -788,7 +796,7 @@ const prepareCopy = async ({
   readonly file: PreparedFile
 }): Promise<void> => {
   if (file.copy !== undefined) return
-  const identity = editorViewStagingCreatorIdentity(process.pid)
+  const identity = editorViewStagingCreatorIdentity({ pid: process.pid })
   if (identity === 'dead') fail('copy creator unexpectedly has no live process incarnation')
   const temporary = join(
     contentStore,
@@ -1048,7 +1056,7 @@ const shareBatch = async ({
                 await afterBlobInstall?.({
                   blob: file.blob,
                   temporary,
-                  preparedCopy: file.copy?.path,
+                  ...(file.copy === undefined ? {} : { preparedCopy: file.copy.path }),
                 })
               } finally {
                 if (linked === true) await unlinkIfPresent(temporary)
@@ -1146,7 +1154,13 @@ export const shareSnapshotFiles = async ({
   // Group bounded link transactions by shard, so each transaction opens and
   // restores one shard instead of most of the store's 256 directories.
   const batches = new Map<string, PreparedFile[]>()
-  const flush = async (shard: string, files: PreparedFile[]): Promise<void> => {
+  const flush = async ({
+    shard,
+    files,
+  }: {
+    shard: string
+    files: PreparedFile[]
+  }): Promise<void> => {
     if (files.length === 0) return
     parentStatus ??= await ensureParent({ contentStore: store, create: true })
     await shareBatch({
@@ -1196,7 +1210,7 @@ export const shareSnapshotFiles = async ({
       const batch = batches.get(shard) ?? []
       batch.push(file)
       batches.set(shard, batch)
-      if (batch.length === batchSize) await flush(shard, batch)
+      if (batch.length === batchSize) await flush({ shard, files: batch })
     }
   }
   for await (const path of candidateFiles ?? regularFiles({ directory: root })) {
@@ -1205,7 +1219,7 @@ export const shareSnapshotFiles = async ({
     if (paths.length === 4) await prepareBatch()
   }
   await prepareBatch()
-  for (const [shard, files] of batches) await flush(shard, files)
+  for (const [shard, files] of batches) await flush({ shard, files })
   return sharing
 }
 /* eslint-enable no-await-in-loop */
@@ -1251,7 +1265,7 @@ export const reuseEditorViewSourceFiles = async ({
             try {
               status = lstatSync(blob, { bigint: true })
             } catch (error) {
-              if (hasCode({ error, code: 'ENOENT' })) continue
+              if (hasCode({ error, code: 'ENOENT' }) === true) continue
               throw error
             }
             requireBlob({ path: blob, status, mode: file.entry.mode })
@@ -1259,7 +1273,11 @@ export const reuseEditorViewSourceFiles = async ({
             try {
               linkSync(blob, file.path)
             } catch (error) {
-              if (hasCode({ error, code: 'EXDEV' }) || hasCode({ error, code: 'ENOENT' })) continue
+              if (
+                hasCode({ error, code: 'EXDEV' }) === true ||
+                hasCode({ error, code: 'ENOENT' }) === true
+              )
+                continue
               throw error
             }
             const linked = lstatSync(file.path, { bigint: true })
@@ -1405,11 +1423,15 @@ const stagingPattern =
 const unknownCreatorGraceMs = 5 * 60 * 1_000
 
 /** Process incarnation is used only to reclaim pre-lock copies, never to arbitrate a lock. */
-export const editorViewStagingCreatorIdentity = (
-  pid: number,
-  platform: NodeJS.Platform = process.platform,
-  ps: string = '/bin/ps',
-): string => {
+export const editorViewStagingCreatorIdentity = ({
+  pid,
+  platform = process.platform,
+  ps = '/bin/ps',
+}: {
+  pid: number
+  platform?: NodeJS.Platform
+  ps?: string
+}): string => {
   if (platform === 'linux') {
     let boot: string
     try {
@@ -1430,7 +1452,7 @@ export const editorViewStagingCreatorIdentity = (
       if (fields[0] === 'Z' || fields[0] === 'X') return 'dead'
       return `linux-${boot}-${start}`
     } catch (error) {
-      return hasCode({ error, code: 'ENOENT' }) ? 'dead' : 'unknown'
+      return hasCode({ error, code: 'ENOENT' }) === true ? 'dead' : 'unknown'
     }
   }
   if (platform === 'darwin') {
@@ -1445,7 +1467,7 @@ export const editorViewStagingCreatorIdentity = (
     try {
       process.kill(pid, 0)
     } catch (error) {
-      if (hasCode({ error, code: 'ESRCH' })) return 'dead'
+      if (hasCode({ error, code: 'ESRCH' }) === true) return 'dead'
     }
   }
   return 'unknown'
@@ -1499,19 +1521,19 @@ const repairDirectory = async ({
       if (payload.isFile() === false || payload.uid !== userId())
         fail(`repair entry must be a real same-user regular file: ${child}`)
       let remove = false
-      if (staging) {
+      if (staging === true) {
         const match = stagingPattern.exec(entry.name)
         if (match === null || match[1] === undefined || match[2] === undefined)
           fail(`unknown content-store staging entry: ${child}`)
         if (permissions(payload) !== 0o600n && isImmutable(payload) === false)
           fail(`unsafe staging file mode during repair: ${child}`)
-        const actual = editorViewStagingCreatorIdentity(Number(match[1]))
+        const actual = editorViewStagingCreatorIdentity({ pid: Number(match[1]) })
         const unknown = actual === 'unknown' || match[2] === 'unknown'
         remove =
           actual === 'dead' ||
           (unknown === false && actual !== match[2]) ||
-          (unknown && Date.now() - Number(payload.mtimeMs) >= unknownCreatorGraceMs)
-      } else if (temporaryPattern.test(entry.name)) {
+          (unknown === true && Date.now() - Number(payload.mtimeMs) >= unknownCreatorGraceMs)
+      } else if (temporaryPattern.test(entry.name) === true) {
         if (isImmutable(payload) === false)
           fail(`temporary blob must be readonly during repair: ${child}`)
         remove = true
@@ -1532,7 +1554,7 @@ const repairDirectory = async ({
     }
   } finally {
     try {
-      if (writable) await file.chmod(0o555)
+      if (writable === true) await file.chmod(0o555)
     } finally {
       await file.close()
     }

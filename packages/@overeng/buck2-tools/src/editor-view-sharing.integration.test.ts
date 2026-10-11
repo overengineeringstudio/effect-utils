@@ -362,7 +362,7 @@ describe('host-wide editor snapshot content store', () => {
         [
           `import { editorViewStagingCreatorIdentity } from ${JSON.stringify(sharingModule.href)}`,
           'const pid = Number(process.argv[2])',
-          "console.log(JSON.stringify({ native: editorViewStagingCreatorIdentity(pid), macOS: editorViewStagingCreatorIdentity(pid, 'darwin', process.argv[3]) }))",
+          "console.log(JSON.stringify({ native: editorViewStagingCreatorIdentity({ pid }), macOS: editorViewStagingCreatorIdentity({ pid, platform: 'darwin', ps: process.argv[3] }) }))",
         ].join('\n'),
       )
       const probe = (timezone: string, locale: string): { native: string; macOS: string } => {
