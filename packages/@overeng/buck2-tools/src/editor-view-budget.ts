@@ -7,7 +7,6 @@ import {
   fstatSync,
   lstatSync,
   openSync,
-  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -73,7 +72,7 @@ const maxAdmissionRounds = 8
 const journalLimit = 1_024
 const statBatch = 64
 const topHolderCount = 5
-const stateSchema = 'effect-utils/editor-view-budget/v1'
+const stateSchema = 'effect-utils/editor-view-budget/v2'
 const generationPattern = /^([A-Za-z0-9][A-Za-z0-9_-]*)-([0-9a-f]{64})$/
 const snapshotPattern = /^\.store\/([A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64})$/
 /** Linked-inode sidecar record: dev, ino, size as little-endian u64. */
@@ -196,7 +195,7 @@ const emptyState = (): BudgetState => ({
 
 const budgetDirectory = (contentStore: string): string => `${resolve(contentStore)}.budget`
 const statePath = (contentStore: string): string =>
-  join(budgetDirectory(contentStore), 'state.json')
+  join(budgetDirectory(contentStore), 'state-v2.json')
 const footprintDirectory = (contentStore: string): string =>
   join(budgetDirectory(contentStore), 'footprints')
 
@@ -477,8 +476,15 @@ type BudgetEvent = {
     | 'editor-view.host-budget.evicted'
     | 'editor-view.host-budget.underreserved'
   readonly budgetBytes: number
+  /** Measured by the last census: inode-deduplicated, so shared CAS counts once. */
   readonly usedBytes: number
+  /** Measured bytes that eviction cannot free (pins, live readers, grace, recency, locks). */
   readonly protectedBytes: number
+  /** Live reservations of in-flight publications (conservative estimates). */
+  readonly reservedBytes: number
+  /** Upper-bound estimates of generations finished since the census. */
+  readonly pendingEstimateBytes: number
+  /** The incoming request (reserve) or the reconciled reservation (finish). */
   readonly reservationBytes: number
   readonly topHolders: readonly Holder[]
   readonly message: string
@@ -502,6 +508,8 @@ const signal = ({
     ['editor_view.host_budget.budget_bytes', event.budgetBytes],
     ['editor_view.host_budget.used_bytes', event.usedBytes],
     ['editor_view.host_budget.protected_bytes', event.protectedBytes],
+    ['editor_view.host_budget.reserved_bytes', event.reservedBytes],
+    ['editor_view.host_budget.pending_estimate_bytes', event.pendingEstimateBytes],
     ['editor_view.host_budget.reservation_bytes', event.reservationBytes],
     ['editor_view.host_budget.top_holders', JSON.stringify(event.topHolders)],
   ]
@@ -539,18 +547,20 @@ const updateWarning = ({
   readonly startedAtMs: number
 }): void => {
   if (state.usage === undefined) return
-  const protectedBytes = state.usage.protectedBytes + reservedBytes(state)
-  const crossing = protectedBytes >= budgetBytes * warningRatio
+  const reserved = reservedBytes(state)
+  const crossing = state.usage.protectedBytes + reserved >= budgetBytes * warningRatio
   if (crossing === true && state.warned === false)
     signal({
       event: {
         event: 'editor-view.host-budget.warning',
         budgetBytes,
-        usedBytes: state.usage.usedBytes + reservedBytes(state),
-        protectedBytes,
-        reservationBytes: reservedBytes(state),
+        usedBytes: state.usage.usedBytes,
+        protectedBytes: state.usage.protectedBytes,
+        reservedBytes: reserved,
+        pendingEstimateBytes: 0,
+        reservationBytes: 0,
         topHolders,
-        message: `editor views protect ${protectedBytes} of ${budgetBytes} host budget bytes (>=${warningRatio * 100}%); top holders: ${formatHolders(topHolders)}. Release idle worktrees, unpin generations, or raise EDITOR_VIEW_HOST_BUDGET_BYTES before publications run over budget.`,
+        message: `editor views protect ${state.usage.protectedBytes} measured bytes plus ${reserved} reserved of the ${budgetBytes}-byte host budget (>=${warningRatio * 100}%); top holders: ${formatHolders(topHolders)}. Release idle worktrees, unpin generations, or raise EDITOR_VIEW_HOST_BUDGET_BYTES before publications run over budget.`,
       },
       startedAtMs,
       exitCode: 0,
@@ -1516,11 +1526,12 @@ export const reserveEditorViewBudget = async ({
         const state = readState(store)
         reclaimDeadReservations(state)
         const stale = census.epoch < state.journalFloor
-        const finishedSince = state.journal
+        const pending = state.journal
           .filter((entry) => entry.epoch > census.epoch)
-          .reduce((sum, entry) => sum + entry.bytes, 0)
+          .reduce((sum, entry) => sum + entry.estimatedBytes, 0)
         const reserved = reservedBytes(state)
-        const used = census.usedBytes + reserved + finishedSince
+        // Admission stays conservative: measured usage plus every outstanding estimate.
+        const used = census.usedBytes + reserved + pending
         // Only active registrations in this ledger prove a root shares this content store.
         state.roots.set(resolve(root.editorRoot), resolve(root.repoRoot))
         for (const editorRoot of state.roots.keys())
@@ -1532,9 +1543,10 @@ export const reserveEditorViewBudget = async ({
         for (const key of state.lastUse.keys())
           if (census.generations.some((generation) => generation.key === key) === false)
             state.lastUse.delete(key)
+        // Usage records only measured census values; estimates stay in the journal.
         state.usage = {
-          usedBytes: census.usedBytes + finishedSince,
-          protectedBytes: plan.protectedBytes + finishedSince,
+          usedBytes: census.usedBytes,
+          protectedBytes: plan.protectedBytes,
           measuredAtMs: Date.now(),
         }
         const admitted =
@@ -1546,13 +1558,14 @@ export const reserveEditorViewBudget = async ({
             process: selfProcess(),
             editorRoot: resolve(heldEditorRoot),
             bytes: reservationBytes,
+            budgetBytes,
             createdAtMs: Date.now(),
           })
           state.epoch += 1
         }
         updateWarning({ state, budgetBytes, topHolders: census.topHolders, startedAtMs })
         writeState({ contentStore: store, state })
-        return { admitted, stale, used, reserved }
+        return { admitted, stale, used, reserved, pending }
       },
     })
   let last: { census: Census; plan: Plan } | undefined
@@ -1575,8 +1588,10 @@ export const reserveEditorViewBudget = async ({
           event: {
             event: 'editor-view.host-budget.evicted',
             budgetBytes,
-            usedBytes: admission.used,
-            protectedBytes: plan.protectedBytes + admission.reserved,
+            usedBytes: census.usedBytes,
+            protectedBytes: plan.protectedBytes,
+            reservedBytes: admission.reserved,
+            pendingEstimateBytes: admission.pending,
             reservationBytes,
             topHolders: census.topHolders,
             evicted,
@@ -1621,7 +1636,7 @@ export const reserveEditorViewBudget = async ({
           root: rootView,
           generations,
           budgetBytes,
-          usedBytes: admission.used,
+          usedBytes: census.usedBytes,
         })
         for (const key of outcome.blocked) blocked.add(key)
         evicted.push(...outcome.retired)
@@ -1642,18 +1657,19 @@ export const reserveEditorViewBudget = async ({
     last?.plan ??
     planEviction({ census, blocked, live: liveGenerations(census), recencyMs, now: Date.now() })
   const admission = await admit({ census, plan, force: true })
-  const protectedBytes = plan.protectedBytes + admission.reserved
   signal({
     event: {
       event: 'editor-view.host-budget.over-budget',
       budgetBytes,
-      usedBytes: admission.used,
-      protectedBytes,
+      usedBytes: census.usedBytes,
+      protectedBytes: plan.protectedBytes,
+      reservedBytes: admission.reserved,
+      pendingEstimateBytes: admission.pending,
       reservationBytes,
       topHolders: census.topHolders,
       evicted,
       ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
-      message: `editor views exceed the host budget: ${admission.used} of ${budgetBytes} bytes used before admitting ${reservationBytes}, ${protectedBytes} protected (pinned, open by a process, within ${graceMs / 60_000}min grace, root used within ${recencyMs}ms, or lock contended)${census.unknown.length > 0 ? `, ${census.unknown.length} unreadable path(s) uncounted` : ''}; evicted ${evicted.length} generation(s); top holders: ${formatHolders(census.topHolders)}. Publishing anyway; release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.`,
+      message: `editor views exceed the host budget: ${census.usedBytes} of ${budgetBytes} bytes measured (${plan.protectedBytes} protected: pinned, open by a process, within ${graceMs / 60_000}min grace, root used within ${recencyMs}ms, or lock contended) plus ${admission.reserved} reserved and ${admission.pending} estimated since the census, before admitting ${reservationBytes}${census.unknown.length > 0 ? `; ${census.unknown.length} unreadable path(s) uncounted` : ''}; evicted ${evicted.length} generation(s); top holders: ${formatHolders(census.topHolders)}. Publishing anyway; release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.`,
     },
     startedAtMs,
     exitCode: 0,
@@ -1674,6 +1690,7 @@ export const finishEditorViewBudgetReservation = async ({
   readonly contentStore: string
   readonly root: EditorViewBudgetRoot
   readonly token: string
+  /** Current-pointer target relative to editorRoot: `.store/<view>-<digest>`, not the bare name. */
   readonly snapshot: string
 }): Promise<void> => {
   const startedAtMs = Date.now()
@@ -1716,33 +1733,40 @@ export const finishEditorViewBudgetReservation = async ({
     run: async () => {
       const state = readState(store)
       const reservation = state.reservations.get(token)
+      // Only the reserving incarnation may settle its reservation, and only for its own root.
+      if (
+        reservation !== undefined &&
+        (reservation.pid !== process.pid ||
+          reservation.process !== selfProcess() ||
+          reservation.editorRoot !== editorRoot)
+      )
+        fail(
+          `reservation ${token} belongs to process ${reservation.pid} for ${reservation.editorRoot}, not ${editorRoot}`,
+        )
       state.reservations.delete(token)
-      // An incomplete walk never shrinks the admitted reservation.
-      const bytes = actualBytes ?? Math.max(partialBytes, reservation?.bytes ?? 0)
-      appendJournal({ state, bytes })
+      // Conservative estimate: an incomplete walk never shrinks the admitted reservation.
+      const estimatedBytes = actualBytes ?? Math.max(partialBytes, reservation?.bytes ?? 0)
+      appendJournal({ state, estimatedBytes })
       if (cached !== undefined) state.generations.set(key, cached)
       state.lastUse.set(key, Date.now())
       state.roots.set(editorRoot, resolve(root.repoRoot))
-      if (state.usage !== undefined)
-        state.usage = {
-          usedBytes: state.usage.usedBytes + bytes,
-          protectedBytes: state.usage.protectedBytes + bytes,
-          measuredAtMs: state.usage.measuredAtMs,
-        }
       writeState({ contentStore: store, state })
-      return { reservation, bytes, usage: state.usage, reserved: reservedBytes(state) }
+      return { reservation, estimatedBytes, usage: state.usage, reserved: reservedBytes(state) }
     },
   })
-  if (outcome.reservation !== undefined && outcome.bytes > outcome.reservation.bytes)
+  // Full footprint counts shared payload inodes, so this is an upper bound on new bytes.
+  if (outcome.reservation !== undefined && outcome.estimatedBytes > outcome.reservation.bytes)
     signal({
       event: {
         event: 'editor-view.host-budget.underreserved',
-        budgetBytes: editorViewHostBudgetBytes(),
-        usedBytes: (outcome.usage?.usedBytes ?? 0) + outcome.reserved,
-        protectedBytes: (outcome.usage?.protectedBytes ?? 0) + outcome.reserved,
+        budgetBytes: outcome.reservation.budgetBytes,
+        usedBytes: outcome.usage?.usedBytes ?? 0,
+        protectedBytes: outcome.usage?.protectedBytes ?? 0,
+        reservedBytes: outcome.reserved,
+        pendingEstimateBytes: outcome.estimatedBytes,
         reservationBytes: outcome.reservation.bytes,
         topHolders: [],
-        message: `generation ${snapshot} occupies ${outcome.bytes} bytes but reserved only ${outcome.reservation.bytes}; the publisher's reservation formula undercounts`,
+        message: `generation ${snapshot} footprint is up to ${outcome.estimatedBytes} bytes (shared payload inodes included) but reserved only ${outcome.reservation.bytes}; the publisher's reservation formula may undercount`,
       },
       startedAtMs,
       exitCode: 0,
@@ -1787,6 +1811,7 @@ export const touchEditorViewBudgetGeneration = async ({
 }: {
   readonly contentStore: string
   readonly root: EditorViewBudgetRoot
+  /** Current-pointer target relative to editorRoot: `.store/<view>-<digest>`, not the bare name. */
   readonly snapshot: string
   /** Accepted for API symmetry; warm touches never discover roots (admission does). */
   readonly discoverRoots: () => readonly EditorViewBudgetRoot[]

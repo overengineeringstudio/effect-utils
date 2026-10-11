@@ -2754,14 +2754,14 @@ const publishEditorViewCoordinated = async ({
           contentStore: paths.contentStore,
           root: budgetRoot,
           token: budgetReservation,
-          snapshot: snapshotName,
+          snapshot: `.store/${snapshotName}`,
         })
         budgetReservation = undefined
       } else {
         await touchEditorViewBudgetGeneration({
           contentStore: paths.contentStore,
           root: budgetRoot,
-          snapshot: snapshotName,
+          snapshot: `.store/${snapshotName}`,
           discoverRoots: () => discoverBudgetRoots(budgetRoot),
           budgetBytes,
         })

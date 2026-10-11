@@ -212,6 +212,8 @@ type BudgetEvent = {
   readonly usedBytes: number
   readonly protectedBytes: number
   readonly reservationBytes: number
+  readonly reservedBytes: number
+  readonly pendingEstimateBytes: number
   readonly topHolders: readonly unknown[]
   readonly message: string
 }
@@ -237,6 +239,10 @@ const budgetEvents = (stderr: string): readonly BudgetEvent[] =>
       typeof value.protectedBytes !== 'number' ||
       'reservationBytes' in value === false ||
       typeof value.reservationBytes !== 'number' ||
+      'reservedBytes' in value === false ||
+      typeof value.reservedBytes !== 'number' ||
+      'pendingEstimateBytes' in value === false ||
+      typeof value.pendingEstimateBytes !== 'number' ||
       'topHolders' in value === false ||
       Array.isArray(value.topHolders) === false ||
       'message' in value === false ||
@@ -250,6 +256,8 @@ const budgetEvents = (stderr: string): readonly BudgetEvent[] =>
         usedBytes: value.usedBytes,
         protectedBytes: value.protectedBytes,
         reservationBytes: value.reservationBytes,
+        reservedBytes: value.reservedBytes,
+        pendingEstimateBytes: value.pendingEstimateBytes,
         topHolders: value.topHolders,
         message: value.message,
       },
@@ -300,10 +308,12 @@ type BudgetReservation = {
   readonly process: string
   readonly editorRoot: string
   readonly bytes: number
+  readonly budgetBytes: number
 }
 
 type BudgetLedger = {
   readonly epoch: number
+  readonly journal: readonly { readonly epoch: number; readonly estimatedBytes: number }[]
   readonly reservations: readonly BudgetReservation[]
   readonly usedBytes: number
   readonly protectedBytes: number
@@ -312,15 +322,17 @@ type BudgetLedger = {
 /** Inspect real persistent admission records without changing them or bypassing their flock. */
 const readBudgetLedger = (host: Host): BudgetLedger => {
   const value: unknown = JSON.parse(
-    readFileSync(`${host.contentStore}.budget/state.json`, 'utf8'),
+    readFileSync(`${host.contentStore}.budget/state-v2.json`, 'utf8'),
   )
   if (
     typeof value !== 'object' ||
     value === null ||
     'schema' in value === false ||
-    value.schema !== 'effect-utils/editor-view-budget/v1' ||
+    value.schema !== 'effect-utils/editor-view-budget/v2' ||
     'epoch' in value === false ||
     typeof value.epoch !== 'number' ||
+    'journal' in value === false ||
+    Array.isArray(value.journal) === false ||
     'reservations' in value === false ||
     typeof value.reservations !== 'object' ||
     value.reservations === null ||
@@ -348,7 +360,9 @@ const readBudgetLedger = (host: Host): BudgetLedger => {
         'editorRoot' in entry === false ||
         typeof entry.editorRoot !== 'string' ||
         'bytes' in entry === false ||
-        typeof entry.bytes !== 'number'
+        typeof entry.bytes !== 'number' ||
+        'budgetBytes' in entry === false ||
+        typeof entry.budgetBytes !== 'number'
       )
         throw new Error(`host-budget reservation lacks owner incarnation or byte accounting: ${token}`)
       return {
@@ -357,11 +371,25 @@ const readBudgetLedger = (host: Host): BudgetLedger => {
         process: entry.process,
         editorRoot: entry.editorRoot,
         bytes: entry.bytes,
+        budgetBytes: entry.budgetBytes,
       }
     },
   )
+  const journal = value.journal.map((entry: unknown) => {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      'epoch' in entry === false ||
+      typeof entry.epoch !== 'number' ||
+      'estimatedBytes' in entry === false ||
+      typeof entry.estimatedBytes !== 'number'
+    )
+      throw new Error('host-budget journal mixes measured usage with an invalid estimate')
+    return { epoch: entry.epoch, estimatedBytes: entry.estimatedBytes }
+  })
   return {
     epoch: value.epoch,
+    journal,
     reservations,
     usedBytes: value.usage.usedBytes,
     protectedBytes: value.usage.protectedBytes,
@@ -726,6 +754,8 @@ describe('host budget alerts while publishing protected managed, live, recent an
         `editor_view.host_budget.budget_bytes=${overBudget.budgetBytes}`,
         `editor_view.host_budget.used_bytes=${overBudget.usedBytes}`,
         `editor_view.host_budget.protected_bytes=${overBudget.protectedBytes}`,
+        `editor_view.host_budget.reserved_bytes=${overBudget.reservedBytes}`,
+        `editor_view.host_budget.pending_estimate_bytes=${overBudget.pendingEstimateBytes}`,
       ]),
     )
   })
@@ -860,6 +890,7 @@ describe('concurrent advisory host-budget publication and managed pin admission'
           expect(reservation.pid).toBe(process.pid)
           expect(reservation.process.length).toBeGreaterThan(0)
           expect(reservation.bytes).toBeGreaterThan(payloadBytes * 2)
+          expect(reservation.budgetBytes).toBe(budgetBytes)
         }
         const reservedBytes = held.reservations.reduce((sum, { bytes }) => sum + bytes, 0)
         expect(held.usedBytes + reservedBytes).toBeGreaterThan(budgetBytes)
@@ -883,15 +914,27 @@ describe('concurrent advisory host-budget publication and managed pin admission'
       expect(overBudget).toHaveLength(2)
       for (const event of overBudget) {
         expect(event.budgetBytes).toBe(budgetBytes)
-        expect(event.usedBytes + event.reservationBytes).toBeGreaterThan(budgetBytes)
+        expect(
+          event.usedBytes + event.reservedBytes + event.pendingEstimateBytes + event.reservationBytes,
+        ).toBeGreaterThan(budgetBytes)
+        expect(event.reservedBytes).toBeGreaterThanOrEqual(0)
+        expect(event.pendingEstimateBytes).toBe(0)
         expect(event.protectedBytes).toBeGreaterThanOrEqual(payloadBytes * 2)
       }
       const smallestReservation = Math.min(
         ...captured.value.reservations.map(({ bytes }) => bytes),
       )
-      expect(Math.max(...overBudget.map(({ usedBytes }) => usedBytes))).toBeGreaterThanOrEqual(
-        captured.value.usedBytes + smallestReservation,
+      expect(Math.max(...overBudget.map(({ reservedBytes }) => reservedBytes))).toBeGreaterThanOrEqual(
+        smallestReservation,
       )
+      expect(
+        Math.max(
+          ...overBudget.map(
+            ({ usedBytes, reservedBytes, pendingEstimateBytes }) =>
+              usedBytes + reservedBytes + pendingEstimateBytes,
+          ),
+        ),
+      ).toBeGreaterThanOrEqual(captured.value.usedBytes + smallestReservation)
       expect(events.some(({ event }) => event === 'editor-view.host-budget.refused')).toBe(false)
     } finally {
       pinRelease.resolve()
@@ -900,7 +943,11 @@ describe('concurrent advisory host-budget publication and managed pin admission'
     const records = await Promise.all(publications)
     const finished = readBudgetLedger(host)
     expect(finished.reservations).toEqual([])
-    expect(finished.usedBytes).toBeGreaterThanOrEqual(payloadBytes * 4)
+    expect(finished.usedBytes).toBeGreaterThanOrEqual(baseline.usedBytes)
+    const newEstimates = finished.journal.filter(({ epoch }) => epoch > baseline.epoch)
+    expect(newEstimates).toHaveLength(2)
+    for (const { estimatedBytes } of newEstimates)
+      expect(estimatedBytes).toBeGreaterThanOrEqual(payloadBytes)
     expectCurrent(pinned, pinnedRecord)
     expectCurrent(live, liveRecord)
     for (let index = 0; index < contenders.length; index++) {
