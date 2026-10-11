@@ -1077,108 +1077,137 @@ describe('editor view publisher', () => {
     }
   })
 
-  it('serializes a winning managed pin with real snapshot retirement under the store flock', async () => {
-    const fixture = makeFixture()
+  describe('winning managed pin versus snapshot retirement', () => {
+    let fixture: Fixture
+    let oldest: EditorViewRecord
+    let setup: Promise<EditorViewRecord> | undefined
     const entered = Promise.withResolvers<void>()
     const proceed = Promise.withResolvers<void>()
     let pin: Promise<EditorViewPinRecord> | undefined
     let publication: Promise<EditorViewRecord> | undefined
-    try {
-      const retainedOptions = { ...fixture.options, snapshotRetention: 32 }
-      const oldest = await publishEditorView(retainedOptions)
-      for (const revision of [2, 3]) {
+    beforeAll(async () => {
+      fixture = makeFixture()
+      setup = publishEditorView({ ...fixture.options, snapshotRetention: 32 })
+      oldest = await setup
+    })
+    for (const revision of [2, 3]) {
+      it(`prepares retained generation ${revision}`, async () => {
         writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
-        await publishEditorView(retainedOptions)
-      }
-      pin = pinEditorView({
-        options: fixture.options,
-        name: 'racing-reader',
-        snapshot: oldest.snapshot,
-        afterStoreLock: async () => {
-          entered.resolve()
-          await proceed.promise
-        },
+        setup = publishEditorView({ ...fixture.options, snapshotRetention: 32 })
+        await setup
       })
-      await entered.promise
-      // The pin already owns the real flock but has not written its registration.
-      publication = publishEditorView(fixture.options)
-      expect(existsSync(join(fixture.editorRoot, '.pins', 'racing-reader.json'))).toBe(false)
-      proceed.resolve()
-      await expect(pin).resolves.toMatchObject({ snapshot: oldest.snapshot })
-      await publication
-      expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
-      await unpinEditorView({ options: fixture.options, name: 'racing-reader' })
-      await publishEditorView(fixture.options)
-      expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
-    } finally {
-      proceed.resolve()
-      await Promise.allSettled([pin, publication])
-      cleanup(fixture)
     }
+    afterAll(async () => {
+      proceed.resolve()
+      await Promise.allSettled([setup, pin, publication])
+      if (fixture !== undefined) cleanup(fixture)
+    })
+    it('serializes a winning managed pin with real retirement under the flock', async () => {
+      try {
+        pin = pinEditorView({
+          options: fixture.options,
+          name: 'racing-reader',
+          snapshot: oldest.snapshot,
+          afterStoreLock: async () => {
+            entered.resolve()
+            await proceed.promise
+          },
+        })
+        await entered.promise
+        // The pin already owns the real flock but has not written its registration.
+        publication = publishEditorView(fixture.options)
+        expect(existsSync(join(fixture.editorRoot, '.pins', 'racing-reader.json'))).toBe(false)
+        proceed.resolve()
+        await expect(pin).resolves.toMatchObject({ snapshot: oldest.snapshot })
+        await publication
+        expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
+        await unpinEditorView({ options: fixture.options, name: 'racing-reader' })
+        await publishEditorView(fixture.options)
+        expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
+      } finally {
+        proceed.resolve()
+        await Promise.allSettled([pin, publication])
+      }
+    })
   })
 
-  it('rejects a losing managed pin after retirement instead of registering a dangling generation', async () => {
-    const fixture = makeFixture()
+  describe('losing managed pin versus snapshot retirement', () => {
+    let fixture: Fixture
+    let oldest: EditorViewRecord
+    let setup: Promise<EditorViewRecord> | undefined
     const entered = Promise.withResolvers<void>()
     const proceed = Promise.withResolvers<void>()
     const cleanupEntered = Promise.withResolvers<void>()
     const cleanupProceed = Promise.withResolvers<void>()
     let pinOutcome: Promise<unknown> | undefined
     let publication: Promise<EditorViewRecord> | undefined
-    try {
-      const retainedOptions = { ...fixture.options, snapshotRetention: 32 }
-      const oldest = await publishEditorView(retainedOptions)
-      for (const revision of [2, 3]) {
+    beforeAll(async () => {
+      fixture = makeFixture()
+      setup = publishEditorView({ ...fixture.options, snapshotRetention: 32 })
+      oldest = await setup
+    })
+    for (const revision of [2, 3]) {
+      it(`prepares retained generation ${revision}`, async () => {
         writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
-        await publishEditorView(retainedOptions)
-      }
-      publication = publishEditorView({
-        ...fixture.options,
-        beforeSnapshotRetirement: async () => {
-          entered.resolve()
-          await proceed.promise
-        },
-        beforeSnapshotCleanup: async () => {
-          cleanupEntered.resolve()
-          await cleanupProceed.promise
-        },
+        setup = publishEditorView({ ...fixture.options, snapshotRetention: 32 })
+        await setup
       })
-      await entered.promise
-      // Retirement owns the actual flock after its managed-pin census. Admission
-      // must wait and then recheck existence, not register against the stale name.
-      pinOutcome = pinEditorView({
-        options: fixture.options,
-        name: 'too-late',
-        snapshot: oldest.snapshot,
-      }).then(
-        (value) => value,
-        (error: unknown) => error,
-      )
-      proceed.resolve()
-      await cleanupEntered.promise
-      // The canonical generation has retired, but recursive cleanup is paused.
-      // Admission can acquire the flock now and must reject the hidden name.
-      expect(
-        readdirSync(fixture.editorRoot).some(
-          (name) => name.startsWith('.gc-') === true && name.endsWith(storeName(oldest.snapshot)),
-        ),
-      ).toBe(true)
-      const failure = await pinOutcome
-      expect(failure).toBeInstanceOf(Error)
-      expect(failure instanceof Error ? failure.message : undefined).toContain(
-        'pin snapshot is missing',
-      )
-      expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
-      expect(existsSync(join(fixture.editorRoot, '.pins', 'too-late.json'))).toBe(false)
-      cleanupProceed.resolve()
-      await publication
-      expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
-    } finally {
-      proceed.resolve()
-      cleanupProceed.resolve()
-      await Promise.allSettled([pinOutcome, publication])
-      cleanup(fixture)
     }
+    afterAll(async () => {
+      proceed.resolve()
+      cleanupProceed.resolve()
+      await Promise.allSettled([setup, pinOutcome, publication])
+      if (fixture !== undefined) cleanup(fixture)
+    })
+    it('rejects a losing pin instead of registering a dangling generation', async () => {
+      try {
+        publication = publishEditorView({
+          ...fixture.options,
+          beforeSnapshotRetirement: async () => {
+            entered.resolve()
+            await proceed.promise
+          },
+          beforeSnapshotCleanup: async () => {
+            cleanupEntered.resolve()
+            await cleanupProceed.promise
+          },
+        })
+        await entered.promise
+        // Retirement owns the actual flock after its managed-pin census. Admission
+        // must wait and then recheck existence, not register against the stale name.
+        pinOutcome = pinEditorView({
+          options: fixture.options,
+          name: 'too-late',
+          snapshot: oldest.snapshot,
+        }).then(
+          (value) => value,
+          (error: unknown) => error,
+        )
+        proceed.resolve()
+        await cleanupEntered.promise
+        // The canonical generation has retired, but recursive cleanup is paused.
+        // Admission can acquire the flock now and must reject the hidden name.
+        expect(
+          readdirSync(fixture.editorRoot).some(
+            (name) => name.startsWith('.gc-') === true && name.endsWith(storeName(oldest.snapshot)),
+          ),
+        ).toBe(true)
+        const failure = await pinOutcome
+        expect(failure).toBeInstanceOf(Error)
+        expect(failure instanceof Error ? failure.message : undefined).toContain(
+          'pin snapshot is missing',
+        )
+        expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
+        expect(existsSync(join(fixture.editorRoot, '.pins', 'too-late.json'))).toBe(false)
+        cleanupProceed.resolve()
+        await publication
+        expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+      } finally {
+        proceed.resolve()
+        cleanupProceed.resolve()
+        await Promise.allSettled([pinOutcome, publication])
+      }
+    })
   })
 
   describe('treats shell symlinks as advisory retention observations', () => {
