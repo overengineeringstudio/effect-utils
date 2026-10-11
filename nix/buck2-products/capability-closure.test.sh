@@ -9,7 +9,7 @@ expression='let
   repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
   f = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
   packages = f.packages.${builtins.currentSystem};
-  product = packages.typescript-api-server.buck2Product;
+  product = packages.ci-tools-compiled.buck2Product;
 in { inherit packages product; }'
 contract="$(nix eval --impure --json --expr "let x = $expression; in {
   source = toString x.product.source;
@@ -44,6 +44,7 @@ install_projection() {
 }
 positive="$(nix build --impure --no-link --print-out-paths --expr "let x = $expression; in x.product.capabilities")"
 install_projection "$positive"
+# This narrow source fixture also covers eager patch-owner source declarations.
 analyze
 (cd "$fixture/root" && "$buck2" --isolation-dir capability-control kill)
 negative="$(nix build --impure --no-link --print-out-paths --expr "let x = $expression; in x.packages.buck2-capabilities.select (builtins.filter (name: name != \"product\") x.product.capabilities.requiredCapabilities)")"
