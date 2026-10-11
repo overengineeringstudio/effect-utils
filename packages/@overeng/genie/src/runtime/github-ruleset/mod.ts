@@ -107,6 +107,8 @@ export interface PullRequestParameters {
    * @note Beta feature
    */
   required_reviewers?: RequiredReviewer[]
+  /** Require an extra approval when changes cannot be attributed to a known author. */
+  require_extra_approval_for_unattributed_changes?: boolean
 }
 
 /**
@@ -631,6 +633,7 @@ export type BypassActorType =
   | 'OrganizationAdmin'
   | 'RepositoryRole' // Repository role (Admin, Write, etc.)
   | 'Team'
+  | 'User'
   | 'DeployKey'
 
 /**
@@ -648,7 +651,7 @@ export type BypassMode =
  */
 export interface BypassActor {
   /**
-   * Actor ID (GitHub App ID, Team ID, or Repository Role ID).
+   * Actor ID (GitHub App ID, User ID, Team ID, or Repository Role ID).
    * Set to `null` for DeployKey type.
    *
    * Repository Role IDs:
