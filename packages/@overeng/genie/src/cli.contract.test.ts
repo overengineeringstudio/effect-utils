@@ -71,8 +71,30 @@ describe('genie CLI contract baselines (status/signal invariant, prose owner-reb
     ['missing option value', ['--cwd']],
     ['invalid phase', ['--phase', 'nope', '--dry-run']],
     ['invalid phase with json output (stdout guard)', ['--phase', 'nope', '--json']],
+    ['settings help', ['github-settings', '--help']],
+    ['invalid settings mode', ['github-settings', '--mode', 'delete', '--repo', 'owner/repo']],
+    ['missing settings repository', ['github-settings', '--mode', 'check']],
   ] as const)('%s', (_name, args) => {
     expect(runCli(...args)).toMatchSnapshot()
+  })
+})
+
+describe('genie CLI argument boundaries', () => {
+  it.each([
+    ['missing option value', ['--cwd']],
+    ['invalid phase', ['--phase', 'nope', '--dry-run']],
+    ['invalid settings mode', ['github-settings', '--mode', 'delete', '--repo', 'owner/repo']],
+    ['missing settings repository', ['github-settings', '--mode', 'check']],
+  ] as const)('rejects %s', (_name, args) => {
+    const result = runCli(...args)
+    expect(result.status).toBe(1)
+    expect(result.signal).toBeNull()
+  })
+
+  it('keeps argument errors off JSON stdout', () => {
+    const result = runCli('--phase', 'nope', '--json')
+    expect(result.status).toBe(1)
+    expect(result.stdout).toBe('')
   })
 })
 

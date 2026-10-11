@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   diffGithubRuleset,
   formatGithubRulesetReport,
+  mergeGithubRulesetForApply,
   reconcileGithubRuleset,
 } from './reconcile.ts'
 
@@ -102,6 +103,157 @@ describe('github ruleset diff', () => {
 
     expect(diffs).toHaveLength(1)
     expect(diffs[0]?.field).toBe('rules')
+  })
+
+  it('ignores undeclared server-populated parameters, recursively within matching rules', () => {
+    const desired = {
+      rules: [
+        {
+          type: 'pull_request',
+          parameters: {
+            required_approving_review_count: 0,
+            dismissal_restriction: { enabled: false },
+          },
+        },
+        { type: 'deletion' },
+      ],
+    }
+    const actual = {
+      rules: [
+        { type: 'deletion' },
+        {
+          type: 'pull_request',
+          parameters: {
+            required_approving_review_count: 0,
+            dismissal_restriction: { enabled: false, allowed_actors: [] },
+            require_extra_approval_for_unattributed_changes: true,
+          },
+        },
+      ],
+    }
+    expect(diffGithubRuleset({ desired, actual })).toEqual([])
+    expect(
+      diffGithubRuleset({
+        desired: {
+          rules: [
+            { type: 'pull_request', parameters: { required_approving_review_count: 0 } },
+            { type: 'deletion' },
+          ],
+        },
+        actual,
+      }),
+    ).toEqual([])
+  })
+
+  it('reports a changed or missing declared parameter even with live-only keys', () => {
+    const desired = {
+      rules: [{ type: 'pull_request', parameters: { dismissal_restriction: { enabled: false } } }],
+    }
+    for (const parameters of [
+      { dismissal_restriction: { enabled: true, allowed_actors: [] } },
+      { dismissal_restriction: { allowed_actors: [] } },
+      { require_extra_approval_for_unattributed_changes: true },
+    ]) {
+      expect(
+        diffGithubRuleset({ desired, actual: { rules: [{ type: 'pull_request', parameters }] } }),
+      ).toMatchObject([{ field: 'rules' }])
+    }
+  })
+
+  it('reports a missing or additional rule rather than treating rule presence as unmanaged', () => {
+    const desired = {
+      rules: [{ type: 'pull_request', parameters: { required_approving_review_count: 0 } }],
+    }
+    expect(diffGithubRuleset({ desired, actual: { rules: [] } })).toMatchObject([
+      { field: 'rules' },
+    ])
+    expect(
+      diffGithubRuleset({
+        desired,
+        actual: { rules: [...desired.rules, { type: 'deletion' }] },
+      }),
+    ).toMatchObject([{ field: 'rules' }])
+  })
+
+  it('compares scalar arrays and status-check entries exactly, without subset projection', () => {
+    for (const [desiredParameters, actualParameters] of [
+      [
+        { allowed_merge_methods: ['merge', 'squash'] },
+        { allowed_merge_methods: ['squash', 'merge'] },
+      ],
+      [
+        { required_status_checks: [{ context: 'ci' }] },
+        { required_status_checks: [{ context: 'ci', integration_id: 42 }] },
+      ],
+      [
+        { required_status_checks: [{ context: 'ci' }] },
+        { required_status_checks: [{ context: 'ci' }, { context: 'extra' }] },
+      ],
+    ]) {
+      expect(
+        diffGithubRuleset({
+          desired: { rules: [{ type: 'required_status_checks', parameters: desiredParameters }] },
+          actual: { rules: [{ type: 'required_status_checks', parameters: actualParameters }] },
+        }),
+      ).toMatchObject([{ field: 'rules' }])
+    }
+  })
+})
+
+describe('github ruleset update payload', () => {
+  it('preserves unmanaged parameters but replaces managed arrays and rule presence', () => {
+    const desired = {
+      name: 'protect-main',
+      rules: [
+        {
+          type: 'pull_request',
+          parameters: {
+            required_approving_review_count: 1,
+            dismissal_restriction: { enabled: false },
+            allowed_merge_methods: ['squash'],
+          },
+        },
+        { type: 'deletion' },
+      ],
+    }
+    const actual = {
+      id: 123,
+      rules: [
+        {
+          type: 'pull_request',
+          parameters: {
+            required_approving_review_count: 0,
+            dismissal_restriction: { enabled: true, allowed_actors: [{ actor_id: 42 }] },
+            allowed_merge_methods: ['merge', 'squash'],
+            require_extra_approval_for_unattributed_changes: true,
+          },
+        },
+        { type: 'non_fast_forward' },
+      ],
+    }
+    expect(mergeGithubRulesetForApply({ desired, actual })).toEqual({
+      ...desired,
+      rules: [
+        {
+          type: 'pull_request',
+          parameters: {
+            ...desired.rules[0]!.parameters,
+            dismissal_restriction: { enabled: false, allowed_actors: [{ actor_id: 42 }] },
+            require_extra_approval_for_unattributed_changes: true,
+          },
+        },
+        { type: 'deletion' },
+      ],
+    })
+    expect(actual.rules[0]!.parameters?.required_approving_review_count).toBe(0)
+  })
+
+  it('preserves live parameters when the retained rule declares none', () => {
+    const parameters = { require_extra_approval_for_unattributed_changes: true }
+    const desired = { rules: [{ type: 'pull_request' }] }
+    const actual = { rules: [{ type: 'pull_request', parameters }] }
+    expect(diffGithubRuleset({ desired, actual })).toEqual([])
+    expect(mergeGithubRulesetForApply({ desired, actual })).toEqual(actual)
   })
 })
 
