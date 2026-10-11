@@ -53,7 +53,8 @@ def launch(script, argv):
                 snapshot.write_bytes(payload)
                 snapshot.chmod(0o555 if executable else 0o444)
             declared.setdefault(str(source.resolve()), snapshot)
-        mounts = []
+        input_files = set()
+        input_dirs = set()
         staged = set()
         def install(relative):
             relative = os.path.normpath(str(relative))
@@ -66,6 +67,7 @@ def launch(script, argv):
             if source.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
                 staged.add(relative)
+                input_dirs.add(Path(relative))
                 for child in sorted(source.iterdir()):
                     install(os.path.join(relative, child.name))
                 return
@@ -73,8 +75,8 @@ def launch(script, argv):
             if canonical is None:
                 raise RuntimeError("undeclared sandbox input: " + relative)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.touch()
-            mounts.extend(["--ro-bind", str(canonical), VROOT + "/" + relative])
+            os.link(canonical, target)
+            input_files.add(Path(relative))
             staged.add(relative)
         for entry in metadata["digests"]:
             install(entry["path"])
@@ -89,15 +91,36 @@ def launch(script, argv):
                 candidate = candidate.rstrip(";:")
                 if (host / candidate).exists() and candidate not in manifest["outputs"]:
                     install(candidate)
+        output_parents = []
         for output in manifest["outputs"]:
             path = Path(output)
             if path.is_absolute() or ".." in path.parts:
                 raise RuntimeError("output escapes virtual root")
             (stage / path).parent.mkdir(parents=True, exist_ok=True)
-        command = [runtime["bwrap"], "--unshare-all", "--die-with-parent", "--new-session", "--hostname", "rust-sandbox", "--clearenv", "--cap-drop", "ALL", "--tmpfs", "/", "--bind", str(stage), VROOT, "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--dir", "/home/build", "--dir", "/nix/store"]
+        for parent in sorted({Path(output).parent for output in manifest["outputs"]}, key=lambda path: (len(path.parts), str(path))):
+            if not any(parent == outer or outer in parent.parents for outer in output_parents):
+                output_parents.append(parent)
+        output_stage = Path(scratch).resolve() / "outputs"
+        output_stage.mkdir()
+        command = [runtime["bwrap"], "--unshare-all", "--die-with-parent", "--new-session", "--hostname", "rust-sandbox", "--clearenv", "--cap-drop", "ALL", "--tmpfs", "/", "--ro-bind", str(stage), VROOT, "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--dir", "/home/build", "--dir", "/nix/store"]
         for store_path in runtime["storePaths"]:
             command.extend(["--ro-bind", store_path, store_path])
-        command.extend(mounts)
+        # One read-only declared-input tree avoids a mount per input file.
+        # Only output parents become writable; protect any overlapping inputs.
+        for parent in output_parents:
+            if any(parent == directory or directory in parent.parents for directory in input_dirs):
+                raise RuntimeError("output parent overlaps an immutable input view: " + str(parent))
+            writable = output_stage / parent
+            shutil.copytree(stage / parent, writable, copy_function=os.link)
+            command.extend(["--bind", str(writable), VROOT + "/" + str(parent)])
+            protected_dirs = []
+            for directory in sorted(input_dirs, key=lambda path: (len(path.parts), str(path))):
+                if parent in directory.parents and not any(outer in directory.parents for outer in protected_dirs):
+                    protected_dirs.append(directory)
+                    command.extend(["--ro-bind", str(stage / directory), VROOT + "/" + str(directory)])
+            for path in sorted(input_files):
+                if parent in path.parents and not any(directory in path.parents for directory in protected_dirs):
+                    command.extend(["--ro-bind", str(stage / path), VROOT + "/" + str(path)])
         # Prelude's declared linker wrappers use /usr/bin/env bash.
         shell = runtime["shell"]
         command.extend(["--dir", "/bin", "--symlink", shell, "/bin/sh", "--dir", "/usr", "--dir", "/usr/bin", "--symlink", VROOT + "/" + str(env_relative), "/usr/bin/env", "--chdir", VROOT])
@@ -107,7 +130,7 @@ def launch(script, argv):
         command.extend([sys.executable, script, *expanded])
         result = subprocess.run(command, check=False)
         for output in manifest["outputs"]:
-            source = stage / output
+            source = output_stage / output
             target = host / output
             if source.exists():
                 target.parent.mkdir(parents=True, exist_ok=True)
