@@ -30,7 +30,6 @@ import {
   list,
   text,
 } from './buck2-action-evidence-codec.ts'
-import { decodeCacheAdmissionEvidence } from './buck2-cache-evidence.ts'
 import {
   actionExclusionReason,
   countActionExclusions,
@@ -44,6 +43,7 @@ import {
   type ActionRecord,
   type CacheLane,
 } from './buck2-action-evidence.ts'
+import { decodeCacheAdmissionEvidence } from './buck2-cache-evidence.ts'
 
 export type ArtifactReference = { lane: CacheLane; summary: string; actions: string }
 export type Observation = {
@@ -164,6 +164,7 @@ export const decodeEvidence = (
   const dropped = field(metadata, 'droppedActionCount')
   if (dropped !== undefined && integer(dropped) !== 0) return invalid()
   if (
+    artifact.header.metadata._tag !== 'github-actions' ||
     field(summary, 'status') !== artifact.header.status ||
     artifact.header.metadata.lane !== expectedLane
   )
@@ -222,6 +223,7 @@ const baseIdentity = (action: ActionRecord): string =>
   JSON.stringify([action.category, action.target, action.configuration])
 const completeArtifact = (artifact: ActionArtifact, writer: boolean): boolean => {
   const h = artifact.header
+  if (h.metadata._tag !== 'github-actions') return false
   // Reader means an observed lookup, not a read-only cache credential: queue jobs also write.
   const { lane: cacheLane, posture } = h.metadata
   const lanePostureValid =
@@ -319,6 +321,7 @@ export const evaluateWarm99 = (manifest: WarmManifest, loaded: LoadedObservation
           ).length ?? 0
         if (
           artifact === undefined ||
+          artifact.header.metadata._tag !== 'github-actions' ||
           artifact.header.metadata.lane !== observation.writers[index]?.lane ||
           !completeArtifact(artifact, true)
         ) {
@@ -346,7 +349,9 @@ export const evaluateWarm99 = (manifest: WarmManifest, loaded: LoadedObservation
       }
       const writerRepos = new Set(
         writers.flatMap((artifact) =>
-          artifact?.header.metadata.repo === null || artifact === undefined
+          artifact === undefined ||
+          artifact.header.metadata._tag !== 'github-actions' ||
+          artifact.header.metadata.repo === null
             ? []
             : [artifact.header.metadata.repo],
         ),
@@ -383,6 +388,7 @@ export const evaluateWarm99 = (manifest: WarmManifest, loaded: LoadedObservation
             : policyExcluded
         if (
           artifact === undefined ||
+          artifact.header.metadata._tag !== 'github-actions' ||
           artifact.header.metadata.lane !== enabledLane ||
           !completeArtifact(artifact, false)
         ) {

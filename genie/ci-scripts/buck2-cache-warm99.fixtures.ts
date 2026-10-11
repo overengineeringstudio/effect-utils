@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 
+import { encodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
   countActionExclusions,
@@ -12,6 +13,13 @@ import {
   type CacheLane,
 } from './buck2-action-evidence.ts'
 import type { LoadedObservation, WarmManifest } from './buck2-cache-warm99.ts'
+import type { GitHubActionsEvidenceProducer } from './buck2-evidence-producer.ts'
+
+export type GitHubActionsArtifact = Omit<ActionArtifact, 'header'> & {
+  header: Omit<ActionArtifact['header'], 'metadata'> & {
+    metadata: GitHubActionsEvidenceProducer
+  }
+}
 
 export const actionFixture = (overrides: Partial<ActionRecord> = {}): ActionRecord => ({
   type: 'action',
@@ -41,7 +49,10 @@ export const actionFixture = (overrides: Partial<ActionRecord> = {}): ActionReco
   ...overrides,
 })
 let fixtureId = 0
-export const artifactFixture = (writer = false, input = [actionFixture()]): ActionArtifact => {
+export const artifactFixture = (
+  writer = false,
+  input = [actionFixture()],
+): GitHubActionsArtifact => {
   const buildId = `build-${fixtureId++}`
   const actions = input.map((action) => ({
     ...action,
@@ -53,6 +64,7 @@ export const artifactFixture = (writer = false, input = [actionFixture()]): Acti
       schemaVersion: 1,
       cacheOutcomeMapping,
       metadata: {
+        _tag: 'github-actions',
         repo: 'public/test',
         runId: '1',
         runAttempt: '1',
@@ -89,7 +101,26 @@ export const artifactFixture = (writer = false, input = [actionFixture()]): Acti
     actions,
   }
 }
-export const writerFixture = (): ActionArtifact =>
+export const hostArtifactFixture = (writer = false): ActionArtifact => {
+  const artifact = writer ? writerFixture() : artifactFixture()
+  return {
+    ...artifact,
+    header: {
+      ...artifact.header,
+      metadata: {
+        _tag: 'host-service',
+        host: 'fixture-host',
+        unit: 'fixture-seeder.service',
+        invocationId: 'b'.repeat(32),
+        fetchedCommit: 'a'.repeat(40),
+        posture: writer ? 'writer' : 'read-only',
+        startedAt: artifact.header.metadata.startedAt,
+        finishedAt: artifact.header.metadata.finishedAt,
+      },
+    },
+  }
+}
+export const writerFixture = (): GitHubActionsArtifact =>
   artifactFixture(true, [
     actionFixture({
       executionKind: 1,
@@ -130,7 +161,7 @@ export const loadedFixture = (manifest: WarmManifest): LoadedObservation[] =>
     }),
   }))
 export const encodedFixture = (artifact: ActionArtifact) => {
-  const raw = `${[artifact.header, ...artifact.actions].map((item) => JSON.stringify(item)).join('\n')}\n`
+  const raw = encodeActionArtifact(artifact)
   const compressed = gzipSync(raw)
   const counts: Record<string, number> = {
     'remote-hit': 0,

@@ -5,11 +5,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 
+import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import { localMaterializationCategories, maxActionArtifactBytes } from './buck2-action-evidence.ts'
 import {
   actionFixture,
   artifactFixture,
   encodedFixture,
+  hostArtifactFixture,
   loadedFixture,
   manifestFixture,
 } from './buck2-cache-warm99.fixtures.ts'
@@ -17,6 +19,12 @@ import { decodeEvidence, loadAndEvaluate } from './buck2-cache-warm99.ts'
 
 const cli = new URL('./buck2-cache-warm99.ts', import.meta.url).pathname
 describe('gzip and compact summary boundaries', () => {
+  it('rejects a valid host-service receipt from a GitHub run manifest', () => {
+    const artifact = hostArtifactFixture()
+    const fixture = encodedFixture(artifact)
+    expect(decodeActionArtifact(fixture.raw)).toEqual(artifact)
+    expect(() => decodeEvidence(fixture.compressed, fixture.summary, 'main-reader')).toThrow()
+  })
   it('verifies checksum, gzip, rows, counts and metadata', () => {
     const fixture = encodedFixture(artifactFixture())
     expect(decodeEvidence(fixture.compressed, fixture.summary, 'main-reader').actions.length).toBe(
@@ -81,12 +89,8 @@ describe('gzip and compact summary boundaries', () => {
   })
   it('reads retained v1 summaries but strictly validates present admission fields', () => {
     const fixture = encodedFixture(artifactFixture())
-    const {
-      admissionFallbacks,
-      admissionRetrySuccesses,
-      admissionInvocations,
-      ...legacy
-    } = fixture.summary
+    const { admissionFallbacks, admissionRetrySuccesses, admissionInvocations, ...legacy } =
+      fixture.summary
     expect(decodeEvidence(fixture.compressed, legacy, 'main-reader').actions.length).toBe(1)
     const row = {
       invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
@@ -110,7 +114,11 @@ describe('gzip and compact summary boundaries', () => {
         { reapi: 0, archiveOrigin: Number.MAX_SAFE_INTEGER + 1 },
       ]) {
         expect(() =>
-          decodeEvidence(fixture.compressed, { ...fixture.summary, [key]: counters }, 'main-reader'),
+          decodeEvidence(
+            fixture.compressed,
+            { ...fixture.summary, [key]: counters },
+            'main-reader',
+          ),
         ).toThrow()
       }
     }
@@ -123,7 +131,11 @@ describe('gzip and compact summary boundaries', () => {
       [{ ...row, admissionRetrySuccesses: { reapi: 1, archiveOrigin: 1 } }],
     ]) {
       expect(() =>
-        decodeEvidence(fixture.compressed, { ...admitted, admissionInvocations: rows }, 'main-reader'),
+        decodeEvidence(
+          fixture.compressed,
+          { ...admitted, admissionInvocations: rows },
+          'main-reader',
+        ),
       ).toThrow()
     }
     expect(() =>

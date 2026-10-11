@@ -28,7 +28,11 @@ import {
   type ArchiveOriginFallbackReason,
 } from '../../buck2/dependencies/acquire-archive.ts'
 import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
-import { decodeActionArtifact, decodeActionExclusionCounts } from './buck2-action-evidence-codec.ts'
+import {
+  decodeActionArtifact,
+  decodeActionExclusionCounts,
+  encodeActionArtifact,
+} from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
   countActionExclusions,
@@ -44,6 +48,15 @@ import {
   type ActionInvocation,
   type ActionRecord,
 } from './buck2-action-evidence.ts'
+import {
+  encodeEvidenceProducer,
+  evidenceProducerComplete,
+  fetchedCommitGrammar,
+  hostIdentityGrammar,
+  serviceInvocationGrammar,
+  serviceUnitGrammar,
+  type CacheEvidenceProducer,
+} from './buck2-evidence-producer.ts'
 
 export const maxCacheEvidenceActions = 64
 export const cacheEvidenceOutcomes = [
@@ -864,6 +877,7 @@ const emptyActionArtifact = (status: CacheEvidence['status']): ActionArtifact =>
     schemaVersion: 1,
     cacheOutcomeMapping,
     metadata: {
+      _tag: 'github-actions',
       repo: null,
       runId: null,
       runAttempt: null,
@@ -897,6 +911,9 @@ const envTime = (key: string): number | null => {
 }
 
 const run = async (): Promise<void> => {
+  const producerMode = process.env.BUCK2_CACHE_EVIDENCE_PRODUCER ?? 'github-actions'
+  if (producerMode !== 'github-actions' && producerMode !== 'host-service')
+    throw new Error('Invalid cache evidence producer mode')
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     strict: true,
@@ -933,6 +950,7 @@ const run = async (): Promise<void> => {
   const previousSummary = Bun.file(values.output)
   let previous: CacheEvidence | undefined
   let full = emptyActionArtifact(evidence.status)
+  let previousProducer: CacheEvidenceProducer | undefined
   if (disabled === false && (await previousSummary.exists()) === true) {
     let previousValue: unknown
     try {
@@ -949,6 +967,7 @@ const run = async (): Promise<void> => {
         const decoded = decodeActionArtifact(raw.toString('utf8'))
         decoded.header.evidenceGaps.push(...full.header.evidenceGaps)
         full = decoded
+        previousProducer = decoded.header.metadata
         const reference = field({ value: previousValue, key: 'actionsArtifact' })
         if (
           field({ value: reference, key: 'sha256' }) !==
@@ -1052,10 +1071,14 @@ const run = async (): Promise<void> => {
     runnerOs: 'RUNNER_OS',
     runnerArch: 'RUNNER_ARCH',
   }
-  for (const [key, env] of Object.entries(envFields)) {
-    const value = process.env[env]
-    if (value !== undefined && /^[a-zA-Z0-9_./-]{1,160}$/.test(value) === true)
-      evidence.metadata[key] = value
+  if (producerMode === 'github-actions') {
+    for (const [key, env] of Object.entries(envFields)) {
+      const value = process.env[env]
+      if (value !== undefined && /^[a-zA-Z0-9_./-]{1,160}$/.test(value) === true)
+        evidence.metadata[key] = value
+    }
+  } else {
+    evidence.metadata = {}
   }
   const header = full.header
   header.status = evidence.status
@@ -1077,6 +1100,7 @@ const run = async (): Promise<void> => {
     }
   }
   header.metadata = {
+    _tag: 'github-actions',
     repo: safeIdentity(evidence.metadata.repository, /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/),
     runId: safeIdentity(evidence.metadata.runId, /^[0-9]+$/),
     runAttempt: safeIdentity(evidence.metadata.runAttempt, /^[0-9]+$/),
@@ -1105,6 +1129,46 @@ const run = async (): Promise<void> => {
         ? (envTime('CI_BUCK2_CACHE_EVIDENCE_FINISHED_AT') ?? Date.now())
         : header.metadata.finishedAt,
   }
+  if (producerMode === 'host-service') {
+    const posture = process.env.BUCK2_CACHE_EVIDENCE_POSTURE
+    const unit = process.env.BUCK2_CACHE_EVIDENCE_UNIT
+    header.metadata = {
+      _tag: 'host-service',
+      host: safeIdentity(process.env.BUCK2_CACHE_EVIDENCE_HOST, hostIdentityGrammar),
+      unit:
+        unit !== undefined && unit.length <= 255 ? safeIdentity(unit, serviceUnitGrammar) : null,
+      invocationId: safeIdentity(
+        process.env.BUCK2_CACHE_EVIDENCE_INVOCATION_ID,
+        serviceInvocationGrammar,
+      ),
+      fetchedCommit: safeIdentity(process.env.BUCK2_CACHE_EVIDENCE_COMMIT, fetchedCommitGrammar),
+      posture:
+        posture === 'writer' || posture === 'read-only' || posture === 'disabled-by-design'
+          ? posture
+          : null,
+      startedAt: envTime('BUCK2_CACHE_EVIDENCE_STARTED_AT'),
+      finishedAt: values.finalize === true ? envTime('BUCK2_CACHE_EVIDENCE_FINISHED_AT') : null,
+    }
+  }
+  if (
+    previousProducer !== undefined &&
+    (previousProducer._tag === 'host-service' || header.metadata._tag === 'host-service')
+  ) {
+    // The finish is supplied only at finalization. Every other host identity field
+    // must remain unchanged, and a drift gap survives later restored metadata.
+    if (
+      JSON.stringify(encodeEvidenceProducer({ ...previousProducer, finishedAt: null })) !==
+      JSON.stringify(encodeEvidenceProducer({ ...header.metadata, finishedAt: null }))
+    )
+      header.evidenceGaps.push('producer-identity-drift')
+  }
+  if (
+    values.finalize === true &&
+    header.metadata.startedAt !== null &&
+    header.metadata.finishedAt !== null &&
+    header.metadata.startedAt > header.metadata.finishedAt
+  )
+    header.evidenceGaps.push('producer-window-reversed')
   if (values.finalize === true) {
     for (const invocation of header.invocations) {
       if (!invocationWithinJobWindow(invocation, header.metadata)) {
@@ -1143,9 +1207,13 @@ const run = async (): Promise<void> => {
   if (header.rows !== header.actionCount) header.evidenceGaps.push('action-count-mismatch')
   if (header.invocations.some((item) => item.complete === false) === true)
     header.evidenceGaps.push('incomplete-native-invocation')
-  const metadataComplete = Object.values(header.metadata).every((item) => item !== null)
+  const metadataComplete = evidenceProducerComplete(header.metadata)
   if (values.finalize === true && metadataComplete === false)
-    header.evidenceGaps.push('job-metadata-missing')
+    header.evidenceGaps.push(
+      header.metadata._tag === 'host-service'
+        ? 'host-service-metadata-missing'
+        : 'job-metadata-missing',
+    )
   header.evidenceGaps = [...new Set(header.evidenceGaps)].sort()
   header.complete =
     values.finalize === true &&
@@ -1182,7 +1250,7 @@ const run = async (): Promise<void> => {
     ])
     return a < b ? -1 : a > b ? 1 : 0
   })
-  const raw = `${JSON.stringify(header)}\n${full.actions.map((row) => JSON.stringify(row)).join('\n')}${full.actions.length === 0 ? '' : '\n'}`
+  const raw = encodeActionArtifact(full)
   const bytes = gzipSync(raw, { level: 9 })
   await Bun.write(actionsOutput, bytes)
   evidence.cacheOutcomeMapping = cacheOutcomeMapping
@@ -1196,7 +1264,11 @@ const run = async (): Promise<void> => {
     droppedActionCount: header.droppedActionCount,
   }
   await Bun.write(values.output, `${JSON.stringify(evidence)}\n`)
-  if (values.finalize === true && process.env.GITHUB_STEP_SUMMARY !== undefined) {
+  if (
+    producerMode === 'github-actions' &&
+    values.finalize === true &&
+    process.env.GITHUB_STEP_SUMMARY !== undefined
+  ) {
     const admission = decodeCacheAdmissionEvidence(evidence)
     const summary = Bun.file(process.env.GITHUB_STEP_SUMMARY)
     const previousText = (await summary.exists()) === true ? await summary.text() : ''
