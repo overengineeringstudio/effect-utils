@@ -788,7 +788,7 @@ const prepareCopy = async ({
   readonly file: PreparedFile
 }): Promise<void> => {
   if (file.copy !== undefined) return
-  const identity = creatorIdentity(process.pid)
+  const identity = editorViewStagingCreatorIdentity(process.pid)
   if (identity === 'dead') fail('copy creator unexpectedly has no live process incarnation')
   const temporary = join(
     contentStore,
@@ -1405,8 +1405,12 @@ const stagingPattern =
 const unknownCreatorGraceMs = 5 * 60 * 1_000
 
 /** Process incarnation is used only to reclaim pre-lock copies, never to arbitrate a lock. */
-const creatorIdentity = (pid: number): string => {
-  if (process.platform === 'linux') {
+export const editorViewStagingCreatorIdentity = (
+  pid: number,
+  platform: NodeJS.Platform = process.platform,
+  ps: string = '/bin/ps',
+): string => {
+  if (platform === 'linux') {
     let boot: string
     try {
       boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim().replaceAll('-', '')
@@ -1420,6 +1424,7 @@ const creatorIdentity = (pid: number): string => {
         .slice(stat.lastIndexOf(')') + 2)
         .trim()
         .split(/\s+/)
+      // The suffix begins at field 3 (state), so index 19 is numeric field 22.
       const start = fields[19]
       if (start === undefined || /^[0-9]+$/.test(start) === false) return 'unknown'
       if (fields[0] === 'Z' || fields[0] === 'X') return 'dead'
@@ -1428,8 +1433,12 @@ const creatorIdentity = (pid: number): string => {
       return hasCode({ error, code: 'ENOENT' }) ? 'dead' : 'unknown'
     }
   }
-  if (process.platform === 'darwin') {
-    const result = spawnSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8' })
+  if (platform === 'darwin') {
+    const result = spawnSync(ps, ['-p', String(pid), '-o', 'lstart='], {
+      encoding: 'utf8',
+      // Equivalent to env -i: no caller TZ, locale, or dynamic-loader variables.
+      env: { TZ: 'UTC', LC_ALL: 'C' },
+    })
     const start = result.stdout?.trim()
     if (result.status === 0 && start !== undefined && start !== '')
       return `darwin-${createHash('sha256').update(start).digest('hex')}`
@@ -1496,7 +1505,7 @@ const repairDirectory = async ({
           fail(`unknown content-store staging entry: ${child}`)
         if (permissions(payload) !== 0o600n && isImmutable(payload) === false)
           fail(`unsafe staging file mode during repair: ${child}`)
-        const actual = creatorIdentity(Number(match[1]))
+        const actual = editorViewStagingCreatorIdentity(Number(match[1]))
         const unknown = actual === 'unknown' || match[2] === 'unknown'
         remove =
           actual === 'dead' ||

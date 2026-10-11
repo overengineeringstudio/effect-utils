@@ -119,6 +119,9 @@ on the selected filesystem, not the mountpoint itself: the sibling control
 files must be on that same device. The store cannot overlap an editor state
 root. Existing immutable generations are validated and reused without rewriting;
 new generations populate the shared store.
+Only host-local filesystems are supported; **NFS and SMB content stores are
+unsupported**. Kernel flock and local inode/link-count semantics are part of
+the cooperative same-user contract, not a distributed locking protocol.
 
 Store and shard directories are 0555 outside maintenance. Blobs are installed
 atomically from fully written, read-only files; an existing key is never
@@ -177,7 +180,8 @@ waited for, and the kernel releases ownership automatically when a holder exits
 or crashes. Every acquisition repairs interrupted metadata work under the flock:
 real store directories are rehardened to 0555, recognized shard-local temporary
 files are removed, and `.staging` files belonging to dead process identities are
-removed. Linux identities use `/proc` start time; macOS identities use `ps lstart`.
+removed. Linux identities use numeric `/proc/<pid>/stat` field 22 and the boot ID;
+macOS probes `ps lstart` with an otherwise empty environment, `TZ=UTC`, and `LC_ALL=C`.
 Unknown-owner staging files are removed only after five minutes. No exact-token
 content-store recovery command, owner record, watcher, or recovery guard remains.
 The separate per-view publication lock still requires explicit exact-token recovery.
@@ -185,6 +189,11 @@ The persistent control file records a dirty byte before repair/mutation and clea
 it only after successful restoration. Normal acquisitions inspect the bounded
 directory set and staging metadata; dirty acquisitions also scan shard metadata
 for abandoned temporary links. Repair never rewrites or chmods payload inodes.
+The dirty byte provides **process-crash recovery, not power-loss durability**:
+metadata/control writes are not fsync-ordered for machine or filesystem failure.
+Five-minute eviction of unknowable-owner staging files is an **availability
+tradeoff**: it may interrupt a live copy whose identity cannot be established,
+making that publication fail/retry rather than retaining its staging inode forever.
 
 ### Retired worktree removal
 

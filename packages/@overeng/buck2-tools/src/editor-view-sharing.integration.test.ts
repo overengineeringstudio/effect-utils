@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   type BigIntStats,
@@ -41,6 +41,7 @@ const requireTool = (name: string): string => {
 }
 
 const bun = requireTool('BUN_BIN')
+const ps = requireTool('PS_BIN')
 const sharingModule = new URL('./editor-view-sharing.ts', import.meta.url)
 
 const crossDeviceDirectories = ['/dev/shm', '/tmp', '/var/tmp'].filter((directory) => {
@@ -353,6 +354,52 @@ const replaceBlob = (
 }
 
 describe('host-wide editor snapshot content store', () => {
+  it('keeps staging creator identity invariant across caller timezones and locales', async () => {
+    await withStore(async ({ root }) => {
+      const script = join(root, 'probe-staging-identity.ts')
+      writeFileSync(
+        script,
+        [
+          `import { editorViewStagingCreatorIdentity } from ${JSON.stringify(sharingModule.href)}`,
+          'const pid = Number(process.argv[2])',
+          "console.log(JSON.stringify({ native: editorViewStagingCreatorIdentity(pid), macOS: editorViewStagingCreatorIdentity(pid, 'darwin', process.argv[3]) }))",
+        ].join('\n'),
+      )
+      const probe = (timezone: string, locale: string): { native: string; macOS: string } => {
+        const result = spawnSync(bun, [script, String(process.pid), ps], {
+          encoding: 'utf8',
+          env: { ...process.env, TZ: timezone, LC_ALL: locale },
+        })
+        expect(result.status).toBe(0)
+        const parsed: unknown = JSON.parse(result.stdout.trim())
+        if (
+          typeof parsed !== 'object' ||
+          parsed === null ||
+          !('native' in parsed) ||
+          typeof parsed.native !== 'string' ||
+          !('macOS' in parsed) ||
+          typeof parsed.macOS !== 'string'
+        )
+          throw new Error('invalid process identity probe output')
+        return { native: parsed.native, macOS: parsed.macOS }
+      }
+      const western = probe('Pacific/Honolulu', 'en_US.UTF-8')
+      const eastern = probe('Asia/Tokyo', 'de_DE.UTF-8')
+      expect(western).toEqual(eastern)
+      // Invoke the real ps fallback even on Linux so this regression is not
+      // silently skipped on hosts without a macOS or cross-device filesystem.
+      expect(western.macOS).toMatch(/^darwin-[a-f0-9]{64}$/)
+      if (process.platform === 'linux') {
+        const stat = readFileSync(`/proc/${process.pid}/stat`, 'utf8')
+        const starttime = stat
+          .slice(stat.lastIndexOf(')') + 2)
+          .trim()
+          .split(/\s+/)[19]
+        expect(western.native).toMatch(new RegExp(`^linux-[a-f0-9]{32}-${starttime}$`))
+      }
+    })
+  })
+
   it('shares one readonly CAS inode across worktrees, state roots, views, and names', async () => {
     await withStore(async ({ contentStore, candidate }) => {
       const first = candidate('worktrees', 'one', 'state-a', 'views', 'alpha', 'candidate')

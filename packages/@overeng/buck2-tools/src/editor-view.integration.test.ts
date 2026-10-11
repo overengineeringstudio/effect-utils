@@ -771,7 +771,8 @@ describe('editor view publisher', () => {
         snapshot: first.snapshot,
       })
       expect(lstatSync(pinPath).isFile()).toBe(true)
-      for (let revision = 2; revision <= 4; revision++) {
+      // Three generations reach the first eviction boundary for retention=2.
+      for (let revision = 2; revision <= 3; revision++) {
         writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
         await publishEditorView(fixture.options)
       }
