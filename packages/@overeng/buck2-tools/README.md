@@ -46,7 +46,7 @@ failures capture these states when the first fingerprint child fails, before
 waiting for the remaining children; the original error remains available as
 the cause.
 
-The **guaranteed retention contract** is the current generation plus the configured
+Normal per-view retention keeps the current generation plus the configured
 number of previous generations, a **five-minute grace period from supersession**,
 and any **managed reader pins**. Repository tasks retain current plus one previous
 generation (two snapshots per view), not two snapshots for the entire shared store.
@@ -55,6 +55,38 @@ The publisher's `--snapshot-retention` option configures that total (2 through 3
 lifecycle metadata recording its last supersession, not content identity. Sibling
 views and in-flight candidates are never pruned. Retention runs on publication,
 not on an idle-worktree background collector.
+
+Host-wide admission additionally defaults to **40,000,000,000 bytes** across the
+shared CAS, private snapshot directories and records, source manifests, and
+EXDEV copy fallbacks. `EDITOR_VIEW_HOST_BUDGET_BYTES` accepts a positive safe-integer
+byte limit. Admission records the conservative materialization footprint before
+creating a candidate, so cooperating concurrent publishers account for each
+other's in-flight allocations. The private sibling `<content-store>.budget` holds
+last-use and reservation metadata; it is not a disposable payload shard.
+
+Under pressure, unreferenced CAS payloads and unused old generations are reclaimed
+first, then least-recently-used current generations outside the five-minute grace.
+Managed pins, positive cwd/fd/maps references inside the view root or its CAS
+payload, and publication/use within the last 24 hours protect a view.
+`EDITOR_VIEW_HOST_RECENCY_MS` configures that recency window in milliseconds.
+Worktree-only process references and inaccessible `/proc` entries do not by
+themselves protect a view; durable recency is the conservative stand-in.
+The ordinary current-plus-previous policy is not an unconditional guarantee under host
+pressure: pin a generation when it must remain available. Idle-current eviction
+removes both the owned consumer hop and current pointer, records an eviction marker,
+and the next explicit publication explains the eviction and cleanly republishes.
+
+If protected usage prevents reaching the budget, publication **continues** and
+emits a structured `over-budget` event with budget, use, and top holders.
+**No command fails because of the budget**, including explicit
+`buck2:editor:materialize`, scoped publication, Genie freshness, and `check:quick`.
+The `editor-view.host-budget` OpenTelemetry span records over-budget publication
+and the protected-share early warning at 80%. This is a pressure-driven idle/stale
+retention budget, not a hard cap on actively protected bytes. Release readers or
+unused views, or deliberately increase the byte limit; do not remove persistent
+flock or reservation control files. Older publishers on other refs do not
+participate in the protocol and must be quiesced or upgraded for coordinated
+accounting and eviction.
 
 The kernel census and shell-created symlinks are **advisory observations only**,
 not guaranteed reader registration: a reference can appear after inspection,

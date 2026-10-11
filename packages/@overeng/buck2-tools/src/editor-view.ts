@@ -24,6 +24,14 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import process from 'node:process'
 
 import {
+  editorViewHostBudgetBytes,
+  reserveEditorViewBudget,
+  finishEditorViewBudgetReservation,
+  cancelEditorViewBudgetReservation,
+  touchEditorViewBudgetGeneration,
+  type EditorViewBudgetRoot,
+} from './editor-view-budget.ts'
+import {
   editorViewPinSchema,
   managedEditorViewSnapshots,
   readEditorViewPinRecord,
@@ -34,6 +42,7 @@ import {
 import {
   collectEditorViewContentStore,
   defaultEditorViewContentStore,
+  editorViewGitCommonDirectory,
   withEditorViewContentStoreLock,
   shareSnapshotFiles,
   editorViewSourceManifestName,
@@ -140,6 +149,8 @@ export type EditorViewOptions = {
   readonly snapshotGraceMs?: number
   /** Host-shared immutable payload store; defaults to the common Git repository's store. */
   readonly contentStore?: string
+  /** Host-wide admission limit, including private generations and fallback copies. */
+  readonly hostBudgetBytes?: number
 }
 
 type ViewPaths = {
@@ -2246,6 +2257,57 @@ type PublicationCoordinator = {
   readonly workers: Map<string, PublicationWorkerState>
 }
 
+const discoverBudgetRoots = (root: EditorViewBudgetRoot): readonly EditorViewBudgetRoot[] => {
+  const repositories = new Set([root.repoRoot])
+  const common = editorViewGitCommonDirectory(root.repoRoot)
+  if (common !== undefined) {
+    if (basename(common) === '.git') repositories.add(dirname(common))
+    const registered = join(common, 'worktrees')
+    if (existsSync(registered) === true)
+      for (const name of readdirSync(registered)) {
+        const gitdir = join(registered, name, 'gitdir')
+        if (existsSync(gitdir) === false) continue
+        const path = readFileSync(gitdir, 'utf8').trim()
+        if (isAbsolute(path) === true && existsSync(dirname(path)) === true)
+          repositories.add(realpathSync(dirname(path)))
+      }
+  }
+  const roots = new Map<string, EditorViewBudgetRoot>([[root.editorRoot, root]])
+  for (const repoRoot of repositories)
+    for (const suffix of ['.editor-view', 'packages/.editor-view', 'context/.editor-view']) {
+      const editorRoot = join(repoRoot, suffix)
+      if (existsSync(editorRoot) === true && lstatSync(editorRoot).isDirectory() === true)
+        roots.set(editorRoot, { repoRoot, editorRoot })
+    }
+  return [...roots.values()]
+}
+
+const budgetReservationBytes = ({
+  sources,
+  dereference,
+}: {
+  readonly sources: readonly string[]
+  readonly dereference: boolean
+}): number => {
+  let bytes = 65536
+  const ancestors = new Set<string>()
+  const visit = (path: string): void => {
+    const status = dereference === true ? statSync(path) : lstatSync(path)
+    bytes += 4096 + 2 * Buffer.byteLength(path)
+    if (status.isFile() === true) bytes += 2 * status.size
+    if (status.isDirectory() === true) {
+      const canonical = realpathSync(path)
+      if (ancestors.has(canonical) === true) fail(`cyclic source during budget admission: ${path}`)
+      ancestors.add(canonical)
+      for (const name of readdirSync(path)) visit(join(path, name))
+      ancestors.delete(canonical)
+    }
+    if (Number.isSafeInteger(bytes) === false) fail('editor view budget reservation overflow')
+  }
+  for (const source of sources) visit(source)
+  return bytes
+}
+
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
 const publishEditorViewCoordinated = async ({
   options,
@@ -2296,6 +2358,9 @@ const publishEditorViewCoordinated = async ({
   ensureConsumerCache(paths)
   ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
   ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
+  const budgetBytes = options.hostBudgetBytes ?? editorViewHostBudgetBytes()
+  if (Number.isSafeInteger(budgetBytes) === false || budgetBytes <= 0)
+    fail('hostBudgetBytes must be a positive safe integer')
   const lock =
     coordinator?.lock ??
     acquireLock({
@@ -2305,6 +2370,8 @@ const publishEditorViewCoordinated = async ({
   // A batch shares its exclusive state-root lock, not its private candidate/pointer names.
   const token = tokenSafe(coordinator === undefined ? lock.token : randomUUID())
   let candidate: string | undefined
+  const budgetRoot = { repoRoot: paths.repoRoot, editorRoot: paths.editorRoot }
+  let budgetReservation: string | undefined
   const workers = coordinator?.workers ?? new Map<string, PublicationWorkerState>()
   workers.set(token, {
     package: options.package,
@@ -2329,6 +2396,24 @@ const publishEditorViewCoordinated = async ({
   }
   try {
     enterPhase('fingerprint')
+    const evictionMarker = join(paths.editorRoot, `.evicted-${paths.viewName}.json`)
+    if (pathExists(evictionMarker) === true) {
+      if (lstatSync(evictionMarker).isFile() === false)
+        fail(`host-budget eviction marker must be a regular file: ${evictionMarker}`)
+      const marker: unknown = JSON.parse(readFileSync(evictionMarker, 'utf8'))
+      if (
+        typeof marker !== 'object' ||
+        marker === null ||
+        'schema' in marker === false ||
+        marker.schema !== 'effect-utils/editor-view-evicted/v1' ||
+        'reason' in marker === false ||
+        marker.reason !== 'host-budget'
+      )
+        fail(`invalid host-budget eviction marker: ${evictionMarker}`)
+      process.stderr.write(
+        `[editor-view] ${options.package}: evicted by host budget; republishing the immutable editor view\n`,
+      )
+    }
     const editorInputsPath = realpathSync(resolve(options.editorInputs))
     const selectedPath = realpathSync(resolve(options.nodeModules))
     const finite = (options.backingRoots?.length ?? 0) > 0
@@ -2461,6 +2546,30 @@ const publishEditorViewCoordinated = async ({
     } else {
       // Do not let an obsolete current-snapshot scan race snapshot retention below.
       if (currentSnapshotValidation !== undefined) await currentSnapshotValidation.validation
+      const reserved = await reserveEditorViewBudget({
+        contentStore: paths.contentStore,
+        root: budgetRoot,
+        reservationBytes: budgetReservationBytes({
+          sources: finite === true ? roots.map((root) => root.source) : [selectedPath],
+          dereference: finite === false,
+        }),
+        heldEditorRoot: paths.editorRoot,
+        discoverRoots: () => discoverBudgetRoots(budgetRoot),
+        tryLockRoot: (root) => {
+          try {
+            const acquired = acquireLock({
+              editorRoot: root.editorRoot,
+              recoveryCommand: `recover-lock --repo-root ${root.repoRoot}`,
+            })
+            return { release: () => releaseLock(acquired) }
+          } catch (error) {
+            if (existsSync(join(root.editorRoot, '.publish.lock')) === true) return undefined
+            throw error
+          }
+        },
+        budgetBytes,
+      })
+      budgetReservation = reserved.token
       candidate = join(paths.storeDir, `.candidate-${token}`)
       mkdirSync(candidate)
       enterPhase('materialize')
@@ -2640,6 +2749,24 @@ const publishEditorViewCoordinated = async ({
         })) === true
       )
         onContentChanged()
+      if (budgetReservation !== undefined) {
+        await finishEditorViewBudgetReservation({
+          contentStore: paths.contentStore,
+          root: budgetRoot,
+          token: budgetReservation,
+          snapshot: snapshotName,
+        })
+        budgetReservation = undefined
+      } else {
+        await touchEditorViewBudgetGeneration({
+          contentStore: paths.contentStore,
+          root: budgetRoot,
+          snapshot: snapshotName,
+          discoverRoots: () => discoverBudgetRoots(budgetRoot),
+          budgetBytes,
+        })
+      }
+      if (pathExists(evictionMarker) === true) rmSync(evictionMarker)
       emitPhaseSpan({ created })
       return record
     }
@@ -2668,6 +2795,11 @@ const publishEditorViewCoordinated = async ({
       rmSync(candidate, { recursive: true, force: true })
       onContentChanged()
     }
+    if (budgetReservation !== undefined)
+      await cancelEditorViewBudgetReservation({
+        contentStore: paths.contentStore,
+        token: budgetReservation,
+      })
     workers.delete(token)
     if (coordinator === undefined) releaseLock(lock)
   }

@@ -442,101 +442,130 @@ describe('editor view publisher', () => {
     }
   })
 
-  describe.each([false, true])('unchanged publication (finite closure: %s)', (finite) => {
+  for (const finite of [false, true]) {
+    describe(`unchanged publication (finite closure: ${finite})`, () => {
+      let fixture: Fixture
+      let options: EditorViewOptions
+      let record: EditorViewRecord
+      let before: readonly StoreFile[]
+      let publication: Promise<EditorViewRecord> | undefined
+      let completed = 0
+
+      beforeAll(async () => {
+        fixture = makeFixture()
+        options = {
+          ...fixture.options,
+          ...(finite === true ? { backingRoots: [fixture.editorInputs] } : {}),
+        }
+        publication = publishEditorView(options)
+        record = await publication
+        before = storeFiles(join(fixture.editorRoot, '.store'))
+      })
+
+      afterAll(async () => {
+        await publication?.catch(() => undefined)
+        if (fixture !== undefined) cleanup(fixture)
+      })
+
+      // Keep all ten warm publications against the same immutable baseline,
+      // with the normal guard on each publication rather than the whole loop.
+      for (const index of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+        it(`writes zero store bytes on unchanged publication ${index}`, async () => {
+          expect(completed).toBe(index - 1)
+          expect(before.reduce((bytes, file) => bytes + file.size, 0n)).toBeGreaterThan(0n)
+          publication = publishEditorView({
+            ...options,
+            cp: falseTool,
+            beforeMaterialize: () => {
+              throw new Error('unchanged publication attempted materialization')
+            },
+          })
+          await expect(publication).resolves.toEqual(record)
+          const after = storeFiles(join(fixture.editorRoot, '.store'))
+          const previous = new Map(before.map((file) => [file.path, file]))
+          const writtenBytes = after.reduce((bytes, file) => {
+            const old = previous.get(file.path)
+            return old?.ino === file.ino &&
+              old.mtimeNs === file.mtimeNs &&
+              old.ctimeNs === file.ctimeNs
+              ? bytes
+              : bytes + file.size
+          }, 0n)
+          expect(writtenBytes).toBe(0n)
+          expect(after).toEqual(before)
+          expect(ownedSnapshots(fixture)).toEqual([storeName(record.snapshot)])
+          completed = index
+        })
+      }
+    })
+  }
+
+  describe('incremental finite source-stat manifest reuse', () => {
     let fixture: Fixture
     let options: EditorViewOptions
-    let record: EditorViewRecord
-    let before: readonly StoreFile[]
-    let publication: Promise<EditorViewRecord> | undefined
-    let completed = 0
-
+    let first: EditorViewRecord
+    let second: EditorViewRecord
+    let firstRoot: string
+    let stableIdentity: readonly [bigint, bigint]
+    let sourceIdentity: readonly [bigint, bigint]
+    let pending: Promise<unknown> | undefined
+    const stablePath = join('node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep', 'index.js')
+    const manifestName = 'editor-view-sources-v1.json'
     beforeAll(async () => {
       fixture = makeFixture()
-      options = {
-        ...fixture.options,
-        ...(finite === true ? { backingRoots: [fixture.editorInputs] } : {}),
-      }
-      publication = publishEditorView(options)
-      record = await publication
-      before = storeFiles(join(fixture.editorRoot, '.store'))
-    })
-
-    afterAll(async () => {
-      await publication?.catch(() => undefined)
-      if (fixture !== undefined) cleanup(fixture)
-    })
-
-    // Keep all ten warm publications against the same immutable baseline,
-    // with the normal guard on each publication rather than the whole loop.
-    it.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])(
-      'writes zero store bytes on unchanged publication %s',
-      async (index) => {
-        expect(completed).toBe(index - 1)
-        expect(before.reduce((bytes, file) => bytes + file.size, 0n)).toBeGreaterThan(0n)
-        publication = publishEditorView({
-          ...options,
-          cp: falseTool,
-          beforeMaterialize: () => {
-            throw new Error('unchanged publication attempted materialization')
-          },
-        })
-        await expect(publication).resolves.toEqual(record)
-        const after = storeFiles(join(fixture.editorRoot, '.store'))
-        const previous = new Map(before.map((file) => [file.path, file]))
-        const writtenBytes = after.reduce((bytes, file) => {
-          const old = previous.get(file.path)
-          return old?.ino === file.ino &&
-            old.mtimeNs === file.mtimeNs &&
-            old.ctimeNs === file.ctimeNs
-            ? bytes
-            : bytes + file.size
-        }, 0n)
-        expect(writtenBytes).toBe(0n)
-        expect(after).toEqual(before)
-        expect(ownedSnapshots(fixture)).toEqual([storeName(record.snapshot)])
-        completed = index
-      },
-    )
-  })
-
-  it('reuses source-stat manifests for incremental finite snapshots without linking source inodes', async () => {
-    const fixture = makeFixture()
-    try {
-      const options = { ...fixture.options, backingRoots: [fixture.editorInputs] }
-      const first = await publishEditorView(options)
-      const firstRoot = join(fixture.editorRoot, first.snapshot)
-      const stablePath = join('node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep', 'index.js')
+      options = { ...fixture.options, backingRoots: [fixture.editorInputs] }
+      const publication = publishEditorView(options)
+      pending = publication
+      first = await publication
+      firstRoot = join(fixture.editorRoot, first.snapshot)
       const stable = lstatSync(join(firstRoot, stablePath), { bigint: true })
+      stableIdentity = [stable.dev, stable.ino]
       const source = lstatSync(
         join(fixture.nodeModules, '.pnpm', 'dep@1', 'node_modules', 'dep', 'index.js'),
         { bigint: true },
       )
-      const manifestName = 'editor-view-sources-v1.json'
+      sourceIdentity = [source.dev, source.ino]
+    })
+    afterAll(async () => {
+      await pending?.catch(() => undefined)
+      if (fixture !== undefined) cleanup(fixture)
+    })
+    it('keeps the source-stat manifest private and immutable', () => {
       expect(lstatSync(join(firstRoot, manifestName)).mode & 0o777).toBe(0o444)
       expect(lstatSync(join(firstRoot, manifestName)).nlink).toBe(1)
-
+    })
+    it('reuses an unchanged CAS inode without sharing the source inode', async () => {
       writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":2}\n')
-      const second = await publishEditorView(options)
+      const publication = publishEditorView(options)
+      pending = publication
+      second = await publication
       const secondRoot = join(fixture.editorRoot, second.snapshot)
       expect(second.snapshot).not.toBe(first.snapshot)
       const reused = lstatSync(join(secondRoot, stablePath), { bigint: true })
-      expect([reused.dev, reused.ino]).toEqual([stable.dev, stable.ino])
-      expect([reused.dev, reused.ino]).not.toEqual([source.dev, source.ino])
+      expect([reused.dev, reused.ino]).toEqual(stableIdentity)
+      expect([reused.dev, reused.ino]).not.toEqual(sourceIdentity)
       expect(reused.mode & 0o777n).toBe(0o444n)
       expect(readEditorViewSourceManifest(join(secondRoot, manifestName)).get(stablePath)).toEqual(
         readEditorViewSourceManifest(join(firstRoot, manifestName)).get(stablePath),
       )
-      await expect(checkEditorView(options)).resolves.toEqual(second)
-    } finally {
-      cleanup(fixture)
-    }
+    })
+    it('fully checks the incrementally admitted generation against its record', async () => {
+      pending = checkEditorView(options)
+      await expect(pending).resolves.toEqual(second)
+    })
   })
 
-  it('does not substitute a source-stat manifest for the admitted payload proof', async () => {
-    const fixture = makeFixture()
-    try {
-      const options = { ...fixture.options, backingRoots: [fixture.editorInputs] }
-      const first = await publishEditorView(options)
+  describe('source-stat hints never substitute for the admitted payload proof', () => {
+    let fixture: Fixture
+    let options: EditorViewOptions
+    let first: EditorViewRecord
+    let pending: Promise<unknown> | undefined
+    beforeAll(async () => {
+      fixture = makeFixture()
+      options = { ...fixture.options, backingRoots: [fixture.editorInputs] }
+      const publication = publishEditorView(options)
+      pending = publication
+      first = await publication
       const manifestPath = join(fixture.editorRoot, first.snapshot, 'editor-view-sources-v1.json')
       const manifest = readEditorViewSourceManifest(manifestPath)
       const stablePath = join('node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep', 'index.js')
@@ -554,13 +583,16 @@ describe('editor view publisher', () => {
       writeFileSync(manifestPath, JSON.stringify(Object.fromEntries(manifest)))
       chmodSync(manifestPath, 0o444)
       writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":2}\n')
-      await expect(publishEditorView(options)).rejects.toThrow(
-        'declared backing roots changed while materializing',
-      )
+    })
+    afterAll(async () => {
+      await pending?.catch(() => undefined)
+      if (fixture !== undefined) cleanup(fixture)
+    })
+    it('rejects a forged hint while preserving the published generation', async () => {
+      pending = publishEditorView(options)
+      await expect(pending).rejects.toThrow('declared backing roots changed while materializing')
       expect(currentTarget(fixture)).toBe(first.snapshot)
-    } finally {
-      cleanup(fixture)
-    }
+    })
   })
 
   describe('canonical reuse when equivalent backing artifacts move or link spelling changes', () => {
@@ -706,12 +738,30 @@ describe('editor view publisher', () => {
     }
   })
 
-  it('atomically flips old to new while retaining the bounded rollback snapshot', async () => {
-    const fixture = makeFixture()
-    try {
-      const oldRecord = await publishEditorView(fixture.options)
-      const oldTarget = currentTarget(fixture)
-      const firstHopBefore = lstatSync(join(fixture.packageDir, 'node_modules'), { bigint: true })
+  describe('atomically flips old to new while retaining the bounded rollback snapshot', () => {
+    let fixture: Fixture
+    let oldRecord: EditorViewRecord
+    let newRecord: EditorViewRecord
+    let oldTarget: string
+    let firstHopBefore: { readonly dev: bigint; readonly ino: bigint }
+    const pending: Promise<unknown>[] = []
+    let published = false
+
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const publication = publishEditorView(fixture.options)
+      pending.push(publication)
+      oldRecord = await publication
+      oldTarget = currentTarget(fixture)
+      firstHopBefore = lstatSync(join(fixture.packageDir, 'node_modules'), { bigint: true })
+    })
+
+    afterAll(async () => {
+      await Promise.allSettled(pending)
+      if (fixture !== undefined) cleanup(fixture)
+    })
+
+    it('publishes the changed install and payload as a new generation', async () => {
       writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":2}\n')
       const refreshedNodeModules = join(fixture.root, 'inputs', 'node_modules-v2')
       mkdirSync(join(refreshedNodeModules, '.pnpm', 'dep@1', 'node_modules', 'dep'), {
@@ -723,7 +773,14 @@ describe('editor view publisher', () => {
       )
       symlinkSync('.pnpm/dep@1/node_modules/dep', join(refreshedNodeModules, 'dep'))
       const refreshedOptions = { ...fixture.options, nodeModules: refreshedNodeModules }
-      const newRecord = await publishEditorView(refreshedOptions)
+      const publication = publishEditorView(refreshedOptions)
+      pending.push(publication)
+      newRecord = await publication
+      published = true
+    })
+
+    it('flips the stable hop and retains the original rollback bytes', () => {
+      expect(published).toBe(true)
       expect(newRecord.editorInputsFingerprint).not.toBe(oldRecord.editorInputsFingerprint)
       expect(currentTarget(fixture)).not.toBe(oldTarget)
       expect(
@@ -741,26 +798,50 @@ describe('editor view publisher', () => {
         firstHopBefore.ino,
       ])
       expect(ownedSnapshots(fixture)).toHaveLength(2)
-    } finally {
-      cleanup(fixture)
-    }
+    })
   })
-  it('keeps the current and previous snapshots while preserving in-flight candidates', async () => {
-    const fixture = makeFixture()
-    try {
-      const oldest = await publishEditorView(fixture.options)
-      const inFlight = join(fixture.editorRoot, '.store', '.candidate-in-flight')
+
+  describe('keeps the current and previous snapshots while preserving in-flight candidates', () => {
+    let fixture: Fixture
+    let oldest: EditorViewRecord
+    let inFlight: string
+    const pending: Promise<unknown>[] = []
+    let revision = 1
+
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const publication = publishEditorView(fixture.options)
+      pending.push(publication)
+      oldest = await publication
+      inFlight = join(fixture.editorRoot, '.store', '.candidate-in-flight')
       mkdirSync(inFlight)
-      for (const revision of [2, 3]) {
+    })
+
+    afterAll(async () => {
+      await Promise.allSettled(pending)
+      if (fixture !== undefined) cleanup(fixture)
+    })
+
+    it.each([2, 3])(
+      'publishes generation %s without collecting the in-flight candidate',
+      async (nextRevision) => {
+        expect(revision).toBe(nextRevision - 1)
         writeFileSync(
           join(fixture.editorInputs, 'install-descriptor.json'),
-          `${JSON.stringify({ revision })}\n`,
+          `${JSON.stringify({ revision: nextRevision })}\n`,
         )
-        const nodeModules = join(fixture.root, 'inputs', `node_modules-v${revision}`)
+        const nodeModules = join(fixture.root, 'inputs', `node_modules-v${nextRevision}`)
         mkdirSync(join(nodeModules, 'dep'), { recursive: true })
-        writeFileSync(join(nodeModules, 'dep', 'index.js'), `export default ${revision}\n`)
-        await publishEditorView({ ...fixture.options, nodeModules })
-      }
+        writeFileSync(join(nodeModules, 'dep', 'index.js'), `export default ${nextRevision}\n`)
+        const publication = publishEditorView({ ...fixture.options, nodeModules })
+        pending.push(publication)
+        await publication
+        revision = nextRevision
+      },
+    )
+
+    it('retains only current and previous snapshots plus the in-flight candidate', () => {
+      expect(revision).toBe(3)
       const snapshots = ownedSnapshots(fixture)
       expect(snapshots).toHaveLength(2)
       expect(snapshots).toContain(currentTarget(fixture).replace('.store/', ''))
@@ -774,9 +855,7 @@ describe('editor view publisher', () => {
       ) as { snapshots: readonly string[] }
       expect(retention.snapshots).toHaveLength(2)
       expect(retention.snapshots[0]).toBe(currentTarget(fixture).replace('.store/', ''))
-    } finally {
-      cleanup(fixture)
-    }
+    })
   })
 
   describe('waits five minutes from supersession before enforcing configured retention', () => {
@@ -920,136 +999,269 @@ describe('editor view publisher', () => {
     }
   })
 
-  it('pins an explicitly selected rollback generation through the CLI', async () => {
-    const fixture = makeFixture()
-    try {
-      const first = await publishEditorView(fixture.options)
-      await pinEditorView({ options: fixture.options, name: 'current-reader' })
-      // Keep the rollback generation available beyond the retention=2 boundary.
-      for (let revision = 2; revision <= 3; revision++) {
-        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
-        await publishEditorView(fixture.options)
-      }
-      const rollback = await runEditorViewCli({
+  describe('pins an explicitly selected rollback generation through the CLI', () => {
+    let fixture: Fixture
+    let first: EditorViewRecord
+    let revision = 1
+    let operation: Promise<unknown> | undefined
+
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const publication = publishEditorView(fixture.options)
+      operation = publication
+      first = await publication
+      operation = pinEditorView({ options: fixture.options, name: 'current-reader' })
+      await operation
+    })
+
+    afterAll(async () => {
+      await Promise.allSettled([operation])
+      if (fixture !== undefined) cleanup(fixture)
+    })
+
+    // Keep the rollback generation available beyond the retention=2 boundary.
+    for (let nextRevision = 2; nextRevision <= 3; nextRevision++) {
+      it(`publishes generation ${nextRevision} while retaining the current reader`, async () => {
+        expect(revision).toBe(nextRevision - 1)
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${nextRevision}\n`)
+        operation = publishEditorView(fixture.options)
+        await operation
+        revision = nextRevision
+      })
+    }
+
+    it('pins the selected rollback generation', async () => {
+      expect(revision).toBe(3)
+      const pin = runEditorViewCli({
         fixture,
         command: 'pin',
         flags: ['--name', 'rollback-reader', '--snapshot', first.snapshot],
       })
+      operation = pin
+      const rollback = await pin
       expect({ status: rollback.status, stderr: rollback.stderr }).toEqual({
         status: 0,
         stderr: '',
       })
       expect(rollback.stdout).toBe(`pinned editor view rollback-reader ${first.snapshot}\n`)
-    } finally {
-      cleanup(fixture)
-    }
+    })
   })
 
-  it('unpins the current reader through the CLI while retaining a rollback reader', async () => {
-    const fixture = makeFixture()
-    try {
-      const first = await publishEditorView(fixture.options)
-      await pinEditorView({ options: fixture.options, name: 'current-reader' })
-      for (let revision = 2; revision <= 3; revision++) {
-        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
-        await publishEditorView(fixture.options)
-      }
-      await pinEditorView({
+  describe('unpins the current reader through the CLI while retaining a rollback reader', () => {
+    let fixture: Fixture
+    let first: EditorViewRecord
+    let revision = 1
+    let rollbackPinned = false
+    let currentReaderUnpinned = false
+    let operation: Promise<unknown> | undefined
+
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const publication = publishEditorView(fixture.options)
+      operation = publication
+      first = await publication
+      operation = pinEditorView({ options: fixture.options, name: 'current-reader' })
+      await operation
+    })
+
+    afterAll(async () => {
+      await Promise.allSettled([operation])
+      if (fixture !== undefined) cleanup(fixture)
+    })
+
+    for (let nextRevision = 2; nextRevision <= 3; nextRevision++) {
+      it(`publishes generation ${nextRevision} while retaining the current reader`, async () => {
+        expect(revision).toBe(nextRevision - 1)
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${nextRevision}\n`)
+        operation = publishEditorView(fixture.options)
+        await operation
+        revision = nextRevision
+      })
+    }
+
+    it('registers a rollback reader for the first generation', async () => {
+      expect(revision).toBe(3)
+      operation = pinEditorView({
         options: fixture.options,
         name: 'rollback-reader',
         snapshot: first.snapshot,
       })
-      const unpinned = await runEditorViewCli({
+      await operation
+      rollbackPinned = true
+    })
+
+    it('unpins the current reader without removing the rollback reader', async () => {
+      expect(rollbackPinned).toBe(true)
+      const unpin = runEditorViewCli({
         fixture,
         command: 'unpin',
         flags: ['--name', 'current-reader'],
       })
+      operation = unpin
+      const unpinned = await unpin
       expect({ status: unpinned.status, stderr: unpinned.stderr }).toEqual({
         status: 0,
         stderr: '',
       })
       expect(unpinned.stdout).toBe('unpinned editor view current-reader\n')
       expect(existsSync(join(fixture.editorRoot, '.pins', 'current-reader.json'))).toBe(false)
-      await publishEditorView(fixture.options)
+      currentReaderUnpinned = true
+    })
+
+    it('retains the rollback generation during subsequent collection', async () => {
+      expect(currentReaderUnpinned).toBe(true)
+      operation = publishEditorView(fixture.options)
+      await operation
       expect(ownedSnapshots(fixture)).toContain(storeName(first.snapshot))
-    } finally {
-      cleanup(fixture)
-    }
+    })
   })
 
-  it('unpins the last rollback reader through the CLI before collecting its generation', async () => {
-    const fixture = makeFixture()
-    try {
-      const first = await publishEditorView(fixture.options)
-      await pinEditorView({
+  describe('unpins the last rollback reader through the CLI before collecting its generation', () => {
+    let fixture: Fixture
+    let first: EditorViewRecord
+    let revision = 1
+    let rollbackReaderUnpinned = false
+    let operation: Promise<unknown> | undefined
+
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const publication = publishEditorView(fixture.options)
+      operation = publication
+      first = await publication
+      operation = pinEditorView({
         options: fixture.options,
         name: 'rollback-reader',
         snapshot: first.snapshot,
       })
-      for (let revision = 2; revision <= 3; revision++) {
-        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
-        await publishEditorView(fixture.options)
-      }
-      const released = await runEditorViewCli({
+      await operation
+    })
+
+    afterAll(async () => {
+      await Promise.allSettled([operation])
+      if (fixture !== undefined) cleanup(fixture)
+    })
+
+    for (let nextRevision = 2; nextRevision <= 3; nextRevision++) {
+      it(`publishes generation ${nextRevision} while retaining the rollback reader`, async () => {
+        expect(revision).toBe(nextRevision - 1)
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${nextRevision}\n`)
+        operation = publishEditorView(fixture.options)
+        await operation
+        revision = nextRevision
+      })
+    }
+
+    it('unpins the last rollback reader', async () => {
+      expect(revision).toBe(3)
+      const unpin = runEditorViewCli({
         fixture,
         command: 'unpin',
         flags: ['--name', 'rollback-reader'],
       })
+      operation = unpin
+      const released = await unpin
       expect({ status: released.status, stderr: released.stderr }).toEqual({
         status: 0,
         stderr: '',
       })
-      await publishEditorView(fixture.options)
+      rollbackReaderUnpinned = true
+    })
+
+    it('collects the released rollback generation', async () => {
+      expect(rollbackReaderUnpinned).toBe(true)
+      operation = publishEditorView(fixture.options)
+      await operation
       expect(ownedSnapshots(fixture)).not.toContain(storeName(first.snapshot))
-    } finally {
-      cleanup(fixture)
-    }
+    })
   })
 
-  it('rejects pinning a collected rollback generation through the CLI', async () => {
-    const fixture = makeFixture()
-    try {
-      const first = await publishEditorView(fixture.options)
-      for (let revision = 2; revision <= 3; revision++) {
-        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
-        await publishEditorView(fixture.options)
-      }
-      const missing = await runEditorViewCli({
+  describe('rejects pinning a collected rollback generation through the CLI', () => {
+    let fixture: Fixture
+    let first: EditorViewRecord
+    let revision = 1
+    let operation: Promise<unknown> | undefined
+
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const publication = publishEditorView(fixture.options)
+      operation = publication
+      first = await publication
+    })
+
+    afterAll(async () => {
+      await Promise.allSettled([operation])
+      if (fixture !== undefined) cleanup(fixture)
+    })
+
+    for (let nextRevision = 2; nextRevision <= 3; nextRevision++) {
+      it(`publishes generation ${nextRevision} without retaining a rollback reader`, async () => {
+        expect(revision).toBe(nextRevision - 1)
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${nextRevision}\n`)
+        operation = publishEditorView(fixture.options)
+        await operation
+        revision = nextRevision
+      })
+    }
+
+    it('rejects a pin for the collected rollback generation', async () => {
+      expect(revision).toBe(3)
+      const pin = runEditorViewCli({
         fixture,
         command: 'pin',
         flags: ['--name', 'too-late', '--snapshot', first.snapshot],
       })
+      operation = pin
+      const missing = await pin
       expect(missing.status).not.toBe(0)
       expect(missing.stderr).toContain('pin snapshot is missing')
       expect(existsSync(join(fixture.editorRoot, '.pins', 'too-late.json'))).toBe(false)
-    } finally {
-      cleanup(fixture)
-    }
+    })
   })
 
-  it('rejects unsafe pin names, malformed generations and registrations owned by another view', async () => {
-    const fixture = makeFixture()
-    try {
-      const record = await publishEditorView(fixture.options)
-      for (const name of ['', '../outside', 'reader.json', '.hidden', 'x'.repeat(65)])
-        await expect(pinEditorView({ options: fixture.options, name })).rejects.toThrow('pin name')
-      for (const snapshot of [
-        '../outside',
-        `${record.snapshot}/node_modules`,
-        `.store/other-${'a'.repeat(64)}`,
-        `.store/${fixture.options.viewName}-invalid`,
-      ])
-        await expect(
-          pinEditorView({ options: fixture.options, name: 'reader', snapshot }),
-        ).rejects.toThrow('pin snapshot must name a generation')
-      await expect(
-        pinEditorView({
-          options: fixture.options,
-          name: 'reader',
-          snapshot: `.store/${fixture.options.viewName}-${'a'.repeat(64)}`,
-        }),
-      ).rejects.toThrow('pin snapshot is missing')
+  describe('managed pin input and registration ownership', () => {
+    let fixture: Fixture
+    let record: EditorViewRecord
+    let pending: Promise<unknown> | undefined
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const publication = publishEditorView(fixture.options)
+      pending = publication
+      record = await publication
+    })
+    afterAll(async () => {
+      await pending?.catch(() => undefined)
+      if (fixture !== undefined) cleanup(fixture)
+    })
+    for (const name of ['', '../outside', 'reader.json', '.hidden', 'x'.repeat(65)]) {
+      it(`rejects unsafe pin name ${JSON.stringify(name)}`, async () => {
+        pending = pinEditorView({ options: fixture.options, name })
+        await expect(pending).rejects.toThrow('pin name')
+      })
+    }
+    for (const kind of ['outside', 'descendant', 'foreign', 'malformed'] as const) {
+      it(`rejects the ${kind} generation name`, async () => {
+        const snapshot =
+          kind === 'outside'
+            ? '../outside'
+            : kind === 'descendant'
+              ? `${record.snapshot}/node_modules`
+              : kind === 'foreign'
+                ? `.store/other-${'a'.repeat(64)}`
+                : `.store/${fixture.options.viewName}-invalid`
+        pending = pinEditorView({ options: fixture.options, name: 'reader', snapshot })
+        await expect(pending).rejects.toThrow('pin snapshot must name a generation')
+      })
+    }
+    it('rejects a missing generation without creating registration metadata', async () => {
+      pending = pinEditorView({
+        options: fixture.options,
+        name: 'reader',
+        snapshot: `.store/${fixture.options.viewName}-${'a'.repeat(64)}`,
+      })
+      await expect(pending).rejects.toThrow('pin snapshot is missing')
       expect(existsSync(join(fixture.editorRoot, '.pins'))).toBe(false)
+    })
+    it('rejects pin replacement of a registration owned by another view', async () => {
       mkdirSync(join(fixture.editorRoot, '.pins'))
       const path = join(fixture.editorRoot, '.pins', 'reader.json')
       writeFileSync(
@@ -1060,21 +1272,22 @@ describe('editor view publisher', () => {
           snapshot: `.store/other-${'a'.repeat(64)}`,
         }),
       )
-      await expect(pinEditorView({ options: fixture.options, name: 'reader' })).rejects.toThrow(
-        'belongs to another view',
-      )
-      await expect(unpinEditorView({ options: fixture.options, name: 'reader' })).rejects.toThrow(
-        'belongs to another view',
-      )
+      pending = pinEditorView({ options: fixture.options, name: 'reader' })
+      await expect(pending).rejects.toThrow('belongs to another view')
+    })
+    it('rejects unpinning a foreign registration without changing it', async () => {
+      pending = unpinEditorView({ options: fixture.options, name: 'reader' })
+      await expect(pending).rejects.toThrow('belongs to another view')
+      const path = join(fixture.editorRoot, '.pins', 'reader.json')
       expect(JSON.parse(readFileSync(path, 'utf8')).snapshot).toBe(`.store/other-${'a'.repeat(64)}`)
+    })
+    it('rejects a symlink in place of managed registration metadata', async () => {
+      const path = join(fixture.editorRoot, '.pins', 'reader.json')
       rmSync(path)
       symlinkSync(join(fixture.root, 'workspace-authority.json'), path)
-      await expect(pinEditorView({ options: fixture.options, name: 'reader' })).rejects.toThrow(
-        'managed pin must be a regular file',
-      )
-    } finally {
-      cleanup(fixture)
-    }
+      pending = pinEditorView({ options: fixture.options, name: 'reader' })
+      await expect(pending).rejects.toThrow('managed pin must be a regular file')
+    })
   })
 
   describe('winning managed pin versus snapshot retirement', () => {
@@ -1291,10 +1504,25 @@ describe('editor view publisher', () => {
     }
   })
 
-  it('refuses teardown while a publisher lock exists without unlocking payload directories', async () => {
-    const fixture = makeFixture()
-    try {
-      const record = await publishEditorView(fixture.options)
+  describe('refuses teardown while a publisher lock exists without unlocking payload directories', () => {
+    let fixture: Fixture
+    let record: EditorViewRecord
+    const pending: Promise<unknown>[] = []
+    let refused = false
+
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const publication = publishEditorView(fixture.options)
+      pending.push(publication)
+      record = await publication
+    })
+
+    afterAll(async () => {
+      await Promise.allSettled(pending)
+      if (fixture !== undefined) cleanup(fixture)
+    })
+
+    it('refuses real root release while the live publisher lock exists', async () => {
       const lock = join(fixture.editorRoot, '.publish.lock')
       mkdirSync(lock)
       writeFileSync(
@@ -1305,20 +1533,31 @@ describe('editor view publisher', () => {
           pid: process.pid,
         }),
       )
-      await expect(releaseEditorViewRoot(fixture.options)).rejects.toThrow(
-        'publication lock exists',
-      )
+      const release = releaseEditorViewRoot(fixture.options)
+      pending.push(release)
+      await expect(release).rejects.toThrow('publication lock exists')
+      refused = true
+    })
+
+    it('leaves the immutable payload directory and current pointer untouched', () => {
+      expect(refused).toBe(true)
       expect(statSync(join(fixture.editorRoot, record.snapshot)).mode & 0o222).toBe(0)
       expect(readlinkSync(join(fixture.editorRoot, fixture.options.viewName))).toBe(record.snapshot)
-    } finally {
-      cleanup(fixture)
-    }
+    })
   })
 
-  it('shares immutable bytes across views, state roots, and worktrees until the last owner releases', async () => {
-    const first = makeFixture()
-    const second = makeFixture({ packageName: 'genie' })
-    try {
+  describe('shares immutable bytes across views, state roots, and worktrees until the last owner releases', () => {
+    let first: Fixture
+    let second: Fixture
+    let options: readonly EditorViewOptions[]
+    const records: EditorViewRecord[] = []
+    const pending: Promise<unknown>[] = []
+    let blob: string
+    let completed = 0
+
+    beforeAll(async () => {
+      first = makeFixture()
+      second = makeFixture({ packageName: 'genie' })
       writeFileSync(join(first.root, 'package.json'), '{}\n')
       writeFileSync(
         first.workspaceAuthority,
@@ -1336,11 +1575,30 @@ describe('editor view publisher', () => {
         consumerCache: '.devenv/vite-cache/root',
       }
       const secondOptions = { ...second.options, contentStore: first.options.contentStore! }
-      const records = await Promise.all([
-        publishEditorView(first.options),
-        publishEditorView(rootOptions),
-        publishEditorView(secondOptions),
-      ])
+      options = [first.options, rootOptions, secondOptions]
+      const publication = publishEditorView(options[0]!)
+      pending.push(publication)
+      records[0] = await publication
+    })
+
+    afterAll(async () => {
+      await Promise.allSettled(pending)
+      if (second !== undefined) cleanup(second)
+      if (first !== undefined) cleanup(first)
+    })
+
+    // Keep all three owners of one real content store; each API operation gets
+    // its own normal guard rather than combining publications and releases.
+    it.each([1, 2])('publishes shared-store owner %s in its own state root', async (index) => {
+      expect(completed).toBe(index - 1)
+      const publication = publishEditorView(options[index]!)
+      pending.push(publication)
+      records[index] = await publication
+      completed += 1
+    })
+
+    it('shares immutable payload inodes but not snapshot records across all three owners', () => {
+      expect(completed).toBe(2)
       const snapshots = [
         join(first.editorRoot, records[0]!.snapshot),
         join(first.root, '.editor-view', records[1]!.snapshot),
@@ -1359,25 +1617,72 @@ describe('editor view publisher', () => {
         new Set(snapshots.map((snapshot) => statSync(join(snapshot, 'editor-view.json')).ino)).size,
       ).toBe(3)
       const hash = createHash('sha256').update(readFileSync(payloads[0]!)).digest('hex')
-      const blob = join(first.options.contentStore!, hash.slice(0, 2), `${hash}-0444`)
+      blob = join(first.options.contentStore!, hash.slice(0, 2), `${hash}-0444`)
       expect(lstatSync(blob, { bigint: true }).ino).toBe(shared.ino)
       rmSync(first.nodeModules, { recursive: true })
       rmSync(second.nodeModules, { recursive: true })
-      for (const options of [first.options, rootOptions, secondOptions])
-        await expect(verifyEditorViewSnapshot(options)).resolves.toBeDefined()
+      completed += 1
+    })
 
-      await releaseEditorViewRoot(first.options)
-      await expect(verifyEditorViewSnapshot(rootOptions)).resolves.toBeDefined()
-      await expect(verifyEditorViewSnapshot(secondOptions)).resolves.toBeDefined()
-      await releaseEditorViewRoot(rootOptions)
+    it.each([0, 1, 2])(
+      'verifies owner %s after both original payload trees disappear',
+      async (index) => {
+        expect(completed).toBe(3 + index)
+        const verification = verifyEditorViewSnapshot(options[index]!)
+        pending.push(verification)
+        await expect(verification).resolves.toBeDefined()
+        completed += 1
+      },
+    )
+
+    it('releases the first package state root', async () => {
+      expect(completed).toBe(6)
+      const release = releaseEditorViewRoot(options[0]!)
+      pending.push(release)
+      await release
+      completed += 1
+    })
+
+    it.each([1, 2])(
+      'verifies surviving owner %s after the first state root releases',
+      async (index) => {
+        expect(completed).toBe(6 + index)
+        const verification = verifyEditorViewSnapshot(options[index]!)
+        pending.push(verification)
+        await expect(verification).resolves.toBeDefined()
+        completed += 1
+      },
+    )
+
+    it('releases the workspace-root view without unlocking the shared blob', async () => {
+      expect(completed).toBe(9)
+      const release = releaseEditorViewRoot(options[1]!)
+      pending.push(release)
+      await release
       expect(lstatSync(blob).mode & 0o777).toBe(0o444)
-      await expect(verifyEditorViewSnapshot(secondOptions)).resolves.toBeDefined()
-      await releaseEditorViewRoot(secondOptions)
+      completed += 1
+    })
+
+    it('verifies the remaining worktree after both other state roots release', async () => {
+      expect(completed).toBe(10)
+      const verification = verifyEditorViewSnapshot(options[2]!)
+      pending.push(verification)
+      await expect(verification).resolves.toBeDefined()
+      completed += 1
+    })
+
+    it('releases the last worktree owner', async () => {
+      expect(completed).toBe(11)
+      const release = releaseEditorViewRoot(options[2]!)
+      pending.push(release)
+      await release
+      completed += 1
+    })
+
+    it('collects the shared blob only after the last owner releases', () => {
+      expect(completed).toBe(12)
       expect(existsSync(blob)).toBe(false)
-    } finally {
-      cleanup(second)
-      cleanup(first)
-    }
+    })
   })
 
   describe('shared store bounds for each publishing view', () => {
@@ -1564,11 +1869,14 @@ describe('editor view publisher', () => {
     )
   })
 
-  it('settles every batch view after failure and releases locks and private candidates', async () => {
-    const fixture = makeFixture()
+  describe('batch failure settlement and cleanup', () => {
+    let fixture: Fixture
+    let options: EditorViewOptions[]
+    let pending: Promise<unknown> | undefined
     const visited: string[] = []
-    try {
-      const options = [
+    beforeAll(() => {
+      fixture = makeFixture()
+      options = [
         fixture.options,
         ...['genie', 'utils'].map(
           (packageName) => makeSiblingView({ fixture, packageName }).options,
@@ -1582,19 +1890,29 @@ describe('editor view publisher', () => {
           },
         }),
       )
-      await expect(publishEditorViews({ options })).rejects.toThrow('first view preparation failed')
+    })
+    afterAll(async () => {
+      await pending?.catch(() => undefined)
+      if (fixture !== undefined) cleanup(fixture)
+    })
+    it('settles all three real batch publications after the first worker fails', async () => {
+      pending = publishEditorViews({ options })
+      await expect(pending).rejects.toThrow('first view preparation failed')
       expect(visited.toSorted()).toEqual(['genie', 'tui-core', 'utils'])
-      for (const option of options.slice(1))
-        await expect(verifyEditorViewSnapshot(option)).resolves.toBeDefined()
       expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
       expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(2)
-      await expect(
-        publishEditorViews({ options: [fixture.options, fixture.options] }),
-      ).rejects.toThrow('duplicate batch publication identity')
-      expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
-    } finally {
-      cleanup(fixture)
+    })
+    for (const index of [1, 2]) {
+      it(`fully verifies settled sibling ${index}`, async () => {
+        pending = verifyEditorViewSnapshot(options[index]!)
+        await expect(pending).resolves.toBeDefined()
+      })
     }
+    it('rejects duplicate batch identities without leaving a publication lock', async () => {
+      pending = publishEditorViews({ options: [fixture.options, fixture.options] })
+      await expect(pending).rejects.toThrow('duplicate batch publication identity')
+      expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
+    })
   })
 
   it.each(['.backing', '.backing/0001'])(
@@ -1900,9 +2218,13 @@ describe('editor view publisher', () => {
     }
   })
 
-  it('accepts links into declared backing roots and rejects undeclared escapes', async () => {
-    const fixture = makeFixture()
-    try {
+  describe('declared backing links and undeclared escapes', () => {
+    let fixture: Fixture
+    let options: EditorViewOptions
+    let record: EditorViewRecord
+    let pending: Promise<unknown> | undefined
+    beforeAll(() => {
+      fixture = makeFixture()
       const backingRoot = join(fixture.root, 'inputs', 'store-entry')
       mkdirSync(join(backingRoot, 'dep'), { recursive: true })
       writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "external"\n')
@@ -1911,42 +2233,55 @@ describe('editor view publisher', () => {
       const linkedView = join(fixture.root, 'inputs', 'node_modules-linked')
       mkdirSync(linkedView)
       symlinkSync(join(backingAlias, 'dep'), join(linkedView, 'dep'))
-
-      await expect(
-        publishEditorView({ ...fixture.options, nodeModules: linkedView }),
-      ).rejects.toThrow('outside declared backing roots')
+      options = { ...fixture.options, nodeModules: linkedView, backingRoots: [backingRoot] }
+    })
+    afterAll(async () => {
+      await pending?.catch(() => undefined)
+      if (fixture !== undefined) cleanup(fixture)
+    })
+    it('rejects selected links into an undeclared backing root', async () => {
+      pending = publishEditorView({ ...fixture.options, nodeModules: options.nodeModules })
+      await expect(pending).rejects.toThrow('outside declared backing roots')
       expect(ownedSnapshots(fixture)).toHaveLength(0)
-
-      const options = {
-        ...fixture.options,
-        nodeModules: linkedView,
-        backingRoots: [backingRoot],
-      }
-      const record = await publishEditorView(options)
+    })
+    it('publishes byte-owned payload from the declared backing alias', async () => {
+      const publication = publishEditorView(options)
+      pending = publication
+      record = await publication
       expect(
         readFileSync(
           join(fixture.editorRoot, record.snapshot, 'node_modules', 'dep', 'index.js'),
           'utf8',
         ),
       ).toBe('export default "external"\n')
-      await expect(checkEditorView(options)).resolves.toEqual(record)
-    } finally {
-      cleanup(fixture)
-    }
+    })
+    it('checks the admitted backing-link generation against its record', async () => {
+      pending = checkEditorView(options)
+      await expect(pending).resolves.toEqual(record)
+    })
+  })
 
-    const residual = makeFixture()
-    try {
-      const record = await publishEditorView(residual.options)
-      const snapshotNodeModules = join(residual.editorRoot, record.snapshot, 'node_modules')
+  describe('residual links in byte-owned snapshots', () => {
+    let fixture: Fixture
+    let pending: Promise<unknown> | undefined
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const publication = publishEditorView(fixture.options)
+      pending = publication
+      const record = await publication
+      const snapshotNodeModules = join(fixture.editorRoot, record.snapshot, 'node_modules')
       chmodSync(snapshotNodeModules, 0o700)
       symlinkSync('dep', join(snapshotNodeModules, 'alias'))
       chmodSync(snapshotNodeModules, 0o555)
-      await expect(verifyEditorViewSnapshot(residual.options)).rejects.toThrow(
-        'snapshot contains a symbolic link',
-      )
-    } finally {
-      cleanup(residual)
-    }
+    })
+    afterAll(async () => {
+      await pending?.catch(() => undefined)
+      if (fixture !== undefined) cleanup(fixture)
+    })
+    it('rejects a residual symbolic link during complete snapshot verification', async () => {
+      pending = verifyEditorViewSnapshot(fixture.options)
+      await expect(pending).rejects.toThrow('snapshot contains a symbolic link')
+    })
   })
 
   it('names a Vite cache written into the snapshot and the directory to remove', async () => {

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { lstatSync, readFileSync, readlinkSync, readdirSync, realpathSync } from 'node:fs'
+import { lstatSync, readFileSync, readlinkSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
@@ -128,6 +128,18 @@ export const referencedEditorSnapshots = ({
     }
   }
   pins(editorRoot)
+  return observeProcessReferences({ admit, strict: false }) === true ? referenced : undefined
+}
+
+const observeProcessReferences = ({
+  admit,
+  strict,
+}: {
+  readonly admit: (target: string) => void
+  readonly strict: boolean
+}): boolean | undefined => {
+  const ignorable = (error: unknown): boolean =>
+    strict === true ? vanished(error) : inaccessibleProcessEntry(error)
   if (process.platform === 'linux') {
     try {
       for (const pid of readdirSync('/proc')) {
@@ -137,11 +149,11 @@ export const referencedEditorSnapshots = ({
           // Publication is user-owned; only same-user process references are
           // advisory evidence. Managed pins do not depend on process visibility.
           if (lstatSync(directory).uid !== process.getuid?.()) continue
-          for (const entry of ['exe', 'cwd']) {
+          for (const entry of ['exe', 'cwd', 'root']) {
             try {
               admit(readlinkSync(join(directory, entry)))
             } catch (error) {
-              if (inaccessibleProcessEntry(error) === false) throw error
+              if (ignorable(error) === false) throw error
             }
           }
           try {
@@ -149,11 +161,11 @@ export const referencedEditorSnapshots = ({
               try {
                 admit(readlinkSync(join(directory, 'fd', fd)))
               } catch (error) {
-                if (inaccessibleProcessEntry(error) === false) throw error
+                if (ignorable(error) === false) throw error
               }
             }
           } catch (error) {
-            if (inaccessibleProcessEntry(error) === false) throw error
+            if (ignorable(error) === false) throw error
           }
           for (const entry of ['maps', 'cmdline']) {
             try {
@@ -166,20 +178,20 @@ export const referencedEditorSnapshots = ({
               } else {
                 // A JS process may load its entry point and close that descriptor.
                 for (const argument of content.split('\0'))
-                  if (argument.startsWith(`${storeDir}/`) === true) admit(argument)
+                  if (argument.startsWith('/') === true) admit(argument)
               }
             } catch (error) {
-              if (inaccessibleProcessEntry(error) === false) throw error
+              if (ignorable(error) === false) throw error
             }
           }
         } catch (error) {
-          if (inaccessibleProcessEntry(error) === false) return undefined
+          if (ignorable(error) === false) return undefined
         }
       }
     } catch {
       return undefined
     }
-    return referenced
+    return true
   }
   if (process.platform === 'darwin') {
     // Native lsof is the macOS kernel-reader interface; no ambient PATH lookup.
@@ -190,7 +202,82 @@ export const referencedEditorSnapshots = ({
     if (result.error !== undefined || (result.status !== 0 && result.status !== 1)) return undefined
     for (const line of result.stdout.split('\n'))
       if (line.startsWith('n/') === true) admit(line.slice(1))
-    return referenced
+    return true
   }
   return undefined
+}
+
+/** glibc `makedev` of a /proc maps `major:minor` field, matching `stat().dev`. */
+const linuxDevice = ({ major, minor }: { readonly major: bigint; readonly minor: bigint }): bigint =>
+  ((major & 0xfffff000n) << 32n) |
+  ((major & 0xfffn) << 8n) |
+  ((minor & 0xffffff00n) << 12n) |
+  (minor & 0xffn)
+
+type LiveReferences = { readonly paths: readonly string[]; readonly inodes: ReadonlySet<string> }
+
+/**
+ * Positive same-user kernel references only: cwd, open descriptors and
+ * mappings, by path and by inode. Processes or entries that cannot be
+ * inspected contribute nothing; root recency covers readers this census
+ * cannot see.
+ */
+export const positiveEditorViewProcessReferences = (): LiveReferences => {
+  const paths: string[] = []
+  const inodes = new Set<string>()
+  const admitPath = (target: string): void => {
+    if (target.startsWith('/') === true)
+      paths.push(target.endsWith(' (deleted)') === true ? target.slice(0, -' (deleted)'.length) : target)
+  }
+  if (process.platform === 'linux') {
+    let pids: string[] = []
+    try {
+      pids = readdirSync('/proc').filter((pid) => /^[0-9]+$/.test(pid) === true)
+    } catch {}
+    for (const pid of pids) {
+      const base = join('/proc', pid)
+      try {
+        if (lstatSync(base).uid !== process.getuid?.()) continue
+      } catch {
+        continue
+      }
+      try {
+        admitPath(readlinkSync(join(base, 'cwd')))
+      } catch {}
+      let descriptors: string[] = []
+      try {
+        descriptors = readdirSync(join(base, 'fd'))
+      } catch {}
+      for (const descriptor of descriptors) {
+        const path = join(base, 'fd', descriptor)
+        try {
+          admitPath(readlinkSync(path))
+          const status = statSync(path, { bigint: true })
+          if (status.isFile() === true) inodes.add(`${status.dev}:${status.ino}`)
+        } catch {}
+      }
+      let maps = ''
+      try {
+        maps = readFileSync(join(base, 'maps'), 'utf8')
+      } catch {}
+      for (const line of maps.split('\n')) {
+        const match = /^\S+\s+\S+\s+\S+\s+([0-9a-f]+):([0-9a-f]+)\s+([0-9]+)\s*(.*)$/.exec(line)
+        if (match === null || match[1] === undefined || match[2] === undefined || match[3] === undefined)
+          continue
+        if (match[3] === '0') continue
+        const device = linuxDevice({ major: BigInt(`0x${match[1]}`), minor: BigInt(`0x${match[2]}`) })
+        inodes.add(`${device}:${match[3]}`)
+        if (match[4] !== undefined) admitPath(match[4])
+      }
+    }
+  } else if (process.platform === 'darwin') {
+    // Native lsof is the macOS kernel-reader interface; no ambient PATH lookup.
+    const result = spawnSync('/usr/sbin/lsof', ['-nP', '-Fn', '-u', String(process.getuid?.())], {
+      encoding: 'utf8',
+      maxBuffer: 256 * 1024 * 1024,
+    })
+    for (const line of result.stdout?.split('\n') ?? [])
+      if (line.startsWith('n/') === true) admitPath(line.slice(1))
+  }
+  return { paths, inodes }
 }

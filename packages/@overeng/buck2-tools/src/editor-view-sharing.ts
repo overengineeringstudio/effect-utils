@@ -175,19 +175,13 @@ const requireBlob = ({
 }
 
 /** Resolve Git's shared administration directory without invoking Git or megarepo. */
-export const defaultEditorViewContentStore = (repoRoot: string): string => {
-  const override = process.env.EDITOR_VIEW_CONTENT_STORE
-  if (override !== undefined) {
-    if (override.length === 0) fail('EDITOR_VIEW_CONTENT_STORE must not be empty')
-    return resolve(override)
-  }
+export const editorViewGitCommonDirectory = (repoRoot: string): string | undefined => {
   const gitPath = join(resolve(repoRoot), '.git')
   let gitStatus: BigIntStats
   try {
     gitStatus = lstatSync(gitPath, { bigint: true })
   } catch (error) {
-    if (hasCode({ error: error, code: 'ENOENT' }) === true)
-      return join(homedir(), '.cache', 'effect-utils', 'editor-view-content', 'v1')
+    if (hasCode({ error: error, code: 'ENOENT' }) === true) return undefined
     throw error
   }
   let gitDirectory: string
@@ -212,7 +206,20 @@ export const defaultEditorViewContentStore = (repoRoot: string): string => {
   }
   if (lstatSync(commonDirectory).isDirectory() === false)
     fail(`Git common administration path is not a directory: ${commonDirectory}`)
-  return join(dirname(commonDirectory), '.editor-view-content', 'v1')
+  return commonDirectory
+}
+
+/** Resolve the host-local content store shared by registered Git worktrees. */
+export const defaultEditorViewContentStore = (repoRoot: string): string => {
+  const override = process.env.EDITOR_VIEW_CONTENT_STORE
+  if (override !== undefined) {
+    if (override.length === 0) fail('EDITOR_VIEW_CONTENT_STORE must not be empty')
+    return resolve(override)
+  }
+  const commonDirectory = editorViewGitCommonDirectory(repoRoot)
+  return commonDirectory === undefined
+    ? join(homedir(), '.cache', 'effect-utils', 'editor-view-content', 'v1')
+    : join(dirname(commonDirectory), '.editor-view-content', 'v1')
 }
 
 const lockPath = (contentStore: string): string => `${contentStore}.flock`
