@@ -21,6 +21,29 @@ jq -e '
 ' "$targets" >/dev/null
 expected_names="$(jq -c '[.products[].name]' "$targets")"
 
+# Execute the actual notion wrapper smoke predicate with enough trailing output
+# to fill a pipe. Early-exit grep -q kills its producer under pipefail (141).
+smoke_check="$(grep -F 'printf '"'"'%s\n'"'"' "$db_output"' \
+  "$repo_root/nix/workspace-tools/lib/buck2-product-candidates.nix" \
+  | sed 's@${pkgs.gnugrep}/bin/grep@grep@g')"
+if [ -z "$smoke_check" ]; then
+  echo "buck2-cache-products-test: notion smoke predicate missing" >&2
+  exit 1
+fi
+for _ in $(seq 1 20); do
+  bash -euo pipefail -c '
+    db_output="$(printf "%s\n" "Reconcile an established workspace"; printf "%131072s" " ")"
+    eval "$1"
+  ' notion-smoke "$smoke_check"
+done
+if bash -euo pipefail -c '
+  db_output="Different help without the expected command"
+  eval "$1"
+' notion-smoke "$smoke_check"; then
+  echo "buck2-cache-products-test: notion smoke accepted missing command" >&2
+  exit 1
+fi
+
 plan="$(bash "$publisher" --dry-run)"
 jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck-cache-publication-plan/v1" and
