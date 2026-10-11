@@ -190,8 +190,12 @@ const makeHost = (): Host => {
     cleanup: async (): Promise<void> => {
       for (const release of releases) release()
       try {
-        await Promise.all(readers.map((reader) => reader.stop()))
-        await Promise.allSettled(pending)
+        try {
+          await Promise.all(readers.map((reader) => reader.stop()))
+        } finally {
+          // A failed reader assertion must not delete a still-running publisher's root.
+          await Promise.allSettled(pending)
+        }
       } finally {
         clock.mockRestore()
         if (savedRecency === undefined) delete process.env.EDITOR_VIEW_HOST_RECENCY_MS

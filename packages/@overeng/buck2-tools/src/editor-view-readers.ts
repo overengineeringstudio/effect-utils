@@ -293,8 +293,17 @@ export const positiveEditorViewProcessReferences = (): LiveReferences => {
       encoding: 'utf8',
       maxBuffer: 256 * 1024 * 1024,
     })
-    for (const line of result.stdout?.split('\n') ?? [])
-      if (line.startsWith('n/') === true) admitPath(line.slice(1))
+    for (const line of result.stdout?.split('\n') ?? []) {
+      if (line.startsWith('n/') === false) continue
+      const path = line.slice(1)
+      admitPath(path)
+      try {
+        const status = statSync(path, { bigint: true })
+        if (status.isFile() === true) inodes.add(`${status.dev}:${status.ino}`)
+      } catch {
+        // Lsof is advisory and paths can disappear after its kernel observation.
+      }
+    }
   }
   return { paths, inodes }
 }

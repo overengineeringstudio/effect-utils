@@ -1251,9 +1251,10 @@ const liveGenerations = (census: Census): Set<string> => {
   const references = positiveEditorViewProcessReferences()
   const live = new Set<string>()
   const liveRoots = new Set<string>()
+  const roots = census.roots.map((view) => ({ view, prefix: `${view.key}${sep}` }))
   for (const path of references.paths)
-    for (const view of census.roots) {
-      if (isWithin({ root: view.key, candidate: path }) === false) continue
+    for (const { view, prefix } of roots) {
+      if (path !== view.key && path.startsWith(prefix) === false) continue
       const within = relative(join(view.key, '.store'), path)
       const name = within.split(sep)[0]
       if (
@@ -1581,13 +1582,26 @@ export const reserveEditorViewBudget = async ({
   for (let round = 0; round < maxAdmissionRounds; round += 1) {
     // eslint-disable-next-line no-await-in-loop -- Each round must observe the previous round's retirements.
     const census = await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots })
-    const plan = planEviction({
+    let plan = planEviction({
       census,
       blocked,
-      live: liveGenerations(census),
+      live: new Set(),
       recencyMs,
       now: Date.now(),
     })
+    // Recent/grace/pinned roots already have complete protection. A host process
+    // walk cannot change their eligibility and must not tax ordinary publication.
+    const observesReaders =
+      plan.order.length > 0 &&
+      census.usedBytes + reservedBytes(readState(store)) + reservationBytes >= budgetBytes * warningRatio
+    if (observesReaders === true)
+      plan = planEviction({
+        census,
+        blocked,
+        live: liveGenerations(census),
+        recencyMs,
+        now: Date.now(),
+      })
     last = { census, plan }
     // eslint-disable-next-line no-await-in-loop -- Admission is a single short flock transaction per round.
     const admission = await admit({ census, plan, force: false })
@@ -1613,6 +1627,18 @@ export const reserveEditorViewBudget = async ({
       return { token }
     }
     if (admission.stale === true) continue
+    // A concurrent reservation can consume headroom after the outside-lock census.
+    // Observe readers before any pressure-driven retirement in that case too.
+    if (observesReaders === false && plan.order.length > 0) {
+      plan = planEviction({
+        census,
+        blocked,
+        live: liveGenerations(census),
+        recencyMs,
+        now: Date.now(),
+      })
+      last = { census, plan }
+    }
     if (collected === false && census.unreferencedCasBytes > 0) {
       collected = true
       // eslint-disable-next-line no-await-in-loop -- Collection takes the CAS flock itself; no locks are held here.
