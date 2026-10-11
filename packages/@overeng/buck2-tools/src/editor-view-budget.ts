@@ -2,6 +2,11 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   type BigIntStats,
   chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
   lstatSync,
   mkdirSync,
   readFileSync,
@@ -136,6 +141,8 @@ type Reservation = {
   readonly process: string
   readonly editorRoot: string
   readonly bytes: number
+  /** Budget the reservation was admitted against; diagnostics after commit reuse it. */
+  readonly budgetBytes: number
   readonly createdAtMs: number
 }
 
@@ -161,7 +168,12 @@ type BudgetState = {
   epoch: number
   /** Census taken before this epoch can no longer see every later finish. */
   journalFloor: number
-  journal: { readonly epoch: number; readonly bytes: number }[]
+  /**
+   * Conservative upper-bound estimates (full generation footprint, shared
+   * inodes included) of generations finished after a census; admission adds
+   * them to that census, and the next census measures the real usage.
+   */
+  journal: { readonly epoch: number; readonly estimatedBytes: number }[]
   roots: Map<string, string>
   generations: Map<string, CachedGeneration>
   lastUse: Map<string, number>
@@ -224,10 +236,10 @@ const decodeState = ({
     if (
       isObject(entry) === false ||
       isCount(entry.epoch) === false ||
-      isCount(entry.bytes) === false
+      isCount(entry.estimatedBytes) === false
     )
       return invalid()
-    state.journal.push({ epoch: entry.epoch, bytes: entry.bytes })
+    state.journal.push({ epoch: entry.epoch, estimatedBytes: entry.estimatedBytes })
   }
   const records = (field: unknown): readonly (readonly [string, unknown])[] =>
     isObject(field) === true ? Object.entries(field) : invalid()
@@ -239,11 +251,15 @@ const decodeState = ({
     if (
       isObject(entry) === false ||
       isText(entry.editorRoot) === false ||
-      isText(entry.name) === false ||
+      isAbsolute(entry.editorRoot) === false ||
+      typeof entry.name !== 'string' ||
+      generationPattern.test(entry.name) === false ||
+      key !== generationKey({ editorRoot: entry.editorRoot, name: entry.name }) ||
       isText(entry.identity) === false ||
       isCount(entry.ownedBytes) === false ||
       isCount(entry.linkedBytes) === false ||
-      isText(entry.sidecar) === false ||
+      typeof entry.sidecar !== 'string' ||
+      /^[0-9a-f]{64}\.bin$/.test(entry.sidecar) === false ||
       typeof entry.readOnly !== 'boolean' ||
       (entry.package !== undefined && typeof entry.package !== 'string')
     )
@@ -271,6 +287,7 @@ const decodeState = ({
       isText(entry.process) === false ||
       isText(entry.editorRoot) === false ||
       isCount(entry.bytes) === false ||
+      isCount(entry.budgetBytes) === false ||
       isCount(entry.createdAtMs) === false
     )
       return invalid()
@@ -280,6 +297,7 @@ const decodeState = ({
       process: entry.process,
       editorRoot: entry.editorRoot,
       bytes: entry.bytes,
+      budgetBytes: entry.budgetBytes,
       createdAtMs: entry.createdAtMs,
     })
   }
@@ -301,15 +319,29 @@ const decodeState = ({
   return state
 }
 
-/** Atomic snapshot read; mutation callers hold the CAS flock. */
+/**
+ * Atomic snapshot read; mutation callers hold the CAS flock. The ledger must
+ * be a private regular file owned by this user, opened without following links.
+ */
 const readState = (contentStore: string): BudgetState => {
   const path = statePath(contentStore)
   let text: string
+  let descriptor: number
   try {
-    text = readFileSync(path, 'utf8')
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
   } catch (error) {
     if (vanished(error) === true) return emptyState()
+    if (hasCode({ error, codes: ['ELOOP'] }) === true)
+      return fail(`ledger must not be a symbolic link: ${path}`)
     throw error
+  }
+  try {
+    const status = fstatSync(descriptor)
+    if (status.isFile() === false || status.uid !== userId() || (status.mode & 0o077) !== 0)
+      return fail(`ledger must be a regular 0600 file owned by the current user: ${path}`)
+    text = readFileSync(descriptor, 'utf8')
+  } finally {
+    closeSync(descriptor)
   }
   let value: unknown
   try {
@@ -334,7 +366,10 @@ const writeState = ({
     schema: stateSchema,
     epoch: state.epoch,
     journalFloor: state.journalFloor,
-    journal: state.journal.map((entry) => ({ epoch: entry.epoch, bytes: entry.bytes })),
+    journal: state.journal.map((entry) => ({
+      epoch: entry.epoch,
+      estimatedBytes: entry.estimatedBytes,
+    })),
     roots: Object.fromEntries(state.roots),
     generations: Object.fromEntries(
       Array.from(state.generations, ([key, entry]) => [
@@ -361,6 +396,7 @@ const writeState = ({
           process: entry.process,
           editorRoot: entry.editorRoot,
           bytes: entry.bytes,
+          budgetBytes: entry.budgetBytes,
           createdAtMs: entry.createdAtMs,
         },
       ]),
@@ -388,13 +424,13 @@ const writeState = ({
 
 const appendJournal = ({
   state,
-  bytes,
+  estimatedBytes,
 }: {
   readonly state: BudgetState
-  readonly bytes: number
+  readonly estimatedBytes: number
 }) => {
   state.epoch += 1
-  state.journal.push({ epoch: state.epoch, bytes })
+  state.journal.push({ epoch: state.epoch, estimatedBytes })
   while (state.journal.length > journalLimit) {
     const dropped = state.journal.shift()
     if (dropped !== undefined) state.journalFloor = Math.max(state.journalFloor, dropped.epoch)
