@@ -1196,7 +1196,8 @@ describe('direct pinned Buck watcher admission', () => {
     describe(`selected worktree isolation for ${mode} daemon state`, () => {
       type LaunchResult = { exitCode: number; stdout: string; stderr: string }
       let prepare: () => Promise<PreparedEntrypoint>
-      let children: [PreparedEntrypoint, PreparedEntrypoint]
+      let firstChild: PreparedEntrypoint
+      let secondChild: PreparedEntrypoint
       const launch = async ({ child, stdout: output }: PreparedEntrypoint) => {
         child.stdin.write('\n')
         child.stdin.end()
@@ -1287,7 +1288,10 @@ printf 'native build\\n'
         }
       })
       beforeEach(async () => {
-        children = await Promise.all([prepare(), prepare()])
+        firstChild = await prepare()
+      })
+      beforeEach(async () => {
+        secondChild = await prepare()
       })
       beforeEach(async () => {
         expect(
@@ -1302,15 +1306,15 @@ printf 'native build\\n'
       beforeEach(async () => {
         // A sequential replay gets its own guard rather than sharing the
         // second launch's deadline. Concurrent admission still races both CLIs.
-        if (mode !== 'concurrent') firstRun = await launch(children[0])
+        if (mode !== 'concurrent') firstRun = await launch(firstChild)
       })
       it('migrates only the selected worktree isolation', async () => {
         const { nativeCalls, otherMarker, otherWorktreeState, other, oldMarker, selectedMarker } =
           setup
         const runs =
           mode === 'concurrent'
-            ? await Promise.all([launch(children[0]), launch(children[1])])
-            : [firstRun, await launch(children[1])]
+            ? await Promise.all([launch(firstChild), launch(secondChild)])
+            : [firstRun, await launch(secondChild)]
         const calls = readFileSync(nativeCalls, 'utf8').trim().split('\n')
         expect(readFileSync(otherMarker, 'utf8')).toBe(oldMarker)
         expect(readFileSync(join(otherWorktreeState, 'buckd.pid'), 'utf8')).toBe('888888')
