@@ -64,10 +64,14 @@ def run(plan, evidence):
                     continue
                 for path in {path for group in manifest["outputs"] for path in (group if isinstance(group, list) else [group])}:
                     output = root / path
-                    if output.is_file():
-                        payload = output.read_bytes()
-                        key = "|".join([manifest["target"], cfg, manifest["identifier"], output.name])
-                        snapshots[key] = {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "path": path}
+                    output_files = sorted(output.rglob("*")) if output.is_dir() else [output]
+                    for output_file in output_files:
+                        if not output_file.is_file():
+                            continue
+                        payload = output_file.read_bytes()
+                        output_name = output.name + "/" + str(output_file.relative_to(output)) if output.is_dir() else output.name
+                        key = "|".join([manifest["target"], cfg, manifest["identifier"], output_name])
+                        snapshots[key] = {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "path": str(output_file.relative_to(root))}
         usage = subprocess.run(["du", "-s", "-B1", str(root / "buck-out")], capture_output=True, text=True, check=True)
         apparent = subprocess.run(["du", "-s", "-B1", "--apparent-size", str(root / "buck-out")], capture_output=True, text=True, check=True)
         receipt = {"name": name, "arm": item["arm"], "root": str(root), "command": args, "exit": result.returncode, "startedEpoch": started, "elapsedSeconds": elapsed, "load1Start": before, "load1End": after, "cohortCommands": len(actions), "cohortKinds": dict(collections.Counter(x["kind"] for x in actions)), "cohortWallSeconds": sum(x["wallUs"] for x in actions)/1e6, "buckOutAllocatedBytes": int(usage.stdout.split()[0]), "buckOutApparentBytes": int(apparent.stdout.split()[0]), "actions": actions, "outputs": snapshots}
