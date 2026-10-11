@@ -14,7 +14,8 @@ pub fn activate() {
             |name| name.to_string_lossy().into_owned(),
         );
     clap_complete::CompleteEnv::with_factory(crate::Cli::command)
-        .bin(bin)
+        .bin(bin.clone())
+        .completer(bin)
         .complete();
 }
 

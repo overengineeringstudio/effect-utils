@@ -96,6 +96,8 @@ generated from the installed binary. Completion offers flags, enum values and
 MagicDNS short names from the local Tailscale status source. It is bounded to
 about 100 ms and returns no host candidates when that source is unavailable.
 Shell configuration must enable its normal completion support.
+Registration and callback commands both use the invocation's basename, preserving
+adopter aliases without embedding absolute installation paths in shell scripts.
 
 ## Package Boundary
 
