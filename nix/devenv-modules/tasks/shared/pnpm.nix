@@ -116,7 +116,7 @@ let
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
   memberSourceResolverScript = pkgs.writeText "sync-resolver.ts" (
-    builtins.readFile ../../../../packages/@overeng/genie/src/core/import-map/sync-resolver.ts
+    builtins.readFile (../../../../packages + "/@overeng/genie/src/core/import-map/sync-resolver.ts")
   );
   stageSourceInputsScript = pkgs.writeText "stage-pnpm-source-inputs.mjs" (
     builtins.replaceStrings
