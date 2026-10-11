@@ -47,6 +47,17 @@ rec {
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        # Explicitly selected BSL products; other packages keep the default license policy.
+        restatePkgs = import nixpkgs {
+          inherit system;
+          config.allowUnfreePredicate =
+            pkg:
+            builtins.elem (nixpkgs.lib.getName pkg) [
+              "restate"
+              "restatectl"
+            ];
+        };
+        restatePackages = import ./nix/restate.nix { pkgs = restatePkgs; };
         weaverPackages =
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
@@ -327,6 +338,8 @@ rec {
           // buckCompiledProducts
           // capabilityPackages
           // {
+            restate = restatePackages;
+            restatectl = restatePackages.restatectl;
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
             ci-test-shell-products = pkgs.linkFarm "ci-test-shell-products" (
