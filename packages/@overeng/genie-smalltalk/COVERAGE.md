@@ -132,6 +132,8 @@ Every OMP or Codex harness declaration requires nonempty `model` **and** `effort
 
 Codex supports optional `args` and `resume: { session }`. Resume lowers to `env.ST3_NATIVE_RESUME_SESSION`, binding the exact native thread; conflicting authored values are rejected without changing explicit model/effort routing.
 
+OMP effort is the canonical `low | medium | high | xhigh` union, shared by the schema and `omp()` helper. Exact-KDL tests cover all four values through both authoring paths. The isolated native fixture applies a manual-rollout OMP agent with `xhigh`, checks the shown native declaration retains that effort, and reapplies it without a revision change.
+
 ## OMP conversation recovery
 
 OMP harness intent accepts `resume: { transcript: '/sessions/example.jsonl' }` to emit `args "--resume" "/sessions/example.jsonl"`, or `resume: 'latest'` to emit `args "--continue"`. The `omp({ model, effort, resume })` helper accepts the same optional field. Omitted recovery intent starts a fresh conversation.

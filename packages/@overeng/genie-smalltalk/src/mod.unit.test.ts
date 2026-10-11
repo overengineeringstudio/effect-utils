@@ -447,7 +447,6 @@ describe('Smalltalk declarations', () => {
   })
   it.each([
     { harness: { kind: 'omp', model: 'example-model' } },
-    { harness: { kind: 'omp', model: 'example-model', effort: 'xhigh' } },
     { harness: { kind: 'codex', model: '', effort: 'high' } },
     {
       command: 'true',
@@ -597,6 +596,21 @@ describe('Smalltalk declarations', () => {
         }),
       ]),
     ).toContain('harness "omp" {\n    model "example-model"\n    effort "high"\n')
+  })
+  it.each(['low', 'medium', 'high', 'xhigh'] as const)(
+    'renders OMP effort %s through the canonical helper and direct schema',
+    (effort) => {
+      const harness = omp({ model: 'example-model', effort })
+      const direct = { kind: 'omp' as const, model: 'example-model', effort }
+      const expected =
+        `version 2\nagent "example/omp" {\n  harness "omp" {\n` +
+        `    model "example-model"\n    effort "${effort}"\n  }\n}\n`
+      expect(emit([agent({ id: 'example/omp', harness })])).toBe(expected)
+      expect(emit([agent({ id: 'example/omp', harness: direct })])).toBe(expected)
+    },
+  )
+  it.each(['', 'extra-high', 'XHIGH'])('rejects unsupported OMP effort %j', (effort) => {
+    expect(() => omp({ model: 'example-model', effort } as never)).toThrow()
   })
   it('requires both routing fields in every harness authoring type', () => {
     expectTypeOf<Omit<typeof OmpSchema.Encoded, 'model'>>().not.toMatchTypeOf<
@@ -1884,6 +1898,28 @@ testWithSt(
       const reapplied = applySeat(shown.stdout)
       expect(reapplied.status, reapplied.stderr).toBe(0)
       expect(JSON.parse(reapplied.stdout)).toMatchObject({ changed: false })
+      const xhigh = applySeat(
+        emit([
+          agent({
+            id: 'garden/xhigh',
+            workspace: dir,
+            rollout: 'manual',
+            harness: omp({ model: 'example-model', effort: 'xhigh' }),
+          }),
+        ]),
+      )
+      expect(xhigh.status, xhigh.stderr).toBe(0)
+      const xhighShown = spawnSync(
+        stBin!,
+        ['--endpoint', `unix://${socket}`, 'subject', 'show', 'agent/garden/xhigh', '--kdl'],
+        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+      )
+      expect(xhighShown.status, xhighShown.stderr).toBe(0)
+      expect(xhighShown.stdout).toContain('harness "omp"')
+      expect(xhighShown.stdout).toMatch(/^\s*effort "xhigh"\s*$/mu)
+      const xhighReapplied = applySeat(xhighShown.stdout)
+      expect(xhighReapplied.status, xhighReapplied.stderr).toBe(0)
+      expect(JSON.parse(xhighReapplied.stdout)).toMatchObject({ changed: false })
       for (const field of [
         'rollout "automatic"',
         'rollout 1',

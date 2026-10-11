@@ -241,7 +241,7 @@ export const OmpResumeSchema = Schema.Union([
 export const OmpSchema = Schema.Struct({
   kind: Schema.Literal('omp'),
   model: Text,
-  effort: Schema.Literals(['low', 'medium', 'high']),
+  effort: Schema.Literals(['low', 'medium', 'high', 'xhigh']),
   resume: Schema.optionalKey(OmpResumeSchema),
 }).annotate({ identifier: 'St.Omp' })
 
@@ -926,7 +926,7 @@ export const omp = ({
   resume,
 }: {
   readonly model: string
-  readonly effort: 'low' | 'medium' | 'high'
+  readonly effort: (typeof OmpSchema.Encoded)['effort']
   readonly resume?: typeof OmpResumeSchema.Encoded
 }): typeof OmpSchema.Type =>
   decode({
