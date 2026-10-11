@@ -180,6 +180,8 @@ covers only the root and its own physical `repos/` directory, not lock/config
 writes, generators, branch advancement, or aliases into other trees. Lock sync
 must remain off. It does not grant ownership to preexisting shared nested trees,
 and neither tags nor branch paths gain permission from this commit grant.
+Enabled generators cause `PermissionDenied` before any member mount is changed,
+including when their output directories or files alias external destinations.
 
 Consumers normally prepare the dependency tree through the outer workspace's
 `mr apply --all`. A separately invoked exact-commit apply may prepare its own

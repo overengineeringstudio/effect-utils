@@ -22,6 +22,7 @@ import {
   updateLockedMember,
   writeLockFile,
 } from '../core/lock.ts'
+import { generateSchema, generateVscode } from '../generators/mod.ts'
 import { StoreLock } from '../store/store-lock.ts'
 import { makeStoreLayer } from '../store/store.ts'
 import { collectSyncErrors } from '../sync/mod.ts'
@@ -2468,7 +2469,13 @@ describe('canonical member mutation guard', () => {
     )
   }
 
-  for (const operation of ['lock', 'generator', 'foreign-mount'] as const) {
+  for (const operation of [
+    'lock',
+    'generator',
+    'generator-directory-alias',
+    'generator-output-alias',
+    'foreign-mount',
+  ] as const) {
     it.effect(
       `refuses ${operation} writes from an exact-commit apply workspace`,
       Effect.fnUntraced(
@@ -2477,17 +2484,18 @@ describe('canonical member mutation guard', () => {
           const workspacePath = EffectPath.unsafe.absoluteDir(
             `${yield* makeCanonicalTempDirectoryScoped()}/`,
           )
-          const canonicalRoot = yield* makeStoreWorktree({
+          let canonicalRoot = yield* makeStoreWorktree({
             repoDir: `${workspacePath}store/github.com/acme/workspace`,
             kind: 'commits',
           })
+          const isGenerator = operation.startsWith('generator')
           const memberPath = `${workspacePath}owned`
           yield* fs.makeDirectory(memberPath)
           yield* fs.writeFileString(
             `${canonicalRoot}megarepo.json`,
             encodeJson({
               members: { victim: memberPath },
-              ...(operation === 'generator' ? { generators: { vscode: { enabled: true } } } : {}),
+              ...(isGenerator === true ? { generators: { vscode: { enabled: true } } } : {}),
             }),
           )
           const originalLock = encodeJson({ version: 1, members: {} })
@@ -2496,6 +2504,27 @@ describe('canonical member mutation guard', () => {
           if (operation === 'foreign-mount') {
             yield* fs.makeDirectory(foreignRepos, { recursive: true })
             yield* fs.symlink(foreignRepos, `${canonicalRoot}repos`)
+          }
+          const externalDir = `${workspacePath}external`
+          const externalOutput = `${externalDir}/megarepo.code-workspace`
+          const originalOutput = 'external file must remain unchanged\n'
+          if (isGenerator === true) {
+            yield* fs.makeDirectory(externalDir)
+            yield* fs.writeFileString(externalOutput, originalOutput)
+            if (operation === 'generator-directory-alias') {
+              yield* fs.symlink(externalDir, `${canonicalRoot}.vscode`)
+            } else if (operation === 'generator-output-alias') {
+              yield* fs.makeDirectory(`${canonicalRoot}.vscode`)
+              yield* fs.symlink(externalOutput, `${canonicalRoot}.vscode/megarepo.code-workspace`)
+            }
+            // Commit the generator config and aliases, then encode that HEAD in the store path.
+            yield* addCommit({ repoPath: canonicalRoot, message: 'Add generator fixture' })
+            const head = (yield* runGitCommand(canonicalRoot, 'rev-parse', 'HEAD')).trim()
+            const exactRoot = EffectPath.unsafe.absoluteDir(
+              `${path.dirname(canonicalRoot.slice(0, -1))}/${head}/`,
+            )
+            yield* runGitCommand(canonicalRoot, 'worktree', 'move', canonicalRoot, exactRoot)
+            canonicalRoot = exactRoot
           }
           const env = {
             MEGAREPO_STORE: `${workspacePath}store`,
@@ -2516,9 +2545,27 @@ describe('canonical member mutation guard', () => {
               : `${result.stdout}\n${result.stderr}`
           expect(diagnostic).toContain('Refusing to mutate canonical worktree')
           expect(yield* fs.readFileString(`${canonicalRoot}megarepo.lock`)).toBe(originalLock)
-          if (operation === 'generator') {
-            expect(yield* fs.exists(`${canonicalRoot}.vscode`)).toBe(false)
-            expect(yield* fs.realPath(`${canonicalRoot}repos/victim`)).toBe(memberPath)
+          if (isGenerator === true) {
+            expect(yield* fs.exists(`${canonicalRoot}repos`)).toBe(false)
+            expect(yield* fs.readFileString(externalOutput)).toBe(originalOutput)
+            if (operation !== 'generator') {
+              const config = new MegarepoConfig({ members: { victim: memberPath } })
+              const vscodeError = yield* generateVscode({
+                megarepoRoot: canonicalRoot,
+                config,
+              }).pipe(Effect.flip)
+              expect(vscodeError.reason._tag).toBe('PermissionDenied')
+              const schemaError = yield* generateSchema({
+                megarepoRoot: canonicalRoot,
+                config,
+                outputPath: '.vscode/megarepo.code-workspace',
+              }).pipe(Effect.flip)
+              expect(schemaError.reason._tag).toBe('PermissionDenied')
+              expect(yield* fs.readFileString(externalOutput)).toBe(originalOutput)
+            }
+            if (operation === 'generator') {
+              expect(yield* fs.exists(`${canonicalRoot}.vscode`)).toBe(false)
+            }
           }
           if (operation === 'foreign-mount') {
             expect(yield* fs.readDirectory(foreignRepos)).toEqual([])

@@ -272,6 +272,11 @@ export const syncMegarepo = <R = never>({
           commitApplyRoot = resolvedRoot
         }
       }
+      // Materialization permission never authorizes generators, including outputs
+      // aliased outside the store. Reject before changing any member mounts.
+      if (commitApplyRoot !== undefined && getEnabledGenerators(config).length > 0) {
+        yield* assertCanonicalMutationAllowed({ target: megarepoRoot })
+      }
       const authorization =
         ownsTopLevelRoot === true
           ? {
