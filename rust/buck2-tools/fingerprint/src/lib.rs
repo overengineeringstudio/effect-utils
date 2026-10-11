@@ -1,6 +1,7 @@
 //! Canonical editor-view tree fingerprints. Framing is `effect-utils/tree-digest/v1`.
 //! Instability errors include changed-field names and full before/after metadata;
 //! mode and link count are diagnostic context, not additional stability checks.
+//! This implementation is isolated from the shared archive/product packaging helpers.
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::ffi::OsString;
