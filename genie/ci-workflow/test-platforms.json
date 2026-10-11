@@ -394,6 +394,10 @@
         "rationale": "Pure jq matching of member names and revision identities."
       },
       {
+        "script": "megarepo-setup-commit-members.test.sh",
+        "rationale": "Nix setup option and recursive-readiness task contracts with a fake mr executable; no native Git, daemon or Darwin filesystem lifecycle."
+      },
+      {
         "script": "megarepo-status.test.sh",
         "rationale": "Status/cache/member-presence policy using a fake mr executable, plus static setup dependency wiring."
       },
