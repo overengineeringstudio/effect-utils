@@ -18,7 +18,7 @@ trap cleanup EXIT
 cp -R "$repo_root/buck2" "$work/buck2"
 mkdir -p "$work/capabilities" "$work/packages/@overeng/buck2-tools"
 touch "$work/.buckroot"
-printf 'CAPABILITIES = {}\n' > "$work/capabilities/defs.bzl"
+printf 'CAPABILITIES = {}\nGENERATION = "analysis-only"\n' > "$work/capabilities/defs.bzl"
 printf 'analysis-only dependency\n' > "$work/fixture-dependency.txt"
 cat > "$work/.buckconfig" <<'CONFIG'
 [cells]
@@ -53,13 +53,35 @@ load("//buck2/package_tools.bzl", "PackageCommandRuntimeInfo", "package_bin_chec
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
 load("//buck2/rust:interop.bzl", "RustInteropProductInfo", "rust_interop_smoke")
+load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "ts_action_admission_status", "ts_action_cache_eligible", "ts_action_execution_constraints", "ts_action_policy_attrs")
+
+FixtureTsPolicyInfo = provider(fields = {"admission_status": str, "cache_eligible": bool})
+
+def _fixture_ts_policy_impl(ctx):
+    return [
+        DefaultInfo(),
+        FixtureTsPolicyInfo(
+            admission_status = ts_action_admission_status(ctx),
+            cache_eligible = ts_action_cache_eligible(ctx),
+        ),
+    ]
+
+fixture_ts_policy = cache_guarded_rule(
+    impl = _fixture_ts_policy_impl,
+    attrs = ts_action_policy_attrs(),
+    cache_eligible = ts_action_cache_eligible,
+)
+
+def fixture_ts_policy_with_helper(name):
+    fixture_ts_policy(name = name, exec_compatible_with = ts_action_execution_constraints())
 
 def _dependency_impl(ctx):
     artifact = ctx.attrs.src
     return [
         DefaultInfo(default_output = artifact),
         RunInfo(args = artifact),
-        PackageTreeInfo(tree = artifact, read_roots = []),
+        PackageTreeInfo(tree = artifact, read_roots = [], admission_status = "analysis-only"),
         PnpmDeclaredClosureInfo(manifest = artifact, node_modules = artifact, read_roots = [], toolchain_identity = "analysis-only"),
         PackageCommandRuntimeInfo(runtime = artifact, read_roots = []),
         RustInteropProductInfo(package = artifact, kind = "wasm"),
@@ -69,6 +91,17 @@ def _dependency_impl(ctx):
             executable = "/analysis-only/bin/tsgo",
             identity = "analysis-only",
             runner = artifact,
+        ),
+        TsSandboxToolchainInfo(
+            bubblewrap = "/analysis-only/bin/bwrap",
+            bun = "/analysis-only/bin/bun",
+            closure_paths = {
+                "bun": ["/analysis-only"],
+                "effect-tsgo": ["/analysis-only"],
+                "buck2-fingerprint": ["/analysis-only"],
+            },
+            inputs = [artifact],
+            launcher = artifact,
         ),
         BuckSupportToolInfo(
             content_digest = "analysis-only",
@@ -182,6 +215,7 @@ fixture_dependency(name = "fingerprint_tool", visibility = ["PUBLIC"])
 fixture_dependency(name = "tool_action_env", visibility = ["PUBLIC"])
 fixture_dependency(name = "tool_node", visibility = ["PUBLIC"])
 fixture_dependency(name = "archive_tool", visibility = ["PUBLIC"])
+fixture_dependency(name = "ts_sandbox", visibility = ["PUBLIC"])
 BUCK
 cat > "$work/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
 load("//:fixture.bzl", "fixture_dependency")
@@ -190,7 +224,7 @@ fixture_dependency(name = "javascript_action_runtime", visibility = ["PUBLIC"])
 fixture_dependency(name = "package_command_runtime", visibility = ["PUBLIC"])
 BUCK
 cat > "$work/BUCK" <<'BUCK'
-load("//:fixture.bzl", "fixture_dependency", "fixture_materialization_cases")
+load("//:fixture.bzl", "fixture_dependency", "fixture_materialization_cases", "fixture_ts_policy", "fixture_ts_policy_with_helper")
 load("//buck2:typescript.bzl", "tsgo_emit")
 load("@rules//buck2:javascript.bzl", "vitest_collect")
 load("@rules//buck2:package_tools.bzl", "package_bin_check")
@@ -203,6 +237,9 @@ fixture_materialization_cases("default")
 # A caller's valid custom native constraint must survive without cache admission.
 fixture_materialization_cases("custom", ["prelude//os/constraints:" + ("macos" if host_info().os.is_macos else "linux")])
 tsgo_emit(name = "admitted_emit", package_tree = ":package_tree")
+fixture_ts_policy(name = "ts_policy_default")
+fixture_ts_policy(name = "ts_policy_cache", exec_compatible_with = ["@rules//buck2/platforms:cache_hermetic"])
+fixture_ts_policy_with_helper(name = "ts_policy_helper")
 
 vitest_collect(
     name = "admitted_collect",
@@ -231,9 +268,10 @@ for row in \
   constraint="${row#* }"
   mkdir -p "$work/$spelling"
   cat > "$work/$spelling/BUCK" <<BUCK
-load("//:fixture.bzl", "fixture_negative_cases")
+load("//:fixture.bzl", "fixture_negative_cases", "fixture_ts_policy")
 
 fixture_negative_cases("$spelling", "$constraint")
+fixture_ts_policy(name = "ts_policy_$spelling", exec_compatible_with = ["$constraint"])
 BUCK
 done
 mkdir -p "$work/override"
@@ -280,12 +318,95 @@ done
 "$buck" --isolation-dir cache-admission-check cquery --output-attribute buck.execution_platform \
   -c buck2.remote_cache_enabled=true -c buck2.allow_cache_uploads=true \
   effect_utils//:admitted_emit > "$work/admitted_emit.platform.log" 2>&1
-if ! grep -Eq 'exec_(linux_x86_64|linux_aarch64|macos_aarch64)_hermetic' "$work/admitted_emit.platform.log"; then
-  cat "$work/admitted_emit.platform.log" >&2
-  printf 'tsgo_emit lost its cache-admitted platform\n' >&2
+if grep -Fq 'darwin-unsandboxed' "$work/admitted_emit.log"; then
+  if ! grep -Eq 'exec_macos_aarch64([^_[:alnum:]]|$)' "$work/admitted_emit.platform.log"; then
+    cat "$work/admitted_emit.platform.log" >&2
+    printf 'Darwin tsgo_emit obtained cache admission despite darwin-unsandboxed\n' >&2
+    exit 1
+  fi
+  printf 'PASS darwin-unsandboxed local platform: tsgo_emit\n'
+else
+  if ! grep -Eq 'exec_(linux_x86_64|linux_aarch64)_hermetic' "$work/admitted_emit.platform.log"; then
+    cat "$work/admitted_emit.platform.log" >&2
+    printf 'Linux tsgo_emit lost its mandatory sandbox cache-admitted platform\n' >&2
+    exit 1
+  fi
+  printf 'PASS Linux cache-admitted platform: tsgo_emit\n'
+fi
+
+# These real exec_dep analyses run on every host: target configuration remains
+# the host, while the selected executor is explicitly Linux or Darwin. No tool
+# or sandbox action executes, and no remote-cache request is issued.
+for platform in linux_x86_64 linux_aarch64 macos_aarch64; do
+  execution_platform="effect_utils//buck2/platforms:exec_$platform"
+  "$buck" --isolation-dir cache-admission-check audit providers \
+    -c "build.execution_platforms=$execution_platform" \
+    effect_utils//:ts_policy_default > "$work/ts-policy-$platform.log" 2>&1 || {
+      cat "$work/ts-policy-$platform.log" >&2
+      exit 1
+    }
+  if [[ "$platform" == macos_aarch64 ]]; then
+    expected_status=darwin-unsandboxed
+  else
+    expected_status=linux-bwrap
+  fi
+  if ! grep -Fq "$expected_status" "$work/ts-policy-$platform.log"; then
+    cat "$work/ts-policy-$platform.log" >&2
+    printf 'TS admission policy inspected target/host instead of executor: %s\n' "$platform" >&2
+    exit 1
+  fi
+  if [[ "$platform" == macos_aarch64 ]]; then
+    if "$buck" --isolation-dir cache-admission-check audit providers \
+      -c "build.execution_platforms=$execution_platform" \
+      effect_utils//:ts_policy_cache > "$work/ts-policy-cache-$platform.log" 2>&1; then
+      printf 'Darwin executor unexpectedly obtained TypeScript cache admission\n' >&2
+      exit 1
+    fi
+    if ! grep -Fq 'darwin-unsandboxed: TypeScript execution cannot use the cache-admitted execution platform' "$work/ts-policy-cache-$platform.log"; then
+      cat "$work/ts-policy-cache-$platform.log" >&2
+      printf 'Darwin cache override failed for an unrelated reason\n' >&2
+      exit 1
+    fi
+  else
+    "$buck" --isolation-dir cache-admission-check audit providers \
+      -c "build.execution_platforms=$execution_platform" \
+      effect_utils//:ts_policy_cache > "$work/ts-policy-cache-$platform.log" 2>&1
+    if ! grep -Fq 'linux-bwrap' "$work/ts-policy-cache-$platform.log"; then
+      cat "$work/ts-policy-cache-$platform.log" >&2
+      exit 1
+    fi
+  fi
+  printf 'PASS TS executor admission: %s\n' "$platform"
+done
+"$buck" --isolation-dir cache-admission-check audit providers \
+  effect_utils//:ts_policy_helper > "$work/ts-policy-helper.log" 2>&1
+
+# Canonical, relative and aliased cache constraints all resolve to the same
+# default-only marker. Exercise them against a real Darwin execution platform.
+for spelling in canonical relative alias alias_at; do
+  target="effect_utils//$spelling:ts_policy_$spelling"
+  if "$buck" --isolation-dir cache-admission-check audit providers \
+    -c build.execution_platforms=effect_utils//buck2/platforms:exec_macos_aarch64 \
+    "$target" > "$work/ts-policy-darwin-$spelling.log" 2>&1; then
+    printf 'Darwin TypeScript override unexpectedly admitted: %s\n' "$spelling" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'darwin-unsandboxed: TypeScript execution cannot use the cache-admitted execution platform' "$work/ts-policy-darwin-$spelling.log"; then
+    cat "$work/ts-policy-darwin-$spelling.log" >&2
+    printf 'Darwin TypeScript override failed for an unrelated reason: %s\n' "$spelling" >&2
+    exit 1
+  fi
+done
+if "$buck" --isolation-dir cache-admission-check audit providers \
+  -c build.execution_platforms=effect_utils//buck2/platforms:exec_macos_aarch64_hermetic \
+  effect_utils//:ts_policy_default > "$work/ts-policy-darwin-implicit.log" 2>&1; then
+  printf 'Darwin TypeScript implicitly selected a cache-admitted executor\n' >&2
   exit 1
 fi
-printf 'PASS cache-admitted platform: tsgo_emit\n'
+if ! grep -Fq 'darwin-unsandboxed: TypeScript execution cannot use the cache-admitted execution platform' "$work/ts-policy-darwin-implicit.log"; then
+  cat "$work/ts-policy-darwin-implicit.log" >&2
+  exit 1
+fi
 
 for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
   for spelling in canonical relative alias alias_at; do

@@ -205,6 +205,14 @@ rec {
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;
           src = ./.;
+          extraCapabilities = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            bubblewrap = {
+              kind = "executable";
+              package = pkgs.bubblewrap;
+              executable = "bin/bwrap";
+              protocol = "containers/bubblewrap/v1";
+            };
+          };
         };
         # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products {
@@ -409,7 +417,8 @@ rec {
           base = self.packages.${pkgs.stdenv.hostPlatform.system}.buck2-capabilities;
         in
         import ./nix/buck2-capabilities.nix {
-          inherit pkgs extraCapabilities;
+          inherit pkgs;
+          extraCapabilities = base.passthru.extraCapabilities // extraCapabilities;
           inherit (base.passthru) capabilityPackages src;
         };
 

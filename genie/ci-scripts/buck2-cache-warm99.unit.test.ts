@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 
 import { classifyCacheAction, decodeActionArtifact } from './buck2-action-evidence-codec.ts'
-import { localMaterializationCategories } from './buck2-action-evidence.ts'
+import {
+  darwinUnsandboxedCategories,
+  localMaterializationCategories,
+} from './buck2-action-evidence.ts'
 import {
   actionFixture,
   artifactFixture,
@@ -49,11 +52,16 @@ describe('strict action boundary', () => {
       }
     }
     for (const executionKind of [1, 8]) {
-      expect(classifyCacheAction(actionFixture({
-        category: 'tsgo_emit',
-        executionKind,
-        buildId: invocation.buildId,
-      }), invocation)).toBe('fresh-local-execution')
+      expect(
+        classifyCacheAction(
+          actionFixture({
+            category: 'tsgo_emit',
+            executionKind,
+            buildId: invocation.buildId,
+          }),
+          invocation,
+        ),
+      ).toBe('fresh-local-execution')
     }
   })
 
@@ -67,30 +75,85 @@ describe('strict action boundary', () => {
     const { excludedByDesign: _root, ...header } = artifact.header
     const historical = {
       ...header,
-      invocations: header.invocations.map(({ excludedByDesign: _counts, ...invocation }) => invocation),
+      invocations: header.invocations.map(
+        ({ excludedByDesign: _counts, ...invocation }) => invocation,
+      ),
     }
     const rows = artifact.actions.map(({ exclusionReason: _reason, ...action }) => action)
     const decoded = decodeActionArtifact(
       `${[historical, ...rows].map((row) => JSON.stringify(row)).join('\n')}\n`,
     )
     expect(decoded).toEqual(artifact)
-    expect(decoded.header.excludedByDesign).toEqual({ 'local-materialization-policy': 5 })
+    expect(decoded.header.excludedByDesign).toEqual({
+      'local-materialization-policy': 5,
+      'darwin-unsandboxed': 0,
+    })
     expect(decoded.actions.map((action) => action.outcome)).toEqual(Array(6).fill('remote-hit'))
-    expect(() => decodeEvidence(encoded.compressed, {
-      ...encoded.summary,
-      excludedByDesign: { 'local-materialization-policy': 0 },
-    }, 'main-reader')).toThrow()
-    expect(() => decodeEvidence(encoded.compressed, {
-      ...encoded.summary,
-      invocations: encoded.summary.invocations.map((invocation) => ({
-        ...invocation,
-        excludedByDesign: { 'local-materialization-policy': 0 },
-      })),
-    }, 'main-reader')).toThrow()
-    expect(() => decodeActionArtifact(encoded.raw.replace(
-      '"exclusionReason":"local-materialization-policy"',
-      '"exclusionReason":null',
-    ))).toThrow()
+    expect(() =>
+      decodeEvidence(
+        encoded.compressed,
+        {
+          ...encoded.summary,
+          excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+        },
+        'main-reader',
+      ),
+    ).toThrow()
+    expect(() =>
+      decodeEvidence(
+        encoded.compressed,
+        {
+          ...encoded.summary,
+          invocations: encoded.summary.invocations.map((invocation) => ({
+            ...invocation,
+            excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+          })),
+        },
+        'main-reader',
+      ),
+    ).toThrow()
+    expect(() =>
+      decodeActionArtifact(
+        encoded.raw.replace(
+          '"exclusionReason":"local-materialization-policy"',
+          '"exclusionReason":null',
+        ),
+      ),
+    ).toThrow()
+  })
+
+  it('excludes Darwin TS execution and validates its named full-artifact counters', () => {
+    const artifact = artifactFixture(
+      false,
+      darwinUnsandboxedCategories.map((category) =>
+        actionFixture({ category, executionKind: 1, cacheUploadResult: 0 }),
+      ),
+    )
+    const encoded = encodedFixture(artifact)
+    expect(decodeEvidence(encoded.compressed, encoded.summary, 'main-reader')).toEqual(artifact)
+    expect(artifact.header.excludedByDesign).toEqual({
+      'local-materialization-policy': 0,
+      'darwin-unsandboxed': darwinUnsandboxedCategories.length,
+    })
+    for (const action of artifact.actions) {
+      expect(action.exclusionReason).toBe('darwin-unsandboxed')
+      expect(classifyCacheAction(action, artifact.header.invocations[0])).toBe('other')
+    }
+    expect(() =>
+      decodeEvidence(
+        encoded.compressed,
+        {
+          ...encoded.summary,
+          excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+        },
+        'main-reader',
+      ),
+    ).toThrow()
+    expect(() =>
+      decodeActionArtifact(
+        encoded.raw.replace('"exclusionReason":"darwin-unsandboxed"', '"exclusionReason":null'),
+      ),
+    ).toThrow()
   })
 
   it('preserves unsupported raw enums only in explicitly incomplete artifacts', () => {
@@ -141,25 +204,15 @@ describe('strict action boundary', () => {
   })
 })
 describe('warm99 identity acceptance', () => {
-  it('keeps every materialization category outside eligible, cold, changed and upload-failure cohorts', () => {
+  it('keeps materialization and Darwin TS outside eligible, cold, changed and upload-failure cohorts', () => {
     for (const executionKind of [1, 3, 8, 10]) {
       const manifest = manifestFixture()
       const loaded = loadedFixture(manifest)
       for (const item of loaded) {
-        item.writers = [artifactFixture(true, [
-          actionFixture({
-            category: 'tsgo_emit',
-            executionKind: 1,
-            cacheUploadResult: 1,
-            uploadOutcome: 'uploaded',
-            startedAt: 10,
-            completedAt: 100,
-            endTime: 100,
-            uploadCompletedAt: 100,
-          }),
-          ...localMaterializationCategories.flatMap((category) => [
+        item.writers = [
+          artifactFixture(true, [
             actionFixture({
-              category,
+              category: 'tsgo_emit',
               executionKind: 1,
               cacheUploadResult: 1,
               uploadOutcome: 'uploaded',
@@ -168,27 +221,45 @@ describe('warm99 identity acceptance', () => {
               endTime: 100,
               uploadCompletedAt: 100,
             }),
-            actionFixture({
-              category,
-              executionKind: 1,
-              cacheUploadResult: 9,
-              uploadOutcome: 'failed',
-            }),
+            ...[...localMaterializationCategories, ...darwinUnsandboxedCategories].flatMap(
+              (category) => [
+                actionFixture({
+                  category,
+                  executionKind: 1,
+                  cacheUploadResult: 1,
+                  uploadOutcome: 'uploaded',
+                  startedAt: 10,
+                  completedAt: 100,
+                  endTime: 100,
+                  uploadCompletedAt: 100,
+                }),
+                actionFixture({
+                  category,
+                  executionKind: 1,
+                  cacheUploadResult: 9,
+                  uploadOutcome: 'failed',
+                }),
+              ],
+            ),
           ]),
-        ])]
-        item.readers = [artifactFixture(false, [
-          actionFixture({ category: 'tsgo_emit' }),
-          ...localMaterializationCategories.flatMap((category) => [
-            actionFixture({ category, executionKind }),
-            actionFixture({ category, executionKind, digest: 'ffff:12' }),
-            actionFixture({
-              category,
-              executionKind: 1,
-              cacheUploadResult: 9,
-              uploadOutcome: 'failed',
-            }),
+        ]
+        item.readers = [
+          artifactFixture(false, [
+            actionFixture({ category: 'tsgo_emit' }),
+            ...[...localMaterializationCategories, ...darwinUnsandboxedCategories].flatMap(
+              (category) => [
+                actionFixture({ category, executionKind }),
+                actionFixture({ category, executionKind, digest: 'ffff:12' }),
+                actionFixture({
+                  category,
+                  executionKind: 1,
+                  cacheUploadResult: 9,
+                  uploadOutcome: 'failed',
+                }),
+              ],
+            ),
           ]),
-        ])]
+        ]
       }
       const report = evaluateWarm99(manifest, loaded)
       expect(report.accepted).toBe(true)
@@ -197,8 +268,8 @@ describe('warm99 identity acceptance', () => {
         eligible: 1,
         remoteHits: 1,
         hitRate: 1,
-        excluded: 15,
-        excludedByDesign: { 'local-materialization-policy': 15 },
+        excluded: 24,
+        excludedByDesign: { 'local-materialization-policy': 15, 'darwin-unsandboxed': 9 },
         cold: 0,
         changed: 0,
         noncacheable: 0,
@@ -324,7 +395,7 @@ describe('warm99 identity acceptance', () => {
         completedAt: 300,
         freshRoot: false,
         actionCount: 1,
-        excludedByDesign: { 'local-materialization-policy': 0 },
+        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
         complete: true,
       })
       item.readers = [reader]

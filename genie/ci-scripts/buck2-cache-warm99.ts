@@ -23,6 +23,7 @@ import { gunzipSync } from 'node:zlib'
 import {
   boolean,
   decodeActionArtifact,
+  decodeActionExclusionCounts,
   field,
   integer,
   invalid,
@@ -30,9 +31,9 @@ import {
   list,
   text,
 } from './buck2-action-evidence-codec.ts'
-import { decodeCacheAdmissionEvidence } from './buck2-cache-evidence.ts'
 import {
   actionExclusionReason,
+  actionExclusionReasons,
   countActionExclusions,
   actionsArtifactName,
   cacheOutcomeMapping,
@@ -44,6 +45,7 @@ import {
   type ActionRecord,
   type CacheLane,
 } from './buck2-action-evidence.ts'
+import { decodeCacheAdmissionEvidence } from './buck2-cache-evidence.ts'
 
 export type ArtifactReference = { lane: CacheLane; summary: string; actions: string }
 export type Observation = {
@@ -186,12 +188,15 @@ export const decodeEvidence = (
   }
   if (total !== artifact.actions.length) return invalid()
   const excludedByDesign = field(summary, 'excludedByDesign')
-  if (
-    excludedByDesign !== undefined &&
-    integer(field(excludedByDesign, 'local-materialization-policy')) !==
-      artifact.header.excludedByDesign['local-materialization-policy']
-  )
-    return invalid()
+  if (excludedByDesign !== undefined) {
+    const declared = decodeActionExclusionCounts(excludedByDesign)
+    if (
+      actionExclusionReasons.some(
+        (reason) => declared[reason] !== artifact.header.excludedByDesign[reason],
+      )
+    )
+      return invalid()
+  }
   const invocations = list(field(summary, 'invocations'))
   if (invocations.length !== artifact.header.invocations.length) return invalid()
   for (const invocation of artifact.header.invocations) {
@@ -202,12 +207,15 @@ export const decodeEvidence = (
     )
       return invalid()
     const exclusions = field(matches[0], 'excludedByDesign')
-    if (
-      exclusions !== undefined &&
-      integer(field(exclusions, 'local-materialization-policy')) !==
-        invocation.excludedByDesign['local-materialization-policy']
-    )
-      return invalid()
+    if (exclusions !== undefined) {
+      const declared = decodeActionExclusionCounts(exclusions)
+      if (
+        actionExclusionReasons.some(
+          (reason) => declared[reason] !== invocation.excludedByDesign[reason],
+        )
+      )
+        return invalid()
+    }
   }
   return artifact
 }
@@ -372,11 +380,13 @@ export const evaluateWarm99 = (manifest: WarmManifest, loaded: LoadedObservation
             (action) =>
               actionExclusionReason(action.category) === null && action.uploadOutcome === 'failed',
           ).length ?? 0
-        const policyExcluded =
-          artifact === undefined
-            ? 0
-            : countActionExclusions(artifact.actions)['local-materialization-policy']
-        result.excludedByDesign['local-materialization-policy'] += policyExcluded
+        const policyCounts = countActionExclusions(artifact?.actions ?? [])
+        for (const reason of actionExclusionReasons)
+          result.excludedByDesign[reason] += policyCounts[reason]
+        const policyExcluded = actionExclusionReasons.reduce(
+          (total, reason) => total + policyCounts[reason],
+          0,
+        )
         result.excluded +=
           artifact?.header.metadata.posture === 'disabled-by-design'
             ? artifact.actions.length

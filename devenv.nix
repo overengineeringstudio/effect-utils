@@ -46,6 +46,13 @@ let
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
+  tsSandboxTestEnvironment = lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
+    export BWRAP_BIN=${flakePkgs.bubblewrap}/bin/bwrap
+    export BUN_BIN=${flakePkgs.bun}/bin/bun
+    export BUN_CLOSURE_PATHS_JSON="$(${pkgs.jq}/bin/jq -Rsc \
+      'split("\n") | map(select(length > 0))' \
+      ${pkgs.closureInfo { rootPaths = [ flakePkgs.bun ]; }}/store-paths)"
+  '';
   restatePkgs = import repoFlake.inputs.nixpkgs {
     system = currentSystem;
     config.allowUnfreePredicate = pkg: builtins.elem (pkgs.lib.getName pkg) [ "restate" ];
@@ -1095,6 +1102,7 @@ in
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
+      ${tsSandboxTestEnvironment}
       cd "$root/packages/@overeng/buck2-tools"
       exec ${pkgs.bun}/bin/bun test src/*.test.ts
     ''
@@ -1556,6 +1564,28 @@ in
     '';
   };
 
+  tasks."buck2:ts-sandbox:test" = {
+    description = "Prove Linux TS action containment and missing/unusable Bubblewrap fail-closed behavior";
+    after = [ "buck2:providers:check" ];
+    exec = trace.exec "buck2:ts-sandbox:test" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      ${lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
+        ${publishBuckCapabilities}
+        cd "$root"
+        "$BUCK2_BIN" build \
+          --target-platforms effect_utils//buck2/platforms:host_platform \
+          effect_utils//buck2/tests/ts_sandbox:probe
+        ${tsSandboxTestEnvironment}
+        exec ${pkgs.bun}/bin/bun test \
+          ./packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts
+      ''}
+      ${lib.optionalString flakePkgs.stdenv.hostPlatform.isDarwin ''
+        printf '%s\n' 'TS sandbox admission excluded: darwin-unsandboxed (jd5hbf, 2026-10-11)'
+      ''}
+    '';
+  };
+
   # The provider audit remains separate because it validates the
   # capability/toolchain boundary rather than producing an admitted artifact.
   tasks."buck2:providers:check" = {
@@ -1583,7 +1613,10 @@ in
 
   tasks."buck2:quick" = {
     description = "Build the admitted quick Buck aggregate";
-    after = [ "buck2:providers:check" ];
+    after = [
+      "buck2:providers:check"
+      "buck2:ts-sandbox:test"
+    ];
     # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
     exec = buck2AggregateExec "buck2:quick" "//:quick";
   };

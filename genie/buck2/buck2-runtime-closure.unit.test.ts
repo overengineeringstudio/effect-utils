@@ -67,6 +67,13 @@ describe('staged Buck runtime closure', () => {
     expect(buck2ToolsBuck).toContain(`    src = "src/${stagedModuleName(runtime.entry)}",`)
   })
 
+  it('keeps the sandbox launcher standalone through the package source export', () => {
+    const entry = 'packages/@overeng/buck2-tools/src/ts-sandbox.ts'
+    expect(importClosure(entry)).toEqual([entry])
+    expect(relativeSpecifiers(readFileSync(entry, 'utf8'))).toEqual([])
+    expect(buck2ToolsBuck).toContain('    "src/ts-sandbox.ts",')
+  })
+
   it('follows relative imports, so a clean closure is not a vacuous pass', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'buck2-runtime-closure-'))
     try {

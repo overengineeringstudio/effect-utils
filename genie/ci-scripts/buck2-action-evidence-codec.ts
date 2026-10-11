@@ -1,5 +1,6 @@
 import {
   actionExclusionReason,
+  actionExclusionReasons,
   countActionExclusions,
   cacheOutcomeMapping,
   invocationWithinJobWindow,
@@ -46,9 +47,15 @@ export const text = (value: unknown): string =>
   typeof value === 'string' && value.length > 0 ? value : invalid()
 export const boolean = (value: unknown): boolean => (typeof value === 'boolean' ? value : invalid())
 export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : invalid())
-export const decodeActionExclusionCounts = (value: unknown): ActionExclusionCounts => ({
-  'local-materialization-policy': integer(field(value, 'local-materialization-policy')),
-})
+export const decodeActionExclusionCounts = (value: unknown): ActionExclusionCounts => {
+  const darwinCount = field(value, 'darwin-unsandboxed')
+  return {
+    'local-materialization-policy': integer(field(value, 'local-materialization-policy')),
+    // Retained artifacts predate Darwin-specific categories; full rows still
+    // validate this zero against the current category policy below.
+    'darwin-unsandboxed': darwinCount === undefined ? 0 : integer(darwinCount),
+  }
+}
 const nullableText = (value: unknown, grammar = /^[a-zA-Z0-9_.:-]+$/): string | null => {
   if (value === null) return null
   const result = text(value)
@@ -94,7 +101,9 @@ const decodeAction = (value: unknown): ActionRecord => {
     buildId: nullableText(field(value, 'buildId'), /^[a-zA-Z0-9_.-]+$/),
     context: nullableText(field(value, 'context')),
     category: nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/),
-    exclusionReason: actionExclusionReason(nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/)),
+    exclusionReason: actionExclusionReason(
+      nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/),
+    ),
     target: nullableText(
       field(value, 'target'),
       /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/,
@@ -221,8 +230,9 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
   if (field(value, 'excludedByDesign') === undefined) header.excludedByDesign = actualExclusions
   if (
     header.complete &&
-    header.excludedByDesign['local-materialization-policy'] !==
-      actualExclusions['local-materialization-policy']
+    actionExclusionReasons.some(
+      (reason) => header.excludedByDesign[reason] !== actualExclusions[reason],
+    )
   )
     return invalid()
   const invocationValues = list(field(value, 'invocations'))
@@ -234,8 +244,9 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
       invocation.excludedByDesign = exclusions
     if (
       header.complete &&
-      invocation.excludedByDesign['local-materialization-policy'] !==
-        exclusions['local-materialization-policy']
+      actionExclusionReasons.some(
+        (reason) => invocation.excludedByDesign[reason] !== exclusions[reason],
+      )
     )
       return invalid()
   }

@@ -85,6 +85,7 @@ pkgs.runCommand "buck2-capabilities"
     nativeBuildInputs = [ pkgs.bun ];
     passthru = {
       inherit capabilityPackages;
+      inherit extraCapabilities;
       src = projectionSource;
     };
   }

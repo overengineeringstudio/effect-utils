@@ -27,6 +27,7 @@ import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-p
 import { decodeActionArtifact, decodeActionExclusionCounts } from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
+  actionExclusionReasons,
   countActionExclusions,
   actionsArtifactName,
   cacheOutcomeMapping,
@@ -585,8 +586,8 @@ export const mergeCacheEvidence = ({
     for (const outcome of cacheEvidenceOutcomes) counts[outcome] += invocation.counts[outcome]
     actionCount += invocation.actionCount
     if (invocation.excludedByDesign !== undefined)
-      excludedByDesign['local-materialization-policy'] +=
-        invocation.excludedByDesign['local-materialization-policy']
+      for (const reason of actionExclusionReasons)
+        excludedByDesign[reason] += invocation.excludedByDesign[reason]
   }
   return {
     schemaVersion: 1,
@@ -702,7 +703,9 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
     counts: decodeCounts(field({ value: value, key: 'counts' })),
     ...(field({ value, key: 'excludedByDesign' }) === undefined
       ? {}
-      : { excludedByDesign: decodeActionExclusionCounts(field({ value, key: 'excludedByDesign' })) }),
+      : {
+          excludedByDesign: decodeActionExclusionCounts(field({ value, key: 'excludedByDesign' })),
+        }),
     actionCount: count(field({ value: value, key: 'actionCount' })),
     droppedActionCount: count(field({ value: value, key: 'droppedActionCount' })),
     invocations,
