@@ -37,9 +37,11 @@ Downstream package consumers should make their root `nixpkgs` and `flake-utils`
 follow `effect-utils/nixpkgs` and `effect-utils/flake-utils` to share the canonical
 build graph.
 
-The Genie product wrapper supplies `gh` on PATH for repository-settings
-reconciliation, alongside the formatter and absolute compiler/server tools.
-Its external-capability contract must match the published descriptor exactly.
+The Genie product wrapper realizes the pinned descriptor's capabilities through
+a closed provider registry. It supplies `gh` on PATH when the published product
+requires repository-settings reconciliation; old products do not acquire that
+provider. Unknown capabilities fail before import, and the realized capability
+and external-module sets must match the descriptor exactly.
 The cached `mr` version stamp reports the manifest's producer commit and product
 version, rather than the importing checkout's revision. Producer timestamps are
 not recorded in the manifest, so that stamp has no timestamp or consumer dirty
