@@ -1,5 +1,6 @@
 load("@prelude//utils:source_listing.bzl", "source_listing")
 load(":attrs.bzl", "rust_internal_tools_toolchain")
+load(":sandbox_runtime.bzl", "sandbox_env")
 load(
     ":tool_rules.bzl",
     "get_rustc_cfg",
@@ -40,8 +41,10 @@ prelude.python_bootstrap_binary(
 
 prelude.python_bootstrap_library(
     name = "fixed_root_runtime",
-    srcs = ["fixed_root.py", "sandbox-runtime.json"],
+    srcs = ["fixed_root.py", "sandbox-runtime.json", ":sandbox_env"],
 )
+
+sandbox_env(name = "sandbox_env")
 
 prelude.python_bootstrap_binary(
     name = "rustdoc_test_with_resources",

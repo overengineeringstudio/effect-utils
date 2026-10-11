@@ -25,7 +25,8 @@ def run(plan, evidence):
         config = ["--config", "rust_bakeoff.arm=" + item["arm"], "--config", "buck2.default_allow_cache_upload=false"]
         if item.get("instance"):
             config.extend(["--config", "buck2_re_client.instance_name=" + item["instance"]])
-        args = [BUCK, "bxl", "-j", "2", "//buck2/rust/sandbox-cohort.bxl:run", *config]
+        entrypoint = item.get("entrypoint", "run")
+        args = [BUCK, "bxl", "-j", "2", "//buck2/rust/sandbox-cohort.bxl:" + entrypoint, *config]
         if item.get("noCache"):
             args.append("--no-remote-cache")
         before = os.getloadavg()[0]

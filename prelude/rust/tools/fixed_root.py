@@ -78,6 +78,9 @@ def launch(script, argv):
             staged.add(relative)
         for entry in metadata["digests"]:
             install(entry["path"])
+        env_input = Path(__file__).with_name("sandbox-env")
+        env_relative = env_input.relative_to(host) if env_input.is_absolute() else env_input
+        install(env_relative)
         # Reconstitute source/dependency views, but only from declared bytes.
         for view in manifest["views"]:
             install(view)
@@ -97,7 +100,7 @@ def launch(script, argv):
         command.extend(mounts)
         # Prelude's declared linker wrappers use /usr/bin/env bash.
         shell = runtime["shell"]
-        command.extend(["--dir", "/bin", "--symlink", shell, "/bin/sh", "--dir", "/usr", "--dir", "/usr/bin", "--symlink", runtime["env"], "/usr/bin/env", "--chdir", VROOT])
+        command.extend(["--dir", "/bin", "--symlink", shell, "/bin/sh", "--dir", "/usr", "--dir", "/usr/bin", "--symlink", VROOT + "/" + str(env_relative), "/usr/bin/env", "--chdir", VROOT])
         fixed_path = str(Path(shell).parent) + ":" + str(Path(runtime["env"]).parent)
         for key, value in {"LC_ALL": "C", "TZ": "UTC", "HOME": "/home/build", "PWD": VROOT, "PATH": fixed_path, "TMPDIR": "/tmp", "BUCK_SCRATCH_PATH": "/tmp", "RUST_SANDBOX_INNER": "1"}.items():
             command.extend(["--setenv", key, value])
