@@ -153,6 +153,10 @@ describe('direct pinned Buck posture', () => {
       let requests = 0
       let archiveRequests = 0
       const deadlines: string[] = []
+      const probeDeadlines: Record<'reapi' | 'archiveOrigin', AbortController[]> = {
+        reapi: [],
+        archiveOrigin: [],
+      }
       const grpc = createServer()
       grpc.on('stream', (stream: ServerHttp2Stream, headers) => {
         requests++
@@ -160,7 +164,12 @@ describe('direct pinned Buck posture', () => {
         stream.on('error', () => {})
         stream.on('data', () => {})
         stream.on('end', () => {
-          if (scenario === 'both-fail' || (scenario === 'retry-success' && requests === 1)) return
+          if (scenario === 'both-fail' || (scenario === 'retry-success' && requests === 1)) {
+            const deadline = probeDeadlines.reapi[requests - 1]
+            if (deadline === undefined) throw new Error('expected REAPI attempt deadline')
+            deadline.abort()
+            return
+          }
           stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
           stream.end(Buffer.from([0, 0, 0, 0, 0]))
         })
@@ -174,8 +183,12 @@ describe('direct pinned Buck posture', () => {
         hostname: '127.0.0.1',
         fetch: () => {
           archiveRequests++
-          if (scenario === 'both-fail' || (scenario === 'retry-success' && archiveRequests === 1))
+          if (scenario === 'both-fail' || (scenario === 'retry-success' && archiveRequests === 1)) {
+            const deadline = probeDeadlines.archiveOrigin[archiveRequests - 1]
+            if (deadline === undefined) throw new Error('expected archive attempt deadline')
+            deadline.abort()
             return new Promise<Response>(() => {})
+          }
           return new Response(null, { status: 404 })
         },
       })
@@ -190,6 +203,13 @@ describe('direct pinned Buck posture', () => {
           args: ['build', '//:app'],
           env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, GITHUB_ACTIONS: 'true' },
           ...(scenario === 'healthy' ? {} : { deadlineMs: 100 }),
+          // The fixture expires only deliberately held attempts, after receiving
+          // the real request. A healthy retry must not race a wall-clock timer.
+          probeDeadlineSignal: (endpoint: 'reapi' | 'archiveOrigin') => {
+            const deadline = new AbortController()
+            probeDeadlines[endpoint].push(deadline)
+            return deadline.signal
+          },
         }
         const invocationId = '01234567-89ab-cdef-0123-456789abcdef'
         const result = await directBuckArguments({
@@ -205,6 +225,15 @@ describe('direct pinned Buck posture', () => {
         expect(requests).toBe(scenario === 'healthy' ? 1 : 2)
         expect(archiveRequests).toBe(scenario === 'healthy' ? 1 : 2)
         expect(deadlines).toEqual(scenario === 'healthy' ? ['2500m'] : ['100m', '100m'])
+        for (const attempts of Object.values(probeDeadlines)) {
+          expect(attempts.map((deadline) => deadline.signal.aborted)).toEqual(
+            scenario === 'healthy'
+              ? [false]
+              : scenario === 'retry-success'
+                ? [true, false]
+                : [true, true],
+          )
+        }
         if (scenario === 'both-fail') {
           await expect(
             directBuckArguments({

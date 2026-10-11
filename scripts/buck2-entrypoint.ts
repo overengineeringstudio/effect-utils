@@ -182,12 +182,15 @@ export const directBuckArguments = async ({
     'buck2-posture-v2',
   ),
   deadlineMs = 2500,
+  probeDeadlineSignal,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cacheDirectory?: string
   readonly deadlineMs?: number
+  /** Supply a fresh caller-controlled deadline for each network probe attempt. */
+  readonly probeDeadlineSignal?: (endpoint: 'reapi' | 'archiveOrigin') => AbortSignal
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
@@ -355,6 +358,7 @@ export const directBuckArguments = async ({
                   header: values['buck2_re_client.http_headers'],
                   env,
                   deadlineMs,
+                  deadlineSignal: probeDeadlineSignal?.('reapi'),
                   onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) =>
                     process.stderr.write(
                       `warning: Buck2 REAPI probe failed: class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}\n`,
@@ -374,7 +378,12 @@ export const directBuckArguments = async ({
           probe: () =>
             retryProbe({
               endpoint: 'archiveOrigin',
-              probe: () => probeArchiveOrigin({ urlPrefix: prefix, deadlineMs }),
+              probe: () =>
+                probeArchiveOrigin({
+                  urlPrefix: prefix,
+                  deadlineMs,
+                  deadlineSignal: probeDeadlineSignal?.('archiveOrigin'),
+                }),
             }),
         }),
   ])

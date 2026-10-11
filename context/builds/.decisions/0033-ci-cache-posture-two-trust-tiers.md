@@ -131,6 +131,11 @@ in-process in a separately guarded setup hook; sequential replays place the
 first launch in setup and the second in the case. Cold admission remains
 covered directly, and concurrent migration still races both CLI launches.
 CLI process groups are reaped before their fixtures are removed.
+Network retry/fallback fixtures provide a fresh deadline signal per real probe
+attempt and expire only held requests after the server receives them. Healthy
+responses do not race a shortened platform timer. These tests retain the
+declared gRPC deadline headers; production callers retain the 2500 ms attempt
+budget and existing immediate retry.
 
 In [merge-group run 37557021971](https://github.com/overengineeringstudio/effect-utils/actions/runs/37557021971)
 (PR #1578, 01:25Z), four macOS Namespace test invocations fell back, as did one
