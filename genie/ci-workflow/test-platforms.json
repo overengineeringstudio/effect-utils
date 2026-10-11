@@ -2,7 +2,7 @@
   "darwin": [
     {
       "task": "test:buck2:unit",
-      "rationale": "Host-platform Buck daemon and native runners, including bounded filesystem, process, shell and native-binary suites."
+      "rationale": "Host-platform Buck daemon and native runners, including bounded filesystem, process, shell and native-binary suites; pingping exercises Unix sockets, Linux route parsing and the macOS netinfo boundary."
     },
     {
       "task": "devenv-modules:test",

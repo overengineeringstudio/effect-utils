@@ -16,11 +16,11 @@ Chat-generated labels cannot establish calibrated probability semantics.
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
+| Option                                   | Tradeoff                                                             |
+| ---------------------------------------- | -------------------------------------------------------------------- |
 | Effect Decision/DecisionModel (selected) | Reuses the validated typed abstraction and native TypeSafe provider. |
-| Separate typed judgment service | Duplicates the existing abstraction and question definitions. |
-| Chat-derived probability adapter | Cannot establish the required native calibration semantics. |
+| Separate typed judgment service          | Duplicates the existing abstraction and question definitions.        |
+| Chat-derived probability adapter         | Cannot establish the required native calibration semantics.          |
 
 ## Decision
 
