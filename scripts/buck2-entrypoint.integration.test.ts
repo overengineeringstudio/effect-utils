@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, setSystemTime } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, setSystemTime } from 'bun:test'
 import { createHash } from 'node:crypto'
 import {
   chmodSync,
@@ -20,6 +20,7 @@ import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-e
 import { directBuckArguments } from './buck2-entrypoint.ts'
 
 const roots: string[] = []
+const launchProcesses = new Set<Bun.Subprocess<'ignore', 'pipe', 'pipe'>>()
 const fixture = (address = 'grpc://127.0.0.1:1', archive = 'http://127.0.0.1:1/cas/'): string => {
   const root = mkdtempSync(join(tmpdir(), 'direct-buck-posture-'))
   roots.push(root)
@@ -115,7 +116,30 @@ const effective = (args: readonly string[]): Record<string, string> => {
   }
   return values
 }
-afterEach(() => {
+afterEach(async () => {
+  for (const child of launchProcesses) {
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error
+    }
+    // Descendants are not awaitable children; poll the real OS group condition,
+    // not a guessed grace period, before deleting their fixtures.
+    await child.exited
+    const deadline = performance.now() + 2000
+    for (;;) {
+      try {
+        process.kill(-child.pid, 0)
+      } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break
+        throw error
+      }
+      if (performance.now() >= deadline)
+        throw new Error(`Launch process group ${child.pid} was not reaped; preserving fixtures`)
+      await Bun.sleep(10)
+    }
+  }
+  launchProcesses.clear()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
@@ -917,86 +941,132 @@ describe('direct pinned Buck watcher admission', () => {
     expect(watcherLocal(root)).not.toContain('file_watcher = notify')
   }, 5000)
 
-  it.each(['healthy', 'unreachable'])(
-    'launches native Buck only with %s service and caches argv only for healthy admission',
-    async (mode) => {
-      const { root, env, state } = watcherFixture()
-      writeFileSync(state, mode)
-      const native = join(root, 'native-buck')
-      writeFileSync(
-        native,
-        `#!${Bun.which('sh')}\nprintf 'native:%s\\n' "$*"\ncat .buckconfig.local\n`,
-        { mode: 0o700 },
-      )
-      const launchCache = join(root, 'launch-cache')
-      const child = Bun.spawn(
-        [
-          process.execPath,
-          join(import.meta.dir, 'buck2-entrypoint.ts'),
-          native,
-          '--launch-cache',
-          launchCache,
-          'build',
-          '//:app',
-        ],
-        {
-          cwd: root,
-          env: { ...env, XDG_CACHE_HOME: join(root, 'xdg-cache') },
-          stdout: 'pipe',
-          stderr: 'pipe',
-        },
-      )
-      const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-        child.exited,
-      ])
-      expect(exitCode).toBe(mode === 'healthy' ? 0 : 1)
-      expect(stdout.includes('native:build //:app')).toBe(mode === 'healthy')
-      expect(existsSync(launchCache)).toBe(mode === 'healthy')
-      if (mode === 'healthy') {
-        expect(stderr).toBe('')
-        expect(stdout).toContain('file_watcher = watchman')
-        expect(readFileSync(launchCache, 'utf8').split('\n')[1]).toBe('build\0//:app\0')
-      } else {
-        expect(stderr).toContain('Watchman watch-project probe failed (service)')
-        expect(stderr).toContain('Probe:')
-        expect(stderr).toContain('Fix:')
-        expect(stderr).toContain('Refusing to use notify')
-      }
-    },
-  )
-
-  it.each(['legacy', 'notify', 'concurrent', 'failed-stop'] as const)(
-    'migrates only the selected worktree isolation for %s daemon state',
-    async (mode) => {
-      const { root, env } = watcherFixture()
-      const state = join(root, '.buck', 'buckd', root.slice(1))
-      const selected = join(state, 'owned')
-      const other = join(state, 'unrelated')
-      const admission = join(root, '.buck', 'file-watcher-admission-v1', root.slice(1))
-      const selectedMarker = join(admission, 'owned.json')
-      const otherMarker = join(admission, 'unrelated.json')
-      mkdirSync(admission, { recursive: true })
-      const otherRoot = fixture()
-      const otherWorktreeState = join(root, '.buck', 'buckd', otherRoot.slice(1), 'owned')
-      mkdirSync(otherWorktreeState, { recursive: true })
-      writeFileSync(join(otherWorktreeState, 'buckd.pid'), '888888')
-      const oldMarker = JSON.stringify({
-        schema: 'effect-utils/buck2-file-watcher-admission/v1',
-        provider: 'notify',
+  for (const mode of ['healthy', 'unreachable'] as const) {
+    describe(`native Buck launch with ${mode} watcher admission`, () => {
+      let setup: { root: string; state: string; env: Record<string, string> }
+      let launchEnv: Record<string, string | undefined>
+      beforeEach(async () => {
+        setup = watcherFixture()
+        writeFileSync(setup.state, mode)
+        launchEnv = {
+          ...process.env,
+          ...setup.env,
+          XDG_CACHE_HOME: join(setup.root, 'xdg-cache'),
+        }
+        // Prepare healthy admission in-process under the hook's own 5000 ms
+        // guard. The CLI case only exercises native launch and argv caching;
+        // cold service admission is asserted by the direct admission cases.
+        if (mode === 'healthy') {
+          expect(
+            await directBuckArguments({
+              cwd: setup.root,
+              env: launchEnv,
+              args: ['build', '//:app'],
+            }),
+          ).toEqual(['build', '//:app'])
+        }
       })
-      for (const directory of [selected, other]) {
-        mkdirSync(directory, { recursive: true })
-        writeFileSync(join(directory, 'buckd.pid'), '999999')
+      it('launches native Buck and caches argv only for healthy admission', async () => {
+        const { root } = setup
+        const native = join(root, 'native-buck')
+        writeFileSync(
+          native,
+          `#!${Bun.which('sh')}\nprintf 'native:%s\\n' "$*"\ncat .buckconfig.local\n`,
+          { mode: 0o700 },
+        )
+        const launchCache = join(root, 'launch-cache')
+        const child = Bun.spawn(
+          [
+            process.execPath,
+            join(import.meta.dir, 'buck2-entrypoint.ts'),
+            native,
+            '--launch-cache',
+            launchCache,
+            'build',
+            '//:app',
+          ],
+          {
+            cwd: root,
+            env: launchEnv,
+            detached: true,
+            stdin: 'ignore',
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        )
+        launchProcesses.add(child)
+        const [stdout, stderr, exitCode] = await Promise.all([
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+          child.exited,
+        ])
+        expect(exitCode).toBe(mode === 'healthy' ? 0 : 1)
+        expect(stdout.includes('native:build //:app')).toBe(mode === 'healthy')
+        expect(existsSync(launchCache)).toBe(mode === 'healthy')
+        if (mode === 'healthy') {
+          expect(stderr).toBe('')
+          expect(stdout).toContain('file_watcher = watchman')
+          expect(readFileSync(launchCache, 'utf8').split('\n')[1]).toBe('build\0//:app\0')
+        } else {
+          expect(stderr).toContain('Watchman watch-project probe failed (service)')
+          expect(stderr).toContain('Probe:')
+          expect(stderr).toContain('Fix:')
+          expect(stderr).toContain('Refusing to use notify')
+        }
+      })
+    })
+  }
+
+  for (const mode of ['legacy', 'notify', 'concurrent', 'failed-stop'] as const) {
+    describe(`selected worktree isolation for ${mode} daemon state`, () => {
+      type LaunchResult = { exitCode: number; stdout: string; stderr: string }
+      let launch: () => Promise<LaunchResult>
+      let firstRun: LaunchResult
+      let setup: {
+        nativeCalls: string
+        otherMarker: string
+        otherWorktreeState: string
+        other: string
+        oldMarker: string
+        selectedMarker: string
       }
-      writeFileSync(otherMarker, oldMarker)
-      if (mode === 'notify') writeFileSync(selectedMarker, oldMarker)
-      const nativeCalls = join(root, 'native-calls')
-      const native = join(root, 'native-buck')
-      writeFileSync(
-        native,
-        `#!${Bun.which('sh')}
+      beforeEach(async () => {
+        const { root, env } = watcherFixture()
+        const launchEnv = {
+          ...process.env,
+          ...env,
+          XDG_CACHE_HOME: join(root, 'xdg-cache'),
+          BUCK_ISOLATION_DIR: mode === 'legacy' ? 'owned' : undefined,
+        }
+        expect(
+          await directBuckArguments({ cwd: root, env: launchEnv, args: ['build', '//:app'] }),
+        ).toEqual(['build', '//:app'])
+        const state = join(root, '.buck', 'buckd', root.slice(1))
+        const selected = join(state, 'owned')
+        const other = join(state, 'unrelated')
+        const admission = join(root, '.buck', 'file-watcher-admission-v1', root.slice(1))
+        const selectedMarker = join(admission, 'owned.json')
+        const otherMarker = join(admission, 'unrelated.json')
+        mkdirSync(admission, { recursive: true })
+        const otherRoot = fixture()
+        const otherWorktreeState = join(root, '.buck', 'buckd', otherRoot.slice(1), 'owned')
+        mkdirSync(otherWorktreeState, { recursive: true })
+        writeFileSync(join(otherWorktreeState, 'buckd.pid'), '888888')
+        const oldMarker = JSON.stringify({
+          schema: 'effect-utils/buck2-file-watcher-admission/v1',
+          provider: 'notify',
+        })
+        for (const directory of [selected, other]) {
+          mkdirSync(directory, { recursive: true })
+          writeFileSync(join(directory, 'buckd.pid'), '999999')
+        }
+        writeFileSync(otherMarker, oldMarker)
+        if (mode === 'notify') writeFileSync(selectedMarker, oldMarker)
+        const nativeCalls = join(root, 'native-calls')
+        const native = join(root, 'native-buck')
+        writeFileSync(
+          native,
+          `#!${Bun.which('sh')}
 printf '%s\\n' "$*" >> '${nativeCalls}'
 if [ "$*" = "--isolation-dir owned kill" ]; then
   ${mode === 'failed-stop' ? 'exit 1' : `rm -rf '${selected}'\n  mkdir -p '${selected}'\n  exit 0`}
@@ -1004,55 +1074,67 @@ fi
 printf '999998' > '${selected}/buckd.pid'
 printf 'native build\\n'
 `,
-        { mode: 0o700 },
-      )
-      const launch = async () => {
-        const child = Bun.spawn(
-          [
-            process.execPath,
-            join(import.meta.dir, 'buck2-entrypoint.ts'),
-            native,
-            ...(mode === 'legacy'
-              ? ['build', '//:app']
-              : mode === 'notify'
-                ? ['--isolation-dir=owned', 'build', '//:app']
-                : ['--isolation-dir', 'owned', 'build', '//:app']),
-          ],
-          {
-            cwd: root,
-            env: { ...env, BUCK_ISOLATION_DIR: mode === 'legacy' ? 'owned' : undefined },
-            stdout: 'pipe',
-            stderr: 'pipe',
-          },
+          { mode: 0o700 },
         )
-        const [exitCode, stdout, stderr] = await Promise.all([
-          child.exited,
-          new Response(child.stdout).text(),
-          new Response(child.stderr).text(),
-        ])
-        return { exitCode, stdout, stderr }
-      }
-      const runs =
-        mode === 'concurrent'
-          ? await Promise.all([launch(), launch()])
-          : [await launch(), await launch()]
-      const calls = readFileSync(nativeCalls, 'utf8').trim().split('\n')
-      expect(readFileSync(otherMarker, 'utf8')).toBe(oldMarker)
-      expect(readFileSync(join(otherWorktreeState, 'buckd.pid'), 'utf8')).toBe('888888')
-      expect(readFileSync(join(other, 'buckd.pid'), 'utf8')).toBe('999999')
-      if (mode === 'failed-stop') {
-        expect(runs.every(({ exitCode }) => exitCode === 1)).toBe(true)
-        expect(runs.every(({ stdout }) => stdout === '')).toBe(true)
-        expect(calls).toEqual(['--isolation-dir owned kill', '--isolation-dir owned kill'])
-        expect(existsSync(selectedMarker)).toBe(false)
-      } else {
-        expect(runs.every(({ exitCode }) => exitCode === 0)).toBe(true)
-        expect(runs.every(({ stdout }) => stdout.includes('native build'))).toBe(true)
-        expect(calls.filter((call) => call.endsWith(' kill'))).toEqual([
-          '--isolation-dir owned kill',
-        ])
-        expect(JSON.parse(readFileSync(selectedMarker, 'utf8')).provider).toBe('watchman')
-      }
-    },
-  )
+        launch = async () => {
+          const child = Bun.spawn(
+            [
+              process.execPath,
+              join(import.meta.dir, 'buck2-entrypoint.ts'),
+              native,
+              ...(mode === 'legacy'
+                ? ['build', '//:app']
+                : mode === 'notify'
+                  ? ['--isolation-dir=owned', 'build', '//:app']
+                  : ['--isolation-dir', 'owned', 'build', '//:app']),
+            ],
+            {
+              cwd: root,
+              env: launchEnv,
+              detached: true,
+              stdin: 'ignore',
+              stdout: 'pipe',
+              stderr: 'pipe',
+            },
+          )
+          launchProcesses.add(child)
+          const [exitCode, stdout, stderr] = await Promise.all([
+            child.exited,
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+          ])
+          return { exitCode, stdout, stderr }
+        }
+        setup = { nativeCalls, otherMarker, otherWorktreeState, other, oldMarker, selectedMarker }
+        // A sequential replay gets its own guard rather than sharing the
+        // second launch's deadline. Concurrent admission still races both CLIs.
+        if (mode !== 'concurrent') firstRun = await launch()
+      })
+      it('migrates only the selected worktree isolation', async () => {
+        const { nativeCalls, otherMarker, otherWorktreeState, other, oldMarker, selectedMarker } =
+          setup
+        const runs =
+          mode === 'concurrent'
+            ? await Promise.all([launch(), launch()])
+            : [firstRun, await launch()]
+        const calls = readFileSync(nativeCalls, 'utf8').trim().split('\n')
+        expect(readFileSync(otherMarker, 'utf8')).toBe(oldMarker)
+        expect(readFileSync(join(otherWorktreeState, 'buckd.pid'), 'utf8')).toBe('888888')
+        expect(readFileSync(join(other, 'buckd.pid'), 'utf8')).toBe('999999')
+        if (mode === 'failed-stop') {
+          expect(runs.every(({ exitCode }) => exitCode === 1)).toBe(true)
+          expect(runs.every(({ stdout }) => stdout === '')).toBe(true)
+          expect(calls).toEqual(['--isolation-dir owned kill', '--isolation-dir owned kill'])
+          expect(existsSync(selectedMarker)).toBe(false)
+        } else {
+          expect(runs.every(({ exitCode }) => exitCode === 0)).toBe(true)
+          expect(runs.every(({ stdout }) => stdout.includes('native build'))).toBe(true)
+          expect(calls.filter((call) => call.endsWith(' kill'))).toEqual([
+            '--isolation-dir owned kill',
+          ])
+          expect(JSON.parse(readFileSync(selectedMarker, 'utf8')).provider).toBe('watchman')
+        }
+      })
+    })
+  }
 })

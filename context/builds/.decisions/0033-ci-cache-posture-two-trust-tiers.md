@@ -125,6 +125,13 @@ A deadline does not by itself establish a
 cache-server outage. A five-second endpoint-result cache can reuse a failure;
 its original probe emits diagnostics rather than repeating them on cache hits.
 
+The `buck2:cache-posture:test` integration suite keeps Bun's default 5000 ms
+guard. CLI launch and daemon replay cases prepare healthy watcher admission
+in-process in a separately guarded setup hook; sequential replays place the
+first launch in setup and the second in the case. Cold admission remains
+covered directly, and concurrent migration still races both CLI launches.
+CLI process groups are reaped before their fixtures are removed.
+
 In [merge-group run 37557021971](https://github.com/overengineeringstudio/effect-utils/actions/runs/37557021971)
 (PR #1578, 01:25Z), four macOS Namespace test invocations fell back, as did one
 `pr/quality` invocation. The subsequent
