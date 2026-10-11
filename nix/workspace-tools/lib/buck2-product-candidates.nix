@@ -168,7 +168,7 @@ let
           --run 'if [ "$#" -gt 1 ] && [ "$1" = db ]; then case "$2" in init|pull|push|sync|export|status|conflicts|forget|restore|doctor) shift; exec ${notionDb}/bin/notion-db-runtime "$@";; esac; fi'
         "$out/bin/notion" md --help >/dev/null
         db_output="$($out/bin/notion db sync --help 2>&1 || true)"
-        printf '%s\n' "$db_output" | ${pkgs.gnugrep}/bin/grep -q 'Reconcile an established workspace'
+        printf '%s\n' "$db_output" | ${pkgs.gnugrep}/bin/grep 'Reconcile an established workspace' >/dev/null
         mkdir -p "$out/share/fish/vendor_completions.d" "$out/share/bash-completion/completions" "$out/share/zsh/site-functions"
         for shell in fish bash zsh; do
           case "$shell" in
