@@ -1605,7 +1605,8 @@ export const reserveEditorViewBudget = async ({
     // walk cannot change their eligibility and must not tax ordinary publication.
     const observesReaders =
       plan.order.length > 0 &&
-      census.usedBytes + reservedBytes(readState(store)) + reservationBytes >= budgetBytes * warningRatio
+      census.usedBytes + reservedBytes(readState(store)) + reservationBytes >=
+        budgetBytes * warningRatio
     if (observesReaders === true)
       plan = planEviction({
         census,
