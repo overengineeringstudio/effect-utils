@@ -1734,7 +1734,7 @@ def _rustc_invoke(
         {
             "target": str(ctx.label.raw_target()),
             "configuredTarget": str(ctx.label),
-            "identifier": _explain(crate_type = common_args.crate_type, link_strategy = common_args.params.dep_link_strategy, emit = common_args.emit, infallible_diagnostics = infallible_diagnostics, profile_mode = profile_mode),
+            "identifier": "" if is_clippy else _explain(crate_type = common_args.crate_type, link_strategy = common_args.params.dep_link_strategy, emit = common_args.emit, infallible_diagnostics = infallible_diagnostics, profile_mode = profile_mode),
             "outputs": [cmd_args(out, ignore_artifacts = True) for out in compile_cmd.outputs + rustc_cmd.outputs],
             "views": [compile_ctx.symlinked_srcs],
         },

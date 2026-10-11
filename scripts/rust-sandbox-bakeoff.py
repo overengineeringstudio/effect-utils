@@ -33,7 +33,7 @@ def run(plan, evidence):
         elapsed = time.time() - started
         after = os.getloadavg()[0]
         (evidence / (name + ".log")).write_text(result.stdout + result.stderr)
-        log = subprocess.run([BUCK, "log", "show", "--recent", "1"], cwd=root, capture_output=True, text=True, check=True)
+        log = subprocess.run([BUCK, "log", "show", "--recent", "0"], cwd=root, capture_output=True, text=True, check=True)
         with gzip.open(evidence / (name + ".events.jsonl.gz"), "wt") as output:
             output.write(log.stdout)
         actions = []

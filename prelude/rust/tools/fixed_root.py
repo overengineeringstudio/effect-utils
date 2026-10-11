@@ -31,19 +31,27 @@ def launch(script, argv):
     manifest_arg = next(x for x in expanded if x.startswith("--sandbox-outputs="))
     manifest = json.loads(Path(manifest_arg.split("=", 1)[1]).read_text())
     expanded = [x for x in expanded if not x.startswith("--sandbox-outputs=")]
-    declared = {}
-    for entry in metadata["digests"]:
-        path = Path(entry["path"])
-        if path.is_absolute() or ".." in path.parts:
-            raise RuntimeError("input outside the declared root: " + str(path))
-        source = host / path
-        digest, size = entry["digest"].split(":")
-        # Fail closed if files change between Buck hashing and our namespace.
-        if source.stat().st_size != int(size) or hashlib.sha256(source.read_bytes()).hexdigest() != digest:
-            raise RuntimeError("input digest changed: " + str(path))
-        declared.setdefault(str(source.resolve()), str(path))
     with tempfile.TemporaryDirectory(prefix="q42-root-", dir=os.environ.get("BUCK_SCRATCH_PATH")) as scratch:
-        stage = Path(scratch)
+        stage = Path(scratch).resolve() / "root"
+        stage.mkdir()
+        snapshots = Path(scratch).resolve() / "inputs"
+        snapshots.mkdir()
+        declared = {}
+        for entry in metadata["digests"]:
+            path = Path(entry["path"])
+            if path.is_absolute() or ".." in path.parts:
+                raise RuntimeError("input outside the declared root: " + str(path))
+            source = host / path
+            digest, size = entry["digest"].split(":")
+            payload = source.read_bytes()
+            if len(payload) != int(size) or hashlib.sha256(payload).hexdigest() != digest:
+                raise RuntimeError("input digest changed: " + str(path))
+            executable = bool(source.stat().st_mode & 0o111)
+            snapshot = snapshots / (digest + ("-x" if executable else "-r"))
+            if not snapshot.exists():
+                snapshot.write_bytes(payload)
+                snapshot.chmod(0o555 if executable else 0o444)
+            declared.setdefault(str(source.resolve()), snapshot)
         mounts = []
         staged = set()
         def install(relative):
@@ -65,7 +73,7 @@ def launch(script, argv):
                 raise RuntimeError("undeclared sandbox input: " + relative)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.touch()
-            mounts.extend(["--ro-bind", str(source.resolve()), VROOT + "/" + relative])
+            mounts.extend(["--ro-bind", str(canonical), VROOT + "/" + relative])
             staged.add(relative)
         for entry in metadata["digests"]:
             install(entry["path"])
