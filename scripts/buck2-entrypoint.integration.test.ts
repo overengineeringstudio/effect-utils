@@ -69,7 +69,9 @@ case "$1" in
 esac
 [ "$*" = "--output-encoding=json watch-project ${root}" ] || exit 2
 # The real client exits silently when --no-spawn finds no reachable service.
-case "$(cat "$socket" 2>/dev/null)" in
+status=''
+if [ -f "$socket" ]; then IFS= read -r status < "$socket" || :; fi
+case "$status" in
   healthy) printf '{"version":"2026.10.05","watch":"${root}"}\n' ;;
   unreachable) printf 'unable to connect to service\n' >&2; exit 1 ;;
   nice-refusal) printf 'Watchman is running at a lower than normal priority. (nice_value=19, min_acceptable_nice_value=0). Watchman is refusing to start.\n' >&2; exit 1 ;;
@@ -81,7 +83,9 @@ case "$(cat "$socket" 2>/dev/null)" in
   wrong-root) printf '{"version":"2026.10.05","watch":"${dirname(root)}","relative_path":"fixture"}\n' ;;
   relative-root) printf '{"version":"2026.10.05","watch":"${root}","relative_path":"ignored"}\n' ;;
   retry-timeout)
-    if [ "$(wc -l < '${calls}')" -eq 1 ]; then exec sleep 30; fi
+    count=0
+    while IFS= read -r call; do count=$((count + 1)); done < '${calls}'
+    if [ "$count" -eq 1 ]; then exec sleep 30; fi
     printf '{"version":"2026.10.05","watch":"${root}"}\n' ;;
   hanging) exec sleep 30 ;;
   *) exit 1 ;;
@@ -614,9 +618,12 @@ describe('direct pinned Buck watcher admission', () => {
            } catch (error) { console.error(error.message); process.exit(1); }`,
         ],
         env: { ...env, WATCHMAN_SOCK: undefined },
+        detached: true,
+        stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
       })
+      launchProcesses.add(child)
       const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
       expect(exit).toBe(mode === 'healthy' ? 0 : 1)
       expect(readFileSync(calls, 'utf8')).toBe(
@@ -660,9 +667,12 @@ describe('direct pinned Buck watcher admission', () => {
           WATCHMAN_SOCK: undefined,
           PATH: mode === 'eacces' ? root : env['PATH'],
         },
+        detached: true,
+        stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
       })
+      launchProcesses.add(child)
       const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
       expect(exit).toBe(1)
       expect(stderr).toContain(expected)
