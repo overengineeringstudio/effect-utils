@@ -22,7 +22,10 @@ import { lstat, readFile, readdir, rename, unlink, writeFile } from 'node:fs/pro
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
-import { managedEditorViewSnapshots, positiveEditorViewProcessReferences } from './editor-view-readers.ts'
+import {
+  managedEditorViewSnapshots,
+  positiveEditorViewProcessReferences,
+} from './editor-view-readers.ts'
 import {
   collectEditorViewContentStore,
   defaultEditorViewContentStore,
@@ -54,6 +57,7 @@ export type EditorViewBudgetRootLock = { readonly release: () => void }
 
 /** Marker left at `<editorRoot>/.evicted-<view>.json` after a current generation is evicted. */
 export const editorViewEvictedSchema = 'effect-utils/editor-view-evicted/v1' as const
+/** Durable explanation consumed when an evicted current view is republished. */
 export type EditorViewEvictedMarker = {
   readonly schema: typeof editorViewEvictedSchema
   readonly snapshot: string
@@ -125,7 +129,9 @@ export const editorViewHostRecencyMs = (): number => {
   if (raw === undefined) return defaultRecencyMs
   const value = Number(raw)
   if (/^(?:0|[1-9][0-9]*)$/.test(raw) === false || Number.isSafeInteger(value) === false)
-    return fail(`EDITOR_VIEW_HOST_RECENCY_MS must be a non-negative safe integer of milliseconds: ${raw}`)
+    return fail(
+      `EDITOR_VIEW_HOST_RECENCY_MS must be a non-negative safe integer of milliseconds: ${raw}`,
+    )
   return value
 }
 
@@ -919,7 +925,8 @@ const listRoots = ({
     const currents = new Map<string, string>()
     let activeAtMs = 0
     for (const [key, at] of state.lastUse)
-      if (key.startsWith(`${candidate.editorRoot}\0`) === true) activeAtMs = Math.max(activeAtMs, at)
+      if (key.startsWith(`${candidate.editorRoot}\0`) === true)
+        activeAtMs = Math.max(activeAtMs, at)
     let entries: string[] = []
     try {
       entries = readdirSync(candidate.editorRoot)
@@ -1005,6 +1012,8 @@ const takeCensus = async ({
       lastUseMs: Date.now(),
     })
   }
+  // Bound filesystem requests and live footprint memory while accumulating one census.
+  /* eslint-disable no-await-in-loop */
   for (const rootView of roots) {
     const editorRoot = rootView.key
     const storeDir = join(editorRoot, '.store')
@@ -1097,6 +1106,7 @@ const takeCensus = async ({
       })
     }
   }
+  /* eslint-enable no-await-in-loop */
   const cas = await casCensus(contentStore)
   // The ledger and footprint sidecars live beside the CAS and occupy host bytes too.
   const ledger = await walkTree({ root: budgetDirectory(contentStore), unknown })
@@ -1230,7 +1240,6 @@ const planEviction = ({
 // ---------------------------------------------------------------------------
 // Retirement (root lock held by caller; CAS flock only for the metadata transaction)
 // ---------------------------------------------------------------------------
-
 
 /**
  * Map positive references to generations: a path inside `.store/<name>`

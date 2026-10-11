@@ -13,6 +13,7 @@ const inaccessibleProcessEntry = (error: unknown): boolean =>
 /** Durable managed-reader contract, separate from advisory shell symlinks. */
 export const editorViewPinSchema = 'effect-utils/editor-view-pin/v1' as const
 
+/** Validated private registration naming the immutable generation a reader holds. */
 export type EditorViewPinRecord = {
   readonly schema: typeof editorViewPinSchema
   readonly name: string
@@ -208,7 +209,13 @@ const observeProcessReferences = ({
 }
 
 /** glibc `makedev` of a /proc maps `major:minor` field, matching `stat().dev`. */
-const linuxDevice = ({ major, minor }: { readonly major: bigint; readonly minor: bigint }): bigint =>
+const linuxDevice = ({
+  major,
+  minor,
+}: {
+  readonly major: bigint
+  readonly minor: bigint
+}): bigint =>
   ((major & 0xfffff000n) << 32n) |
   ((major & 0xfffn) << 8n) |
   ((minor & 0xffffff00n) << 12n) |
@@ -227,7 +234,9 @@ export const positiveEditorViewProcessReferences = (): LiveReferences => {
   const inodes = new Set<string>()
   const admitPath = (target: string): void => {
     if (target.startsWith('/') === true)
-      paths.push(target.endsWith(' (deleted)') === true ? target.slice(0, -' (deleted)'.length) : target)
+      paths.push(
+        target.endsWith(' (deleted)') === true ? target.slice(0, -' (deleted)'.length) : target,
+      )
   }
   if (process.platform === 'linux') {
     let pids: string[] = []
@@ -262,10 +271,18 @@ export const positiveEditorViewProcessReferences = (): LiveReferences => {
       } catch {}
       for (const line of maps.split('\n')) {
         const match = /^\S+\s+\S+\s+\S+\s+([0-9a-f]+):([0-9a-f]+)\s+([0-9]+)\s*(.*)$/.exec(line)
-        if (match === null || match[1] === undefined || match[2] === undefined || match[3] === undefined)
+        if (
+          match === null ||
+          match[1] === undefined ||
+          match[2] === undefined ||
+          match[3] === undefined
+        )
           continue
         if (match[3] === '0') continue
-        const device = linuxDevice({ major: BigInt(`0x${match[1]}`), minor: BigInt(`0x${match[2]}`) })
+        const device = linuxDevice({
+          major: BigInt(`0x${match[1]}`),
+          minor: BigInt(`0x${match[2]}`),
+        })
         inodes.add(`${device}:${match[3]}`)
         if (match[4] !== undefined) admitPath(match[4])
       }

@@ -172,11 +172,7 @@ const makeHost = (): Host => {
   const age = (fixture: Fixture, record: EditorViewRecord): void => {
     const path = join(fixture.editorRoot, record.snapshot)
     // Keep the equal directory mtimes below every last-use timestamp, preserving the LRU order.
-    utimesSync(
-      path,
-      lstatSync(path).atime,
-      new Date(now - (hostRecencyMs + hostGraceMs) * 2 - 1),
-    )
+    utimesSync(path, lstatSync(path).atime, new Date(now - (hostRecencyMs + hostGraceMs) * 2 - 1))
   }
   return {
     root,
@@ -364,7 +360,9 @@ const readBudgetLedger = (host: Host): BudgetLedger => {
         'budgetBytes' in entry === false ||
         typeof entry.budgetBytes !== 'number'
       )
-        throw new Error(`host-budget reservation lacks owner incarnation or byte accounting: ${token}`)
+        throw new Error(
+          `host-budget reservation lacks owner incarnation or byte accounting: ${token}`,
+        )
       return {
         token,
         pid: entry.pid,
@@ -767,7 +765,9 @@ describe('host budget alerts while publishing protected managed, live, recent an
 
   it('warns when a warm protected footprint crosses eighty percent of the budget', async () => {
     const budgetBytes = Math.ceil(overBudget.protectedBytes / 0.85)
-    const captured = await captureStderr(() => host.publish(grace, { hostBudgetBytes: budgetBytes }))
+    const captured = await captureStderr(() =>
+      host.publish(grace, { hostBudgetBytes: budgetBytes }),
+    )
     expect(captured.value.snapshot).toBe(graceRecord.snapshot)
     const warnings = budgetEvents(captured.stderr).filter(
       ({ event }) => event === 'editor-view.host-budget.warning',
@@ -915,18 +915,19 @@ describe('concurrent advisory host-budget publication and managed pin admission'
       for (const event of overBudget) {
         expect(event.budgetBytes).toBe(budgetBytes)
         expect(
-          event.usedBytes + event.reservedBytes + event.pendingEstimateBytes + event.reservationBytes,
+          event.usedBytes +
+            event.reservedBytes +
+            event.pendingEstimateBytes +
+            event.reservationBytes,
         ).toBeGreaterThan(budgetBytes)
         expect(event.reservedBytes).toBeGreaterThanOrEqual(0)
         expect(event.pendingEstimateBytes).toBe(0)
         expect(event.protectedBytes).toBeGreaterThanOrEqual(payloadBytes * 2)
       }
-      const smallestReservation = Math.min(
-        ...captured.value.reservations.map(({ bytes }) => bytes),
-      )
-      expect(Math.max(...overBudget.map(({ reservedBytes }) => reservedBytes))).toBeGreaterThanOrEqual(
-        smallestReservation,
-      )
+      const smallestReservation = Math.min(...captured.value.reservations.map(({ bytes }) => bytes))
+      expect(
+        Math.max(...overBudget.map(({ reservedBytes }) => reservedBytes)),
+      ).toBeGreaterThanOrEqual(smallestReservation)
       expect(
         Math.max(
           ...overBudget.map(
