@@ -47,7 +47,7 @@ let
   tsSandboxTestEnvironment = lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
     ${publishBuckCapabilities}
     cd "$root"
-    export BWRAP_BIN=${flakePkgs.bubblewrap}/bin/bwrap
+    export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
     export BUN_BIN=${flakePkgs.bun}/bin/bun
     export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
     probe_outputs="$("$BUCK2_BIN" build \

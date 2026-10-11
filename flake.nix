@@ -202,13 +202,14 @@ rec {
           inherit pkgs buck2 pnpmArchives;
           src = ./.;
         };
+        buck2Bubblewrap = import ./nix/bubblewrap.nix { inherit pkgs; };
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;
           src = ./.;
           extraCapabilities = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             bubblewrap = {
               kind = "executable";
-              package = pkgs.bubblewrap;
+              package = buck2Bubblewrap;
               executable = "bin/bwrap";
               protocol = "containers/bubblewrap/v1";
             };
@@ -308,6 +309,9 @@ rec {
             );
             oxlint-npm = oxlintNpm;
             node-pty-native = nodePtyNative;
+          }
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            buck2-bubblewrap = buck2Bubblewrap;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             buck2-vite-runtime-closure-fixture = viteRuntimeFixture;

@@ -65,6 +65,13 @@ runs outside the action:
 | Environment                                                                | Cleared; only `LC_ALL=C`, `TZ=UTC`, `BUCK_SCRATCH_PATH`, private `TMPDIR`, and action-owned `PWD` (also synthesized by Bun) |
 | Network and undeclared host filesystem                                     | Unavailable; isolated network namespace and no ambient filesystem mount                                                     |
 
+The capability pins upstream Bubblewrap 0.13.0 in `nix/bubblewrap.nix`.
+Its recursive `mount_setattr` path applies read-only, `nodev`, and `nosuid`
+without reparsing the growing mount table for each declared bind. Older kernels
+use Bubblewrap's upstream attribute-setting fallback; neither path weakens the
+filesystem or network boundary. Declared inputs remain individual mounts:
+there is no copied input-view grouping, overlay, image, or FUSE dependency.
+
 Every TS run action declares directory outputs, including directories holding
 projected file receipts. Runners reset their contents without deleting the
 mount point. Outputs are written in place: there is no staging publication
