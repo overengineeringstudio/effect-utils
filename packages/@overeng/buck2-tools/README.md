@@ -85,8 +85,8 @@ views, editor state roots, generations, and worktrees. They never hardlink or
 symlink to disposable artifacts. A payload key is its SHA-256 plus normalized
 read-only mode: **0444 for data, 0555 when any source execute bit is set**.
 Executables remain executable; write and special permission bits are removed.
-Only the snapshot-root `editor-view.json` remains independent metadata; nested
-files of that name are ordinary shareable payloads. Snapshot directories and
+Snapshot-root `editor-view.json` and `editor-view-sources-v1.json` remain private
+metadata; nested files of those names are ordinary shareable payloads. Snapshot directories and
 relocated symlinks remain private to each generation.
 
 The default store is `.editor-view-content/v1` beside the common Git repository
@@ -108,8 +108,30 @@ worktrees can prepare concurrently. An `EXDEV` destination keeps an independent
 read-only reflink/copy and reports `copiedFiles` and `copiedBytes`; it does not
 pretend to share an inode.
 
-Collection runs after one publication, once per distinct store after a batch,
-and after explicit release. Only validated blobs whose link count is **one**
+Admission groups at most 128 files per shard into a metadata transaction, avoiding
+reopening most shards for each batch. Pending shard queues retain at most
+256 × 128 file records, not payload bytes. Small-file SHA-256 work uses four
+bounded native crypto jobs; larger payloads stream. Immutable inode verification
+is memoized by device, inode, size, nanosecond modification time, mode, and owner
+in a bounded 65,536-entry process cache; ctime is required except for read-only
+shared inodes. Unchanged generation identities skip CAS hashing and linking
+entirely. Buck's JSON build output supplies paths, not
+per-file digests; its private materializer database is not an admission contract.
+
+Each finite generation keeps a private, read-only `editor-view-sources-v1.json`
+manifest mapping payload paths to source stat keys and SHA-256-plus-mode addresses.
+Incremental materialization links unchanged content directly from the CAS after
+rechecking its recorded inode identity under the store lock. Only source-stat
+misses are copied and hashed; source Buck inodes are never linked. Stat keys
+include device, inode, size, nanosecond modification time, mode, and owner;
+ctime is also required except for read-only shared source inodes. The complete
+admitted-source versus candidate payload proof remains mandatory, so the manifest
+is an optimization hint, not a substitute for integrity validation.
+
+Collection runs after publications that create or unlink snapshot payloads, once
+per changed store after a batch, and after explicit release. A genuinely unchanged
+publication still evaluates retention, but skips a redundant CAS census when it
+unlinks nothing. Only validated blobs whose link count is **one**
 (the CAS entry alone) are removed, with identity and link count rechecked under
 the same short lock used by publishers. Current, retained, grace-protected,
 pinned, and concrete-reader-protected snapshots keep their blob links alive.

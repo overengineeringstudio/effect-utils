@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it, vi } from 'vitest'
 
+import { readEditorViewSourceManifest } from './editor-view-sharing.ts'
 import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
@@ -431,6 +432,70 @@ describe('editor view publisher', () => {
       }
     },
   )
+
+  it('reuses source-stat manifests for incremental finite snapshots without linking source inodes', async () => {
+    const fixture = makeFixture()
+    try {
+      const options = { ...fixture.options, backingRoots: [fixture.editorInputs] }
+      const first = await publishEditorView(options)
+      const firstRoot = join(fixture.editorRoot, first.snapshot)
+      const stablePath = join('node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep', 'index.js')
+      const stable = lstatSync(join(firstRoot, stablePath), { bigint: true })
+      const source = lstatSync(
+        join(fixture.nodeModules, '.pnpm', 'dep@1', 'node_modules', 'dep', 'index.js'),
+        { bigint: true },
+      )
+      const manifestName = 'editor-view-sources-v1.json'
+      expect(lstatSync(join(firstRoot, manifestName)).mode & 0o777).toBe(0o444)
+      expect(lstatSync(join(firstRoot, manifestName)).nlink).toBe(1)
+
+      writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":2}\n')
+      const second = await publishEditorView(options)
+      const secondRoot = join(fixture.editorRoot, second.snapshot)
+      expect(second.snapshot).not.toBe(first.snapshot)
+      const reused = lstatSync(join(secondRoot, stablePath), { bigint: true })
+      expect([reused.dev, reused.ino]).toEqual([stable.dev, stable.ino])
+      expect([reused.dev, reused.ino]).not.toEqual([source.dev, source.ino])
+      expect(reused.mode & 0o777n).toBe(0o444n)
+      expect(readEditorViewSourceManifest(join(secondRoot, manifestName)).get(stablePath)).toEqual(
+        readEditorViewSourceManifest(join(firstRoot, manifestName)).get(stablePath),
+      )
+      await expect(checkEditorView(options)).resolves.toEqual(second)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('does not substitute a source-stat manifest for the admitted payload proof', async () => {
+    const fixture = makeFixture()
+    try {
+      const options = { ...fixture.options, backingRoots: [fixture.editorInputs] }
+      const first = await publishEditorView(options)
+      const manifestPath = join(fixture.editorRoot, first.snapshot, 'editor-view-sources-v1.json')
+      const manifest = readEditorViewSourceManifest(manifestPath)
+      const stablePath = join('node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep', 'index.js')
+      const stable = manifest.get(stablePath)!
+      const descriptor = [...manifest].find(([path]) =>
+        path.endsWith('/install-descriptor.json'),
+      )![1]
+      manifest.set(stablePath, {
+        ...stable,
+        digest: descriptor.digest,
+        mode: descriptor.mode,
+        blobKey: descriptor.blobKey,
+      })
+      chmodSync(manifestPath, 0o600)
+      writeFileSync(manifestPath, JSON.stringify(Object.fromEntries(manifest)))
+      chmodSync(manifestPath, 0o444)
+      writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":2}\n')
+      await expect(publishEditorView(options)).rejects.toThrow(
+        'declared backing roots changed while materializing',
+      )
+      expect(currentTarget(fixture)).toBe(first.snapshot)
+    } finally {
+      cleanup(fixture)
+    }
+  })
 
   it('reuses canonical content when equivalent backing artifacts move or link spelling changes', async () => {
     const fixture = makeFixture()

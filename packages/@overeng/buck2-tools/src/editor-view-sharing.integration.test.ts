@@ -20,10 +20,11 @@ import {
   watch,
   writeFileSync,
 } from 'node:fs'
+import * as fsPromises from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, relative } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   type EditorViewContentSharing,
@@ -854,6 +855,127 @@ describe('host-wide editor snapshot content store', () => {
         proceed.resolve()
         await publication.catch(() => undefined)
       }
+    })
+  })
+
+  it.each(['replacement', 'same-inode mutation'] as const)(
+    'handles lock owner %s between open and read without trusting the old token',
+    async (change) => {
+      await withStore(async ({ contentStore, candidate }) => {
+        const seed = candidate('seed')
+        payload(seed, 'payload', 'lock turnover bytes')
+        await shareSnapshotFiles({ candidate: seed, contentStore })
+        const lock = `${contentStore}.lock`
+        const token = 'original-owner'
+        const ownerBytes = (ownerToken: string): string =>
+          JSON.stringify({
+            schema: 'editor-view-content-store-lock/v1',
+            token: ownerToken,
+            pid: process.pid,
+          })
+        writeFileSync(lock, ownerBytes(token), { mode: 0o444 })
+        const originalInode = inode(lock)
+        const file = await fsPromises.open(lock, constants.O_RDONLY | constants.O_NOFOLLOW)
+        const originalRead = file.readFile.bind(file)
+        const read = vi.spyOn(file, 'readFile').mockImplementationOnce(async () => {
+          if (change === 'replacement') {
+            unlinkSync(lock)
+            writeFileSync(lock, ownerBytes('successor-owner'), { mode: 0o444 })
+            expect(inode(lock)).not.toBe(originalInode)
+          } else {
+            chmodSync(lock, 0o644)
+            writeFileSync(lock, ownerBytes('mutated-owner-with-different-size'))
+            chmodSync(lock, 0o444)
+            expect(inode(lock)).toBe(originalInode)
+          }
+          return originalRead('utf8')
+        })
+        const open = vi.spyOn(fsPromises, 'open').mockResolvedValueOnce(file)
+        try {
+          await expect(recoverEditorViewContentStoreLock({ contentStore, token })).rejects.toThrow(
+            change === 'replacement'
+              ? 'content-store lock does not exist'
+              : 'content-store lock owner changed while reading',
+          )
+          expect(read).toHaveBeenCalledTimes(1)
+          expect(readFileSync(lock, 'utf8')).toBe(
+            ownerBytes(
+              change === 'replacement' ? 'successor-owner' : 'mutated-owner-with-different-size',
+            ),
+          )
+        } finally {
+          open.mockRestore()
+          read.mockRestore()
+        }
+      })
+    },
+  )
+
+  it('rechecks a writable directory under exclusion after its owner turns over during prehash', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const seed = candidate('seed')
+      payload(seed, 'payload', 'directory turnover bytes')
+      await shareSnapshotFiles({ candidate: seed, contentStore })
+      const next = candidate('next')
+      payload(next, 'payload', 'directory turnover bytes', 0o444)
+      const lock = `${contentStore}.lock`
+      const ownerBytes = (token: string): string =>
+        JSON.stringify({ schema: 'editor-view-content-store-lock/v1', token, pid: process.pid })
+      writeFileSync(lock, ownerBytes('departing-owner'), { mode: 0o444 })
+      chmodSync(contentStore, 0o755)
+      const file = await fsPromises.open(lock, constants.O_RDONLY | constants.O_NOFOLLOW)
+      const originalRead = file.readFile.bind(file)
+      const read = vi.spyOn(file, 'readFile').mockImplementationOnce(async () => {
+        unlinkSync(lock)
+        writeFileSync(lock, ownerBytes('successor-owner'), { mode: 0o444 })
+        return originalRead('utf8')
+      })
+      const originalOpen = fsPromises.open
+      let intercepted = false
+      const open = vi.spyOn(fsPromises, 'open').mockImplementation(async (...args) => {
+        if (args[0] === lock && intercepted === false) {
+          intercepted = true
+          return file
+        }
+        return originalOpen(...args)
+      })
+      const observation = observeContender(contentStore)
+      const publication = shareSnapshotFiles({ candidate: next, contentStore })
+      try {
+        await reachBarrier(observation.entered, publication)
+        expect(read).toHaveBeenCalledTimes(1)
+        expect(readFileSync(lock, 'utf8')).toBe(ownerBytes('successor-owner'))
+        // Complete the successor's real metadata protocol before releasing it.
+        chmodSync(contentStore, 0o555)
+        unlinkSync(lock)
+        expect((await publication).linkedFiles).toBe(1)
+        expectReadonlyStore(contentStore)
+        expectNoLock(contentStore)
+      } finally {
+        observation.close()
+        open.mockRestore()
+        read.mockRestore()
+        chmodSync(contentStore, 0o555)
+        if (exists(lock) && readFileSync(lock, 'utf8') === ownerBytes('successor-owner'))
+          unlinkSync(lock)
+        await Promise.allSettled([publication])
+      }
+    })
+  })
+
+  it('still rejects a writable directory with no owner after the exclusion recheck', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const seed = candidate('seed')
+      payload(seed, 'payload', 'unlocked directory bytes')
+      await shareSnapshotFiles({ candidate: seed, contentStore })
+      const next = candidate('next')
+      payload(next, 'payload', 'unlocked directory bytes')
+      chmodSync(contentStore, 0o755)
+      await expect(shareSnapshotFiles({ candidate: next, contentStore })).rejects.toThrow(
+        'content-store directory must be readonly when unlocked',
+      )
+      expect(mode(contentStore)).toBe(0o755)
+      expectNoLock(contentStore)
     })
   })
 

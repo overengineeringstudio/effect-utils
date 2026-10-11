@@ -1,6 +1,7 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, randomUUID, webcrypto } from 'node:crypto'
 import {
   constants,
+  linkSync,
   lstatSync,
   readFileSync,
   realpathSync,
@@ -29,6 +30,51 @@ const batchSize = 128
 const blobNamePattern = /^([a-f0-9]{64})-(0444|0555)$/
 const shardPattern = /^[a-f0-9]{2}$/
 const temporaryPattern = /^\.tmp-([a-f0-9]{64})-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
+export const editorViewSourceManifestName = 'editor-view-sources-v1.json'
+export type EditorViewSourceFile = {
+  readonly sourceKey: string
+  readonly digest: string
+  readonly mode: number
+  readonly blobKey: string
+}
+export const editorViewSourceKey = (status: BigIntStats): string => verificationKey(status)
+export const readEditorViewSourceManifest = (path: string): Map<string, EditorViewSourceFile> => {
+  let raw: unknown
+  try {
+    const status = lstatSync(path, { bigint: true })
+    requireBlob({ path, status, mode: 0o444 })
+    raw = JSON.parse(readFileSync(path, 'utf8'))
+  } catch (error) {
+    if (hasCode({ error, code: 'ENOENT' })) return new Map()
+    throw error
+  }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+    return fail(`invalid source manifest: ${path}`)
+  const entries = new Map<string, EditorViewSourceFile>()
+  for (const [source, entry] of Object.entries(raw)) {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      !('sourceKey' in entry) ||
+      typeof entry.sourceKey !== 'string' ||
+      !('digest' in entry) ||
+      typeof entry.digest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(entry.digest) ||
+      !('mode' in entry) ||
+      (entry.mode !== 0o444 && entry.mode !== 0o555) ||
+      !('blobKey' in entry) ||
+      typeof entry.blobKey !== 'string'
+    )
+      return fail(`invalid source manifest entry: ${path}`)
+    entries.set(source, {
+      sourceKey: entry.sourceKey,
+      digest: entry.digest,
+      mode: entry.mode,
+      blobKey: entry.blobKey,
+    })
+  }
+  return entries
+}
 
 const fail: (message: string) => never = (message) => {
   throw new Error(`editor view sharing: ${message}`)
@@ -84,7 +130,10 @@ const unchanged = ({
   left.mtimeNs === right.mtimeNs &&
   left.mode === right.mode &&
   left.uid === right.uid &&
-  (left.ctimeNs === right.ctimeNs || (isImmutable(left) === true && isImmutable(right) === true))
+  (left.ctimeNs === right.ctimeNs ||
+    (isImmutable(left) === true &&
+      isImmutable(right) === true &&
+      (left.nlink > 1n || right.nlink > 1n)))
 
 const requireOwned = ({
   path,
@@ -183,8 +232,12 @@ const readOwner = async (path: string): Promise<LockOwner | undefined> => {
     throw error
   }
   try {
-    if (unchanged({ left: expected, right: await file.stat({ bigint: true }) }) === false)
+    if (unchanged({ left: expected, right: await file.stat({ bigint: true }) }) === false) {
+      const named = await statusIfPresent(path)
+      if (named === undefined || sameInode({ left: expected, right: named }) === false)
+        return undefined
       fail(`content-store lock owner changed while opening: ${path}`)
+    }
     let owner: unknown
     try {
       owner = JSON.parse(await file.readFile('utf8'))
@@ -192,12 +245,19 @@ const readOwner = async (path: string): Promise<LockOwner | undefined> => {
       return fail(`cannot decode content-store lock owner at ${path}: ${String(error)}`)
     }
     const named = await statusIfPresent(path)
-    if (named === undefined) return undefined
+    // A completed owner may be replaced between open/read and this name check.
+    // Never use its token for recovery; acquisition must observe the new owner.
+    if (named === undefined || sameInode({ left: expected, right: named }) === false)
+      return undefined
     if (
       unchanged({ left: expected, right: await file.stat({ bigint: true }) }) === false ||
       unchanged({ left: expected, right: named }) === false
-    )
+    ) {
+      const current = await statusIfPresent(path)
+      if (current === undefined || sameInode({ left: expected, right: current }) === false)
+        return undefined
       fail(`content-store lock owner changed while reading: ${path}`)
+    }
     if (
       typeof owner !== 'object' ||
       owner === null ||
@@ -430,6 +490,24 @@ const validateDirectory = async ({
     const refreshed = await lstat(path, { bigint: true })
     if (sameInode({ left: status, right: refreshed }) === true && permissions(refreshed) === 0o555n)
       return refreshed
+    // Lock turnover makes an unlocked observation non-atomic with directory
+    // mode changes. Resolve that ambiguity under exclusion, without hashing or
+    // changing the directory. A genuinely writable unlocked store still fails.
+    return withStoreLock({
+      contentStore,
+      token: randomUUID(),
+      run: async () => {
+        const current = await statusIfPresent(path)
+        if (current === undefined) return undefined
+        await requireRealDirectory({ path, status: current })
+        requireOwned({ path, status: current })
+        if (sameInode({ left: status, right: current }) === false)
+          fail(`content-store directory changed during validation: ${path}`)
+        if (permissions(current) !== 0o555n)
+          fail(`content-store directory must be readonly when unlocked: ${path}`)
+        return current
+      },
+    })
   }
   return fail(`content-store directory must be readonly when unlocked: ${path}`)
 }
@@ -610,10 +688,10 @@ const withStoreLock = async <T>({
 /* eslint-enable no-await-in-loop */
 
 // This is only an optimization of immutable inode verification, never an index.
-// Bound retained metadata and omit ctime, which readonly hardlinks change freely.
+// Bound retained metadata; only readonly shared inodes may omit their mutable ctime.
 const verified = new Map<string, string>()
 const verificationKey = (status: BigIntStats): string =>
-  `${status.dev}:${status.ino}:${status.size}:${status.mtimeNs}:${status.mode}:${status.uid}`
+  `${status.dev}:${status.ino}:${status.size}:${status.mtimeNs}:${status.mode}:${status.uid}:${isImmutable(status) && status.nlink > 1n ? '' : status.ctimeNs}`
 const remember = ({
   status,
   digest,
@@ -622,7 +700,7 @@ const remember = ({
   readonly digest: string
 }): void => {
   const key = verificationKey(status)
-  if (verified.has(key) === false && verified.size >= 8_192) {
+  if (verified.has(key) === false && verified.size >= 65_536) {
     const oldest = verified.keys().next().value
     if (oldest !== undefined) verified.delete(oldest)
   }
@@ -651,14 +729,25 @@ const fingerprint = async ({
   try {
     const before = await file.stat({ bigint: true })
     if (before.isFile() === false || unchanged({ left: expected, right: before }) === false) {
-      if (mayDisappear === true && sameInode({ left: expected, right: before }) === false)
+      if (
+        mayDisappear === true &&
+        (sameInode({ left: expected, right: before }) === false ||
+          (await statusIfPresent(path)) === undefined)
+      )
         return undefined
       fail(`payload changed before hashing: ${path}`)
     }
-    const hash = createHash('sha256')
-    for await (const chunk of file.createReadStream({ autoClose: false })) hash.update(chunk)
-    if (unchanged({ left: before, right: await file.stat({ bigint: true }) }) === false)
+    const digestBytes =
+      before.size <= 65_536n
+        ? Buffer.from(await webcrypto.subtle.digest('SHA-256', await file.readFile()))
+        : undefined
+    const hash = digestBytes === undefined ? createHash('sha256') : undefined
+    if (hash !== undefined)
+      for await (const chunk of file.createReadStream({ autoClose: false })) hash.update(chunk)
+    if (unchanged({ left: before, right: await file.stat({ bigint: true }) }) === false) {
+      if (mayDisappear === true && (await statusIfPresent(path)) === undefined) return undefined
       fail(`payload changed while hashing: ${path}`)
+    }
     const named = await statusIfPresent(path)
     if (named === undefined || sameInode({ left: before, right: named }) === false) {
       if (mayDisappear === true) return undefined
@@ -666,7 +755,7 @@ const fingerprint = async ({
     }
     if (unchanged({ left: before, right: named }) === false)
       fail(`payload changed while hashing: ${path}`)
-    const digest = hash.digest('hex')
+    const digest = digestBytes?.toString('hex') ?? hash!.digest('hex')
     if (isImmutable(before) === true) remember({ status: before, digest: digest })
     return digest
   } finally {
@@ -705,7 +794,11 @@ const regularFiles = async function* ({
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name)
     if (entry.isDirectory() === true) yield* regularFiles({ directory: path, root: root })
-    else if (entry.isFile() === true && (directory !== root || entry.name !== 'editor-view.json'))
+    else if (
+      entry.isFile() === true &&
+      (directory !== root ||
+        (entry.name !== 'editor-view.json' && entry.name !== editorViewSourceManifestName))
+    )
       yield path
     // Admitted symlinks are not payload files and are never followed or changed.
   }
@@ -715,6 +808,7 @@ const normalizeCandidate = async (path: string): Promise<BigIntStats> => {
   const expected = await lstat(path, { bigint: true })
   if (expected.isFile() === false) fail(`candidate payload is not a regular file: ${path}`)
   requireOwned({ path: path, status: expected })
+  if (isImmutable(expected) === true) return expected
   const mode = (expected.mode & 0o111n) === 0n ? 0o444 : 0o555
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
@@ -892,15 +986,20 @@ const shareBatch = async ({
     while (pending.length !== 0) {
       // All walks, hashes and EXDEV preparation occur before acquisition. A
       // concurrent GC may unlink a validated key; private candidate bytes remain.
-      for (const file of pending) {
-        const existing = await validateBlob({
-          contentStore: contentStore,
-          path: file.blob,
-          digest: file.digest,
-          mode: file.mode,
-        })
-        if (existing === undefined && file.status.dev !== parentStatus.dev)
-          await prepareCopy({ contentStore: contentStore, file: file, token: token })
+      for (let index = 0; index < pending.length; index += 4) {
+        const prepared = await Promise.allSettled(
+          pending.slice(index, index + 4).map(async (file) => {
+            const existing = await validateBlob({
+              contentStore,
+              path: file.blob,
+              digest: file.digest,
+              mode: file.mode,
+            })
+            if (existing === undefined && file.status.dev !== parentStatus.dev)
+              await prepareCopy({ contentStore, file, token })
+          }),
+        )
+        for (const result of prepared) if (result.status === 'rejected') throw result.reason
       }
       pending = await withStoreLock({
         contentStore,
@@ -1022,6 +1121,7 @@ const within = ({ parent, path }: { readonly parent: string; readonly path: stri
   )
 }
 
+/* eslint-disable no-await-in-loop -- Settle each bounded preparation/link batch before accepting more files or releasing its candidate. */
 /**
  * Callers MUST prove candidate byte ownership before sharing; admitted sources
  * are never supplied or linked. Only regular payload files participate. Root
@@ -1031,10 +1131,21 @@ export const shareSnapshotFiles = async ({
   candidate,
   contentStore,
   afterStoreLock,
+  reusedFiles,
+  candidateFiles,
+  onSharedFile,
 }: {
   readonly candidate: string
   readonly contentStore: string
   readonly afterStoreLock?: () => void | Promise<void>
+  readonly reusedFiles?: ReadonlySet<string>
+  readonly candidateFiles?: Iterable<string>
+  readonly onSharedFile?: (file: {
+    path: string
+    digest: string
+    mode: number
+    blobKey: string
+  }) => void
 }): Promise<EditorViewContentSharing> => {
   const root = resolve(candidate)
   const store = resolve(contentStore)
@@ -1044,37 +1155,137 @@ export const shareSnapshotFiles = async ({
   )
     fail('candidate and content store must not overlap')
   const sharing: EditorViewContentSharing = {
-    linkedFiles: 0,
+    linkedFiles: reusedFiles?.size ?? 0,
     copiedFiles: 0,
     copiedBytes: 0,
     createdBlobs: 0,
   }
   const token = randomUUID()
   let parentStatus: BigIntStats | undefined
-  let files: PreparedFile[] = []
-  const flush = async (): Promise<void> => {
+  // Group bounded link transactions by shard, so each transaction opens and
+  // restores one shard instead of most of the store's 256 directories.
+  const batches = new Map<string, PreparedFile[]>()
+  const flush = async (shard: string, files: PreparedFile[]): Promise<void> => {
     if (files.length === 0) return
     parentStatus ??= await ensureParent({ contentStore: store, create: true })
     await shareBatch({ contentStore: store, files, parentStatus, token, afterStoreLock, sharing })
-    files = []
+    for (const file of files)
+      onSharedFile?.({
+        path: file.path,
+        digest: file.digest,
+        mode: file.mode,
+        blobKey: verificationKey(lstatSync(file.path, { bigint: true })),
+      })
+    batches.delete(shard)
   }
-  for await (const path of regularFiles({ directory: root })) {
+  const prepare = async (path: string): Promise<PreparedFile> => {
     const status = await normalizeCandidate(path)
     const digest =
       (await fingerprint({ path: path, expected: status })) ??
       fail(`candidate disappeared while hashing: ${path}`)
     const mode = Number(permissions(status))
-    files.push({
+    return {
       path,
       status,
       digest,
       mode,
       blob: join(store, digest.slice(0, 2), `${digest}-${mode === 0o444 ? '0444' : '0555'}`),
-    })
-    if (files.length === batchSize) await flush()
+    }
   }
-  await flush()
+  const paths: string[] = []
+  const prepareBatch = async (): Promise<void> => {
+    // Four small-file digests run on the native crypto worker pool. Large files
+    // remain streaming; neither promises nor payload buffers scale with the tree.
+    const prepared = await Promise.allSettled(paths.map(prepare))
+    const files = prepared.map((result) => {
+      if (result.status === 'rejected') throw result.reason
+      return result.value
+    })
+    paths.length = 0
+    for (const file of files) {
+      const shard = file.digest.slice(0, 2)
+      const batch = batches.get(shard) ?? []
+      batch.push(file)
+      batches.set(shard, batch)
+      if (batch.length === batchSize) await flush(shard, batch)
+    }
+  }
+  for await (const path of candidateFiles ?? regularFiles({ directory: root })) {
+    if (reusedFiles?.has(path) === true) continue
+    paths.push(path)
+    if (paths.length === 4) await prepareBatch()
+  }
+  await prepareBatch()
+  for (const [shard, files] of batches) await flush(shard, files)
   return sharing
+}
+/* eslint-enable no-await-in-loop */
+
+/** Reuse only previously proven CAS inodes; GC and the link are one metadata transaction. */
+export const reuseEditorViewSourceFiles = async ({
+  contentStore,
+  files,
+}: {
+  readonly contentStore: string
+  readonly files: readonly { readonly path: string; readonly entry: EditorViewSourceFile }[]
+}): Promise<Set<string>> => {
+  const reused = new Set<string>()
+  if (files.length === 0) return reused
+  const store = resolve(contentStore)
+  await ensureParent({ contentStore: store, create: true })
+  const shards = new Map<string, (typeof files)[number][]>()
+  for (const file of files) {
+    const shard = file.entry.digest.slice(0, 2)
+    const entries = shards.get(shard) ?? []
+    entries.push(file)
+    shards.set(shard, entries)
+  }
+  const token = randomUUID()
+  for (const entries of shards.values()) {
+    for (let index = 0; index < entries.length; index += batchSize) {
+      // eslint-disable-next-line no-await-in-loop -- Each short metadata batch settles before the next shard transaction.
+      await withStoreLock({
+        contentStore: store,
+        token,
+        run: async (directories) => {
+          const shard = await shardDirectory({
+            contentStore: store,
+            shard: entries[0]!.entry.digest.slice(0, 2),
+            directories,
+            create: false,
+          })
+          if (shard === undefined) return
+          for (const file of entries.slice(index, index + batchSize)) {
+            const blob = join(
+              shard.path,
+              `${file.entry.digest}-${file.entry.mode === 0o444 ? '0444' : '0555'}`,
+            )
+            let status: BigIntStats
+            try {
+              status = lstatSync(blob, { bigint: true })
+            } catch (error) {
+              if (hasCode({ error, code: 'ENOENT' })) continue
+              throw error
+            }
+            requireBlob({ path: blob, status, mode: file.entry.mode })
+            if (verificationKey(status) !== file.entry.blobKey) continue
+            try {
+              linkSync(blob, file.path)
+            } catch (error) {
+              if (hasCode({ error, code: 'EXDEV' }) || hasCode({ error, code: 'ENOENT' })) continue
+              throw error
+            }
+            const linked = lstatSync(file.path, { bigint: true })
+            if (unchanged({ left: status, right: linked }) === false)
+              fail(`reused blob changed while linking: ${blob}`)
+            remember({ status: linked, digest: file.entry.digest })
+            reused.add(file.path)
+          }
+        },
+      })
+    }
+  }
+  return reused
 }
 
 type CollectionCandidate = {

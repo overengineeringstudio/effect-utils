@@ -3,6 +3,8 @@ import { execFile, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
+  constants,
+  copyFileSync,
   chmodSync,
   existsSync,
   lstatSync,
@@ -27,6 +29,11 @@ import {
   defaultEditorViewContentStore,
   recoverEditorViewContentStoreLock,
   shareSnapshotFiles,
+  editorViewSourceManifestName,
+  editorViewSourceKey,
+  readEditorViewSourceManifest,
+  reuseEditorViewSourceFiles,
+  type EditorViewSourceFile,
 } from './editor-view-sharing.ts'
 import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath } from './real-path.ts'
@@ -45,7 +52,6 @@ const viewNamePattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
 const cellPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const targetNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const copyLabel = 'cp --dereference --reflink=auto'
-const finiteCopyLabel = 'cp --no-dereference --reflink=auto'
 const lockSchema = 'effect-utils/editor-view-lock/v1' as const
 const authorityRecordFields = ['ownedPackages', 'requiredPackages', 'schema'] as const
 const retentionRecordFields = ['schema', 'snapshots'] as const
@@ -1389,42 +1395,73 @@ const rewriteSnapshotLinks = ({
   return inventories
 }
 
+type MaterializedDeclaredRoots = {
+  readonly links: Map<string, (readonly [path: string, target: string])[]>
+  readonly sourceFiles: Map<string, { readonly source: string; readonly sourceKey: string }>
+  readonly manifest: Map<string, EditorViewSourceFile>
+  readonly reusedFiles: Set<string>
+}
+
 const materializeDeclaredRoots = async ({
   candidate,
   roots,
-  cp,
+  contentStore,
+  previousManifest,
 }: {
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
-  cp: string
-}): Promise<Map<string, (readonly [path: string, target: string])[]>> => {
+  contentStore: string
+  previousManifest: ReadonlyMap<string, EditorViewSourceFile>
+}): Promise<MaterializedDeclaredRoots> => {
   mkdirSync(join(candidate, '.backing'))
-  for (const root of roots) {
-    const destination = join(candidate, root.destination)
+  const sourceFiles = new Map<string, { source: string; sourceKey: string }>()
+  const manifest = new Map<string, EditorViewSourceFile>()
+  const reusable: { path: string; entry: EditorViewSourceFile }[] = []
+  const visit = (source: string, destination: string): void => {
     mkdirSync(destination, { recursive: true })
-    // eslint-disable-next-line no-await-in-loop -- One copy child per active view preserves the shared resource bound.
-    await copyWithTool({
-      tool: cp,
-      args: [
-        '--recursive',
-        '--no-dereference',
-        '--reflink=auto',
-        '--',
-        `${root.source}/.`,
-        destination,
-      ],
-      label: finiteCopyLabel,
-    })
+    for (const name of readdirSync(source)) {
+      const sourcePath = join(source, name)
+      const destinationPath = join(destination, name)
+      const status = lstatSync(sourcePath, { bigint: true })
+      if (status.isDirectory()) visit(sourcePath, destinationPath)
+      else if (status.isSymbolicLink()) symlinkSync(readlinkSync(sourcePath), destinationPath)
+      else if (status.isFile()) {
+        const sourceKey = editorViewSourceKey(status)
+        sourceFiles.set(destinationPath, { source: sourcePath, sourceKey })
+        const previous = previousManifest.get(relative(candidate, destinationPath))
+        const mode = (status.mode & 0o111n) === 0n ? 0o444 : 0o555
+        if (previous?.sourceKey === sourceKey && previous.mode === mode) {
+          reusable.push({ path: destinationPath, entry: previous })
+          manifest.set(relative(candidate, destinationPath), previous)
+        } else {
+          copyFileSync(
+            sourcePath,
+            destinationPath,
+            constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE,
+          )
+        }
+      } else fail(`declared root contains unsupported special file: ${sourcePath}`)
+    }
   }
-  return rewriteSnapshotLinks({ candidate, roots })
+  for (const root of roots) visit(root.source, join(candidate, root.destination))
+  const reusedFiles = await reuseEditorViewSourceFiles({ contentStore, files: reusable })
+  for (const file of reusable) {
+    if (reusedFiles.has(file.path)) continue
+    const source = sourceFiles.get(file.path) ?? fail(`source file mapping is absent: ${file.path}`)
+    manifest.delete(relative(candidate, file.path))
+    copyFileSync(source.source, file.path, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+  }
+  return { links: rewriteSnapshotLinks({ candidate, roots }), sourceFiles, manifest, reusedFiles }
 }
 
 const assertByteOwnedFiniteSnapshot = ({
   sources,
   snapshot,
+  reusedFiles,
 }: {
   sources: readonly string[]
   snapshot: string
+  reusedFiles: ReadonlySet<string>
 }): void => {
   const sourceIdentities = new Set(sources.flatMap((source) => [...collectFileIdentities(source)]))
   const visit = (directory: string): void => {
@@ -1443,7 +1480,7 @@ const assertByteOwnedFiniteSnapshot = ({
       }
       if (status.isFile() === false)
         fail(`byte-owned snapshot contains unsupported special file: ${path}`)
-      if (status.nlink !== 1n)
+      if (status.nlink !== 1n && reusedFiles.has(path) === false)
         fail(`byte-owned snapshot file is linked elsewhere: ${path} (nlink=${status.nlink})`)
       if (sourceIdentities.has(`${status.dev}:${status.ino}`) === true)
         fail(`byte-owned snapshot file shares an inode with a declared root: ${path}`)
@@ -1716,7 +1753,7 @@ const garbageCollectSnapshots = ({
   ordered: readonly string[]
   current: string
   token: string
-}): void => {
+}): boolean => {
   const retained = new Set(ordered.slice(0, options.snapshotRetention))
   const now = Date.now()
   const grace = options.snapshotGraceMs ?? 300_000
@@ -1737,6 +1774,7 @@ const garbageCollectSnapshots = ({
   if (pointer !== `.store/${current}`)
     fail(`current pointer changed during snapshot retention: ${pointer}`)
   const keepSet = new Set(keep)
+  let removed = false
   for (const name of ordered.filter((entry) => keepSet.has(entry) === false)) {
     if (name === current || name.startsWith('.candidate-') === true)
       fail(`snapshot retention refused protected entry: ${name}`)
@@ -1748,6 +1786,7 @@ const garbageCollectSnapshots = ({
       chmodSync(join(garbage, 'editor-view.json'), 0o600)
       makeDirectoriesWritable(garbage)
       rmSync(garbage, { recursive: true })
+      removed = true
     } catch (error) {
       if (pathExists(garbage) === true) {
         hardenSnapshot(garbage)
@@ -1758,6 +1797,7 @@ const garbageCollectSnapshots = ({
     }
   }
   writeSnapshotRetention({ paths, snapshots: keep, token })
+  return removed
 }
 
 type LockOwner = {
@@ -2043,9 +2083,11 @@ type PublicationCoordinator = {
 const publishEditorViewCoordinated = async ({
   options,
   coordinator,
+  onContentChanged,
 }: {
   options: EditorViewOptions
   coordinator?: PublicationCoordinator
+  onContentChanged: () => void
 }): Promise<EditorViewRecord> => {
   const startedAtMs = performance.timeOrigin + performance.now()
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
@@ -2056,7 +2098,7 @@ const publishEditorViewCoordinated = async ({
     phaseName = name
     phaseStartedAt = performance.now()
   }
-  const emitPhaseSpan = ({ created }: { readonly created: boolean }): void =>
+  const emitPhaseSpan = ({ created }: { readonly created: boolean }): void => {
     emitCompletedSpan({
       name: 'editor-view.phases',
       label: `phases ${options.viewName}`,
@@ -2071,6 +2113,7 @@ const publishEditorViewCoordinated = async ({
       endedAtMs: performance.timeOrigin + performance.now(),
       startedAtMs,
     })
+  }
   requireRecordIdentity(options)
   const paths = makePaths(options)
   validateWorkspaceDependencyAuthority({
@@ -2256,12 +2299,33 @@ const publishEditorViewCoordinated = async ({
       enterPhase('materialize')
       let materialized = false
       let materializedLinks: Map<string, (readonly [path: string, target: string])[]> | undefined
+      let materializedRoots: MaterializedDeclaredRoots | undefined
       if (finite === true) {
         await options.beforeMaterialize?.()
-        materializedLinks = await materializeDeclaredRoots({ candidate, roots, cp: options.cp })
+        const previousSnapshot =
+          pathExists(paths.current) && lstatSync(paths.current).isSymbolicLink()
+            ? realpathSync(paths.current)
+            : undefined
+        if (
+          previousSnapshot !== undefined &&
+          isWithin({ root: paths.storeDir, candidate: previousSnapshot }) === false
+        )
+          fail(`current snapshot escapes the store: ${previousSnapshot}`)
+        const previousManifest =
+          previousSnapshot === undefined
+            ? new Map<string, EditorViewSourceFile>()
+            : readEditorViewSourceManifest(join(previousSnapshot, editorViewSourceManifestName))
+        materializedRoots = await materializeDeclaredRoots({
+          candidate,
+          roots,
+          contentStore: paths.contentStore,
+          previousManifest,
+        })
+        materializedLinks = materializedRoots.links
         assertByteOwnedFiniteSnapshot({
           sources: roots.map((root) => root.source),
           snapshot: candidate,
+          reusedFiles: materializedRoots.reusedFiles,
         })
         materialized = true
       } else {
@@ -2326,7 +2390,30 @@ const publishEditorViewCoordinated = async ({
       })
       writeRecord({ path: join(candidate, 'editor-view.json'), record })
       created = true
-      const sharing = await shareSnapshotFiles({ candidate, contentStore: paths.contentStore })
+      onContentChanged()
+      const sharing = await shareSnapshotFiles({
+        candidate,
+        contentStore: paths.contentStore,
+        reusedFiles: materializedRoots?.reusedFiles,
+        candidateFiles: materializedRoots?.sourceFiles.keys(),
+        onSharedFile: (file) => {
+          if (materializedRoots === undefined) return
+          const source = materializedRoots.sourceFiles.get(file.path)
+          if (source !== undefined)
+            materializedRoots.manifest.set(relative(candidate, file.path), {
+              sourceKey: source.sourceKey,
+              digest: file.digest,
+              mode: file.mode,
+              blobKey: file.blobKey,
+            })
+        },
+      })
+      if (materializedRoots !== undefined)
+        writeFileSync(
+          join(candidate, editorViewSourceManifestName),
+          `${JSON.stringify(Object.fromEntries(materializedRoots.manifest))}\n`,
+          { flag: 'wx', mode: 0o444 },
+        )
       if (sharing.copiedFiles > 0)
         process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
     }
@@ -2371,13 +2458,16 @@ const publishEditorViewCoordinated = async ({
       if (pointerChanged === true || firstHopChanged === true)
         signalEditorResolution({ paths, token })
       enterPhase('gc')
-      garbageCollectSnapshots({
-        paths,
-        options,
-        ordered: retention,
-        current: snapshotName,
-        token,
-      })
+      if (
+        garbageCollectSnapshots({
+          paths,
+          options,
+          ordered: retention,
+          current: snapshotName,
+          token,
+        }) === true
+      )
+        onContentChanged()
       emitPhaseSpan({ created })
       return record
     }
@@ -2404,6 +2494,7 @@ const publishEditorViewCoordinated = async ({
       // abandoned candidate must be unlocked before removal.
       makeDirectoriesWritable(candidate)
       rmSync(candidate, { recursive: true, force: true })
+      onContentChanged()
     }
     workers.delete(token)
     if (coordinator === undefined) releaseLock(lock)
@@ -2412,8 +2503,15 @@ const publishEditorViewCoordinated = async ({
 
 /** Publish one view while holding the exclusive state-root lock through every proof and write. */
 export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
-  const record = await publishEditorViewCoordinated({ options })
-  await collectEditorViewContentStore({ contentStore: makePaths(options).contentStore })
+  let contentChanged = false
+  const record = await publishEditorViewCoordinated({
+    options,
+    onContentChanged: () => {
+      contentChanged = true
+    },
+  })
+  if (contentChanged === true)
+    await collectEditorViewContentStore({ contentStore: makePaths(options).contentStore })
   return record
 }
 
@@ -2435,6 +2533,7 @@ export const publishEditorViews = async ({
   const workers = new Map<string, PublicationWorkerState>()
   const identities = new Set<string>()
   const results: PromiseSettledResult<EditorViewRecord>[] = []
+  const changedStores = new Set<string>()
   let next = 0
   try {
     for (const option of options) {
@@ -2482,7 +2581,13 @@ export const publishEditorViews = async ({
           const coordinator =
             coordinators.get(makePaths(option).editorRoot) ?? fail('batch root lock is absent')
           // eslint-disable-next-line no-await-in-loop -- Each worker must finish before claiming its next view.
-          const record = await publishEditorViewCoordinated({ options: option, coordinator })
+          const record = await publishEditorViewCoordinated({
+            options: option,
+            coordinator,
+            onContentChanged: () => {
+              changedStores.add(makePaths(option).contentStore)
+            },
+          })
           results[index] = { status: 'fulfilled', value: record }
           onPublished?.(record, performance.now() - startedAt)
           emitPublicationSpan(0)
@@ -2505,7 +2610,7 @@ export const publishEditorViews = async ({
     )
     // One shared-store census per batch, not one per view. Hashing and walks do
     // not hold its cross-worktree lock; only bounded link/unlink batches do.
-    for (const contentStore of new Set(options.map((option) => makePaths(option).contentStore)))
+    for (const contentStore of changedStores)
       // eslint-disable-next-line no-await-in-loop -- Distinct stores are independent maintenance units.
       await collectEditorViewContentStore({ contentStore })
     return results.map((result) => {
