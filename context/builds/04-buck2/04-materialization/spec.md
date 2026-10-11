@@ -303,6 +303,47 @@ source files are untouched. Exact-token recovery remains required for a stale
 lock. Package first-hop links can remain dangling until the retired worktree is
 removed or publication recreates its root.
 
+Every tool that removes a worktree runs root-scoped `buck2 kill` for each of the
+root's isolations before removal. A Buck daemon's cwd is `<root>/buck-out/<isolation>`,
+so a live daemon holds the worktree for in-use probes, and once the directory is
+gone the CLI can no longer address that daemon. `worktree:teardown` follows this
+rule. `mr store gc`
+(merged-worklog teardown, archive reap, build budgets) removes worktrees without
+stopping Buck and relies on its process probe to veto a held worktree.
+
+## Idle Daemon Reaping
+
+```text
+scripts/buck2-daemon-reaper.ts --buck2 <raw buck2> [--idle-seconds 10800]
+  -> buck2 status --all from a throwaway empty root
+  -> per daemon: root gone        -> report-gone (pid, daemon id, root, RSS + swap)
+                 active command   -> keep-active
+                 idle < threshold -> keep-recent
+                 idle >= threshold -> recheck from root -> buck2 --isolation-dir <i> kill
+```
+
+The pinned `[buck2] daemon_idle_timeout_s` counts command arrivals rather than
+running work, so it can stop a build that runs longer than the timeout or an
+attached `buck2 lsp`. It stays at Buck's default; the reaper owns idle exit.
+Idle time runs from the later of the daemon's `start_time` and the newest entry
+under `<root>/buck-out/<isolation>/log`, where every streamed command writes its
+event log. `buck2 status` itself writes no event log. A daemon reporting any
+`active_commands` entry, which includes an attached editor session, is kept
+regardless of age. Immediately before `buck2 kill`, the reaper re-reads status
+from the daemon's root and aborts on a changed daemon id or pid, a new command,
+or new log activity. `buck2 kill` has no conditional form, so a command arriving
+between that recheck and the kill is still interrupted.
+
+The reaper never signals a process. A daemon whose root no longer exists is
+report-only. The default threshold of three hours outlasts an agent's usual
+pause between commands on one worktree, so active worktrees keep a warm daemon;
+a longer pause only costs a cold daemon start on the next command. A merged or
+abandoned worktree's daemon is stopped at most one run interval after its last
+command plus the threshold.
+`--root-prefix` limits a run to roots under the given prefixes, and `--dry-run`
+prints decisions without stopping anything. Host scheduling belongs to the host
+configuration; the script holds no state between runs.
+
 ## Relationship to Exact Closure Materialization
 
 The declared closure above is the per-package fetch-and-verify tier that the
