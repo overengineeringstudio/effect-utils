@@ -3,6 +3,13 @@ set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
 buck="${BUCK2_BIN:?Run in the repository devenv shell to use its pinned BUCK2_BIN}"
+native_shell="${BASH_BIN:-$BASH}"
+native_coreutils="${CP_BIN:?Pinned CP_BIN is required for the native TS launcher fixture}"
+native_coreutils="${native_coreutils%/cp}/coreutils"
+case "$native_shell:$native_coreutils" in
+  /nix/store/*:/nix/store/*) ;;
+  *) printf 'Native TS launcher fixture requires Nix-pinned Bash and coreutils\n' >&2; exit 1 ;;
+esac
 scratch_parent="${RUNNER_TEMP:-$repo_root/tmp}"
 mkdir -p "$scratch_parent"
 work="$(mktemp -d "$scratch_parent/buck2-cache-admission.XXXXXXXX")"
@@ -15,6 +22,8 @@ trap cleanup EXIT
 # Exercise the shipped rule implementations, not a parallel guard or a source
 # inspection. Only their dependency providers are fixtures: audit providers
 # performs real analysis without running Bun or materializing a package tree.
+# One Darwin-branch launcher fixture additionally executes pinned host tools to
+# prove that a fresh declared directory exists before a nested verdict is written.
 cp -R "$repo_root/buck2" "$work/buck2"
 mkdir -p "$work/capabilities" "$work/packages/@overeng/buck2-tools"
 touch "$work/.buckroot"
@@ -42,6 +51,8 @@ cat > "$work/.buckconfig" <<'CONFIG'
   remote_cache_enabled = false
   allow_cache_uploads = false
 CONFIG
+printf '\n[fixture]\n  shell = %s\n  coreutils = %s\n' \
+  "$native_shell" "$native_coreutils" >> "$work/.buckconfig"
 # The bundled prelude is supplied by the same pinned Buck binary as the repo's
 # normal .buckconfig. No ambient prelude checkout or remote cache is consulted.
 cat > "$work/fixture.bzl" <<'BZL'
@@ -54,6 +65,7 @@ load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
 load("//buck2/rust:interop.bzl", "RustInteropProductInfo", "rust_interop_smoke")
 load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
+load("//buck2/hermetic.bzl", "ts_action", "ts_action_attrs")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "ts_action_admission_status", "ts_action_cache_eligible", "ts_action_execution_constraints", "ts_action_policy_attrs")
 
 FixtureTsPolicyInfo = provider(fields = {"admission_status": str, "cache_eligible": bool})
@@ -75,6 +87,31 @@ fixture_ts_policy = cache_guarded_rule(
 
 def fixture_ts_policy_with_helper(name):
     fixture_ts_policy(name = name, exec_compatible_with = ts_action_execution_constraints())
+
+def _fixture_ts_output_impl(ctx):
+    if ts_action_admission_status(ctx) != "darwin-unsandboxed":
+        fail("native output fixture must exercise the actual Darwin execution branch")
+    directory = ctx.actions.declare_output("verdict", dir = True)
+    receipt = directory.project("typecheck.ok")
+    shell = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo].shell
+    ts_action(
+        ctx,
+        cmd_args([
+            shell, "--noprofile", "--norc", "-c",
+            'test -d "${1%/*}"; test ! -e "$1"; printf "fresh-darwin-verdict\\n" > "$1"',
+            "--", receipt,
+        ]),
+        inputs = [],
+        outputs = [directory],
+        cacheable = False,
+        category = "fixture_typecheck",
+    )
+    return [DefaultInfo(default_output = receipt)]
+
+fixture_ts_output = rule(
+    impl = _fixture_ts_output_impl,
+    attrs = ts_action_attrs(),
+)
 
 def _dependency_impl(ctx):
     artifact = ctx.attrs.src
@@ -101,7 +138,7 @@ def _dependency_impl(ctx):
                 "buck2-fingerprint": ["/analysis-only"],
             },
             inputs = [artifact],
-            shell = "/analysis-only/bin/bash",
+            shell = read_root_config("fixture", "shell", "/analysis-only/bin/bash"),
         ),
         BuckSupportToolInfo(
             content_digest = "analysis-only",
@@ -111,7 +148,7 @@ def _dependency_impl(ctx):
             manifest = artifact,
             protocol = "analysis-only",
             runtime_contract = "analysis-only",
-            store_path = "/analysis-only/bin/tool",
+            store_path = read_root_config("fixture", "coreutils", "/analysis-only/bin/tool"),
             tool_id = "analysis-only",
         ),
     ]
@@ -224,7 +261,7 @@ fixture_dependency(name = "javascript_action_runtime", visibility = ["PUBLIC"])
 fixture_dependency(name = "package_command_runtime", visibility = ["PUBLIC"])
 BUCK
 cat > "$work/BUCK" <<'BUCK'
-load("//:fixture.bzl", "fixture_dependency", "fixture_materialization_cases", "fixture_ts_policy", "fixture_ts_policy_with_helper")
+load("//:fixture.bzl", "fixture_dependency", "fixture_materialization_cases", "fixture_ts_output", "fixture_ts_policy", "fixture_ts_policy_with_helper")
 load("//buck2:typescript.bzl", "tsgo_emit")
 load("@rules//buck2:javascript.bzl", "vitest_collect")
 load("@rules//buck2:package_tools.bzl", "package_bin_check")
@@ -240,6 +277,7 @@ tsgo_emit(name = "admitted_emit", package_tree = ":package_tree")
 fixture_ts_policy(name = "ts_policy_default")
 fixture_ts_policy(name = "ts_policy_cache", exec_compatible_with = ["@rules//buck2/platforms:cache_hermetic"])
 fixture_ts_policy_with_helper(name = "ts_policy_helper")
+fixture_ts_output(name = "darwin_fresh_verdict")
 
 vitest_collect(
     name = "admitted_collect",
@@ -407,6 +445,25 @@ if ! grep -Fq 'darwin-unsandboxed: TypeScript execution cannot use the cache-adm
   cat "$work/ts-policy-darwin-implicit.log" >&2
   exit 1
 fi
+
+# A fresh isolated build executes the actual darwin-unsandboxed command emitted
+# by ts_action, with pinned host Bash/coreutils fixture providers. This can run
+# on Linux too: it tests launcher output ownership, not Darwin containment.
+"$buck" --isolation-dir cache-admission-check build \
+  -c build.execution_platforms=effect_utils//buck2/platforms:exec_macos_aarch64 \
+  --local-only --show-full-json-output effect_utils//:darwin_fresh_verdict \
+  > "$work/darwin-fresh-verdict.json" 2> "$work/darwin-fresh-verdict.log" || {
+    cat "$work/darwin-fresh-verdict.log" >&2
+    exit 1
+  }
+darwin_receipt="$("${JQ_BIN:?Pinned JQ_BIN is required}" -er \
+  '."effect_utils//:darwin_fresh_verdict"' "$work/darwin-fresh-verdict.json")"
+IFS= read -r darwin_verdict < "$darwin_receipt"
+if [[ "$darwin_verdict" != fresh-darwin-verdict ]]; then
+  printf 'Darwin launcher did not create and populate its fresh nested verdict\n' >&2
+  exit 1
+fi
+printf 'PASS fresh Darwin-branch nested verdict: declared output created by shared launcher\n'
 
 for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
   for spelling in canonical relative alias alias_at; do

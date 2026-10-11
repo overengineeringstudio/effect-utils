@@ -73,7 +73,9 @@ filesystem or network boundary. Declared inputs remain individual mounts:
 there is no copied input-view grouping, overlay, image, or FUSE dependency.
 
 Every TS run action declares directory outputs, including directories holding
-projected file receipts. Runners reset their contents without deleting the
+projected file receipts. The shared scrubbed launcher creates those directories
+before Linux containment or unsandboxed Darwin execution, so fresh nested verdicts
+do not depend on a pre-existing output root. Runners reset their contents without deleting the
 mount point. Outputs are written in place: there is no staging publication
 copy, rename, or post-action observer. Files staged into scratch remain writable
 for abandoned-action cleanup; compiler mutation
