@@ -560,7 +560,9 @@ the subprocess exit and output streams. The runner's normal timeout guards
 hangs; replay latency is not a production deadline, and a case matrix does not
 share a single wall-clock budget. Replays run in isolated process groups;
 timeout cleanup kills the group and waits for all descendants to be reaped
-before deleting the event-log fixture.
+before deleting the event-log fixture. A two-second reaping hang guard fails
+cleanup with process-group diagnostics and preserves fixtures if the group
+does not disappear.
 
 ### Lane budget measurements
 

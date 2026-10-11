@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type ServerHttp2Stream } from 'node:http2'
 import { createServer as createTcpServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -37,12 +37,34 @@ const stopReplayProcesses = async (
     // Wait for the entire group to disappear before removing its input files.
     // OS reaping has no awaitable signal for non-child processes; poll the real
     // group condition rather than assuming a fixed grace period is sufficient.
+    const deadline = performance.now() + 2000
     for (;;) {
       try {
         process.kill(-child.pid, 0)
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break
         throw error
+      }
+      if (performance.now() >= deadline) {
+        const members: string[] = []
+        if (existsSync('/proc')) {
+          for (const pid of readdirSync('/proc')) {
+            if (!/^\d+$/.test(pid)) continue
+            try {
+              const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+              const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+              if (Number(fields[2]) === child.pid) members.push(`${pid} (${fields[0]})`)
+            } catch (error) {
+              if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT'))
+                throw error
+            }
+          }
+        }
+        throw new Error(
+          `Replay process group ${child.pid} was not reaped within 2000 ms; members: ${
+            members.length > 0 ? members.join(', ') : 'unavailable'
+          }; preserving fixtures`,
+        )
       }
       await Bun.sleep(10)
     }
@@ -69,65 +91,33 @@ afterEach(async () => {
 })
 
 describe('replay subprocess cleanup', () => {
-  it('reaps slow command-substitution descendants on timeout before deleting fixtures', async () => {
-    const root = makeRoot()
-    const fixture = join(root, 'fixture')
-    const pidFile = join(root, 'pids.json')
-    const cleanupFile = join(root, 'cleanup.json')
-    const runner = join(root, 'timeout.test.ts')
-    writeFileSync(
-      runner,
-      `import { afterEach, beforeAll, it } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-const stopReplayProcesses = ${stopReplayProcesses.toString()}
-const children = new Set()
-afterEach(async () => {
-  await stopReplayProcesses(children)
-  const { group, descendant } = JSON.parse(readFileSync(${JSON.stringify(pidFile)}, 'utf8'))
-  let descendantReaped = false
-  try { process.kill(descendant, 0) } catch (error) { if (error.code !== 'ESRCH') throw error; descendantReaped = true }
-  let groupReaped = false
-  try { process.kill(-group, 0) } catch (error) { if (error.code !== 'ESRCH') throw error; groupReaped = true }
-  writeFileSync(${JSON.stringify(cleanupFile)}, JSON.stringify({ descendantReaped, groupReaped, fixtureExists: existsSync(${JSON.stringify(fixture)}) }))
-  rmSync(${JSON.stringify(fixture)}, { recursive: true })
-})
-beforeAll(async () => {
-  mkdirSync(${JSON.stringify(fixture)})
-  const child = Bun.spawn(['bash', '-c', 'result="$(printf \\'{\\"group\\":%s,\\"descendant\\":%s}\\' \\"$$\\" \\"$BASHPID\\" > \\"$1\\"; printf ready >&2; exec sleep 30)"', 'fixture', ${JSON.stringify(pidFile)}], { detached: true, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
-  children.add(child)
-  await child.stderr.getReader().read()
-})
-// Exercise the real runner timeout only after the descendant signals readiness.
-it('times out with a live command substitution', async () => {
-  await [...children][0].exited
-}, 20)
-`,
-    )
-    const child = Bun.spawn([process.execPath, 'test', runner], {
-      detached: true,
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    replayProcesses.add(child)
-    try {
-      const [exitCode, stderr] = await Promise.all([
-        child.exited,
-        new Response(child.stderr).text(),
-        new Response(child.stdout).text(),
-      ])
-      expect(exitCode).toBe(1)
-      expect(stderr).toContain('timed out')
-      expect(JSON.parse(readFileSync(cleanupFile, 'utf8'))).toEqual({
-        descendantReaped: true,
-        groupReaped: true,
-        fixtureExists: true,
-      })
-      expect(existsSync(fixture)).toBe(false)
-    } finally {
+  for (const ignoreSigterm of [false, true]) {
+    it(`reaps command-substitution descendants before deleting fixtures (ignore SIGTERM: ${ignoreSigterm})`, async () => {
+      const fixture = join(makeRoot(), 'events.jsonl')
+      writeFileSync(fixture, 'fixture')
+      const child = Bun.spawn(
+        [
+          'bash',
+          '-c',
+          `${ignoreSigterm ? "trap '' TERM; " : ''}result="$(${ignoreSigterm ? "trap '' TERM; " : ''}printf ready >&2; exec sleep 30)"`,
+        ],
+        { detached: true, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+      )
+      replayProcesses.add(child)
+      const { value } = await child.stderr.getReader().read()
+      expect(new TextDecoder().decode(value)).toBe('ready')
+      if (ignoreSigterm) {
+        process.kill(-child.pid, 'SIGTERM')
+        expect(() => process.kill(-child.pid, 0)).not.toThrow()
+      }
+      await stopReplayProcesses([child])
       replayProcesses.delete(child)
-    }
-  })
+      expect(() => process.kill(-child.pid, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }))
+      expect(existsSync(fixture)).toBe(true)
+      rmSync(fixture)
+      expect(existsSync(fixture)).toBe(false)
+    })
+  }
 })
 
 describe('standalone Buck cache posture', () => {
