@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import * as fs from 'node:fs'
 import {
   chmodSync,
   closeSync,
@@ -25,7 +26,7 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import type { EditorViewPinRecord } from './editor-view-readers.ts'
+import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
 import { readEditorViewSourceManifest } from './editor-view-sharing.ts'
 import {
   canonicalTreeFingerprint,
@@ -56,6 +57,27 @@ const cp = requireTool('CP_BIN')
 const mv = requireTool('MV_BIN')
 const falseTool = requireTool('FALSE_BIN')
 const fingerprintTool = requireTool('FINGERPRINT_BIN')
+
+let integrationBudgetState: string
+const savedIntegrationBudgetState = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+beforeAll(() => {
+  integrationBudgetState = realpathSync(
+    mkdtempSync(join(tmpdir(), 'editor-view-test-host-budget-')),
+  )
+  process.env.EDITOR_VIEW_HOST_BUDGET_STATE = integrationBudgetState
+})
+afterAll(() => {
+  if (savedIntegrationBudgetState === undefined) delete process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+  else process.env.EDITOR_VIEW_HOST_BUDGET_STATE = savedIntegrationBudgetState
+  const unlock = (path: string): void => {
+    const status = lstatSync(path)
+    if (status.isDirectory() === false || status.isSymbolicLink() === true) return
+    chmodSync(path, (status.mode & 0o777) | 0o700)
+    for (const name of readdirSync(path)) unlock(join(path, name))
+  }
+  unlock(integrationBudgetState)
+  rmSync(integrationBudgetState, { recursive: true, force: true })
+})
 
 type Fixture = {
   readonly root: string
@@ -2860,6 +2882,99 @@ describe('editor view publisher', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
       rmSync(outside, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('budget observations tolerate concurrent reader and worktree teardown', () => {
+  it('tolerates a pin removed after lstat only in the preliminary inventory', () => {
+    const fixture = makeFixture()
+    const pins = join(fixture.editorRoot, '.pins')
+    const pin = join(pins, 'vanishing-reader.json')
+    mkdirSync(pins, { recursive: true })
+    const record = {
+      schema: 'effect-utils/editor-view-pin/v1',
+      name: 'vanishing-reader',
+      snapshot: `.store/${fixture.options.viewName}-${'a'.repeat(64)}`,
+    }
+    const nativeRead = fs.readFileSync
+    const read = vi.spyOn(fs, 'readFileSync')
+    const vanishBeforeRead = () => {
+      rmSync(pin)
+      return nativeRead(pin, 'utf8')
+    }
+    try {
+      writeFileSync(pin, JSON.stringify(record))
+      read.mockImplementationOnce(vanishBeforeRead)
+      expect(
+        managedEditorViewSnapshots({ editorRoot: fixture.editorRoot, advisory: true }),
+      ).toEqual(new Set())
+      writeFileSync(pin, JSON.stringify(record))
+      read.mockImplementationOnce(vanishBeforeRead)
+      expect(() => managedEditorViewSnapshots({ editorRoot: fixture.editorRoot })).toThrow('ENOENT')
+    } finally {
+      read.mockRestore()
+      cleanup(fixture)
+    }
+  })
+
+  it('skips a Git worktree registration removed after the directory inventory', async () => {
+    const fixture = makeFixture()
+    const registrations = join(fixture.root, '.git', 'worktrees')
+    const registration = join(registrations, 'vanishing-worktree')
+    mkdirSync(registration, { recursive: true })
+    writeFileSync(join(registration, 'gitdir'), `${join(fixture.root, 'gone', '.git')}\n`)
+    const nativeReaddir = fs.readdirSync
+    let removed = false
+    const scan = vi.spyOn(fs, 'readdirSync').mockImplementation((...args) => {
+      const entries = Reflect.apply(nativeReaddir, fs, args) as ReturnType<typeof fs.readdirSync>
+      if (String(args[0]) === registrations && removed === false) {
+        removed = true
+        rmSync(registration, { recursive: true })
+      }
+      return entries
+    })
+    let publication: Promise<EditorViewRecord> | undefined
+    try {
+      publication = publishEditorView(fixture.options)
+      const record = await publication
+      expect(removed).toBe(true)
+      expect(currentTarget(fixture)).toBe(record.snapshot)
+    } finally {
+      if (publication !== undefined) await Promise.allSettled([publication])
+      scan.mockRestore()
+      cleanup(fixture)
+    }
+  })
+
+  it('skips an editor root removed after its worktree was resolved', async () => {
+    const fixture = makeFixture()
+    const registrations = join(fixture.root, '.git', 'worktrees')
+    const registration = join(registrations, 'vanishing-root')
+    const otherRepo = join(fixture.root, 'another-worktree')
+    const otherRoot = join(otherRepo, 'packages', '.editor-view')
+    mkdirSync(otherRoot, { recursive: true })
+    mkdirSync(registration, { recursive: true })
+    writeFileSync(join(registration, 'gitdir'), `${join(otherRepo, '.git')}\n`)
+    const nativeLstat = fs.lstatSync
+    let removed = false
+    const inspect = vi.spyOn(fs, 'lstatSync').mockImplementation((...args) => {
+      if (String(args[0]) === otherRoot && removed === false) {
+        removed = true
+        rmSync(otherRoot, { recursive: true })
+      }
+      return Reflect.apply(nativeLstat, fs, args) as ReturnType<typeof fs.lstatSync>
+    })
+    let publication: Promise<EditorViewRecord> | undefined
+    try {
+      publication = publishEditorView(fixture.options)
+      const record = await publication
+      expect(removed).toBe(true)
+      expect(currentTarget(fixture)).toBe(record.snapshot)
+    } finally {
+      if (publication !== undefined) await Promise.allSettled([publication])
+      inspect.mockRestore()
+      cleanup(fixture)
     }
   })
 })

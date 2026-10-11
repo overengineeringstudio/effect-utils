@@ -1429,7 +1429,7 @@ const stagingPattern =
   /^([1-9][0-9]*)-(linux-[a-f0-9]{32}-[0-9]+|darwin-[a-f0-9]{64}|unknown)-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\.tmp$/
 const unknownCreatorGraceMs = 5 * 60 * 1_000
 
-/** Process incarnation is used only to reclaim pre-lock copies, never to arbitrate a lock. */
+/** Process-incarnation proof for staging reclamation, reservations, and live-eviction waiting. */
 export const editorViewStagingCreatorIdentity = ({
   pid,
   platform = process.platform,

@@ -18,13 +18,15 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { lstat, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { lstat, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
 import {
   managedEditorViewSnapshots,
-  positiveEditorViewProcessReferences,
+  observeEditorViewProcessCandidates,
+  type EditorViewProcessCandidate,
 } from './editor-view-readers.ts'
 import {
   collectEditorViewContentStore,
@@ -37,17 +39,16 @@ import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
 /**
  * Host-wide byte budget for editor-view generations and their shared CAS.
  *
- * Accounting covers every discovered editor root (registered Git worktrees,
- * legacy roots and the publishing root): private generation trees, copy
- * fallbacks, retired `.gc-*`/`.legacy` leftovers and the whole content store,
- * deduplicated by inode so CAS hardlinks count once. Immutable generation
- * footprints are cached by validated identity in a private sibling of the CAS
- * (`<contentStore>.budget`), so warm touches never walk payloads.
+ * Accounting covers all registered content stores and editor roots: private
+ * generations, copy fallbacks, retired leftovers and CAS bytes are deduplicated
+ * by inode across the host, charging the larger of logical size and allocated
+ * blocks. Immutable sidecars share the private host ledger directory, so warm
+ * touches never walk payloads.
  *
- * Locking: payload walks, CAS census, reader census and recursive cleanup run
- * outside the CAS flock. Root publication locks are acquired first via the
- * caller's nonblocking callback; the CAS flock is only ever taken while
- * already holding them, never the reverse.
+ * Lock order is root publication lock, host ledger flock, then victim CAS flock.
+ * Other root locks are always nonblocking. Payload walks, process observation,
+ * footprint I/O and recursive cleanup run outside both flocks. The host flock
+ * uses an empty coordination CAS namespace, separate from the accounted stores.
  */
 
 /** One editor state root and the repository (worktree) that encloses it. */
@@ -76,10 +77,10 @@ const maxAdmissionRounds = 8
 const journalLimit = 1_024
 const statBatch = 64
 const topHolderCount = 5
-const stateSchema = 'effect-utils/editor-view-budget/v2'
+const stateSchema = 'effect-utils/editor-view-host-budget/v1'
 const generationPattern = /^([A-Za-z0-9][A-Za-z0-9_-]*)-([0-9a-f]{64})$/
 const snapshotPattern = /^\.store\/([A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64})$/
-/** Linked-inode sidecar record: dev, ino, size as little-endian u64. */
+/** Linked-inode sidecar record: dev, ino, accounted bytes as little-endian u64. */
 const entryBytes = 24
 
 const fail: (message: string) => never = (message) => {
@@ -136,7 +137,7 @@ export const editorViewHostRecencyMs = (): number => {
 }
 
 // ---------------------------------------------------------------------------
-// Persistent ledger (private sibling of the CAS root; mutated only under its flock)
+// Persistent host registry and ledger (mutated only under the coordination flock)
 // ---------------------------------------------------------------------------
 
 type Reservation = {
@@ -145,6 +146,7 @@ type Reservation = {
   /** Process incarnation (boot id + start time); reclaim never trusts the PID alone. */
   readonly process: string
   readonly editorRoot: string
+  readonly contentStore: string
   readonly bytes: number
   /** Budget the reservation was admitted against; diagnostics after commit reuse it. */
   readonly budgetBytes: number
@@ -169,6 +171,8 @@ type Usage = {
   readonly measuredAtMs: number
 }
 
+type RegisteredRoot = { readonly repoRoot: string; readonly contentStore: string }
+
 type BudgetState = {
   epoch: number
   /** Census taken before this epoch can no longer see every later finish. */
@@ -179,10 +183,13 @@ type BudgetState = {
    * them to that census, and the next census measures the real usage.
    */
   journal: { readonly epoch: number; readonly estimatedBytes: number }[]
-  roots: Map<string, string>
+  contentStores: Set<string>
+  roots: Map<string, RegisteredRoot>
   generations: Map<string, CachedGeneration>
   lastUse: Map<string, number>
   reservations: Map<string, Reservation>
+  /** Unmerged per-store writers settle these tokens in their source ledger. */
+  legacyReservations: Set<string>
   usage: Usage | undefined
   warned: boolean
 }
@@ -191,27 +198,54 @@ const emptyState = (): BudgetState => ({
   epoch: 0,
   journalFloor: 0,
   journal: [],
+  contentStores: new Set(),
   roots: new Map(),
   generations: new Map(),
   lastUse: new Map(),
   reservations: new Map(),
+  legacyReservations: new Set(),
   usage: undefined,
   warned: false,
 })
 
-const budgetDirectory = (contentStore: string): string => `${resolve(contentStore)}.budget`
-const statePath = (contentStore: string): string =>
-  join(budgetDirectory(contentStore), 'state-v2.json')
-const footprintDirectory = (contentStore: string): string =>
-  join(budgetDirectory(contentStore), 'footprints')
+/** One private host-wide registry; CAS namespaces remain per Git common directory. */
+export const editorViewHostBudgetStateDirectory = (): string => {
+  const override = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+  if (override !== undefined) {
+    if (override.trim().length === 0) fail('EDITOR_VIEW_HOST_BUDGET_STATE must be nonempty')
+    return resolve(override)
+  }
+  return resolve(
+    process.env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'),
+    'effect-utils',
+    'editor-view-budget',
+    'v1',
+  )
+}
 
-const ensureBudgetDirectory = (contentStore: string): void => {
-  for (const path of [budgetDirectory(contentStore), footprintDirectory(contentStore)]) {
+const statePath = (): string => join(editorViewHostBudgetStateDirectory(), 'state-v1.json')
+const footprintDirectory = (): string => join(editorViewHostBudgetStateDirectory(), 'footprints')
+
+const ensureBudgetDirectory = (): void => {
+  for (const path of [editorViewHostBudgetStateDirectory(), footprintDirectory()]) {
     mkdirSync(path, { recursive: true, mode: 0o700 })
     const status = lstatSync(path)
-    if (status.isDirectory() === false || status.uid !== userId())
-      fail(`budget metadata must be a real directory owned by the current user: ${path}`)
+    if (
+      status.isDirectory() === false ||
+      status.uid !== userId() ||
+      (status.mode & 0o077) !== 0 ||
+      realpathSync(path) !== path
+    )
+      fail(`budget metadata must be a private real directory owned by the current user: ${path}`)
   }
+}
+
+const withHostBudgetLock = async <T>(run: () => Promise<T>): Promise<T> => {
+  ensureBudgetDirectory()
+  return withEditorViewContentStoreLock({
+    contentStore: join(editorViewHostBudgetStateDirectory(), 'coordination'),
+    run,
+  })
 }
 
 type Json = null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json }
@@ -248,9 +282,27 @@ const decodeState = ({
   }
   const records = (field: unknown): readonly (readonly [string, unknown])[] =>
     isObject(field) === true ? Object.entries(field) : invalid()
-  for (const [editorRoot, repoRoot] of records(value.roots)) {
-    if (isText(repoRoot) === false) return invalid()
-    state.roots.set(editorRoot, repoRoot)
+  if (Array.isArray(value.contentStores) === false) return invalid()
+  for (const store of value.contentStores) {
+    if (isText(store) === false || isAbsolute(store) === false) return invalid()
+    state.contentStores.add(store)
+  }
+  if (Array.isArray(value.legacyReservations) === false) return invalid()
+  for (const token of value.legacyReservations) {
+    if (isText(token) === false) return invalid()
+    state.legacyReservations.add(token)
+  }
+  for (const [editorRoot, entry] of records(value.roots)) {
+    if (
+      isAbsolute(editorRoot) === false ||
+      isObject(entry) === false ||
+      isText(entry.repoRoot) === false ||
+      isAbsolute(entry.repoRoot) === false ||
+      isText(entry.contentStore) === false ||
+      state.contentStores.has(entry.contentStore) === false
+    )
+      return invalid()
+    state.roots.set(editorRoot, { repoRoot: entry.repoRoot, contentStore: entry.contentStore })
   }
   for (const [key, entry] of records(value.generations)) {
     if (
@@ -291,6 +343,9 @@ const decodeState = ({
       isCount(entry.pid) === false ||
       isText(entry.process) === false ||
       isText(entry.editorRoot) === false ||
+      isAbsolute(entry.editorRoot) === false ||
+      isText(entry.contentStore) === false ||
+      state.contentStores.has(entry.contentStore) === false ||
       isCount(entry.bytes) === false ||
       isCount(entry.budgetBytes) === false ||
       isCount(entry.createdAtMs) === false
@@ -301,6 +356,7 @@ const decodeState = ({
       pid: entry.pid,
       process: entry.process,
       editorRoot: entry.editorRoot,
+      contentStore: entry.contentStore,
       bytes: entry.bytes,
       budgetBytes: entry.budgetBytes,
       createdAtMs: entry.createdAtMs,
@@ -325,17 +381,16 @@ const decodeState = ({
 }
 
 /**
- * Atomic snapshot read; mutation callers hold the CAS flock. The ledger must
+ * Atomic snapshot read; mutation callers hold the host coordination flock. The ledger must
  * be a private regular file owned by this user, opened without following links.
  */
-const readState = (contentStore: string): BudgetState => {
-  const path = statePath(contentStore)
+const readLedgerValue = (path: string): unknown => {
   let text: string
   let descriptor: number
   try {
     descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
   } catch (error) {
-    if (vanished(error) === true) return emptyState()
+    if (vanished(error) === true) return undefined
     if (hasCode({ error, codes: ['ELOOP'] }) === true)
       return fail(`ledger must not be a symbolic link: ${path}`)
     throw error
@@ -356,17 +411,17 @@ const readState = (contentStore: string): BudgetState => {
       `unreadable ledger ${path}: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
-  return decodeState({ value, path })
+  return value
 }
 
-const writeState = ({
-  contentStore,
-  state,
-}: {
-  readonly contentStore: string
-  readonly state: BudgetState
-}) => {
-  ensureBudgetDirectory(contentStore)
+const readState = (): BudgetState => {
+  const path = statePath()
+  const value = readLedgerValue(path)
+  return value === undefined ? emptyState() : decodeState({ value, path })
+}
+
+const writeState = (state: BudgetState): void => {
+  ensureBudgetDirectory()
   const value: { readonly [key: string]: Json } = {
     schema: stateSchema,
     epoch: state.epoch,
@@ -375,7 +430,14 @@ const writeState = ({
       epoch: entry.epoch,
       estimatedBytes: entry.estimatedBytes,
     })),
-    roots: Object.fromEntries(state.roots),
+    contentStores: Array.from(state.contentStores),
+    legacyReservations: Array.from(state.legacyReservations),
+    roots: Object.fromEntries(
+      Array.from(state.roots, ([key, entry]) => [
+        key,
+        { repoRoot: entry.repoRoot, contentStore: entry.contentStore },
+      ]),
+    ),
     generations: Object.fromEntries(
       Array.from(state.generations, ([key, entry]) => [
         key,
@@ -400,6 +462,7 @@ const writeState = ({
           pid: entry.pid,
           process: entry.process,
           editorRoot: entry.editorRoot,
+          contentStore: entry.contentStore,
           bytes: entry.bytes,
           budgetBytes: entry.budgetBytes,
           createdAtMs: entry.createdAtMs,
@@ -417,7 +480,7 @@ const writeState = ({
         }),
     warned: state.warned,
   }
-  const path = statePath(contentStore)
+  const path = statePath()
   const candidate = `${path}.tmp-${randomUUID()}`
   try {
     writeFileSync(candidate, `${JSON.stringify(value)}\n`, { flag: 'wx', mode: 0o600 })
@@ -446,19 +509,297 @@ let selfIncarnation: string | undefined
 const selfProcess = (): string =>
   (selfIncarnation ??= editorViewStagingCreatorIdentity({ pid: process.pid }))
 
+const processGone = ({
+  owner: { pid, process: incarnation },
+  owners,
+}: {
+  readonly owner: { readonly pid: number; readonly process: string }
+  readonly owners: ReadonlyMap<number, string>
+}): boolean => {
+  if (pid === process.pid && incarnation === selfIncarnation) return false
+  const observed = owners.get(pid) ?? 'unknown'
+  return (
+    observed === 'dead' ||
+    (observed !== 'unknown' && incarnation !== 'unknown' && observed !== incarnation)
+  )
+}
+
+/** Process observation is always outside both flocks; unseen owners remain protected. */
+const budgetProcessOwners = ({
+  includeReservations = true,
+}: { readonly includeReservations?: boolean } = {}): ReadonlyMap<number, string> => {
+  selfProcess()
+  const pids = new Set(
+    includeReservations === true
+      ? Array.from(readState().reservations.values(), (entry) => entry.pid)
+      : [],
+  )
+  for (const name of readdirSync(footprintDirectory())) {
+    const pid = /^\.([0-9a-f]{64}\.bin)\.tmp-([0-9]+)-/.exec(name)?.[2]
+    if (pid !== undefined) pids.add(Number(pid))
+  }
+  return new Map(
+    Array.from(pids, (pid) => [
+      pid,
+      pid === process.pid ? selfProcess() : editorViewStagingCreatorIdentity({ pid }),
+    ]),
+  )
+}
+
+/** Import the unmerged per-store ledger once; payloads remain the source of footprint truth. */
+const registerRoot = async ({
+  state,
+  contentStore,
+  root,
+}: {
+  readonly state: BudgetState
+  readonly contentStore: string
+  readonly root: EditorViewBudgetRoot
+}): Promise<void> => {
+  if (state.contentStores.has(contentStore) === false) {
+    await withEditorViewContentStoreLock({
+      contentStore,
+      run: async () => {
+        const directory = `${contentStore}.budget`
+        try {
+          const status = lstatSync(directory)
+          if (
+            status.isDirectory() === false ||
+            status.uid !== userId() ||
+            (status.mode & 0o077) !== 0 ||
+            realpathSync(directory) !== directory
+          )
+            fail(`legacy budget metadata must be a private real owned directory: ${directory}`)
+        } catch (error) {
+          if (vanished(error) === false) throw error
+        }
+        const legacy = readLedgerValue(join(directory, 'state-v2.json'))
+        if (legacy !== undefined) {
+          if (
+            isObject(legacy) === false ||
+            legacy.schema !== 'effect-utils/editor-view-budget/v2' ||
+            isObject(legacy.roots) === false ||
+            isObject(legacy.lastUse) === false ||
+            isObject(legacy.reservations) === false
+          )
+            fail(`unrecognized legacy budget ledger: ${directory}`)
+          for (const [editorRoot, repoRoot] of Object.entries(legacy.roots)) {
+            if (
+              isAbsolute(editorRoot) === false ||
+              isText(repoRoot) === false ||
+              isAbsolute(repoRoot) === false
+            )
+              fail(`invalid legacy budget root: ${directory}`)
+            state.roots.set(editorRoot, { repoRoot, contentStore })
+          }
+          for (const [key, at] of Object.entries(legacy.lastUse)) {
+            if (isCount(at) === false) fail(`invalid legacy last use: ${directory}`)
+            state.lastUse.set(key, Math.max(at, state.lastUse.get(key) ?? 0))
+          }
+          for (const [token, entry] of Object.entries(legacy.reservations)) {
+            if (
+              isObject(entry) === false ||
+              entry.token !== token ||
+              isCount(entry.pid) === false ||
+              isText(entry.process) === false ||
+              isText(entry.editorRoot) === false ||
+              isAbsolute(entry.editorRoot) === false ||
+              isCount(entry.bytes) === false ||
+              isCount(entry.budgetBytes) === false ||
+              isCount(entry.createdAtMs) === false
+            )
+              fail(`invalid legacy reservation: ${directory}`)
+            state.legacyReservations.add(token)
+            state.reservations.set(token, {
+              token,
+              pid: entry.pid,
+              process: entry.process,
+              editorRoot: entry.editorRoot,
+              contentStore,
+              bytes: entry.bytes,
+              budgetBytes: entry.budgetBytes,
+              createdAtMs: entry.createdAtMs,
+            })
+          }
+        }
+      },
+    })
+    state.contentStores.add(contentStore)
+    state.epoch += 1
+  }
+  const editorRoot = resolve(root.editorRoot)
+  const repoRoot = resolve(root.repoRoot)
+  const previous = state.roots.get(editorRoot)
+  if (
+    previous === undefined ||
+    previous.repoRoot !== repoRoot ||
+    previous.contentStore !== contentStore
+  ) {
+    state.roots.set(editorRoot, { repoRoot, contentStore })
+    state.epoch += 1
+  }
+}
+
+/**
+ * Drain the unmerged source ledger. Removal of an adopted token proves its
+ * payload has settled even if the old writer is a long-lived process.
+ */
+const synchronizeLegacyStore = async (contentStore: string): Promise<void> => {
+  const directory = `${contentStore}.budget`
+  const retired = `${directory}.retired`
+  const source = await lstatIfPresent(directory)
+  const garbage = await lstatIfPresent(retired)
+  const snapshot = readState()
+  if (
+    source === undefined &&
+    garbage === undefined &&
+    Array.from(snapshot.legacyReservations).some(
+      (token) => snapshot.reservations.get(token)?.contentStore === contentStore,
+    ) === false
+  )
+    return
+  const owners = budgetProcessOwners()
+  const removeRetired = await withHostBudgetLock(async () => {
+    return withEditorViewContentStoreLock({
+      contentStore,
+      run: async () => {
+        for (const path of [directory, retired]) {
+          try {
+            const status = lstatSync(path)
+            if (
+              status.isDirectory() === false ||
+              status.uid !== userId() ||
+              (status.mode & 0o077) !== 0 ||
+              realpathSync(path) !== path
+            )
+              fail(`legacy budget metadata must be a private real owned directory: ${path}`)
+          } catch (error) {
+            if (vanished(error) === false) throw error
+          }
+        }
+        const state = readState()
+        const value = readLedgerValue(join(directory, 'state-v2.json'))
+        if (
+          value !== undefined &&
+          (isObject(value) === false ||
+            value.schema !== 'effect-utils/editor-view-budget/v2' ||
+            isObject(value.reservations) === false ||
+            isObject(value.lastUse) === false)
+        )
+          fail(`unrecognized legacy budget ledger: ${directory}`)
+        const reservations =
+          isObject(value) === true && isObject(value.reservations) === true
+            ? value.reservations
+            : {}
+        for (const token of state.legacyReservations) {
+          if (state.reservations.get(token)?.contentStore !== contentStore) continue
+          if (Object.hasOwn(reservations, token) === false) {
+            state.reservations.delete(token)
+            state.legacyReservations.delete(token)
+            state.epoch += 1
+          }
+        }
+        if (isObject(value) === true && isObject(value.lastUse) === true)
+          for (const [key, at] of Object.entries(value.lastUse))
+            if (isCount(at) === true)
+              state.lastUse.set(key, Math.max(at, state.lastUse.get(key) ?? 0))
+        const liveWriter = Object.values(reservations).some(
+          (entry) =>
+            isObject(entry) === false ||
+            isCount(entry.pid) === false ||
+            isText(entry.process) === false ||
+            processGone({ owner: { pid: entry.pid, process: entry.process }, owners }) === false,
+        )
+        reclaimDeadReservations({ state, owners })
+        writeState(state)
+        let remove = false
+        if (liveWriter === false) {
+          try {
+            if (lstatSync(retired).isDirectory() === true) remove = true
+          } catch (error) {
+            if (vanished(error) === false) throw error
+          }
+          if (remove === false) {
+            try {
+              renameSync(directory, retired)
+              remove = true
+            } catch (error) {
+              if (vanished(error) === false) throw error
+            }
+          }
+        } else if (garbage !== undefined) remove = true
+        return remove
+      },
+    })
+  })
+  if (removeRetired === true) rmSync(retired, { recursive: true, force: true })
+}
+
+const discardSidecarStages = (staged: ReadonlyMap<string, string>): void => {
+  for (const path of staged.values()) {
+    try {
+      unlinkSync(path)
+    } catch (error) {
+      if (vanished(error) === false) throw error
+    }
+  }
+}
+
+/** Scope unpublished sidecars locally; the host flock only installs complete files. */
+const withBudgetFootprints = async <T>({
+  contentStore,
+  root,
+  run,
+  maintenanceRoot,
+}: {
+  readonly contentStore: string
+  readonly root: EditorViewBudgetRoot
+  readonly run: (staged: Map<string, string>) => Promise<T>
+  readonly maintenanceRoot?: string
+}): Promise<T> => {
+  const staged = new Map<string, string>()
+  ensureBudgetDirectory()
+  const owners = budgetProcessOwners({ includeReservations: false })
+  const obsolete = obsoleteGenerationFootprints(maintenanceRoot)
+  await withHostBudgetLock(async () => {
+    const state = readState()
+    await registerRoot({ state, contentStore, root })
+    collectObsoleteSidecars({ state, owners, obsolete, scopedEditorRoot: maintenanceRoot })
+    writeState(state)
+  })
+  try {
+    await synchronizeLegacyStore(contentStore)
+    return await run(staged)
+  } finally {
+    discardSidecarStages(staged)
+    const finalOwners = budgetProcessOwners({ includeReservations: false })
+    const finalObsolete = obsoleteGenerationFootprints(maintenanceRoot)
+    await withHostBudgetLock(async () => {
+      const state = readState()
+      collectObsoleteSidecars({
+        state,
+        owners: finalOwners,
+        obsolete: finalObsolete,
+        scopedEditorRoot: maintenanceRoot,
+      })
+      writeState(state)
+    })
+  }
+}
+
 /** Drop only reservations whose recorded incarnation is recognizably gone. */
-const reclaimDeadReservations = (state: BudgetState): number => {
+const reclaimDeadReservations = ({
+  state,
+  owners,
+}: {
+  readonly state: BudgetState
+  readonly owners: ReadonlyMap<number, string>
+}): number => {
   let reclaimed = 0
   for (const [token, reservation] of state.reservations) {
-    if (reservation.pid === process.pid && reservation.process === selfProcess()) continue
-    const observed = editorViewStagingCreatorIdentity({ pid: reservation.pid })
-    const dead =
-      observed === 'dead' ||
-      (observed !== 'unknown' &&
-        reservation.process !== 'unknown' &&
-        observed !== reservation.process)
-    if (dead === true) {
+    if (processGone({ owner: reservation, owners }) === true) {
       state.reservations.delete(token)
+      state.legacyReservations.delete(token)
       reclaimed += 1
     }
   }
@@ -578,9 +919,15 @@ const updateWarning = ({
 // Footprints (walked outside the flock; cached by validated immutable identity)
 // ---------------------------------------------------------------------------
 
+/** Directory st_size may be an entry count (ZFS); allocated blocks are always 512-byte units. */
+const accountedBytes = (status: BigIntStats): bigint => {
+  const allocated = status.blocks * 512n
+  return allocated > status.size ? allocated : status.size
+}
+
 type TreeFootprint = {
   readonly ownedBytes: number
-  /** dev/ino/size triples of inodes with more than one link (CAS or private hardlinks). */
+  /** dev/ino/accounted-byte triples of inodes with more than one link. */
   readonly linked: Buffer
   readonly linkedBytes: number
   readonly readOnly: boolean
@@ -612,10 +959,11 @@ const walkTree = async ({
   let readOnly = rootStatus.isDirectory() === true && (rootStatus.mode & 0o222n) === 0n
   const linked: bigint[] = []
   const admit = (status: BigIntStats): void => {
+    const bytes = accountedBytes(status)
     if (status.isFile() === true && status.nlink > 1n) {
-      linked.push(status.dev, status.ino, status.size)
-      linkedBytes += Number(status.size)
-    } else ownedBytes += Number(status.size)
+      linked.push(status.dev, status.ino, bytes)
+      linkedBytes += Number(bytes)
+    } else ownedBytes += Number(bytes)
   }
   admit(rootStatus)
   if (rootStatus.isDirectory() === false) readOnly = false
@@ -718,35 +1066,166 @@ const sidecarName = ({
   readonly identity: string
 }): string => `${createHash('sha256').update(`${key}\0${identity}`).digest('hex')}.bin`
 
+/** Enumerate candidate cache removals outside the flock; the commit rechecks each identity. */
+const obsoleteGenerationFootprints = (
+  editorRoot?: string,
+): ReadonlyMap<string, CachedGeneration> => {
+  const obsolete = new Map<string, CachedGeneration>()
+  for (const [key, entry] of readState().generations) {
+    if (editorRoot !== undefined && entry.editorRoot !== editorRoot) continue
+    try {
+      if (
+        generationIdentity(join(entry.editorRoot, '.store', entry.name))?.identity !==
+          entry.identity ||
+        lstatSync(join(footprintDirectory(), entry.sidecar)).isFile() === false
+      )
+        obsolete.set(key, entry)
+    } catch (error) {
+      if (vanished(error) === true) obsolete.set(key, entry)
+    }
+  }
+  return obsolete
+}
+
+/** Metadata-only final-cache collection; complete staged files are fenced by their process owner. */
+const collectObsoleteSidecars = ({
+  state,
+  owners,
+  obsolete,
+  scopedEditorRoot,
+}: {
+  readonly state: BudgetState
+  readonly owners: ReadonlyMap<number, string>
+  readonly obsolete: ReadonlyMap<string, CachedGeneration>
+  readonly scopedEditorRoot?: string | undefined
+}): void => {
+  for (const [key, previous] of obsolete) {
+    const entry = state.generations.get(key)
+    if (entry === undefined || entry.identity !== previous.identity) continue
+    try {
+      if (
+        generationIdentity(join(entry.editorRoot, '.store', entry.name))?.identity !==
+          entry.identity ||
+        lstatSync(join(footprintDirectory(), entry.sidecar)).isFile() === false
+      )
+        state.generations.delete(key)
+    } catch (error) {
+      if (vanished(error) === true) state.generations.delete(key)
+      // Unreadable generation metadata is not evidence that its cache is obsolete.
+    }
+  }
+  for (const [editorRoot] of state.roots) {
+    if (scopedEditorRoot !== undefined && editorRoot !== scopedEditorRoot) continue
+    try {
+      lstatSync(editorRoot)
+    } catch (error) {
+      if (
+        vanished(error) === true &&
+        Array.from(state.reservations.values()).some((entry) => entry.editorRoot === editorRoot) ===
+          false
+      )
+        state.roots.delete(editorRoot)
+    }
+  }
+  for (const key of state.lastUse.keys()) {
+    const split = key.lastIndexOf('\0')
+    if (split < 0) continue
+    if (scopedEditorRoot !== undefined && key.slice(0, split) !== scopedEditorRoot) continue
+    try {
+      lstatSync(join(key.slice(0, split), '.store', key.slice(split + 1)))
+    } catch (error) {
+      if (vanished(error) === true) state.lastUse.delete(key)
+    }
+  }
+  const retained = new Set(Array.from(state.generations.values(), (entry) => entry.sidecar))
+  for (const name of readdirSync(footprintDirectory())) {
+    const final = /^[0-9a-f]{64}\.bin$/.test(name)
+    const staged = /^\.([0-9a-f]{64}\.bin)\.tmp-([0-9]+)-(.+)-[0-9a-f-]{36}$/.exec(name)
+    const unreferenced =
+      final === true
+        ? retained.has(name) === false
+        : staged?.[2] !== undefined &&
+          staged[3] !== undefined &&
+          processGone({ owner: { pid: Number(staged[2]), process: staged[3] }, owners }) === true
+    if (unreferenced === false) continue
+    try {
+      unlinkSync(join(footprintDirectory(), name))
+    } catch (error) {
+      if (vanished(error) === false) throw error
+    }
+  }
+}
+
+/** Reclaim obsolete immutable footprint metadata after retention or root release. */
+export const collectEditorViewBudgetFootprints = async ({
+  editorRoot,
+}: { readonly editorRoot?: string } = {}): Promise<void> => {
+  ensureBudgetDirectory()
+  const root = editorRoot === undefined ? undefined : resolve(editorRoot)
+  const owners = budgetProcessOwners({ includeReservations: false })
+  const obsolete = obsoleteGenerationFootprints(root)
+  await withHostBudgetLock(async () => {
+    const state = readState()
+    collectObsoleteSidecars({ state, owners, obsolete, scopedEditorRoot: root })
+    writeState(state)
+  })
+}
+
 const writeSidecar = async ({
-  contentStore,
+  staged,
   name,
   linked,
 }: {
-  readonly contentStore: string
+  readonly staged: Map<string, string>
   readonly name: string
   readonly linked: Buffer
 }): Promise<void> => {
-  ensureBudgetDirectory(contentStore)
-  const path = join(footprintDirectory(contentStore), name)
-  const candidate = `${path}.tmp-${randomUUID()}`
+  if (staged.has(name) === true) return
+  const path = join(
+    footprintDirectory(),
+    `.${name}.tmp-${process.pid}-${selfProcess()}-${randomUUID()}`,
+  )
   try {
-    await writeFile(candidate, linked, { flag: 'wx', mode: 0o600 })
-    await rename(candidate, path)
-  } finally {
-    await unlink(candidate).catch(() => undefined)
+    await writeFile(path, linked, { flag: 'wx', mode: 0o600 })
+    staged.set(name, path)
+  } catch (error) {
+    await unlink(path).catch(() => undefined)
+    throw error
+  }
+}
+
+/** Under the host flock, install a finished stage or require the cached final to still exist. */
+const installSidecar = ({
+  staged,
+  entry,
+}: {
+  readonly staged: Map<string, string>
+  readonly entry: CachedGeneration
+}): boolean => {
+  const path = join(footprintDirectory(), entry.sidecar)
+  const candidate = staged.get(entry.sidecar)
+  if (candidate !== undefined) {
+    renameSync(candidate, path)
+    staged.delete(entry.sidecar)
+  }
+  try {
+    const status = lstatSync(path)
+    if (status.isFile() === false || status.uid !== userId() || (status.mode & 0o077) !== 0)
+      fail(`footprint sidecar must be a private regular owned file: ${path}`)
+    return status.size % entryBytes === 0
+  } catch (error) {
+    if (vanished(error) === true) return false
+    throw error
   }
 }
 
 const readSidecar = async ({
-  contentStore,
   entry,
 }: {
-  readonly contentStore: string
   readonly entry: CachedGeneration
 }): Promise<Buffer | undefined> => {
   try {
-    const linked = await readFile(join(footprintDirectory(contentStore), entry.sidecar))
+    const linked = await readFile(join(footprintDirectory(), entry.sidecar))
     return linked.length % entryBytes === 0 ? linked : undefined
   } catch (error) {
     if (vanished(error) === true) return undefined
@@ -761,6 +1240,7 @@ const readSidecar = async ({
 type RootView = {
   readonly root: EditorViewBudgetRoot
   readonly key: string
+  readonly contentStore: string
   /** Owned, canonical, same-CAS root whose generations may be evicted under its lock. */
   readonly trusted: boolean
   readonly held: boolean
@@ -768,7 +1248,7 @@ type RootView = {
   readonly currents: ReadonlyMap<string, string>
   /** Latest publication (pointer mtime) or recorded explicit use of this root. */
   readonly activeAtMs: number
-  /** Advisory managed pins read outside the flock; undefined means unreadable. */
+  /** Advisory snapshot taken under the owning CAS flock; undefined means unreadable. */
   readonly pins: ReadonlySet<string> | undefined
 }
 
@@ -788,6 +1268,7 @@ type GenerationView = {
 
 type Census = {
   readonly epoch: number
+  readonly contentStores: readonly string[]
   readonly roots: readonly RootView[]
   readonly generations: readonly GenerationView[]
   readonly cas: ReadonlyMap<string, number>
@@ -861,7 +1342,7 @@ const casCensus = async (
   for (let directory = pending.pop(); directory !== undefined; directory = pending.pop()) {
     const status = await lstatIfPresent(directory)
     if (status === undefined || status.isDirectory() === false) continue
-    otherBytes += Number(status.size)
+    otherBytes += Number(accountedBytes(status))
     let names: string[]
     try {
       names = await readdir(directory)
@@ -880,8 +1361,11 @@ const casCensus = async (
         if (entry.status === undefined) continue
         if (entry.status.isDirectory() === true) pending.push(entry.path)
         else if (entry.status.isFile() === true)
-          inodes.set(`${entry.status.dev}:${entry.status.ino}`, Number(entry.status.size))
-        else otherBytes += Number(entry.status.size)
+          inodes.set(
+            `${entry.status.dev}:${entry.status.ino}`,
+            Number(accountedBytes(entry.status)),
+          )
+        else otherBytes += Number(accountedBytes(entry.status))
       }
     }
   }
@@ -904,22 +1388,29 @@ const listRoots = ({
   readonly state: BudgetState
   readonly unknown: string[]
 }): RootView[] => {
-  const candidates = new Map<string, EditorViewBudgetRoot>()
-  for (const [editorRoot, repoRoot] of state.roots)
-    candidates.set(editorRoot, { repoRoot, editorRoot })
-  for (const entry of [...discoverRoots(), root])
-    candidates.set(resolve(entry.editorRoot), {
-      repoRoot: resolve(entry.repoRoot),
-      editorRoot: resolve(entry.editorRoot),
-    })
+  const candidates = new Map<string, EditorViewBudgetRoot & { readonly contentStore: string }>()
+  for (const [editorRoot, entry] of state.roots)
+    candidates.set(editorRoot, { ...entry, editorRoot })
+  for (const entry of [...discoverRoots(), root]) {
+    const editorRoot = resolve(entry.editorRoot)
+    if (candidates.has(editorRoot) === false || editorRoot === resolve(root.editorRoot))
+      candidates.set(editorRoot, {
+        repoRoot: resolve(entry.repoRoot),
+        editorRoot,
+        contentStore,
+      })
+  }
   const views: RootView[] = []
   for (const candidate of candidates.values()) {
     const held = candidate.editorRoot === resolve(heldEditorRoot)
+    const registration = state.roots.get(candidate.editorRoot)
     const inspected = inspectRoot({
       root: candidate,
-      contentStore,
+      contentStore: candidate.contentStore,
       held,
-      registered: state.roots.get(candidate.editorRoot) === candidate.repoRoot,
+      registered:
+        registration?.repoRoot === candidate.repoRoot &&
+        registration.contentStore === candidate.contentStore,
     })
     if (inspected.exists === false) continue
     const currents = new Map<string, string>()
@@ -948,20 +1439,15 @@ const listRoots = ({
         if (vanished(error) === false) throw error
       }
     }
-    let pins: ReadonlySet<string> | undefined
-    try {
-      pins = managedEditorViewSnapshots(candidate.editorRoot)
-    } catch {
-      pins = undefined
-    }
     views.push({
       root: candidate,
       key: candidate.editorRoot,
+      contentStore: candidate.contentStore,
       trusted: inspected.trusted,
       held,
       currents,
       activeAtMs,
-      pins,
+      pins: undefined,
     })
   }
   return views
@@ -972,15 +1458,52 @@ const takeCensus = async ({
   root,
   heldEditorRoot,
   discoverRoots,
+  staged,
 }: {
   readonly contentStore: string
   readonly root: EditorViewBudgetRoot
   readonly heldEditorRoot: string
   readonly discoverRoots: () => readonly EditorViewBudgetRoot[]
+  readonly staged: Map<string, string>
 }): Promise<Census> => {
-  const state = readState(contentStore)
+  /* eslint-disable no-await-in-loop -- Legacy reconciliation never waits for a root lock. */
+  for (const store of readState().contentStores) await synchronizeLegacyStore(store)
+  /* eslint-enable no-await-in-loop */
+  const state = readState()
   const unknown: string[] = []
   const roots = listRoots({ contentStore, root, heldEditorRoot, discoverRoots, state, unknown })
+  const pinRoots = new Map<string, number[]>()
+  for (let index = 0; index < roots.length; index += 1) {
+    const view = roots[index]
+    if (view === undefined || view.trusted === false) continue
+    const indexes = pinRoots.get(view.contentStore)
+    if (indexes === undefined) pinRoots.set(view.contentStore, [index])
+    else indexes.push(index)
+  }
+  /* eslint-disable no-await-in-loop -- One short pin metadata transaction per owning store. */
+  for (const [store, indexes] of pinRoots) {
+    try {
+      await withEditorViewContentStoreLock({
+        contentStore: store,
+        run: async () => {
+          for (const index of indexes) {
+            const view = roots[index]
+            if (view === undefined) continue
+            let pins: ReadonlySet<string> | undefined
+            try {
+              pins = managedEditorViewSnapshots({ editorRoot: view.key })
+            } catch {
+              pins = undefined
+            }
+            roots[index] = { ...view, pins }
+          }
+        },
+      })
+    } catch {
+      // Unreadable or vanished stores leave all their roots non-evictable.
+    }
+  }
+  /* eslint-enable no-await-in-loop */
   const reservedRoots = new Set(
     Array.from(state.reservations.values(), (entry) => entry.editorRoot),
   )
@@ -1017,6 +1540,15 @@ const takeCensus = async ({
   for (const rootView of roots) {
     const editorRoot = rootView.key
     const storeDir = join(editorRoot, '.store')
+    const [rootStatus, storeStatus] = await Promise.all([
+      lstatIfPresent(editorRoot),
+      lstatIfPresent(storeDir),
+    ])
+    rootBytes.set(
+      editorRoot,
+      Number(rootStatus === undefined ? 0n : accountedBytes(rootStatus)) +
+        Number(storeStatus === undefined ? 0n : accountedBytes(storeStatus)),
+    )
     let rootEntries: string[] = []
     try {
       rootEntries = readdirSync(editorRoot)
@@ -1029,11 +1561,12 @@ const takeCensus = async ({
       const status = await lstatIfPresent(path)
       if (status === undefined) continue
       if (status.isDirectory() === true) await addUnmanaged({ rootView, dir: path, name })
-      else rootBytes.set(editorRoot, (rootBytes.get(editorRoot) ?? 0) + Number(status.size))
+      else
+        rootBytes.set(editorRoot, (rootBytes.get(editorRoot) ?? 0) + Number(accountedBytes(status)))
     }
     let storeEntries: string[] = []
     try {
-      if (lstatSync(storeDir).isDirectory() === true) storeEntries = readdirSync(storeDir)
+      if (storeStatus?.isDirectory() === true) storeEntries = readdirSync(storeDir)
     } catch (error) {
       if (vanished(error) === false) unknown.push(storeDir)
     }
@@ -1052,7 +1585,7 @@ const takeCensus = async ({
       let entry: CachedGeneration | undefined
       let linked: Buffer | undefined
       if (stamp !== undefined && cached !== undefined && cached.identity === stamp.identity) {
-        linked = await readSidecar({ contentStore, entry: cached })
+        linked = await readSidecar({ entry: cached })
         if (linked !== undefined) entry = cached
       }
       if (entry === undefined || linked === undefined) {
@@ -1062,7 +1595,7 @@ const takeCensus = async ({
         linked = footprint.linked
         if (stamp !== undefined && footprint.readOnly === true) {
           const sidecar = sidecarName({ key, identity: stamp.identity })
-          await writeSidecar({ contentStore, name: sidecar, linked })
+          await writeSidecar({ staged, name: sidecar, linked })
           entry = {
             editorRoot,
             name,
@@ -1106,14 +1639,45 @@ const takeCensus = async ({
       })
     }
   }
+  const cas = { inodes: new Map<string, number>(), otherBytes: 0 }
+  const contentStores = new Set([...state.contentStores, ...roots.map((view) => view.contentStore)])
+  let localMetadataBytes = 0
+  const metadataLinked = new Map<string, number>()
+  for (const store of contentStores) {
+    try {
+      const footprint = await casCensus(store)
+      for (const [key, size] of footprint.inodes) cas.inodes.set(key, size)
+      cas.otherBytes += footprint.otherBytes
+      for (const path of [`${store}.budget`, `${store}.budget.retired`]) {
+        const metadata = await walkTree({ root: path, unknown })
+        if (metadata === undefined) continue
+        localMetadataBytes += metadata.ownedBytes
+        forEachLinked({
+          linked: metadata.linked,
+          visit: (key, size) => metadataLinked.set(key, size),
+        })
+      }
+      const lockPath = `${store}.flock`
+      const lock = await lstatIfPresent(lockPath)
+      if (lock !== undefined) {
+        if (lock.isFile() === true && lock.uid === BigInt(userId()))
+          metadataLinked.set(`${lock.dev}:${lock.ino}`, Number(accountedBytes(lock)))
+        else unknown.push(lockPath)
+      }
+    } catch (error) {
+      if (vanished(error) === false) unknown.push(store)
+    }
+  }
   /* eslint-enable no-await-in-loop */
-  const cas = await casCensus(contentStore)
-  // The ledger and footprint sidecars live beside the CAS and occupy host bytes too.
-  const ledger = await walkTree({ root: budgetDirectory(contentStore), unknown })
+  // Host metadata participates in accounting, but obsolete sidecars are collected under its flock.
+  const ledger = await walkTree({ root: editorViewHostBudgetStateDirectory(), unknown })
   const distinct = new Map(cas.inodes)
+  for (const [key, size] of metadataLinked) distinct.set(key, size)
+  if (ledger !== undefined)
+    forEachLinked({ linked: ledger.linked, visit: (key, size) => distinct.set(key, size) })
   const referenced = new Set<string>()
   const holders = new Map<string, { bytes: number; generations: number; seen: Set<string> }>()
-  let usedBytes = cas.otherBytes + (ledger?.ownedBytes ?? 0) + (ledger?.linkedBytes ?? 0)
+  let usedBytes = cas.otherBytes + localMetadataBytes + (ledger?.ownedBytes ?? 0)
   for (const bytes of rootBytes.values()) usedBytes += bytes
   for (const generation of generations) {
     usedBytes += generation.ownedBytes
@@ -1150,6 +1714,7 @@ const takeCensus = async ({
     .slice(0, topHolderCount)
   return {
     epoch: state.epoch,
+    contentStores: Array.from(contentStores),
     roots,
     generations,
     cas: cas.inodes,
@@ -1159,6 +1724,19 @@ const takeCensus = async ({
     cache,
     unknown,
   }
+}
+
+const collectBudgetContentStores = async (contentStores: Iterable<string>): Promise<void> => {
+  /* eslint-disable no-await-in-loop -- Each CAS owns its collection lock; neither host nor other-root flocks are held. */
+  for (const contentStore of contentStores) {
+    try {
+      if ((await lstatIfPresent(contentStore))?.isDirectory() === true)
+        await collectEditorViewContentStore({ contentStore })
+    } catch (error) {
+      if (vanished(error) === false) throw error
+    }
+  }
+  /* eslint-enable no-await-in-loop */
 }
 
 // ---------------------------------------------------------------------------
@@ -1241,45 +1819,23 @@ const planEviction = ({
 // Retirement (root lock held by caller; CAS flock only for the metadata transaction)
 // ---------------------------------------------------------------------------
 
-/**
- * Map positive references to generations: a path inside `.store/<name>`
- * protects that generation, any other path inside the editor root protects
- * every generation of the root, and a shared payload inode protects each
- * generation linking it.
- */
-const liveGenerations = (census: Census): Set<string> => {
-  const references = positiveEditorViewProcessReferences()
-  const live = new Set<string>()
-  const liveRoots = new Set<string>()
-  const roots = census.roots.map((view) => ({ view, prefix: `${view.key}${sep}` }))
-  for (const path of references.paths)
-    for (const { view, prefix } of roots) {
-      if (path !== view.key && path.startsWith(prefix) === false) continue
-      const within = relative(join(view.key, '.store'), path)
-      const name = within.split(sep)[0]
-      if (
-        name !== undefined &&
-        name.length > 0 &&
-        name !== '..' &&
-        isAbsolute(within) === false &&
-        generationPattern.test(name) === true
-      )
-        live.add(generationKey({ editorRoot: view.key, name }))
-      else liveRoots.add(view.key)
-    }
-  for (const generation of census.generations)
-    if (liveRoots.has(generation.root.key) === true) live.add(generation.key)
-  if (references.inodes.size > 0)
-    for (const generation of census.generations) {
-      if (live.has(generation.key) === true) continue
-      forEachLinked({
-        linked: generation.linked,
-        visit: (key) => {
-          if (references.inodes.has(key) === true) live.add(generation.key)
-        },
-      })
-    }
-  return live
+const linkedInodes = function* (linked: Buffer): Generator<string> {
+  for (let offset = 0; offset + entryBytes <= linked.length; offset += entryBytes)
+    yield `${linked.readBigUInt64LE(offset)}:${linked.readBigUInt64LE(offset + 8)}`
+}
+
+/** Build only the candidates whose eligibility can still be changed by a positive reference. */
+const observeGenerations = (generations: readonly GenerationView[]): ReadonlySet<string> => {
+  const candidates: EditorViewProcessCandidate[] = []
+  for (const generation of generations) {
+    candidates.push({
+      key: generation.key,
+      editorRoot: generation.root.key,
+      snapshotRoot: generation.dir,
+      linkedInodes: linkedInodes(generation.linked),
+    })
+  }
+  return observeEditorViewProcessCandidates({ candidates })
 }
 
 type FirstHop = { readonly path: string; readonly target: string } | 'absent' | 'protect'
@@ -1354,17 +1910,17 @@ const writeMarker = ({
 type Retirement = { readonly retired: readonly string[]; readonly blocked: readonly string[] }
 
 const retireRoot = async ({
-  contentStore,
   root,
   generations,
   budgetBytes,
   usedBytes,
+  recencyMs,
 }: {
-  readonly contentStore: string
   readonly root: RootView
   readonly generations: readonly GenerationView[]
   readonly budgetBytes: number
   readonly usedBytes: number
+  readonly recencyMs: number
 }): Promise<Retirement> => {
   const blocked: string[] = []
   const admitted: { generation: GenerationView; view: string | undefined; firstHop: FirstHop }[] =
@@ -1386,84 +1942,116 @@ const retireRoot = async ({
   const token = randomUUID()
   const garbage: string[] = []
   const retired: string[] = []
-  await withEditorViewContentStoreLock({
-    contentStore,
-    run: async () => {
-      const pinned = managedEditorViewSnapshots(root.key)
-      const pointers = new Map<string, string>()
-      for (const name of readdirSync(root.key)) {
-        const path = join(root.key, name)
-        try {
-          if (lstatSync(path).isSymbolicLink() === true) pointers.set(name, readlinkSync(path))
-        } catch (error) {
-          if (vanished(error) === false) throw error
-        }
-      }
-      for (const { generation, view, firstHop } of admitted) {
-        // Pins are rechecked immediately before the canonical rename.
+  await withHostBudgetLock(async () => {
+    await withEditorViewContentStoreLock({
+      contentStore: root.contentStore,
+      run: async () => {
+        const state = readState()
+        const registration = state.roots.get(root.key)
         if (
-          pinned.has(generation.name) === true ||
-          generationIdentity(generation.dir)?.identity !== generation.identity
+          registration?.contentStore !== root.contentStore ||
+          registration.repoRoot !== root.root.repoRoot
         ) {
-          blocked.push(generation.key)
-          continue
+          blocked.push(...admitted.map(({ generation }) => generation.key))
+          return
         }
-        const target = `.store/${generation.name}`
-        const pointed = Array.from(pointers).filter(([, link]) => link === target)
-        if (view === undefined) {
-          if (pointed.length > 0) {
+        const pinned = managedEditorViewSnapshots({ editorRoot: root.key })
+        let activeAtMs = 0
+        for (const [key, at] of state.lastUse)
+          if (key.startsWith(`${root.key}\0`) === true) activeAtMs = Math.max(activeAtMs, at)
+        const pointers = new Map<string, string>()
+        for (const name of readdirSync(root.key)) {
+          const path = join(root.key, name)
+          try {
+            const status = lstatSync(path)
+            if (status.isSymbolicLink() === true) {
+              const target = readlinkSync(path)
+              pointers.set(name, target)
+              const snapshot = snapshotPattern.exec(target)?.[1]
+              if (snapshot !== undefined && snapshot.startsWith(`${name}-`) === true)
+                activeAtMs = Math.max(activeAtMs, status.mtimeMs)
+            }
+          } catch (error) {
+            if (vanished(error) === false) throw error
+          }
+        }
+        for (const { generation, view, firstHop } of admitted) {
+          // Recent use is reread only after root → host → owning CAS exclusion.
+          const stamp = generationIdentity(generation.dir)
+          const now = Date.now()
+          if (
+            pinned.has(generation.name) === true ||
+            stamp?.identity !== generation.identity ||
+            now - activeAtMs < recencyMs ||
+            now - Math.max(stamp?.mtimeMs ?? 0, state.lastUse.get(generation.key) ?? 0) <
+              graceMs + touchRefreshMs
+          ) {
             blocked.push(generation.key)
             continue
           }
-        } else {
-          if (pointed.length !== 1 || pointed[0]?.[0] !== view) {
-            blocked.push(generation.key)
-            continue
-          }
-          if (typeof firstHop === 'object') {
-            try {
-              if (readlinkSync(firstHop.path) !== firstHop.target) {
-                blocked.push(generation.key)
-                continue
+          const target = `.store/${generation.name}`
+          const pointed = Array.from(pointers).filter(([, link]) => link === target)
+          if (view === undefined) {
+            if (pointed.length > 0) {
+              blocked.push(generation.key)
+              continue
+            }
+          } else {
+            if (pointed.length !== 1 || pointed[0]?.[0] !== view) {
+              blocked.push(generation.key)
+              continue
+            }
+            if (typeof firstHop === 'object') {
+              try {
+                if (readlinkSync(firstHop.path) !== firstHop.target) {
+                  blocked.push(generation.key)
+                  continue
+                }
+              } catch (error) {
+                if (vanished(error) === false) throw error
               }
-            } catch (error) {
-              if (vanished(error) === false) throw error
             }
-          }
-          writeMarker({
-            root,
-            view,
-            marker: {
-              schema: editorViewEvictedSchema,
-              snapshot: target,
-              reason: 'host-budget',
-              budgetBytes,
-              usedBytes,
-            },
-          })
-          if (typeof firstHop === 'object') {
-            try {
-              unlinkSync(firstHop.path)
-            } catch (error) {
-              if (vanished(error) === false) throw error
+            writeMarker({
+              root,
+              view,
+              marker: {
+                schema: editorViewEvictedSchema,
+                snapshot: target,
+                reason: 'host-budget',
+                budgetBytes,
+                usedBytes,
+              },
+            })
+            if (typeof firstHop === 'object') {
+              try {
+                unlinkSync(firstHop.path)
+              } catch (error) {
+                if (vanished(error) === false) throw error
+              }
             }
+            unlinkSync(join(root.key, view))
           }
-          unlinkSync(join(root.key, view))
+          const destination = join(root.key, `.gc-${token}-${generation.name}`)
+          const mode = statSync(generation.dir).mode & 0o777
+          chmodSync(generation.dir, mode | 0o200)
+          try {
+            renameSync(generation.dir, destination)
+          } catch (error) {
+            chmodSync(generation.dir, mode)
+            throw error
+          }
+          chmodSync(destination, mode)
+          garbage.push(destination)
+          retired.push(generation.key)
+          state.generations.delete(generation.key)
+          state.lastUse.delete(generation.key)
         }
-        const destination = join(root.key, `.gc-${token}-${generation.name}`)
-        const mode = statSync(generation.dir).mode & 0o777
-        chmodSync(generation.dir, mode | 0o200)
-        try {
-          renameSync(generation.dir, destination)
-        } catch (error) {
-          chmodSync(generation.dir, mode)
-          throw error
+        if (retired.length > 0) {
+          state.epoch += 1
+          writeState(state)
         }
-        chmodSync(destination, mode)
-        garbage.push(destination)
-        retired.push(generation.key)
-      }
-    },
+      },
+    })
   })
   // Directory-only unlock of private retired trees; payload inodes are never chmodded.
   for (const path of garbage) {
@@ -1494,6 +2082,7 @@ export const reserveEditorViewBudget = async ({
   heldEditorRoot,
   discoverRoots,
   tryLockRoot,
+  beforeRetireRoot,
   budgetBytes,
   recencyMs = editorViewHostRecencyMs(),
 }: {
@@ -1506,6 +2095,8 @@ export const reserveEditorViewBudget = async ({
   readonly budgetBytes: number
   /** Root recency window protecting current generations; defaults to EDITOR_VIEW_HOST_RECENCY_MS. */
   readonly recencyMs?: number
+  /** Called with the victim root lock held and neither flock held, before final eligibility. */
+  readonly beforeRetireRoot?: (() => void | Promise<void>) | undefined
 }): Promise<{ readonly token: string }> => {
   if (Number.isSafeInteger(reservationBytes) === false || reservationBytes <= 0)
     fail(`reservation must be a positive safe integer of bytes: ${reservationBytes}`)
@@ -1515,214 +2106,257 @@ export const reserveEditorViewBudget = async ({
     fail(`recency must be a non-negative safe integer of milliseconds: ${recencyMs}`)
   const startedAtMs = Date.now()
   const store = resolve(contentStore)
-  ensureBudgetDirectory(store)
-  const token = randomUUID()
-  const blocked = new Set<string>()
-  const evicted: string[] = []
-  let collected = false
-  /** One short flock transaction: reconcile the ledger, then reserve if it fits (or when forced). */
-  const admit = ({
-    census,
-    plan,
-    force,
-  }: {
-    readonly census: Census
-    readonly plan: Plan
-    readonly force: boolean
-  }) =>
-    withEditorViewContentStoreLock({
-      contentStore: store,
-      run: async () => {
-        const state = readState(store)
-        reclaimDeadReservations(state)
-        const stale = census.epoch < state.journalFloor
-        const pending = state.journal
-          .filter((entry) => entry.epoch > census.epoch)
-          .reduce((sum, entry) => sum + entry.estimatedBytes, 0)
-        const reserved = reservedBytes(state)
-        // Admission stays conservative: measured usage plus every outstanding estimate.
-        const used = census.usedBytes + reserved + pending
-        // Only active registrations in this ledger prove a root shares this content store.
-        state.roots.set(resolve(root.editorRoot), resolve(root.repoRoot))
-        for (const editorRoot of state.roots.keys())
-          if (census.roots.some((view) => view.key === editorRoot) === false)
-            state.roots.delete(editorRoot)
-        for (const key of state.generations.keys())
-          if (census.cache.has(key) === false) state.generations.delete(key)
-        for (const [key, entry] of census.cache) state.generations.set(key, entry)
-        for (const key of state.lastUse.keys())
-          if (census.generations.some((generation) => generation.key === key) === false)
-            state.lastUse.delete(key)
-        // Usage records only measured census values; estimates stay in the journal.
-        state.usage = {
-          usedBytes: census.usedBytes,
-          protectedBytes: plan.protectedBytes,
-          measuredAtMs: Date.now(),
-        }
-        const admitted =
-          force === true || (stale === false && used + reservationBytes <= budgetBytes)
-        if (admitted === true) {
-          state.reservations.set(token, {
-            token,
-            pid: process.pid,
-            process: selfProcess(),
-            editorRoot: resolve(heldEditorRoot),
-            bytes: reservationBytes,
-            budgetBytes,
-            createdAtMs: Date.now(),
-          })
-          state.epoch += 1
-        }
-        updateWarning({ state, budgetBytes, topHolders: census.topHolders, startedAtMs })
-        writeState({ contentStore: store, state })
-        return { admitted, stale, used, reserved, pending }
-      },
-    })
-  let last: { census: Census; plan: Plan } | undefined
-  for (let round = 0; round < maxAdmissionRounds; round += 1) {
-    // eslint-disable-next-line no-await-in-loop -- Each round must observe the previous round's retirements.
-    const census = await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots })
-    if (
-      collected === false &&
-      census.unreferencedCasBytes > 0 &&
-      census.usedBytes + reservedBytes(readState(store)) + reservationBytes > budgetBytes
-    ) {
-      collected = true
-      // Unreferenced CAS reclamation cannot retire a generation; observe readers
-      // only if pressure remains after this cheapest, first-priority collection.
-      // eslint-disable-next-line no-await-in-loop -- Recount after unlinking CAS-only entries.
-      await collectEditorViewContentStore({ contentStore: store })
-      continue
-    }
-    let plan = planEviction({
-      census,
-      blocked,
-      live: new Set(),
-      recencyMs,
-      now: Date.now(),
-    })
-    // Recent/grace/pinned roots already have complete protection. A host process
-    // walk cannot change their eligibility and must not tax ordinary publication.
-    const observesReaders =
-      plan.order.length > 0 &&
-      census.usedBytes + reservedBytes(readState(store)) + reservationBytes >=
-        budgetBytes * warningRatio
-    if (observesReaders === true)
-      plan = planEviction({
+  return withBudgetFootprints({
+    contentStore: store,
+    root,
+    run: async (staged) => {
+      const token = randomUUID()
+      const blocked = new Set<string>()
+      const evicted: string[] = []
+      let collected = false
+      /** One short flock transaction: reconcile the ledger, then reserve if it fits (or when forced). */
+      const admit = async ({
         census,
-        blocked,
-        live: liveGenerations(census),
-        recencyMs,
-        now: Date.now(),
-      })
-    last = { census, plan }
-    // eslint-disable-next-line no-await-in-loop -- Admission is a single short flock transaction per round.
-    const admission = await admit({ census, plan, force: false })
-    if (admission.admitted === true) {
-      if (evicted.length > 0)
-        signal({
-          event: {
-            event: 'editor-view.host-budget.evicted',
-            budgetBytes,
+        plan,
+        force,
+      }: {
+        readonly census: Census
+        readonly plan: Plan
+        readonly force: boolean
+      }) => {
+        const owners = budgetProcessOwners()
+        const obsolete = obsoleteGenerationFootprints()
+        return withHostBudgetLock(async () => {
+          const state = readState()
+          reclaimDeadReservations({ state, owners })
+          const stale =
+            census.epoch < state.journalFloor ||
+            Array.from(state.contentStores).some(
+              (entry) => census.contentStores.includes(entry) === false,
+            ) ||
+            Array.from(state.roots.keys()).some((editorRoot) => {
+              if (census.roots.some((view) => view.key === editorRoot) === true) return false
+              try {
+                return lstatSync(editorRoot).isDirectory() === true
+              } catch (error) {
+                return vanished(error) === false
+              }
+            })
+          const pending = state.journal
+            .filter((entry) => entry.epoch > census.epoch)
+            .reduce((sum, entry) => sum + entry.estimatedBytes, 0)
+          const reserved = reservedBytes(state)
+          // Admission stays conservative: measured usage plus every outstanding estimate.
+          const used = census.usedBytes + reserved + pending
+          await registerRoot({ state, contentStore: store, root })
+          for (const view of census.roots) {
+            const registered = state.roots.get(view.key)
+            if (
+              view.trusted === true &&
+              (registered === undefined ||
+                (registered.contentStore === view.contentStore &&
+                  registered.repoRoot === view.root.repoRoot))
+            )
+              state.roots.set(view.key, {
+                repoRoot: view.root.repoRoot,
+                contentStore: view.contentStore,
+              })
+          }
+          for (const [key, entry] of census.cache)
+            if (
+              generationIdentity(join(entry.editorRoot, '.store', entry.name))?.identity ===
+                entry.identity &&
+              installSidecar({ staged, entry }) === true
+            )
+              state.generations.set(key, entry)
+          // Never erase a newer warm touch, finish, or registration using an older census.
+          collectObsoleteSidecars({ state, owners, obsolete })
+          // Usage records only measured census values; estimates stay in the journal.
+          state.usage = {
             usedBytes: census.usedBytes,
             protectedBytes: plan.protectedBytes,
-            reservedBytes: admission.reserved,
-            pendingEstimateBytes: admission.pending,
-            reservationBytes,
-            topHolders: census.topHolders,
-            evicted,
-            ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
-            message: `retired ${evicted.length} editor-view generation(s) to admit ${reservationBytes} bytes within the ${budgetBytes}-byte host budget`,
-          },
-          startedAtMs,
-          exitCode: 0,
+            measuredAtMs: Date.now(),
+          }
+          const admitted =
+            force === true || (stale === false && used + reservationBytes <= budgetBytes)
+          if (admitted === true) {
+            state.reservations.set(token, {
+              token,
+              pid: process.pid,
+              process: selfProcess(),
+              editorRoot: resolve(heldEditorRoot),
+              contentStore: store,
+              bytes: reservationBytes,
+              budgetBytes,
+              createdAtMs: Date.now(),
+            })
+            state.epoch += 1
+          }
+          updateWarning({ state, budgetBytes, topHolders: census.topHolders, startedAtMs })
+          writeState(state)
+          return { admitted, stale, used, reserved, pending }
         })
-      return { token }
-    }
-    if (admission.stale === true) continue
-    // A concurrent reservation can consume headroom after the outside-lock census.
-    // Observe readers before any pressure-driven retirement in that case too.
-    if (observesReaders === false && plan.order.length > 0) {
-      plan = planEviction({
-        census,
-        blocked,
-        live: liveGenerations(census),
-        recencyMs,
-        now: Date.now(),
-      })
-      last = { census, plan }
-    }
-    if (collected === false && census.unreferencedCasBytes > 0) {
-      collected = true
-      // eslint-disable-next-line no-await-in-loop -- Collection takes the CAS flock itself; no locks are held here.
-      await collectEditorViewContentStore({ contentStore: store })
-      continue
-    }
-    // Evict the LRU prefix that reaches the budget, or every eligible generation when none does.
-    const needed = admission.used + reservationBytes - budgetBytes
-    const prefix = plan.cumulative.findIndex((freed) => freed >= needed)
-    const selected = plan.order.slice(0, prefix === -1 ? plan.order.length : prefix + 1)
-    if (selected.length === 0) break
-    const byRoot = new Map<string, GenerationView[]>()
-    for (const generation of selected)
-      byRoot.set(generation.root.key, [...(byRoot.get(generation.root.key) ?? []), generation])
-    const retiredBefore = evicted.length
-    for (const generations of byRoot.values()) {
-      const rootView = generations[0]?.root
-      if (rootView === undefined) continue
-      // The admitting publisher already holds its own root; other roots never wait.
-      const lock = rootView.held === true ? undefined : tryLockRoot(rootView.root)
-      if (rootView.held === false && lock === undefined) {
-        for (const generation of census.generations)
-          if (generation.root.key === rootView.key) blocked.add(generation.key)
-        continue
       }
-      try {
-        // eslint-disable-next-line no-await-in-loop -- Root locks are held one root at a time.
-        const outcome = await retireRoot({
+      let last: { census: Census; plan: Plan } | undefined
+      for (let round = 0; round < maxAdmissionRounds; round += 1) {
+        // eslint-disable-next-line no-await-in-loop -- Each round must observe the previous round's retirements.
+        const census = await takeCensus({
           contentStore: store,
-          root: rootView,
-          generations,
+          root,
+          heldEditorRoot,
+          discoverRoots,
+          staged,
+        })
+        if (
+          collected === false &&
+          census.unreferencedCasBytes > 0 &&
+          census.usedBytes + reservedBytes(readState()) + reservationBytes > budgetBytes
+        ) {
+          collected = true
+          // Unreferenced CAS reclamation cannot retire a generation; observe readers
+          // only if pressure remains after this cheapest, first-priority collection.
+          // eslint-disable-next-line no-await-in-loop -- Recount after unlinking CAS-only entries.
+          await collectBudgetContentStores(census.contentStores)
+          continue
+        }
+        let plan = planEviction({
+          census,
+          blocked,
+          live: new Set(),
+          recencyMs,
+          now: Date.now(),
+        })
+        // Recent/grace/pinned roots already have complete protection. A host process
+        // walk cannot change their eligibility and must not tax ordinary publication.
+        const observesReaders =
+          plan.order.length > 0 &&
+          census.usedBytes -
+            census.unreferencedCasBytes +
+            reservedBytes(readState()) +
+            reservationBytes >=
+            budgetBytes * warningRatio
+        if (observesReaders === true)
+          plan = planEviction({
+            census,
+            blocked,
+            live: observeGenerations(plan.order),
+            recencyMs,
+            now: Date.now(),
+          })
+        last = { census, plan }
+        // eslint-disable-next-line no-await-in-loop -- Admission is a single short flock transaction per round.
+        const admission = await admit({ census, plan, force: false })
+        if (admission.admitted === true) {
+          if (evicted.length > 0)
+            signal({
+              event: {
+                event: 'editor-view.host-budget.evicted',
+                budgetBytes,
+                usedBytes: census.usedBytes,
+                protectedBytes: plan.protectedBytes,
+                reservedBytes: admission.reserved,
+                pendingEstimateBytes: admission.pending,
+                reservationBytes,
+                topHolders: census.topHolders,
+                evicted,
+                ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
+                message: `retired ${evicted.length} editor-view generation(s) to admit ${reservationBytes} bytes within the ${budgetBytes}-byte host budget`,
+              },
+              startedAtMs,
+              exitCode: 0,
+            })
+          return { token }
+        }
+        if (admission.stale === true) continue
+        // A concurrent reservation can consume headroom after the outside-lock census.
+        // Observe readers before any pressure-driven retirement in that case too.
+        if (observesReaders === false && plan.order.length > 0) {
+          plan = planEviction({
+            census,
+            blocked,
+            live: observeGenerations(plan.order),
+            recencyMs,
+            now: Date.now(),
+          })
+          last = { census, plan }
+        }
+        if (collected === false && census.unreferencedCasBytes > 0) {
+          collected = true
+          // eslint-disable-next-line no-await-in-loop -- Collection takes the CAS flock itself; no locks are held here.
+          await collectBudgetContentStores(census.contentStores)
+          continue
+        }
+        // Evict the LRU prefix that reaches the budget, or every eligible generation when none does.
+        const needed = admission.used + reservationBytes - budgetBytes
+        const prefix = plan.cumulative.findIndex((freed) => freed >= needed)
+        const selected = plan.order.slice(0, prefix === -1 ? plan.order.length : prefix + 1)
+        if (selected.length === 0) break
+        const byRoot = new Map<string, GenerationView[]>()
+        for (const generation of selected)
+          byRoot.set(generation.root.key, [...(byRoot.get(generation.root.key) ?? []), generation])
+        const retiredBefore = evicted.length
+        const retiredStores = new Set<string>()
+        for (const generations of byRoot.values()) {
+          const rootView = generations[0]?.root
+          if (rootView === undefined) continue
+          // The admitting publisher already holds its own root; other roots never wait.
+          const lock = rootView.held === true ? undefined : tryLockRoot(rootView.root)
+          if (rootView.held === false && lock === undefined) {
+            for (const generation of census.generations)
+              if (generation.root.key === rootView.key) blocked.add(generation.key)
+            continue
+          }
+          try {
+            // eslint-disable-next-line no-await-in-loop -- Test/coordination hook runs outside both flocks.
+            await beforeRetireRoot?.()
+            // eslint-disable-next-line no-await-in-loop -- Root locks are held one root at a time.
+            const outcome = await retireRoot({
+              root: rootView,
+              generations,
+              budgetBytes,
+              usedBytes: census.usedBytes,
+              recencyMs,
+            })
+            for (const key of outcome.blocked) blocked.add(key)
+            evicted.push(...outcome.retired)
+            if (outcome.retired.length > 0) retiredStores.add(rootView.contentStore)
+          } finally {
+            lock?.release()
+          }
+        }
+        if (evicted.length > retiredBefore) {
+          // eslint-disable-next-line no-await-in-loop -- Retired payload links free CAS blobs only after collection.
+          await collectBudgetContentStores(retiredStores)
+          collected = true
+        }
+      }
+      // Advisory budget: protected bytes do not fit, so record the overrun and publish anyway.
+      const census =
+        last?.census ??
+        (await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots, staged }))
+      const plan =
+        last?.plan ?? planEviction({ census, blocked, live: new Set(), recencyMs, now: Date.now() })
+      const admission = await admit({ census, plan, force: true })
+      signal({
+        event: {
+          event: 'editor-view.host-budget.over-budget',
           budgetBytes,
           usedBytes: census.usedBytes,
-        })
-        for (const key of outcome.blocked) blocked.add(key)
-        evicted.push(...outcome.retired)
-      } finally {
-        lock?.release()
-      }
-    }
-    if (evicted.length > retiredBefore) {
-      // eslint-disable-next-line no-await-in-loop -- Retired payload links free CAS blobs only after collection.
-      await collectEditorViewContentStore({ contentStore: store })
-      collected = true
-    }
-  }
-  // Advisory budget: protected bytes do not fit, so record the overrun and publish anyway.
-  const census =
-    last?.census ?? (await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots }))
-  const plan =
-    last?.plan ??
-    planEviction({ census, blocked, live: liveGenerations(census), recencyMs, now: Date.now() })
-  const admission = await admit({ census, plan, force: true })
-  signal({
-    event: {
-      event: 'editor-view.host-budget.over-budget',
-      budgetBytes,
-      usedBytes: census.usedBytes,
-      protectedBytes: plan.protectedBytes,
-      reservedBytes: admission.reserved,
-      pendingEstimateBytes: admission.pending,
-      reservationBytes,
-      topHolders: census.topHolders,
-      evicted,
-      ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
-      message: `editor views exceed the host budget: ${census.usedBytes} of ${budgetBytes} bytes measured (${plan.protectedBytes} protected: pinned, open by a process, within ${graceMs / 60_000}min grace, root used within ${recencyMs}ms, or lock contended) plus ${admission.reserved} reserved and ${admission.pending} estimated since the census, before admitting ${reservationBytes}${census.unknown.length > 0 ? `; ${census.unknown.length} unreadable path(s) uncounted` : ''}; evicted ${evicted.length} generation(s); top holders: ${formatHolders(census.topHolders)}. Publishing anyway; release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.`,
+          protectedBytes: plan.protectedBytes,
+          reservedBytes: admission.reserved,
+          pendingEstimateBytes: admission.pending,
+          reservationBytes,
+          topHolders: census.topHolders,
+          evicted,
+          ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
+          message: `editor views exceed the host budget: ${census.usedBytes} of ${budgetBytes} bytes measured (${plan.protectedBytes} protected: pinned, open by a process, within ${graceMs / 60_000}min grace, root used within ${recencyMs}ms, or lock contended) plus ${admission.reserved} reserved and ${admission.pending} estimated since the census, before admitting ${reservationBytes}${census.unknown.length > 0 ? `; ${census.unknown.length} unreadable path(s) uncounted` : ''}; evicted ${evicted.length} generation(s); top holders: ${formatHolders(census.topHolders)}. Publishing anyway; release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.`,
+        },
+        startedAtMs,
+        exitCode: 0,
+      })
+      return { token }
     },
-    startedAtMs,
-    exitCode: 0,
   })
-  return { token }
 }
 
 /**
@@ -1743,82 +2377,93 @@ export const finishEditorViewBudgetReservation = async ({
 }): Promise<void> => {
   const startedAtMs = Date.now()
   const store = resolve(contentStore)
-  const name = requireSnapshotName(snapshot)
-  const editorRoot = resolve(root.editorRoot)
-  const key = generationKey({ editorRoot, name })
-  const dir = join(editorRoot, '.store', name)
-  const stamp = generationIdentity(dir)
-  let cached: CachedGeneration | undefined
-  let actualBytes: number | undefined
-  let partialBytes = 0
-  try {
-    const unreadable: string[] = []
-    const footprint = await walkTree({ root: dir, unknown: unreadable })
-    if (footprint !== undefined) {
-      partialBytes = footprint.ownedBytes + footprint.linkedBytes
-      if (unreadable.length === 0) actualBytes = partialBytes
-      if (stamp !== undefined && footprint.readOnly === true) {
-        const sidecar = sidecarName({ key, identity: stamp.identity })
-        await writeSidecar({ contentStore: store, name: sidecar, linked: footprint.linked })
-        const recordedPackage = await recordPackage({ dir, name })
-        cached = {
-          editorRoot,
-          name,
-          identity: stamp.identity,
-          ownedBytes: footprint.ownedBytes,
-          linkedBytes: footprint.linkedBytes,
-          sidecar,
-          readOnly: true,
-          ...(recordedPackage === undefined ? {} : { package: recordedPackage }),
-        }
-      }
-    }
-  } catch {
-    // The committed generation stays accounted at its reserved size until the next census.
-  }
-  const outcome = await withEditorViewContentStoreLock({
+  return withBudgetFootprints({
     contentStore: store,
-    run: async () => {
-      const state = readState(store)
-      const reservation = state.reservations.get(token)
-      // Only the reserving incarnation may settle its reservation, and only for its own root.
-      if (
-        reservation !== undefined &&
-        (reservation.pid !== process.pid ||
-          reservation.process !== selfProcess() ||
-          reservation.editorRoot !== editorRoot)
-      )
-        fail(
-          `reservation ${token} belongs to process ${reservation.pid} for ${reservation.editorRoot}, not ${editorRoot}`,
+    root,
+    maintenanceRoot: resolve(root.editorRoot),
+    run: async (staged) => {
+      const name = requireSnapshotName(snapshot)
+      const editorRoot = resolve(root.editorRoot)
+      const key = generationKey({ editorRoot, name })
+      const dir = join(editorRoot, '.store', name)
+      const stamp = generationIdentity(dir)
+      let cached: CachedGeneration | undefined
+      let actualBytes: number | undefined
+      let partialBytes = 0
+      try {
+        const unreadable: string[] = []
+        const footprint = await walkTree({ root: dir, unknown: unreadable })
+        if (footprint !== undefined) {
+          partialBytes = footprint.ownedBytes + footprint.linkedBytes
+          if (unreadable.length === 0) actualBytes = partialBytes
+          if (stamp !== undefined && footprint.readOnly === true) {
+            const sidecar = sidecarName({ key, identity: stamp.identity })
+            await writeSidecar({ staged, name: sidecar, linked: footprint.linked })
+            const recordedPackage = await recordPackage({ dir, name })
+            cached = {
+              editorRoot,
+              name,
+              identity: stamp.identity,
+              ownedBytes: footprint.ownedBytes,
+              linkedBytes: footprint.linkedBytes,
+              sidecar,
+              readOnly: true,
+              ...(recordedPackage === undefined ? {} : { package: recordedPackage }),
+            }
+          }
+        }
+      } catch {
+        // The committed generation stays accounted at its reserved size until the next census.
+      }
+      const outcome = await withHostBudgetLock(async () => {
+        const state = readState()
+        const reservation = state.reservations.get(token)
+        // Only the reserving incarnation may settle its reservation, and only for its own root.
+        if (
+          reservation !== undefined &&
+          (reservation.pid !== process.pid ||
+            reservation.process !== selfProcess() ||
+            reservation.editorRoot !== editorRoot ||
+            reservation.contentStore !== store)
         )
-      state.reservations.delete(token)
-      // Conservative estimate: an incomplete walk never shrinks the admitted reservation.
-      const estimatedBytes = actualBytes ?? Math.max(partialBytes, reservation?.bytes ?? 0)
-      appendJournal({ state, estimatedBytes })
-      if (cached !== undefined) state.generations.set(key, cached)
-      state.lastUse.set(key, Date.now())
-      state.roots.set(editorRoot, resolve(root.repoRoot))
-      writeState({ contentStore: store, state })
-      return { reservation, estimatedBytes, usage: state.usage, reserved: reservedBytes(state) }
+          fail(
+            `reservation ${token} belongs to process ${reservation.pid} for ${reservation.editorRoot}, not ${editorRoot}`,
+          )
+        state.reservations.delete(token)
+        state.legacyReservations.delete(token)
+        // Conservative estimate: an incomplete walk never shrinks the admitted reservation.
+        const estimatedBytes = actualBytes ?? Math.max(partialBytes, reservation?.bytes ?? 0)
+        appendJournal({ state, estimatedBytes })
+        if (
+          cached !== undefined &&
+          generationIdentity(dir)?.identity === cached.identity &&
+          installSidecar({ staged, entry: cached }) === true
+        )
+          state.generations.set(key, cached)
+        state.lastUse.set(key, Date.now())
+        await registerRoot({ state, contentStore: store, root })
+        writeState(state)
+        return { reservation, estimatedBytes, usage: state.usage, reserved: reservedBytes(state) }
+      })
+      // Full footprint counts shared payload inodes, so this is an upper bound on new bytes.
+      if (outcome.reservation !== undefined && outcome.estimatedBytes > outcome.reservation.bytes)
+        signal({
+          event: {
+            event: 'editor-view.host-budget.underreserved',
+            budgetBytes: outcome.reservation.budgetBytes,
+            usedBytes: outcome.usage?.usedBytes ?? 0,
+            protectedBytes: outcome.usage?.protectedBytes ?? 0,
+            reservedBytes: outcome.reserved,
+            pendingEstimateBytes: outcome.estimatedBytes,
+            reservationBytes: outcome.reservation.bytes,
+            topHolders: [],
+            message: `generation ${snapshot} footprint is up to ${outcome.estimatedBytes} bytes (shared payload inodes included) but reserved only ${outcome.reservation.bytes}; the publisher's reservation formula may undercount`,
+          },
+          startedAtMs,
+          exitCode: 0,
+        })
     },
   })
-  // Full footprint counts shared payload inodes, so this is an upper bound on new bytes.
-  if (outcome.reservation !== undefined && outcome.estimatedBytes > outcome.reservation.bytes)
-    signal({
-      event: {
-        event: 'editor-view.host-budget.underreserved',
-        budgetBytes: outcome.reservation.budgetBytes,
-        usedBytes: outcome.usage?.usedBytes ?? 0,
-        protectedBytes: outcome.usage?.protectedBytes ?? 0,
-        reservedBytes: outcome.reserved,
-        pendingEstimateBytes: outcome.estimatedBytes,
-        reservationBytes: outcome.reservation.bytes,
-        topHolders: [],
-        message: `generation ${snapshot} footprint is up to ${outcome.estimatedBytes} bytes (shared payload inodes included) but reserved only ${outcome.reservation.bytes}; the publisher's reservation formula may undercount`,
-      },
-      startedAtMs,
-      exitCode: 0,
-    })
 }
 
 /** Release this process's reservation after its candidate was removed. */
@@ -1830,24 +2475,27 @@ export const cancelEditorViewBudgetReservation = async ({
   readonly token: string
 }): Promise<void> => {
   const store = resolve(contentStore)
-  await withEditorViewContentStoreLock({
-    contentStore: store,
-    run: async () => {
-      const state = readState(store)
-      const reservation = state.reservations.get(token)
-      if (reservation === undefined) return
-      if (reservation.pid !== process.pid || reservation.process !== selfProcess())
-        fail(`reservation ${token} belongs to process ${reservation.pid}`)
-      state.reservations.delete(token)
-      state.epoch += 1
-      writeState({ contentStore: store, state })
-    },
+  selfProcess()
+  await withHostBudgetLock(async () => {
+    const state = readState()
+    const reservation = state.reservations.get(token)
+    if (reservation === undefined) return
+    if (
+      reservation.pid !== process.pid ||
+      reservation.process !== selfProcess() ||
+      reservation.contentStore !== store
+    )
+      fail(`reservation ${token} belongs to process ${reservation.pid}`)
+    state.reservations.delete(token)
+    state.legacyReservations.delete(token)
+    state.epoch += 1
+    writeState(state)
   })
 }
 
 /**
  * Warm path: record last use and evaluate the warning threshold from cached
- * usage only. No payload walk, hash, link, census or root discovery; the CAS
+ * usage only. No payload walk, hash, link, census or root discovery; the host
  * flock is taken only when last use is stale, the root is unregistered, or the
  * warning state flips.
  */
@@ -1876,21 +2524,21 @@ export const touchEditorViewBudgetGeneration = async ({
       state.usage.protectedBytes + reservedBytes(state) >= budgetBytes * warningRatio
     return (
       startedAtMs - (state.lastUse.get(key) ?? 0) < touchRefreshMs &&
-      state.roots.get(editorRoot) === repoRoot &&
+      state.contentStores.has(store) === true &&
+      state.roots.get(editorRoot)?.repoRoot === repoRoot &&
+      state.roots.get(editorRoot)?.contentStore === store &&
       crossing === state.warned
     )
   }
-  if (fresh(readState(store)) === true) return
-  await withEditorViewContentStoreLock({
-    contentStore: store,
-    run: async () => {
-      const state = readState(store)
-      if (fresh(state) === true) return
-      state.lastUse.set(key, Date.now())
-      // Registration in this ledger is the proof that the root shares this content store.
-      state.roots.set(editorRoot, repoRoot)
-      updateWarning({ state, budgetBytes, topHolders: [], startedAtMs })
-      writeState({ contentStore: store, state })
-    },
+  selfProcess()
+  if (fresh(readState()) === true) return
+  await withHostBudgetLock(async () => {
+    const state = readState()
+    if (fresh(state) === true) return
+    state.lastUse.set(key, Date.now())
+    // Registration is the durable proof of this root's actual content store.
+    await registerRoot({ state, contentStore: store, root })
+    updateWarning({ state, budgetBytes, topHolders: [], startedAtMs })
+    writeState(state)
   })
 }

@@ -61,8 +61,18 @@ shared CAS, private snapshot directories and records, source manifests, and
 EXDEV copy fallbacks. `EDITOR_VIEW_HOST_BUDGET_BYTES` accepts a positive safe-integer
 byte limit. Admission records the conservative materialization footprint before
 creating a candidate, so cooperating concurrent publishers account for each
-other's in-flight allocations. The private sibling `<content-store>.budget` holds
-last-use and reservation metadata; it is not a disposable payload shard.
+other's in-flight allocations. One user-owned **host-wide registry and ledger**
+coordinates every registered content store, including independent Git common
+directories; their CAS namespaces remain separate. State defaults to
+`${XDG_STATE_HOME:-$HOME/.local/state}/effect-utils/editor-view-budget/v1`.
+`EDITOR_VIEW_HOST_BUDGET_STATE` selects another private host-state directory.
+All cooperating publishers must select the same host-state directory. Census
+deduplicates shared inodes and counts the larger of logical size and nominal
+allocated bytes (`st_blocks * 512`), including directories, symlinks, and control
+metadata; this is conservative accounting, not compressed physical ZFS usage.
+This ledger owns last-use, reservations, and rebuildable inode-footprint caches;
+it is not a disposable payload shard. Obsolete footprint sidecars are reclaimed
+with the corresponding generation's cached identity.
 
 Under pressure, unreferenced CAS payloads and unused old generations are reclaimed
 first, then least-recently-used current generations outside the five-minute grace.
@@ -75,6 +85,12 @@ The ordinary current-plus-previous policy is not an unconditional guarantee unde
 pressure: pin a generation when it must remain available. Idle-current eviction
 removes both the owned consumer hop and current pointer, records an eviction marker,
 and the next explicit publication explains the eviction and cleanly republishes.
+Retirement rechecks last-use and publication timestamps after acquiring the
+victim root lock and CAS flock, so a newly used view cannot be evicted from an
+older census. Active eviction locks are explicitly marked with process-incarnation
+identity; a publisher waits for that live maintenance operation rather than
+failing as if a competing publisher or stale lock were present. Ordinary or
+dead-incarnation publication locks still require explicit recovery.
 
 If protected usage prevents reaching the budget, publication **continues** and
 emits a structured `over-budget` event with budget, use, and top holders.

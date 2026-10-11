@@ -56,8 +56,14 @@ export const readEditorViewPinRecord = ({
   return { schema: editorViewPinSchema, name, snapshot: value.snapshot }
 }
 
-/** Inspect only managed JSON registrations while holding the content-store flock. */
-export const managedEditorViewSnapshots = (editorRoot: string): ReadonlySet<string> => {
+/** Locked managed-pin inventory, or a preliminary observation tolerant of concurrent unpin. */
+export const managedEditorViewSnapshots = ({
+  editorRoot,
+  advisory = false,
+}: {
+  readonly editorRoot: string
+  readonly advisory?: boolean
+}): ReadonlySet<string> => {
   const referenced = new Set<string>()
   const directory = join(editorRoot, '.pins')
   try {
@@ -68,13 +74,24 @@ export const managedEditorViewSnapshots = (editorRoot: string): ReadonlySet<stri
     if (vanished(error) === true) return referenced
     throw error
   }
-  for (const file of readdirSync(directory)) {
+  let files: string[]
+  try {
+    files = readdirSync(directory)
+  } catch (error) {
+    if (advisory === true && vanished(error) === true) return referenced
+    throw error
+  }
+  for (const file of files) {
     if (file.endsWith('.json') === false) continue
-    const record = readEditorViewPinRecord({
-      path: join(directory, file),
-      name: file.slice(0, -'.json'.length),
-    })
-    referenced.add(record.snapshot.slice('.store/'.length))
+    try {
+      const record = readEditorViewPinRecord({
+        path: join(directory, file),
+        name: file.slice(0, -'.json'.length),
+      })
+      referenced.add(record.snapshot.slice('.store/'.length))
+    } catch (error) {
+      if (advisory === false || vanished(error) === false) throw error
+    }
   }
   return referenced
 }
@@ -221,48 +238,185 @@ const linuxDevice = ({
   ((minor & 0xffffff00n) << 12n) |
   (minor & 0xffn)
 
-type LiveReferences = { readonly paths: readonly string[]; readonly inodes: ReadonlySet<string> }
+/**
+ * One immutable generation considered for advisory eviction. Keys are unique;
+ * roots are absolute, normalized paths, and linked inode identities use the
+ * decimal `stat().dev:stat().ino` representation. The iterable is consumed once.
+ */
+export type EditorViewProcessCandidate = {
+  readonly key: string
+  readonly editorRoot: string
+  readonly snapshotRoot: string
+  readonly linkedInodes: Iterable<string>
+}
+
+type ProcessCandidateGroup = { readonly indices: number[]; remaining: number }
 
 /**
- * Positive same-user kernel references only: cwd, open descriptors and
- * mappings, by path and by inode. Processes or entries that cannot be
- * inspected contribute nothing; root recency covers readers this census
- * cannot see.
+ * Return only candidates positively held by same-user cwd, descriptors or
+ * mappings. Snapshot paths protect that candidate; editor-root paths outside
+ * `.store` protect every candidate in that root. Shared payload inodes protect
+ * every linking candidate, even through a canonical CAS path or external alias.
+ *
+ * Containment is lexical: this observation never walks symlinks. Uninspectable
+ * processes contribute nothing, so managed pins and root recency remain the
+ * protection for readers outside the kernel observations available here.
  */
-export const positiveEditorViewProcessReferences = (): LiveReferences => {
-  const paths: string[] = []
-  const inodes = new Set<string>()
-  const admitPath = (target: string): void => {
-    if (target.startsWith('/') === true)
-      paths.push(
-        target.endsWith(' (deleted)') === true ? target.slice(0, -' (deleted)'.length) : target,
-      )
+export const observeEditorViewProcessCandidates = ({
+  candidates,
+}: {
+  readonly candidates: readonly EditorViewProcessCandidate[]
+}): ReadonlySet<string> => {
+  const held = new Set<string>()
+  const uid = process.getuid?.()
+  if (
+    candidates.length === 0 ||
+    uid === undefined ||
+    (process.platform !== 'linux' && process.platform !== 'darwin')
+  )
+    return held
+
+  const heldCandidates = new Uint8Array(candidates.length)
+  const hasInodes = new Uint8Array(candidates.length)
+  let remaining = candidates.length
+  let remainingWithInodes = 0
+  const roots = new Map<
+    string,
+    ProcessCandidateGroup & { readonly store: string; readonly storePrefix: string }
+  >()
+  const snapshots = new Map<string, ProcessCandidateGroup>()
+  // Keep each distinct inode once, with numeric candidate associations rather
+  // than retaining duplicate inode strings or a per-generation reverse index.
+  // Index inode number first so irrelevant mappings need no device conversion.
+  const inodes = new Map<string, Map<string, number[]>>()
+  for (const [index, candidate] of candidates.entries()) {
+    let root = roots.get(candidate.editorRoot)
+    if (root === undefined) {
+      const store = join(candidate.editorRoot, '.store')
+      root = { store, storePrefix: `${store}${sep}`, indices: [], remaining: 0 }
+      roots.set(candidate.editorRoot, root)
+    }
+    root.indices.push(index)
+    root.remaining++
+    let snapshot = snapshots.get(candidate.snapshotRoot)
+    if (snapshot === undefined) {
+      snapshot = { indices: [], remaining: 0 }
+      snapshots.set(candidate.snapshotRoot, snapshot)
+    }
+    snapshot.indices.push(index)
+    snapshot.remaining++
+    for (const inode of candidate.linkedInodes) {
+      if (hasInodes[index] === 0) {
+        hasInodes[index] = 1
+        remainingWithInodes++
+      }
+      const separator = inode.indexOf(':')
+      const device = inode.slice(0, separator)
+      const number = inode.slice(separator + 1)
+      let devices = inodes.get(number)
+      if (devices === undefined) {
+        devices = new Map()
+        inodes.set(number, devices)
+      }
+      let indices = devices.get(device)
+      if (indices === undefined) {
+        indices = []
+        devices.set(device, indices)
+      }
+      // All entries for one candidate arrive together, so this also deduplicates
+      // repeated payload hardlinks without a per-candidate string Set.
+      if (indices.at(-1) !== index) indices.push(index)
+    }
   }
+
+  const hold = (indices: readonly number[] | undefined): void => {
+    if (indices === undefined) return
+    for (const index of indices) {
+      if (heldCandidates[index] !== 0) continue
+      const candidate = candidates[index]
+      if (candidate === undefined) continue
+      heldCandidates[index] = 1
+      remaining--
+      if (hasInodes[index] === 1) remainingWithInodes--
+      held.add(candidate.key)
+      const root = roots.get(candidate.editorRoot)
+      if (root !== undefined && --root.remaining === 0) roots.delete(candidate.editorRoot)
+      const snapshot = snapshots.get(candidate.snapshotRoot)
+      if (snapshot !== undefined && --snapshot.remaining === 0)
+        snapshots.delete(candidate.snapshotRoot)
+    }
+  }
+
+  const holdInode = ({
+    number,
+    device,
+  }: {
+    readonly number: string
+    readonly device: string
+  }): void => {
+    const devices = inodes.get(number)
+    const indices = devices?.get(device)
+    if (devices === undefined || indices === undefined) return
+    hold(indices)
+    // Every candidate associated with this observed inode is now held.
+    devices.delete(device)
+    if (devices.size === 0) inodes.delete(number)
+  }
+
+  const admitPath = (target: string): void => {
+    if (target.startsWith('/') === false) return
+    const path = target.endsWith(' (deleted)') === true ? target.slice(0, -10) : target
+    let ancestor = path
+    // Look up ancestors, rather than comparing every observed path to every root.
+    for (;;) {
+      hold(snapshots.get(ancestor)?.indices)
+      const root = roots.get(ancestor)
+      if (root !== undefined && path !== root.store && path.startsWith(root.storePrefix) === false)
+        hold(root.indices)
+      if (remaining === 0 || ancestor === '/') return
+      const separator = ancestor.lastIndexOf('/')
+      ancestor = separator === 0 ? '/' : ancestor.slice(0, separator)
+    }
+  }
+
+  const devices = new Map<string, string>()
   if (process.platform === 'linux') {
     let pids: string[] = []
     try {
-      pids = readdirSync('/proc').filter((pid) => /^[0-9]+$/.test(pid) === true)
+      pids = readdirSync('/proc')
     } catch {}
     for (const pid of pids) {
+      if (/^[0-9]+$/.test(pid) === false) continue
       const base = join('/proc', pid)
       try {
-        if (lstatSync(base).uid !== process.getuid?.()) continue
+        if (lstatSync(base).uid !== uid) continue
       } catch {
         continue
       }
       try {
         admitPath(readlinkSync(join(base, 'cwd')))
       } catch {}
+      if (remaining === 0) return held
+      const fdDirectory = join(base, 'fd')
       let descriptors: string[] = []
       try {
-        descriptors = readdirSync(join(base, 'fd'))
+        descriptors = readdirSync(fdDirectory)
       } catch {}
       for (const descriptor of descriptors) {
-        const path = join(base, 'fd', descriptor)
+        const path = join(fdDirectory, descriptor)
         try {
-          admitPath(readlinkSync(path))
+          const target = readlinkSync(path)
+          // Sockets, pipes and anonymous descriptors cannot link payload inodes.
+          if (target.startsWith('/') === false) continue
+          admitPath(target)
+          if (remaining === 0) return held
+          if (remainingWithInodes === 0) continue
+          // Inspect the descriptor, not its pathname: deleted files and external
+          // aliases still hold the same regular inode as a candidate payload.
           const status = statSync(path, { bigint: true })
-          if (status.isFile() === true) inodes.add(`${status.dev}:${status.ino}`)
+          if (status.isFile() === true)
+            holdInode({ number: String(status.ino), device: String(status.dev) })
+          if (remaining === 0) return held
         } catch {}
       }
       let maps = ''
@@ -270,40 +424,84 @@ export const positiveEditorViewProcessReferences = (): LiveReferences => {
         maps = readFileSync(join(base, 'maps'), 'utf8')
       } catch {}
       for (const line of maps.split('\n')) {
-        const match = /^\S+\s+\S+\s+\S+\s+([0-9a-f]+):([0-9a-f]+)\s+([0-9]+)\s*(.*)$/.exec(line)
-        if (
-          match === null ||
-          match[1] === undefined ||
-          match[2] === undefined ||
-          match[3] === undefined
-        )
-          continue
-        if (match[3] === '0') continue
-        const device = linuxDevice({
-          major: BigInt(`0x${match[1]}`),
-          minor: BigInt(`0x${match[2]}`),
-        })
-        inodes.add(`${device}:${match[3]}`)
-        if (match[4] !== undefined) admitPath(match[4])
+        const match = /^\S+\s+\S+\s+\S+\s+([0-9a-f]+:[0-9a-f]+)\s+([0-9]+)\s*/.exec(line)
+        if (match === null || match[1] === undefined || match[2] === undefined) continue
+        const linked = remainingWithInodes === 0 ? undefined : inodes.get(match[2])
+        if (linked !== undefined) {
+          const encoded = match[1]
+          let device = devices.get(encoded)
+          if (device === undefined) {
+            const separator = encoded.indexOf(':')
+            device = String(
+              linuxDevice({
+                major: BigInt(`0x${encoded.slice(0, separator)}`),
+                minor: BigInt(`0x${encoded.slice(separator + 1)}`),
+              }),
+            )
+            devices.set(encoded, device)
+          }
+          holdInode({ number: match[2], device })
+          if (remaining === 0) return held
+        }
+        // Anonymous mappings have no pathname; retain no irrelevant host paths.
+        if (line[match[0].length] === '/') admitPath(line.slice(match[0].length))
+        if (remaining === 0) return held
       }
     }
-  } else if (process.platform === 'darwin') {
-    // Native lsof is the macOS kernel-reader interface; no ambient PATH lookup.
-    const result = spawnSync('/usr/sbin/lsof', ['-nP', '-Fn', '-u', String(process.getuid?.())], {
+  } else {
+    // Native lsof reports each kernel file's pathname and device/inode together.
+    // Do not stat its name: CAS descriptors can have another hardlink spelling,
+    // and deleted descriptors can have no surviving pathname at all.
+    const user = String(uid)
+    const result = spawnSync('/usr/sbin/lsof', ['-nP', '-FpuftDin0', '-u', user], {
       encoding: 'utf8',
       maxBuffer: 256 * 1024 * 1024,
     })
-    for (const line of result.stdout?.split('\n') ?? []) {
-      if (line.startsWith('n/') === false) continue
-      const path = line.slice(1)
+    let sameUser = false
+    let descriptor = ''
+    let type = ''
+    let device = ''
+    let inode = ''
+    let path = ''
+    const admitFile = (): void => {
+      if (
+        sameUser === false ||
+        descriptor.length === 0 ||
+        descriptor === 'rtd' ||
+        (type !== 'REG' && type !== 'DIR')
+      )
+        return
       admitPath(path)
-      try {
-        const status = statSync(path, { bigint: true })
-        if (status.isFile() === true) inodes.add(`${status.dev}:${status.ino}`)
-      } catch {
-        // Lsof is advisory and paths can disappear after its kernel observation.
+      if (remaining === 0 || remainingWithInodes === 0 || type !== 'REG') return
+      const linked = inodes.get(inode)
+      if (linked === undefined || /^0x[0-9a-f]+$/i.test(device) === false) return
+      let decoded = devices.get(device)
+      if (decoded === undefined) {
+        decoded = String(BigInt(device))
+        devices.set(device, decoded)
       }
+      holdInode({ number: inode, device: decoded })
     }
+    for (let field of result.stdout?.split('\0') ?? []) {
+      // With NUL fields, lsof still separates process/file sets with a newline.
+      if (field.startsWith('\n') === true) field = field.slice(1)
+      const identifier = field[0]
+      if (identifier === 'p' || identifier === 'f') {
+        admitFile()
+        if (remaining === 0) return held
+        descriptor = identifier === 'f' ? field.slice(1) : ''
+        type = ''
+        device = ''
+        inode = ''
+        path = ''
+        if (identifier === 'p') sameUser = false
+      } else if (identifier === 'u') sameUser = field.slice(1) === user
+      else if (identifier === 't') type = field.slice(1)
+      else if (identifier === 'D') device = field.slice(1)
+      else if (identifier === 'i') inode = field.slice(1)
+      else if (identifier === 'n') path = field.slice(1)
+    }
+    admitFile()
   }
-  return { paths, inodes }
+  return held
 }

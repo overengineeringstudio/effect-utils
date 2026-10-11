@@ -29,6 +29,7 @@ import {
   finishEditorViewBudgetReservation,
   cancelEditorViewBudgetReservation,
   touchEditorViewBudgetGeneration,
+  collectEditorViewBudgetFootprints,
   type EditorViewBudgetRoot,
 } from './editor-view-budget.ts'
 import {
@@ -41,6 +42,7 @@ import {
 } from './editor-view-readers.ts'
 import {
   collectEditorViewContentStore,
+  editorViewStagingCreatorIdentity,
   defaultEditorViewContentStore,
   editorViewGitCommonDirectory,
   withEditorViewContentStoreLock,
@@ -84,6 +86,7 @@ const editorViewRecordFields = [
   'target',
 ] as const
 const lockRecordFields = ['pid', 'schema', 'token'] as const
+const evictionLockRecordFields = ['kind', 'pid', 'process', 'schema', 'token'] as const
 
 type JsonRecord = { [key: string]: unknown }
 
@@ -137,6 +140,8 @@ export type EditorViewOptions = {
   readonly beforeMaterialize?: () => void | Promise<void>
   /** Metadata barrier after managed-pin inspection, while retirement holds the CAS flock. */
   readonly beforeSnapshotRetirement?: () => void | Promise<void>
+  /** Barrier while budget eviction holds another root's lock, before final eligibility checks. */
+  readonly beforeBudgetEviction?: () => void | Promise<void>
   /** Barrier after retirement releases the CAS flock, before private-tree unlinking. */
   readonly beforeSnapshotCleanup?: () => void | Promise<void>
   readonly cp: string
@@ -1794,7 +1799,10 @@ const garbageCollectSnapshots = async ({
   const retained = new Set(ordered.slice(0, options.snapshotRetention))
   const now = Date.now()
   const grace = options.snapshotGraceMs ?? 300_000
-  const pinnedBeforeRetirement = managedEditorViewSnapshots(paths.editorRoot)
+  const pinnedBeforeRetirement = managedEditorViewSnapshots({
+    editorRoot: paths.editorRoot,
+    advisory: true,
+  })
   const eligible = ordered.filter(
     (name) =>
       retained.has(name) === false &&
@@ -1814,7 +1822,7 @@ const garbageCollectSnapshots = async ({
     await withEditorViewContentStoreLock({
       contentStore: paths.contentStore,
       run: async () => {
-        const pinned = managedEditorViewSnapshots(paths.editorRoot)
+        const pinned = managedEditorViewSnapshots({ editorRoot: paths.editorRoot })
         await options.beforeSnapshotRetirement?.()
         const keep = ordered.filter(
           (name) =>
@@ -1850,6 +1858,8 @@ const garbageCollectSnapshots = async ({
       makeDirectoriesWritable(garbage)
       rmSync(garbage, { recursive: true })
     }
+    if (retired.length > 0)
+      await collectEditorViewBudgetFootprints({ editorRoot: paths.editorRoot })
     return retired.length > 0
   } catch (error) {
     const remaining = retired.filter(({ garbage }) => pathExists(garbage))
@@ -1879,6 +1889,8 @@ type LockOwner = {
   readonly schema: typeof lockSchema
   readonly token: string
   readonly pid: number
+  readonly kind?: 'eviction'
+  readonly process?: string
 }
 
 const readLockOwner = (path: string): LockOwner => {
@@ -1893,24 +1905,32 @@ const readLockOwner = (path: string): LockOwner => {
   if (
     isRecord(owner) === false ||
     JSON.stringify(Object.keys(owner).toSorted((left, right) => compareBytes({ left, right }))) !==
-      JSON.stringify(lockRecordFields) ||
+      JSON.stringify(owner.kind === 'eviction' ? evictionLockRecordFields : lockRecordFields) ||
     owner.schema !== lockSchema ||
     typeof owner.token !== 'string' ||
     owner.token.length === 0 ||
     typeof owner.pid !== 'number' ||
     Number.isSafeInteger(owner.pid) === false ||
-    owner.pid <= 0
+    owner.pid <= 0 ||
+    (owner.kind === 'eviction' && (typeof owner.process !== 'string' || owner.process.length === 0))
   )
     return fail(`publication lock owner does not conform to ${lockSchema}: ${path}`)
-  return { schema: lockSchema, token: owner.token, pid: owner.pid }
+  return {
+    schema: lockSchema,
+    token: owner.token,
+    pid: owner.pid,
+    ...(owner.kind === 'eviction' ? { kind: 'eviction', process: owner.process as string } : {}),
+  }
 }
 
 const acquireLock = ({
   editorRoot,
   recoveryCommand,
+  kind,
 }: {
   editorRoot: string
   recoveryCommand: string
+  readonly kind?: 'eviction'
 }): { readonly path: string; readonly token: string } => {
   const lockPath = join(editorRoot, '.publish.lock')
   const token = randomUUID()
@@ -1929,7 +1949,14 @@ const acquireLock = ({
   try {
     writeFileSync(
       join(lockPath, 'owner.json'),
-      `${JSON.stringify({ schema: lockSchema, token, pid: process.pid })}\n`,
+      `${JSON.stringify({
+        schema: lockSchema,
+        token,
+        pid: process.pid,
+        ...(kind === 'eviction'
+          ? { kind, process: editorViewStagingCreatorIdentity({ pid: process.pid }) }
+          : {}),
+      })}\n`,
       { flag: 'wx' },
     )
   } catch (error) {
@@ -1937,6 +1964,42 @@ const acquireLock = ({
     throw error
   }
   return { path: lockPath, token }
+}
+
+const acquirePublicationLock = async ({
+  editorRoot,
+  recoveryCommand,
+}: {
+  readonly editorRoot: string
+  readonly recoveryCommand: string
+}): Promise<{ readonly path: string; readonly token: string }> => {
+  // Eviction is maintenance, not a competing publisher. Wait only for a positively
+  // identified live eviction incarnation; ordinary and stale locks stay explicit.
+  for (;;) {
+    try {
+      return acquireLock({ editorRoot, recoveryCommand })
+    } catch (error) {
+      const path = join(editorRoot, '.publish.lock')
+      if (pathExists(path) === false) continue
+      let owner: LockOwner
+      try {
+        owner = readLockOwner(join(path, 'owner.json'))
+      } catch {
+        if (pathExists(path) === false) continue
+        throw error
+      }
+      if (
+        owner.kind !== 'eviction' ||
+        owner.process === undefined ||
+        owner.process === 'unknown' ||
+        owner.process === 'dead' ||
+        editorViewStagingCreatorIdentity({ pid: owner.pid }) !== owner.process
+      )
+        throw error
+      // eslint-disable-next-line no-await-in-loop -- Only the same live eviction incarnation is retried.
+      await Bun.sleep(10)
+    }
+  }
 }
 
 const releaseLock = ({ path, token }: { path: string; token: string }): void => {
@@ -2058,7 +2121,7 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
     requireDirectory({ path: paths.editorRoot, field: 'editor root' })
     if (realpathSync(paths.editorRoot) !== paths.editorRoot)
       fail(`editor root must not contain symbolic links: ${paths.editorRoot}`)
-    const lock = acquireLock({
+    const lock = await acquirePublicationLock({
       editorRoot: paths.editorRoot,
       recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
     })
@@ -2076,6 +2139,7 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
     }
   }
   await collectEditorViewContentStore({ contentStore: paths.contentStore })
+  await collectEditorViewBudgetFootprints({ editorRoot: paths.editorRoot })
 }
 
 /** Remove the publication lock only when the caller presents its exact owner token. */
@@ -2263,21 +2327,32 @@ const discoverBudgetRoots = (root: EditorViewBudgetRoot): readonly EditorViewBud
   if (common !== undefined) {
     if (basename(common) === '.git') repositories.add(dirname(common))
     const registered = join(common, 'worktrees')
-    if (existsSync(registered) === true)
-      for (const name of readdirSync(registered)) {
-        const gitdir = join(registered, name, 'gitdir')
-        if (existsSync(gitdir) === false) continue
-        const path = readFileSync(gitdir, 'utf8').trim()
-        if (isAbsolute(path) === true && existsSync(dirname(path)) === true)
-          repositories.add(realpathSync(dirname(path)))
+    let registrations: string[]
+    try {
+      registrations = readdirSync(registered)
+    } catch (error) {
+      if (isNodeErrorCode({ error, code: 'ENOENT' }) === false) throw error
+      registrations = []
+    }
+    for (const name of registrations) {
+      try {
+        const path = readFileSync(join(registered, name, 'gitdir'), 'utf8').trim()
+        if (isAbsolute(path) === true) repositories.add(realpathSync(dirname(path)))
+      } catch (error) {
+        if (isNodeErrorCode({ error, code: 'ENOENT' }) === false) throw error
       }
+    }
   }
   const roots = new Map<string, EditorViewBudgetRoot>([[root.editorRoot, root]])
   for (const repoRoot of repositories)
     for (const suffix of ['.editor-view', 'packages/.editor-view', 'context/.editor-view']) {
       const editorRoot = join(repoRoot, suffix)
-      if (existsSync(editorRoot) === true && lstatSync(editorRoot).isDirectory() === true)
-        roots.set(editorRoot, { repoRoot, editorRoot })
+      try {
+        if (lstatSync(editorRoot).isDirectory() === true)
+          roots.set(editorRoot, { repoRoot, editorRoot })
+      } catch (error) {
+        if (isNodeErrorCode({ error, code: 'ENOENT' }) === false) throw error
+      }
     }
   return [...roots.values()]
 }
@@ -2294,7 +2369,7 @@ const budgetReservationBytes = ({
   const visit = (path: string): void => {
     const status = dereference === true ? statSync(path) : lstatSync(path)
     bytes += 4096 + 2 * Buffer.byteLength(path)
-    if (status.isFile() === true) bytes += 2 * status.size
+    if (status.isFile() === true) bytes += 2 * Math.max(status.size, status.blocks * 512, 4096)
     if (status.isDirectory() === true) {
       const canonical = realpathSync(path)
       if (ancestors.has(canonical) === true) fail(`cyclic source during budget admission: ${path}`)
@@ -2363,10 +2438,10 @@ const publishEditorViewCoordinated = async ({
     fail('hostBudgetBytes must be a positive safe integer')
   const lock =
     coordinator?.lock ??
-    acquireLock({
+    (await acquirePublicationLock({
       editorRoot: paths.editorRoot,
       recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
-    })
+    }))
   // A batch shares its exclusive state-root lock, not its private candidate/pointer names.
   const token = tokenSafe(coordinator === undefined ? lock.token : randomUUID())
   let candidate: string | undefined
@@ -2560,6 +2635,7 @@ const publishEditorViewCoordinated = async ({
             const acquired = acquireLock({
               editorRoot: root.editorRoot,
               recoveryCommand: `recover-lock --repo-root ${root.repoRoot}`,
+              kind: 'eviction',
             })
             return { release: () => releaseLock(acquired) }
           } catch (error) {
@@ -2568,6 +2644,9 @@ const publishEditorViewCoordinated = async ({
           }
         },
         budgetBytes,
+        ...(options.beforeBudgetEviction === undefined
+          ? {}
+          : { beforeRetireRoot: options.beforeBudgetEviction }),
       })
       budgetReservation = reserved.token
       candidate = join(paths.storeDir, `.candidate-${token}`)
@@ -2849,7 +2928,9 @@ export const publishEditorViews = async ({
       if (coordinators.has(paths.editorRoot) === true) continue
       ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
       ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
-      const lock = acquireLock({
+      // Establish each root coordinator before starting any batch publication workers.
+      // eslint-disable-next-line no-await-in-loop
+      const lock = await acquirePublicationLock({
         editorRoot: paths.editorRoot,
         recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${option.package}`,
       })
