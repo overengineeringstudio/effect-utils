@@ -483,8 +483,6 @@ describe('fresh-root remote build proof', () => {
   it('requires the explicit remote descriptor hit', async () => {
     const result = await replay([{ category: 'tsgo_emit', executionKind: 3 }])
     expect(result.exitCode).toBe(1)
-    expect(result.stdout).toContain(
-      'did not reuse the remote product descriptor',
-    )
+    expect(result.stdout).toContain('did not reuse the remote product descriptor')
   })
 })
