@@ -105,5 +105,14 @@ node "$stager" publish "$locked_workspace" .devenv/pnpm-source-inputs repos/demo
 cmp "$locked_member/packages/pkg/package.json" \
   "$locked_workspace/.devenv/pnpm-source-inputs/current/repos/demo/packages/pkg/package.json"
 node "$stager" check "$locked_workspace" .devenv/pnpm-source-inputs repos/demo/packages/pkg
+chmod -R u+w "$locked_member"
+rm -rf "$locked_member"
+if node "$stager" publish "$locked_workspace" .devenv/pnpm-source-inputs repos/demo/packages/pkg \
+  >"$tmpdir/missing-source.log" 2>&1; then
+  echo "FAIL: unmaterialized lock source fell back to tracking bytes" >&2
+  exit 1
+fi
+grep -q "Lock source not materialized: member demo, commit $commit" "$tmpdir/missing-source.log"
+grep -q 'mr apply --worktree-mode commit --lock-sync off' "$tmpdir/missing-source.log"
 
 echo "pnpm source input staging tests passed"
