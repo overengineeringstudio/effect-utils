@@ -30,6 +30,7 @@ def launch(script, argv):
     expanded = expand(argv)
     manifest_arg = next(x for x in expanded if x.startswith("--sandbox-outputs="))
     manifest = json.loads(Path(manifest_arg.split("=", 1)[1]).read_text())
+    manifest["outputs"] = [path for group in manifest["outputs"] for path in (group if isinstance(group, list) else [group])]
     expanded = [x for x in expanded if not x.startswith("--sandbox-outputs=")]
     with tempfile.TemporaryDirectory(prefix="q42-root-", dir=os.environ.get("BUCK_SCRATCH_PATH")) as scratch:
         stage = Path(scratch).resolve() / "root"

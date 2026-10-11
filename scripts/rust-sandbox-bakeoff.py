@@ -10,8 +10,7 @@ from pathlib import Path
 import subprocess
 import time
 
-BUCK = "/nix/store/rjsknd8qby7h7lydn15vk60asi0fbxih-buck2-unstable-2026-09-01/bin/buck2"
-TARGETS = ["//rust/effect-rust-fixtures/napi-adapter:napi", "//rust/effect-rust-fixtures/wasm-adapter:wasm"]
+BUCK = "/nix/store/rjsknd8qby7h7lydn15vk60asi0fbxih-buck2-unstable-2026-09-01/libexec/buck2"
 
 
 def run(plan, evidence):
@@ -24,14 +23,15 @@ def run(plan, evidence):
         name = item["name"]
         subprocess.run([BUCK, "kill"], cwd=root, check=False, capture_output=True)
         config = ["--config", "rust_bakeoff.arm=" + item["arm"], "--config", "buck2.default_allow_cache_upload=false"]
-        args = [BUCK, "build", "-j", "2", *TARGETS, *config]
+        args = [BUCK, "bxl", "-j", "2", "//buck2/rust/sandbox-cohort.bxl:run", *config]
         if item.get("noCache"):
             args.append("--no-remote-cache")
         before = os.getloadavg()[0]
         started = time.time()
-        result = subprocess.run(args, cwd=root, capture_output=True, text=True)
+        result = subprocess.run(args, cwd=root, capture_output=True, text=True, env=os.environ | {"PWD": str(root), "TMPDIR": "/tmp"})
         elapsed = time.time() - started
         after = os.getloadavg()[0]
+        (evidence / (name + ".timing.json")).write_text(json.dumps({"exit": result.returncode, "elapsedSeconds": elapsed, "startedEpoch": started, "load1Start": before, "load1End": after}) + "\n")
         (evidence / (name + ".log")).write_text(result.stdout + result.stderr)
         log = subprocess.run([BUCK, "log", "show", "--recent", "0"], cwd=root, capture_output=True, text=True, check=True)
         with gzip.open(evidence / (name + ".events.jsonl.gz"), "wt") as output:
@@ -62,7 +62,7 @@ def run(plan, evidence):
                 cfg = cfg_label.split(" (", 1)[-1].removesuffix(")")
                 if (manifest.get("target"), cfg, manifest.get("identifier")) not in expected:
                     continue
-                for path in set(manifest["outputs"]):
+                for path in {path for group in manifest["outputs"] for path in (group if isinstance(group, list) else [group])}:
                     output = root / path
                     if output.is_file():
                         payload = output.read_bytes()
