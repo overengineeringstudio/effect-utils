@@ -1,8 +1,12 @@
 //! Noninteractive, bounded SSH uptime reads for known tailnet peers only.
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
-use std::process::{Command, Stdio};
-use std::sync::{mpsc::Sender, Arc};
+use std::process::{Child, Command, Stdio};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc::Sender,
+    Arc,
+};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::probe::ProbeEvent;
@@ -20,13 +24,31 @@ const DEADLINE: Duration = Duration::from_secs(8);
 const REFRESH: Duration = Duration::from_secs(600);
 const REMOTE: &str = "cat /proc/uptime 2>/dev/null || sysctl -n kern.boottime";
 
+/// Owns shutdown: interrupt refresh sleep, then cancel and reap an active SSH child.
+pub struct Worker {
+    stop: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            thread.thread().unpark();
+            let _ = thread.join();
+        }
+    }
+}
+
 pub fn spawn(
     index: usize,
     host: String,
     events: Sender<(usize, ProbeEvent)>,
     wake: Arc<UnixStream>,
-) {
-    std::thread::spawn(move || {
+    stop: Arc<AtomicBool>,
+) -> Worker {
+    let worker_stop = Arc::clone(&stop);
+    let thread = std::thread::spawn(move || {
         let Some(status) = crate::tailnet::status() else {
             return;
         };
@@ -52,14 +74,18 @@ pub fn spawn(
         if !emit(index, ProbeEvent::Boot(None), &events, &wake) {
             return;
         }
-        loop {
-            let boot = read(target);
+        while !stop.load(Ordering::Relaxed) {
+            let boot = read(target, &stop);
             if !emit(index, ProbeEvent::Boot(boot), &events, &wake) {
                 return;
             }
-            std::thread::sleep(REFRESH);
+            std::thread::park_timeout(REFRESH);
         }
     });
+    Worker {
+        stop: worker_stop,
+        thread: Some(thread),
+    }
 }
 
 fn emit(
@@ -103,8 +129,14 @@ fn command(host: &str) -> Command {
     command
 }
 
-fn read(host: &str) -> Option<SystemTime> {
-    let mut child = command(host).spawn().ok()?;
+fn read(host: &str, stop: &AtomicBool) -> Option<SystemTime> {
+    if stop.load(Ordering::Relaxed) {
+        return None;
+    }
+    read_child(command(host).spawn().ok()?, stop)
+}
+
+fn read_child(mut child: Child, stop: &AtomicBool) -> Option<SystemTime> {
     // Nonblocking bounded output prevents a malicious or broken remote from filling the pipe.
     let result = (|| {
         let mut stdout = child.stdout.take()?;
@@ -113,6 +145,9 @@ fn read(host: &str) -> Option<SystemTime> {
         let mut output = Vec::new();
         let mut buffer = [0_u8; 1024];
         loop {
+            if stop.load(Ordering::Relaxed) {
+                return None;
+            }
             match stdout.read(&mut buffer) {
                 Ok(n) => output.extend_from_slice(&buffer[..n]),
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -164,6 +199,57 @@ fn parse(text: &str, now: SystemTime) -> Option<SystemTime> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shutdown_kills_and_reaps_an_active_child() {
+        let mut command = Command::new("sleep");
+        command.arg("60").stdout(Stdio::piped());
+        let child = command.spawn().unwrap();
+        let pid = child.id();
+        let stop = Arc::new(AtomicBool::new(false));
+        let reader_stop = Arc::clone(&stop);
+        let (ready, started) = std::sync::mpsc::channel();
+        let worker = Worker {
+            stop,
+            thread: Some(std::thread::spawn(move || {
+                ready.send(()).unwrap();
+                assert_eq!(read_child(child, &reader_stop), None);
+            })),
+        };
+        started.recv_timeout(Duration::from_secs(2)).unwrap();
+        let start = Instant::now();
+        drop(worker);
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert!(
+            !Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .output()
+                .unwrap()
+                .status
+                .success(),
+            "shutdown must reap the child, not just terminate it"
+        );
+    }
+
+    #[test]
+    fn shutdown_interrupts_refresh_sleep() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let sleeper_stop = Arc::clone(&stop);
+        let (ready, started) = std::sync::mpsc::channel();
+        let worker = Worker {
+            stop,
+            thread: Some(std::thread::spawn(move || {
+                ready.send(()).unwrap();
+                while !sleeper_stop.load(Ordering::Relaxed) {
+                    std::thread::park_timeout(REFRESH);
+                }
+            })),
+        };
+        started.recv_timeout(Duration::from_secs(2)).unwrap();
+        let start = Instant::now();
+        drop(worker);
+        assert!(start.elapsed() < Duration::from_secs(2));
+    }
 
     #[test]
     fn parses_linux_uptime() {

@@ -152,11 +152,24 @@ fn main() -> ExitCode {
             )
         })
         .collect();
-    if let Some((_, writer)) = &notification {
-        for (index, host) in cli.hosts.iter().enumerate() {
-            uptime::spawn(index, host.clone(), tx.clone(), Arc::clone(writer));
-        }
-    }
+    let uptime_workers: Vec<_> = notification
+        .as_ref()
+        .map(|(_, writer)| {
+            cli.hosts
+                .iter()
+                .enumerate()
+                .map(|(index, host)| {
+                    uptime::spawn(
+                        index,
+                        host.clone(),
+                        tx.clone(),
+                        Arc::clone(writer),
+                        Arc::clone(&stop),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let paths = notification.as_ref().map(|(_, writer)| {
         path::Monitor::spawn(Arc::clone(&schedule), tx.clone(), Arc::clone(writer))
     });
@@ -186,6 +199,7 @@ fn main() -> ExitCode {
     // The reader went away (`pingping host | head`): stop quietly, like `ping`.
     let pipe_closed = matches!(&result, Err(err) if err.kind() == std::io::ErrorKind::BrokenPipe);
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    drop(uptime_workers);
     drop(paths);
     for worker in workers {
         let _ = worker.join();

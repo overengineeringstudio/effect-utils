@@ -572,6 +572,12 @@ unreadable uptime uses an explicit unavailable placeholder, not a fabricated
 value; unknown tailnet classification is ineligible. Updates wake the existing
 UI notification mechanism.
 
+The application retains ownership of every uptime worker. Quit and finite-count
+completion signal cancellation, interrupt the ten-minute refresh sleep, and join
+the workers only during shutdown. Active SSH reads observe cancellation on their
+20 ms polling interval and kill and reap their child before the worker exits;
+the wall deadline must not depend on a detached thread surviving application exit.
+
 ### Path note (R19)
 
 ```
