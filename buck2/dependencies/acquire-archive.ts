@@ -38,7 +38,7 @@ export const acquireArchive = async ({
   transferTimeoutMs = 120_000,
 }: {
   readonly casUrl: string
-  readonly fetchArchive?: typeof fetch
+  readonly fetchArchive?: (...args: Parameters<typeof fetch>) => Promise<Response>
   readonly headersTimeoutMs?: number
   readonly output: string
   readonly registryUrl: string
@@ -124,9 +124,9 @@ export const acquireArchive = async ({
       if (redirects === 3) fail(`archive download exceeded 3 redirects for ${registryUrl}`)
     }
   }
-  if (response === undefined) fail('CAS returned no response')
+  if (response === undefined) return fail('CAS returned no response')
   if (response.ok === false) fail(`${source} returned HTTP ${response.status}`)
-  if (response.body === null) fail(`${source} returned no archive body`)
+  if (response.body === null) return fail(`${source} returned no archive body`)
 
   const candidate = `${output}.candidate-${randomUUID()}`
   const hash = createHash('sha256')

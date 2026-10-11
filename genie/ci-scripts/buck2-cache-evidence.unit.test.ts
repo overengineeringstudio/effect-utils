@@ -202,7 +202,7 @@ describe('native Buck cache evidence projection', () => {
         expect(summary.counts[outcome]).toBe(1)
         expect(summary.excludedByDesign).toEqual({ 'local-materialization-policy': 1 })
         expect(summary.invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
-        expect(invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
+        expect(invocations[0]?.excludedByDesign).toEqual({ 'local-materialization-policy': 1 })
         expect(rows[0]).toMatchObject({
           category,
           executionKind,
