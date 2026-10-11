@@ -153,8 +153,8 @@ a second recursive visit to the same physical root is a no-op.
 
 Worktrees that existed before the invocation remain shared, not owned.
 Recursive apply refuses canonical mutations there; freshness is neither
-persisted nor inferred from existence. The exception does not authorize lock
-rewrites, generators' authoring outputs, or a separately invoked nested apply.
+persisted nor inferred from existence. The freshness exception does not authorize
+lock rewrites or generators' authoring outputs.
 
 The invoking workspace is the one canonical root an author owns when it is a
 non-default branch worktree (`refs/heads/<branch>` where `<branch>` is not the
@@ -166,21 +166,28 @@ branch root whose default branch cannot be resolved. Ownership is proven offline
 from Git metadata, not from the path suffix: the root must be the top of a
 worktree of the store's `.bare` whose `HEAD` is `refs/heads/<branch>` and which
 sits at exactly `refs/heads/<branch>`; subdirectories of any worktree, detached
-or mismatched worktrees stay refused. The grant covers only paths
-that physically resolve directly inside that root; tag and commit worktrees,
-nested megarepos visited by `--all`, and aliases into other store paths stay
-refused. Accepted limitation: mr cannot tell one author's feature branch from
+or mismatched worktrees stay refused. The author grant covers only paths
+that physically resolve directly inside that root; tag worktrees, nested
+megarepos visited by `--all`, and aliases into other store paths stay refused.
+Accepted limitation: mr cannot tell one author's feature branch from
 another's, so any non-default branch worktree used as the invoking root is
 treated as owned (Git does not protect it either).
 
-Consumers prepare the dependency tree through the outer workspace's
-`mr apply --all`. Nested package-install hooks must not independently run
-`mr apply --only` inside canonical member worktrees. A consumer may instead
-check that the already prepared member has the locked commit and fail with
-instructions to prepare it from the owning workspace. Cached preexisting
-canonical worktrees must already have their nested mounts prepared; an
-incomplete shared tree requires an owned workspace or explicit administrative
-repair, not a freshness grant.
+Top-level `mr apply --lock-sync off` may also prepare an invoking
+`refs/commits/<H>` worktree when Git resolves its worktree root to that exact
+physical root and its `HEAD` to exactly `<H>`. This materialization-only grant
+covers only the root and its own physical `repos/` directory, not lock/config
+writes, generators, branch advancement, or aliases into other trees. Lock sync
+must remain off. It does not grant ownership to preexisting shared nested trees,
+and neither tags nor branch paths gain permission from this commit grant.
+
+Consumers normally prepare the dependency tree through the outer workspace's
+`mr apply --all`. A separately invoked exact-commit apply may prepare its own
+mounts under the top-level grant above; it cannot repair preexisting shared
+trees reached recursively. Package-install hooks may check that an already
+prepared member has the locked commit and fail with instructions to prepare
+it from the invoking workspace. An incomplete shared nested tree requires an
+owned workspace or explicit administrative repair, not a freshness grant.
 
 Local setup that needs nested trees names the members explicitly:
 `mr apply --worktree-mode tracking --commit-members <a,b> --lock-sync off`.
