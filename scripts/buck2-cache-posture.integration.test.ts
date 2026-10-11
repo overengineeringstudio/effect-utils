@@ -47,9 +47,9 @@ const stopReplayProcesses = async (
       }
       if (performance.now() >= deadline) {
         const members: string[] = []
-        if (existsSync('/proc')) {
+        if (existsSync('/proc') === true) {
           for (const pid of readdirSync('/proc')) {
-            if (!/^\d+$/.test(pid)) continue
+            if (/^\d+$/.test(pid) === false) continue
             try {
               const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
               const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
@@ -99,14 +99,14 @@ describe('replay subprocess cleanup', () => {
         [
           'bash',
           '-c',
-          `${ignoreSigterm ? "trap '' TERM; " : ''}result="$(${ignoreSigterm ? "trap '' TERM; " : ''}printf ready >&2; exec sleep 30)"`,
+          `${ignoreSigterm === true ? "trap '' TERM; " : ''}result="$(${ignoreSigterm === true ? "trap '' TERM; " : ''}printf ready >&2; exec sleep 30)"`,
         ],
         { detached: true, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
       )
       replayProcesses.add(child)
       const { value } = await child.stderr.getReader().read()
       expect(new TextDecoder().decode(value)).toBe('ready')
-      if (ignoreSigterm) {
+      if (ignoreSigterm === true) {
         process.kill(-child.pid, 'SIGTERM')
         expect(() => process.kill(-child.pid, 0)).not.toThrow()
       }
