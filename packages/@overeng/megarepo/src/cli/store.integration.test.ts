@@ -30,9 +30,16 @@ import {
 } from '../store/store-deletion-lease.ts'
 import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
 import { StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
+import {
+  PROCESS_SNAPSHOT_PRODUCER,
+  WORKSPACE_ACTIVITY_V2_SCHEMA,
+  captureProcessActivityManifest,
+  encodeWorkspaceActivityManifest,
+  readBudgetWorkspaceActivity,
+} from '../store/store-workspace-activity.ts'
 import { makeStoreLayer, Store } from '../store/store.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
-import { encodeJson } from '../test-utils/json.ts'
+import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import {
   createStoreFixture,
   createWorkspaceWithLock,
@@ -1705,4 +1712,138 @@ describe('source string parsing', () => {
     expect(homePath!.type).toBe('path')
     expect(isRemoteSource(homePath!)).toBe(false)
   })
+})
+
+describe('mr store activity snapshot', () => {
+  const snapshotFixture = Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+    const manifestPath = `${root}/activity.json`
+    // Keep ownership tests deterministic even when Vitest itself runs as root.
+    // The filesystem is real; only this directory's UID is simulated as non-root.
+    const nonRootFs: FileSystem.FileSystem = {
+      ...fs,
+      stat: (path) =>
+        fs
+          .stat(path)
+          .pipe(Effect.map((info) => (path === root ? { ...info, uid: Option.some(1000) } : info))),
+    }
+    const run = (args: ReadonlyArray<string>) =>
+      runMrCommand({
+        cwd: EffectPath.unsafe.absoluteDir(`${root}/`),
+        command: ['store', 'activity', 'snapshot', ...args],
+        env: { MEGAREPO_STORE: root },
+      }).pipe(Effect.provideService(FileSystem.FileSystem, nonRootFs))
+    return { fs, root, manifestPath, nonRootFs, run }
+  })
+
+  it.live(
+    '--stdout captures all-uid JSON without publishing into the non-root-controlled store',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root, run } = yield* snapshotFixture
+        const result = yield* run(['--stdout'])
+        expect(result.exitCode, result.failure).toBe(0)
+        expect(result.stderr).toBe('')
+        // Decode the entire stdout: renderer summaries or log lines would fail.
+        expect(decodeJson(result.stdout)).toMatchObject({
+          schemaVersion: WORKSPACE_ACTIVITY_V2_SCHEMA,
+          producer: { name: PROCESS_SNAPSHOT_PRODUCER, version: expect.any(String) },
+          epoch: { host: hostname(), snapshotId: expect.any(String), storeIndex: 0 },
+          capturedAt: expect.any(String),
+          expiresAt: expect.any(String),
+          complete: expect.any(Boolean),
+          errors: expect.any(Array),
+          processCoverage: 'all-uids',
+          processRoots: [root],
+          processIdentities: expect.any(Array),
+          claims: expect.any(Array),
+        })
+        expect(yield* fs.readDirectory(root)).toEqual([])
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.live(
+    '--output still rejects a non-root-controlled directory without writing a temp file',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root, manifestPath, run } = yield* snapshotFixture
+        const result = yield* run(['--output', manifestPath])
+        expect(result.exitCode).toBe(1)
+        expect(result.failure).toContain(
+          'All-uid activity manifest directory is not root-controlled',
+        )
+        expect(result.stdout).toBe('')
+        expect(yield* fs.readDirectory(root)).toEqual([])
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.live(
+    'readers still reject capture JSON in a non-root-controlled directory',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root, manifestPath, nonRootFs } = yield* snapshotFixture
+        const snapshot = yield* captureProcessActivityManifest({ fs, storeRoots: [root] })
+        // Remove incomplete-proc rejection as a confounder: ownership must reject
+        // even apparently complete evidence, including a root-owned file.
+        yield* fs.writeFileString(
+          manifestPath,
+          yield* encodeWorkspaceActivityManifest({ ...snapshot, complete: true, errors: [] }),
+        )
+        let directoryChecked = false
+        const readerFs: FileSystem.FileSystem = {
+          ...nonRootFs,
+          stat: (path) =>
+            nonRootFs.stat(path).pipe(
+              Effect.map((info) => {
+                if (path === root) directoryChecked = true
+                return path === manifestPath ? { ...info, uid: Option.some(0), mode: 0o644 } : info
+              }),
+            ),
+        }
+        expect(
+          yield* readBudgetWorkspaceActivity({
+            fs: readerFs,
+            config: {
+              manifestPath,
+              agentLivenessProducers: [PROCESS_SNAPSHOT_PRODUCER],
+              builtin: false,
+            },
+          }),
+        ).toBeUndefined()
+        expect(directoryChecked).toBe(true)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.live(
+    'requires exactly one destination and retains normalized absolute --output validation',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root, manifestPath, run } = yield* snapshotFixture
+        for (const args of [[], ['--stdout', '--output', manifestPath]]) {
+          const result = yield* run(args)
+          expect(result.exitCode).toBe(1)
+          expect(result.failure).toContain('Specify exactly one of --output or --stdout')
+          expect(result.stdout).toBe('')
+        }
+        for (const path of ['activity.json', `${root}/../activity.json`]) {
+          const result = yield* run(['--output', path])
+          expect(result.exitCode).toBe(1)
+          expect(result.failure).toContain('--output must be a normalized absolute file path')
+        }
+        expect(yield* fs.readDirectory(root)).toEqual([])
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
 })

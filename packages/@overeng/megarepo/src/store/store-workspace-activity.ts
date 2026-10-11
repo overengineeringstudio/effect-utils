@@ -414,7 +414,7 @@ export const WORKSPACE_ACTIVITY_V2_SCHEMA = 'megarepo.workspace-activity.v2'
 /** Producer name for evidence megarepo captures itself from PTY records and `/proc`. */
 export const BUILTIN_ACTIVITY_PRODUCER = 'builtin'
 
-/** Producer name of `mr store activity snapshot`: root-run, process-only evidence. */
+/** Producer name of `mr store activity snapshot`: process-only evidence. */
 export const PROCESS_SNAPSHOT_PRODUCER = 'mr-process'
 
 /** Manifest lifetime ceiling: older evidence cannot describe the current host. */
@@ -431,7 +431,7 @@ const ActivityManifest = Schema.Struct({
   complete: Schema.Boolean,
   errors: Schema.Array(Schema.String),
   /**
-   * `all-uids`: the producer read every process on the host (root), so its
+   * `all-uids`: the producer read every process on the host, so its
    * `process` claims cover processes the reading owner cannot inspect, but
    * only for worktrees inside `processRoots`. `processIdentities` proves which
    * unreadable own-UID lifetimes were scanned. Says nothing about agents/PTYs.
@@ -459,6 +459,11 @@ const ActivityManifest = Schema.Struct({
 
 /** Decoded `megarepo.workspace-activity.v2` manifest. */
 export type WorkspaceActivityManifest = typeof ActivityManifest.Type
+
+/** Encode the same manifest JSON for capture-only output and trusted publication. */
+export const encodeWorkspaceActivityManifest = Schema.encodeEffect(
+  Schema.fromJsonString(ActivityManifest),
+)
 
 /**
  * Which liveness evidence a budget scan admits. `manifestPath` names an external
@@ -819,7 +824,7 @@ export const readBudgetWorktreeInUse = ({
   })
 
 /**
- * Root-run process snapshot (`mr store activity snapshot`): every process's
+ * Process snapshot (`mr store activity snapshot`): every process's
  * cwd/root/fd/mapped-file reference inside `storeRoots`, as `process` claims
  * with `all-uids` coverage and the identities of every scanned user process,
  * including those with no reference inside the roots. Directory references
@@ -910,7 +915,7 @@ export const writeWorkspaceActivityManifest = Effect.fn('store.writeWorkspaceAct
     ) {
       return yield* unavailable('All-uid activity manifest directory is not root-controlled')
     }
-    const content = yield* Schema.encodeEffect(Schema.fromJsonString(ActivityManifest))(manifest)
+    const content = yield* encodeWorkspaceActivityManifest(manifest)
     const temporary = `${dirname(path)}/.${basename(path)}.${randomUUID()}.tmp`
     yield* Effect.gen(function* () {
       yield* fs.writeFileString(temporary, content, { flag: 'wx', mode: 0o644 })
