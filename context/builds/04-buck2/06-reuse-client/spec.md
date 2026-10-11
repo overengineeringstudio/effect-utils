@@ -555,7 +555,10 @@ on B. It uses the shared local-materialization classification to exempt cheap
 tree/store assembly without dropping those actions from retained evidence.
 `scripts/buck2-remote-cache-proof.sh --assert-context-b-build <native-log.jsonl>`
 replays the same build assertions without contacting the cache or mutating proof
-sources.
+sources. Its integration suite gives each replay its own test case and awaits
+the subprocess exit and output streams. The runner's normal timeout guards
+hangs; replay latency is not a production deadline, and a case matrix does not
+share a single wall-clock budget.
 
 ### Lane budget measurements
 

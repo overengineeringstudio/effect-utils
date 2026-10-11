@@ -21,6 +21,7 @@ const trustedOrigin = {
 } as const
 
 const temporaryRoots: string[] = []
+const replayProcesses = new Set<Bun.Subprocess<'ignore', 'pipe', 'pipe'>>()
 
 const makeRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), 'buck2-cache-posture-'))
@@ -35,7 +36,10 @@ const makeRoot = (): string => {
   return root
 }
 
-afterEach(() => {
+afterEach(async () => {
+  for (const child of replayProcesses) child.kill()
+  await Promise.all([...replayProcesses].map((child) => child.exited))
+  replayProcesses.clear()
   for (const root of temporaryRoots.splice(0)) rmSync(root, { force: true, recursive: true })
 })
 
@@ -392,7 +396,7 @@ describe('REAPI probe diagnostics', () => {
 })
 
 describe('fresh-root remote build proof', () => {
-  const replay = (actions: readonly { category: string; executionKind: number }[]) => {
+  const replay = async (actions: readonly { category: string; executionKind: number }[]) => {
     const root = makeRoot()
     const events = join(root, 'events.jsonl')
     writeFileSync(
@@ -417,21 +421,38 @@ describe('fresh-root remote build proof', () => {
         .join('\n'),
     )
     const repoRoot = resolve(import.meta.dirname, '..')
-    return Bun.spawnSync(
+    const child = Bun.spawn(
       [
         'bash',
         join(repoRoot, 'scripts/buck2-remote-cache-proof.sh'),
         '--assert-context-b-build',
         events,
       ],
-      { cwd: repoRoot, env: { ...process.env, GITHUB_WORKSPACE: repoRoot } },
+      {
+        cwd: repoRoot,
+        env: { ...process.env, GITHUB_WORKSPACE: repoRoot },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
     )
+    replayProcesses.add(child)
+    try {
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      return { exitCode, stdout, stderr }
+    } finally {
+      replayProcesses.delete(child)
+    }
   }
 
   const descriptorHit = { category: 'javascript_product_descriptor', executionKind: 3 }
 
-  it('accepts remote compute hits alongside every intentionally local materialization category', () => {
-    const result = replay([
+  it('accepts remote compute hits alongside every intentionally local materialization category', async () => {
+    const result = await replay([
       descriptorHit,
       { category: 'tsgo_emit', executionKind: 3 },
       ...localMaterializationCategories.flatMap((category) =>
@@ -441,24 +462,28 @@ describe('fresh-root remote build proof', () => {
     expect(result.exitCode).toBe(0)
   })
 
-  it('rejects executed or locally reused cache-eligible actions despite a descriptor remote hit', () => {
-    for (const category of ['tsgo_emit', 'package_bin_artifact', 'unknown_category']) {
-      for (const executionKind of [1, 2, 7, 8, 10, 11]) {
-        const result = replay([descriptorHit, { category, executionKind }])
+  // Each replay gets the runner's normal hang guard, not one shared wall-clock
+  // budget for 18 subprocess trees. Await the actual exit without blocking Bun.
+  for (const category of ['tsgo_emit', 'package_bin_artifact', 'unknown_category']) {
+    for (const executionKind of [1, 2, 7, 8, 10, 11]) {
+      it(`rejects ${category} execution kind ${executionKind} despite a descriptor remote hit`, async () => {
+        const result = await replay([descriptorHit, { category, executionKind }])
         expect(result.exitCode).toBe(1)
-        expect(result.stdout.toString()).toContain('Context B executed a cache-eligible action')
-      }
+        expect(result.stdout).toContain('Context B executed a cache-eligible action')
+      })
     }
+  }
+
+  it('requires a remote action-cache hit', async () => {
+    const result = await replay([{ category: 'package_tree', executionKind: 1 }])
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain('did not report a remote action-cache hit')
   })
 
-  it('still requires both a remote hit and the explicit remote descriptor hit', () => {
-    const missingAllHits = replay([{ category: 'package_tree', executionKind: 1 }])
-    expect(missingAllHits.exitCode).toBe(1)
-    expect(missingAllHits.stdout.toString()).toContain('did not report a remote action-cache hit')
-
-    const missingDescriptor = replay([{ category: 'tsgo_emit', executionKind: 3 }])
-    expect(missingDescriptor.exitCode).toBe(1)
-    expect(missingDescriptor.stdout.toString()).toContain(
+  it('requires the explicit remote descriptor hit', async () => {
+    const result = await replay([{ category: 'tsgo_emit', executionKind: 3 }])
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain(
       'did not reuse the remote product descriptor',
     )
   })
