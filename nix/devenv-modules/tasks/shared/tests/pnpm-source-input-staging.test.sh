@@ -86,4 +86,24 @@ if node "$stager" publish "$workspace" .devenv/pnpm-source-inputs repos/demo/pac
   exit 1
 fi
 
+# A consumer mount may track newer bytes than its lock. Both genie and staging
+# must select the immutable store source rather than that mutable mount.
+locked_workspace="$tmpdir/locked-workspace"
+export MEGAREPO_STORE="$tmpdir/store"
+commit=0123456789012345678901234567890123456789
+locked_member="$MEGAREPO_STORE/github.com/example/demo/refs/commits/$commit"
+tracking_member="$MEGAREPO_STORE/github.com/example/demo/refs/heads/main"
+mkdir -p "$locked_workspace/repos" "$locked_member/packages/pkg" "$tracking_member/packages/pkg"
+printf '{"version":"locked"}\n' > "$locked_member/packages/pkg/package.json"
+printf '{"version":"newer"}\n' > "$tracking_member/packages/pkg/package.json"
+ln -s "$tracking_member" "$locked_workspace/repos/demo"
+printf '{"members":{"demo":{"url":"https://github.com/example/demo","ref":"main","commit":"%s"}}}\n' \
+  "$commit" > "$locked_workspace/megarepo.lock"
+# This is the former literal-symlink source and demonstrates the mismatch.
+grep -q newer "$locked_workspace/repos/demo/packages/pkg/package.json"
+node "$stager" publish "$locked_workspace" .devenv/pnpm-source-inputs repos/demo/packages/pkg
+cmp "$locked_member/packages/pkg/package.json" \
+  "$locked_workspace/.devenv/pnpm-source-inputs/current/repos/demo/packages/pkg/package.json"
+node "$stager" check "$locked_workspace" .devenv/pnpm-source-inputs repos/demo/packages/pkg
+
 echo "pnpm source input staging tests passed"
