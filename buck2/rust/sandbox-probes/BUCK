@@ -1,0 +1,14 @@
+load("@prelude//:prelude.bzl", "native")
+
+native.rust_binary(
+    name = "path_identity",
+    srcs = ["path_identity.rs", "included.txt"],
+    crate_root = "path_identity.rs",
+    env = {"CARGO_MANIFEST_DIR": "."},
+)
+
+native.rust_binary(
+    name = "root_dependent",
+    srcs = ["root_dependent.rs"],
+    crate_root = "root_dependent.rs",
+)

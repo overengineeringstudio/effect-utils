@@ -1,0 +1,451 @@
+{
+  "sourceHead": "71ec61e6c8364a1b3826d7e669100efeab4ea13d",
+  "originalBuildId": "47e593e3-dd2b-9fac-cd28-5dd63ab583b5",
+  "rustc": [
+    {
+      "target": "effect_utils//rust/third-party:unicode-ident-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:bumpalo-3",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:const-oid-0.10",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:nohash-hasher-0.2",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:ctor-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:cfg-if-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:bytes-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:pin-project-lite-0.2",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:cfg_aliases-0.2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#9db79a884dab038f",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:futures-core-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:equivalent-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:semver-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:dyn-clone-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:futures-sink-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:once_cell-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:rustc-hash-2",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:bitflags-2",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:toml_datetime-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:ryu-js-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:napi-build-2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#bbc4a5d3da27099e",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:unicode-segmentation-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:autocfg-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#bbc4a5d3da27099e",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:futures-task-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:memchr-2",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:cfg_aliases-0.2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#bbc4a5d3da27099e",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:foldhash-0.2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/effect-rust-fixtures/math-core:lib",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:slab-0.4",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:typenum-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:autocfg-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#9db79a884dab038f",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:winnow-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:futures-io-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:allocator-api2-0.2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:cpufeatures-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:itoa-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:ctor-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:libloading-0.9",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:futures-channel-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:convert_case-0.12",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:itoa-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:memchr-2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:hybrid-array-0.4",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:hashbrown-0.17",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:toml_parser-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:regex-syntax-0.8",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:aho-corasick-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:napi-sys-3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:block-buffer-0.12",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:indexmap-2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:quote-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:_rustversion-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:crypto-common-0.2",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:mio-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:toml_edit-0.25",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:socket2-0.6",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:digest-0.11",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:errno-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:regex-syntax-0.8",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:chrono-0.4",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:signal-hook-registry-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:proc-macro-crate-3",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:sha2-0.11",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/effect-rust-fixtures/hash-core:lib",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:syn-3",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:syn-2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:serde_path_to_error-0.1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:regex-automata-0.4",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:serde_derive_internals-0.30",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:_tokio-macros-2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:_ref-cast-impl-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:_futures-macro-0.3",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:regex-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:napi-derive-backend-6",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:_borsh-derive-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:_schemars_derive-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:wasm-bindgen-macro-support-0.2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:_serde_derive-1",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:futures-util-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:_napi-derive-3",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:_wasm-bindgen-macro-0.2",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:futures-executor-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:futures-0.3",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/effect-rust-macros:_lib",
+      "configuration": "effect_utils//buck2/platforms:exec_linux_x86_64#0fbf917f33e31249",
+      "identifier": "proc-macro"
+    },
+    {
+      "target": "effect_utils//rust/third-party:tokio-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/third-party:schemars-1",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/effect-rust:lib",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/effect-rust-fixtures/hash-interop:lib",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/effect-rust-fixtures/math-interop:lib",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "rlib [pic]"
+    },
+    {
+      "target": "effect_utils//rust/effect-rust-fixtures/napi-adapter:lib",
+      "configuration": "effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35",
+      "identifier": "cdylib [pic]"
+    }
+  ]
+}

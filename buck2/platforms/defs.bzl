@@ -165,8 +165,8 @@ def _native_execution_platform_impl(ctx):
         executor_config = CommandExecutorConfig(
             local_enabled = True,
             remote_enabled = False,
-            remote_cache_enabled = ctx.attrs.cache_hermetic and root_remote_cache_enabled(),
-            allow_cache_uploads = ctx.attrs.cache_hermetic and root_allow_cache_uploads(),
+            remote_cache_enabled = root_remote_cache_enabled(),
+            allow_cache_uploads = root_allow_cache_uploads(),
             use_windows_path_separators = False,
         ),
     )
