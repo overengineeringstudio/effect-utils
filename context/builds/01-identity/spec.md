@@ -41,15 +41,21 @@ Every implementation should model the same underlying fields, even if the transp
 | `rev`         | Short VCS revision identifying the selected source closure; the policy below defines C       |
 | `dirty`       | Whether uncommitted changes were present in the built or running source                      |
 | `sourceKind`  | How the process is running, currently `local` or `nix`                                       |
-| `commitTs`    | Commit timestamp for reproducible builds                                                     |
-| `buildTs`     | Optional wall-clock build timestamp for intentionally impure builds                          |
+| `commitTs`    | Commit timestamp of the selected revision, when available                                    |
+| `buildTs`     | Optional wall-clock build or local run-start timestamp                                       |
 
 The current TypeScript/Nix implementation represents these as:
 
-- `LocalStamp`: `type`, `rev`, `ts`, `dirty`
+- `LocalStamp`: `type`, `rev`, `ts`, `dirty`, optional `commitTs`
 - `NixStamp`: `type`, `version`, `rev`, `commitTs`, `dirty`, optional `buildTs`
 
 Field names may vary slightly between implementations, but the semantics should stay aligned.
+
+For local stamps, `ts` is the run-start Unix timestamp and resolves to `buildTs`.
+`commitTs`, when available, is the Unix timestamp read with
+`git log -1 --format=%ct` against the same captured HEAD revision used for `rev`.
+If that Git lookup fails, omit `commitTs`; never substitute the run-start time.
+Readers continue to accept older local stamps without `commitTs`.
 
 ## Derived Outputs
 
@@ -84,6 +90,10 @@ Rules:
 - May include relative time and explanatory prose
 - Should be derived from the same underlying fields as `machineVersion`
 - Must not be the only available version form in systems that need stable machine-readable identity
+- Local source prose prefers `committed X ago` when `commitTs` is available, so
+  the displayed age describes the revision rather than process uptime. Without
+  it, retain the legacy local run-age prose. Neither timestamp changes
+  `machineVersion`.
 
 ### Human short and details forms
 

@@ -1,7 +1,7 @@
 // Checked JavaScript: Node loads Vite config dependencies from node_modules without TS stripping.
 import { formatRelativeTime } from '../build-identity.js'
 
-/** @typedef {{readonly type: 'local', readonly rev: string, readonly ts: number, readonly dirty: boolean}} LocalStamp */
+/** @typedef {{readonly type: 'local', readonly rev: string, readonly ts: number, readonly commitTs?: number, readonly dirty: boolean}} LocalStamp */
 /** @typedef {{readonly type: 'nix', readonly version: string, readonly rev: string, readonly commitTs: number, readonly buildTs?: number, readonly dirty: boolean}} NixStamp */
 /** @typedef {LocalStamp | NixStamp} CliStamp */
 /**
@@ -25,7 +25,14 @@ export const parseCliBuildStamp = (stamp) => {
         typeof parsed.ts === 'number' &&
         typeof parsed.dirty === 'boolean'
       ) {
-        return { type: 'local', rev: parsed.rev, ts: parsed.ts, dirty: parsed.dirty }
+        const commitTs = typeof parsed.commitTs === 'number' ? parsed.commitTs : undefined
+        return {
+          type: 'local',
+          rev: parsed.rev,
+          ts: parsed.ts,
+          ...(commitTs === undefined ? {} : { commitTs }),
+          dirty: parsed.dirty,
+        }
       }
     } else if (parsed.type === 'nix') {
       if (
@@ -53,7 +60,10 @@ export const parseCliBuildStamp = (stamp) => {
 
 /** @param {{baseVersion: string, stamp: LocalStamp, now: number}} options */
 const renderLocalVersion = ({ baseVersion, stamp, now }) => {
-  const timeAgo = formatRelativeTime({ ts: stamp.ts, now, format: 'long' })
+  const timeAgo =
+    stamp.commitTs === undefined
+      ? formatRelativeTime({ ts: stamp.ts, now, format: 'long' })
+      : `committed ${formatRelativeTime({ ts: stamp.commitTs, now, format: 'long' })}`
   const dirtyNote = stamp.dirty === true ? ', with uncommitted changes' : ''
   return `${baseVersion} — running from local source (${stamp.rev}, ${timeAgo}${dirtyNote})`
 }
@@ -120,6 +130,7 @@ export const resolveCliBuildIdentity = (options) => {
       rev: runtimeStamp.rev,
       dirty: runtimeStamp.dirty,
       buildTs: runtimeStamp.ts,
+      ...(runtimeStamp.commitTs === undefined ? {} : { commitTs: runtimeStamp.commitTs }),
     }
   }
   if (runtimeStamp?.type === 'nix') return nixBuildIdentity({ stamp: runtimeStamp, now })

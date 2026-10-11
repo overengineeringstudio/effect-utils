@@ -21,13 +21,23 @@ const readGit = async ({ root, args }) =>
   ).stdout.trim()
 
 /** @param {string} root @returns {Promise<import('./cli-build-identity.js').LocalStamp>} */
-const localStamp = async (root) => ({
-  type: 'local',
-  rev: await readGit({ root, args: ['rev-parse', 'HEAD'] }),
-  ts: Math.floor(Date.now() / 1000),
-  dirty:
-    (await readGit({ root, args: ['status', '--porcelain=v1', '--untracked-files=no'] })) !== '',
-})
+const localStamp = async (root) => {
+  const ts = Math.floor(Date.now() / 1000)
+  const rev = await readGit({ root, args: ['rev-parse', 'HEAD'] })
+  // Resolve the timestamp against the captured revision, even if HEAD moves meanwhile.
+  const commitTsRaw = await readGit({ root, args: ['log', '-1', '--format=%ct', rev] }).catch(
+    () => '',
+  )
+  const commitTs = commitTsRaw === '' ? undefined : Number(commitTsRaw)
+  return {
+    type: 'local',
+    rev,
+    ts,
+    ...(commitTs === undefined || Number.isFinite(commitTs) === false ? {} : { commitTs }),
+    dirty:
+      (await readGit({ root, args: ['status', '--porcelain=v1', '--untracked-files=no'] })) !== '',
+  }
+}
 
 /**
  * Emit the shared CLI identity as a browser-safe virtual module and JSON asset.

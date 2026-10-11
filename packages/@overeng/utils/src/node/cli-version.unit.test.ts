@@ -52,6 +52,26 @@ Vitest.describe('parseCliBuildStamp', () => {
     })
   })
 
+  Vitest.it('parses local stamps with commitTs', () => {
+    expect(
+      parseCliBuildStamp(
+        JSON.stringify({
+          type: 'local',
+          rev: 'abc123',
+          ts: fiveMinutesAgo,
+          commitTs: threeDaysAgo,
+          dirty: true,
+        }),
+      ),
+    ).toEqual({
+      type: 'local',
+      rev: 'abc123',
+      ts: fiveMinutesAgo,
+      commitTs: threeDaysAgo,
+      dirty: true,
+    })
+  })
+
   Vitest.it('parses nix stamps with optional buildTs', () => {
     expect(
       parseCliBuildStamp(
@@ -107,7 +127,38 @@ Vitest.describe('resolveCliBuildIdentity', () => {
       rev: 'abc123',
       dirty: true,
       buildTs: fiveMinutesAgo,
+      displayVersion:
+        '0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)',
     })
+    expect(
+      resolveCliBuildIdentity({
+        baseVersion: '0.1.0',
+        buildStamp: placeholder,
+        env: { CLI_BUILD_STAMP: localStamp },
+        now,
+      }),
+    ).not.toHaveProperty('commitTs')
+  })
+
+  Vitest.it('uses local commit age while preserving run time and stable machine identity', () => {
+    const stamp = JSON.stringify({ ...JSON.parse(localStamp), commitTs: threeDaysAgo })
+    const options = {
+      baseVersion: '0.1.0',
+      buildStamp: placeholder,
+      env: { CLI_BUILD_STAMP: stamp },
+    }
+    const identity = resolveCliBuildIdentity({ ...options, now })
+    expect(identity).toMatchObject({
+      machineVersion: '0.1.0+local.abc123.dirty',
+      sourceKind: 'local',
+      commitTs: threeDaysAgo,
+      buildTs: fiveMinutesAgo,
+      displayVersion:
+        '0.1.0 — running from local source (abc123, committed 3 days ago, with uncommitted changes)',
+    })
+    expect(resolveCliBuildIdentity({ ...options, now: now + 86_400 }).machineVersion).toBe(
+      identity.machineVersion,
+    )
   })
 
   Vitest.it('resolves nix runtime identity from CLI_BUILD_STAMP', () => {
