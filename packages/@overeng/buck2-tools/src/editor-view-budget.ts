@@ -1582,6 +1582,18 @@ export const reserveEditorViewBudget = async ({
   for (let round = 0; round < maxAdmissionRounds; round += 1) {
     // eslint-disable-next-line no-await-in-loop -- Each round must observe the previous round's retirements.
     const census = await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots })
+    if (
+      collected === false &&
+      census.unreferencedCasBytes > 0 &&
+      census.usedBytes + reservedBytes(readState(store)) + reservationBytes > budgetBytes
+    ) {
+      collected = true
+      // Unreferenced CAS reclamation cannot retire a generation; observe readers
+      // only if pressure remains after this cheapest, first-priority collection.
+      // eslint-disable-next-line no-await-in-loop -- Recount after unlinking CAS-only entries.
+      await collectEditorViewContentStore({ contentStore: store })
+      continue
+    }
     let plan = planEviction({
       census,
       blocked,
