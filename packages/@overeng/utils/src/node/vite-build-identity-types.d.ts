@@ -17,6 +17,12 @@ export interface BuildIdentityVitePlugin {
   }
 }
 
+/** Resolve loose/packed Git metadata and the exact paths that own its snapshot. */
+export declare const readWorktreeGitMetadata: (
+  root: string,
+  subscribe?: (path: string) => void,
+) => Promise<{ rev: string; paths: Set<string> }>
+
 /**
  * Provides virtual:build-identity ({buildIdentity, deploymentId}) and build-identity.json.
  * Uses the CLI formatter for all versions. Source runs read Git from Vite's root;

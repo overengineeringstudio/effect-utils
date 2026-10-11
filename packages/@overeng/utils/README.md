@@ -38,7 +38,11 @@ root instead of trusting a stale shell stamp, and report `dev (HMR)`.
 The local dirty flag covers tracked changes only, not untracked files. In dev
 mode, Git reads are asynchronous, debounced and single-flight. Only the served
 worktree's HEAD, current branch ref and index are watched; sibling worktree
-commits do not recompute its identity.
+commits do not recompute its identity. Loose refs, packed refs and linked-worktree
+metadata are read directly from Git's files while the tracked `git status`
+subprocess runs concurrently. Reftable and unreadable detached objects use Git
+as the fallback authority. Events received during a snapshot coalesce into one
+follow-up snapshot rather than starting overlapping Git processes.
 
 After observing a source or Git watcher event, `plugin.api.waitForRefresh()`
 awaits the requested snapshot and any events coalesced while it runs. This is
