@@ -7,6 +7,7 @@ members = [
   "buck2-tools/archive-tool",
   "buck2-tools/core",
   "buck2-tools/events",
+  "buck2-tools/fingerprint",
   "buck2-tools/product",
   "effect-rust",
   "effect-rust-macros",

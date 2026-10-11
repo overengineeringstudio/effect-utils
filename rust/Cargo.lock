@@ -331,6 +331,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "buck2-fingerprint"
+version = "0.0.0"
+dependencies = [
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "buck2-product"
 version = "0.0.0"
 dependencies = [

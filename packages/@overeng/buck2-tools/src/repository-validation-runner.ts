@@ -320,6 +320,7 @@ const checkWorkspaceContract = ({
     'ai-gateway',
     'buck2-archive-tool',
     'buck2-events',
+    'buck2-fingerprint',
     'buck2-product',
     'buck2-tool-core',
     'content-address-contract',
@@ -413,6 +414,7 @@ const checkWorkspaceContract = ({
     'rust/buck2-tools/archive-tool',
     'rust/buck2-tools/core',
     'rust/buck2-tools/events',
+    'rust/buck2-tools/fingerprint',
     'rust/buck2-tools/product',
   ]) {
     const buck = readFileSync(path.join(sourceRoot, memberPath, 'BUCK'), 'utf8')
