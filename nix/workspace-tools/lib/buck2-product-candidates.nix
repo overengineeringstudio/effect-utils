@@ -74,6 +74,7 @@ let
     };
     expectedExternalCapabilities = [
       "actionlint"
+      "gh"
       "effect-tsgo"
       "opentui-core-native"
       "oxfmt"
@@ -82,7 +83,10 @@ let
     expectedExternalModules = opentuiCoreExternalModules;
     expectedProductKind = "cli";
     nativeNodePackages = opentuiCoreNative.packages;
-    pathPackages = [ oxfmtPkg ];
+    pathPackages = [
+      oxfmtPkg
+      pkgs.gh
+    ];
     smokeTestArgs = [ "--dry-run" ];
   };
   genie-bootstrap-closure-check = mk "genie-bootstrap-closure-check" {
@@ -116,7 +120,15 @@ let
   };
   megarepo = mk "megarepo" {
     binaryName = "mr";
-    environment.CLI_BUILD_STAMP = buildStamp;
+    # Cached bytes can predate this checkout; report their producer identity,
+    # not the consumer revision (or its timestamp/dirty state).
+    environment.CLI_BUILD_STAMP = builtins.toJSON {
+      type = "nix";
+      version = products.megarepo.version;
+      rev = products.megarepo.provenance.producerCommit;
+      commitTs = 0;
+      dirty = false;
+    };
     expectedExternalCapabilities = [
       "git"
       "nix"

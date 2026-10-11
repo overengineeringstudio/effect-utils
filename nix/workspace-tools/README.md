@@ -37,6 +37,14 @@ Downstream package consumers should make their root `nixpkgs` and `flake-utils`
 follow `effect-utils/nixpkgs` and `effect-utils/flake-utils` to share the canonical
 build graph.
 
+The Genie product wrapper supplies `gh` on PATH for repository-settings
+reconciliation, alongside the formatter and absolute compiler/server tools.
+Its external-capability contract must match the published descriptor exactly.
+The cached `mr` version stamp reports the manifest's producer commit and product
+version, rather than the importing checkout's revision. Producer timestamps are
+not recorded in the manifest, so that stamp has no timestamp or consumer dirty
+state; this keeps stale CLI products identifiable.
+
 Run `bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"` to
 exercise the retained public outputs from standalone and composed downstream
 flake layouts. The test archives the committed `HEAD` source for both layouts,
