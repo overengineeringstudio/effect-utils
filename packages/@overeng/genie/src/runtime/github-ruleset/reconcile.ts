@@ -251,7 +251,9 @@ export const mergeGithubRulesetForApply = ({
       if (actualRule === undefined) return rule
       const actualParameters = asRecord(actualRule).parameters
       if (Object.hasOwn(desiredRule, 'parameters') === false) {
-        return actualParameters === undefined ? rule : { ...desiredRule, parameters: actualParameters }
+        return actualParameters === undefined
+          ? rule
+          : { ...desiredRule, parameters: actualParameters }
       }
       return {
         ...desiredRule,

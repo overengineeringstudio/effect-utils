@@ -147,9 +147,7 @@ describe('github ruleset diff', () => {
 
   it('reports a changed or missing declared parameter even with live-only keys', () => {
     const desired = {
-      rules: [
-        { type: 'pull_request', parameters: { dismissal_restriction: { enabled: false } } },
-      ],
+      rules: [{ type: 'pull_request', parameters: { dismissal_restriction: { enabled: false } } }],
     }
     for (const parameters of [
       { dismissal_restriction: { enabled: true, allowed_actors: [] } },
@@ -166,7 +164,9 @@ describe('github ruleset diff', () => {
     const desired = {
       rules: [{ type: 'pull_request', parameters: { required_approving_review_count: 0 } }],
     }
-    expect(diffGithubRuleset({ desired, actual: { rules: [] } })).toMatchObject([{ field: 'rules' }])
+    expect(diffGithubRuleset({ desired, actual: { rules: [] } })).toMatchObject([
+      { field: 'rules' },
+    ])
     expect(
       diffGithubRuleset({
         desired,
