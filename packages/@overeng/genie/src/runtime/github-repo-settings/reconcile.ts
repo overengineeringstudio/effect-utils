@@ -3,6 +3,7 @@ import { Schema } from 'effect'
 import {
   diffGithubRuleset,
   ghJson,
+  mergeGithubRulesetForApply,
   type RulesetDiff,
   type RulesetMode,
 } from '../github-ruleset/reconcile.ts'
@@ -107,16 +108,25 @@ export const reconcileGithubRepoSettings = async ({
       })
     }
     const summary = matches[0]
+    const actual =
+      summary === undefined
+        ? undefined
+        : Schema.decodeUnknownSync(JsonObject)(
+            await ghJson({ endpoint: `repos/${options.repo}/rulesets/${summary.id}` }),
+          )
     const diffs =
       summary === undefined
         ? [{ field: 'ruleset', desired: ruleset, actual: undefined }]
-        : diffGithubRuleset({
-            desired: ruleset,
-            actual: Schema.decodeUnknownSync(JsonObject)(
-              await ghJson({ endpoint: `repos/${options.repo}/rulesets/${summary.id}` }),
-            ),
-          })
-    plannedRulesets.push({ payload: ruleset, id: summary?.id, diffs })
+        : diffGithubRuleset({ desired: ruleset, actual })
+    plannedRulesets.push({
+      payload: ruleset,
+      applyPayload:
+        mode === 'apply' && summary !== undefined && diffs.length > 0
+          ? mergeGithubRulesetForApply({ desired: ruleset, actual })
+          : ruleset,
+      id: summary?.id,
+      diffs,
+    })
   }
 
   const changed =
@@ -139,7 +149,7 @@ export const reconcileGithubRepoSettings = async ({
             ? `repos/${options.repo}/rulesets`
             : `repos/${options.repo}/rulesets/${id}`,
         args: ['--method', id === undefined ? 'POST' : 'PUT'],
-        body: ruleset.payload,
+        body: ruleset.applyPayload,
       })
       id = Schema.decodeUnknownSync(RulesetSummary)(result).id
     }

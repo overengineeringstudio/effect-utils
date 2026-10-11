@@ -168,6 +168,14 @@ ruleset names are rejected before any write. Applying several GitHub API
 updates is not transactional: an API failure may leave earlier updates applied;
 rerunning apply reconciles the remaining drift.
 
+Within each managed ruleset, rule presence is exact and rule order is ignored.
+Rules are matched by `type`; only declared parameter keys are compared, recursively
+for nested objects. Parameter arrays (including required status-check entries) remain
+exact. Live-only parameters do not cause drift. Updates preserve those unmanaged
+parameters on retained rule types before sending the rules array to GitHub's
+[ruleset PUT endpoint](https://docs.github.com/en/rest/repos/rules#update-a-repository-ruleset),
+while declared values, arrays and rule presence remain authoritative.
+
 The `devenvModules.tasks.github-ruleset` module exposes the same
 `gh:apply-settings` / `gh:check-settings` operations as thin wrappers,
 configured with `{ repo = "owner/name"; }`. Its legacy `ruleset` parameter
