@@ -10,11 +10,12 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
+import * as fs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   assemblePortableFarm,
@@ -459,6 +460,37 @@ describe('the CLI entry override', () => {
     expect(
       loadOnce(join(alias, 'src', 'cli.ts'), join(packageTree, 'src', 'cli.ts')).overrides,
     ).toBe(1)
+  })
+
+  it('keeps the entry name when Darwin reports a different hard link on the next realpath', () => {
+    const { packageTree } = createViewFixture(scratch('entry-hardlink-'))
+    const entry = join(packageTree, 'src', 'cli.ts')
+    const source = join(packageTree, 'src', 'original.ts')
+    linkSync(entry, source)
+    const realpath = fs.realpathSync
+    let leafCalls = 0
+    // Model F_GETPATH's vnode-name change between plugin setup and onLoad.
+    // Directory realpaths remain stable; only the hard-linked leaf changes.
+    const spy = vi.spyOn(fs, 'realpathSync').mockImplementation((path, options) => {
+      if (path === entry) return leafCalls++ === 0 ? entry : source
+      return realpath(path, options)
+    })
+    try {
+      const { contents, overrides } = loadOnce(entry, entry)
+      expect(overrides).toBe(1)
+      expect(contents).toContain('if (true) console.log')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('does not override a separate module name sharing the entry inode', () => {
+    const { packageTree } = createViewFixture(scratch('entry-hardlink-other-'))
+    const entry = join(packageTree, 'src', 'cli.ts')
+    const other = join(packageTree, 'src', 'other.ts')
+    linkSync(entry, other)
+
+    expect(loadOnce(entry, other).overrides).toBe(0)
   })
 
   it('does not fire for a module which is not the entry', () => {
