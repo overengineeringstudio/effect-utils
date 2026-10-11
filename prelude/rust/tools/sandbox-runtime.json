@@ -1,6 +1,7 @@
 {
   "bwrap": "/nix/store/y0ra9qr3rz81d9wl7dfrldv3j25dc98q-bubblewrap-0.12.0/bin/bwrap",
   "shell": "/nix/store/2ndah67h0z5m31v2wkdmg2md4380ggr5-bash-interactive-5.3p15/bin/bash",
+  "env": "/nix/store/xjl7p8dvyk2j53kqf7f43kdj4ypbxz7g-coreutils-9.11/bin/env",
   "storePaths": [
     "/nix/store/00fxb7d73i7arnbsiyx72q69s9w8hzca-python3",
     "/nix/store/0difb56x7w38vqzpni6jzfm80f96zf8y-rustdoc",

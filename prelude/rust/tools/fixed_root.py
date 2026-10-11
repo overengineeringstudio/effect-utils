@@ -95,10 +95,11 @@ def launch(script, argv):
         for store_path in runtime["storePaths"]:
             command.extend(["--ro-bind", store_path, store_path])
         command.extend(mounts)
-        # Linker wrapper uses /bin/sh, but only the pinned shell may provide it.
+        # Prelude's declared linker wrappers use /usr/bin/env bash.
         shell = runtime["shell"]
-        command.extend(["--dir", "/bin", "--symlink", shell, "/bin/sh", "--chdir", VROOT])
-        for key, value in {"LC_ALL": "C", "TZ": "UTC", "HOME": "/home/build", "PWD": VROOT, "TMPDIR": "/tmp", "BUCK_SCRATCH_PATH": "/tmp", "RUST_SANDBOX_INNER": "1"}.items():
+        command.extend(["--dir", "/bin", "--symlink", shell, "/bin/sh", "--dir", "/usr", "--dir", "/usr/bin", "--symlink", runtime["env"], "/usr/bin/env", "--chdir", VROOT])
+        fixed_path = str(Path(shell).parent) + ":" + str(Path(runtime["env"]).parent)
+        for key, value in {"LC_ALL": "C", "TZ": "UTC", "HOME": "/home/build", "PWD": VROOT, "PATH": fixed_path, "TMPDIR": "/tmp", "BUCK_SCRATCH_PATH": "/tmp", "RUST_SANDBOX_INNER": "1"}.items():
             command.extend(["--setenv", key, value])
         command.extend([sys.executable, script, *expanded])
         result = subprocess.run(command, check=False)
