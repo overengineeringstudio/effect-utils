@@ -171,6 +171,8 @@ const warning = ({
     process.stderr.write(`::warning title=Buck2 cache::${message}\n`)
 }
 
+export type AdmissionProbeEndpoint = 'watchman' | 'reapi' | 'archiveOrigin'
+
 /** Admit the initial file watcher and cache posture before pinned native startup. */
 export const directBuckArguments = async ({
   args,
@@ -189,8 +191,8 @@ export const directBuckArguments = async ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cacheDirectory?: string
   readonly deadlineMs?: number
-  /** Supply a fresh caller-controlled deadline for each network probe attempt. */
-  readonly probeDeadlineSignal?: (endpoint: 'reapi' | 'archiveOrigin') => AbortSignal
+  /** Supply a fresh caller-controlled deadline for each probe; undefined uses the platform timer. */
+  readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
@@ -207,6 +209,14 @@ export const directBuckArguments = async ({
   const explicitWatcher = buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
   const selectedWatcher = explicitWatcher ?? trackedValues['buck2.file_watcher']
   if (selectedWatcher === 'watchman') {
+    const watchmanProbe = () =>
+      probeWatchman({
+        env,
+        repoRoot: root,
+        deadlineMs,
+        makeDeadlineSignal:
+          probeDeadlineSignal === undefined ? undefined : () => probeDeadlineSignal('watchman'),
+      })
     const available = await cachedProbe({
       cacheDirectory,
       root: realpathSync(root),
@@ -226,10 +236,10 @@ export const directBuckArguments = async ({
         env['LOGNAME'],
         env['WATCHMAN_CONFIG_FILE'],
       ]),
-      probe: () => probeWatchman({ env, repoRoot: root, deadlineMs }),
+      probe: watchmanProbe,
     })
     // Never admit a negative cached outcome, including entries written by an older launcher.
-    if (available === false) await probeWatchman({ env, repoRoot: root, deadlineMs })
+    if (available === false) await watchmanProbe()
     reconcileFileWatcher({
       repoRoot: root,
       provider: explicitWatcher === undefined ? 'watchman' : undefined,

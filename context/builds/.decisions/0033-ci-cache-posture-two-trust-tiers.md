@@ -126,16 +126,23 @@ cache-server outage. A five-second endpoint-result cache can reuse a failure;
 its original probe emits diagnostics rather than repeating them on cache hits.
 
 The `buck2:cache-posture:test` integration suite keeps Bun's default 5000 ms
-guard. CLI launch and daemon replay cases prepare healthy watcher admission
-in-process in a separately guarded setup hook; sequential replays place the
-first launch in setup and the second in the case. Cold admission remains
-covered directly, and concurrent migration still races both CLI launches.
-CLI process groups are reaped before their fixtures are removed.
-Network retry/fallback fixtures provide a fresh deadline signal per real probe
-attempt and expire only held requests after the server receives them. Healthy
-responses do not race a shortened platform timer. These tests retain the
-declared gRPC deadline headers; production callers retain the 2500 ms attempt
-budget and existing immediate retry.
+guard. CLI launch and daemon replay cases preload their real dependencies
+behind a readiness barrier in a separately guarded setup hook, then release the
+actual CLI entrypoint in the case. Healthy watcher admission is warmed
+in-process after readiness so its short-lived cache does not age during cold
+startup. Sequential replays place the first launch in setup and the second in
+the case; concurrent migration still races both CLI launches. CLI process
+groups are reaped before their fixtures are removed.
+
+Semantic watcher fixtures own their probe deadline signals; identity changes
+still require exactly one new service query. The transient fixture expires
+only its held first query after observing its call log, and waits for the real
+child close before retrying. The hanging-service case separately retains both
+1000 ms platform deadlines. Network retry/fallback fixtures likewise expire
+only held requests after the server receives them; healthy responses do not
+race a shortened platform timer. Their declared gRPC deadline headers remain
+asserted. Production callers retain the 2500 ms attempt budget and existing
+immediate retry.
 
 In [merge-group run 37557021971](https://github.com/overengineeringstudio/effect-utils/actions/runs/37557021971)
 (PR #1578, 01:25Z), four macOS Namespace test invocations fell back, as did one
