@@ -107,3 +107,35 @@ The JavaScript runner loads test modules when collecting their inventory without
 executing assertions. Static parsing is opt-in: the runner passes an explicit
 negative flag otherwise, rather than relying on the pinned Vitest CLI's default.
 This includes cases registered by imported helpers such as rule-test generators.
+
+## Bun wall deadlines and failure classification
+
+Repository devenv Bun test tasks and Buck Bun lanes share `src/bun-test-runner.ts`.
+At run start it samples the one-minute host load and the CPU parallelism available
+to the process. The CLI default and explicit per-test deadlines use:
+
+```text
+effective = ceil(base × min(cap, max(1, load1 / cpus)))
+```
+
+`BUN_TEST_TIMEOUT_CAP` sets the cap (default `4`, finite and at least `1`);
+`BUN_TEST_TIMEOUT_SCALING=0` disables scaling. Buck lanes can declare these as
+environment inputs; local external-test runs also accept the caller's environment.
+The factor stays fixed for the run. A shared preload intercepts native Bun test
+registration, including parameterized tests and modifiers, to scale explicit
+deadlines and record their base. Hooks, assertions, callbacks and exit statuses
+remain native; no tests are retried.
+
+The wrapper requests Bun's JUnit reporter and leaves console output untouched.
+After the child exits, it samples host load and Linux memory PSI and emits one
+`test-timeout-under-load` line for each JUnit `TimeoutError`, including the test
+identity, base, factor, effective deadline, measured JUnit elapsed milliseconds,
+load, CPU count and `memPsiFullAvg10` (`unavailable` outside Linux or without PSI).
+`test-failure-summary` counts timeout, assertion and other failures separately.
+“Under load” is a diagnostic category, not proof that load caused the timeout.
+Reports live in executor results for Buck and disposable scratch for direct tasks.
+
+Bun's inspector reporter protocol can stream lifecycle events, but would require
+a debugger connection. Its ordinary lifecycle/preload hooks do not expose failure
+results or deadlines. JUnit provides typed outcomes and measured durations without
+parsing stdout, changing assertion semantics or opening a debugger port.

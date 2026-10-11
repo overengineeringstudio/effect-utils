@@ -1099,7 +1099,7 @@ in
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
       cd "$root/packages/@overeng/buck2-tools"
-      exec ${pkgs.bun}/bin/bun test src/*.test.ts
+      exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" src/*.test.ts
     ''
   );
 
@@ -1110,7 +1110,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # `./` makes these exact paths; bare arguments are suffix filters that
       # also match the copies Buck stages under buck-out.
-      exec ${pkgs.bun}/bin/bun test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts
     '';
     execIfModified = [
       "genie/ci-workflow/**/*.ts"
@@ -1124,7 +1124,7 @@ in
     exec = trace.exec "buck2:cache-posture:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun test \
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts \
         ./scripts/buck2-entrypoint.integration.test.ts \
         ./scripts/buck2-cache-posture.integration.test.ts
     '';
@@ -1148,7 +1148,7 @@ in
       export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
       export NIX_FLAKE_REF="git+file://$PWD?shallow=1"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}:$PATH
-      ${pkgs.bun}/bin/bun test ./scripts/buck2-capability-publish.unit.test.ts
+      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts ./scripts/buck2-capability-publish.unit.test.ts
       ${pkgs.bash}/bin/bash \
         nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh
       exec ${pkgs.bash}/bin/bash \
@@ -1189,7 +1189,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
-      exec ${pkgs.bun}/bin/bun test ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts
     '';
     execIfModified = [
       "BUCK"
@@ -1249,7 +1249,7 @@ in
         cd rust
         cargo test --locked --package 'buck2-*'
       )
-      ${pkgs.bun}/bin/bun test buck2/swift/compile.unit.test.ts
+      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts buck2/swift/compile.unit.test.ts
     '';
   };
 
