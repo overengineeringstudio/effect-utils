@@ -1,5 +1,7 @@
 import { Schema } from 'effect'
 
+import { diffGithubRepositorySettings } from '../../runtime/github-repo-settings/comparison.ts'
+import type { GithubRepoSettings as GithubRepoSettingsData } from '../../runtime/github-repo-settings/mod.ts'
 import {
   diffGithubRuleset,
   ghJson,
@@ -7,8 +9,6 @@ import {
   type RulesetDiff,
   type RulesetMode,
 } from '../../runtime/github-ruleset/reconcile.ts'
-import { diffGithubRepositorySettings } from '../../runtime/github-repo-settings/comparison.ts'
-import type { GithubRepoSettings as GithubRepoSettingsData } from '../../runtime/github-repo-settings/mod.ts'
 import { GithubRepoSettings, GithubRepositorySettings, GithubRulesetPayload } from './schema.ts'
 
 /** Failure to decode or reconcile generated GitHub repository settings. */
@@ -102,41 +102,46 @@ export const reconcileGithubRepoSettings = async ({
             args: ['--paginate', '--slurp'],
           }),
         ).flat()
-  const plannedRulesets = await desired.rulesets.reduce(async (previous, ruleset) => {
-    const plans = await previous
-    const matches = summaries.filter((summary) => summary.name === ruleset.name)
-    if (matches.length > 1) {
-      throw new GithubRepoSettingsError({
-        message: `repo ${options.repo} has multiple rulesets named \`${ruleset.name}\``,
+  const plannedRulesets = await desired.rulesets.reduce(
+    async (previous, ruleset) => {
+      const plans = await previous
+      const matches = summaries.filter((summary) => summary.name === ruleset.name)
+      if (matches.length > 1) {
+        throw new GithubRepoSettingsError({
+          message: `repo ${options.repo} has multiple rulesets named \`${ruleset.name}\``,
+        })
+      }
+      const summary = matches[0]
+      const actual =
+        summary === undefined
+          ? undefined
+          : Schema.decodeUnknownSync(JsonObject)(
+              await ghJson({ endpoint: `repos/${options.repo}/rulesets/${summary.id}` }),
+            )
+      const diffs =
+        summary === undefined
+          ? [{ field: 'ruleset', desired: ruleset, actual: undefined }]
+          : diffGithubRuleset({ desired: ruleset, actual })
+      plans.push({
+        payload: ruleset,
+        applyPayload:
+          mode === 'apply' && summary !== undefined && diffs.length > 0
+            ? mergeGithubRulesetForApply({ desired: ruleset, actual })
+            : ruleset,
+        id: summary?.id,
+        diffs,
       })
-    }
-    const summary = matches[0]
-    const actual =
-      summary === undefined
-        ? undefined
-        : Schema.decodeUnknownSync(JsonObject)(
-            await ghJson({ endpoint: `repos/${options.repo}/rulesets/${summary.id}` }),
-          )
-    const diffs =
-      summary === undefined
-        ? [{ field: 'ruleset', desired: ruleset, actual: undefined }]
-        : diffGithubRuleset({ desired: ruleset, actual })
-    plans.push({
-      payload: ruleset,
-      applyPayload:
-        mode === 'apply' && summary !== undefined && diffs.length > 0
-          ? mergeGithubRulesetForApply({ desired: ruleset, actual })
-          : ruleset,
-      id: summary?.id,
-      diffs,
-    })
-    return plans
-  }, Promise.resolve<Array<{
-    readonly payload: GithubRepoSettingsData['rulesets'][number]
-    readonly applyPayload: unknown
-    readonly id: number | undefined
-    readonly diffs: ReadonlyArray<RulesetDiff>
-  }>>([]))
+      return plans
+    },
+    Promise.resolve<
+      Array<{
+        readonly payload: GithubRepoSettingsData['rulesets'][number]
+        readonly applyPayload: unknown
+        readonly id: number | undefined
+        readonly diffs: ReadonlyArray<RulesetDiff>
+      }>
+    >([]),
+  )
 
   const changed =
     repositoryDiffs.length > 0 || plannedRulesets.some((ruleset) => ruleset.diffs.length > 0)

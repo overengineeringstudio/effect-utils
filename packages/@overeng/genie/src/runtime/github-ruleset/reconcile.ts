@@ -359,10 +359,7 @@ export const ghJson = async ({
 }): Promise<unknown> => {
   const inputArgs = body === undefined ? [] : ['--input', '-']
   const proc = Bun.spawn(['gh', 'api', endpoint, ...args, ...inputArgs], {
-    stdin:
-      body === undefined
-        ? 'ignore'
-        : new TextEncoder().encode(JSON.stringify(body)),
+    stdin: body === undefined ? 'ignore' : new TextEncoder().encode(JSON.stringify(body)),
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -378,7 +375,5 @@ export const ghJson = async ({
     )
   }
 
-  return stdout.trim() === ''
-    ? undefined
-    : JSON.parse(stdout) as unknown
+  return stdout.trim() === '' ? undefined : (JSON.parse(stdout) as unknown)
 }
