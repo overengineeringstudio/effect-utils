@@ -7,11 +7,13 @@
 # Exposes BOTH binaries in $out/bin:
 #   - restate-server  (the durable execution server)
 #   - restate         (the CLI; the `restate-cli-*` archive ships it as `restate`)
-# (`restatectl` is intentionally omitted for now.)
+# `restatectl` is a lazy separate product at `.restatectl`; server/CLI consumers
+# do not fetch or retain the control-plane executable.
 #
 # Usage:
 #   restate = import ./restate.nix { inherit pkgs; };
 #   # => restate-server and restate on PATH
+#   # (import ./restate.nix { inherit pkgs; }).restatectl => restatectl only
 #
 # =============================================================================
 # Updating to a new version
@@ -23,6 +25,7 @@
 #      BASE="https://github.com/restatedev/restate/releases/download/v<version>"
 #      nix store prefetch-file --json "$BASE/restate-server-x86_64-unknown-linux-musl.tar.xz"
 #      nix store prefetch-file --json "$BASE/restate-cli-x86_64-unknown-linux-musl.tar.xz"
+#      nix store prefetch-file --json "$BASE/restatectl-x86_64-unknown-linux-musl.tar.xz"
 #
 # 3. For the other systems, fetch the tiny `.sha256` sidecars (avoid the big
 #    tarballs) and convert hex -> SRI:
@@ -51,28 +54,37 @@ let
     aarch64-darwin = "aarch64-apple-darwin";
   };
 
-  # Per-system SRI hashes for the `restate-server-*` and `restate-cli-*` tarballs.
+  # Per-system SRI hashes for the server, application CLI and control-plane CLI.
   # x86_64-linux hashes are from real prefetched tarballs (this build host);
   # the rest are derived from the assets' `.sha256` sidecars.
   hashes = {
     x86_64-linux = {
+      ctl = "sha256-5MLJVIuPirKp8uIPF3l0W6NKSOZbYQ36swP4OLl2HT0=";
       server = "sha256-w25mCaWRqqWRTdIRQySednRXBLVx1KVzXBymwgsTvc8=";
       cli = "sha256-qwW8Y9FrZGotwntTinkNm0SURW8hDHkljhxt2nQACEY=";
     };
     aarch64-linux = {
+      ctl = "sha256-k3NSpmg9IK3/KSDfq2jxjUuGbokjzT2fRmTbOSAcrlI=";
       server = "sha256-W2nHwKblW7cIApJM6CLqCUPYLZtsrBV/JOuF14jTWXY=";
       cli = "sha256-KqMeIY6yoAcmYY3PZlknuQdIq9qAi/Tqn5rd3HFogAs=";
     };
     x86_64-darwin = {
+      ctl = "sha256-1LfKjwQ/SPQvMDK3tmG/KtHWDoBii4mSJmTUDEizMng=";
       server = "sha256-z8fNLoZwvsBivx53H2fuKDQuvxNm6e3K8MBydPCZfLo=";
       cli = "sha256-kANn4FvAbtXMchwGPvp250MWSxFGciG7g7m0hsy9i/E=";
     };
     aarch64-darwin = {
+      ctl = "sha256-KqTsPqlVRd5eDSqGtDb2Q9ay114jox8pDqktbIeeOUw=";
       server = "sha256-7bK3N1Jf/cXc0kSdB0IVr78EFKx7Qf/+Dwu3h4UixYw=";
       cli = "sha256-VY2ZoGLFeGLJryo5Di2yEKGZ/YNmo+BAH82maiHcRYw=";
     };
   };
 
+  # Control-plane assets share the release/version authority above. The Linux
+  # x86_64 and Darwin aarch64 products were built and report version 1.7.9.
+  # Other ctl hashes come from official release asset SHA-256 metadata; those
+  # products have not been built. This does not qualify all four platforms:
+  # the pinned Nixpkgs already rejects x86_64-darwin package evaluation.
   system = pkgs.stdenv.hostPlatform.system;
   rustTarget = rustTargets.${system} or (throw "restate: unsupported system ${system}");
   systemHashes = hashes.${system} or (throw "restate: no hashes for system ${system}");
@@ -98,6 +110,32 @@ pkgs.stdenvNoCC.mkDerivation {
   # Harmless for the static musl Linux binaries; needed only if a future
   # release ships dynamically-linked binaries. No-op on Darwin.
   nativeBuildInputs = lib.optionals pkgs.stdenv.isLinux [ pkgs.autoPatchelfHook ];
+
+  # Lazy separate product: existing server/CLI consumers do not fetch or retain ctl.
+  passthru.restatectl = pkgs.stdenvNoCC.mkDerivation {
+    pname = "restatectl";
+    inherit version;
+    src = pkgs.fetchurl {
+      url = "${baseUrl}/restatectl-${rustTarget}.tar.xz";
+      hash = systemHashes.ctl;
+    };
+    dontUnpack = true;
+    nativeBuildInputs = lib.optionals pkgs.stdenv.isLinux [ pkgs.autoPatchelfHook ];
+    installPhase = ''
+      runHook preInstall
+      tar -xJf "$src"
+      install -Dm755 restatectl-${rustTarget}/restatectl $out/bin/restatectl
+      runHook postInstall
+    '';
+    meta = {
+      description = "Restate cluster control-plane CLI (official prebuilt binary)";
+      homepage = "https://restate.dev";
+      mainProgram = "restatectl";
+      license = lib.licenses.bsl11;
+      sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
+      platforms = lib.attrNames rustTargets;
+    };
+  };
 
   installPhase = ''
     runHook preInstall
