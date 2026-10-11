@@ -70,6 +70,8 @@ let
 
     [buck2]
       file_watcher = ${watcherPolicies.${watcherPolicy}}
+      # Keep caches warm across agent iterations, but release abandoned worktrees.
+      daemon_idle_timeout_s = 10800
       digest_algorithms = SHA256
       remote_cache_enabled = ${boolString remoteCacheEnabled}
       allow_cache_uploads = ${boolString allowCacheUploads}${lib.optionalString allowCacheUploads "\n  default_allow_cache_upload = true"}

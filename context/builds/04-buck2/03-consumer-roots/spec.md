@@ -56,6 +56,18 @@ with one more cell, `rules = .buck2/rules`: the shipped rules product, which
 also carries the prelude. Its platform labels are
 `rules//buck2/platforms:host_platform` and `…:host_execution_platform`.
 
+Both the hub checkout and shared consumer-root config set
+`[buck2] daemon_idle_timeout_s = 10800` (three hours). Agent worktrees keep
+their warm daemon across iterative builds and short interruptions, but abandoned
+or merged worktrees no longer retain a daemon for the upstream four-day default.
+This is Buck2's startup configuration, not a teardown timer; existing daemons
+adopt it when next restarted. The pinned release parses the key in
+[`app/buck2_common/src/init.rs`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_common/src/init.rs#L756-L759)
+and applies it in
+[`server_shutdown_signal`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_server/src/daemon/server.rs#L1777-L1818).
+The inactivity timer resets on command arrival, not command completion, so
+three hours also leaves headroom for normal agent build commands.
+
 ## Capability Cell
 
 The devenv shell links the pure `packages.<system>.buck2-capabilities` output
