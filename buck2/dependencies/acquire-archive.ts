@@ -22,6 +22,7 @@ export type ArchiveOriginFallback = {
   readonly reason: ArchiveOriginFallbackReason
   readonly sha256: string
   readonly status?: number
+  readonly cleanupDiagnostic?: 'body-cancel-rejected'
 }
 
 /** Acquire verified bytes from CAS, reporting availability misses before registry recovery. */
@@ -53,18 +54,27 @@ export const acquireArchive = async ({
 
   const deadline = AbortSignal.timeout(transferTimeoutMs)
   const headersTimeoutError = new Error('pnpm archive acquisition: response headers timed out')
-  const request = async (url: string): Promise<Response> => {
-    const headers = new AbortController()
+  const casController = new AbortController()
+  let cleanupDiagnostic: ArchiveOriginFallback['cleanupDiagnostic']
+  const cancelCasBody = async (response: Response | undefined): Promise<void> => {
+    await response?.body?.cancel().catch(() => {
+      // An errored/reset stream is already unusable; cleanup must not veto recovery.
+      cleanupDiagnostic = 'body-cancel-rejected'
+    })
+  }
+  const request = async (url: string, headers = new AbortController()): Promise<Response> => {
     const signal = AbortSignal.any([deadline, headers.signal])
     const timeout = setTimeout(() => headers.abort(headersTimeoutError), headersTimeoutMs)
     try {
       const response = await fetchArchive(url, { redirect: 'manual', signal })
       if (signal.aborted) {
-        await response.body?.cancel()
+        if (headers === casController) await cancelCasBody(response)
+        else await response.body?.cancel()
         throw signal.reason
       }
       return response
     } catch (error) {
+      if (headers.signal.aborted) throw headers.signal.reason
       headers.abort(error)
       throw error
     } finally {
@@ -75,7 +85,7 @@ export const acquireArchive = async ({
   let cas: Response | undefined
   let reason: ArchiveOriginFallbackReason | undefined
   try {
-    cas = await request(casUrl)
+    cas = await request(casUrl, casController)
   } catch (error) {
     if (deadline.aborted) throw error
     reason = error === headersTimeoutError ? 'headers-timeout' : 'connection-error'
@@ -91,12 +101,14 @@ export const acquireArchive = async ({
   const source = reason === undefined ? 'cas' : 'registry'
   let response = cas
   if (reason !== undefined) {
-    await cas?.body?.cancel()
+    casController.abort()
+    await cancelCasBody(cas)
     reportFallback({
       type: 'archive-origin-fallback',
       reason,
       sha256,
       ...(cas === undefined ? {} : { status: cas.status }),
+      ...(cleanupDiagnostic === undefined ? {} : { cleanupDiagnostic }),
     })
     let current = registryUrl
     for (let redirects = 0; redirects <= 3; redirects += 1) {

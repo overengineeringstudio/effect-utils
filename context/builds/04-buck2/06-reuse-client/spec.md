@@ -345,7 +345,11 @@ warning remains available at invocation time.
 `{ "type": "archive-origin-fallback", "reason": "headers-timeout", "sha256": "<64 lowercase hex>" }`.
 The closed reason set is `not-found` (404), `headers-timeout`,
 `connection-error`, and `server-error` (5xx); HTTP responses also include
-`status`. The projector reads only these diagnostics from native archive-action
+`status`. Recovery aborts the CAS request before cancelling its body. A reset
+or otherwise errored body whose cancellation rejects is already unusable:
+cleanup does not block registry recovery, and the fallback diagnostic includes
+`cleanupDiagnostic: "body-cancel-rejected"` without raw error details.
+The projector reads only these diagnostics from native archive-action
 command stderr and retains reason counts, never raw diagnostics or response
 bodies. Each native invocation and the compact summary may include
 `archiveOriginFallbacks: { "not-found": N, "headers-timeout": N,

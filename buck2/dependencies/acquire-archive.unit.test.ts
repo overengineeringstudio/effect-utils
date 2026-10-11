@@ -99,6 +99,96 @@ describe('pnpm archive acquisition', () => {
     },
   )
 
+  it.each(['rejecting-cancel', 'errored-stream'])(
+    'recovers a CAS 5xx despite %s cleanup and reports a sanitized diagnostic',
+    async (failure) => {
+      await withOutput(async (output) => {
+        const urls: string[] = []
+        const fallbacks: ArchiveOriginFallback[] = []
+        let casSignal: AbortSignal | undefined
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            if (failure === 'errored-stream') controller.error(new Error('private reset detail'))
+          },
+          cancel() {
+            return Promise.reject(new Error('private reset detail'))
+          },
+        })
+        const source = await acquireArchive({
+          ...options(output),
+          reportFallback: (fallback) => fallbacks.push(fallback),
+          fetchArchive: async (url, init) => {
+            urls.push(String(url))
+            if (String(url) === casUrl) {
+              casSignal = init?.signal ?? undefined
+              return new Response(body, { status: 503 })
+            }
+            expect(casSignal?.aborted).toBe(true)
+            expect(fallbacks).toHaveLength(1)
+            return new Response(bytes)
+          },
+        })
+        expect(source).toBe('registry')
+        expect(urls).toEqual([casUrl, registryUrl])
+        expect(await readFile(output)).toEqual(Buffer.from(bytes))
+        expect(fallbacks).toEqual([
+          {
+            type: 'archive-origin-fallback',
+            reason: 'server-error',
+            sha256,
+            status: 503,
+            cleanupDiagnostic: 'body-cancel-rejected',
+          },
+        ])
+        expect(JSON.stringify(fallbacks)).not.toContain('private reset detail')
+      })
+    },
+  )
+
+  it('preserves a header-timeout reason when the late CAS response cannot be cancelled', async () => {
+    await withOutput(async (output) => {
+      const fallbacks: ArchiveOriginFallback[] = []
+      const urls: string[] = []
+      const source = await acquireArchive({
+        ...options(output),
+        headersTimeoutMs: 20,
+        reportFallback: (fallback) => fallbacks.push(fallback),
+        fetchArchive: (url, init) => {
+          urls.push(String(url))
+          if (String(url) === registryUrl) return Promise.resolve(new Response(bytes))
+          return new Promise<Response>((resolve) => {
+            init?.signal?.addEventListener(
+              'abort',
+              () => {
+                resolve(
+                  new Response(
+                    new ReadableStream<Uint8Array>({
+                      cancel() {
+                        return Promise.reject(new Error('private reset detail'))
+                      },
+                    }),
+                  ),
+                )
+              },
+              { once: true },
+            )
+          })
+        },
+      })
+      expect(source).toBe('registry')
+      expect(urls).toEqual([casUrl, registryUrl])
+      expect(await readFile(output)).toEqual(Buffer.from(bytes))
+      expect(fallbacks).toEqual([
+        {
+          type: 'archive-origin-fallback',
+          reason: 'headers-timeout',
+          sha256,
+          cleanupDiagnostic: 'body-cancel-rejected',
+        },
+      ])
+    })
+  })
+
   it('reports a refused CAS connection and aborts the request before registry recovery', async () => {
     await withOutput(async (output) => {
       const urls: string[] = []
