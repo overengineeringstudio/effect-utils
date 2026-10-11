@@ -42,8 +42,10 @@ single-component workspace key to a declared package-view target; the view
 re-exports that target's own declared roots so a workspace first hop stays
 resolvable inside a sandbox without copying its dependency bytes. Assembly
 is an offline action and never reads a package-manager store. Per-platform
-maps have exactly the keys ``linux_x86_64``, ``linux_aarch64``, and
-``macos_aarch64``; the macros own the mandatory cpu/os ``select()``.
+maps have exactly the four admitted configuration keys, including
+``javascript_portable``; the macros own the mandatory cpu/os ``select()``.
+``unavailable_by_platform`` selects an explicit analysis error for configurations
+without a complete required closure. It is checked before any assembly action.
 """
 
 load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
@@ -456,6 +458,8 @@ def _workspace_roots(view):
     return [_workspace_tree(view)] + list(view[DefaultInfo].other_outputs)
 
 def _store_entry_impl(ctx):
+    if ctx.attrs.unavailable != "":
+        fail(ctx.attrs.unavailable)
     _require_store_key(ctx.attrs.store_key, "store_key")
     package = ctx.attrs.package[PnpmPackageInfo]
     _require_portable_path(package.package_name, "package name")
@@ -571,6 +575,7 @@ _store_entry = cache_guarded_rule(
         "runtime": attrs.source(),
         "scc": attrs.option(attrs.dep(providers = [PnpmStoreSccInfo]), default = None),
         "store_key": attrs.string(),
+        "unavailable": attrs.string(default = ""),
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
@@ -587,6 +592,7 @@ def pnpm_store_entry(
         dependencies_by_platform = None,
         package_override = "",
         scc = None,
+        unavailable_by_platform = None,
         **kwargs):
     """Declares one normalized store entry; only varying edges are selected."""
     _store_entry(
@@ -601,11 +607,14 @@ def pnpm_store_entry(
         runtime = runtime,
         scc = scc,
         store_key = store_key,
+        unavailable = "" if unavailable_by_platform == None else _platform_select(unavailable_by_platform, "pnpm_store_entry unavailable"),
         exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
 def _store_scc_impl(ctx):
+    if ctx.attrs.unavailable != "":
+        fail(ctx.attrs.unavailable)
     members = {}
     for store_key in sorted(ctx.attrs.members.keys()):
         _require_store_key(store_key, "component member key")
@@ -676,6 +685,7 @@ _store_scc = cache_guarded_rule(
         "internal_edges": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "members": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [PnpmPackageInfo])),
         "runtime": attrs.source(),
+        "unavailable": attrs.string(default = ""),
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
@@ -685,12 +695,14 @@ _store_scc = cache_guarded_rule(
 
 def pnpm_store_scc(
         name,
-        members,
         runtime,
+        members = None,
+        members_by_platform = None,
         internal_edges = None,
         internal_edges_by_platform = None,
         external_edges = None,
         external_edges_by_platform = None,
+        unavailable_by_platform = None,
         **kwargs):
     """Assembles one strongly connected component with platform-selected edges."""
     _store_scc(
@@ -705,13 +717,16 @@ def pnpm_store_scc(
             internal_edges_by_platform,
             "pnpm_store_scc internal_edges",
         ),
-        members = members,
+        members = _exactly_one(members, members_by_platform, "pnpm_store_scc members"),
         runtime = runtime,
+        unavailable = "" if unavailable_by_platform == None else _platform_select(unavailable_by_platform, "pnpm_store_scc unavailable"),
         exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
 def _store_view_impl(ctx):
+    if ctx.attrs.unavailable != "":
+        fail(ctx.attrs.unavailable)
     closure = ctx.attrs.closure
     for store_key in closure.keys():
         _require_store_key(store_key, "closure key")
@@ -803,6 +818,7 @@ _store_view = cache_guarded_rule(
         ),
         "direct": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "runtime": attrs.source(),
+        "unavailable": attrs.string(default = ""),
         "workspace_dependencies": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "workspace_trees": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [DefaultInfo]), default = {}),
         "_bun": attrs.default_only(attrs.exec_dep(
@@ -823,6 +839,7 @@ def pnpm_store_view(
         bins_by_platform = None,
         workspace_trees = {},
         workspace_dependencies = {},
+        unavailable_by_platform = None,
         **kwargs):
     """Declares one metadata-only importer dependency view over the shared store."""
     _store_view(
@@ -831,6 +848,7 @@ def pnpm_store_view(
         closure = _exactly_one(closure, closure_by_platform, "pnpm_store_view closure"),
         direct = _exactly_one(direct, direct_by_platform, "pnpm_store_view direct"),
         runtime = runtime,
+        unavailable = "" if unavailable_by_platform == None else _platform_select(unavailable_by_platform, "pnpm_store_view unavailable"),
         workspace_dependencies = workspace_dependencies,
         workspace_trees = workspace_trees,
         exec_compatible_with = kwargs.pop("exec_compatible_with", []),

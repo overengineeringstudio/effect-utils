@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { gzipSync } from 'node:zlib'
 
 import { describe, expect, it } from 'vitest'
 
@@ -166,8 +167,321 @@ const projectionOf = async (
     metadata,
     fetchArchive: async () => archive,
   })
-  return makePnpmStoreProjection({ metadata, sidecar, workspaceTreeTargets })
+  return makePnpmStoreProjection({
+    metadata,
+    sidecar,
+    ...(workspaceTreeTargets === undefined ? {} : { workspaceTreeTargets }),
+  })
 }
+
+// Match the integrity-verified package.json archive fixture in pnpm-lock tests.
+const nativeEdgeArchive = (() => {
+  const content = Buffer.from(JSON.stringify({ bin: { tool: './bin/tool.js' } }))
+  const header = Buffer.alloc(512)
+  header.write('package/package.json', 0, 'utf8')
+  header.write(`${content.byteLength.toString(8).padStart(11, '0')}\0`, 124, 'ascii')
+  return gzipSync(
+    Buffer.concat([
+      header,
+      content,
+      Buffer.alloc(Math.ceil(content.byteLength / 512) * 512 - content.byteLength),
+      Buffer.alloc(1024),
+    ]),
+  )
+})()
+const nativeEdgeIntegrity = `sha512-${createHash('sha512').update(nativeEdgeArchive).digest('base64')}`
+
+const requiredNativeLock = ({
+  cyclic = false,
+  optional = false,
+  gated = true,
+}: { cyclic?: boolean; optional?: boolean; gated?: boolean } = {}) =>
+  lock({
+    importers: `  packages/app:
+    dependencies:
+      grandparent:
+        specifier: 1.0.0
+        version: 1.0.0
+    optionalDependencies:
+      native:
+        specifier: 1.0.0
+        version: 1.0.0
+  packages/unrelated:
+    dependencies:
+      stable:
+        specifier: 1.0.0
+        version: 1.0.0`,
+    packages: `  grandparent@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    hasBin: true
+  parent@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    hasBin: true
+  native@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    hasBin: true${gated ? '\n    os: [linux]\n    cpu: [arm64, x64]' : ''}
+  stable@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    hasBin: true`,
+    snapshots: `  grandparent@1.0.0:
+    dependencies:
+      parent: 1.0.0
+  parent@1.0.0:
+    ${optional ? 'optionalDependencies' : 'dependencies'}:${cyclic ? '\n      grandparent: 1.0.0' : ''}
+      native: 1.0.0
+  native@1.0.0: {}
+  stable@1.0.0: {}`,
+  })
+
+const requiredNativeFixture = async (options?: Parameters<typeof requiredNativeLock>[0]) => {
+  const metadata = translatePnpmLock({ lockfileText: requiredNativeLock(options), workspaceText })
+  const sidecar = await generatePnpmSha256Sidecar({
+    metadata,
+    fetchArchive: async () => nativeEdgeArchive,
+  })
+  return { metadata, sidecar, projection: makePnpmStoreProjection({ metadata, sidecar }) }
+}
+
+const renderedRule = (rendered: string, target: string) =>
+  rendered.split('\n\n').find((block) => block.includes(`    name = "${target}",`))!
+
+describe('required-edge platform availability', () => {
+  const linuxPlatforms = ['linux_aarch64', 'linux_x86_64']
+
+  it('restricts an ungated parent and its grandparent to their required native child', async () => {
+    const { metadata, projection } = await requiredNativeFixture()
+    for (const storeKey of ['parent@1.0.0', 'grandparent@1.0.0']) {
+      expect(
+        packageAllowed({ metadata, packageKey: storeKey, platform: portablePnpmPlatform }),
+      ).toBe(true)
+      const entry = projection.entries.find((candidate) => candidate.storeKey === storeKey)!
+      expect(entry.platforms).toEqual(linuxPlatforms)
+      expect(entry.variants.flatMap((variant) => variant.platforms)).toEqual(linuxPlatforms)
+      expect(entry.variants).toHaveLength(1)
+    }
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    expect(view.platforms).toEqual(linuxPlatforms)
+    expect(view.variants.flatMap((variant) => variant.platforms)).toEqual(linuxPlatforms)
+    for (const platform of ['javascript_portable', 'macos_aarch64'] as const) {
+      expect(view.variants.find((variant) => variant.platforms.includes(platform))).toBeUndefined()
+    }
+  })
+
+  it('retains every required link, closure member, and binary on every supported tuple', async () => {
+    const { projection } = await requiredNativeFixture()
+    const parent = projection.entries.find((entry) => entry.storeKey === 'parent@1.0.0')!
+    const grandparent = projection.entries.find((entry) => entry.storeKey === 'grandparent@1.0.0')!
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    for (const platform of view.platforms) {
+      expect(
+        parent.variants.find((variant) => variant.platforms.includes(platform))!.edges,
+      ).toEqual({
+        native: { kind: 'entry', storeKey: 'native@1.0.0' },
+      })
+      expect(
+        grandparent.variants.find((variant) => variant.platforms.includes(platform))!.edges,
+      ).toEqual({
+        parent: { kind: 'entry', storeKey: 'parent@1.0.0' },
+      })
+      const variant = view.variants.find((candidate) => candidate.platforms.includes(platform))!
+      expect(variant.direct).toEqual({
+        grandparent: { kind: 'entry', storeKey: 'grandparent@1.0.0' },
+        native: { kind: 'entry', storeKey: 'native@1.0.0' },
+      })
+      expect(variant.closure).toEqual(['grandparent@1.0.0', 'native@1.0.0', 'parent@1.0.0'])
+      expect(variant.bins).toEqual({ tool: 'native@1.0.0\tbin/tool.js' })
+    }
+    for (const entry of projection.entries) {
+      expect(entry.bins).toEqual({ tool: 'bin/tool.js' })
+    }
+  })
+
+  it('propagates a required external restriction through all members of a required SCC', async () => {
+    const { projection } = await requiredNativeFixture({ cyclic: true })
+    expect(projection.sccs.map((scc) => scc.members)).toEqual([
+      ['grandparent@1.0.0', 'parent@1.0.0'],
+    ])
+    for (const entry of projection.entries.filter(
+      (candidate) => candidate.sccIndex !== undefined,
+    )) {
+      expect(entry.platforms).toEqual(linuxPlatforms)
+      expect(entry.variants.flatMap((variant) => variant.platforms)).toEqual(linuxPlatforms)
+      expect(Object.keys(entry.variants[0]!.edges)).not.toEqual([])
+    }
+    const rendered = renderPnpmStoreBuck(projection)
+    expect(rendered).toContain('"grandparent@1.0.0\\tparent": "parent@1.0.0"')
+    expect(rendered).toContain('"parent@1.0.0\\tgrandparent": "grandparent@1.0.0"')
+  })
+
+  it('renders explicit rejection metadata for unsupported entry and importer configurations', async () => {
+    const { projection } = await requiredNativeFixture()
+    const rendered = renderPnpmStoreBuck(projection)
+    const restricted = [
+      ...projection.entries.filter((entry) => entry.platforms.length < pnpmPlatforms.length),
+      ...projection.views.filter((view) => view.platforms.length < pnpmPlatforms.length),
+    ]
+    expect(restricted).toHaveLength(4)
+    for (const owner of restricted) {
+      const block = renderedRule(rendered, owner.target)
+      expect(block).toContain('    unavailable_by_platform = {')
+      for (const platform of pnpmPlatforms) {
+        const reason = block.match(
+          new RegExp(`^        "${platform}": ("(?:[^"\\\\]|\\\\.)*"),$`, 'm'),
+        )
+        expect(reason).not.toBeNull()
+        expect(JSON.parse(reason![1]!)).toEqual(
+          owner.platforms.includes(platform) ? '' : expect.stringMatching(/\S/),
+        )
+      }
+    }
+    const stable = projection.entries.find((entry) => entry.storeKey === 'stable@1.0.0')!
+    const unrelated = projection.views.find((view) => view.importer === 'packages/unrelated')!
+    expect(renderedRule(rendered, stable.target)).not.toContain('unavailable_by_platform')
+    expect(renderedRule(rendered, unrelated.target)).not.toContain('unavailable_by_platform')
+  })
+
+  it('keeps optional native edges filtered without restricting their owners or importers', async () => {
+    const { projection } = await requiredNativeFixture({ optional: true })
+    const parent = projection.entries.find((entry) => entry.storeKey === 'parent@1.0.0')!
+    const grandparent = projection.entries.find((entry) => entry.storeKey === 'grandparent@1.0.0')!
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    expect(parent.platforms).toEqual(pnpmPlatforms)
+    expect(grandparent.platforms).toEqual(pnpmPlatforms)
+    expect(view.platforms).toEqual(pnpmPlatforms)
+    for (const platform of pnpmPlatforms) {
+      const variant = view.variants.find((candidate) => candidate.platforms.includes(platform))!
+      const edges = parent.variants.find((candidate) =>
+        candidate.platforms.includes(platform),
+      )!.edges
+      expect(Object.keys(edges)).toEqual(linuxPlatforms.includes(platform) ? ['native'] : [])
+      expect(Object.keys(variant.direct)).toEqual(
+        linuxPlatforms.includes(platform) ? ['grandparent', 'native'] : ['grandparent'],
+      )
+      expect(variant.closure).toEqual(
+        linuxPlatforms.includes(platform)
+          ? ['grandparent@1.0.0', 'native@1.0.0', 'parent@1.0.0']
+          : ['grandparent@1.0.0', 'parent@1.0.0'],
+      )
+      expect(variant.bins).toEqual({
+        tool: `${linuxPlatforms.includes(platform) ? 'native' : 'grandparent'}@1.0.0\tbin/tool.js`,
+      })
+    }
+  })
+
+  it('leaves an unrelated supported importer projection and rendered rule byte-stable', async () => {
+    const before = (await requiredNativeFixture({ gated: false })).projection
+    const after = (await requiredNativeFixture()).projection
+    const beforeView = before.views.find((view) => view.importer === 'packages/unrelated')!
+    const afterView = after.views.find((view) => view.importer === 'packages/unrelated')!
+    expect(afterView).toEqual(beforeView)
+    expect(renderedRule(renderPnpmStoreBuck(after), afterView.target)).toBe(
+      renderedRule(renderPnpmStoreBuck(before), beforeView.target),
+    )
+  })
+
+  it('still rejects missing archive metadata, stale fingerprints, and invalid digests globally', async () => {
+    const { metadata, sidecar } = await requiredNativeFixture()
+    expect(() =>
+      makePnpmStoreProjection({ metadata, sidecar: { ...sidecar, packages: {} } }),
+    ).toThrow(/stale sha256 sidecar package identity set/)
+    expect(() =>
+      makePnpmStoreProjection({
+        metadata,
+        sidecar: { ...sidecar, lockfileFingerprint: `sha256:${'0'.repeat(64)}` },
+      }),
+    ).toThrow(/stale sha256 sidecar lock fingerprint/)
+    expect(() =>
+      makePnpmStoreProjection({
+        metadata,
+        sidecar: {
+          ...sidecar,
+          packages: {
+            ...sidecar.packages,
+            'native@1.0.0': { ...sidecar.packages['native@1.0.0']!, sha256: '0'.repeat(64) },
+          },
+        },
+      }),
+    ).toThrow(/sha256 sidecar fingerprint mismatch/)
+    expect(() =>
+      decodePnpmSha256Sidecar({
+        ...sidecar,
+        packages: {
+          ...sidecar.packages,
+          'native@1.0.0': { ...sidecar.packages['native@1.0.0']!, sha256: 'invalid' },
+        },
+      }),
+    ).toThrow(/must be lowercase sha256/)
+  })
+
+  it.each(['required', 'optional'] as const)(
+    'rejects missing %s snapshot metadata even when the owner is unsupported',
+    async (kind) => {
+      const { metadata, sidecar } = await requiredNativeFixture({ optional: kind === 'optional' })
+      const snapshots = Object.fromEntries(
+        Object.entries(metadata.snapshots).filter(([key]) => key !== 'native@1.0.0'),
+      )
+      expect(() =>
+        makePnpmStoreProjection({ metadata: { ...metadata, snapshots }, sidecar }),
+      ).toThrow(/unknown snapshot native@1.0.0/)
+    },
+  )
+
+  it('keeps a mixed optional SCC available while excluding its gated member on unsupported tuples', async () => {
+    const metadata = translatePnpmLock({
+      lockfileText: requiredNativeLock({ optional: true }).replace(
+        '  native@1.0.0: {}',
+        '  native@1.0.0:\n    dependencies:\n      parent: 1.0.0',
+      ),
+      workspaceText,
+    })
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async () => nativeEdgeArchive,
+    })
+    const projection = makePnpmStoreProjection({ metadata, sidecar })
+    expect(projection.sccs.map((scc) => scc.members)).toEqual([['native@1.0.0', 'parent@1.0.0']])
+    const native = projection.entries.find((entry) => entry.storeKey === 'native@1.0.0')!
+    const parent = projection.entries.find((entry) => entry.storeKey === 'parent@1.0.0')!
+    expect(native.platforms).toEqual(linuxPlatforms)
+    expect(parent.platforms).toEqual(pnpmPlatforms)
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    expect(view.platforms).toEqual(pnpmPlatforms)
+    for (const platform of pnpmPlatforms) {
+      const variant = view.variants.find((candidate) => candidate.platforms.includes(platform))!
+      expect(variant.closure.includes('native@1.0.0')).toBe(linuxPlatforms.includes(platform))
+      expect(variant.closure).toContain('parent@1.0.0')
+    }
+    const component = renderedRule(renderPnpmStoreBuck(projection), projection.sccs[0]!.target)
+    expect(component).toContain('    members_by_platform = {')
+    expect(component).not.toContain('unavailable_by_platform')
+  })
+
+  it('projects a required closure with no admitted platform without inventing an empty variant', async () => {
+    const metadata = translatePnpmLock({
+      lockfileText: requiredNativeLock().replace('os: [linux]', 'os: [win32]'),
+      workspaceText,
+    })
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async () => nativeEdgeArchive,
+    })
+    const projection = makePnpmStoreProjection({ metadata, sidecar })
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    expect(view.platforms).toEqual([])
+    expect(view.variants).toEqual([])
+    for (const entry of projection.entries.filter(
+      (candidate) => candidate.packageName !== 'stable',
+    )) {
+      expect(entry.platforms).toEqual([])
+      expect(entry.variants).toEqual([])
+    }
+    const block = renderedRule(renderPnpmStoreBuck(projection), view.target)
+    expect(block).toContain('    unavailable_by_platform = {')
+    for (const platform of pnpmPlatforms) {
+      expect(block).toContain(`has no complete required dependency closure on ${platform}`)
+    }
+  })
+})
 
 describe('normalized store projection', () => {
   it('derives one platform-selected variant set per differing lockfile edge set', async () => {

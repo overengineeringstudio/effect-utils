@@ -297,6 +297,15 @@ target declarations. The root continues to ignore `.devenv` wholesale. Unmapped
 workspace packages retain their conventional same-cell `:package_tree` labels;
 mapped labels participate in the projection fingerprint.
 
+Dependency-view availability is derived from the complete required resolver
+context, not just a package's own platform fields. Required native dependencies
+retain their edges on supported machine platforms; their owners and importer
+views have no `javascript_portable` configuration. Generation still succeeds,
+but selecting an unsupported configuration fails analysis before execution.
+Optional native packages retain platform filtering. The normalized store schema
+is `effect-utils/buck2-pnpm-store/v2`; importer `platforms` lists supported
+configurations and `variants` covers only that set.
+
 Put the effect-utils flake's pinned `packages.<system>.buck2` on `PATH` (or use
 its `bin/buck2` as `BUCK2_BIN`). Direct commands, agents and devenv tasks then
 share the same cache posture preflight; no separate task or probe command is

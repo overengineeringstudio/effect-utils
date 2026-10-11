@@ -9,7 +9,7 @@ import type {
 import { pnpmTargetName, validatePnpmSha256Sidecar } from './pnpm-lock.ts'
 
 /** Schema identifier for the normalized pnpm store projection. */
-export const pnpmStoreProjectionSchema = 'effect-utils/buck2-pnpm-store/v1' as const
+export const pnpmStoreProjectionSchema = 'effect-utils/buck2-pnpm-store/v2' as const
 
 // The portable platform is not a machine: it admits a package only when the
 // lockfile puts no cpu, os, or libc gate on it at all, so a package tree
@@ -28,8 +28,9 @@ export const portablePnpmPlatform = 'javascript_portable' as const
 export type PnpmPlatform = keyof typeof platformValues
 
 /** Every admitted platform in deterministic order. */
-export const pnpmPlatforms: readonly PnpmPlatform[] = Object.keys(platformValues).toSorted() as
-  readonly PnpmPlatform[]
+export const pnpmPlatforms: readonly PnpmPlatform[] = Object.keys(
+  platformValues,
+).toSorted() as readonly PnpmPlatform[]
 
 const compareStrings = ({ left, right }: { left: string; right: string }): number =>
   left < right ? -1 : left > right ? 1 : 0
@@ -250,6 +251,7 @@ export type PnpmStoreViewVariant = {
 /** Metadata-only dependency view for one importer. */
 export type PnpmStoreView = {
   readonly importer: string
+  readonly platforms: readonly PnpmPlatform[]
   readonly target: string
   readonly variants: readonly PnpmStoreViewVariant[]
   readonly workspaceTrees: Readonly<Record<string, string>>
@@ -330,7 +332,9 @@ const typesCompanionSnapshots = ({
     compareStrings({ left, right }),
   )) {
     const versions = new Set(
-      snapshotKeys.map((snapshotKey) => metadata.packages[metadata.snapshots[snapshotKey]!.package]!.version),
+      snapshotKeys.map(
+        (snapshotKey) => metadata.packages[metadata.snapshots[snapshotKey]!.package]!.version,
+      ),
     )
     if (versions.size > 1) {
       return fail(
@@ -388,14 +392,103 @@ const peerTypeCompanions = ({
   return result
 }
 
+/**
+ * Greatest fixed point of configurations satisfying every required edge.
+ * Removing a configuration queues its required predecessors, so cycles converge
+ * without depending on traversal order. Optional edges do not constrain owners.
+ */
+const requiredPlatformAvailability = (
+  metadata: PnpmLockMetadata,
+): ReadonlyMap<string, ReadonlySet<PnpmPlatform>> => {
+  const available = new Map<string, Set<PnpmPlatform>>()
+  const predecessors = new Map<string, Set<string>>()
+  const snapshotNode = (key: string): string => `snapshot:${key}`
+  const importerNode = (key: string): string => `importer:${key}`
+  for (const [key, snapshot] of sortedEntries(metadata.snapshots)) {
+    available.set(
+      snapshotNode(key),
+      new Set(
+        pnpmPlatforms.filter((platform) =>
+          packageAllowed({ metadata, packageKey: snapshot.package, platform }),
+        ),
+      ),
+    )
+  }
+  for (const key of Object.keys(metadata.importers)) {
+    available.set(importerNode(key), new Set(pnpmPlatforms))
+  }
+  const addEdges = (
+    owner: string,
+    groups: readonly (readonly [Readonly<Record<string, PnpmDependencyReference>>, boolean])[],
+  ): void => {
+    for (const [group, optional] of groups) {
+      for (const [, reference] of sortedEntries(group)) {
+        let dependency: string | undefined
+        let snapshotOptional = false
+        if (reference.kind === 'workspace') {
+          if (metadata.importers[reference.path] !== undefined)
+            dependency = importerNode(reference.path)
+        } else {
+          const snapshot = metadata.snapshots[reference.snapshot]
+          if (snapshot === undefined) return fail(`unknown snapshot ${reference.snapshot}`)
+          const pkg = metadata.packages[snapshot.package]
+          if (pkg === undefined) return fail(`snapshot ${reference.snapshot} has unknown package`)
+          snapshotOptional = snapshot.optional === true
+          if (pkg.resolution === 'workspace') {
+            if (pkg.workspacePath === undefined)
+              return fail(`workspace package ${snapshot.package} has no path`)
+            if (metadata.importers[pkg.workspacePath] !== undefined)
+              dependency = importerNode(pkg.workspacePath)
+          } else {
+            dependency = snapshotNode(reference.snapshot)
+          }
+        }
+        if (dependency === undefined || optional || snapshotOptional) continue
+        const owners = predecessors.get(dependency) ?? new Set<string>()
+        owners.add(owner)
+        predecessors.set(dependency, owners)
+      }
+    }
+  }
+  for (const [key, snapshot] of sortedEntries(metadata.snapshots)) {
+    addEdges(snapshotNode(key), [
+      [snapshot.dependencies, false],
+      [snapshot.optionalDependencies, true],
+    ])
+  }
+  for (const [key, importer] of sortedEntries(metadata.importers)) {
+    addEdges(importerNode(key), [
+      [importer.dependencies, false],
+      [importer.devDependencies, false],
+      [importer.optionalDependencies, true],
+    ])
+  }
+  const pending: { node: string; platform: PnpmPlatform }[] = []
+  for (const [node, platforms] of available) {
+    for (const platform of pnpmPlatforms) {
+      if (platforms.has(platform) === false) pending.push({ node, platform })
+    }
+  }
+  for (let cursor = 0; cursor < pending.length; cursor++) {
+    const { node, platform } = pending[cursor]!
+    for (const predecessor of predecessors.get(node) ?? []) {
+      if (available.get(predecessor)!.delete(platform))
+        pending.push({ node: predecessor, platform })
+    }
+  }
+  return available
+}
+
 const resolveEdge = ({
   dependencyName,
+  availability,
   metadata,
   optional,
   platform,
   reference,
   owner,
 }: {
+  availability: ReadonlyMap<string, ReadonlySet<PnpmPlatform>>
   dependencyName: string
   metadata: PnpmLockMetadata
   optional: boolean
@@ -420,7 +513,7 @@ const resolveEdge = ({
     if (path === undefined) return fail(`workspace package ${snapshot.package} has no path`)
     return { kind: 'workspace', workspaceKey: workspaceKey(path), workspacePath: path }
   }
-  if (packageAllowed({ metadata, packageKey: snapshot.package, platform }) === true) {
+  if (availability.get(`snapshot:${reference.snapshot}`)?.has(platform) === true) {
     return { kind: 'entry', storeKey: snapshot.virtualStoreName }
   }
   if (optional === true || snapshot.optional === true) return undefined
@@ -431,10 +524,12 @@ const resolveEdge = ({
 
 const snapshotEdges = ({
   companions,
+  availability,
   metadata,
   platform,
   snapshotKey,
 }: {
+  availability: ReadonlyMap<string, ReadonlySet<PnpmPlatform>>
   companions: ReadonlyMap<string, string>
   metadata: PnpmLockMetadata
   platform: PnpmPlatform
@@ -449,6 +544,7 @@ const snapshotEdges = ({
   ] as const) {
     for (const [dependencyName, reference] of sortedEntries(group)) {
       const edge = resolveEdge({
+        availability,
         dependencyName,
         metadata,
         optional,
@@ -468,6 +564,7 @@ const snapshotEdges = ({
     }),
   )) {
     const edge = resolveEdge({
+      availability,
       dependencyName: companionName,
       metadata,
       // A companion the consumer resolves for a peer is type-only: a platform
@@ -484,9 +581,11 @@ const snapshotEdges = ({
 
 const importerEdges = ({
   importer,
+  availability,
   metadata,
   platform,
 }: {
+  availability: ReadonlyMap<string, ReadonlySet<PnpmPlatform>>
   importer: PnpmImporterMetadata
   metadata: PnpmLockMetadata
   platform: PnpmPlatform
@@ -499,6 +598,7 @@ const importerEdges = ({
   ] as const) {
     for (const [dependencyName, reference] of sortedEntries(group)) {
       const edge = resolveEdge({
+        availability,
         dependencyName,
         metadata,
         optional,
@@ -597,7 +697,10 @@ export const computeStoreSccs = ({
       if (storeKeyOf.has(companionSnapshot) === false) continue
       targets.add(companionSnapshot)
     }
-    bySnapshot.set(snapshotKey, [...targets].toSorted((left, right) => compareStrings({ left, right })))
+    bySnapshot.set(
+      snapshotKey,
+      [...targets].toSorted((left, right) => compareStrings({ left, right })),
+    )
   }
 
   const index = new Map<string, number>()
@@ -686,12 +789,14 @@ export const makePnpmStoreProjection = ({
   workspaceTreeTargets?: Readonly<Record<string, string>>
 }): PnpmStoreProjection => {
   validatePnpmSha256Sidecar({ metadata, sidecar })
+  const availability = requiredPlatformAvailability(metadata)
 
   const sccs = computeStoreSccs({ metadata })
   const sccByStoreKey = new Map<string, number>()
   sccs.forEach((members, sccIndex) => {
     for (const member of members) {
-      if (sccByStoreKey.has(member) === true) return fail(`store key ${member} is in two components`)
+      if (sccByStoreKey.has(member) === true)
+        return fail(`store key ${member} is in two components`)
       sccByStoreKey.set(member, sccIndex)
     }
   })
@@ -706,13 +811,14 @@ export const makePnpmStoreProjection = ({
   for (const snapshotKey of snapshotKeys) {
     const snapshot = metadata.snapshots[snapshotKey]!
     const packageMetadata = metadata.packages[snapshot.package]!
-    const platforms = pnpmPlatforms.filter(
-      (platform) => packageAllowed({ metadata, packageKey: snapshot.package, platform }) === true,
+    const platforms = pnpmPlatforms.filter((platform) =>
+      availability.get(`snapshot:${snapshotKey}`)!.has(platform),
     )
     const variants = groupByPlatform({
       identity: edgeIdentity,
       platforms,
-      project: (platform) => snapshotEdges({ companions, metadata, platform, snapshotKey }),
+      project: (platform) =>
+        snapshotEdges({ availability, companions, metadata, platform, snapshotKey }),
     }).map((group) => ({ edges: group.value, platforms: group.platforms }))
     const storeKey = snapshot.virtualStoreName
     const entry: PnpmStoreEntry = {
@@ -752,12 +858,15 @@ export const makePnpmStoreProjection = ({
     .map((importerPath): PnpmStoreView => {
       const importer = metadata.importers[importerPath]!
       const workspaceTrees: Record<string, string> = {}
+      const platforms = pnpmPlatforms.filter((platform) =>
+        availability.get(`importer:${importerPath}`)!.has(platform),
+      )
       const variants = groupByPlatform({
         identity: (value: PnpmStoreViewVariant) =>
           JSON.stringify([edgeIdentity(value.direct), value.bins, value.closure]),
-        platforms: pnpmPlatforms,
+        platforms,
         project: (platform) => {
-          const direct = importerEdges({ importer, metadata, platform })
+          const direct = importerEdges({ availability, importer, metadata, platform })
           const closure = new Set<string>()
           const pending: string[] = []
           const enqueue = (edges: PnpmStoreEdgeSet): void => {
@@ -806,6 +915,7 @@ export const makePnpmStoreProjection = ({
       }).map((group) => ({ ...group.value, platforms: group.platforms }))
       return {
         importer: importerPath,
+        platforms,
         target: pnpmTargetName({ prefix: 'view', identity: importerPath }),
         variants,
         workspaceTrees,
@@ -816,7 +926,7 @@ export const makePnpmStoreProjection = ({
     entries,
     fingerprint: buck2SemanticFingerprint({
       generator: 'effect-utils/buck2/dependencies/pnpm-store',
-      schemaVersion: 1,
+      schemaVersion: 2,
       semanticData: { entries, sccs, views },
     }),
     sccs: sccs.map((members, index) => ({
