@@ -1,0 +1,23 @@
+[package]
+name = "pingping-netinfo-macos"
+workspace = "../../../../../rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFArray", "CFString"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }
+objc2-core-wlan = { version = "0.3.2", default-features = false, features = ["std", "CWChannel", "CWInterface", "CWWiFiClient", "CoreWLANTypes"] }
+objc2-system-configuration = { version = "0.3.2", default-features = false, features = ["std", "SCNetworkConfiguration"] }
+block2 = { version = "0.6.2", default-features = false, features = ["std"] }
+nix = { version = "0.31", default-features = false, features = ["fs", "socket"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+warnings = "deny"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }

@@ -111,6 +111,15 @@ export const nixOnlyPackages = [
     flakeRef: 'otel-scrape',
     cratePath: 'packages/@overeng/otel-scrape',
   },
+  {
+    name: 'pingping',
+    /** Rust crate: live latency and loss inspection. */
+    kind: 'rust-crate',
+    flakeRef: 'pingping',
+    cratePath: 'packages/@overeng/pingping',
+    /** Install bash, zsh and fish hooks for the COMPLETE=<shell> protocol. */
+    shellCompletions: true,
+  },
 ] as const
 
 /** Short name of a nix-only (non-pnpm) @overeng/* package. */

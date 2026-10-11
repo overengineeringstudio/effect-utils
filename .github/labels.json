@@ -351,6 +351,11 @@
       "description": "@overeng/oxc-config package · Set: manual"
     },
     {
+      "name": "system:pingping",
+      "color": "a371f7",
+      "description": "@overeng/pingping package · Set: manual"
+    },
+    {
       "name": "system:pty-effect",
       "color": "a371f7",
       "description": "@overeng/pty-effect package · Set: manual"
