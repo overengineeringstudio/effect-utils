@@ -68,14 +68,19 @@ def ts_action_attrs():
     }))
 
 
+def _ts_sandbox_absolute(artifact):
+    return cmd_args(cmd_args(artifact, quote = "shell"), format = '"$PWD"/{}')
+
+
 def ts_action(ctx, arguments, inputs, outputs, tools = [], cacheable = True, **kwargs):
+    """Runs directory-output TS actions; Linux bind argv is fixed at analysis."""
     status = ts_action_admission_status(ctx)
     kwargs["local_only"] = True
+    declared_outputs = [output.as_output() for output in outputs]
     if status == "darwin-unsandboxed":
         kwargs["category"] = kwargs["category"] + "_darwin_unsandboxed"
-        # Unsupported admission is not refusal to execute the required native
-        # macOS lane. No remote-cache read platform or upload is permitted.
-        hermetic_action(ctx, arguments, cacheable = False, **kwargs)
+        # Unsupported admission is not refusal to execute the native macOS lane.
+        hermetic_action(ctx, cmd_args(arguments, hidden = declared_outputs), cacheable = False, **kwargs)
         return
     sandbox = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo]
     if not sandbox.bubblewrap:
@@ -84,16 +89,49 @@ def ts_action(ctx, arguments, inputs, outputs, tools = [], cacheable = True, **k
     for tool_id in ["bun"] + tools:
         for path in sandbox.closure_paths[tool_id]:
             closure[path] = None
-    manifest = ctx.actions.write_json("ts-sandbox.json", {
-        "bubblewrap": sandbox.bubblewrap,
-        "inputs": inputs,
-        "outputs": outputs,
-        "tools": sorted(closure.keys()),
-    })
+    bind_args = cmd_args([
+        "exec",
+        cmd_args(sandbox.bubblewrap, quote = "shell"),
+        "--unshare-all", "--unshare-user", "--die-with-parent", "--new-session",
+        "--disable-userns", "--clearenv",
+        "--proc", "/proc", "--remount-ro", "/proc",
+        "--dev", "/dev", "--remount-ro", "/dev",
+        "--tmpfs", "/tmp",
+        "--bind", '"$scratch"', '"$scratch"',
+        "--dir", '"$PWD"',
+    ], delimiter = " ")
+    for output in outputs:
+        bind_args.add("--bind", _ts_sandbox_absolute(output), _ts_sandbox_absolute(output))
+    unique_inputs = {}
+    for artifact in inputs:
+        unique_inputs[artifact] = None
+    for artifact in unique_inputs:
+        bind_args.add("--ro-bind", cmd_args(artifact, quote = "shell"), _ts_sandbox_absolute(artifact))
+    for path in sorted(closure.keys()):
+        bind_args.add("--ro-bind", cmd_args(path, quote = "shell"), cmd_args(path, quote = "shell"))
+    bind_args.add(
+        "--remount-ro", "/", "--chdir", '"$PWD"',
+        "--setenv", "LC_ALL", "C", "--setenv", "TZ", "UTC",
+        "--setenv", "TMPDIR", "/tmp", "--setenv", "BUCK_SCRATCH_PATH", '"$scratch"',
+        "--setenv", "PWD", '"$PWD"',
+        "--", cmd_args(arguments, quote = "shell"),
+    )
+    action_env = ctx.attrs._action_env[BuckSupportToolInfo]
+    launcher = ctx.actions.declare_output("ts-sandbox.sh")
+    ctx.actions.write(launcher, [
+        "set -euo pipefail",
+        # Shell startup is scrubbed first; its builtin owns the physical cwd.
+        "cd -P -- .",
+        'case "$BUCK_SCRATCH_PATH" in /*) scratch="$BUCK_SCRATCH_PATH" ;; *) scratch="$PWD/$BUCK_SCRATCH_PATH" ;; esac',
+        cmd_args([
+            cmd_args(action_env.store_path, quote = "shell"),
+            "--coreutils-prog=mkdir", "-p", "--",
+            [_ts_sandbox_absolute(output) for output in outputs],
+        ], delimiter = " "),
+        bind_args,
+        "",
+    ], allow_args = True)
     command = cmd_args([
-        hermetic_bun_command(ctx, sandbox.bun, config_name = "sandbox-launcher-bunfig.toml"),
-        sandbox.launcher,
-        manifest,
-        arguments,
-    ], hidden = inputs + sandbox.inputs + [output.as_output() for output in outputs])
+        sandbox.shell, "--noprofile", "--norc", launcher,
+    ], hidden = inputs + sandbox.inputs + declared_outputs)
     hermetic_action(ctx, command, cacheable = cacheable, **kwargs)

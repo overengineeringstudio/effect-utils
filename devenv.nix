@@ -44,15 +44,21 @@ let
   selectedTestTask = task: testPlatform != "darwin" || builtins.elem task darwinTestTasks;
   buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
-  # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
-  # rest of the closure stays free-only.
   tsSandboxTestEnvironment = lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
+    ${publishBuckCapabilities}
+    cd "$root"
     export BWRAP_BIN=${flakePkgs.bubblewrap}/bin/bwrap
     export BUN_BIN=${flakePkgs.bun}/bin/bun
-    export BUN_CLOSURE_PATHS_JSON="$(${pkgs.jq}/bin/jq -Rsc \
-      'split("\n") | map(select(length > 0))' \
-      ${pkgs.closureInfo { rootPaths = [ flakePkgs.bun ]; }}/store-paths)"
+    export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
+    probe_outputs="$("$BUCK2_BIN" build \
+      --target-platforms effect_utils//buck2/platforms:host_platform \
+      --show-full-json-output effect_utils//buck2/tests/ts_sandbox:probe)"
+    export TS_SANDBOX_PROBE_OUTPUT="$(printf '%s' "$probe_outputs" | \
+      ${pkgs.jq}/bin/jq -er '."effect_utils//buck2/tests/ts_sandbox:probe"')"
+    export TS_SANDBOX_LAUNCHER="''${TS_SANDBOX_PROBE_OUTPUT%/receipt/summary.json}/ts-sandbox.sh"
   '';
+  # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
+  # rest of the closure stays free-only.
   restatePkgs = import repoFlake.inputs.nixpkgs {
     system = currentSystem;
     config.allowUnfreePredicate = pkg: builtins.elem (pkgs.lib.getName pkg) [ "restate" ];
@@ -1571,11 +1577,6 @@ in
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       ${lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
-        ${publishBuckCapabilities}
-        cd "$root"
-        "$BUCK2_BIN" build \
-          --target-platforms effect_utils//buck2/platforms:host_platform \
-          effect_utils//buck2/tests/ts_sandbox:probe
         ${tsSandboxTestEnvironment}
         exec ${pkgs.bun}/bin/bun test \
           ./packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts

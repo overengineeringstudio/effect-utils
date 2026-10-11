@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   readlinkSync,
   rmSync,
   statSync,
@@ -52,6 +53,25 @@ describe('Buck package-tree dependency boundaries', () => {
 
     expect(statSync(join(fixture.output, 'node_modules')).isDirectory()).toBe(true)
   })
+
+  it('retains a pre-existing output root while removing stale entries without following symlinks', () => {
+    const fixture = createAssemblyFixture()
+    const abandoned = join(fixture.output, 'abandoned')
+    mkdirSync(abandoned, { recursive: true })
+    writeFileSync(join(abandoned, 'old.txt'), 'stale output\n')
+    chmodSync(join(abandoned, 'old.txt'), 0o444)
+    symlinkSync(fixture.packageDirectory, join(fixture.output, 'dependency'))
+    symlinkSync('missing', join(fixture.output, 'dangling'))
+    const outputInode = statSync(fixture.output).ino
+
+    runPackageTreeCli(['--output', fixture.output, '--empty-node-modules', 'true'])
+
+    expect(statSync(fixture.output).ino).toBe(outputInode)
+    expect(readdirSync(fixture.output)).toEqual(['node_modules'])
+    expect(readFileSync(join(fixture.packageDirectory, 'package.json'), 'utf8')).toBe(
+      '{"name":"safe"}\n',
+    )
+  })
 })
 
 describe('Buck package-tree symlink containment', () => {
@@ -87,12 +107,19 @@ describe('Buck package-tree symlink containment', () => {
     expect(statSync(source).mode & 0o777).toBe(0o444)
   })
 
-  it('rejects an existing absolute target and removes the incomplete package tree', () => {
+  it('rejects an absolute target and clears the incomplete tree without removing its root', () => {
     const fixture = createAssemblyFixture()
+    mkdirSync(fixture.output)
+    writeFileSync(join(fixture.output, 'stale.txt'), 'stale output\n')
+    const outputInode = statSync(fixture.output).ino
     symlinkSync(fixture.packageDirectory, join(fixture.nodeModules, 'absolute-target'))
 
     expect(() => assemble(fixture)).toThrow('absolute target')
-    expect(existsSync(fixture.output)).toBe(false)
+    expect(statSync(fixture.output).ino).toBe(outputInode)
+    expect(readdirSync(fixture.output)).toEqual([])
+    expect(readFileSync(join(fixture.packageDirectory, 'package.json'), 'utf8')).toBe(
+      '{"name":"safe"}\n',
+    )
   })
 
   it('rejects a relative target that escapes the assembled tree', () => {
@@ -101,7 +128,7 @@ describe('Buck package-tree symlink containment', () => {
     symlinkSync('../../outside.txt', join(fixture.nodeModules, 'relative-escape'))
 
     expect(() => assemble(fixture)).toThrow('target escapes tree')
-    expect(existsSync(fixture.output)).toBe(false)
+    expect(readdirSync(fixture.output)).toEqual([])
   })
 
   it('rejects a dangling relative target', () => {
@@ -109,7 +136,7 @@ describe('Buck package-tree symlink containment', () => {
     symlinkSync('missing', join(fixture.nodeModules, 'dangling'))
 
     expect(() => assemble(fixture)).toThrow('target is dangling')
-    expect(existsSync(fixture.output)).toBe(false)
+    expect(readdirSync(fixture.output)).toEqual([])
   })
 
   it('rejects a cyclic relative target', () => {
@@ -118,7 +145,7 @@ describe('Buck package-tree symlink containment', () => {
     symlinkSync('cycle-a', join(fixture.nodeModules, 'cycle-b'))
 
     expect(() => assemble(fixture)).toThrow('target is cyclic')
-    expect(existsSync(fixture.output)).toBe(false)
+    expect(readdirSync(fixture.output)).toEqual([])
   })
 
   it('rejects a contained relative link whose chained target escapes the assembled tree', () => {
@@ -128,7 +155,7 @@ describe('Buck package-tree symlink containment', () => {
     symlinkSync('redirect', join(fixture.nodeModules, 'chained-escape'))
 
     expect(() => assemble(fixture)).toThrow('chained target resolves outside tree')
-    expect(existsSync(fixture.output)).toBe(false)
+    expect(readdirSync(fixture.output)).toEqual([])
   })
 })
 
@@ -330,7 +357,7 @@ describe('Buck package view over a normalized dependency view', () => {
         ]),
       ).toThrow('destination enters linked dependency view')
       expect(existsSync(join(fixture.nodeModules, 'poison'))).toBe(false)
-      expect(existsSync(fixture.output)).toBe(false)
+      expect(readdirSync(fixture.output)).toEqual([])
     },
   )
 
@@ -367,6 +394,6 @@ describe('Buck package view over a normalized dependency view', () => {
         owned,
       ]),
     ).toThrow('target escapes tree')
-    expect(existsSync(fixture.output)).toBe(false)
+    expect(readdirSync(fixture.output)).toEqual([])
   })
 })

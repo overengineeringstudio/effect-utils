@@ -36,7 +36,8 @@ def _tsgo_typecheck_impl(ctx):
     _require_relative_path(ctx.attrs.project, "project")
     toolchain = ctx.attrs._tsgo[EffectTsgoToolchainInfo]
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
-    verdict = ctx.actions.declare_output("typecheck.ok")
+    verdict_directory = ctx.actions.declare_output("verdict", dir = True)
+    verdict = verdict_directory.project("typecheck.ok")
 
     inputs = [toolchain.runner] + package_tree.read_roots
     args = cmd_args([
@@ -46,7 +47,7 @@ def _tsgo_typecheck_impl(ctx):
         toolchain.executable,
         package_tree.tree,
         ctx.attrs.project,
-        verdict.as_output(),
+        verdict,
     ])
     fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
     args.add("--fingerprint-tool", fingerprint.store_path)
@@ -57,7 +58,7 @@ def _tsgo_typecheck_impl(ctx):
         ctx,
         args,
         inputs = inputs,
-        outputs = [verdict],
+        outputs = [verdict_directory],
         tools = ["effect-tsgo", "buck2-fingerprint"],
         category = "tsgo_typecheck",
         identifier = ctx.attrs.name,
@@ -115,7 +116,7 @@ def _tsgo_emit_impl(ctx):
         ctx.attrs.project,
         ctx.attrs.out_dir,
         ctx.attrs.declaration_entrypoint,
-        directory.as_output(),
+        directory,
     ])
     fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
     args.add("--fingerprint-tool", fingerprint.store_path)

@@ -101,7 +101,7 @@ def _dependency_impl(ctx):
                 "buck2-fingerprint": ["/analysis-only"],
             },
             inputs = [artifact],
-            launcher = artifact,
+            shell = "/analysis-only/bin/bash",
         ),
         BuckSupportToolInfo(
             content_digest = "analysis-only",

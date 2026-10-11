@@ -15,20 +15,21 @@ def _ts_sandbox_probe_impl(ctx):
         return [DefaultInfo(default_output = unsupported)]
     sandbox = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo]
     closure = ctx.actions.write_json("bun-closure.json", sandbox.closure_paths["bun"])
-    summary = ctx.actions.declare_output("receipt/summary.json")
+    receipt = ctx.actions.declare_output("receipt", dir = True)
+    summary = receipt.project("summary.json")
     inputs = [ctx.attrs.probe, closure]
     args = cmd_args([
         hermetic_bun_command(ctx, sandbox.bun, sandbox_inputs = inputs),
         ctx.attrs.probe,
         "--input", ctx.attrs.probe,
         "--closure", closure,
-        "--output", summary.as_output(),
+        "--output", summary,
     ])
     ts_action(
         ctx,
         args,
         inputs = inputs,
-        outputs = [summary],
+        outputs = [receipt],
         # A containment receipt must execute, not borrow an earlier action receipt.
         cacheable = False,
         category = "ts_sandbox_negative_probes",

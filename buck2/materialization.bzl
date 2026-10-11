@@ -56,7 +56,7 @@ def _package_tree_impl(ctx):
         hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable, sandbox_inputs = inputs),
         cmd_args(runtime_tree, format = "{}/" + ctx.attrs.runtime_entry),
         "--output",
-        out.as_output(),
+        out,
     ])
 
     # A dependency view owns no dependency bytes: the package view links it as

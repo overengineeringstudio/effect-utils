@@ -50,22 +50,26 @@ selected Darwin executor -> darwin-unsandboxed   -> local execution, no admissio
 The Linux TS check, emit and package-tree run actions use the declared Nix
 Bubblewrap capability. There is no unsandboxed fallback: a missing capability,
 failed namespace setup, denied access or failed compiler makes the action fail.
-The trusted launcher, not the compiler, sets up the boundary:
+Analysis emits the exact bind argv in a declared shell argument script. The
+scrubbed, Nix-pinned Bash entry creates output directories and immediately
+execs Bubblewrap; no Bun containment observer or per-input realpath/stat walk
+runs outside the action:
 
 | Resource                                                                   | Linux action access                                                                                                         |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Declared artifact/read-root inputs and their declared symlink destinations | Read-only                                                                                                                   |
 | Exact transitive Nix closures of the selected action tools                 | Read-only; no whole `/nix/store` mount                                                                                      |
-| Per-action output directory                                                | Writable empty isolated view at each declared artifact's parent; only declared outputs are copied back after success        |
-| Buck-owned private action scratch subtree and private `/tmp`               | Writable                                                                                                                    |
+| Declared per-action output directories                                     | Writable in place; host siblings and parents are not mounted                                                                |
+| Buck-owned action scratch and private `/tmp`                               | Writable                                                                                                                    |
 | `/proc` and minimal `/dev`                                                 | Minimal namespace views, read-only mounts                                                                                   |
 | Environment                                                                | Cleared; only `LC_ALL=C`, `TZ=UTC`, `BUCK_SCRATCH_PATH`, private `TMPDIR`, and action-owned `PWD` (also synthesized by Bun) |
 | Network and undeclared host filesystem                                     | Unavailable; isolated network namespace and no ambient filesystem mount                                                     |
 
-Output backing directories do not expose host output siblings and stay outside
-the child-visible scratch subtree, so the action cannot redirect the trusted
-copy-back through host-only source ancestors. Files copied into scratch remain
-writable for abandoned-action cleanup; compiler mutation
+Every TS run action declares directory outputs, including directories holding
+projected file receipts. Runners reset their contents without deleting the
+mount point. Outputs are written in place: there is no staging publication
+copy, rename, or post-action observer. Files staged into scratch remain writable
+for abandoned-action cleanup; compiler mutation
 of staged inputs still fails the fingerprint check. Read-only input mounts and
 the exact closure prevent ambient reads and live-input mutation independently
 of that check. Linux TS actions hold BUILD.BUCK-R04 at this declared boundary;

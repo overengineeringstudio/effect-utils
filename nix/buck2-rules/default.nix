@@ -124,11 +124,6 @@ pkgs.runCommand "buck2-rules"
     mkdir -p "$out/packages/@overeng/buck2-tools"
     cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
     load("//buck2/package_tools.bzl", "package_command_runtime")
-    export_file(
-        name = "src/ts-sandbox.ts",
-        src = "src/ts-sandbox.ts",
-        visibility = ["PUBLIC"],
-    )
 
 
     filegroup(

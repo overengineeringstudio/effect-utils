@@ -8,18 +8,18 @@ TsSandboxToolchainInfo = provider(fields = {
     "bun": str,
     "closure_paths": dict[str, list[str]],
     "inputs": list[Artifact],
-    "launcher": Artifact,
+    "shell": str,
 })
 
 def _ts_sandbox_toolchain_impl(ctx):
     return [
-        DefaultInfo(other_outputs = ctx.attrs.inputs + [ctx.attrs.launcher]),
+        DefaultInfo(other_outputs = ctx.attrs.inputs),
         TsSandboxToolchainInfo(
             bubblewrap = ctx.attrs.bubblewrap,
             bun = ctx.attrs.bun,
             closure_paths = ctx.attrs.closure_paths,
             inputs = ctx.attrs.inputs,
-            launcher = ctx.attrs.launcher,
+            shell = ctx.attrs.shell,
         ),
     ]
 
@@ -30,13 +30,14 @@ _ts_sandbox_toolchain = rule(
         "bun": attrs.string(),
         "closure_paths": attrs.dict(attrs.string(), attrs.list(attrs.string())),
         "inputs": attrs.list(attrs.source()),
-        "launcher": attrs.source(default = "//packages/@overeng/buck2-tools:src/ts-sandbox.ts"),
+        "shell": attrs.string(),
     },
 )
 
 def ts_sandbox_toolchain(name, **kwargs):
     platform = host_capability_platform()
-    tool_ids = ["bun", "effect-tsgo", "buck2-fingerprint"]
+    # Reuse the existing pinned Bash capability; no shell runs inside the action.
+    tool_ids = ["bun", "effect-tsgo", "buck2-fingerprint", "rust-shell"]
     if host_info().os.is_linux:
         if CAPABILITIES.get(platform, {}).get("bubblewrap") == None:
             fail("TS sandbox: declared Nix Bubblewrap capability missing; unsandboxed execution is forbidden")
@@ -54,6 +55,7 @@ def ts_sandbox_toolchain(name, **kwargs):
         name = name,
         bubblewrap = executables.get("bubblewrap", ""),
         bun = executables["bun"],
+        shell = executables["rust-shell"],
         closure_paths = closures,
         inputs = inputs,
         **kwargs

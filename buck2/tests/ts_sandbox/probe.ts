@@ -87,22 +87,18 @@ await denyWrite('declared Bun executable write', process.execPath)
 await denyWrite('repository write', join(process.cwd(), 'ts-sandbox-forbidden-write'))
 await denyWrite('root write', '/ts-sandbox-forbidden-write')
 await denyWrite('host etc write', '/etc/ts-sandbox-forbidden-write')
-// The production boundary exposes an isolated writable output DIRECTORY. Its
-// siblings are not host siblings; only declared artifacts are copied back.
+// The declared output directory is writable in place; its host parent is not
+// mounted. Siblings outside that directory remain invisible and read-only.
+const hostSibling = join(dirname(dirname(output)), 'host-output-sibling')
+await denied('host output sibling hidden', () => readFile(hostSibling))
+await denyWrite('host output sibling write', hostSibling)
 await denyWrite(
   'outside output directory',
   join(dirname(dirname(output)), 'ts-sandbox-forbidden-write'),
 )
-const hostSibling = join(dirname(output), 'host-output-sibling')
-await denied('host output sibling hidden', () => readFile(hostSibling))
-await writeFile(hostSibling, 'isolated output view, not the host sibling')
-await rm(hostSibling)
-// Trusted copy-back backing stays outside the scratch subtree mounted into the
-// child; an action must not be able to redirect its host-side source ancestors.
-assert(
-  (await readdir(scratch)).every((entry) => entry.startsWith('ts-sandbox-') === false),
-  'trusted output backing exposed through scratch',
-)
+const outputSibling = join(dirname(output), 'writable-output-sibling')
+await writeFile(outputSibling, 'declared output directory')
+await rm(outputSibling)
 for (const directory of [scratch, '/tmp']) {
   const path = join(directory, 'ts-sandbox-positive-write')
   await writeFile(path, 'private scratch')
@@ -178,7 +174,7 @@ await writeFile(
   `${JSON.stringify({
     status: 'passed',
     boundary: 'linux-bwrap',
-    writable: ['isolated-output-directory', 'executor-scratch', 'private-tmp'],
+    writable: ['declared-output-directory', 'executor-scratch', 'private-tmp'],
     probes: {
       declaredInputReadable: true,
       declaredInputsReadOnly: true,
@@ -187,7 +183,6 @@ await writeFile(
       hostHomesHidden: true,
       hostPasswdHidden: true,
       hostOutputSiblingsHidden: true,
-      trustedOutputBackingHidden: true,
       outsideWritesDenied: true,
       inheritedEnvironmentCleared: true,
       networkNamespaceIsolated: true,
