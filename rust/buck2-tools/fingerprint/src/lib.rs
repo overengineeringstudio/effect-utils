@@ -2,6 +2,7 @@
 //! Instability errors include changed-field names and full before/after metadata;
 //! mode and link count are diagnostic context, not additional stability checks.
 //! This implementation is isolated from the shared archive/product packaging helpers.
+//! Npm emission/typecheck consumers still use this crate for source-mutation proofs.
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::ffi::OsString;
