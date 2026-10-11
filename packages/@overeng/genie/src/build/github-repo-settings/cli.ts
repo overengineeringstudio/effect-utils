@@ -42,7 +42,7 @@ export const githubSettingsCommand = Cli.Command.make(
     // Human-readable CLI output is stdout, without Effect log prefixes.
     yield* Effect.sync(() => {
       process.stdout.write(`${formatGithubRepoSettingsReport({ mode, report })}\n`)
-      if (mode === 'check' && report.changed) process.exitCode = 1
+      if (mode === 'check' && report.changed === true) process.exitCode = 1
     })
   }),
 ).pipe(Cli.Command.withDescription('Reconcile GitHub repository settings and named rulesets'))

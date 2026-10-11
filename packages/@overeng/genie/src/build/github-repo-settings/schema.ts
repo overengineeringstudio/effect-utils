@@ -1,12 +1,13 @@
 /**
  * Effect Schema decoding for generated repository settings files.
  *
- * Reconcile-side only: the consumer-facing builder in `mod.ts` stays npm-free, so these schemas
- * must never be imported from the `.` runtime entry.
+ * Engine-side only: the consumer-facing builder in `runtime/github-repo-settings/mod.ts` stays
+ * npm-free, so these schemas must never be imported from the `.` runtime entry.
  */
 
 import { Effect, Schema } from 'effect'
 
+/** Decode the writable repository PATCH fields managed by a generated settings envelope. */
 export const GithubRepositorySettings = Schema.Struct({
   description: Schema.optional(Schema.NullOr(Schema.String)),
   homepage: Schema.optional(Schema.NullOr(Schema.String)),
@@ -35,6 +36,7 @@ export const GithubRepositorySettings = Schema.Struct({
   merge_commit_message: Schema.optional(Schema.Literals(['PR_BODY', 'PR_TITLE', 'BLANK'])),
 }).annotate({ identifier: 'GithubRepoSettings.RepositorySettings' })
 
+/** Decode a named ruleset while retaining GitHub's open rule parameters. */
 export const GithubRulesetPayload = Schema.Struct({
   name: Schema.NonEmptyString,
   enforcement: Schema.Literals(['active', 'disabled', 'evaluate']),

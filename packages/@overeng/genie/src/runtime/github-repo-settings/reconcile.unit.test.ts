@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { decodeGithubRepoSettings } from './reconcile.ts'
+import { decodeGithubRepoSettings } from '../../build/github-repo-settings/reconcile.ts'
 
 const ruleset = { name: 'protect-main', enforcement: 'active', rules: [{ type: 'deletion' }] }
 

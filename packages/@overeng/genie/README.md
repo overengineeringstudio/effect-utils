@@ -188,6 +188,12 @@ settings. Their current payloads do not require an immediate migration.
 Effect-utils itself retains its raw ruleset payload, including its merge queue
 and required CI checks; enabling repository-field management is a separate policy change.
 
+The authoring builder and comparison utilities in `src/runtime/github-repo-settings`
+are dependency-free. The Effect CLI, schemas and reconciliation engine live in
+`src/build/github-repo-settings`; reconciliation remains exported through
+`@overeng/genie/node`. Authoring exports stay available from `@overeng/genie` and
+the peer `genie/external.ts` facade without importing the engine.
+
 ## Generators
 
 Each generator has its own documentation:

@@ -43,6 +43,6 @@ export {
   reconcileGithubRepoSettings,
   type GithubRepoSettingsOptions,
   type GithubRepoSettingsReport,
-} from '../github-repo-settings/reconcile.ts'
+} from '../../build/github-repo-settings/reconcile.ts'
 
 export * from '../repo-context/mod.ts'

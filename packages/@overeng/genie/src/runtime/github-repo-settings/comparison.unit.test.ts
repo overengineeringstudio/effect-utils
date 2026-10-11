@@ -12,7 +12,11 @@ import {
   type GithubRepositorySettings as GithubRepositorySettingsData,
   type GithubRulesetPayload as GithubRulesetPayloadData,
 } from './mod.ts'
-import { GithubRepoSettings, GithubRulesetPayload, GithubRepositorySettings } from './schema.ts'
+import {
+  GithubRepoSettings,
+  GithubRulesetPayload,
+  GithubRepositorySettings,
+} from '../../build/github-repo-settings/schema.ts'
 
 const decodeRepository = Schema.decodeUnknownSync(GithubRepositorySettings)
 

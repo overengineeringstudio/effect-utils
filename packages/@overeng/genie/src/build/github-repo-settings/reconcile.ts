@@ -6,16 +6,18 @@ import {
   mergeGithubRulesetForApply,
   type RulesetDiff,
   type RulesetMode,
-} from '../github-ruleset/reconcile.ts'
-import { diffGithubRepositorySettings } from './comparison.ts'
-import type { GithubRepoSettings as GithubRepoSettingsData } from './mod.ts'
+} from '../../runtime/github-ruleset/reconcile.ts'
+import { diffGithubRepositorySettings } from '../../runtime/github-repo-settings/comparison.ts'
+import type { GithubRepoSettings as GithubRepoSettingsData } from '../../runtime/github-repo-settings/mod.ts'
 import { GithubRepoSettings, GithubRepositorySettings, GithubRulesetPayload } from './schema.ts'
 
+/** Failure to decode or reconcile generated GitHub repository settings. */
 export class GithubRepoSettingsError extends Schema.TaggedError<GithubRepoSettingsError>()(
   'GithubRepoSettingsError',
   { message: Schema.String, cause: Schema.optional(Schema.Defect()) },
 ) {}
 
+/** Repository identity, generated settings file and optional expected ruleset name. */
 export type GithubRepoSettingsOptions = {
   readonly repo: string
   readonly file: string
@@ -23,6 +25,7 @@ export type GithubRepoSettingsOptions = {
   readonly ruleset?: string | undefined
 }
 
+/** Read-only drift details and the outcome of any requested repository/ruleset updates. */
 export type GithubRepoSettingsReport = {
   readonly repo: string
   readonly changed: boolean
@@ -73,7 +76,7 @@ export const reconcileGithubRepoSettings = async ({
   )
   if (
     options.ruleset !== undefined &&
-    !desired.rulesets.some((ruleset) => ruleset.name === options.ruleset)
+    desired.rulesets.some((ruleset) => ruleset.name === options.ruleset) === false
   ) {
     throw new GithubRepoSettingsError({
       message: `${options.file} has no ruleset named \`${options.ruleset}\``,
@@ -99,8 +102,8 @@ export const reconcileGithubRepoSettings = async ({
             args: ['--paginate', '--slurp'],
           }),
         ).flat()
-  const plannedRulesets = []
-  for (const ruleset of desired.rulesets) {
+  const plannedRulesets = await desired.rulesets.reduce(async (previous, ruleset) => {
+    const plans = await previous
     const matches = summaries.filter((summary) => summary.name === ruleset.name)
     if (matches.length > 1) {
       throw new GithubRepoSettingsError({
@@ -118,7 +121,7 @@ export const reconcileGithubRepoSettings = async ({
       summary === undefined
         ? [{ field: 'ruleset', desired: ruleset, actual: undefined }]
         : diffGithubRuleset({ desired: ruleset, actual })
-    plannedRulesets.push({
+    plans.push({
       payload: ruleset,
       applyPayload:
         mode === 'apply' && summary !== undefined && diffs.length > 0
@@ -127,7 +130,13 @@ export const reconcileGithubRepoSettings = async ({
       id: summary?.id,
       diffs,
     })
-  }
+    return plans
+  }, Promise.resolve<Array<{
+    readonly payload: GithubRepoSettingsData['rulesets'][number]
+    readonly applyPayload: unknown
+    readonly id: number | undefined
+    readonly diffs: ReadonlyArray<RulesetDiff>
+  }>>([]))
 
   const changed =
     repositoryDiffs.length > 0 || plannedRulesets.some((ruleset) => ruleset.diffs.length > 0)
@@ -138,8 +147,8 @@ export const reconcileGithubRepoSettings = async ({
       body: Object.fromEntries(repositoryDiffs.map((diff) => [diff.field, diff.desired])),
     })
   }
-  const rulesets = []
-  for (const ruleset of plannedRulesets) {
+  const rulesets = await plannedRulesets.reduce(async (previous, ruleset) => {
+    const reports = await previous
     let id = ruleset.id
     const created = mode === 'apply' && id === undefined
     if (mode === 'apply' && ruleset.diffs.length > 0) {
@@ -153,8 +162,9 @@ export const reconcileGithubRepoSettings = async ({
       })
       id = Schema.decodeUnknownSync(RulesetSummary)(result).id
     }
-    rulesets.push({ name: ruleset.payload.name, id, created, diffs: ruleset.diffs })
-  }
+    reports.push({ name: ruleset.payload.name, id, created, diffs: ruleset.diffs })
+    return reports
+  }, Promise.resolve<Array<GithubRepoSettingsReport['rulesets'][number]>>([]))
   return {
     repo: options.repo,
     changed,
@@ -175,8 +185,8 @@ export const formatGithubRepoSettingsReport = ({
   readonly mode: RulesetMode
   readonly report: GithubRepoSettingsReport
 }): string => {
-  if (!report.changed) return `ok: ${report.repo} matches generated repository settings`
-  const action = mode === 'apply' && report.applied ? 'applied' : 'drift'
+  if (report.changed === false) return `ok: ${report.repo} matches generated repository settings`
+  const action = mode === 'apply' && report.applied === true ? 'applied' : 'drift'
   return [
     `${action}: ${report.repo} repository settings`,
     ...report.repository.map(

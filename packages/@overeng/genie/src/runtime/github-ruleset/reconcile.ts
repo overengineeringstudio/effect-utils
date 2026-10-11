@@ -1,7 +1,5 @@
 import { readFile } from 'node:fs/promises'
 
-import { Schema } from 'effect'
-
 /** Whether to only report drift or update the remote ruleset in place. */
 export type RulesetMode = 'check' | 'apply'
 
@@ -201,21 +199,32 @@ const projectRulesetParameters = ({
     if (desiredRule === undefined) return rule
     const { parameters, ...rest } = actualRule
     const desiredObject = asRecord(desiredRule)
-    return Object.hasOwn(desiredObject, 'parameters')
-      ? { ...rest, parameters: projectDeclaredParameters(desiredObject.parameters, parameters) }
+    return Object.hasOwn(desiredObject, 'parameters') === true
+      ? Object.assign(rest, {
+          parameters: projectDeclaredParameters({
+            desired: desiredObject.parameters,
+            actual: parameters,
+          }),
+        })
       : rest
   })
 }
 
 /** Objects use desired-subset semantics; arrays remain exact, including their entries and order. */
-const projectDeclaredParameters = (desired: unknown, actual: unknown): unknown => {
+const projectDeclaredParameters = ({
+  desired,
+  actual,
+}: {
+  readonly desired: unknown
+  readonly actual: unknown
+}): unknown => {
   if (
     desired === null ||
     typeof desired !== 'object' ||
-    Array.isArray(desired) ||
+    Array.isArray(desired) === true ||
     actual === null ||
     typeof actual !== 'object' ||
-    Array.isArray(actual)
+    Array.isArray(actual) === true
   ) {
     return actual
   }
@@ -223,7 +232,7 @@ const projectDeclaredParameters = (desired: unknown, actual: unknown): unknown =
   return Object.fromEntries(
     Object.entries(desired).map(([key, value]) => [
       key,
-      projectDeclaredParameters(value, actualObject[key]),
+      projectDeclaredParameters({ desired: value, actual: actualObject[key] }),
     ]),
   )
 }
@@ -253,24 +262,32 @@ export const mergeGithubRulesetForApply = ({
       if (Object.hasOwn(desiredRule, 'parameters') === false) {
         return actualParameters === undefined
           ? rule
-          : { ...desiredRule, parameters: actualParameters }
+          : Object.assign({}, desiredRule, { parameters: actualParameters })
       }
-      return {
-        ...desiredRule,
-        parameters: mergeDeclaredParameters(desiredRule.parameters, actualParameters),
-      }
+      return Object.assign({}, desiredRule, {
+        parameters: mergeDeclaredParameters({
+          desired: desiredRule.parameters,
+          actual: actualParameters,
+        }),
+      })
     }),
   }
 }
 
-const mergeDeclaredParameters = (desired: unknown, actual: unknown): unknown => {
+const mergeDeclaredParameters = ({
+  desired,
+  actual,
+}: {
+  readonly desired: unknown
+  readonly actual: unknown
+}): unknown => {
   if (
     desired === null ||
     typeof desired !== 'object' ||
-    Array.isArray(desired) ||
+    Array.isArray(desired) === true ||
     actual === null ||
     typeof actual !== 'object' ||
-    Array.isArray(actual)
+    Array.isArray(actual) === true
   ) {
     return desired
   }
@@ -280,7 +297,7 @@ const mergeDeclaredParameters = (desired: unknown, actual: unknown): unknown => 
     ...Object.fromEntries(
       Object.entries(desired).map(([key, value]) => [
         key,
-        mergeDeclaredParameters(value, actualObject[key]),
+        mergeDeclaredParameters({ desired: value, actual: actualObject[key] }),
       ]),
     ),
   }
@@ -345,7 +362,7 @@ export const ghJson = async ({
     stdin:
       body === undefined
         ? 'ignore'
-        : new TextEncoder().encode(Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))(body)),
+        : new TextEncoder().encode(JSON.stringify(body)),
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -363,5 +380,5 @@ export const ghJson = async ({
 
   return stdout.trim() === ''
     ? undefined
-    : Schema.decodeSync(Schema.fromJsonString(Schema.Unknown))(stdout)
+    : JSON.parse(stdout) as unknown
 }

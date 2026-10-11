@@ -2,40 +2,17 @@
  * Consumer-facing repository settings builder.
  *
  * Plain-flake consumers import this module from a Nix store path without any `node_modules`, so it
- * must stay free of npm imports. Full wire decoding lives in `schema.ts` on the reconcile side,
+ * must stay free of npm imports. Full wire decoding lives in `build/github-repo-settings/schema.ts`,
  * which ships inside the bundled Genie product.
  */
 
 import type { GenieOutput } from '../core.ts'
 import type { GithubRulesetArgs } from '../github-ruleset/mod.ts'
 import { joinPath } from '../utils/path.ts'
-
-/** Writable GitHub repository PATCH fields. Omitted fields remain unmanaged. */
-export type GithubRepositorySettings = {
-  readonly description?: string | null | undefined
-  readonly homepage?: string | null | undefined
-  readonly private?: boolean | undefined
-  readonly visibility?: 'public' | 'private' | 'internal' | undefined
-  readonly default_branch?: string | undefined
-  readonly has_issues?: boolean | undefined
-  readonly has_projects?: boolean | undefined
-  readonly has_wiki?: boolean | undefined
-  readonly has_discussions?: boolean | undefined
-  readonly is_template?: boolean | undefined
-  readonly archived?: boolean | undefined
-  readonly allow_forking?: boolean | undefined
-  readonly web_commit_signoff_required?: boolean | undefined
-  readonly allow_auto_merge?: boolean | undefined
-  readonly delete_branch_on_merge?: boolean | undefined
-  readonly allow_update_branch?: boolean | undefined
-  readonly allow_squash_merge?: boolean | undefined
-  readonly allow_merge_commit?: boolean | undefined
-  readonly allow_rebase_merge?: boolean | undefined
-  readonly squash_merge_commit_title?: 'PR_TITLE' | 'COMMIT_OR_PR_TITLE' | undefined
-  readonly squash_merge_commit_message?: 'PR_BODY' | 'COMMIT_MESSAGES' | 'BLANK' | undefined
-  readonly merge_commit_title?: 'PR_TITLE' | 'MERGE_MESSAGE' | undefined
-  readonly merge_commit_message?: 'PR_BODY' | 'PR_TITLE' | 'BLANK' | undefined
-}
+import {
+  normalizeDesiredGithubRepositorySettings,
+  type GithubRepositorySettings,
+} from './comparison.ts'
 
 /** Ruleset wire shape; open records retain GitHub's evolving rule parameters. */
 export type GithubRulesetPayload = {
@@ -53,37 +30,11 @@ export type GithubRepoSettings = {
   readonly rulesets: ReadonlyArray<GithubRulesetPayload>
 }
 
+/** Repository PATCH settings and named ruleset builders composed into one generated envelope. */
 export type GithubRepoSettingsArgs = {
   readonly repository: GithubRepositorySettings
   readonly rulesets: readonly (GithubRulesetArgs | GenieOutput<GithubRulesetArgs>)[]
 }
-
-/** Exhaustive over the type, so a field cannot be typed but rejected (or accepted but untyped). */
-const repositorySettingsFields = {
-  description: true,
-  homepage: true,
-  private: true,
-  visibility: true,
-  default_branch: true,
-  has_issues: true,
-  has_projects: true,
-  has_wiki: true,
-  has_discussions: true,
-  is_template: true,
-  archived: true,
-  allow_forking: true,
-  web_commit_signoff_required: true,
-  allow_auto_merge: true,
-  delete_branch_on_merge: true,
-  allow_update_branch: true,
-  allow_squash_merge: true,
-  allow_merge_commit: true,
-  allow_rebase_merge: true,
-  squash_merge_commit_title: true,
-  squash_merge_commit_message: true,
-  merge_commit_title: true,
-  merge_commit_message: true,
-} as const satisfies Record<keyof GithubRepositorySettings, true>
 
 const rulesetPayloadFields = {
   name: true,
@@ -109,18 +60,6 @@ const rejectUnknownFields = ({
   }
 }
 
-/** Reject typos and remove explicitly undefined values; value types are the reconcile side's job. */
-export const normalizeDesiredGithubRepositorySettings = (
-  desired: GithubRepositorySettings,
-): GithubRepositorySettings => {
-  rejectUnknownFields({
-    value: desired,
-    known: repositorySettingsFields,
-    label: 'GitHub repository settings',
-  })
-  return Object.fromEntries(Object.entries(desired).filter(([, value]) => value !== undefined))
-}
-
 /** GitHub defaults an omitted ruleset target to `branch`; the generated file states it explicitly. */
 const toRulesetPayload = (ruleset: GithubRulesetArgs): GithubRulesetPayload => {
   rejectUnknownFields({
@@ -141,7 +80,13 @@ const toRulesetPayload = (ruleset: GithubRulesetArgs): GithubRulesetPayload => {
     rules,
     ...(bypass_actors === undefined
       ? {}
-      : { bypass_actors: bypass_actors.map((actor) => ({ ...actor })) }),
+      : {
+          bypass_actors: bypass_actors.map(({ actor_id, actor_type, bypass_mode }) =>
+            bypass_mode === undefined
+              ? { actor_id, actor_type }
+              : { actor_id, actor_type, bypass_mode },
+          ),
+        }),
   }
 }
 
@@ -184,6 +129,8 @@ export const githubRepoSettings = (
 export {
   diffGithubRepositorySettings,
   normalizeGithubRepositorySettingsForComparison,
+  normalizeDesiredGithubRepositorySettings,
+  type GithubRepositorySettings,
   type GithubRepositorySettingsDifference,
   type GithubRepositorySettingsComparison,
 } from './comparison.ts'
