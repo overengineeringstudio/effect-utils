@@ -18,7 +18,13 @@ const scratch = process.env.BUCK_SCRATCH_PATH
 assert.equal(process.platform, 'linux', 'containment probes require Linux; Darwin is unsupported')
 assert(scratch !== undefined, 'executor scratch must be explicitly supplied')
 
-const denied = async (name: string, operation: () => Promise<unknown>): Promise<void> => {
+const denied = async ({
+  name,
+  operation,
+}: {
+  name: string
+  operation: () => Promise<unknown>
+}): Promise<void> => {
   let failure: unknown
   try {
     await operation()
@@ -32,12 +38,15 @@ const denied = async (name: string, operation: () => Promise<unknown>): Promise<
     `${name}: ${failure}`,
   )
 }
-const denyWrite = (name: string, path: string) =>
-  denied(name, async () => {
-    // Opening without truncation tests write permission without corrupting a host
-    // input if the boundary regresses. Missing paths still attempt file creation.
-    const file = await open(path, 'a')
-    await file.close()
+const denyWrite = ({ name, path }: { name: string; path: string }) =>
+  denied({
+    name,
+    operation: async () => {
+      // Opening without truncation tests write permission without corrupting a host
+      // input if the boundary regresses. Missing paths still attempt file creation.
+      const file = await open(path, 'a')
+      await file.close()
+    },
   })
 
 assert((await readFile(input, 'utf8')).includes('No receipt is written'))
@@ -49,24 +58,26 @@ assert(
     closure.length > 0 &&
     closure.every((path) => /^\/nix\/store\/[^/]+$/.test(path)),
 )
-const storeRoots = [...new Set(closure.map((path) => path.slice('/nix/store/'.length)))].sort()
+const storeRoots = [...new Set(closure.map((path) => path.slice('/nix/store/'.length)))].toSorted()
 assert.deepEqual(
-  (await readdir('/nix/store')).sort(),
+  (await readdir('/nix/store')).toSorted(),
   storeRoots,
   'only the declared Bun Nix closure may be visible',
 )
 await lstat(process.execPath)
-await denied('ambient shell', () => lstat('/bin/sh'))
-await denied('ambient env executable', () => lstat('/usr/bin/env'))
+await denied({ name: 'ambient shell', operation: () => lstat('/bin/sh') })
+await denied({ name: 'ambient env executable', operation: () => lstat('/usr/bin/env') })
 
 const repositoryRoots = new Set([process.cwd(), resolve(dirname(input), '../../..')])
-for (const root of repositoryRoots) {
-  await denied('undeclared README.md', () => readFile(join(root, 'README.md')))
-  await denied('undeclared .git', () => lstat(join(root, '.git')))
-}
+await Promise.all(
+  [...repositoryRoots].flatMap((root) => [
+    denied({ name: 'undeclared README.md', operation: () => readFile(join(root, 'README.md')) }),
+    denied({ name: 'undeclared .git', operation: () => lstat(join(root, '.git')) }),
+  ]),
+)
 assert.equal(process.env.HOME, undefined, 'host HOME must not be inherited')
-await denied('host passwd', () => readFile('/etc/passwd'))
-await denied('root home', () => lstat('/root'))
+await denied({ name: 'host passwd', operation: () => readFile('/etc/passwd') })
+await denied({ name: 'root home', operation: () => lstat('/root') })
 // Ancestor directories can exist to reach declared artifacts, but their host
 // contents must not. Probe the actual home ancestor as well as standard homes.
 const homes = new Set(['/home/root', '/home/nobody', '/Users/Shared'])
@@ -74,39 +85,49 @@ for (const path of [process.cwd(), input, scratch]) {
   const match = /^\/(?:home|Users)\/[^/]+/.exec(path)
   if (match !== null) homes.add(match[0])
 }
-for (const home of homes) {
-  for (const privatePath of ['.ssh', '.bashrc', '.config']) {
-    await denied('host home contents', () => lstat(join(home, privatePath)))
-  }
-  await denyWrite('host home write', join(home, 'ts-sandbox-forbidden-write'))
-}
+await Promise.all(
+  [...homes].flatMap((home) =>
+    ['.ssh', '.bashrc', '.config']
+      .map((privatePath) =>
+        denied({ name: 'host home contents', operation: () => lstat(join(home, privatePath)) }),
+      )
+      .concat(
+        denyWrite({ name: 'host home write', path: join(home, 'ts-sandbox-forbidden-write') }),
+      ),
+  ),
+)
 
-await denyWrite('declared source write', input)
-await denyWrite('declared closure manifest write', closurePath)
-await denyWrite('declared Bun executable write', process.execPath)
-await denyWrite('repository write', join(process.cwd(), 'ts-sandbox-forbidden-write'))
-await denyWrite('root write', '/ts-sandbox-forbidden-write')
-await denyWrite('host etc write', '/etc/ts-sandbox-forbidden-write')
+await denyWrite({ name: 'declared source write', path: input })
+await denyWrite({ name: 'declared closure manifest write', path: closurePath })
+await denyWrite({ name: 'declared Bun executable write', path: process.execPath })
+await denyWrite({
+  name: 'repository write',
+  path: join(process.cwd(), 'ts-sandbox-forbidden-write'),
+})
+await denyWrite({ name: 'root write', path: '/ts-sandbox-forbidden-write' })
+await denyWrite({ name: 'host etc write', path: '/etc/ts-sandbox-forbidden-write' })
 // The declared output directory is writable in place; its host parent is not
 // mounted. Siblings outside that directory remain invisible and read-only.
 const hostSibling = join(dirname(dirname(output)), 'host-output-sibling')
-await denied('host output sibling hidden', () => readFile(hostSibling))
-await denyWrite('host output sibling write', hostSibling)
-await denyWrite(
-  'outside output directory',
-  join(dirname(dirname(output)), 'ts-sandbox-forbidden-write'),
-)
+await denied({ name: 'host output sibling hidden', operation: () => readFile(hostSibling) })
+await denyWrite({ name: 'host output sibling write', path: hostSibling })
+await denyWrite({
+  name: 'outside output directory',
+  path: join(dirname(dirname(output)), 'ts-sandbox-forbidden-write'),
+})
 const outputSibling = join(dirname(output), 'writable-output-sibling')
 await writeFile(outputSibling, 'declared output directory')
 await rm(outputSibling)
-for (const directory of [scratch, '/tmp']) {
-  const path = join(directory, 'ts-sandbox-positive-write')
-  await writeFile(path, 'private scratch')
-  assert.equal(await readFile(path, 'utf8'), 'private scratch')
-  await rm(path)
-}
+await Promise.all(
+  [scratch, '/tmp'].map(async (directory) => {
+    const path = join(directory, 'ts-sandbox-positive-write')
+    await writeFile(path, 'private scratch')
+    assert.equal(await readFile(path, 'utf8'), 'private scratch')
+    await rm(path)
+  }),
+)
 
-assert.deepEqual(Object.keys(process.env).sort(), [
+assert.deepEqual(Object.keys(process.env).toSorted(), [
   'BUCK_SCRATCH_PATH',
   'LC_ALL',
   'PWD',
@@ -162,7 +183,7 @@ socket.once('error', (cause) => {
   // the interface and route assertions above independently prove isolation.
   if (
     'code' in cause &&
-    ['ENETUNREACH', 'EHOSTUNREACH', 'ECONNREFUSED'].includes(String(cause.code))
+    ['ENETUNREACH', 'EHOSTUNREACH', 'ECONNREFUSED'].includes(String(cause.code)) === true
   )
     socketFailed()
   else socketFailure(cause)

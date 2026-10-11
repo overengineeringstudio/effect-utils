@@ -232,7 +232,7 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
     header.complete &&
     actionExclusionReasons.some(
       (reason) => header.excludedByDesign[reason] !== actualExclusions[reason],
-    )
+    ) === true
   )
     return invalid()
   const invocationValues = list(field(value, 'invocations'))
@@ -246,7 +246,7 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
       header.complete &&
       actionExclusionReasons.some(
         (reason) => invocation.excludedByDesign[reason] !== exclusions[reason],
-      )
+      ) === true
     )
       return invalid()
   }

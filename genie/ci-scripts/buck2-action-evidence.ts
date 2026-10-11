@@ -28,9 +28,9 @@ export type ActionExclusionCounts = Record<ActionExclusionReason, number>
 export const actionExclusionReason = (
   category: string | null | undefined,
 ): ActionExclusionReason | null =>
-  darwinUnsandboxedCategories.some((excluded) => excluded === category)
+  darwinUnsandboxedCategories.some((excluded) => excluded === category) === true
     ? 'darwin-unsandboxed'
-    : localMaterializationCategories.some((excluded) => excluded === category)
+    : localMaterializationCategories.some((excluded) => excluded === category) === true
       ? 'local-materialization-policy'
       : null
 export const zeroActionExclusionCounts = (): ActionExclusionCounts => ({

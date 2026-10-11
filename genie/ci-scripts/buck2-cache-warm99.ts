@@ -193,7 +193,7 @@ export const decodeEvidence = (
     if (
       actionExclusionReasons.some(
         (reason) => declared[reason] !== artifact.header.excludedByDesign[reason],
-      )
+      ) === true
     )
       return invalid()
   }
@@ -212,7 +212,7 @@ export const decodeEvidence = (
       if (
         actionExclusionReasons.some(
           (reason) => declared[reason] !== invocation.excludedByDesign[reason],
-        )
+        ) === true
       )
         return invalid()
     }

@@ -255,7 +255,8 @@ describe('Buck package view over a normalized dependency view', () => {
         source,
       ]),
     ).toThrow('--strip-project-references declared but no tsconfig.json was staged')
-    expect(existsSync(fixture.output)).toBe(false)
+    expect(lstatSync(fixture.output).isDirectory()).toBe(true)
+    expect(readdirSync(fixture.output)).toEqual([])
   })
 
   it('overlays authoritative workspace declarations without copying dependency bytes', () => {
