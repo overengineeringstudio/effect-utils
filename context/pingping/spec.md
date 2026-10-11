@@ -28,20 +28,20 @@ the repository Rust workspace policy.
 
 Source lives in `packages/@overeng/pingping/src/`:
 
-| Module | Role | Requirements |
-| --- | --- | --- |
-| `icmp.rs` | Echo packet codec and unprivileged socket | R02 |
-| `probe.rs` | Per-host worker: resolve, send, match, expire | R03, R09 |
-| `stats.rs` | Folds probe events into `HostState` | R05, R07 |
-| `render.rs` | Pure layout into role-tagged spans | R05, R10–R12, R18 |
-| `theme.rs` | Role -> color, background detection | R08 |
-| `timeline.rs` | Zoom/pan view, bucketing, hover descriptions | R14, R15 |
-| `live.rs` | Inline redraw loop, keys, mouse, hover hit-testing | R06, R11, R14, R15 |
-| `path.rs` | Path note: Tailscale transport and local route | R19 |
-| `completion.rs` | Dynamic shell completion, tailnet host candidates | R20 |
-| `tailnet.rs` | Bounded LocalAPI / CLI status source shared by both features | R19, R20 |
-| `main.rs` | CLI, plain output, exit status | R01, R04, R13 |
-| `uptime.rs` | Tailnet-only background remote uptime | Live-view enrichment |
+| Module          | Role                                                         | Requirements         |
+| --------------- | ------------------------------------------------------------ | -------------------- |
+| `icmp.rs`       | Echo packet codec and unprivileged socket                    | R02                  |
+| `probe.rs`      | Per-host worker: resolve, send, match, expire                | R03, R09             |
+| `stats.rs`      | Folds probe events into `HostState`                          | R05, R07             |
+| `render.rs`     | Pure layout into role-tagged spans                           | R05, R10–R12, R18    |
+| `theme.rs`      | Role -> color, background detection                          | R08                  |
+| `timeline.rs`   | Zoom/pan view, bucketing, hover descriptions                 | R14, R15             |
+| `live.rs`       | Inline redraw loop, keys, mouse, hover hit-testing           | R06, R11, R14, R15   |
+| `path.rs`       | Path note: Tailscale transport and local route               | R19                  |
+| `completion.rs` | Dynamic shell completion, tailnet host candidates            | R20                  |
+| `tailnet.rs`    | Bounded LocalAPI / CLI status source shared by both features | R19, R20             |
+| `main.rs`       | CLI, plain output, exit status                               | R01, R04, R13        |
+| `uptime.rs`     | Tailnet-only background remote uptime                        | Live-view enrichment |
 
 ## CLI
 
@@ -58,18 +58,18 @@ pingping [OPTIONS] <HOST>...
 
 Interactive input:
 
-| Input | Effect |
-| --- | --- |
-| `l` | toggle stacked / rows |
-| `s` | toggle statistics between visible window (default) and whole run |
-| `[` / `]` | slower / faster for all hosts: 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60 s; `-i` stays free-form until stepping |
-| wheel up / `+` / `↑` | zoom in (mouse: around the pointer; keys: window end) |
-| wheel down / `-` / `↓` | zoom out |
-| drag left button on chart, horizontal scroll, `←` / `→` | pan (chart drag right shows older samples) |
-| pointer over a timeline or overview cell | tooltip with relative + absolute time |
-| click / drag on a host's overview | grab the highlighted window without recentering; outside click centers; drag right moves newer, newest end resumes live; release ends drag |
-| `0` / `End` | back to the live, unzoomed view |
-| `q` / `Esc` / `Ctrl-C` | quit |
+| Input                                                   | Effect                                                                                                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `l`                                                     | toggle stacked / rows                                                                                                                      |
+| `s`                                                     | toggle statistics between visible window (default) and whole run                                                                           |
+| `[` / `]`                                               | slower / faster for all hosts: 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60 s; `-i` stays free-form until stepping                                   |
+| wheel up / `+` / `↑`                                    | zoom in (mouse: around the pointer; keys: window end)                                                                                      |
+| wheel down / `-` / `↓`                                  | zoom out                                                                                                                                   |
+| drag left button on chart, horizontal scroll, `←` / `→` | pan (chart drag right shows older samples)                                                                                                 |
+| pointer over a timeline or overview cell                | tooltip with relative + absolute time                                                                                                      |
+| click / drag on a host's overview                       | grab the highlighted window without recentering; outside click centers; drag right moves newer, newest end resumes live; release ends drag |
+| `0` / `End`                                             | back to the live, unzoomed view                                                                                                            |
+| `q` / `Esc` / `Ctrl-C`                                  | quit                                                                                                                                       |
 
 Arguments are validated before any probe starts: durations must be at least
 0.01 s and representable as a deadline; host arguments must be nonempty and
@@ -111,13 +111,13 @@ pingping opens `socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)` (IPv6:
 `IPPROTO_ICMPV6`). This needs no privilege on the supported hosts (A01) and
 behaves differently per OS:
 
-| Aspect | Linux | macOS |
-| --- | --- | --- |
-| Permission | gid in `net.ipv4.ping_group_range` (also governs IPv6) | always |
-| Echo identifier | kernel replaces it with the socket port | kept as sent |
-| Reply delivery | only to the sending socket | to every ICMP datagram socket |
-| IPv4 receive buffer | ICMP message only | IPv4 header + ICMP message |
-| IPv4 checksum | kernel | sender |
+| Aspect              | Linux                                                  | macOS                         |
+| ------------------- | ------------------------------------------------------ | ----------------------------- |
+| Permission          | gid in `net.ipv4.ping_group_range` (also governs IPv6) | always                        |
+| Echo identifier     | kernel replaces it with the socket port                | kept as sent                  |
+| Reply delivery      | only to the sending socket                             | to every ICMP datagram socket |
+| IPv4 receive buffer | ICMP message only                                      | IPv4 header + ICMP message    |
+| IPv4 checksum       | kernel                                                 | sender                        |
 
 To work identically on both, pingping:
 
@@ -289,12 +289,12 @@ The muted egress organization (R24), when known, follows the local context.
 Breakpoints use terminal columns (the frame is one column narrower so no line
 wraps). The shape is recomputed on every frame, so a resize re-lays out.
 
-| Columns | Host block shape (plus one shared time-axis line after all blocks) | Lines per host |
-| --- | --- | --- |
-| < 61 | reference block above, with a 2-row chart and minimap | 11 |
-| 61–90 | Host and Address lines, 2-row chart, minimap, statistics 3 rows × 2 | 8 |
-| 91–110 | identity line (bold host, address pill), 2-row chart, minimap, statistics 2 rows × 3 | 6 |
-| ≥ 111 | identity line, 3-row chart with paired statistics rail beside it, minimap | 5 |
+| Columns | Host block shape (plus one shared time-axis line after all blocks)                   | Lines per host |
+| ------- | ------------------------------------------------------------------------------------ | -------------- |
+| < 61    | reference block above, with a 2-row chart and minimap                                | 11             |
+| 61–90   | Host and Address lines, 2-row chart, minimap, statistics 3 rows × 2                  | 8              |
+| 91–110  | identity line (bold host, address pill), 2-row chart, minimap, statistics 2 rows × 3 | 6              |
+| ≥ 111   | identity line, 3-row chart with paired statistics rail beside it, minimap            | 5              |
 
 ```
 │ host-a   192.0.2.10                                         tailnet direct
@@ -624,15 +624,15 @@ UI notification mechanism.
 
 ### Theme (R08)
 
-| Role | Light | Dark | Used for |
-| --- | --- | --- | --- |
-| rule | `#b4b9c7` | `#3e444f` | left vertical rule |
-| label | `#a3a7b0` | `#707886` | labels, dim text |
-| host | bold, terminal fg | bold, terminal fg | host name |
-| pill | `#555a66` on `#e7e9ef` | `#c6ccd8` on `#2b303a` | address |
-| spark | `#5d6b8a` | `#8a9bc4` | RTT history |
-| value | `#b8844a` | `#e0a86a` | statistics |
-| good / bad | `#5e9a66` / `#cf5248` | `#86c086` / `#f0746a` | loss, lost marks |
+| Role       | Light                  | Dark                   | Used for           |
+| ---------- | ---------------------- | ---------------------- | ------------------ |
+| rule       | `#b4b9c7`              | `#3e444f`              | left vertical rule |
+| label      | `#a3a7b0`              | `#707886`              | labels, dim text   |
+| host       | bold, terminal fg      | bold, terminal fg      | host name          |
+| pill       | `#555a66` on `#e7e9ef` | `#c6ccd8` on `#2b303a` | address            |
+| spark      | `#5d6b8a`              | `#8a9bc4`              | RTT history        |
+| value      | `#b8844a`              | `#e0a86a`              | statistics         |
+| good / bad | `#5e9a66` / `#cf5248`  | `#86c086` / `#f0746a`  | loss, lost marks   |
 
 Light colors are sampled from the reference and corrected for its JPEG
 contrast loss. With `--theme auto`, pingping opens `/dev/tty` nonblocking,
@@ -663,21 +663,21 @@ layout are unchanged.
 
 Budgets, measured in a 200×40 PTY at 1 s interval (linux-host, 2026-10-03):
 
-| Scenario | Budget | Measured |
-| --- | --- | --- |
-| 5 hosts, live | < 0.5% of one core, < 30 wakeups/s | 0.07–0.08%, 14–15/s |
-| 20 hosts, live | < 1% of one core, < 80 wakeups/s | 0.17%, 44/s |
-| 5 hosts, mouse motion every 50 ms | < 2% of one core, < 64 KiB/s to the terminal | 0.59%, 42 KiB/s |
-| 5 hosts, plain | < 0.05% of one core, memory independent of run time | 0.02%, 3.5 MiB |
-| 5 hosts, full 24 h history | < 24 MiB RSS, < 1 ms per frame | 22.4 MiB, 0.14–0.96 ms (R22 below) |
+| Scenario                          | Budget                                              | Measured                           |
+| --------------------------------- | --------------------------------------------------- | ---------------------------------- |
+| 5 hosts, live                     | < 0.5% of one core, < 30 wakeups/s                  | 0.07–0.08%, 14–15/s                |
+| 20 hosts, live                    | < 1% of one core, < 80 wakeups/s                    | 0.17%, 44/s                        |
+| 5 hosts, mouse motion every 50 ms | < 2% of one core, < 64 KiB/s to the terminal        | 0.59%, 42 KiB/s                    |
+| 5 hosts, plain                    | < 0.05% of one core, memory independent of run time | 0.02%, 3.5 MiB                     |
+| 5 hosts, full 24 h history        | < 24 MiB RSS, < 1 ms per frame                      | 22.4 MiB, 0.14–0.96 ms (R22 below) |
 
 R19/R20 re-measurement (linux-host, 2026-10-04; same 200×40 PTY and five hosts:
 `127.0.0.1`, `::1`, `1.1.1.1`, `host-a`, `google.com`; two 30 s runs,
 medians after 2 s warm-up):
 
-| Scenario | HEAD `295de79f9d` | Built package with path notes |
-| --- | --- | --- |
-| 5 hosts, live | 0.067% CPU, 13.73 wakeups/s, 4,118 KiB RSS | 0.067% CPU, 15.53 wakeups/s, 4,456 KiB RSS |
+| Scenario       | HEAD `295de79f9d`                          | Built package with path notes                                   |
+| -------------- | ------------------------------------------ | --------------------------------------------------------------- |
+| 5 hosts, live  | 0.067% CPU, 13.73 wakeups/s, 4,118 KiB RSS | 0.067% CPU, 15.53 wakeups/s, 4,456 KiB RSS                      |
 | 5 hosts, plain | 0.017% CPU, 12.80 wakeups/s, 3,424 KiB RSS | < 0.033% measurement resolution, 12.85 wakeups/s, 3,798 KiB RSS |
 
 Live stays within the < 0.5% CPU / < 30 wakeups/s budget. The LocalAPI
@@ -688,14 +688,14 @@ R22 re-measurement (linux-host, 2026-10-04, release ignored full-history benchma
 five hosts × 86,400 probes at 1 s, 200×40 frame, 200 frames/layout, `nice -n 19`;
 maximum RSS measured with GNU `time -v` after touching a complete ring cycle):
 
-| Metric | Before (`7415f01e41`) | Runtime rate / real-time axis |
-| --- | --- | --- |
-| Five-host maximum RSS | 15,984 KiB | 22,912 KiB |
-| Retained allocation per host | 2,862,458 B | 4,244,922 B |
-| Rows frame | 0.045 ms | 0.140 ms |
-| Stacked live frame | 0.355 ms | 0.964 ms |
-| Fit-all frame | 0.316 ms | 0.866 ms |
-| Stacked overview frame | 0.319 ms | 0.929 ms |
+| Metric                       | Before (`7415f01e41`) | Runtime rate / real-time axis |
+| ---------------------------- | --------------------- | ----------------------------- |
+| Five-host maximum RSS        | 15,984 KiB            | 22,912 KiB                    |
+| Retained allocation per host | 2,862,458 B           | 4,244,922 B                   |
+| Rows frame                   | 0.045 ms              | 0.140 ms                      |
+| Stacked live frame           | 0.355 ms              | 0.964 ms                      |
+| Fit-all frame                | 0.316 ms              | 0.866 ms                      |
+| Stacked overview frame       | 0.319 ms              | 0.929 ms                      |
 
 The compact placement/outcome rings use 48 bytes per retained probe, plus
 128-probe summaries. The new benchmark includes actual `Scheduled` events,
@@ -705,13 +705,13 @@ R23 re-measurement (linux-host, 2026-10-04; simultaneous release binaries before
 and after, 200×40 PTYs, same five hosts as R19/R20, 1 s interval, 5 s warm-up
 and 30 s measured):
 
-| Metric | Before R23 (`cfcb33126c`) | Local network context |
-| --- | --- | --- |
-| One-core CPU | 0.100% | 0.100% |
-| Wakeups/s (all-thread context-switch proxy) | 17.2 | 17.7 |
-| RSS | 3,632 KiB | 3,716 KiB |
-| Rust/process threads | 8 | 8 |
-| Terminal output | 8.0 KiB/s | 9.0 KiB/s |
+| Metric                                      | Before R23 (`cfcb33126c`) | Local network context |
+| ------------------------------------------- | ------------------------- | --------------------- |
+| One-core CPU                                | 0.100%                    | 0.100%                |
+| Wakeups/s (all-thread context-switch proxy) | 17.2                      | 17.7                  |
+| RSS                                         | 3,632 KiB                 | 3,716 KiB             |
+| Rust/process threads                        | 8                         | 8                     |
+| Terminal output                             | 8.0 KiB/s                 | 9.0 KiB/s             |
 
 The live five-host run remains below 0.5% CPU and 30 wakeups/s. The proxy
 includes involuntary context switches and is not a hardware wakeup counter.

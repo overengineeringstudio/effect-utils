@@ -24,16 +24,16 @@ a full block, hiding its height.
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| Follow newest at a fixed zoom | Stable, readable resolution like `ping`; whole-run view needs manual zoom-out or an overview. |
-| Fit the whole run, coarsen over time | Whole session always visible; recent detail degrades as the run grows. |
-| Fit, then follow past a resolution floor | Short runs fully visible; the floor is arbitrary. |
-| Shared scrollbar | One line, minimal; does not show where spikes are. |
-| Shared overview chart | Shows spikes; blends hosts with different scales. |
-| Per-host overview | Exact per host; one more line per host. |
-| Overview as display only | One gesture set; distant spikes need zoom-out then zoom-in. |
-| Overview as navigation control | Fast jumps to a seen spike; drag direction opposite to timeline drag. |
+| Option                                   | Tradeoffs                                                                                     |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Follow newest at a fixed zoom            | Stable, readable resolution like `ping`; whole-run view needs manual zoom-out or an overview. |
+| Fit the whole run, coarsen over time     | Whole session always visible; recent detail degrades as the run grows.                        |
+| Fit, then follow past a resolution floor | Short runs fully visible; the floor is arbitrary.                                             |
+| Shared scrollbar                         | One line, minimal; does not show where spikes are.                                            |
+| Shared overview chart                    | Shows spikes; blends hosts with different scales.                                             |
+| Per-host overview                        | Exact per host; one more line per host.                                                       |
+| Overview as display only                 | One gesture set; distant spikes need zoom-out then zoom-in.                                   |
+| Overview as navigation control           | Fast jumps to a seen spike; drag direction opposite to timeline drag.                         |
 
 ## Decision
 

@@ -31,16 +31,16 @@ Q9-Q16).
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| Dynamic completion (clap `unstable-dynamic`, like axe) | Curated, labelled hosts in every shell; a pingping process per TAB; unstable protocol, so registration must come from the same binary. |
-| Static completion scripts | Stable, no process per TAB; hosts only in zsh; ssh aliases leak in. |
-| Host sources: tailnet / ssh config / `/etc/hosts` / recent targets | Tailnet is high signal and cheap; ssh needs a parser and mostly duplicates tailnet; `/etc/hosts` is low signal; recent targets need a written state file. |
-| Ribbon / Bars / Sidecar layout | Ribbon is densest and closest to the reference; Bars shows spikes larger; Sidecar gives a tall chart with a statistics rail but uses more lines on wide terminals. |
-| Overflow: shrink chart rows / fall back to rows | Shrinking keeps the stacked view longer; fallback is simpler. |
-| Path: tailnet + route / tailnet only / plus on-demand trace | Tailnet + route covers tailnet and LAN cases with local reads; tracing adds code and probes. |
-| Path detail: compact / full | Full shows public endpoints in screenshots. |
-| macOS route: allow `PF_ROUTE` / sysctl dump / Linux only | Allowing it needs a precise requirement wording; sysctl needs own prefix matching. |
+| Option                                                             | Tradeoffs                                                                                                                                                          |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Dynamic completion (clap `unstable-dynamic`, like axe)             | Curated, labelled hosts in every shell; a pingping process per TAB; unstable protocol, so registration must come from the same binary.                             |
+| Static completion scripts                                          | Stable, no process per TAB; hosts only in zsh; ssh aliases leak in.                                                                                                |
+| Host sources: tailnet / ssh config / `/etc/hosts` / recent targets | Tailnet is high signal and cheap; ssh needs a parser and mostly duplicates tailnet; `/etc/hosts` is low signal; recent targets need a written state file.          |
+| Ribbon / Bars / Sidecar layout                                     | Ribbon is densest and closest to the reference; Bars shows spikes larger; Sidecar gives a tall chart with a statistics rail but uses more lines on wide terminals. |
+| Overflow: shrink chart rows / fall back to rows                    | Shrinking keeps the stacked view longer; fallback is simpler.                                                                                                      |
+| Path: tailnet + route / tailnet only / plus on-demand trace        | Tailnet + route covers tailnet and LAN cases with local reads; tracing adds code and probes.                                                                       |
+| Path detail: compact / full                                        | Full shows public endpoints in screenshots.                                                                                                                        |
+| macOS route: allow `PF_ROUTE` / sysctl dump / Linux only           | Allowing it needs a precise requirement wording; sysctl needs own prefix matching.                                                                                 |
 
 ## Decision
 

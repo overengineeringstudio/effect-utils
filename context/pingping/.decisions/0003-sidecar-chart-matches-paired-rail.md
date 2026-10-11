@@ -20,11 +20,11 @@ precision, because they stretch the same 8-level per-host scale.
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| 7-row chart, 6-row rail | Tall chart; 8 lines per host. |
+| Option                                | Tradeoffs                                            |
+| ------------------------------------- | ---------------------------------------------------- |
+| 7-row chart, 6-row rail               | Tall chart; 8 lines per host.                        |
 | 5-row chart, 3-row rail at the bottom | 6 lines per host; two chart rows without statistics. |
-| 3-row chart, 3-row rail | 4 lines per host; the chart is less tall. |
+| 3-row chart, 3-row rail               | 4 lines per host; the chart is less tall.            |
 
 ## Decision
 

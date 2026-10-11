@@ -31,10 +31,10 @@ Both builds reached the pre-existing `preferSchemaOverJson` warning in
 `composition-root-publisher.integration.test.ts`. Tsgo treats the warning as
 exit 2, so both builds ended at the same `megarepo:typecheck` action.
 
-| Context | Wall time | Cache queries | Cached | Local | Result |
-| --- | ---: | ---: | ---: | ---: | --- |
-| Normal worktree | 83.1 s | 1,195 | 648 | 547 | Populated the missing cache entries, then stopped at the warning |
-| Sandboxed second context | 68.5 s | 1,195 | 1,192 | 1 | Every successful action reused the warmed cache; only the failing typecheck ran locally |
+| Context                  | Wall time | Cache queries | Cached | Local | Result                                                                                  |
+| ------------------------ | --------: | ------------: | -----: | ----: | --------------------------------------------------------------------------------------- |
+| Normal worktree          |    83.1 s |         1,195 |    648 |   547 | Populated the missing cache entries, then stopped at the warning                        |
+| Sandboxed second context |    68.5 s |         1,195 |  1,192 |     1 | Every successful action reused the warmed cache; only the failing typecheck ran locally |
 
 The original six sandbox-local classes reduced to one action in one class:
 

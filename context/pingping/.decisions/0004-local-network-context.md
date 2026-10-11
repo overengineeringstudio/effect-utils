@@ -25,14 +25,14 @@ for the latencies shown. Decided in three interview rounds
 
 ## Options
 
-| Option | Tradeoffs |
-| --- | --- |
-| Scope: medium + speed, cost flags, Wi-Fi quality, path status, Low Power Mode | First three chosen; path status and Low Power Mode left out. |
-| Placement: header line, summary line, axis line | Summary line chosen: no extra line. |
-| Flags always vs only when on | Only when on: normal networks stay quiet. |
-| macOS: Swift helper process | Full scope, unsafe-free, ~12 MiB extra per run, Swift in the build. |
-| macOS: reviewed unsafe boundary crate | Full scope, no extra process; explicit unsafe exception. |
-| macOS: safe system-configuration only | Medium only on the Mac. |
+| Option                                                                        | Tradeoffs                                                           |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Scope: medium + speed, cost flags, Wi-Fi quality, path status, Low Power Mode | First three chosen; path status and Low Power Mode left out.        |
+| Placement: header line, summary line, axis line                               | Summary line chosen: no extra line.                                 |
+| Flags always vs only when on                                                  | Only when on: normal networks stay quiet.                           |
+| macOS: Swift helper process                                                   | Full scope, unsafe-free, ~12 MiB extra per run, Swift in the build. |
+| macOS: reviewed unsafe boundary crate                                         | Full scope, no extra process; explicit unsafe exception.            |
+| macOS: safe system-configuration only                                         | Medium only on the Mac.                                             |
 
 ## Decision
 

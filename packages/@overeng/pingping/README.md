@@ -36,17 +36,17 @@ fall back to a privileged implementation.
 
 ## Interactive View
 
-| Input | Effect |
-| --- | --- |
-| `l` | Toggle stacked / rows layout. |
-| `s` | Toggle visible-window / whole-run statistics. |
-| `[` / `]` | Slow down / speed up probing without rescaling old history. |
-| Wheel, `+` / `-`, `↑` / `↓` | Zoom the shared time window. |
-| Chart drag, horizontal scroll, `←` / `→` | Pan history. |
-| Overview click / drag | Navigate the retained history; newest end resumes live. |
-| Pointer over a chart | Show send time and RTT/loss without obscuring stems. |
-| `0` / `End` | Return to the live, unzoomed view. |
-| `q` / `Esc` / `Ctrl-C` | Quit. |
+| Input                                    | Effect                                                      |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| `l`                                      | Toggle stacked / rows layout.                               |
+| `s`                                      | Toggle visible-window / whole-run statistics.               |
+| `[` / `]`                                | Slow down / speed up probing without rescaling old history. |
+| Wheel, `+` / `-`, `↑` / `↓`              | Zoom the shared time window.                                |
+| Chart drag, horizontal scroll, `←` / `→` | Pan history.                                                |
+| Overview click / drag                    | Navigate the retained history; newest end resumes live.     |
+| Pointer over a chart                     | Show send time and RTT/loss without obscuring stems.        |
+| `0` / `End`                              | Return to the live, unzoomed view.                          |
+| `q` / `Esc` / `Ctrl-C`                   | Quit.                                                       |
 
 Stacked blocks adapt to terminal width and height, shrinking charts before
 falling back to rows. Each stacked host has an always-present overview. The
@@ -99,14 +99,14 @@ Shell configuration must enable its normal completion support.
 
 ## Package Boundary
 
-| Component | Responsibility |
-| --- | --- |
-| `src/main.rs` | CLI, TTY/plain selection and exit status. |
-| `src/icmp.rs`, `src/probe.rs`, `src/stats.rs` | Probe transport, scheduling and bounded history. |
-| `src/render.rs`, `src/timeline.rs`, `src/live.rs`, `src/theme.rs` | Responsive inline view and interactions. |
-| `src/path.rs`, `src/tailnet.rs`, `src/completion.rs` | Local route, tailnet status and completion. |
-| `src/netinfo.rs`, `src/egress.rs`, `src/uptime.rs` | Network context and remote uptime enrichment. |
-| `crates/netinfo-macos` | Reviewed native macOS boundary; the main crate forbids unsafe code. |
+| Component                                                         | Responsibility                                                      |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `src/main.rs`                                                     | CLI, TTY/plain selection and exit status.                           |
+| `src/icmp.rs`, `src/probe.rs`, `src/stats.rs`                     | Probe transport, scheduling and bounded history.                    |
+| `src/render.rs`, `src/timeline.rs`, `src/live.rs`, `src/theme.rs` | Responsive inline view and interactions.                            |
+| `src/path.rs`, `src/tailnet.rs`, `src/completion.rs`              | Local route, tailnet status and completion.                         |
+| `src/netinfo.rs`, `src/egress.rs`, `src/uptime.rs`                | Network context and remote uptime enrichment.                       |
+| `crates/netinfo-macos`                                            | Reviewed native macOS boundary; the main crate forbids unsafe code. |
 
 The complete vision, requirements, specification, decisions and visual
 reference live in [context/pingping](../../../context/pingping/spec.md).

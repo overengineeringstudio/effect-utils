@@ -25,13 +25,13 @@ hybrid bands (decision q34) and the previewed constants (decision q35).
 
 Medians measured from macos-host on 2026-10-07:
 
-| Host | Median RTT |
-| --- | --- |
-| linux-host | 1.2 ms |
-| google.com | 12 ms |
-| host-a | 16 ms |
-| host-b | 17 ms |
-| host-e | 25 ms |
+| Host       | Median RTT |
+| ---------- | ---------- |
+| linux-host | 1.2 ms     |
+| google.com | 12 ms      |
+| host-a     | 16 ms      |
+| host-b     | 17 ms      |
+| host-e     | 25 ms      |
 
 The relative bands identify deviations from these different baselines.
 Absolute floors keep a persistently slow link from appearing healthy merely
@@ -40,18 +40,18 @@ for harmless small absolute changes on fast links.
 
 ## Options
 
-| Scheme | Tradeoffs |
-| --- | --- |
-| Absolute bands | Comparable across hosts, but insensitive to smaller spikes on fast links. |
-| Log ramp | Covers a broad RTT range with gradual colors, but gives no host-relative warning boundary. |
-| Relative | Detects deviations from each host's baseline, but normalizes persistent slowness. |
-| Hybrid | Relative bands with a quiet zone and absolute floors; chosen (q34). |
+| Scheme         | Tradeoffs                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| Absolute bands | Comparable across hosts, but insensitive to smaller spikes on fast links.                  |
+| Log ramp       | Covers a broad RTT range with gradual colors, but gives no host-relative warning boundary. |
+| Relative       | Detects deviations from each host's baseline, but normalizes persistent slowness.          |
+| Hybrid         | Relative bands with a quiet zone and absolute floors; chosen (q34).                        |
 
-| Band constants | Tradeoffs |
-| --- | --- |
-| Previewed | 20 ms quiet zone, 1.5×/3× median bands, 150/300 ms floors; chosen (q35). |
-| Sensitive | Earlier warning transitions, with more visual noise from small variations. |
-| Calm | Later warning transitions, with less noise but less sensitivity to degradation. |
+| Band constants | Tradeoffs                                                                       |
+| -------------- | ------------------------------------------------------------------------------- |
+| Previewed      | 20 ms quiet zone, 1.5×/3× median bands, 150/300 ms floors; chosen (q35).        |
+| Sensitive      | Earlier warning transitions, with more visual noise from small variations.      |
+| Calm           | Later warning transitions, with less noise but less sensitivity to degradation. |
 
 ## Decision
 
