@@ -42,10 +42,6 @@ a closed provider registry. It supplies `gh` on PATH when the published product
 requires repository-settings reconciliation; old products do not acquire that
 provider. Unknown capabilities fail before import, and the realized capability
 and external-module sets must match the descriptor exactly.
-The cached `mr` version stamp reports the manifest's producer commit and product
-version, rather than the importing checkout's revision. Producer timestamps are
-not recorded in the manifest, so that stamp has no timestamp or consumer dirty
-state; this keeps stale CLI products identifiable.
 
 Run `bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"` to
 exercise the retained public outputs from standalone and composed downstream

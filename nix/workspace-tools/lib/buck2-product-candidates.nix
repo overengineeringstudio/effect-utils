@@ -136,15 +136,7 @@ let
   };
   megarepo = mk "megarepo" {
     binaryName = "mr";
-    # Cached bytes can predate this checkout; report their producer identity,
-    # not the consumer revision (or its timestamp/dirty state).
-    environment.CLI_BUILD_STAMP = builtins.toJSON {
-      type = "nix";
-      version = products.megarepo.version;
-      rev = products.megarepo.provenance.producerCommit;
-      commitTs = 0;
-      dirty = false;
-    };
+    environment.CLI_BUILD_STAMP = buildStamp;
     expectedExternalCapabilities = [
       "git"
       "nix"
