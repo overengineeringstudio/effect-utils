@@ -558,7 +558,9 @@ replays the same build assertions without contacting the cache or mutating proof
 sources. Its integration suite gives each replay its own test case and awaits
 the subprocess exit and output streams. The runner's normal timeout guards
 hangs; replay latency is not a production deadline, and a case matrix does not
-share a single wall-clock budget.
+share a single wall-clock budget. Replays run in isolated process groups;
+timeout cleanup kills the group and waits for all descendants to be reaped
+before deleting the event-log fixture.
 
 ### Lane budget measurements
 

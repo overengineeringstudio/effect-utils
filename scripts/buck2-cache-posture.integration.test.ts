@@ -23,6 +23,32 @@ const trustedOrigin = {
 const temporaryRoots: string[] = []
 const replayProcesses = new Set<Bun.Subprocess<'ignore', 'pipe', 'pipe'>>()
 
+const stopReplayProcesses = async (
+  children: Iterable<Bun.Subprocess<'ignore', 'pipe', 'pipe'>>,
+) => {
+  for (const child of children) {
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error
+    }
+    await child.exited
+    // The shell's exit does not reap descendants from command substitutions.
+    // Wait for the entire group to disappear before removing its input files.
+    // OS reaping has no awaitable signal for non-child processes; poll the real
+    // group condition rather than assuming a fixed grace period is sufficient.
+    for (;;) {
+      try {
+        process.kill(-child.pid, 0)
+      } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break
+        throw error
+      }
+      await Bun.sleep(10)
+    }
+  }
+}
+
 const makeRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), 'buck2-cache-posture-'))
   writeFileSync(
@@ -37,10 +63,71 @@ const makeRoot = (): string => {
 }
 
 afterEach(async () => {
-  for (const child of replayProcesses) child.kill()
-  await Promise.all([...replayProcesses].map((child) => child.exited))
+  await stopReplayProcesses(replayProcesses)
   replayProcesses.clear()
   for (const root of temporaryRoots.splice(0)) rmSync(root, { force: true, recursive: true })
+})
+
+describe('replay subprocess cleanup', () => {
+  it('reaps slow command-substitution descendants on timeout before deleting fixtures', async () => {
+    const root = makeRoot()
+    const fixture = join(root, 'fixture')
+    const pidFile = join(root, 'pids.json')
+    const cleanupFile = join(root, 'cleanup.json')
+    const runner = join(root, 'timeout.test.ts')
+    writeFileSync(
+      runner,
+      `import { afterEach, beforeAll, it } from 'bun:test'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+const stopReplayProcesses = ${stopReplayProcesses.toString()}
+const children = new Set()
+afterEach(async () => {
+  await stopReplayProcesses(children)
+  const { group, descendant } = JSON.parse(readFileSync(${JSON.stringify(pidFile)}, 'utf8'))
+  let descendantReaped = false
+  try { process.kill(descendant, 0) } catch (error) { if (error.code !== 'ESRCH') throw error; descendantReaped = true }
+  let groupReaped = false
+  try { process.kill(-group, 0) } catch (error) { if (error.code !== 'ESRCH') throw error; groupReaped = true }
+  writeFileSync(${JSON.stringify(cleanupFile)}, JSON.stringify({ descendantReaped, groupReaped, fixtureExists: existsSync(${JSON.stringify(fixture)}) }))
+  rmSync(${JSON.stringify(fixture)}, { recursive: true })
+})
+beforeAll(async () => {
+  mkdirSync(${JSON.stringify(fixture)})
+  const child = Bun.spawn(['bash', '-c', 'result="$(printf \\'{\\"group\\":%s,\\"descendant\\":%s}\\' \\"$$\\" \\"$BASHPID\\" > \\"$1\\"; printf ready >&2; exec sleep 30)"', 'fixture', ${JSON.stringify(pidFile)}], { detached: true, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+  children.add(child)
+  await child.stderr.getReader().read()
+})
+// Exercise the real runner timeout only after the descendant signals readiness.
+it('times out with a live command substitution', async () => {
+  await [...children][0].exited
+}, 20)
+`,
+    )
+    const child = Bun.spawn([process.execPath, 'test', runner], {
+      detached: true,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    replayProcesses.add(child)
+    try {
+      const [exitCode, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stderr).text(),
+        new Response(child.stdout).text(),
+      ])
+      expect(exitCode).toBe(1)
+      expect(stderr).toContain('timed out')
+      expect(JSON.parse(readFileSync(cleanupFile, 'utf8'))).toEqual({
+        descendantReaped: true,
+        groupReaped: true,
+        fixtureExists: true,
+      })
+      expect(existsSync(fixture)).toBe(false)
+    } finally {
+      replayProcesses.delete(child)
+    }
+  })
 })
 
 describe('standalone Buck cache posture', () => {
@@ -433,6 +520,7 @@ describe('fresh-root remote build proof', () => {
         env: { ...process.env, GITHUB_WORKSPACE: repoRoot },
         stdin: 'ignore',
         stdout: 'pipe',
+        detached: true,
         stderr: 'pipe',
       },
     )
