@@ -2,6 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import type { StyleXStylesWithout } from '@stylexjs/stylex'
 import * as React from 'react'
 
+import { fitSegments, type SegmentWidth } from './fitSegments.ts'
 import { devbarTokens } from './tokens.stylex.ts'
 
 /** A host-provided tool panel; only the selected panel's `render` is mounted. */
@@ -17,6 +18,9 @@ export interface DevbarPanel {
 export interface DevbarSegment {
   /** Host-local, nonempty, case-sensitive ID, unique within `segments`. */
   readonly id: string
+  /** Higher stays longer; default 0. Ties hide later-declared segments first. */
+  readonly priority?: number | undefined
+  /** Render at natural width; hidden content stays mounted in an inert measuring layer. */
   readonly render: () => React.ReactNode
 }
 
@@ -140,17 +144,56 @@ const styles = stylex.create({
     flexShrink: 0,
   },
   segments: {
+    position: 'relative',
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
+    flexGrow: 0,
     flexShrink: 1,
-    minWidth: 0,
-    overflowX: 'auto',
-    overflowY: 'hidden',
-    scrollbarWidth: 'thin',
     whiteSpace: 'nowrap',
   },
-  segment: { flexShrink: 0, whiteSpace: 'nowrap' },
+  segmentWidth: (natural: number, overflow: number) => ({
+    flexBasis: natural,
+    minWidth: overflow,
+  }),
+  segment: { flexShrink: 0, width: 'max-content', whiteSpace: 'nowrap' },
+  measuring: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 0,
+    height: 0,
+    overflow: 'hidden',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+  },
+  overflow: { fontVariantNumeric: 'tabular-nums' },
+  popover: {
+    position: 'fixed',
+    inset: 'auto',
+    margin: 0,
+    zIndex: 201,
+    width: 'max-content',
+    maxWidth: 'calc(100vw - 1rem)',
+    maxHeight: 'min(24rem, calc(100vh - 3rem))',
+    overflow: 'auto',
+    padding: '0.5rem',
+    boxSizing: 'border-box',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: devbarTokens.border,
+    borderRadius: '0.25rem',
+    backgroundColor: devbarTokens.panel,
+    color: devbarTokens.text,
+    fontFamily: devbarTokens.fontUi,
+    fontSize: '0.75rem',
+    outlineWidth: { default: 0, ':focus-visible': 2 },
+    outlineStyle: 'solid',
+    outlineColor: devbarTokens.focusRing,
+    outlineOffset: '-2px',
+  },
+  popoverPosition: (bottom: number, right: number) => ({ bottom, right }),
+  popoverItem: { width: 'max-content', paddingBlock: '0.25rem' },
   button: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -362,15 +405,222 @@ export const Devbar = ({
           <div {...stylex.props(styles.stripContent)}>{strip}</div>
         </div>
         {segments !== undefined && segments.length > 0 && (
-          <div {...stylex.props(styles.segments)}>
-            {segments.map((segment) => (
-              <div key={segment.id} {...stylex.props(styles.segment)}>
-                {segment.render()}
-              </div>
-            ))}
-          </div>
+          <SegmentGroup segments={segments} stripMinWidth={stripMinWidth} />
         )}
       </div>
     </aside>
+  )
+}
+
+interface SegmentMeasurements {
+  readonly segments: readonly SegmentWidth[]
+  readonly available: number
+  readonly overflowWidth: number
+  readonly gap: number
+}
+
+/** Natural-size nodes stay mounted, but hidden nodes leave flow and the accessibility tree. */
+const SegmentGroup = ({
+  segments,
+  stripMinWidth,
+}: {
+  readonly segments: readonly DevbarSegment[]
+  readonly stripMinWidth: number
+}): React.ReactNode => {
+  const groupRef = React.useRef<HTMLDivElement>(null)
+  const overflowMeasureRef = React.useRef<HTMLSpanElement>(null)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const popoverRef = React.useRef<HTMLDivElement>(null)
+  const popoverId = React.useId()
+  const [measurements, setMeasurements] = React.useState<SegmentMeasurements | undefined>(undefined)
+  const [expanded, setExpanded] = React.useState(false)
+  const [position, setPosition] = React.useState({ bottom: 0, right: 8 })
+
+  React.useLayoutEffect(() => {
+    const group = groupRef.current
+    const overflow = overflowMeasureRef.current
+    if (group === null || overflow === null) return
+    const row = group.parentElement
+    const controls = row?.firstElementChild
+    if (row === null || controls === undefined || controls === null) return
+    const nodes = Array.from(
+      group.querySelectorAll<HTMLElement>(
+        ':scope > [data-devbar-segment] > [data-devbar-segment-content]',
+      ),
+    )
+    const measure = () => {
+      const rowStyle = getComputedStyle(row)
+      const padding =
+        (Number.parseFloat(rowStyle.paddingLeft) || 0) +
+        (Number.parseFloat(rowStyle.paddingRight) || 0)
+      const rowGap = Number.parseFloat(rowStyle.columnGap) || 0
+      // Budget from fixed neighbours, never from the current visible set.
+      const available = Math.max(
+        0,
+        row.clientWidth -
+          padding -
+          controls.getBoundingClientRect().width -
+          stripMinWidth -
+          rowGap * 2,
+      )
+      const next: SegmentMeasurements = {
+        segments: nodes.map((node, index) => ({
+          id: segments[index]!.id,
+          // Conservative CSS-pixel rounding makes boundary decisions deterministic.
+          width: Math.ceil(node.getBoundingClientRect().width),
+        })),
+        available: Math.floor(available),
+        overflowWidth: Math.ceil(overflow.getBoundingClientRect().width),
+        gap: Number.parseFloat(getComputedStyle(group).columnGap) || 0,
+      }
+      setMeasurements((previous) =>
+        previous !== undefined &&
+        previous.available === next.available &&
+        previous.overflowWidth === next.overflowWidth &&
+        previous.gap === next.gap &&
+        previous.segments.length === next.segments.length &&
+        previous.segments.every(
+          (segment, index) =>
+            segment.id === next.segments[index]!.id &&
+            segment.width === next.segments[index]!.width,
+        ) === true
+          ? previous
+          : next,
+      )
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(group)
+    observer.observe(row)
+    observer.observe(controls)
+    observer.observe(overflow)
+    for (const node of nodes) observer.observe(node)
+    return () => observer.disconnect()
+  }, [segments, stripMinWidth])
+
+  const widths = segments.map((segment) => ({
+    id: segment.id,
+    priority: segment.priority,
+    width: measurements?.segments.find((measured) => measured.id === segment.id)?.width ?? 0,
+  }))
+  const visible =
+    measurements === undefined ? [] : fitSegments({ ...measurements, segments: widths })
+  const hidden = segments.filter((segment) => visible.includes(segment.id) === false)
+  const natural =
+    widths.reduce((total, segment) => total + segment.width, 0) +
+    Math.max(0, segments.length - 1) * (measurements?.gap ?? 0)
+
+  const closeOverflow = () => {
+    popoverRef.current?.hidePopover()
+    setExpanded(false)
+    triggerRef.current?.focus()
+  }
+
+  React.useLayoutEffect(() => {
+    if (hidden.length === 0 && expanded === true) {
+      popoverRef.current?.hidePopover()
+      setExpanded(false)
+    }
+  }, [hidden.length, expanded])
+
+  React.useLayoutEffect(() => {
+    if (expanded === false) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented === true) return
+      event.preventDefault()
+      // Consume before the shell's window listener, including after Tab leaves the popover.
+      event.stopPropagation()
+      popoverRef.current?.hidePopover()
+      setExpanded(false)
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [expanded])
+  // The browser's top layer escapes the row scrollport and preserves inherited host tokens.
+  // Native auto-popovers provide pointer light dismissal; Escape restores trigger focus.
+  return (
+    <div
+      ref={groupRef}
+      aria-label="Status items"
+      {...stylex.props(
+        styles.segments,
+        styles.segmentWidth(natural, hidden.length > 0 ? (measurements?.overflowWidth ?? 0) : 0),
+      )}
+    >
+      {segments.map((segment) => {
+        const isHidden = visible.includes(segment.id) === false
+        return (
+          <div
+            key={segment.id}
+            data-devbar-segment={segment.id}
+            aria-hidden={isHidden === true ? true : undefined}
+            inert={isHidden}
+            {...stylex.props(styles.segment, isHidden === true && styles.measuring)}
+          >
+            <div data-devbar-segment-content {...stylex.props(styles.segment)}>
+              {segment.render()}
+            </div>
+          </div>
+        )
+      })}
+      <div aria-hidden="true" inert {...stylex.props(styles.measuring)}>
+        <span
+          ref={overflowMeasureRef}
+          {...stylex.props(styles.button, styles.overflow, styles.segment)}
+        >
+          +{segments.length}
+        </span>
+      </div>
+      {hidden.length > 0 && measurements !== undefined && (
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-label={`${hidden.length} more status items: ${hidden.map((segment) => segment.id).join(', ')}`}
+          aria-expanded={expanded}
+          aria-controls={popoverId}
+          aria-haspopup="dialog"
+          onClick={() => {
+            if (expanded === true) {
+              closeOverflow()
+              return
+            }
+            const bounds = triggerRef.current?.getBoundingClientRect()
+            if (bounds === undefined) return
+            setPosition({
+              bottom: window.innerHeight - bounds.top,
+              right: Math.max(8, window.innerWidth - bounds.right),
+            })
+            setExpanded(true)
+            popoverRef.current?.showPopover()
+            popoverRef.current?.focus()
+          }}
+          {...stylex.props(styles.button, styles.overflow)}
+        >
+          +{hidden.length}
+        </button>
+      )}
+      <div
+        ref={popoverRef}
+        id={popoverId}
+        popover="auto"
+        role="dialog"
+        aria-label="More status items"
+        tabIndex={-1}
+        onToggle={(event) => setExpanded(event.newState === 'open')}
+        {...stylex.props(styles.popover, styles.popoverPosition(position.bottom, position.right))}
+      >
+        {expanded === true &&
+          hidden.map((segment) => (
+            <div
+              key={segment.id}
+              data-devbar-overflow-segment={segment.id}
+              {...stylex.props(styles.popoverItem)}
+            >
+              {segment.render()}
+            </div>
+          ))}
+      </div>
+    </div>
   )
 }

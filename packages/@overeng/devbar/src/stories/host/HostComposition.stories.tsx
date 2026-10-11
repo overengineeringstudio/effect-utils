@@ -101,9 +101,14 @@ export const Light: Story = {
     const rpc = await canvas.findByRole('button', { name: 'RPC' })
     const meters = canvas.getByRole('button', { name: 'Meters' })
     const row = within(canvas.getByRole('group', { name: 'Developer bar' }))
+    // The segment overflow trigger also carries aria-expanded; panel buttons do not open a dialog.
     const panelButtons = row
       .getAllByRole('button')
-      .filter((button) => button.hasAttribute('aria-expanded'))
+      .filter(
+        (button) =>
+          button.hasAttribute('aria-expanded') === true &&
+          button.getAttribute('aria-haspopup') !== 'dialog',
+      )
     expect(panelButtons).toHaveLength(3)
     expect(panelButtons.map((button) => button.textContent)).toEqual(['Dev tools', 'RPC', 'Meters'])
     expect(canvasElement.querySelector('canvas')).not.toBeNull()

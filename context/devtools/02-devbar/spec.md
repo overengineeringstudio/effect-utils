@@ -35,6 +35,8 @@ export interface DevbarPanel {
 }
 export interface DevbarSegment {
   readonly id: string
+  /** Higher values remain visible longer; default 0. */
+  readonly priority?: number
   readonly render: () => React.ReactNode
 }
 export interface DevbarProps {
@@ -56,21 +58,42 @@ The shell retains only ephemeral last-valid-panel bookkeeping for toggling, neve
 
 ## Geometry and token contract
 
-| Region         | Contract                                                                                                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bottom row     | `height: 32px`; single nonwrapping line; no growth when panel opens; horizontal row scrolling rather than clipping when controls and strip minimum cannot fit                    |
-| Viewport root  | fixed, bottom/left/right zero; existing default z-index 200                                                                                                                      |
-| Container root | absolute, bottom/left/right zero relative to host positioned ancestor                                                                                                            |
-| Panel          | above row; `height: min(48vh, 32rem)`; minimum height bounded by available container/viewport space rather than forcing overflow                                                 |
-| Panel body     | flex column; `min-height: 0`, `min-width: 0`; selected content fills available space                                                                                             |
-| Strip slot     | `flex: 1 1 auto`; configurable `stripMinWidth` in CSS pixels, default `160`; child container receives the full allocated flex width; horizontal scrolling when blocks do not fit |
-| Host segments  | shrink before controls or the strip minimum; `min-width: 0`; horizontal scrolling within the group with a thin scrollbar; each segment does not shrink or wrap                   |
+| Region         | Contract                                                                                                                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bottom row     | `height: 32px`; single nonwrapping line; no growth when panel opens; horizontal row scrolling rather than clipping when controls and strip minimum cannot fit                       |
+| Viewport root  | fixed, bottom/left/right zero; existing default z-index 200                                                                                                                         |
+| Container root | absolute, bottom/left/right zero relative to host positioned ancestor                                                                                                               |
+| Panel          | above row; `height: min(48vh, 32rem)`; minimum height bounded by available container/viewport space rather than forcing overflow                                                    |
+| Panel body     | flex column; `min-height: 0`, `min-width: 0`; selected content fills available space                                                                                                |
+| Strip slot     | `flex: 1 1 auto`; configurable `stripMinWidth` in CSS pixels, default `160`; child container receives the full allocated flex width; horizontal scrolling when blocks do not fit    |
+| Host segments  | shrink before controls or the strip minimum; whole-segment priority hiding; no internal row scrolling, shrinking, wrapping, or mid-word clipping; `+N` keeps hidden items reachable |
 
 Traces: DT.BAR-R01, DT.BAR-R08–R09. Container panel height is additionally capped by the containing block's available height above the row. Host panel content owns internal table/detail scrolling. Opening a panel overlays host content rather than expanding the bottom inset. Only enabled placement reserves the row inset, under host control.
 
-Width priority is panel toggle and panel buttons (never shrinking), then the strip's minimum, then host segments. The strip grows into remaining space. Segments yield width first and keep their status/actions reachable through their own horizontal scroll area. If the controls plus strip minimum do not fit, the entire row scrolls horizontally, remains 32px tall, and clips overflow to its scrollport: no slot may paint outside the row or overlap another slot.
+Width priority is panel toggle and panel buttons (never shrinking), then the strip's minimum, then host segments. The strip grows into remaining space. Segments yield width first by hiding complete items. If the controls, strip minimum, and overflow control do not fit, the entire row scrolls horizontally, remains 32px tall, and confines its contents to its scrollport: no slot may overlap another slot.
 
 Keep semantic `devbarTokens` roles `canvas`, `panel`, `panelActive`, `text`, `mutedText`, `border`, `focusRing`, `fontUi`, and `fontData`; light/dark theme objects and host-created themes set those roles. No hard-coded tool palette, global theme detection, or imported explorer theme belongs in the shell. Canvas colors are meter renderer tokens; host applies shell, meter, and explorer themes on a shared ancestor when desired. Geometry-owned position cannot be replaced through `style`.
+
+### Segment fitting and overflow
+
+```text
+row + controls + natural segment widths --ResizeObserver--> width budget
+  -> hide lowest priority (later declaration first for ties)
+  -> visible segments in declaration order + "+N"
+  -> keyboard/pointer disclosure -> full hidden segment content
+```
+
+Traces: DT.BAR-R01, DT.BAR-R08–R09. `DevbarSegment.priority` defaults to `0`; larger values remain visible longer. Hiding removes the lowest priority first, breaking ties by hiding the later-declared item. The visible items retain declaration order. Once anything is hidden, fitting reserves the overflow control and its inter-item gap. Keep the highest-priority segment if it fits alongside overflow; otherwise show only overflow. When the width grows, items reappear according to the same calculation, without a separate restore order.
+
+The pure `fitSegments({ segments: [{ id, width, priority? }], available, overflowWidth, gap? })` helper returns visible IDs. It is exported from its source module for unit testing, not from the package root. Widths exclude gaps; an all-fit result does not reserve overflow. Unit coverage includes priorities, default priority, ties, declaration order, gap/control accounting, exact boundaries, all-fit, empty, and none-fit cases.
+
+Each segment has a natural-width inner node. Hidden segments stay mounted inside zero-sized, invisible, clipped wrappers outside layout flow; those wrappers are inert and absent from the accessibility tree. Measuring the inner nodes preserves their intrinsic widths even while hidden and tracks content or font changes without mounting a second measurement copy. A similarly hidden sample measures `+<segment-count>` with tabular numerals, reserving enough overflow width for every possible hidden count.
+
+One `ResizeObserver` observes the segment group, row, controls, natural-width nodes, and overflow sample. The budget is computed from the row's inner width minus its padding, gaps, nonshrinking controls, and `stripMinWidth`, never from the current visible set. The group's flex basis remains the sum of all natural widths and gaps even while items are hidden. This makes hiding independent of the widths it changes. Initial layout measurement occurs before paint; source snapshots publish only when measurements change. Natural/control widths round up and the available budget rounds down to CSS pixels to avoid boundary oscillation. There is no polling, animation-frame loop, or internal status scrollbar.
+
+The native `+N` button's accessible name is `N more status items: <hidden ids in declaration order>`; its expanded state and controls relationship identify the named `More status items` dialog. Opening focuses the nonmodal native auto-popover, which sits above the row in the browser's top layer and retains inherited host theme tokens. It renders hidden segments in declaration order at full natural width; unusually wide or tall content can scroll within the disclosure rather than being truncated. Pointer light dismissal is browser-owned. Unconsumed Escape closes overflow before the shell panel's Escape handler and returns focus to its trigger, including after Tab leaves the disclosure. The keyboard listener exists only while overflow is open. Fitting away the final hidden item closes the disclosure.
+
+The `Narrow600` story supplies version (`1`), websocket (`4`), HTTP (`3`), subscriptions (`2`), and message-rate (`0`) priorities with deterministic realistic text. Its play assertions check the 600px host geometry, intact visible segments wholly within the row, priority ordering, the hidden-ID accessible name, complete overflow contents, and Escape/focus restoration.
 
 ## Optional build identity segment
 

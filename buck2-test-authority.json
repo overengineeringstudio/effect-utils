@@ -180,6 +180,7 @@
         "src/BuildIdentitySegment.unit.test.tsx",
         "src/Devbar.unit.test.tsx",
         "src/boundary.unit.test.ts",
+        "src/fitSegments.unit.test.ts",
         "src/stories/host/production-host.unit.test.ts"
       ],
       "sourceOwners": {},
@@ -189,6 +190,7 @@
         "src/BuildIdentitySegment.unit.test.tsx",
         "src/Devbar.unit.test.tsx",
         "src/boundary.unit.test.ts",
+        "src/fitSegments.unit.test.ts",
         "src/stories/host/production-host.unit.test.ts"
       ],
       "unboundedAfter": [],

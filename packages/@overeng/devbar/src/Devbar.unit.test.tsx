@@ -217,7 +217,7 @@ describe('Devbar composition and geometry', () => {
     expect(row.className).toBe(bar().className)
   })
 
-  it('starts no frame callbacks, timers, or observers without a strip', () => {
+  it('starts no frame callbacks, timers, or observers without a strip or segments', () => {
     const rafCalls = vi.fn(() => 0)
     const intervalCalls = vi.fn(() => 0)
     const observerCalls = vi.fn()
@@ -245,7 +245,7 @@ describe('Devbar composition and geometry', () => {
 
     const { unmount } = render(
       <React.StrictMode>
-        <Host />
+        <Devbar panels={panels} openPanel="logs" onOpenPanelChange={() => {}} />
       </React.StrictMode>,
     )
     pointerClick(screen.getByRole('button', { name: 'Logs' }))
