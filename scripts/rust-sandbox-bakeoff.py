@@ -23,8 +23,6 @@ def run(plan, evidence):
         name = item["name"]
         subprocess.run([BUCK, "kill"], cwd=root, check=False, capture_output=True)
         config = ["--config", "rust_bakeoff.arm=" + item["arm"], "--config", "buck2.default_allow_cache_upload=false"]
-        if item.get("instance"):
-            config.extend(["--config", "buck2_re_client.instance_name=" + item["instance"]])
         entrypoint = item.get("entrypoint", "run")
         args = [BUCK, "bxl", "-j", "2", "//buck2/rust/sandbox-cohort.bxl:" + entrypoint, *config]
         if item.get("noCache"):
@@ -55,31 +53,28 @@ def run(plan, evidence):
             if (category == "rustc" and (target, cfg, ident) in expected) or (category == "deps" and (target, cfg) in target_configs):
                 command = action.get("commands", [{}])[0].get("details", {}).get("command_kind", {}).get("command", {})
                 actions.append({"target": target, "configuration": cfg, "category": category, "identifier": ident, "kind": action["execution_kind"], "wallUs": action.get("wall_time_us", 0), "uploaded": action.get("cache_upload_result"), "command": command})
+        # BXL ensures canonical outputs. Cached actions need not materialize
+        # their input manifests, so never use those manifests as an output list.
         snapshots = {}
-        for directory, _, files in os.walk(root / "buck-out/v2/art"):
-            for filename in files:
-                if not filename.endswith("-sandbox-outputs.json"):
-                    continue
-                manifest = json.loads((Path(directory) / filename).read_text())
-                cfg_label = manifest.get("configuredTarget", "")
-                cfg = cfg_label.split(" (", 1)[-1].removesuffix(")")
-                if (manifest.get("target"), cfg, manifest.get("identifier")) not in expected:
-                    continue
-                for path in {path for group in manifest["outputs"] for path in (group if isinstance(group, list) else [group])}:
-                    output = root / path
-                    output_files = sorted(output.rglob("*")) if output.is_dir() else [output]
-                    for output_file in output_files:
-                        if not output_file.is_file():
-                            continue
-                        payload = output_file.read_bytes()
-                        output_name = output.name + "/" + str(output_file.relative_to(output)) if output.is_dir() else output.name
-                        key = "|".join([manifest["target"], cfg, manifest["identifier"], output_name])
-                        snapshots[key] = {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "path": str(output_file.relative_to(root))}
+        output_directories = {}
+        ensured = sorted({line for line in result.stdout.splitlines() if line.startswith("buck-out/")})
+        for path in ensured:
+            output = root / path
+            if output.is_dir():
+                members = sorted(output.rglob("*"))
+                output_directories[path] = [str(member.relative_to(output)) for member in members]
+            else:
+                members = [output]
+            for output_file in members:
+                if output_file.is_file():
+                    payload = output_file.read_bytes()
+                    key = str(output_file.relative_to(root))
+                    snapshots[key] = {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "path": key}
         usage = subprocess.run(["du", "-s", "-B1", str(root / "buck-out")], capture_output=True, text=True, check=True)
         apparent = subprocess.run(["du", "-s", "-B1", "--apparent-size", str(root / "buck-out")], capture_output=True, text=True, check=True)
-        receipt = {"name": name, "arm": item["arm"], "root": str(root), "command": args, "exit": result.returncode, "startedEpoch": started, "elapsedSeconds": elapsed, "load1Start": before, "load1End": after, "cohortCommands": len(actions), "cohortKinds": dict(collections.Counter(x["kind"] for x in actions)), "cohortWallSeconds": sum(x["wallUs"] for x in actions)/1e6, "buckOutAllocatedBytes": int(usage.stdout.split()[0]), "buckOutApparentBytes": int(apparent.stdout.split()[0]), "actions": actions, "outputs": snapshots}
+        receipt = {"name": name, "arm": item["arm"], "root": str(root), "command": args, "exit": result.returncode, "startedEpoch": started, "elapsedSeconds": elapsed, "load1Start": before, "load1End": after, "cohortCommands": len(actions), "cohortKinds": dict(collections.Counter(x["kind"] for x in actions)), "cohortWallSeconds": sum(x["wallUs"] for x in actions)/1e6, "buckOutAllocatedBytes": int(usage.stdout.split()[0]), "buckOutApparentBytes": int(apparent.stdout.split()[0]), "actions": actions, "outputs": snapshots, "outputDirectories": output_directories, "ensuredOutputs": len(ensured)}
         (evidence / (name + ".json")).write_text(json.dumps(receipt, indent=2) + "\n")
-        print(json.dumps({k: v for k, v in receipt.items() if k not in ("actions", "outputs")}), flush=True)
+        print(json.dumps({k: v for k, v in receipt.items() if k not in ("actions", "outputs", "outputDirectories")}), flush=True)
         subprocess.run([BUCK, "kill"], cwd=root, check=False, capture_output=True)
         if result.returncode:
             raise SystemExit(result.returncode)
