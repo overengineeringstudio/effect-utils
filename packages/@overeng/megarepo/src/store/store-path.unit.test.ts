@@ -180,7 +180,8 @@ describe('canonical mutation write boundaries', () => {
   test('materialization permission cannot escape through self or dangling repos aliases', async () => {
     const root = await makeFixtureRoot('mr-materialize-guard-')
     try {
-      const canonical = path.join(root, 'store/example.com/org/repo/refs/heads/team/feature')
+      const repo = path.join(root, 'store/example.com/org/repo')
+      const canonical = path.join(repo, 'refs/heads/team/feature')
       await mkdir(canonical, { recursive: true })
       const run = (target: string, materializationRoot = canonical) =>
         Effect.runPromise(
@@ -188,6 +189,39 @@ describe('canonical mutation write boundaries', () => {
             Effect.provide(NodeServices.layer),
           ),
         )
+      // Git worktree metadata as `git worktree add` writes it: `<dir>/.git` → `.bare/worktrees/<id>`.
+      const registerWorktree = async (dir: string, id: string, head: string) => {
+        const gitdir = path.join(repo, '.bare/worktrees', id)
+        await mkdir(gitdir, { recursive: true })
+        await writeFile(path.join(gitdir, 'HEAD'), `${head}\n`)
+        await writeFile(path.join(dir, '.git'), `gitdir: ${gitdir}\n`)
+      }
+      // Without a resolvable default branch or worktree metadata, a branch root is not authored.
+      await expect(run(canonical)).rejects.toThrow(canonical)
+      await mkdir(path.join(repo, '.bare'))
+      await writeFile(path.join(repo, '.bare/HEAD'), 'ref: refs/heads/main\n')
+      await expect(run(canonical)).rejects.toThrow(canonical)
+      // A worktree whose HEAD disagrees with its canonical path, or is detached, is not authored.
+      await registerWorktree(canonical, 'feature', 'ref: refs/heads/other')
+      await expect(run(canonical)).rejects.toThrow(canonical)
+      await registerWorktree(canonical, 'feature', 'a'.repeat(40))
+      await expect(run(canonical)).rejects.toThrow(canonical)
+      await registerWorktree(canonical, 'feature', 'ref: refs/heads/team/feature')
+      // The default-branch worktree is the shared consumer cache.
+      const defaultBranch = path.join(repo, 'refs/heads/main')
+      await mkdir(defaultBranch, { recursive: true })
+      await registerWorktree(defaultBranch, 'main', 'ref: refs/heads/main')
+      await expect(run(defaultBranch, defaultBranch)).rejects.toThrow(defaultBranch)
+      await expect(run(`${defaultBranch}/repos`, defaultBranch)).rejects.toThrow(defaultBranch)
+      // Subdirectories of any worktree are not the worktree's root, whatever the path suffix says.
+      const refuseNested = async (parent: string) => {
+        const nested = path.join(parent, 'workspace')
+        await mkdir(nested)
+        await expect(run(nested, nested)).rejects.toThrow(nested)
+        await expect(run(`${nested}/repos`, nested)).rejects.toThrow(nested)
+      }
+      await refuseNested(defaultBranch)
+      await refuseNested(canonical)
       await run(canonical)
       await run(`${canonical}/repos`)
       await symlink(canonical, `${canonical}/repos`)
