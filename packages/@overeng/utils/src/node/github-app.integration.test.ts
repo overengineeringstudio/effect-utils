@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 
 import { NodeHttpClient } from '@effect/platform-node'
 import { it } from '@effect/vitest'
-import { Clock, Context, Deferred, Effect, Fiber, Layer, Metric, Redacted, Schema } from 'effect'
+import { Clock, Context, Deferred, Effect, Fiber, Layer, Metric, Redacted, Schema, Stream } from 'effect'
 import { FetchHttpClient, HttpClient } from 'effect/http'
 import { TestClock } from 'effect/testing'
 import { expect } from 'vitest'
@@ -34,6 +34,9 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
     expirySeconds: 3600,
     redirect: '',
     authorization: [] as string[],
+    dropBody: false,
+    contentType: 'application/json',
+    jwtTokens: [] as string[],
   }
   const server = createServer(async (request, response) => {
     if (request.url === '/app/installations/123/access_tokens') {
@@ -46,6 +49,7 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
         await Effect.runPromiseWith(delay)(Deferred.await(release))
       }
       const jwt = request.headers.authorization?.slice('Bearer '.length) ?? ''
+      state.jwtTokens.push(jwt)
       const [header = '', claims = '', signature = ''] = jwt.split('.')
       state.jwts.push({
         ...Schema.decodeSync(Claims)(Buffer.from(claims, 'base64url').toString()),
@@ -68,6 +72,14 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
       if (state.delayResponse) {
         await Effect.runPromiseWith(delay)(Deferred.succeed(started, undefined))
         await Effect.runPromiseWith(delay)(Deferred.await(release))
+      }
+      if (state.dropBody) {
+        response.writeHead(200, { 'content-type': state.contentType, 'content-length': '10000' })
+        response.write(state.contentType.startsWith('multipart/') ? '--fixture\r\n' : '{"partial":')
+        response.flushHeaders()
+        await Effect.runPromiseWith(delay)(Deferred.await(release))
+        response.destroy()
+        return
       }
       response.writeHead(state.unauthorized ? 401 : 200, { 'content-type': 'application/json', 'x-ratelimit-remaining': '4998', 'x-ratelimit-resource': 'core' })
       response.end(state.malformed ? '{invalid' : '{}')
@@ -274,6 +286,45 @@ for (const [name, transport] of [
   ['node-http', NodeHttpClient.layerNodeHttp],
   ['undici', NodeHttpClient.layerUndici],
 ] as const) {
+  it.effect(`${name}: exposes a credential-free successful response request`, () =>
+    Effect.gen(function* () {
+      const { state, app, apiBase } = yield* fixture(transport)
+      const credential = Redacted.value(yield* app.token(scope))
+      const response = yield* app.client(scope).get(new URL('/probe', apiBase))
+      expect(response.status).toBe(200)
+      expect(response.request.method).toBe('GET')
+      expect(response.request.url).toBe('/probe')
+      expect(response.request.headers.authorization).toBeUndefined()
+      expect(state.authorization).toEqual([`Bearer ${credential}`])
+      for (const secret of [credential, 'Bearer', ...state.jwtTokens]) expectCredentialFree(response.request, secret)
+      expect(yield* response.json).toEqual({})
+    }),
+  )
+
+  for (const accessor of ['stream', 'text', 'json', 'arrayBuffer', 'urlParamsBody', 'formData'] as const) {
+    it.effect(`${name}: sanitizes a mid-body disconnect through ${accessor}`, () =>
+      Effect.gen(function* () {
+        const { state, app, apiBase, release } = yield* fixture(transport)
+        const credential = Redacted.value(yield* app.token(scope))
+        state.dropBody = true
+        if (accessor === 'formData') state.contentType = 'multipart/form-data; boundary=fixture'
+        const response = yield* app.client(scope).get(new URL('/probe', apiBase))
+        expect(response.status).toBe(200)
+        const body = accessor === 'stream' ? Stream.runDrain(response.stream) : response[accessor]
+        const pending = yield* body.pipe(Effect.flip, Effect.forkChild)
+        yield* Deferred.succeed(release, undefined)
+        const failure = yield* Fiber.join(pending)
+        expect(failure).toMatchObject({ _tag: 'HttpClientError', reason: { _tag: 'DecodeError' } })
+        expect(failure.request.headers.authorization).toBeUndefined()
+        expect(failure.response?.status).toBe(200)
+        for (const secret of [credential, 'Bearer', ...state.jwtTokens]) {
+          expectCredentialFree(failure, secret)
+          expectCredentialFree({ cause: failure }, secret)
+        }
+      }),
+    )
+  }
+
   it.effect(`${name}: excludes credentials from transport and decoding failures`, () =>
     Effect.gen(function* () {
       const { state, app, apiBase } = yield* fixture(transport)
