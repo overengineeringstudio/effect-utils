@@ -1807,19 +1807,16 @@ const renameReadOnlySnapshot = ({
   }
 }
 
-const garbageCollectSnapshots = async ({
+/** A preliminary pin/age observation; uncertainty conservatively disables retirement. */
+const selectSnapshotRetirement = ({
   paths,
   options,
   ordered,
-  current,
-  token,
 }: {
   paths: ViewPaths
   options: EditorViewOptions
   ordered: readonly string[]
-  current: string
-  token: string
-}): Promise<boolean> => {
+}): readonly string[] => {
   const retained = new Set(ordered.slice(0, options.snapshotRetention))
   const now = Date.now()
   const grace = options.snapshotGraceMs ?? 300_000
@@ -1833,11 +1830,29 @@ const garbageCollectSnapshots = async ({
       pinnedBeforeRetirement.has(name) === false &&
       now - statSync(join(paths.storeDir, name)).mtimeMs >= grace,
   )
+  return eligible
+}
+
+const garbageCollectSnapshots = async ({
+  paths,
+  options,
+  ordered,
+  eligible,
+  current,
+  token,
+}: {
+  paths: ViewPaths
+  options: EditorViewOptions
+  ordered: readonly string[]
+  eligible: readonly string[]
+  current: string
+  token: string
+}): Promise<boolean> => {
   if (eligible.length === 0) return false
-  // Payload validation and the advisory census must not hold the CAS flock.
+  const retained = new Set(ordered.slice(0, options.snapshotRetention))
+  // Payload validation precedes the pointer commit and does not hold the CAS flock.
   // A pin admitted meanwhile is checked again before the canonical rename;
   // a concurrent unpin may conservatively defer retirement until next time.
-  for (const name of eligible) requireReadOnlySnapshot(join(paths.storeDir, name))
   const referenced = referencedEditorSnapshots(paths)
   const retired: { readonly snapshotDir: string; readonly garbage: string }[] = []
   try {
@@ -2876,6 +2891,14 @@ const publishEditorViewCoordinated = async ({
         current: snapshotName,
         token,
       })
+      const eligible =
+        (await runEditorViewMaintenance({
+          editorRoot: paths.editorRoot,
+          phase: 'snapshot-retirement-observation',
+          run: async () => selectSnapshotRetirement({ paths, options, ordered: retention }),
+        })) ?? []
+      // Permission violations are publication failures, not post-commit cleanup failures.
+      for (const name of eligible) requireReadOnlySnapshot(join(paths.storeDir, name))
       enterPhase('pointers')
       const pointerChanged =
         pathExists(paths.current) === false ||
@@ -2898,6 +2921,7 @@ const publishEditorViewCoordinated = async ({
               paths,
               options,
               ordered: retention,
+              eligible,
               current: snapshotName,
               token,
             }),

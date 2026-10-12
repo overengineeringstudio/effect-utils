@@ -45,6 +45,17 @@ import {
 } from './editor-view.ts'
 import * as fingerprintRunner from './typescript-runner.ts'
 
+// Namespace-property spies do not replace Bun's native named-import bindings.
+// Capture native functions, then register stable mocked exports for fault injection.
+const nativeFs = { ...fs }
+const fsMocks = {
+  readFileSync: vi.fn(nativeFs.readFileSync),
+  readdirSync: vi.fn(nativeFs.readdirSync),
+  lstatSync: vi.fn(nativeFs.lstatSync),
+  mkdirSync: vi.fn(nativeFs.mkdirSync),
+}
+vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
+
 /** Reads one Buck-declared immutable tool path; nothing resolves through an ambient PATH. */
 const requireTool = (name: string): string => {
   const tool = process.env[name]
@@ -79,6 +90,20 @@ afterAll(() => {
   rmSync(integrationBudgetState, { recursive: true, force: true })
 })
 
+/** A scenario keeps its own ledger across publications without inheriting earlier test roots. */
+const isolateHostBudget = (): (() => void) => {
+  const savedState = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+  const savedRecency = process.env.EDITOR_VIEW_HOST_RECENCY_MS
+  process.env.EDITOR_VIEW_HOST_BUDGET_STATE = mkdtempSync(join(integrationBudgetState, 'scenario-'))
+  process.env.EDITOR_VIEW_HOST_RECENCY_MS = '86400000'
+  return () => {
+    if (savedState === undefined) delete process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+    else process.env.EDITOR_VIEW_HOST_BUDGET_STATE = savedState
+    if (savedRecency === undefined) delete process.env.EDITOR_VIEW_HOST_RECENCY_MS
+    else process.env.EDITOR_VIEW_HOST_RECENCY_MS = savedRecency
+  }
+}
+
 type Fixture = {
   readonly root: string
   readonly packageDir: string
@@ -101,6 +126,10 @@ afterEach(async () => {
     await child.exited
     editorCliProcesses.delete(child)
   }
+  fsMocks.readFileSync.mockReset().mockImplementation(nativeFs.readFileSync)
+  fsMocks.readdirSync.mockReset().mockImplementation(nativeFs.readdirSync)
+  fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
+  fsMocks.mkdirSync.mockReset().mockImplementation(nativeFs.mkdirSync)
 })
 
 const runEditorViewCli = async ({
@@ -142,7 +171,7 @@ const runEditorViewCli = async ({
 
 /** One package view fixture; `packageName` also names the published editor view. */
 const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}): Fixture => {
-  const root = mkdtempSync(join(tmpdir(), 'editor-view-integration-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-integration-')))
   const packagePath = `packages/@overeng/${packageName}`
   const packageDir = join(root, 'packages', '@overeng', packageName)
   const editorRoot = join(root, 'packages', '.editor-view')
@@ -184,6 +213,7 @@ const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}
     snapshotRetention: 2,
     snapshotGraceMs: 0,
     contentStore: join(root, '.editor-view-content', 'v1'),
+    hostBudgetBytes: 40_000_000_000,
     mv,
   }
   return {
@@ -1780,10 +1810,12 @@ describe('editor view publisher', () => {
       expect(existsSync(oldestRoot)).toBe(true)
     })
     it('checks the complete permission proof before retirement', async () => {
+      const previous = currentTarget(fixture)
       writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":3}\n')
       pending = publishEditorView(fixture.options)
       await expect(pending).rejects.toThrow('snapshot directory is writable')
       expect(existsSync(oldestRoot)).toBe(true)
+      expect(currentTarget(fixture)).toBe(previous)
     })
     it('retires the generation once private directory permissions are restored', async () => {
       chmodSync(privateDirectory, 0o555)
@@ -2924,8 +2956,8 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
       name: 'vanishing-reader',
       snapshot: `.store/${fixture.options.viewName}-${'a'.repeat(64)}`,
     }
-    const nativeRead = fs.readFileSync
-    const read = vi.spyOn(fs, 'readFileSync')
+    const nativeRead = nativeFs.readFileSync
+    const read = fsMocks.readFileSync
     const vanishBeforeRead = () => {
       rmSync(pin)
       return nativeRead(pin, 'utf8')
@@ -2940,7 +2972,7 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
       read.mockImplementationOnce(vanishBeforeRead)
       expect(() => managedEditorViewSnapshots({ editorRoot: fixture.editorRoot })).toThrow('ENOENT')
     } finally {
-      read.mockRestore()
+      read.mockReset().mockImplementation(nativeFs.readFileSync)
       cleanup(fixture)
     }
   })
@@ -2951,9 +2983,9 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     const registration = join(registrations, 'vanishing-worktree')
     mkdirSync(registration, { recursive: true })
     writeFileSync(join(registration, 'gitdir'), `${join(fixture.root, 'gone', '.git')}\n`)
-    const nativeReaddir = fs.readdirSync
+    const nativeReaddir = nativeFs.readdirSync
     let removed = false
-    const scan = vi.spyOn(fs, 'readdirSync').mockImplementation((...args) => {
+    const scan = fsMocks.readdirSync.mockImplementation((...args) => {
       const entries = Reflect.apply(nativeReaddir, fs, args) as ReturnType<typeof fs.readdirSync>
       if (String(args[0]) === registrations && removed === false) {
         removed = true
@@ -2963,13 +2995,13 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     })
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = publishEditorView(fixture.options)
+      publication = publishEditorView({ ...fixture.options, hostBudgetBytes: 1 })
       const record = await publication
       expect(removed).toBe(true)
       expect(currentTarget(fixture)).toBe(record.snapshot)
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
-      scan.mockRestore()
+      scan.mockReset().mockImplementation(nativeFs.readdirSync)
       cleanup(fixture)
     }
   })
@@ -2983,9 +3015,9 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     mkdirSync(otherRoot, { recursive: true })
     mkdirSync(registration, { recursive: true })
     writeFileSync(join(registration, 'gitdir'), `${join(otherRepo, '.git')}\n`)
-    const nativeLstat = fs.lstatSync
+    const nativeLstat = nativeFs.lstatSync
     let removed = false
-    const inspect = vi.spyOn(fs, 'lstatSync').mockImplementation((...args) => {
+    const inspect = fsMocks.lstatSync.mockImplementation((...args) => {
       if (String(args[0]) === otherRoot && removed === false) {
         removed = true
         rmSync(otherRoot, { recursive: true })
@@ -2994,13 +3026,13 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     })
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = publishEditorView(fixture.options)
+      publication = publishEditorView({ ...fixture.options, hostBudgetBytes: 1 })
       const record = await publication
       expect(removed).toBe(true)
       expect(currentTarget(fixture)).toBe(record.snapshot)
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
-      inspect.mockRestore()
+      inspect.mockReset().mockImplementation(nativeFs.lstatSync)
       cleanup(fixture)
     }
   })
@@ -3011,10 +3043,10 @@ describe('advisory budget failures preserve publication and uncertain readers', 
     'propagates publication-lock %s without retrying',
     async (code) => {
       const fixture = makeFixture()
-      const nativeMkdir = fs.mkdirSync
+      const nativeMkdir = nativeFs.mkdirSync
       const injected = Object.assign(new Error(`injected ${code}`), { code })
       let attempts = 0
-      const create = vi.spyOn(fs, 'mkdirSync').mockImplementation((...args) => {
+      const create = fsMocks.mkdirSync.mockImplementation((...args) => {
         if (String(args[0]) === join(fixture.editorRoot, '.publish.lock')) {
           attempts++
           // One failure makes the old busy loop terminate on its next attempt,
@@ -3031,7 +3063,7 @@ describe('advisory budget failures preserve publication and uncertain readers', 
         expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
-        create.mockRestore()
+        create.mockReset().mockImplementation(nativeFs.mkdirSync)
         cleanup(fixture)
       }
     },
@@ -3042,8 +3074,10 @@ describe('advisory budget failures preserve publication and uncertain readers', 
     let victim: Fixture
     let held: EditorViewRecord
     let publication: Promise<EditorViewRecord> | undefined
+    let restoreHostBudget: () => void
 
     beforeAll(async () => {
+      restoreHostBudget = isolateHostBudget()
       incoming = makeFixture()
       victim = makeFixture()
       victim = {
@@ -3062,13 +3096,14 @@ describe('advisory budget failures preserve publication and uncertain readers', 
       if (publication !== undefined) await Promise.allSettled([publication])
       cleanup(victim)
       cleanup(incoming)
+      restoreHostBudget()
     })
 
     it('logs the unobserved root and publishes without evicting any uncertain generation', async () => {
-      const nativeLstat = fs.lstatSync
+      const nativeLstat = nativeFs.lstatSync
       const injected = Object.assign(new Error(`unobserved ${code}`), { code })
       let observations = 0
-      const inspect = vi.spyOn(fs, 'lstatSync').mockImplementation((...args) => {
+      const inspect = fsMocks.lstatSync.mockImplementation((...args) => {
         if (String(args[0]) === victim.editorRoot) {
           observations++
           throw injected
@@ -3094,7 +3129,7 @@ describe('advisory budget failures preserve publication and uncertain readers', 
         if (publication !== undefined) await Promise.allSettled([publication])
         clock.mockRestore()
         log.mockRestore()
-        inspect.mockRestore()
+        inspect.mockReset().mockImplementation(nativeFs.lstatSync)
       }
     })
   })
@@ -3154,7 +3189,9 @@ describe('budget victim teardown after the census', () => {
   let incoming: Fixture
   let victim: Fixture
   let publication: Promise<EditorViewRecord> | undefined
+  let restoreHostBudget: () => void
   beforeAll(async () => {
+    restoreHostBudget = isolateHostBudget()
     incoming = makeFixture()
     const original = makeFixture()
     victim = {
@@ -3170,11 +3207,12 @@ describe('budget victim teardown after the census', () => {
     if (publication !== undefined) await Promise.allSettled([publication])
     if (existsSync(victim.root) === true) cleanup(victim)
     cleanup(incoming)
+    restoreHostBudget()
   })
   it('skips a victim removed immediately before acquiring its eviction lock', async () => {
-    const nativeMkdir = fs.mkdirSync
+    const nativeMkdir = nativeFs.mkdirSync
     let removed = false
-    const create = vi.spyOn(fs, 'mkdirSync').mockImplementation((...args) => {
+    const create = fsMocks.mkdirSync.mockImplementation((...args) => {
       if (String(args[0]) === join(victim.editorRoot, '.publish.lock') && removed === false) {
         removed = true
         cleanup(victim)
@@ -3191,7 +3229,7 @@ describe('budget victim teardown after the census', () => {
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
       clock.mockRestore()
-      create.mockRestore()
+      create.mockReset().mockImplementation(nativeFs.mkdirSync)
     }
   })
 })

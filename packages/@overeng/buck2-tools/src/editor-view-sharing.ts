@@ -742,6 +742,8 @@ type PreparedFile = {
   readonly digest: string
   readonly mode: number
   readonly blob: string
+  /** Set only after the kernel rejects a candidate-to-store hardlink with EXDEV. */
+  requiresCopy?: true
   copy?: { readonly path: string; readonly status: BigIntStats }
 }
 
@@ -944,7 +946,6 @@ const substituteCandidate = async ({
 const shareBatch = async ({
   contentStore,
   files,
-  parentStatus,
   afterStoreLock,
   afterStoreLockContended,
   afterBlobInstall,
@@ -952,7 +953,6 @@ const shareBatch = async ({
 }: {
   readonly contentStore: string
   readonly files: readonly PreparedFile[]
-  readonly parentStatus: BigIntStats
   readonly afterStoreLock?: (() => void | Promise<void>) | undefined
   readonly afterStoreLockContended?: (() => void | Promise<void>) | undefined
   readonly afterBlobInstall?:
@@ -979,7 +979,7 @@ const shareBatch = async ({
               digest: file.digest,
               mode: file.mode,
             })
-            if (existing === undefined && file.status.dev !== parentStatus.dev)
+            if (existing === undefined && file.requiresCopy === true)
               await prepareCopy({ contentStore, file })
           }),
         )
@@ -1015,14 +1015,7 @@ const shareBatch = async ({
               if (knownDigest !== file.digest)
                 fail(`blob content does not match its address: ${file.blob}`)
             } else {
-              const source =
-                file.status.dev === shard.status.dev
-                  ? { path: file.path, status: file.status }
-                  : file.copy
-              if (source === undefined) {
-                retry.push(file)
-                continue
-              }
+              const source = file.copy ?? { path: file.path, status: file.status }
               if (
                 unchanged({
                   left: source.status,
@@ -1034,7 +1027,18 @@ const shareBatch = async ({
               const temporary = join(shard.path, `.tmp-${randomUUID()}`)
               let linked = false
               try {
-                await link(source.path, temporary)
+                try {
+                  await link(source.path, temporary)
+                } catch (error) {
+                  if (file.copy !== undefined || hasCode({ error, code: 'EXDEV' }) === false)
+                    throw error
+                  // Overlayfs may report different st_dev values for files and
+                  // directories even when hardlinks work. Only EXDEV proves
+                  // copying is needed; stream those bytes outside this lock.
+                  file.requiresCopy = true
+                  retry.push(file)
+                  continue
+                }
                 linked = true
                 if (
                   unchanged({
@@ -1157,7 +1161,6 @@ export const shareSnapshotFiles = async ({
     copiedBytes: 0,
     createdBlobs: 0,
   }
-  let parentStatus: BigIntStats | undefined
   // Group bounded link transactions by shard, so each transaction opens and
   // restores one shard instead of most of the store's 256 directories.
   const batches = new Map<string, PreparedFile[]>()
@@ -1169,11 +1172,9 @@ export const shareSnapshotFiles = async ({
     files: PreparedFile[]
   }): Promise<void> => {
     if (files.length === 0) return
-    parentStatus ??= await ensureParent({ contentStore: store, create: true })
     await shareBatch({
       contentStore: store,
       files,
-      parentStatus,
       afterStoreLock,
       afterStoreLockContended,
       afterBlobInstall,

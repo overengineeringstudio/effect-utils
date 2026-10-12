@@ -139,7 +139,10 @@ defers collection. None of those observations replaces a managed pin for a reade
 that requires guaranteed retention.
 Retention reuses the selected generation's full validation from the same publication.
 Older protected generations receive only ownership and root-permission checks;
-their complete permission proof runs outside the CAS flock before retirement.
+their complete permission proof runs outside the CAS flock before publishing the
+new current pointer. A writable eligible generation rejects publication without
+changing that pointer or retiring the invalid generation. Actual retirement and
+post-commit cleanup remain advisory and log failures without rejecting a committed view.
 When no unpinned generation is eligible, retention skips both the advisory process
 census and the CAS flock. Every generation is still fully checked before reuse.
 
@@ -213,6 +216,11 @@ worktrees can prepare concurrently. Cross-device store copies use owner-identifi
 only under the flock. An `EXDEV` destination keeps an independent read-only
 reflink/copy and reports `copiedFiles` and `copiedBytes`; it does not pretend to
 share an inode.
+Cross-device fallback is selected only when an actual hardlink returns `EXDEV`,
+not by comparing file and directory device numbers: overlayfs may report
+different device identities for those entries while hardlinks still work.
+Required store-side copies are prepared after releasing the flock, then installed
+in a short retry batch under the same lock.
 The descriptor is opened with `O_CLOEXEC` and verified close-on-exec; children
 cannot retain a parent's ownership. Bun FFI calls libc on Linux and macOS.
 
