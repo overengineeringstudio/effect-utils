@@ -7,7 +7,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 export HOME="$tmpdir/home"
 export PNPM_SHARED_STORE_DIR="$tmpdir/store"
 export PNPM_MIN_FREE_KIB=0
-unset CI PNPM_HOME
+unset CI GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE PNPM_HOME
 
 # A real package tarball makes the test offline, while exercising pnpm's actual
 # graph-hashed projection rather than a command-recording stub.
@@ -48,7 +48,7 @@ for name in first second ci local; do
   extract_script "$root" "$mode" exec
   extract_script "$root" "$mode" status
   extract_script "$root" "$mode" exec pnpm:doctor
-  if [ "$name" = ci ]; then export CI=1; else unset CI; fi
+  if [ "$name" = ci ]; then export CI=1 GITHUB_ACTIONS=true; else unset CI GITHUB_ACTIONS; fi
   # Ambient configuration must not defeat the selected policy.
   export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
   bash "$tmpdir/$mode-exec-install.sh"
