@@ -1790,15 +1790,27 @@ describe('mr store activity snapshot', () => {
       function* () {
         const { fs, root, manifestPath, nonRootFs } = yield* snapshotFixture
         const snapshot = yield* captureProcessActivityManifest({ fs, storeRoots: [root] })
+        const bootId = 'ownership-test-boot'
         // Remove incomplete-proc rejection as a confounder: ownership must reject
         // even apparently complete evidence, including a root-owned file.
         yield* fs.writeFileString(
           manifestPath,
-          yield* encodeWorkspaceActivityManifest({ ...snapshot, complete: true, errors: [] }),
+          yield* encodeWorkspaceActivityManifest({
+            ...snapshot,
+            epoch: { ...snapshot.epoch, snapshotId: bootId },
+            complete: true,
+            errors: [],
+          }),
         )
         let directoryChecked = false
         const readerFs: FileSystem.FileSystem = {
           ...nonRootFs,
+          // Boot admission precedes ownership. macOS has no Linux /proc boot ID,
+          // so supply the fixture's identity to reach the same ownership check.
+          readFileString: (...args) =>
+            args[0] === '/proc/sys/kernel/random/boot_id'
+              ? Effect.succeed(bootId)
+              : nonRootFs.readFileString(...args),
           stat: (path) =>
             nonRootFs.stat(path).pipe(
               Effect.map((info) => {
