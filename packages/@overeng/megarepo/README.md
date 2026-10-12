@@ -208,34 +208,48 @@ agent activations wrap their builds in `mr store lease --owner-path <worktree>`,
 protected only by the process veto; lease wrapping of activations is tracked in
 [the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
 
-### Root activity snapshot
+### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
 strict process probe reports `unknown` (and keeps) whenever foreign processes exist. A host can
-close that gap with a root oneshot that writes a producer-neutral manifest:
+close that gap with a collector that has full process visibility:
 
 ```bash
+# Capture only: exact manifest JSON on stdout, no manifest file writes.
+mr store activity snapshot --stdout
+
+# Trusted publication: retain the root-controlled directory requirement.
 mr store activity snapshot --output /run/megarepo/workspace-activity.json
 ```
 
-The command writes `megarepo.workspace-activity.v2` with producer `mr-process`, the host epoch,
-`capturedAt` and `expiresAt` (at most 5 minutes later), `complete`, `errors`, and one claim with
-source `process` per path under the store root referenced by any process cwd, root, open file, or
-mapped file. It runs no hooks or external commands. Without full visibility of every process
-(not root, or any unreadable `/proc` entry) it still writes the manifest, with `complete: false`
-and the errors, which consumers treat as `unknown`. `--output` is a file path, not an output mode.
+Both destinations emit the same `megarepo.workspace-activity.v2` JSON with producer `mr-process`,
+the host epoch, `capturedAt` and `expiresAt` (at most 5 minutes later), `complete`, `errors`,
+`processCoverage: "all-uids"`, `processRoots`, `processIdentities`, and one claim with source
+`process` per path under the store root referenced by any process cwd, root, open file, or mapped
+file. It runs no hooks or external commands. Without full visibility of every process it still
+emits the manifest, with `complete: false` and the errors, which consumers treat as `unknown`.
+Specify exactly one of `--stdout` or `--output`; `--output` is a normalized absolute file path,
+not an output mode, and still publishes atomically with mode 0644.
 
-The host owner (for example a dotfiles systemd oneshot run as root before each hygiene plan and
-apply) owns the output: the file and its directory are root-owned and not writable by the store
-owner, but readable by it. The store owner admits it through `gc-config.json`
-`generatedArtifacts.manifestPath` and `agentLivenessProducers: ["mr-process"]`. Plan and apply use
+`--stdout` performs capture only: it does not check publication-directory ownership or grant
+trust to the output. A dedicated non-root Linux collector with sufficient `/proc` access
+(for example ambient `CAP_SYS_PTRACE` and `CAP_DAC_READ_SEARCH`) can redirect it into its own
+private staging directory. A separate root publisher must validate the untrusted capture and
+copy it into the root-controlled final location; merely capturing or redirecting it does not
+make it admissible. Splitting capture from publication avoids giving the host-PID collector
+UID-0 write authority through `/proc/<pid>/root`.
+
+The host owner owns the published file and its directory as root, not writable by the store
+owner, but readable by it. Readers retain these ownership checks regardless of capture mode.
+The store owner admits it through `gc-config.json` `generatedArtifacts.manifestPath` and
+`agentLivenessProducers: ["mr-process"]`. Plan and apply use
 the manifest for foreign-process evidence and still inspect owner-UID processes freshly.
 An unreadable owner-UID process is covered only when its current PID and kernel start-time
 match a `processIdentities` entry in the unexpired root snapshot; the snapshot's full path
 claims still apply. A new unreadable process, PID reuse, or missing, expired, foreign-host,
 or incomplete manifest keeps every candidate.
 
-Run as root, point `MEGAREPO_STORE` at the owner's store so the claims cover that store root.
+Point `MEGAREPO_STORE` at the owner's store so the claims cover that store root.
 
 ### Merged worktree worklog teardown
 
