@@ -1923,9 +1923,13 @@ const readLockOwner = (path: string): LockOwner => {
   try {
     owner = JSON.parse(readFileSync(path, 'utf8'))
   } catch (error) {
-    return fail(
-      `cannot read publication lock owner: ${error instanceof Error ? error.message : String(error)}`,
+    const contextual = new Error(
+      `editor view: cannot read publication lock owner: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     )
+    // Release must distinguish a vanished held lock from malformed or unreadable owner metadata.
+    if (error instanceof Error && 'code' in error) Object.assign(contextual, { code: error.code })
+    throw contextual
   }
   if (
     isRecord(owner) === false ||

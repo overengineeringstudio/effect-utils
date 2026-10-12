@@ -1516,21 +1516,52 @@ describe('host-budget eviction tolerates teardown of a held victim root', () => 
     host.age(victim, victimRecord)
   })
 
-  it('continues publication when a victim root disappears while its eviction lock is held', async () => {
+  it('reserves and settles incoming bytes when a held victim root disappears', async () => {
     if (victimRecord === undefined) throw new Error('teardown victim publication did not complete')
     let removed = false
-    const record = await host.publish(incoming, {
-      hostBudgetBytes: 1,
-      beforeBudgetEviction: () => {
-        expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(true)
-        removeOwnedTree(victim.editorRoot)
-        removed = true
-      },
-    })
+    let admissionEpoch: number | undefined
+    const captured = await captureStderr(() =>
+      host.publish(incoming, {
+        hostBudgetBytes: 1,
+        beforeBudgetEviction: () => {
+          expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(true)
+          removeOwnedTree(victim.editorRoot)
+          removed = true
+        },
+        beforeMaterialize: () => {
+          expect(removed).toBe(true)
+          const admitted = readBudgetLedger(host)
+          expect(admitted.reservations).toHaveLength(1)
+          const reservation = admitted.reservations[0]
+          expect(reservation).toMatchObject({
+            editorRoot: incoming.editorRoot,
+            contentStore: host.contentStore,
+            pid: process.pid,
+            budgetBytes: 1,
+          })
+          expect(reservation?.token.length).toBeGreaterThan(0)
+          expect(reservation?.bytes).toBeGreaterThan(0)
+          admissionEpoch = admitted.epoch
+        },
+      }),
+    )
     expect(removed).toBe(true)
     expect(pathExists(victim.editorRoot)).toBe(false)
-    expectCurrent(incoming, record)
+    expectCurrent(incoming, captured.value)
     expect(pathExists(join(incoming.editorRoot, '.publish.lock'))).toBe(false)
+    expect(captured.stderr).not.toContain('editor-view.host-budget.maintenance-error')
+    expect(
+      budgetEvents(captured.stderr).filter(
+        ({ event }) => event === 'editor-view.host-budget.over-budget',
+      ),
+    ).toHaveLength(1)
+    const heldEpoch = admissionEpoch
+    if (heldEpoch === undefined) throw new Error('incoming reservation barrier was not reached')
+    const finished = readBudgetLedger(host)
+    expect(finished.reservations).toEqual([])
+    const settled = finished.journal.filter(({ epoch }) => epoch > heldEpoch)
+    expect(settled).toHaveLength(1)
+    expect(settled[0]?.estimatedBytes).toBeGreaterThan(0)
   })
 })
 
