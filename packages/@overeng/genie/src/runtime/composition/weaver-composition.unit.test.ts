@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import agentContract from '@overeng/otel-contract/agent'
+import { fragment } from '@overeng/otel-contract/registry'
 import type { RegistryFragment as OtelRegistryFragment } from '@overeng/otel-contract/registry'
 
 import type { RegistryFragment } from '../weaver/mod.ts'
@@ -38,6 +40,33 @@ const acme: RegistryFragment = {
 }
 
 describe('registryFromMembers (SC-R08/R09)', () => {
+  it.each([false, true])(
+    'inherits and deduplicates contract upstream dependencies (explicit: %s)',
+    (explicit) => {
+      const { registry, issues } = registryFromMembers({
+        members: [member(fragment(agentContract))],
+        name: 'r',
+        description: 'd',
+        schemaUrl: 's',
+        ...(explicit ? { upstream: agentContract.upstream! } : {}),
+      })
+      expect(issues).toEqual([])
+      expect(registry.dependencies).toEqual(agentContract.upstream!.map((u) => u.dependency))
+    },
+  )
+
+  it('rejects conflicting contract and registry upstream pins', () => {
+    const upstream = agentContract.upstream![0]!
+    const { issues } = registryFromMembers({
+      members: [member(fragment(agentContract))],
+      name: 'r',
+      description: 'd',
+      schemaUrl: 's',
+      upstream: [{ ...upstream, dependency: { ...upstream.dependency, registry_path: 'other' } }],
+    })
+    expect(issues.some((i) => i.rule === 'weaver/conflicting-upstream')).toBe(true)
+  })
+
   it('composes cleanly with no integrity issues', () => {
     const { registry, issues } = registryFromMembers({
       members: [member(acme)],

@@ -2,7 +2,7 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:d38a7b3f4a6e358828b7586d015861850c76dfdc899e5e13e187ffaf03ed5458
+# fingerprint: sha256:ffbbc9d808652970d1e2e91dad9f6e65ddf0b48e50412f9388b7134e44dc86fe
 # regen: devenv tasks run genie:run
 groups:
   - id: metric.acme.probe.duration
@@ -160,6 +160,8 @@ groups:
         requirement_level: recommended
       - ref: agent.principal.id
         requirement_level: opt_in
+      - ref: gen_ai.request.model
+        requirement_level: recommended
   - id: span.ci_tools.deploy
     type: span
     span_kind: internal

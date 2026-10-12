@@ -137,11 +137,22 @@ const captureNdjson = (attributes: Record<string, unknown>): Promise<string> =>
 /** Copy the emitted registry into a scratch dir and rewrite its upstream dep to the local FOD. */
 const materializeHermeticRegistry = (): string => {
   const dir = mkdtempSync(join(tmpdir(), 'weaver-live-check-reg-'))
+  const paths = JSON.parse(
+    readFileSync(join(WEAVER_SEMCONV_MODEL!, 'registry-paths.json'), 'utf8'),
+  ) as Record<string, string>
   for (const name of ['manifest.yaml', 'attributes.yaml', 'signals.yaml']) {
     const contents = readFileSync(join(WEAVER_REGISTRY_DIR!, name), 'utf8')
     const rewritten =
       name === 'manifest.yaml'
-        ? contents.replace(/registry_path: .*/g, `registry_path: ${WEAVER_SEMCONV_MODEL}`)
+        ? contents.replace(
+            /^([ \t]*- name: (.+)\n[ \t]*registry_path: ).+$/gmu,
+            (_match, prefix: string, dependencyName: string) => {
+              const path = paths[dependencyName]
+              if (path === undefined)
+                throw new Error(`No hermetic model for registry ${dependencyName}`)
+              return `${prefix}${path}`
+            },
+          )
         : contents
     writeFileSync(join(dir, name), rewritten)
   }
@@ -191,6 +202,24 @@ const declaredAttributes = () =>
 describe.skipIf(!enabled)(
   'SC-R12 weaver live-check (emitted OTLP conforms to the registry)',
   () => {
+    it.each(['gen_ai.request.model', 'gen_ai.unknown.attribute'])(
+      'upstream reference %s resolves only when declared',
+      (ref) => {
+        const registryDir = materializeHermeticRegistry()
+        const signalsPath = join(registryDir, 'signals.yaml')
+        const signals = readFileSync(signalsPath, 'utf8')
+        expect(signals).toContain('ref: gen_ai.request.model')
+        writeFileSync(signalsPath, signals.replace('ref: gen_ai.request.model', `ref: ${ref}`))
+        const result = spawnSync(WEAVER_BIN!, ['registry', 'check', '-r', registryDir], {
+          encoding: 'utf8',
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.status).toBe(ref === 'gen_ai.request.model' ? 0 : 1)
+        if (ref !== 'gen_ai.request.model')
+          expect(`${result.stdout}${result.stderr}`).toContain(ref)
+      },
+    )
+
     it('conforming telemetry (only declared attributes) → exit 0', async () => {
       const registryDir = materializeHermeticRegistry()
       const sampleFile = await sampleFileFor(declaredAttributes())

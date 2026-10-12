@@ -195,6 +195,10 @@ export type RegistryFragment = {
   /** refs to OTHER namespaces (cross-member / upstream) — carried for aggregation integrity. */
   readonly foreignRefs: ReadonlyArray<string>
   readonly signals: ReadonlyArray<SignalDef>
+  readonly upstream?: ReadonlyArray<{
+    readonly dependency: Dependency
+    readonly providesNamespaces: ReadonlyArray<string>
+  }>
 }
 
 // ---------------------------------------------------------------------------

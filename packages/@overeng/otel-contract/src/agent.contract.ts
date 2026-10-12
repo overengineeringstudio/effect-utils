@@ -1,5 +1,5 @@
 /** Reusable public agent telemetry vocabulary; contains no deployment-specific identities. */
-import { attr, defineOtelContract, optIn, recommended, span } from './registry.ts'
+import { attr, defineOtelContract, optIn, recommended, refExternal, span } from './registry.ts'
 
 /** Logical actor identity; stable across provider-native harness sessions. */
 export const AgentActorId = attr.string({
@@ -123,6 +123,15 @@ export const AgentPrincipalId = attr.string({
   note: 'Internal-only, opt-in identity. Never include principal values in public artifacts or metric labels.',
 })
 
+/** Upstream GenAI request model; not a first-party attribute definition. */
+export const GenAiRequestModel = attr.string({
+  key: 'gen_ai.request.model',
+  cardinality: 'bounded',
+  brief: '(upstream OTel) The requested generative AI model name.',
+  stability: 'development',
+  examples: ['example-model'],
+})
+
 /** Shared attribute shape for agent activity; producers may reuse its encoder. */
 export const AgentActivity = span({
   id: 'span.agent.activity',
@@ -143,11 +152,23 @@ export const AgentActivity = span({
     harnessSessionId: recommended(AgentHarnessSessionId),
     modelEffort: recommended(AgentModelEffort),
     principalId: optIn(AgentPrincipalId),
+    requestedModel: refExternal({ schema: GenAiRequestModel, requirement: 'recommended' }),
   },
 })
 
 export default defineOtelContract({
   memberPath: 'packages/@overeng/otel-contract',
   displayName: 'Agent Attributes',
+  upstream: [
+    {
+      dependency: {
+        name: 'semantic-conventions-genai',
+        registry_path:
+          'https://github.com/open-telemetry/semantic-conventions-genai.git@6fd0d763a092db245a54104fc1124031eb3c51d2[model]',
+        schema_url: 'https://opentelemetry.io/schemas/gen-ai-dev/1.42.0-dev',
+      },
+      providesNamespaces: ['gen_ai'],
+    },
+  ],
   signals: [AgentActivity],
 })
