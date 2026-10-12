@@ -8,6 +8,7 @@ import {
   type BuildIdentity,
 } from '@overeng/utils/build-identity'
 
+import { AnchoredDisclosure } from './disclosure.tsx'
 import { devbarTokens } from './tokens.stylex.ts'
 
 /** Optional build identity disclosure with a live or caller-supplied clock. */
@@ -17,6 +18,15 @@ export interface BuildIdentitySegmentProps {
   /** Optional fixed Unix seconds for deterministic rendering; otherwise ticks every minute. */
   readonly now?: number | undefined
   readonly style?: StyleXStyles
+  readonly disclosure?: BuildIdentityDisclosure | undefined
+}
+
+/** Host-owned disclosure content and unseen state; rendering is lazy while open. */
+export interface BuildIdentityDisclosure {
+  readonly label: string
+  readonly hasUnseen?: boolean | undefined
+  readonly render: () => React.ReactNode
+  readonly onOpenChange?: ((open: boolean) => void) | undefined
 }
 
 /** Optional segment component: import from @overeng/devbar/build-identity, not the shell entry. */
@@ -70,6 +80,7 @@ const styles = stylex.create({
     outlineStyle: 'solid',
     outlineColor: devbarTokens.focusRing,
   },
+  action: { cursor: 'pointer' },
   details: {
     // Fixed descendants escape the row's horizontal scrollport without losing its theme.
     position: 'fixed',
@@ -98,14 +109,20 @@ const IdentityView = ({
   identity,
   now,
   style,
+  disclosure,
 }: BuildIdentitySegmentProps & { readonly now: number }): React.ReactNode => {
   const tooltipId = React.useId()
   const triggerRef = React.useRef<HTMLButtonElement>(null)
   const [hovered, setHovered] = React.useState(false)
   const [focused, setFocused] = React.useState(false)
   const [dismissed, setDismissed] = React.useState(false)
+  const [disclosureOpen, setDisclosureOpen] = React.useState(false)
   const [position, setPosition] = React.useState({ bottom: 0, right: 8 })
-  const show = (): void => {
+  const show = (): void => setDismissed(false)
+  const visible =
+    (hovered === true || focused === true) && dismissed === false && disclosureOpen === false
+  React.useLayoutEffect(() => {
+    if (visible === false) return
     const rect = triggerRef.current?.getBoundingClientRect()
     if (rect !== undefined) {
       setPosition({
@@ -113,9 +130,19 @@ const IdentityView = ({
         right: Math.max(8, window.innerWidth - rect.right),
       })
     }
-    setDismissed(false)
-  }
-  const visible = (hovered === true || focused === true) && dismissed === false
+  }, [visible])
+  React.useLayoutEffect(() => {
+    if (visible === false) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented === true) return
+      event.preventDefault()
+      // Dismiss hover-only disclosures before Escape reaches the shell's window listener.
+      event.stopPropagation()
+      setDismissed(true)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [visible])
   const short = formatBuildIdentityShort({ identity, now })
   return (
     <span
@@ -126,31 +153,51 @@ const IdentityView = ({
       }}
       onMouseLeave={() => setHovered(false)}
     >
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={`Build identity: ${short}`}
-        aria-describedby={visible === true ? tooltipId : undefined}
-        onFocus={() => {
-          setFocused(true)
-          show()
-        }}
-        onBlur={() => setFocused(false)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape' && visible === true) {
-            event.preventDefault()
-            event.stopPropagation()
+      {disclosure === undefined ? (
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-label={`Build identity: ${short}`}
+          aria-describedby={visible === true ? tooltipId : undefined}
+          onFocus={() => {
+            setFocused(true)
+            show()
+          }}
+          onBlur={() => setFocused(false)}
+          {...stylex.props(styles.trigger)}
+        >
+          {short}
+        </button>
+      ) : (
+        <AnchoredDisclosure
+          label={disclosure.label}
+          trigger={short}
+          triggerLabel={`Build identity: ${short}, show ${disclosure.label}${disclosure.hasUnseen === true ? ', unseen changes' : ''}`}
+          hasUnseen={disclosure.hasUnseen}
+          style={[styles.trigger, styles.action]}
+          triggerRef={triggerRef}
+          triggerProps={{
+            'aria-describedby': visible === true ? tooltipId : undefined,
+            onFocus: () => {
+              setFocused(true)
+              show()
+            },
+            onBlur: () => setFocused(false),
+          }}
+          onOpenChange={(open) => {
+            setDisclosureOpen(open)
             setDismissed(true)
-          }
-        }}
-        {...stylex.props(styles.trigger)}
-      >
-        {short}
-      </button>
+            disclosure.onOpenChange?.(open)
+          }}
+        >
+          <DisclosureContent render={disclosure.render} />
+        </AnchoredDisclosure>
+      )}
       {visible === true && (
         <span
           id={tooltipId}
           role="tooltip"
+          data-devbar-identity-tooltip
           {...stylex.props(styles.details, styles.position(position.bottom, position.right))}
         >
           {formatBuildIdentityDetails({ identity, now }).map((line) => (
@@ -169,3 +216,9 @@ const LiveIdentity = (props: Omit<BuildIdentitySegmentProps, 'now'>): React.Reac
   const now = React.useSyncExternalStore(subscribeClock, clockSnapshot, clockSnapshot)
   return <IdentityView {...props} now={now} />
 }
+
+const DisclosureContent = ({
+  render,
+}: {
+  readonly render: () => React.ReactNode
+}): React.ReactNode => render()

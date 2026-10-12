@@ -23,11 +23,11 @@ Decision references identify the confirmed choices captured by this VRS: Q1 canv
 - **DT.BAR-R01 Anatomy:** The bottom row must be 32px high and ordered `[panel toggle + tabs] [canvas strip] [host segments]`; an open panel must appear above it without moving the row. Implements Q1 and mission anatomy.
 - **DT.BAR-R02 Slots:** Hosts must explicitly supply all panels, the optional strip, and optional status/action segments. Empty slots must not install default tools or observations. Implements Q5.
 - **DT.BAR-R03 Independence:** Devbar must not import meters, RPC observer, RPC integration, or explorer packages. Tool content must enter through public composition slots. Implements Q3 and Q12–Q13.
-- **DT.BAR-R04 Shared measurement:** Devbar must remove its independent FPS observer and source-owning FPS component. Any FPS detail view must read the host's existing meter session. Implements Q3.
+- **DT.BAR-R04 Shared measurement:** Devbar must not own an independent FPS observer or source-owning FPS component. Any FPS detail view must read the host's existing meter session. Implements Q3.
 
 ### Must expose one controlled interaction model
 
-- **DT.BAR-R05 Controlled state:** `openPanel` and `onOpenPanelChange` must be the only panel-selection state contract. Internal local storage, `persist`, `storageKey`, and `deepLinkPanel` must be removed; hosts must migrate persistence and deep links. Implements mission controlled-state constraint.
+- **DT.BAR-R05 Controlled state:** `openPanel` and `onOpenPanelChange` must be the only panel-selection state contract. Persistence and deep links must be host-owned; the shell must not read or write local storage. Implements mission controlled-state constraint.
 - **DT.BAR-R06 Accessible controls:** Toggle, tabs, close action, Ctrl/Meta+Backquote, and unconsumed Escape must use the same controlled callback. Controls must expose names, focus indicators, expanded state, and their panel relationship.
 - **DT.BAR-R07 Meter interaction:** A host-connected meter click or focus must open its associated detail panel. Keyboard users must access its tooltip and a separate freeze action; hover-only functionality and click-to-freeze substitution are excluded. Implements Q7.
 - **DT.BAR-R08 Placement:** Viewport mode must dock to the viewport bottom; container mode must stay within a host-positioned container. The host, not the shell, must reserve the enabled row's content inset.
@@ -38,3 +38,7 @@ Decision references identify the confirmed choices captured by this VRS: Q1 canv
 - **DT.BAR-R10 Enabling boundary:** Development hosts must default diagnostics to enabled and production hosts to disabled. The host must own a compile-time guarded dynamic-import boundary; a disabled boundary must not import or mount diagnostic modules. Implements Q12–Q13 and mission constraints.
 - **DT.BAR-R11 Zero runtime cost:** Disabled diagnostics must start no frame callbacks, timers, observers, listeners, source fibers, runtime metrics, Profiler, tracer hooks, or protocol hooks. Existing unrelated host telemetry must remain untouched.
 - **DT.BAR-R12 Evidence:** Automated tests must prove disabled startup, enabled teardown/re-enabling, shared-clock behavior under multiple renderers and StrictMode, and production graph exclusion. A visually hidden enabled shell must not be mistaken for disabled instrumentation.
+
+### Must expose host-owned anchored disclosures
+
+- **DT.BAR-R13 Anchored disclosure:** Hosts must be able to attach a keyboard-operable, named nonmodal disclosure to build identity or other segment content without changing panel selection. Content must mount only while open, with one open-change notification per transition and live unseen indicators without remounting. Disclosures must inherit the host theme, remain within both horizontal viewport edges, permit scrolling of bounded content, support pointer light dismissal, and consume Escape before tooltip, overflow, and panel layers with trigger focus restoration. Priority-hidden alerts must remain discoverable through the overflow trigger and reachable inside overflow. Content, loading/failure/retry policy, and unseen state are host-owned; the shell must not inject a changelog schema or loading state.

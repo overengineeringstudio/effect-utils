@@ -2,6 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import type { StyleXStylesWithout } from '@stylexjs/stylex'
 import * as React from 'react'
 
+import { anchoredPopoverStyles, UnseenDot, useAnchoredPopover } from './disclosure.tsx'
 import { fitSegments, type SegmentWidth } from './fitSegments.ts'
 import { devbarTokens } from './tokens.stylex.ts'
 
@@ -22,6 +23,8 @@ export interface DevbarSegment {
   readonly priority?: number | undefined
   /** Render at natural width; hidden content stays mounted in an inert measuring layer. */
   readonly render: () => React.ReactNode
+  /** Host-owned alert mirrored on the overflow trigger when this segment is hidden. */
+  readonly hasAlert?: boolean | undefined
 }
 
 /** Controlled composition of the developer shell; the host owns every slot and the selection. */
@@ -168,31 +171,6 @@ const styles = stylex.create({
     pointerEvents: 'none',
   },
   overflow: { fontVariantNumeric: 'tabular-nums' },
-  popover: {
-    position: 'fixed',
-    inset: 'auto',
-    margin: 0,
-    zIndex: 201,
-    width: 'max-content',
-    maxWidth: 'calc(100vw - 1rem)',
-    maxHeight: 'min(24rem, calc(100vh - 3rem))',
-    overflow: 'auto',
-    padding: '0.5rem',
-    boxSizing: 'border-box',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: devbarTokens.border,
-    borderRadius: '0.25rem',
-    backgroundColor: devbarTokens.panel,
-    color: devbarTokens.text,
-    fontFamily: devbarTokens.fontUi,
-    fontSize: '0.75rem',
-    outlineWidth: { default: 0, ':focus-visible': 2 },
-    outlineStyle: 'solid',
-    outlineColor: devbarTokens.focusRing,
-    outlineOffset: '-2px',
-  },
-  popoverPosition: (bottom: number, right: number) => ({ bottom, right }),
   popoverItem: { width: 'max-content', paddingBlock: '0.25rem' },
   button: {
     display: 'inline-flex',
@@ -429,12 +407,7 @@ const SegmentGroup = ({
 }): React.ReactNode => {
   const groupRef = React.useRef<HTMLDivElement>(null)
   const overflowMeasureRef = React.useRef<HTMLSpanElement>(null)
-  const triggerRef = React.useRef<HTMLButtonElement>(null)
-  const popoverRef = React.useRef<HTMLDivElement>(null)
-  const popoverId = React.useId()
   const [measurements, setMeasurements] = React.useState<SegmentMeasurements | undefined>(undefined)
-  const [expanded, setExpanded] = React.useState(false)
-  const [position, setPosition] = React.useState({ bottom: 0, right: 8 })
 
   React.useLayoutEffect(() => {
     const group = groupRef.current
@@ -506,37 +479,19 @@ const SegmentGroup = ({
   const visible =
     measurements === undefined ? [] : fitSegments({ ...measurements, segments: widths })
   const hidden = segments.filter((segment) => visible.includes(segment.id) === false)
+  const {
+    triggerRef,
+    popoverRef,
+    id: popoverId,
+    expanded,
+    position,
+    toggle,
+    onToggle,
+  } = useAnchoredPopover({ overflow: true, enabled: hidden.length > 0 })
   const natural =
     widths.reduce((total, segment) => total + segment.width, 0) +
     Math.max(0, segments.length - 1) * (measurements?.gap ?? 0)
 
-  const closeOverflow = () => {
-    popoverRef.current?.hidePopover()
-    setExpanded(false)
-    triggerRef.current?.focus()
-  }
-
-  React.useLayoutEffect(() => {
-    if (hidden.length === 0 && expanded === true) {
-      popoverRef.current?.hidePopover()
-      setExpanded(false)
-    }
-  }, [hidden.length, expanded])
-
-  React.useLayoutEffect(() => {
-    if (expanded === false) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented === true) return
-      event.preventDefault()
-      // Consume before the shell's window listener, including after Tab leaves the popover.
-      event.stopPropagation()
-      popoverRef.current?.hidePopover()
-      setExpanded(false)
-      triggerRef.current?.focus()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [expanded])
   // The browser's top layer escapes the row scrollport and preserves inherited host tokens.
   // Native auto-popovers provide pointer light dismissal; Escape restores trigger focus.
   return (
@@ -570,34 +525,22 @@ const SegmentGroup = ({
           {...stylex.props(styles.button, styles.overflow, styles.segment)}
         >
           +{segments.length}
+          {segments.some((segment) => segment.hasAlert === true) === true && <UnseenDot />}
         </span>
       </div>
       {hidden.length > 0 && measurements !== undefined && (
         <button
           ref={triggerRef}
           type="button"
-          aria-label={`${hidden.length} more status items: ${hidden.map((segment) => segment.id).join(', ')}`}
+          aria-label={`${hidden.length} more status items: ${hidden.map((segment) => segment.id).join(', ')}${hidden.some((segment) => segment.hasAlert === true) === true ? ', including unseen changes' : ''}`}
           aria-expanded={expanded}
           aria-controls={popoverId}
           aria-haspopup="dialog"
-          onClick={() => {
-            if (expanded === true) {
-              closeOverflow()
-              return
-            }
-            const bounds = triggerRef.current?.getBoundingClientRect()
-            if (bounds === undefined) return
-            setPosition({
-              bottom: window.innerHeight - bounds.top,
-              right: Math.max(8, window.innerWidth - bounds.right),
-            })
-            setExpanded(true)
-            popoverRef.current?.showPopover()
-            popoverRef.current?.focus()
-          }}
+          onClick={toggle}
           {...stylex.props(styles.button, styles.overflow)}
         >
           +{hidden.length}
+          {hidden.some((segment) => segment.hasAlert === true) === true && <UnseenDot />}
         </button>
       )}
       <div
@@ -607,8 +550,16 @@ const SegmentGroup = ({
         role="dialog"
         aria-label="More status items"
         tabIndex={-1}
-        onToggle={(event) => setExpanded(event.newState === 'open')}
-        {...stylex.props(styles.popover, styles.popoverPosition(position.bottom, position.right))}
+        onToggle={onToggle}
+        {...stylex.props(
+          anchoredPopoverStyles.surface,
+          anchoredPopoverStyles.position(
+            position.top,
+            position.bottom,
+            position.left,
+            position.maxHeight,
+          ),
+        )}
       >
         {expanded === true &&
           hidden.map((segment) => (

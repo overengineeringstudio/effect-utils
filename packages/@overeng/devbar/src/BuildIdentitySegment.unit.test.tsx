@@ -3,6 +3,7 @@ import * as React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { BuildIdentitySegment } from './BuildIdentitySegment.tsx'
+import { Devbar } from './Devbar.tsx'
 
 const now = 1_800_000_000
 const identity = {
@@ -42,6 +43,65 @@ describe('BuildIdentitySegment', () => {
     expect(screen.getByRole('tooltip')).toBeDefined()
     fireEvent.blur(trigger)
     expect(screen.queryByRole('tooltip')).toBeNull()
+  })
+
+  it('anchors the first disclosure hover above the actual button before any focus', () => {
+    render(
+      <BuildIdentitySegment
+        identity={identity}
+        now={now}
+        disclosure={{ label: 'Changelog', render: () => <p>Release notes</p> }}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /show Changelog/ })
+    const bounds = vi
+      .spyOn(trigger, 'getBoundingClientRect')
+      .mockReturnValue(DOMRect.fromRect({ x: 100, y: 250, width: 180, height: 24 }))
+    expect(document.activeElement).not.toBe(trigger)
+    fireEvent.mouseEnter(trigger)
+    const tooltip = screen.getByRole('tooltip')
+    expect(bounds).toHaveBeenCalledTimes(1)
+    expect(tooltip.getAttribute('style')).toContain(`${window.innerHeight - 250}px`)
+    expect(tooltip.getAttribute('style')).toContain(`${Math.max(8, window.innerWidth - 280)}px`)
+    expect(trigger.getAttribute('aria-describedby')).toBe(tooltip.id)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('dismisses hovered details with focus outside the trigger before closing the open panel', () => {
+    const onOpenPanelChange = vi.fn()
+    const { unmount } = render(
+      <React.StrictMode>
+        <Devbar
+          panels={[{ id: 'logs', label: 'Logs', render: () => <button>Inspect logs</button> }]}
+          segments={[
+            { id: 'build', render: () => <BuildIdentitySegment identity={identity} now={now} /> },
+          ]}
+          openPanel="logs"
+          onOpenPanelChange={onOpenPanelChange}
+        />
+      </React.StrictMode>,
+    )
+    const outside = screen.getByRole('button', { name: 'Inspect logs' })
+    outside.focus()
+    const trigger = screen.getByRole('button', { name: 'Build identity: a7647bb · 3h' })
+    fireEvent.mouseEnter(trigger)
+    expect(screen.getByRole('tooltip')).toBeDefined()
+    fireEvent.keyDown(outside, { key: 'Tab' })
+    expect(screen.getByRole('tooltip')).toBeDefined()
+    fireEvent.keyDown(outside, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    expect(document.activeElement).toBe(outside)
+    expect(screen.getByRole('region', { name: 'Logs' })).toBeDefined()
+    expect(onOpenPanelChange).not.toHaveBeenCalled()
+    fireEvent.keyDown(outside, { key: 'Escape' })
+    expect(onOpenPanelChange).toHaveBeenCalledExactlyOnceWith(undefined)
+    fireEvent.mouseLeave(trigger)
+    fireEvent.mouseEnter(trigger)
+    expect(screen.getByRole('tooltip')).toBeDefined()
+    unmount()
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    document.dispatchEvent(escape)
+    expect(escape.defaultPrevented).toBe(false)
   })
 
   it('does not invent commit or deploy ages when their timestamps are absent', () => {

@@ -4,7 +4,7 @@ This document specifies the developer shell. It builds on [requirements.md](./re
 
 ## Status
 
-Draft. The signatures define the intended clean cutover, not the currently exported implementation.
+Active.
 
 ## Scope
 
@@ -25,7 +25,7 @@ Traces: DT.BAR-R01–R05, DT.BAR-R08–R09.
 
 ```ts
 import type * as React from 'react'
-import type { StyleXStylesWithout } from '@stylexjs/stylex'
+import type { StyleXStyles, StyleXStylesWithout } from '@stylexjs/stylex'
 
 export interface DevbarPanel {
   readonly id: string
@@ -38,6 +38,7 @@ export interface DevbarSegment {
   /** Higher values remain visible longer; default 0. */
   readonly priority?: number
   readonly render: () => React.ReactNode
+  readonly hasAlert?: boolean
 }
 export interface DevbarProps {
   readonly panels: readonly DevbarPanel[]
@@ -51,6 +52,46 @@ export interface DevbarProps {
 }
 export declare const Devbar: (props: DevbarProps) => React.ReactNode
 ```
+
+The root entry also exports the nonmodal `AnchoredDisclosure`:
+
+```ts
+interface AnchoredDisclosureProps {
+  readonly label: string
+  readonly trigger: React.ReactNode
+  readonly triggerLabel: string
+  readonly hasUnseen?: boolean
+  readonly children: React.ReactNode
+  readonly onOpenChange?: (open: boolean) => void
+  readonly style?: StyleXStyles
+  readonly triggerRef?: React.RefObject<HTMLButtonElement | null>
+  readonly triggerProps?: Pick<
+    React.ButtonHTMLAttributes<HTMLButtonElement>,
+    'onFocus' | 'onBlur' | 'aria-describedby'
+  >
+}
+declare const AnchoredDisclosure: (props: AnchoredDisclosureProps) => React.ReactNode
+```
+
+Traces: DT.BAR-R13. The native button owns uncontrolled ephemeral expanded state,
+`aria-haspopup="dialog"`, `aria-expanded`, and `aria-controls`. The host supplies
+the complete accessible trigger name, including any unseen suffix. The optional
+dot uses `focusRing` and is hidden from assistive technology. Content mounts only
+while open; hosts own content, fetching, failures, retry, and unseen policy. The
+kit introduces no changelog data model or loading state. `onOpenChange` notifies
+once per transition, never on rerender. Changing unseen state does not remount
+the open content. Panel selection is independent.
+
+The shared native `popover="auto"` surface inherits its ancestor's theme without
+a body portal or dependency. Opening focuses the named dialog above the trigger,
+or below only when the space above is smaller than the space below. The chosen
+side bounds height to `min(24rem, <available space minus 8px>)`; excess content
+scrolls without crossing the viewport edge, including triggers inside overflow.
+Its measured width clamps its left edge to at least 8px and right edge to at most
+viewport width minus 8px. Width is bounded by `calc(100vw - 1rem)`. Size and viewport changes
+reposition the open surface. Native pointer light dismissal updates expanded
+state; Escape consumes the event and restores trigger focus. Closing unmounts
+content. Open-state teardown notifies the host; there is no cross-mount state.
 
 Panel and segment IDs are host-local, opaque, nonempty case-sensitive strings, unique within their respective lists. They are not protocol identifiers or storage keys. Unknown `openPanel` renders no panel; it does not manufacture a callback or mutate host state. The host reconciles removed IDs. No default panels, segments, strip, or meter list are injected.
 
@@ -91,7 +132,21 @@ Each segment has a natural-width inner node. Hidden segments stay mounted inside
 
 One `ResizeObserver` observes the segment group, row, controls, natural-width nodes, and overflow sample. The budget is computed from the row's inner width minus its padding, gaps, nonshrinking controls, and `stripMinWidth`, never from the current visible set. The group's flex basis remains the sum of all natural widths and gaps even while items are hidden. This makes hiding independent of the widths it changes. Initial layout measurement occurs before paint; source snapshots publish only when measurements change. Natural/control widths round up and the available budget rounds down to CSS pixels to avoid boundary oscillation. There is no polling, animation-frame loop, or internal status scrollbar.
 
-The native `+N` button's accessible name is `N more status items: <hidden ids in declaration order>`; its expanded state and controls relationship identify the named `More status items` dialog. Opening focuses the nonmodal native auto-popover, which sits above the row in the browser's top layer and retains inherited host theme tokens. It renders hidden segments in declaration order at full natural width; unusually wide or tall content can scroll within the disclosure rather than being truncated. Pointer light dismissal is browser-owned. Unconsumed Escape closes overflow before the shell panel's Escape handler and returns focus to its trigger, including after Tab leaves the disclosure. The keyboard listener exists only while overflow is open. Fitting away the final hidden item closes the disclosure.
+The native `+N` button's accessible name is `N more status items: <hidden ids in declaration order>`; its expanded state and controls relationship identify the named `More status items` dialog. Opening focuses the nonmodal native auto-popover, which uses the shared above/below collision placement in the browser's top layer and retains inherited host theme tokens. It renders hidden segments in declaration order at full natural width; unusually wide or tall content can scroll within the disclosure rather than being truncated. Pointer light dismissal is browser-owned. Unconsumed Escape closes overflow before the shell panel's Escape handler and returns focus to its trigger, including after Tab leaves the disclosure. The keyboard listener exists only while overflow is open. Fitting away the final hidden item closes the disclosure.
+
+Hidden `hasAlert` values aggregate onto the overflow dot and append
+`, including unseen changes` to its accessible name. Hosts explicitly mirror
+their build disclosure's `hasUnseen` into the segment's `hasAlert`; the shell
+does not inspect opaque renderers. The overflow measuring sample reserves dot
+width when any segment has an alert. A hidden build's overflow copy remains
+keyboard-operable and can open its anchored disclosure. Fitting away overflow
+closes it without stealing focus and unmounts its interactive content.
+
+Escape ordering is disclosure, identity tooltip, overflow, then panel. The
+overflow handler ignores events while an open `data-devbar-disclosure` surface
+or identity tooltip exists, including when focus has moved elsewhere. Each
+layer consumes its own Escape once, before the shell window listener; disclosure
+and overflow close restore their respective trigger focus.
 
 The `Narrow600` story supplies version (`1`), websocket (`4`), HTTP (`3`), subscriptions (`2`), and message-rate (`0`) priorities with deterministic realistic text. Its play assertions check the 600px host geometry, intact visible segments wholly within the row, priority ordering, the hidden-ID accessible name, complete overflow contents, and Escape/focus restoration.
 
@@ -118,6 +173,12 @@ interface BuildIdentitySegmentProps {
   readonly identity: BuildIdentity
   readonly now?: number // fixed Unix seconds; omit for the mounted clock
   readonly style?: StyleXStyles
+  readonly disclosure?: {
+    readonly label: string
+    readonly hasUnseen?: boolean
+    readonly render: () => React.ReactNode
+    readonly onOpenChange?: (open: boolean) => void
+  }
 }
 declare const BuildIdentitySegment: (props: BuildIdentitySegmentProps) => React.ReactNode
 ```
@@ -141,7 +202,19 @@ form and associates the visible detail tooltip with `aria-describedby`. Hover
 and keyboard focus reveal identical details; users can move onto the details,
 and Escape dismisses them without closing a shell panel or removing focus.
 The tooltip is positioned above the triggering control outside the row's
-horizontal scrollport.
+horizontal scrollport. Composed disclosures share the actual native button ref,
+so the first hover anchors correctly without prior focus. Geometry is read in
+a layout effect when the tooltip becomes visible, not in pointer handlers.
+
+With `disclosure`, the build button names itself
+`Build identity: <short>, show <label>` and appends `, unseen changes` while
+`hasUnseen` is true. Enter and Space open the shared anchored dialog. Its
+aria-hidden dot updates live. `render()` runs only while open; opening can
+notify the host to mark entries seen without remounting the dialog. The identity
+tooltip remains available on hover and focus, but is suppressed while the dialog
+is open. Opening and closing dismiss the current tooltip; subsequent hover or
+focus can reveal it again. The existing tooltip Escape handler stays installed
+only while visible, consumes Escape before the panel, and preserves focus.
 
 Live segments share one sixty-second clock while at least one segment is mounted.
 Unmounting the final subscriber clears the interval; import alone schedules
@@ -215,7 +288,7 @@ export const startHostDiagnostics = async (options: {
 
 `mountDiagnostics` is host-owned and acquires/relinquishes the diagnostics scope and UI together; its exact transport composition is specified in [integration](../04-rpc-devtools/spec.md#host-integration). The development preference defaults to true, is read under the DEV guard, and its storage policy belongs to the host. A changed preference rebuilds the host transport scope, not just shell visibility. No source/session construction, Profiler mounting, app event subscription, or runtime acquisition may occur above the guarded loader. Do not implement an always-running noop service. A production diagnostic build is an explicit separate host configuration, not the default.
 
-## Conformance and clean cutover
+## Conformance
 
 | Test fixture                    | Assertions                                                                                                                                                      |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -227,4 +300,9 @@ export const startHostDiagnostics = async (options: {
 | Production browser fixture      | no diagnostic requests, listeners, observers, or scheduling                                                                                                     |
 | Controlled interactions         | one callback path; rejected proposal leaves state unchanged; invalid ID renders closed; focus/Escape/tooltip/freeze parity                                      |
 
-Traces: DT.BAR-R04–R07, DT.BAR-R11–R12. Tests measure diagnostic-owned work against a baseline; they must not assert absence of legitimate host scheduling. Remove `deepLinkPanel`, `storageKey`, `persist`, internal storage reads/writes, `FpsMeter`, `FpsMeterProps`, and the standalone `observeFps` implementation/exports/tests when implementation adopts this contract. Migrate every consumer and example to host state and shared meter readings; no deprecated aliases or parallel FPS loop remain.
+Traces: DT.BAR-R04–R07, DT.BAR-R11–R13. Tests measure diagnostic-owned work against a baseline; they must not assert absence of legitimate host scheduling. Selection, persistence, and deep links are host-owned; the shell has no independent FPS observer or source-owning component. FPS detail uses the host's existing meter readings. Disclosure coverage includes lazy mounting, one notification per transition, live unseen changes, keyboard activation, nested Escape ordering, focus restoration, alert aggregation, both horizontal collision boundaries, short-viewport above/below bounds for overflow-list triggers, first-hover tooltip anchoring, host retry, and light/dark wide/crowded layouts.
+
+Native light-dismissal assertions use the Storybook gate's Playwright-backed
+`vitest/browser` pointer input for plain, overflow-nested, and panel-open
+disclosures. Synthetic Storybook events retain portable Space/Escape coverage;
+they do not stand in for browser-owned pointer dismissal.
