@@ -146,6 +146,42 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
     historical `v11/files` bridge under the exclusive cache lease; normal
     installs and unknown bridges fail closed.
+  - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
+    reports historical root-local store retirement in a read-only dry-run.
+    Repeat `--root` for explicitly selected worktrees; there is no fleet traversal.
+    It never targets `$HOME/.local/share/pnpm` or `PNPM_SHARED_STORE_DIR`.
+    `--observe` records eligible roots without deleting payloads; after 24 hours,
+    repeat the dry-run, then opt in to `--apply` to retire eligible payloads.
+    An initial `--apply` only establishes the observation, never skips grace.
+  - Eligibility requires the root to be absent from Git's worktree registry
+    **and** have no `.git` marker, or all its same-repository PRs to be merged
+    or closed. Open/missing/ambiguous PRs, detached roots, Git worktree locks,
+    unknown origins, and API failures protect the cache. GitHub CLI uses the
+    supplied repository's `origin`, not caller-supplied PR status.
+  - The collector requires no live cwd/open-fd references anywhere under the
+    worktree: Linux `/proc`, Darwin `lsof`. Incomplete visibility fails closed;
+    run from outside the selected roots with sufficient process visibility.
+    It rechecks Git/PR state, process references, and every payload inode's
+    size/link-count/mtime/ctime under the exclusive Store Cache lease before
+    retirement. Changed eligibility resets the 24-hour observation grace.
+    Observations live in `$XDG_STATE_HOME/effect-utils/pnpm-store-gc` (default
+    `$HOME/.local/state/...`); the stable store directory and maintenance-lock
+    inode remain, so cooperating pnpm mutations cannot bypass the lease.
+  - Output lists `would-free`, `grace`, `protected`, or `absent` per root and a
+    `would-free-total` in bytes. Reclaim estimates count allocated blocks once
+    per inode and exclude payload inodes still hardlinked outside the selected
+    store; `allocated=` also reports the gross store footprint. These are not
+    physical reclaim guarantees on compressed, snapshotted, or clone-sharing
+    filesystems. Unmanaged processes can start after a census: stop/unpin root
+    users first; process evidence does not replace lifecycle ownership.
+  - Historical attribution: `8c5bc8e6be49440f03b9b0bb9504264352d47bd8`
+    (#692) introduced the `pure-v1` namespace for lifecycle-free, integrity-
+    checked frozen installs, not because Buck/Nix required worktree-local CAS.
+    `4514099e0` (#922) selected a complete shared Store Cache with root-owned
+    topology. `727cb7544bea32ec031c9f6e5e840cbe717e772a` (#1794) stopped
+    treating ambient `CI=1` as job isolation; ordinary dev-host tasks now share
+    the cache even in non-watch CI mode. Copies created before that selection
+    change can be historical, but age alone does not authorize their retirement.
   - Frozen installs and `pnpm:update` both use the current guarded pnpm
     runtime: pnpm 12 is outside the 11.5.2-11.14.0 `hasBin` window that
     required a separate lock mutator, so the dedicated pin is retired while

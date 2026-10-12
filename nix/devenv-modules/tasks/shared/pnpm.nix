@@ -905,10 +905,12 @@ assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
 '';
 assert lib.assertMsg (!sourceInputPathsOverlap) "sourceInputPaths entries must not overlap";
 {
-  packages = cliGuard.fromTasks {
-    tasks = selectedTasks;
-    reals = lib.optionalAttrs (pnpmPkg != null) { pnpm = pnpmPkg; };
-  };
+  packages =
+    cliGuard.fromTasks {
+      tasks = selectedTasks;
+      reals = lib.optionalAttrs (pnpmPkg != null) { pnpm = pnpmPkg; };
+    }
+    ++ [ (import ./pnpm-store-gc.nix { inherit pkgs; }) ];
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"
