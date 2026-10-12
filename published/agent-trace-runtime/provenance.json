@@ -1,0 +1,9 @@
+{
+  "generated": true,
+  "authorityRepository": "schickling/dotfiles",
+  "authorityCommit": "3bd4dc8aa67de266122d5ffb36ccff4d698eaf47",
+  "authorityPath": "flakes/agent-trace/src/schema.ts",
+  "regenerate": "cd flakes/agent-trace && bun src/generator.ts generate",
+  "rustSha256": "14a2aaaf56144991fc23b11a9ea6ad2244bea6c883cc2950053b6d3beaf7c3a3",
+  "semantics": "Artifact-only publication; never author schema facts here"
+}
