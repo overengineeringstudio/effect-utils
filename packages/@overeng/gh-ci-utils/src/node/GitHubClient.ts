@@ -5,14 +5,29 @@
  * uses Effect's HTTP client for data fetching with schema validation.
  */
 
-import { Context, Duration, Effect, FileSystem, Layer, Option, Redacted, Ref, Schema, type Scope } from 'effect'
+import { NodeFileSystem } from '@effect/platform-node'
+import {
+  Context,
+  Duration,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Redacted,
+  Ref,
+  Schema,
+  type Scope,
+} from 'effect'
 import { HttpClient, HttpClientRequest } from 'effect/http'
 import type { HttpClientError } from 'effect/http/HttpClientError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
-import { makeGitHubApp, type GitHubAppError, type InstallationScope } from '@overeng/utils/node/github-app'
-import { NodeFileSystem } from '@effect/platform-node'
+import {
+  makeGitHubApp,
+  type GitHubAppError,
+  type InstallationScope,
+} from '@overeng/utils/node/github-app'
 
 import { GitHubApiError, GitHubAuthError, LogsUnavailableError } from '../isomorphic/Errors.ts'
 import type { WorkflowJobsResponse } from '../isomorphic/GitHubSchemas.ts'
@@ -54,7 +69,6 @@ const RATE_LIMIT_RESERVE = 25
 /** Budget below which every response logs a warning. */
 const RATE_LIMIT_WARN = 100
 
-
 /** Detects Azure Blob Storage XML error responses that GitHub returns instead of log content */
 export const isAzureBlobError = (text: string): boolean =>
   text.startsWith('<?xml') || text.includes('<Code>BlobNotFound</Code>')
@@ -93,7 +107,6 @@ export const selectAppAuthSource = ({
     ? { _tag: 'cli-token-fallback', owner }
     : { _tag: 'app-installation', owner, installationID }
 }
-
 
 /** Returns whether a workflow run has not yet reached GitHub's completed state. */
 export const isRunActive = (run: Pick<GH.WorkflowRun, 'status'>): boolean =>
@@ -177,7 +190,6 @@ export interface GitHubClientOptions {
   readonly permissions: InstallationScope['permissions']
 }
 
-
 /** Service wrapping the GitHub REST API with rate-limit tracking */
 const makeGitHubClient = Effect.fn('github-client.make')(function* (options: GitHubClientOptions) {
   const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.withScope)
@@ -235,22 +247,41 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
 
   const getApp = yield* Effect.cached(
     Effect.gen(function* () {
-      if (auth._tag !== 'github-app') return yield* new GitHubAuthError({
-        message: 'GitHub App auth is not configured', cause: 'auth mode',
-      })
+      if (auth._tag !== 'github-app')
+        return yield* new GitHubAuthError({
+          message: 'GitHub App auth is not configured',
+          cause: 'auth mode',
+        })
       const privateKey = yield* fs.readFileString(auth.privateKeyPath).pipe(
-        Effect.mapError((cause) => new GitHubAuthError({
-          message: `Failed to read GitHub App private key: ${auth.privateKeyPath}`, cause,
-        })),
+        Effect.mapError(
+          (cause) =>
+            new GitHubAuthError({
+              message: `Failed to read GitHub App private key: ${auth.privateKeyPath}`,
+              cause,
+            }),
+        ),
       )
-      return yield* makeGitHubApp({
-        identity: { clientID: auth.clientID }, privateKey: Redacted.make(privateKey),
-      }, { userAgent: GITHUB_USER_AGENT, consumer: options.consumer }).pipe(
-        Effect.provideService(HttpClient.HttpClient, rawHttpClient.pipe(
-          HttpClient.transform((response) => response.pipe(Effect.tap((value) =>
-            value.request.url.endsWith('/access_tokens') ? Ref.update(requestCountRef, (count) => count + 1) : Effect.void,
-          ))),
-        )),
+      return yield* makeGitHubApp(
+        {
+          identity: { clientID: auth.clientID },
+          privateKey: Redacted.make(privateKey),
+        },
+        { userAgent: GITHUB_USER_AGENT, consumer: options.consumer },
+      ).pipe(
+        Effect.provideService(
+          HttpClient.HttpClient,
+          rawHttpClient.pipe(
+            HttpClient.transform((response) =>
+              response.pipe(
+                Effect.tap((value) =>
+                  value.request.url.endsWith('/access_tokens')
+                    ? Ref.update(requestCountRef, (count) => count + 1)
+                    : Effect.void,
+                ),
+              ),
+            ),
+          ),
+        ),
         Effect.mapError((cause) => new GitHubAuthError({ message: cause.message, cause })),
       )
     }),
@@ -269,7 +300,10 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
   const getClientForRepo = Effect.fn('github-client.get-client-for-repo')(function* (repo: string) {
     if (auth._tag === 'gh-cli') {
       const token = yield* getCliToken
-      const client: AuthenticatedClient = HttpClient.transformResponse(httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))), (response) => response.pipe(Effect.mapError(transportFailure)))
+      const client: AuthenticatedClient = HttpClient.transformResponse(
+        httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))),
+        (response) => response.pipe(Effect.mapError(transportFailure)),
+      )
       return client
     }
 
@@ -277,11 +311,16 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
     if (source._tag === 'app-installation') {
       const app = yield* getApp
       const repository = repo.slice(repo.indexOf('/') + 1)
-      const client: AuthenticatedClient = HttpClient.transformResponse(app.client({
-        installationID: source.installationID,
-        repositories: { _tag: 'Selected', names: [repository] },
-        permissions: options.permissions,
-      }).pipe(HttpClient.withScope), (response) => response.pipe(Effect.mapError(transportFailure)))
+      const client: AuthenticatedClient = HttpClient.transformResponse(
+        app
+          .client({
+            installationID: source.installationID,
+            repositories: { _tag: 'Selected', names: [repository] },
+            permissions: options.permissions,
+          })
+          .pipe(HttpClient.withScope),
+        (response) => response.pipe(Effect.mapError(transportFailure)),
+      )
       return client
     }
 
@@ -306,7 +345,10 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
           }),
       ),
     )
-    const client: AuthenticatedClient = HttpClient.transformResponse(httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))), (response) => response.pipe(Effect.mapError(transportFailure)))
+    const client: AuthenticatedClient = HttpClient.transformResponse(
+      httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))),
+      (response) => response.pipe(Effect.mapError(transportFailure)),
+    )
     return client
   })
 
@@ -713,17 +755,28 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
     )
 
   /** Completed history page, optionally bounded by GitHub's inclusive created-date range. */
-  const listWorkflowRunsPage = ({ repo, perPage, page, created }: {
+  const listWorkflowRunsPage = ({
+    repo,
+    perPage,
+    page,
+    created,
+  }: {
     repo: string
     perPage: number
     page: number
     created?: { readonly from: string; readonly to: string }
   }) => {
-    const query = new URLSearchParams({ status: 'completed', per_page: String(perPage), page: String(page) })
+    const query = new URLSearchParams({
+      status: 'completed',
+      per_page: String(perPage),
+      page: String(page),
+    })
     if (created !== undefined) query.set('created', `${created.from}..${created.to}`)
-    return apiGet({ repo, path: `/repos/${repo}/actions/runs?${query}`, schema: GH.WorkflowRunsResponse }).pipe(
-      withGitHubSpan({ name: 'github-client.listWorkflowRunsPage', attributes: { repo } }),
-    )
+    return apiGet({
+      repo,
+      path: `/repos/${repo}/actions/runs?${query}`,
+      schema: GH.WorkflowRunsResponse,
+    }).pipe(withGitHubSpan({ name: 'github-client.listWorkflowRunsPage', attributes: { repo } }))
   }
 
   /** Get a single workflow run by ID. */
@@ -1338,5 +1391,7 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 ) {
   static readonly layer = (options: GitHubClientOptions) =>
     Layer.effect(GitHubClient, makeGitHubClient(options)).pipe(Layer.provide(NodeFileSystem.layer))
-  static readonly Default = Layer.effect(GitHubClient, defaultGitHubClient).pipe(Layer.provide(NodeFileSystem.layer))
+  static readonly Default = Layer.effect(GitHubClient, defaultGitHubClient).pipe(
+    Layer.provide(NodeFileSystem.layer),
+  )
 }

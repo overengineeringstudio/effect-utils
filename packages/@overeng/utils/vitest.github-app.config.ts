@@ -4,7 +4,10 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   root: new URL('../../../', import.meta.url).pathname,
   resolve: {
-    alias: { '@overeng/utils/node/github-app': new URL('./src/node/github-app.ts', import.meta.url).pathname },
+    alias: {
+      '@overeng/utils/node/github-app': new URL('./src/node/github-app.ts', import.meta.url)
+        .pathname,
+    },
     dedupe: ['effect', 'vitest', '@effect/vitest'],
   },
   test: {
