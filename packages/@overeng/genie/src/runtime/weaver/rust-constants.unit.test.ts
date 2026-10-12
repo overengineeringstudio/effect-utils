@@ -37,7 +37,7 @@ const constNameRegistry = ({
         type: 'string',
         brief: 'Test attribute.',
         stability: 'development',
-        constName,
+        ...(constName !== undefined ? { constName } : {}),
       })),
     },
   ],
@@ -50,7 +50,7 @@ const constNameRegistry = ({
       brief: 'Test span.',
       stability: 'development' as const,
       attributes: [],
-      constName,
+      ...(constName !== undefined ? { constName } : {}),
     })),
     ...metrics.map((constName, index) => ({
       kind: 'metric' as const,
@@ -61,7 +61,7 @@ const constNameRegistry = ({
       brief: 'Test metric.',
       stability: 'development' as const,
       attributes: [],
-      constName,
+      ...(constName !== undefined ? { constName } : {}),
     })),
   ],
 })
@@ -315,7 +315,7 @@ describe('renderRustConstants (otel-scrape fixture)', () => {
     ).toThrow(/weaver Rust constants attribute: identifier collision "ALL"/)
   })
 
-  it.each(['', 'not.valid', '9INVALID', 'lowercase'])(
+  it.each(['', 'not.valid', '9INVALID', 'lowercase', 'Self', 'self', 'const'])(
     'rejects an invalid exact override without transforming it: %j',
     (constName) => {
       expect(() =>

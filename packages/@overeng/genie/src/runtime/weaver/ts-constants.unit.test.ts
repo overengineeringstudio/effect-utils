@@ -33,7 +33,7 @@ const constNameRegistry = ({
         type: 'string',
         brief: 'Test attribute.',
         stability: 'development',
-        constName,
+        ...(constName !== undefined ? { constName } : {}),
       })),
     },
   ],
@@ -46,7 +46,7 @@ const constNameRegistry = ({
       brief: 'Test span.',
       stability: 'development' as const,
       attributes: [],
-      constName,
+      ...(constName !== undefined ? { constName } : {}),
     })),
     ...metrics.map((constName, index) => ({
       kind: 'metric' as const,
@@ -57,7 +57,7 @@ const constNameRegistry = ({
       brief: 'Test metric.',
       stability: 'development' as const,
       attributes: [],
-      constName,
+      ...(constName !== undefined ? { constName } : {}),
     })),
   ],
 })
@@ -261,14 +261,17 @@ describe('renderTsConstants (otel-scrape fixture)', () => {
     ).toThrow(/weaver TS constants: identifier collision/)
   })
 
-  it.each(['', 'not.valid', '9INVALID'])('rejects an invalid exact override %j', (constName) => {
-    expect(() =>
-      renderTsConstants({
-        registry: constNameRegistry({ attributes: [constName] }),
-        provenance: FIXTURE_PROVENANCE,
-      }),
-    ).toThrow(/weaver TS constants: generated identifier .* is invalid/)
-  })
+  it.each(['', 'not.valid', '9INVALID', 'class', 'default', 'await', 'yield', 'eval', 'arguments'])(
+    'rejects an invalid exact override %j',
+    (constName) => {
+      expect(() =>
+        renderTsConstants({
+          registry: constNameRegistry({ attributes: [constName] }),
+          provenance: FIXTURE_PROVENANCE,
+        }),
+      ).toThrow(/weaver TS constants: generated identifier .* is invalid/)
+    },
+  )
 
   it('renders empty span-name unions as never for metrics-only registries', async () => {
     const metricsOnlyRegistry: Registry = {

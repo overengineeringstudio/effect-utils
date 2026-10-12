@@ -476,16 +476,22 @@ const constantEntries = (
 } => ({
   attributes: byId(registry.groups.flatMap((g) => g.attributes)).map((a) => ({
     name: a.id,
-    constName: a.constName,
+    ...(a.constName !== undefined ? { constName: a.constName } : {}),
   })),
   spans: registry.signals
     .filter((s): s is Extract<SignalDef, { kind: 'span' }> => s.kind === 'span')
     // Emit the runtime span name, falling back to the group id for plain spans.
-    .map((s) => ({ name: s.span_name ?? s.id, constName: s.constName }))
+    .map((s) => ({
+      name: s.span_name ?? s.id,
+      ...(s.constName !== undefined ? { constName: s.constName } : {}),
+    }))
     .toSorted((a, b) => a.name.localeCompare(b.name)),
   metrics: registry.signals
     .filter((s): s is Extract<SignalDef, { kind: 'metric' }> => s.kind === 'metric')
-    .map((s) => ({ name: s.metric_name, constName: s.constName }))
+    .map((s) => ({
+      name: s.metric_name,
+      ...(s.constName !== undefined ? { constName: s.constName } : {}),
+    }))
     .toSorted((a, b) => a.name.localeCompare(b.name)),
 })
 
@@ -535,6 +541,18 @@ const assertUniqueIdentifiers = ({
   }
 }
 
+/** Reserved bindings in a strict ES module, including strict-mode eval/arguments. */
+const reservedTsBindings: Readonly<Record<string, true>> = Object.fromEntries(
+  (
+    'arguments await break case catch class const continue debugger default delete do else enum ' +
+    'eval export extends false finally for function if implements import in instanceof interface ' +
+    'let new null package private protected public return static super switch this throw true try ' +
+    'typeof var void while with yield'
+  )
+    .split(' ')
+    .map((name) => [name, true]),
+)
+
 const assertUniqueTsConstIdentifiers = ({
   attributes,
   spans,
@@ -560,7 +578,10 @@ const assertUniqueTsConstIdentifiers = ({
   ]
   const seen = new Map<string, string>()
   for (const { source, identifier } of entries) {
-    if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(identifier) === false) {
+    if (
+      /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(identifier) === false ||
+      reservedTsBindings[identifier] === true
+    ) {
       throw new Error(
         `weaver TS constants: generated identifier ${JSON.stringify(identifier)} for ${source} is invalid`,
       )
