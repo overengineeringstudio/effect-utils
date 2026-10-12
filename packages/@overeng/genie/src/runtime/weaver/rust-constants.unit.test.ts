@@ -18,6 +18,54 @@ const FIXTURE_PROVENANCE: Provenance = {
   fingerprint: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
 }
 
+const constNameRegistry = ({
+  attributes = [],
+  spans = [],
+  metrics = [],
+}: {
+  attributes?: ReadonlyArray<string | undefined>
+  spans?: ReadonlyArray<string | undefined>
+  metrics?: ReadonlyArray<string | undefined>
+}): Registry => ({
+  ...registry,
+  groups: [
+    {
+      namespace: 'test',
+      displayName: 'Test',
+      attributes: attributes.map((constName, index) => ({
+        id: `test.attribute.${index}`,
+        type: 'string',
+        brief: 'Test attribute.',
+        stability: 'development',
+        constName,
+      })),
+    },
+  ],
+  signals: [
+    ...spans.map((constName, index) => ({
+      kind: 'span' as const,
+      id: `span.test.${index}`,
+      span_name: `test/span/${index}`,
+      span_kind: 'internal' as const,
+      brief: 'Test span.',
+      stability: 'development' as const,
+      attributes: [],
+      constName,
+    })),
+    ...metrics.map((constName, index) => ({
+      kind: 'metric' as const,
+      id: `metric.test.${index}`,
+      metric_name: `test.metric.${index}`,
+      instrument: 'counter' as const,
+      unit: '1',
+      brief: 'Test metric.',
+      stability: 'development' as const,
+      attributes: [],
+      constName,
+    })),
+  ],
+})
+
 // The ~25 names decision 0007 expects the Rust bindings to cover.
 const EXPECTED_ATTRIBUTE_KEYS = [
   'otel_scrape.batch.size',
@@ -194,6 +242,90 @@ describe('renderRustConstants (otel-scrape fixture)', () => {
     expect(rust).toContain(`// fingerprint: ${FIXTURE_PROVENANCE.fingerprint}`)
     expect(rust).toContain('// regen: devenv tasks run genie:run')
   })
+
+  it('uses exact overrides for every module while retaining default identifiers and ALL values', () => {
+    const source = renderRustConstants({
+      registry: constNameRegistry({
+        attributes: ['CUSTOM_ATTRIBUTE', undefined],
+        spans: ['CUSTOM_SPAN', undefined],
+        metrics: ['CUSTOM_METRIC', undefined],
+      }),
+      provenance: FIXTURE_PROVENANCE,
+    })
+    for (const [identifier, value] of [
+      ['CUSTOM_ATTRIBUTE', 'test.attribute.0'],
+      ['TEST_ATTRIBUTE_1', 'test.attribute.1'],
+      ['CUSTOM_SPAN', 'test/span/0'],
+      ['TEST_SPAN_1', 'test/span/1'],
+      ['CUSTOM_METRIC', 'test.metric.0'],
+      ['TEST_METRIC_1', 'test.metric.1'],
+    ]) {
+      expect(source).toContain(`pub const ${identifier}: &str = "${value}";`)
+    }
+    expect(source).toContain('pub const ALL: &[&str] = &["test.attribute.0", "test.attribute.1"];')
+    expect(source).toContain('pub const ALL: &[&str] = &["test/span/0", "test/span/1"];')
+    expect(source).toContain('pub const ALL: &[&str] = &["test.metric.0", "test.metric.1"];')
+    expect(source).not.toContain('pub const TEST_ATTRIBUTE_0:')
+    expect(source).not.toContain('pub const TEST_SPAN_0:')
+    expect(source).not.toContain('pub const TEST_METRIC_0:')
+  })
+
+  it('allows the same override in separate Rust modules', () => {
+    const source = renderRustConstants({
+      registry: constNameRegistry({
+        attributes: ['SHARED'],
+        spans: ['SHARED'],
+        metrics: ['SHARED'],
+      }),
+      provenance: FIXTURE_PROVENANCE,
+    })
+    expect(source.match(/pub const SHARED: &str/g)).toHaveLength(3)
+  })
+
+  it.each([
+    { attributes: ['SHARED', 'SHARED'] },
+    { spans: ['SHARED', 'SHARED'] },
+    { metrics: ['SHARED', 'SHARED'] },
+    { attributes: ['TEST_ATTRIBUTE_1', undefined] },
+    { spans: ['TEST_SPAN_1', undefined] },
+    { metrics: ['TEST_METRIC_1', undefined] },
+    { attributes: ['ALL'] },
+    { spans: ['ALL'] },
+    { metrics: ['ALL'] },
+  ])('rejects final identifier collisions within a Rust module: %j', (names) => {
+    expect(() =>
+      renderRustConstants({
+        registry: constNameRegistry(names),
+        provenance: FIXTURE_PROVENANCE,
+      }),
+    ).toThrow(/weaver Rust constants (attribute|span|metric): identifier collision/)
+  })
+
+  it('rejects a default identifier that collides with the reserved ALL slice', () => {
+    const names = constNameRegistry({ attributes: [undefined] })
+    const reservedRegistry: Registry = {
+      ...names,
+      groups: names.groups.map((group) => ({
+        ...group,
+        attributes: group.attributes.map((attribute) => ({ ...attribute, id: 'all' })),
+      })),
+    }
+    expect(() =>
+      renderRustConstants({ registry: reservedRegistry, provenance: FIXTURE_PROVENANCE }),
+    ).toThrow(/weaver Rust constants attribute: identifier collision "ALL"/)
+  })
+
+  it.each(['', 'not.valid', '9INVALID', 'lowercase'])(
+    'rejects an invalid exact override without transforming it: %j',
+    (constName) => {
+      expect(() =>
+        renderRustConstants({
+          registry: constNameRegistry({ attributes: [constName] }),
+          provenance: FIXTURE_PROVENANCE,
+        }),
+      ).toThrow(/weaver Rust constants attribute: generated identifier .* is invalid/)
+    },
+  )
 
   const rustfmt = onPath('rustfmt')
   it.runIf(rustfmt !== undefined)('is rustfmt-clean', () => {

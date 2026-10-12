@@ -2,7 +2,7 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:c89d180db66f915f730f675d1f9a7b5ad796f3beadfcb7bc000c711f95f95a81
+# fingerprint: sha256:df9dda658f00086defa6dbfc161fa7377763be9c0425e9d6b10d089d135fb60b
 # regen: devenv tasks run genie:run
 groups:
   - id: metric.acme.probe.duration
@@ -129,6 +129,38 @@ groups:
       - ref: acme.attempt
         requirement_level: recommended
       - ref: http.request.method
+        requirement_level: recommended
+  - id: span.agent.activity
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Agent activity with logical actor, mission, step, and provider-native harness context.
+    attributes:
+      - ref: agent.actor.id
+        requirement_level: recommended
+      - ref: agent.persona
+        requirement_level: recommended
+      - ref: agent.supervisor.id
+        requirement_level: recommended
+      - ref: agent.mission.name
+        requirement_level: recommended
+      - ref: agent.mission.run.id
+        requirement_level: recommended
+      - ref: agent.step.name
+        requirement_level: recommended
+      - ref: agent.step.run.id
+        requirement_level: recommended
+      - ref: agent.harness.tool
+        requirement_level: recommended
+      - ref: agent.harness.version
+        requirement_level: recommended
+      - ref: agent.harness.session.id
+        requirement_level: recommended
+      - ref: agent.model.effort
+        requirement_level: recommended
+      - ref: agent.principal.id
+        requirement_level: opt_in
+      - ref: gen_ai.request.model
         requirement_level: recommended
   - id: span.ci_tools.deploy
     type: span

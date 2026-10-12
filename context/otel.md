@@ -2,6 +2,27 @@
 
 Per-project OpenTelemetry tracing for native devenv tasks and TS app code. Provides a local Collector + Tempo + Grafana stack via `devenv up`, with auto-detection of an existing system-level stack.
 
+## Reusable Agent Contract
+
+`@overeng/otel-contract/agent` exports the shared `agent.*` schemas, the
+`AgentActivity` span/encoder, and the default `defineOtelContract` seam. The root
+Weaver registry composes this seam; TS and Rust attribute constants use identical
+explicit names such as `AGENT_ACTOR_ID`.
+
+Recommended string attributes are `agent.actor.id`, `agent.persona`,
+`agent.supervisor.id`, `agent.mission.name`, `agent.mission.run.id`,
+`agent.step.name`, `agent.step.run.id`, `agent.harness.tool`,
+`agent.harness.version`, `agent.harness.session.id`, and `agent.model.effort`.
+The requested model is the upstream `gen_ai.request.model` reference, not a
+first-party replacement.
+
+The actor is a logical agent identity. `agent.harness.session.id` is the
+provider-native harness session identity, distinct from both that actor and a
+PTY session. `agent.principal.id` is opt-in and internal-only: never include
+principal values in public artifacts or metric labels. Actor, supervisor,
+mission-run, step-run, and harness-session IDs are high-cardinality trace/log
+context, not metric labels.
+
 ## System Stack Assumptions
 
 The devenv module auto-detects a system-level OTEL stack by checking for the `OTEL_STATE_DIR` session variable. When set, the devenv module trusts the system-provided env vars (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_GRAFANA_URL`, etc.) instead of starting its own services.

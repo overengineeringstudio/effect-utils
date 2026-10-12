@@ -34,6 +34,7 @@ import notionDatasourceSyncContract from '../../packages/@overeng/notion-datasou
 import notionEffectClientContract from '../../packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts'
 import notionMdContract from '../../packages/@overeng/notion-md/src/notion-md.contract.ts'
 import notionReactContract from '../../packages/@overeng/notion-react/src/notion-react.contract.ts'
+import agentContract from '../../packages/@overeng/otel-contract/src/agent.contract.ts'
 import demoContract from '../../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
 import { fragment } from '../../packages/@overeng/otel-contract/src/registry.ts'
 import ptyContract from '../../packages/@overeng/pty-effect/src/pty.contract.ts'
@@ -64,6 +65,7 @@ export const memberSeamPaths = [
   'packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts',
   'packages/@overeng/notion-md/src/notion-md.contract.ts',
   'packages/@overeng/notion-react/src/notion-react.contract.ts',
+  'packages/@overeng/otel-contract/src/agent.contract.ts',
   'packages/@overeng/otel-contract/src/registry-demo.contract.ts',
   'packages/@overeng/pty-effect/src/pty.contract.ts',
   'packages/@overeng/restate-effect/src/observability/restate.contract.ts',
@@ -83,6 +85,7 @@ const contracts = [
   notionEffectClientContract,
   notionMdContract,
   notionReactContract,
+  agentContract,
   demoContract,
   ptyContract,
   restateContract,
@@ -105,7 +108,7 @@ const composition = registryFromMembers({
   schemaUrl: 'https://opentelemetry.io/schemas/acme/0.1.0',
   upstream: [
     {
-      // Pinned upstream OTel semconv. weaver resolves `http.*` refs against this dependency.
+      // Pinned upstream OTel semconv. weaver resolves `http.*` and `gen_ai.*` refs here.
       // The Buck `//:weaver_check` target materializes it hermetically as a local FS path
       // (SC-A03, confirmed working with 0.24.2). The committed string is the portable git-URL form.
       dependency: {
@@ -113,7 +116,7 @@ const composition = registryFromMembers({
         registry_path: `https://github.com/open-telemetry/semantic-conventions.git@${PINNED_UPSTREAM_SEMCONV_VERSION}[model]`,
         schema_url: `https://opentelemetry.io/schemas/${PINNED_UPSTREAM_SEMCONV_VERSION.slice(1)}`,
       },
-      providesNamespaces: ['http'],
+      providesNamespaces: ['http', 'gen_ai'],
     },
   ],
 })
@@ -133,11 +136,14 @@ const versionInputs = {
 
 /** Identity = the exact names the TS/Rust const targets encode (no doc prose). */
 const identityKeys = registry.groups
-  .flatMap((g) => g.attributes.map((a) => a.id))
-  .toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  .flatMap((g) => g.attributes.map((a) => ({ id: a.id, constName: a.constName })))
+  .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 const identityNames = {
   attributeKeys: identityKeys,
   ...signalNames(registry),
+  signalConstNames: registry.signals
+    .map((s) => ({ id: s.id, constName: s.constName }))
+    .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
 }
 
 /** Doc fingerprint: the FULL registry (brief/stability/examples/notes/deprecated) → YAML headers. */

@@ -197,14 +197,17 @@ describe.skipIf(!enabled)(
       expect(runLiveCheck(registryDir, sampleFile)).toBe(0)
     })
 
-    it('NEGATIVE control: an undeclared attribute → nonzero (gate has teeth)', async () => {
-      const registryDir = materializeHermeticRegistry()
-      // Inject an attribute the registry does NOT define → weaver `missing_attribute` (violation).
-      const sampleFile = await sampleFileFor({
-        ...declaredAttributes(),
-        'acme.undeclared.attr': 'nope',
-      })
-      expect(runLiveCheck(registryDir, sampleFile)).not.toBe(0)
-    })
+    it.each(['acme.undeclared.attr', 'agent.undeclared.attr'])(
+      'NEGATIVE control: undeclared %s → nonzero (gate has teeth)',
+      async (key) => {
+        const registryDir = materializeHermeticRegistry()
+        // Inject an attribute the registry does NOT define → weaver `missing_attribute` (violation).
+        const sampleFile = await sampleFileFor({
+          ...declaredAttributes(),
+          [key]: 'nope',
+        })
+        expect(runLiveCheck(registryDir, sampleFile)).not.toBe(0)
+      },
+    )
   },
 )
