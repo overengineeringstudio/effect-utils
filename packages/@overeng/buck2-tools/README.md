@@ -85,9 +85,14 @@ The ordinary current-plus-previous policy is not an unconditional guarantee unde
 pressure: pin a generation when it must remain available. Idle-current eviction
 removes both the owned consumer hop and current pointer, records an eviction marker,
 and the next explicit publication explains the eviction and cleanly republishes.
-Retirement rechecks last-use and publication timestamps after acquiring the
-victim root lock and CAS flock, so a newly used view cannot be evicted from an
-older census. Active eviction locks are explicitly marked with process-incarnation
+Each eviction round fixes one eligibility timestamp before observing readers,
+including the fallback when a concurrent reservation consumes headroom. Crossing
+grace or recency during the process scan cannot add an unobserved victim; a later
+round observes newly eligible generations before retiring them. Retirement also
+rechecks last-use and publication timestamps after acquiring the victim root lock
+and CAS flock, so a newly used view cannot be evicted from an older census.
+Vanished victims are skipped even if teardown removes a held eviction lock.
+Active eviction locks are explicitly marked with process-incarnation
 identity; a publisher waits for that live maintenance operation rather than
 failing as if a competing publisher or stale lock were present. Ordinary or
 dead-incarnation publication locks still require explicit recovery.
@@ -96,9 +101,21 @@ If protected usage prevents reaching the budget, publication **continues** and
 emits a structured `over-budget` event with budget, use, and top holders.
 **No command fails because of the budget**, including explicit
 `buck2:editor:materialize`, scoped publication, Genie freshness, and `check:quick`.
+Budget discovery and maintenance failures are structured advisory diagnostics:
+uncertain discovery aborts that budget round without eviction, and maintenance
+failure never rejects an otherwise successful publication.
 The `editor-view.host-budget` OpenTelemetry span records over-budget publication
-and the protected-share early warning at 80%. This is a pressure-driven idle/stale
-retention budget, not a hard cap on actively protected bytes. Release readers or
+and the protected-share early warning at 80%. Budget span delivery is deferred,
+fire-and-forget, and drop-on-full, with at most four queued/running exporters per
+publisher. Hung exporters are killed after one second and reaped; publication
+never awaits them. The shared host ledger permits one span per content store and
+event kind every 60 seconds, across publisher processes. Suppressed event counts
+are durable and appear on the next admitted span as
+`editor_view.host_budget.suppressed_events`; synchronous structured logs remain
+unsuppressed and include `otelSuppressedEvents`. Existing ledgers without delivery
+state retain their roots, reservations, and last-use history.
+This is a pressure-driven idle/stale retention budget, not a hard cap on actively
+protected bytes. Release readers or
 unused views, or deliberately increase the byte limit; do not remove persistent
 flock or reservation control files. Older publishers on other refs do not
 participate in the protocol and must be quiesced or upgraded for coordinated

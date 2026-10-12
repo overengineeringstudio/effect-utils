@@ -2978,3 +2978,193 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     }
   })
 })
+
+describe('advisory budget failures preserve publication and uncertain readers', () => {
+  it.each(['ENOSPC', 'EDQUOT', 'EROFS', 'EACCES'])(
+    'propagates publication-lock %s without retrying',
+    async (code) => {
+      const fixture = makeFixture()
+      const nativeMkdir = fs.mkdirSync
+      const injected = Object.assign(new Error(`injected ${code}`), { code })
+      let attempts = 0
+      const create = vi.spyOn(fs, 'mkdirSync').mockImplementation((...args) => {
+        if (String(args[0]) === join(fixture.editorRoot, '.publish.lock')) {
+          attempts++
+          // One failure makes the old busy loop terminate on its next attempt,
+          // so this regression fails normally rather than hanging the test runner.
+          if (attempts === 1) throw injected
+        }
+        return Reflect.apply(nativeMkdir, fs, args) as ReturnType<typeof fs.mkdirSync>
+      })
+      let publication: Promise<EditorViewRecord> | undefined
+      try {
+        publication = publishEditorView(fixture.options)
+        await expect(publication).rejects.toThrow(`injected ${code}`)
+        expect(attempts).toBe(1)
+        expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+      } finally {
+        if (publication !== undefined) await Promise.allSettled([publication])
+        create.mockRestore()
+        cleanup(fixture)
+      }
+    },
+  )
+
+  describe.each(['ENOTDIR', 'EACCES', 'ELOOP'])('uncertain sibling discovery %s', (code) => {
+    let incoming: Fixture
+    let victim: Fixture
+    let held: EditorViewRecord
+    let publication: Promise<EditorViewRecord> | undefined
+
+    beforeAll(async () => {
+      incoming = makeFixture()
+      victim = makeFixture()
+      victim = {
+        ...victim,
+        options: {
+          ...victim.options,
+          contentStore: join(incoming.root, '.editor-view-content', 'v1'),
+        },
+      }
+      held = await publishEditorView(victim.options)
+      const registration = join(incoming.root, '.git', 'worktrees', 'uncertain-sibling')
+      mkdirSync(registration, { recursive: true })
+      writeFileSync(join(registration, 'gitdir'), `${join(victim.root, '.git')}\n`)
+    })
+    afterAll(async () => {
+      if (publication !== undefined) await Promise.allSettled([publication])
+      cleanup(victim)
+      cleanup(incoming)
+    })
+
+    it('logs the unobserved root and publishes without evicting any uncertain generation', async () => {
+      const nativeLstat = fs.lstatSync
+      const injected = Object.assign(new Error(`unobserved ${code}`), { code })
+      let observations = 0
+      const inspect = vi.spyOn(fs, 'lstatSync').mockImplementation((...args) => {
+        if (String(args[0]) === victim.editorRoot) {
+          observations++
+          throw injected
+        }
+        return Reflect.apply(nativeLstat, fs, args) as ReturnType<typeof fs.lstatSync>
+      })
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 25 * 60 * 60 * 1_000)
+      try {
+        publication = publishEditorView({ ...incoming.options, hostBudgetBytes: 1 })
+        const record = await publication
+        expect(observations).toBeGreaterThan(0)
+        expect(currentTarget(incoming)).toBe(record.snapshot)
+        expect(currentTarget(victim)).toBe(held.snapshot)
+        expect(
+          log.mock.calls.some(
+            ([line]) =>
+              String(line).includes('"event":"editor-view.host-budget.unobserved"') &&
+              String(line).includes(`"code":"${code}"`),
+          ),
+        ).toBe(true)
+      } finally {
+        if (publication !== undefined) await Promise.allSettled([publication])
+        clock.mockRestore()
+        log.mockRestore()
+        inspect.mockRestore()
+      }
+    })
+  })
+
+  describe('cleanup after the pointer commit is advisory', () => {
+    let fixture: Fixture
+    let publication: Promise<EditorViewRecord> | undefined
+    let revision = 0
+    beforeAll(() => {
+      fixture = makeFixture()
+    })
+    afterAll(async () => {
+      if (publication !== undefined) await Promise.allSettled([publication])
+      cleanup(fixture)
+    })
+    for (const next of [1, 2]) {
+      it(`prepares retained generation ${next}`, async () => {
+        expect(revision).toBe(next - 1)
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${next}\n`)
+        publication = publishEditorView(fixture.options)
+        await publication
+        revision = next
+      })
+    }
+    it('logs cleanup failure and still returns the committed generation', async () => {
+      expect(revision).toBe(2)
+      writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), 'third\n')
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      let cleanupEntered = false
+      try {
+        publication = publishEditorView({
+          ...fixture.options,
+          beforeSnapshotCleanup: () => {
+            cleanupEntered = true
+            throw new Error('injected post-commit cleanup error')
+          },
+        })
+        const record = await publication
+        expect(cleanupEntered).toBe(true)
+        expect(currentTarget(fixture)).toBe(record.snapshot)
+        expect(
+          log.mock.calls.some(
+            ([line]) =>
+              String(line).includes('"phase":"snapshot-cleanup"') &&
+              String(line).includes('injected post-commit cleanup error'),
+          ),
+        ).toBe(true)
+      } finally {
+        if (publication !== undefined) await Promise.allSettled([publication])
+        log.mockRestore()
+      }
+    })
+  })
+})
+
+describe('budget victim teardown after the census', () => {
+  let incoming: Fixture
+  let victim: Fixture
+  let publication: Promise<EditorViewRecord> | undefined
+  beforeAll(async () => {
+    incoming = makeFixture()
+    const original = makeFixture()
+    victim = {
+      ...original,
+      options: {
+        ...original.options,
+        contentStore: join(incoming.root, '.editor-view-content', 'v1'),
+      },
+    }
+    await publishEditorView(victim.options)
+  })
+  afterAll(async () => {
+    if (publication !== undefined) await Promise.allSettled([publication])
+    if (existsSync(victim.root) === true) cleanup(victim)
+    cleanup(incoming)
+  })
+  it('skips a victim removed immediately before acquiring its eviction lock', async () => {
+    const nativeMkdir = fs.mkdirSync
+    let removed = false
+    const create = vi.spyOn(fs, 'mkdirSync').mockImplementation((...args) => {
+      if (String(args[0]) === join(victim.editorRoot, '.publish.lock') && removed === false) {
+        removed = true
+        cleanup(victim)
+      }
+      return Reflect.apply(nativeMkdir, fs, args) as ReturnType<typeof fs.mkdirSync>
+    })
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 25 * 60 * 60 * 1_000)
+    try {
+      publication = publishEditorView({ ...incoming.options, hostBudgetBytes: 1 })
+      const record = await publication
+      expect(removed).toBe(true)
+      expect(currentTarget(incoming)).toBe(record.snapshot)
+      expect(existsSync(victim.root)).toBe(false)
+    } finally {
+      if (publication !== undefined) await Promise.allSettled([publication])
+      clock.mockRestore()
+      create.mockRestore()
+    }
+  })
+})

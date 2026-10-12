@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import * as ChildProcess from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   chmodSync,
@@ -33,6 +34,7 @@ import {
   type EditorViewOptions,
   type EditorViewRecord,
 } from './editor-view.ts'
+import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 
 /** Match the publisher's integration fixtures: tools never resolve through ambient PATH. */
 const requireTool = (name: string): string => {
@@ -527,12 +529,16 @@ const expectRunningReader = (reader: Reader): void => {
 }
 
 /** Record actual otel-span subprocess arguments; no span emitter or process runtime is mocked. */
-const recordTelemetry = async <TValue>(root: string, run: () => Promise<TValue>) => {
+const recordTelemetry = async <TValue>(
+  root: string,
+  run: (children: readonly ChildProcess.ChildProcess[]) => Promise<TValue>,
+  { hangBudget = false }: { readonly hangBudget?: boolean } = {},
+) => {
   const bin = join(root, 'record-otel-span')
   const capture = join(root, 'otel-spans.jsonl')
   writeFileSync(
     bin,
-    `#!${bun}\nimport { appendFileSync } from 'node:fs'\nappendFileSync(${JSON.stringify(capture)}, JSON.stringify(process.argv.slice(2)) + '\\n')\n`,
+    `#!${bun}\nimport { appendFileSync, watch } from 'node:fs'\nappendFileSync(${JSON.stringify(capture)}, JSON.stringify(process.argv.slice(2)) + '\\n')\nif (${hangBudget} && process.argv.includes('editor-view.host-budget')) { watch(${JSON.stringify(capture)}, () => {}); await Promise.withResolvers().promise }\n`,
   )
   chmodSync(bin, 0o755)
   const values = {
@@ -544,8 +550,32 @@ const recordTelemetry = async <TValue>(root: string, run: () => Promise<TValue>)
   }
   const saved = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]))
   Object.assign(process.env, values)
+  const children: ChildProcess.ChildProcess[] = []
+  const invocations: (readonly string[])[] = []
+  const exits: Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>[] =
+    []
+  const nativeSpawn = ChildProcess.spawn
+  const spawned = vi.spyOn(ChildProcess, 'spawn').mockImplementation((...args) => {
+    const child = Reflect.apply(nativeSpawn, ChildProcess, args) as ChildProcess.ChildProcess
+    if (String(args[0]) === bin) {
+      children.push(child)
+      invocations.push(child.spawnargs.slice(1))
+      const exited = Promise.withResolvers<{
+        readonly code: number | null
+        readonly signal: NodeJS.Signals | null
+      }>()
+      child.once('close', (code, signal) => exited.resolve({ code, signal }))
+      exits.push(exited.promise)
+    }
+    return child
+  })
   try {
-    const value = await run()
+    const value = await run(children)
+    // Delivery is deferred; join real exporter close events only in the test fixture.
+    const deliveryTurn = Promise.withResolvers<void>()
+    setImmediate(deliveryTurn.resolve)
+    await deliveryTurn.promise
+    const settled = await Promise.all(exits)
     const spans: readonly unknown[] =
       pathExists(capture) === true
         ? readFileSync(capture, 'utf8')
@@ -553,8 +583,13 @@ const recordTelemetry = async <TValue>(root: string, run: () => Promise<TValue>)
             .split('\n')
             .map((line) => JSON.parse(line))
         : []
-    return { value, spans }
+    return { value, spans, invocations, exits: settled }
   } finally {
+    const cleanupTurn = Promise.withResolvers<void>()
+    setImmediate(cleanupTurn.resolve)
+    await cleanupTurn.promise
+    await Promise.all(exits)
+    spawned.mockRestore()
     for (const [key, value] of Object.entries(saved)) {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
@@ -1376,5 +1411,293 @@ describe('host generation footprint sidecars follow coordinated retirement and r
     expect(sidecarsBeforeRetirement.some((name) => remaining.includes(name))).toBe(false)
     expect(sidecarsBeforeRelease.filter((name) => remaining.includes(name))).toHaveLength(1)
     expect(remaining).toHaveLength(sidecarsBeforeRelease.length - 1)
+  })
+})
+
+describe('host-budget reader observations keep a fixed candidate set', () => {
+  let host: Host
+  let old: Fixture
+  let held: Fixture
+  let incoming: Fixture
+  let oldRecord: EditorViewRecord | undefined
+  let heldRecord: EditorViewRecord | undefined
+  let reader: Reader | undefined
+  let readerReady = false
+
+  beforeAll(() => {
+    host = makeHost()
+    old = host.fixture('observed-old', 131)
+    held = host.fixture('boundary-held', 132)
+    incoming = host.fixture('boundary-incoming', 133, 64)
+  })
+  afterAll(async () => {
+    if (host !== undefined) await host.cleanup()
+  })
+
+  it('publishes and ages the initially eligible victim', async () => {
+    oldRecord = await host.publish(old)
+    host.advance(hostRecencyMs + hostGraceMs + 1)
+    host.age(old, oldRecord)
+  })
+
+  it('publishes the generation whose recency boundary will expire during observation', async () => {
+    if (oldRecord === undefined) throw new Error('initial victim publication did not complete')
+    heldRecord = await host.publish(held)
+  })
+
+  it('holds a real reader just inside the recency boundary', async () => {
+    if (heldRecord === undefined)
+      throw new Error('boundary generation publication did not complete')
+    reader = openReader(host, held, heldRecord)
+    await reader.ready
+    host.advance(hostRecencyMs - 1)
+    host.age(held, heldRecord)
+    readerReady = true
+  })
+
+  it('never retires a generation whose recency boundary expires during the real process scan', async () => {
+    if (
+      oldRecord === undefined ||
+      heldRecord === undefined ||
+      reader === undefined ||
+      readerReady === false
+    )
+      throw new Error('fixed-candidate regression setup did not complete')
+    const nativeReadlink = Fs.readlinkSync
+    let crossed = false
+    const scan = vi.spyOn(Fs, 'readlinkSync').mockImplementation((...args) => {
+      if (crossed === false && /^\/proc\/[0-9]+\/cwd$/.test(String(args[0])) === true) {
+        crossed = true
+        host.advance(2)
+      }
+      return Reflect.apply(nativeReadlink, Fs, args) as ReturnType<typeof Fs.readlinkSync>
+    })
+    const nativeSpawnSync = ChildProcess.spawnSync
+    const nativeScan = vi.spyOn(ChildProcess, 'spawnSync').mockImplementation((...args) => {
+      if (crossed === false && String(args[0]) === '/usr/sbin/lsof') {
+        crossed = true
+        host.advance(2)
+      }
+      return Reflect.apply(nativeSpawnSync, ChildProcess, args) as ReturnType<
+        typeof ChildProcess.spawnSync
+      >
+    })
+    try {
+      expectCurrent(incoming, await host.publish(incoming, { hostBudgetBytes: 1 }))
+    } finally {
+      scan.mockRestore()
+      nativeScan.mockRestore()
+    }
+    expect(crossed).toBe(true)
+    expect(pathExists(join(old.editorRoot, oldRecord.snapshot))).toBe(false)
+    expectCurrent(held, heldRecord)
+    expectRunningReader(reader)
+  })
+})
+
+describe('host-budget eviction tolerates teardown of a held victim root', () => {
+  let host: Host
+  let victim: Fixture
+  let incoming: Fixture
+  let victimRecord: EditorViewRecord | undefined
+
+  beforeAll(() => {
+    host = makeHost()
+    victim = host.fixture('removed-held-victim', 141)
+    incoming = host.fixture('removed-held-incoming', 142, 64)
+  })
+  afterAll(async () => {
+    if (host !== undefined) await host.cleanup()
+  })
+
+  it('publishes and ages the victim before the held-lock teardown race', async () => {
+    victimRecord = await host.publish(victim)
+    host.advance(hostRecencyMs + hostGraceMs + 1)
+    host.age(victim, victimRecord)
+  })
+
+  it('continues publication when a victim root disappears while its eviction lock is held', async () => {
+    if (victimRecord === undefined) throw new Error('teardown victim publication did not complete')
+    let removed = false
+    const record = await host.publish(incoming, {
+      hostBudgetBytes: 1,
+      beforeBudgetEviction: () => {
+        expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(true)
+        removeOwnedTree(victim.editorRoot)
+        removed = true
+      },
+    })
+    expect(removed).toBe(true)
+    expect(pathExists(victim.editorRoot)).toBe(false)
+    expectCurrent(incoming, record)
+    expect(pathExists(join(incoming.editorRoot, '.publish.lock'))).toBe(false)
+  })
+})
+
+describe('budget telemetry never waits for exporter delivery', () => {
+  it('finishes real publication with hung exporters, then kills and reaps them', async () => {
+    const host = makeHost()
+    try {
+      const incoming = host.fixture('hung-exporter-publication', 151, 64)
+      const captured = await recordTelemetry(
+        host.root,
+        async (children) => {
+          const publication = await overBudgetPublication(host, incoming, 1)
+          const deliveryTurn = Promise.withResolvers<void>()
+          setImmediate(deliveryTurn.resolve)
+          await deliveryTurn.promise
+          expect(children).toHaveLength(2)
+          for (const child of children) {
+            expect(child.exitCode).toBeNull()
+            expect(child.signalCode).toBeNull()
+            const status = spawnSync(ps, ['-p', String(child.pid), '-o', 'pid='], {
+              encoding: 'utf8',
+            })
+            expect(status.status).toBe(0)
+            expect(status.stdout.trim()).toBe(String(child.pid))
+          }
+          expectCurrent(incoming, publication.record)
+          return publication
+        },
+        { hangBudget: true },
+      )
+      expect(captured.exits).toEqual([
+        { code: null, signal: 'SIGKILL' },
+        { code: null, signal: 'SIGKILL' },
+      ])
+      // The one-second deadline may kill Bun before startup: assert the real spawn request.
+      expect(captured.invocations).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining([
+            'editor-view.host-budget',
+            'editor_view.host_budget.event=editor-view.host-budget.over-budget',
+            'exit.code=0',
+            'ok',
+          ]),
+        ]),
+      )
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('drops delivery on saturation and admits new delivery after children are reaped', async () => {
+    const host = makeHost()
+    try {
+      const options = {
+        name: 'editor-view.host-budget',
+        label: 'bounded',
+        attributes: [],
+        startedAtMs: Date.now(),
+        endedAtMs: Date.now(),
+      }
+      const captured = await recordTelemetry(host.root, async () =>
+        Array.from({ length: 8 }, () => emitCompletedSpanAsync(options)),
+      )
+      expect(captured.value).toEqual([true, true, true, true, false, false, false, false])
+      expect(captured.exits).toHaveLength(4)
+      expect(captured.invocations).toHaveLength(4)
+      const next = await recordTelemetry(host.root, async () => emitCompletedSpanAsync(options))
+      expect(next.value).toBe(true)
+      expect(next.exits).toHaveLength(1)
+    } finally {
+      await host.cleanup()
+    }
+  })
+})
+
+describe('budget telemetry rate limits across publisher processes per host store', () => {
+  let host: Host
+  let first: Fixture
+  let second: Fixture
+  let later: Fixture
+  let other: Fixture
+  let firstComplete = false
+  let secondComplete = false
+  let otherComplete = false
+  let laterComplete = false
+  const invocations: (readonly string[])[] = []
+
+  beforeAll(() => {
+    host = makeHost()
+    first = host.fixture('rate-first', 161, 64)
+    second = host.fixture('rate-second-process', 162, 64)
+    later = host.fixture('rate-after-window', 163, 64)
+    other = host.fixture('rate-other-store', 164, 64, join(host.root, 'other-store', 'v1'))
+  })
+  afterAll(async () => {
+    if (host !== undefined) await host.cleanup()
+  })
+
+  it('publishes the first store overrun and claims its durable delivery permit', async () => {
+    const captured = await recordTelemetry(host.root, async () =>
+      overBudgetPublication(host, first, 1),
+    )
+    invocations.push(...captured.invocations)
+    firstComplete = true
+  })
+
+  it('suppresses the same-store event from a separate real publisher process', async () => {
+    if (firstComplete === false) throw new Error('first rate-limit publication did not complete')
+    const captured = await recordTelemetry(host.root, async () => {
+      const script = [
+        `import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)}`,
+        `Date.now = () => ${Date.now()}`,
+        `await publishEditorView({ ...${JSON.stringify(second.options)}, hostBudgetBytes: 1 })`,
+      ].join('\n')
+      const child = spawnSync(bun, ['--eval', script], { encoding: 'utf8' })
+      expect(child.status).toBe(0)
+      const event = budgetEvents(child.stderr).find(
+        ({ event }) => event === 'editor-view.host-budget.over-budget',
+      )
+      expect(event).toBeDefined()
+      expect(child.stderr).toContain('"otelSuppressedEvents":1')
+    })
+    invocations.push(...captured.invocations)
+    secondComplete = true
+  })
+
+  it('admits delivery from a different content store within the same host interval', async () => {
+    if (secondComplete === false) throw new Error('cross-process suppression did not complete')
+    const captured = await recordTelemetry(host.root, async () =>
+      overBudgetPublication(host, other, 1),
+    )
+    invocations.push(...captured.invocations)
+    otherComplete = true
+  })
+
+  it('admits the original store after the window with its durable suppression count', async () => {
+    if (otherComplete === false) throw new Error('other-store publication did not complete')
+    host.advance(60_001)
+    const captured = await recordTelemetry(host.root, async () =>
+      overBudgetPublication(host, later, 1),
+    )
+    invocations.push(...captured.invocations)
+    laterComplete = true
+  })
+
+  it('preserves all per-store rate and suppressed-event assertions on real delivery requests', () => {
+    if (laterComplete === false) throw new Error('post-window publication did not complete')
+    const overruns = invocations.filter((span) =>
+      span.includes('editor_view.host_budget.event=editor-view.host-budget.over-budget'),
+    )
+    expect(overruns).toHaveLength(3)
+    const sameStore = overruns.filter((span) =>
+      span.includes(`editor_view.host_budget.content_store=${host.contentStore}`),
+    )
+    expect(sameStore).toHaveLength(2)
+    expect(sameStore).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(['editor_view.host_budget.suppressed_events=1']),
+      ]),
+    )
+    expect(overruns).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining([
+          `editor_view.host_budget.content_store=${other.options.contentStore}`,
+          'editor_view.host_budget.suppressed_events=0',
+        ]),
+      ]),
+    )
   })
 })

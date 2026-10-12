@@ -34,7 +34,7 @@ import {
   editorViewStagingCreatorIdentity,
   withEditorViewContentStoreLock,
 } from './editor-view-sharing.ts'
-import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
+import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 
 /**
  * Host-wide byte budget for editor-view generations and their shared CAS.
@@ -77,6 +77,7 @@ const maxAdmissionRounds = 8
 const journalLimit = 1_024
 const statBatch = 64
 const topHolderCount = 5
+const budgetTelemetryIntervalMs = 60_000
 const stateSchema = 'effect-utils/editor-view-host-budget/v1'
 const generationPattern = /^([A-Za-z0-9][A-Za-z0-9_-]*)-([0-9a-f]{64})$/
 const snapshotPattern = /^\.store\/([A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64})$/
@@ -192,6 +193,8 @@ type BudgetState = {
   legacyReservations: Set<string>
   usage: Usage | undefined
   warned: boolean
+  /** Host-wide delivery permits and suppression counts, keyed by store and event. */
+  telemetry: Map<string, { readonly emittedAtMs: number; readonly suppressed: number }>
 }
 
 const emptyState = (): BudgetState => ({
@@ -206,6 +209,7 @@ const emptyState = (): BudgetState => ({
   legacyReservations: new Set(),
   usage: undefined,
   warned: false,
+  telemetry: new Map(),
 })
 
 /** One private host-wide registry; CAS namespaces remain per Git common directory. */
@@ -377,6 +381,26 @@ const decodeState = ({
       measuredAtMs: usage.measuredAtMs,
     }
   }
+  // Older ledgers have no delivery state; all authoritative budget state is retained.
+  if (value.telemetry !== undefined)
+    for (const [key, entry] of records(value.telemetry)) {
+      const separator = key.lastIndexOf('\0')
+      if (
+        separator === -1 ||
+        state.contentStores.has(key.slice(0, separator)) === false ||
+        /^editor-view\.host-budget\.(warning|over-budget|evicted|underreserved)$/.test(
+          key.slice(separator + 1),
+        ) === false ||
+        isObject(entry) === false ||
+        isCount(entry.emittedAtMs) === false ||
+        isCount(entry.suppressed) === false
+      )
+        return invalid()
+      state.telemetry.set(key, {
+        emittedAtMs: entry.emittedAtMs,
+        suppressed: entry.suppressed,
+      })
+    }
   return state
 }
 
@@ -479,6 +503,12 @@ const writeState = (state: BudgetState): void => {
           },
         }),
     warned: state.warned,
+    telemetry: Object.fromEntries(
+      Array.from(state.telemetry, ([key, entry]) => [
+        key,
+        { emittedAtMs: entry.emittedAtMs, suppressed: entry.suppressed },
+      ]),
+    ),
   }
   const path = statePath()
   const candidate = `${path}.tmp-${randomUUID()}`
@@ -840,38 +870,64 @@ type BudgetEvent = {
   readonly unaccounted?: readonly string[]
 }
 
+/** Called only inside the existing host-ledger transaction; logs never wait for delivery. */
 const signal = ({
+  state,
+  contentStore,
   event,
   startedAtMs,
   exitCode,
 }: {
+  readonly state: BudgetState
+  readonly contentStore: string
   readonly event: BudgetEvent
   readonly startedAtMs: number
   readonly exitCode: number
 }): void => {
-  process.stderr.write(`${JSON.stringify(event)}\n`)
-  const attributes: OtelSpanAttribute[] = [
-    ['editor_view.host_budget.event', event.event],
-    ['editor_view.host_budget.budget_bytes', event.budgetBytes],
-    ['editor_view.host_budget.used_bytes', event.usedBytes],
-    ['editor_view.host_budget.protected_bytes', event.protectedBytes],
-    ['editor_view.host_budget.reserved_bytes', event.reservedBytes],
-    ['editor_view.host_budget.pending_estimate_bytes', event.pendingEstimateBytes],
-    ['editor_view.host_budget.reservation_bytes', event.reservationBytes],
-    ['editor_view.host_budget.top_holders', JSON.stringify(event.topHolders)],
-  ]
-  if (event.evicted !== undefined)
-    attributes.push(['editor_view.host_budget.evicted', event.evicted.join(',')])
-  if (event.unaccounted !== undefined)
-    attributes.push(['editor_view.host_budget.unaccounted_paths', event.unaccounted.length])
-  emitCompletedSpan({
-    name: 'editor-view.host-budget',
-    label: event.event.slice('editor-view.host-budget.'.length),
-    attributes,
-    startedAtMs,
-    endedAtMs: Date.now(),
-    exitCode,
+  const now = Date.now()
+  const key = `${contentStore}\0${event.event}`
+  const previous = state.telemetry.get(key)
+  const suppressed = previous?.suppressed ?? 0
+  const eligible = previous === undefined || now - previous.emittedAtMs >= budgetTelemetryIntervalMs
+  let accepted = false
+  if (eligible === true) {
+    const attributes: OtelSpanAttribute[] = [
+      ['editor_view.host_budget.event', event.event],
+      ['editor_view.host_budget.content_store', contentStore],
+      ['editor_view.host_budget.budget_bytes', event.budgetBytes],
+      ['editor_view.host_budget.used_bytes', event.usedBytes],
+      ['editor_view.host_budget.protected_bytes', event.protectedBytes],
+      ['editor_view.host_budget.reserved_bytes', event.reservedBytes],
+      ['editor_view.host_budget.pending_estimate_bytes', event.pendingEstimateBytes],
+      ['editor_view.host_budget.reservation_bytes', event.reservationBytes],
+      ['editor_view.host_budget.top_holders', JSON.stringify(event.topHolders)],
+      ['editor_view.host_budget.suppressed_events', suppressed],
+    ]
+    if (event.evicted !== undefined)
+      attributes.push(['editor_view.host_budget.evicted', event.evicted.join(',')])
+    if (event.unaccounted !== undefined)
+      attributes.push(['editor_view.host_budget.unaccounted_paths', event.unaccounted.length])
+    accepted = emitCompletedSpanAsync({
+      name: 'editor-view.host-budget',
+      label: event.event.slice('editor-view.host-budget.'.length),
+      attributes,
+      startedAtMs,
+      endedAtMs: now,
+      exitCode,
+    })
+  }
+  const nextSuppressed = accepted === true ? 0 : Math.min(Number.MAX_SAFE_INTEGER, suppressed + 1)
+  state.telemetry.set(key, {
+    emittedAtMs: accepted === true ? now : (previous?.emittedAtMs ?? 0),
+    suppressed: nextSuppressed,
   })
+  process.stderr.write(
+    `${JSON.stringify({
+      ...event,
+      contentStore,
+      otelSuppressedEvents: accepted === true ? suppressed : nextSuppressed,
+    })}\n`,
+  )
 }
 
 const formatHolders = (holders: readonly Holder[]): string =>
@@ -884,11 +940,13 @@ const formatHolders = (holders: readonly Holder[]): string =>
 /** Emit once when protected use crosses the warning ratio; re-arm below it. */
 const updateWarning = ({
   state,
+  contentStore,
   budgetBytes,
   topHolders,
   startedAtMs,
 }: {
   readonly state: BudgetState
+  readonly contentStore: string
   readonly budgetBytes: number
   readonly topHolders: readonly Holder[]
   readonly startedAtMs: number
@@ -898,6 +956,8 @@ const updateWarning = ({
   const crossing = state.usage.protectedBytes + reserved >= budgetBytes * warningRatio
   if (crossing === true && state.warned === false)
     signal({
+      state,
+      contentStore,
       event: {
         event: 'editor-view.host-budget.warning',
         budgetBytes,
@@ -1960,7 +2020,15 @@ const retireRoot = async ({
         for (const [key, at] of state.lastUse)
           if (key.startsWith(`${root.key}\0`) === true) activeAtMs = Math.max(activeAtMs, at)
         const pointers = new Map<string, string>()
-        for (const name of readdirSync(root.key)) {
+        let entries: string[]
+        try {
+          entries = readdirSync(root.key)
+        } catch (error) {
+          if (vanished(error) === false) throw error
+          blocked.push(...admitted.map(({ generation }) => generation.key))
+          return
+        }
+        for (const name of entries) {
           const path = join(root.key, name)
           try {
             const status = lstatSync(path)
@@ -2192,7 +2260,53 @@ export const reserveEditorViewBudget = async ({
             })
             state.epoch += 1
           }
-          updateWarning({ state, budgetBytes, topHolders: census.topHolders, startedAtMs })
+          updateWarning({
+            state,
+            contentStore: store,
+            budgetBytes,
+            topHolders: census.topHolders,
+            startedAtMs,
+          })
+          if (admitted === true && force === true)
+            signal({
+              state,
+              contentStore: store,
+              event: {
+                event: 'editor-view.host-budget.over-budget',
+                budgetBytes,
+                usedBytes: census.usedBytes,
+                protectedBytes: plan.protectedBytes,
+                reservedBytes: reserved,
+                pendingEstimateBytes: pending,
+                reservationBytes,
+                topHolders: census.topHolders,
+                evicted,
+                ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
+                message: `editor views exceed the host budget: ${census.usedBytes} of ${budgetBytes} bytes measured (${plan.protectedBytes} protected: pinned, open by a process, within ${graceMs / 60_000}min grace, root used within ${recencyMs}ms, or lock contended) plus ${reserved} reserved and ${pending} estimated since the census, before admitting ${reservationBytes}${census.unknown.length > 0 ? `; ${census.unknown.length} unreadable path(s) uncounted` : ''}; evicted ${evicted.length} generation(s); top holders: ${formatHolders(census.topHolders)}. Publishing anyway; release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.`,
+              },
+              startedAtMs,
+              exitCode: 0,
+            })
+          else if (admitted === true && evicted.length > 0)
+            signal({
+              state,
+              contentStore: store,
+              event: {
+                event: 'editor-view.host-budget.evicted',
+                budgetBytes,
+                usedBytes: census.usedBytes,
+                protectedBytes: plan.protectedBytes,
+                reservedBytes: reserved,
+                pendingEstimateBytes: pending,
+                reservationBytes,
+                topHolders: census.topHolders,
+                evicted,
+                ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
+                message: `retired ${evicted.length} editor-view generation(s) to admit ${reservationBytes} bytes within the ${budgetBytes}-byte host budget`,
+              },
+              startedAtMs,
+              exitCode: 0,
+            })
           writeState(state)
           return { admitted, stale, used, reserved, pending }
         })
@@ -2219,12 +2333,14 @@ export const reserveEditorViewBudget = async ({
           await collectBudgetContentStores(census.contentStores)
           continue
         }
+        // Every plan in this round uses the candidate eligibility observed at this instant.
+        const roundAtMs = Date.now()
         let plan = planEviction({
           census,
           blocked,
           live: new Set(),
           recencyMs,
-          now: Date.now(),
+          now: roundAtMs,
         })
         // Recent/grace/pinned roots already have complete protection. A host process
         // walk cannot change their eligibility and must not tax ordinary publication.
@@ -2241,30 +2357,12 @@ export const reserveEditorViewBudget = async ({
             blocked,
             live: observeGenerations(plan.order),
             recencyMs,
-            now: Date.now(),
+            now: roundAtMs,
           })
         last = { census, plan }
         // eslint-disable-next-line no-await-in-loop -- Admission is a single short flock transaction per round.
         const admission = await admit({ census, plan, force: false })
         if (admission.admitted === true) {
-          if (evicted.length > 0)
-            signal({
-              event: {
-                event: 'editor-view.host-budget.evicted',
-                budgetBytes,
-                usedBytes: census.usedBytes,
-                protectedBytes: plan.protectedBytes,
-                reservedBytes: admission.reserved,
-                pendingEstimateBytes: admission.pending,
-                reservationBytes,
-                topHolders: census.topHolders,
-                evicted,
-                ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
-                message: `retired ${evicted.length} editor-view generation(s) to admit ${reservationBytes} bytes within the ${budgetBytes}-byte host budget`,
-              },
-              startedAtMs,
-              exitCode: 0,
-            })
           return { token }
         }
         if (admission.stale === true) continue
@@ -2276,7 +2374,7 @@ export const reserveEditorViewBudget = async ({
             blocked,
             live: observeGenerations(plan.order),
             recencyMs,
-            now: Date.now(),
+            now: roundAtMs,
           })
           last = { census, plan }
         }
@@ -2320,6 +2418,10 @@ export const reserveEditorViewBudget = async ({
             for (const key of outcome.blocked) blocked.add(key)
             evicted.push(...outcome.retired)
             if (outcome.retired.length > 0) retiredStores.add(rootView.contentStore)
+          } catch (error) {
+            if (vanished(error) === false) throw error
+            // A torn-down victim is unavailable, never grounds to reject this publisher.
+            for (const generation of generations) blocked.add(generation.key)
           } finally {
             lock?.release()
           }
@@ -2336,24 +2438,7 @@ export const reserveEditorViewBudget = async ({
         (await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots, staged }))
       const plan =
         last?.plan ?? planEviction({ census, blocked, live: new Set(), recencyMs, now: Date.now() })
-      const admission = await admit({ census, plan, force: true })
-      signal({
-        event: {
-          event: 'editor-view.host-budget.over-budget',
-          budgetBytes,
-          usedBytes: census.usedBytes,
-          protectedBytes: plan.protectedBytes,
-          reservedBytes: admission.reserved,
-          pendingEstimateBytes: admission.pending,
-          reservationBytes,
-          topHolders: census.topHolders,
-          evicted,
-          ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
-          message: `editor views exceed the host budget: ${census.usedBytes} of ${budgetBytes} bytes measured (${plan.protectedBytes} protected: pinned, open by a process, within ${graceMs / 60_000}min grace, root used within ${recencyMs}ms, or lock contended) plus ${admission.reserved} reserved and ${admission.pending} estimated since the census, before admitting ${reservationBytes}${census.unknown.length > 0 ? `; ${census.unknown.length} unreadable path(s) uncounted` : ''}; evicted ${evicted.length} generation(s); top holders: ${formatHolders(census.topHolders)}. Publishing anyway; release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.`,
-        },
-        startedAtMs,
-        exitCode: 0,
-      })
+      await admit({ census, plan, force: true })
       return { token }
     },
   })
@@ -2415,7 +2500,7 @@ export const finishEditorViewBudgetReservation = async ({
       } catch {
         // The committed generation stays accounted at its reserved size until the next census.
       }
-      const outcome = await withHostBudgetLock(async () => {
+      await withHostBudgetLock(async () => {
         const state = readState()
         const reservation = state.reservations.get(token)
         // Only the reserving incarnation may settle its reservation, and only for its own root.
@@ -2442,26 +2527,27 @@ export const finishEditorViewBudgetReservation = async ({
           state.generations.set(key, cached)
         state.lastUse.set(key, Date.now())
         await registerRoot({ state, contentStore: store, root })
+        // Full footprint counts shared payload inodes, so this is an upper bound on new bytes.
+        if (reservation !== undefined && estimatedBytes > reservation.bytes)
+          signal({
+            state,
+            contentStore: store,
+            event: {
+              event: 'editor-view.host-budget.underreserved',
+              budgetBytes: reservation.budgetBytes,
+              usedBytes: state.usage?.usedBytes ?? 0,
+              protectedBytes: state.usage?.protectedBytes ?? 0,
+              reservedBytes: reservedBytes(state),
+              pendingEstimateBytes: estimatedBytes,
+              reservationBytes: reservation.bytes,
+              topHolders: [],
+              message: `generation ${snapshot} footprint is up to ${estimatedBytes} bytes (shared payload inodes included) but reserved only ${reservation.bytes}; the publisher's reservation formula may undercount`,
+            },
+            startedAtMs,
+            exitCode: 0,
+          })
         writeState(state)
-        return { reservation, estimatedBytes, usage: state.usage, reserved: reservedBytes(state) }
       })
-      // Full footprint counts shared payload inodes, so this is an upper bound on new bytes.
-      if (outcome.reservation !== undefined && outcome.estimatedBytes > outcome.reservation.bytes)
-        signal({
-          event: {
-            event: 'editor-view.host-budget.underreserved',
-            budgetBytes: outcome.reservation.budgetBytes,
-            usedBytes: outcome.usage?.usedBytes ?? 0,
-            protectedBytes: outcome.usage?.protectedBytes ?? 0,
-            reservedBytes: outcome.reserved,
-            pendingEstimateBytes: outcome.estimatedBytes,
-            reservationBytes: outcome.reservation.bytes,
-            topHolders: [],
-            message: `generation ${snapshot} footprint is up to ${outcome.estimatedBytes} bytes (shared payload inodes included) but reserved only ${outcome.reservation.bytes}; the publisher's reservation formula may undercount`,
-          },
-          startedAtMs,
-          exitCode: 0,
-        })
     },
   })
 }
@@ -2538,7 +2624,7 @@ export const touchEditorViewBudgetGeneration = async ({
     state.lastUse.set(key, Date.now())
     // Registration is the durable proof of this root's actual content store.
     await registerRoot({ state, contentStore: store, root })
-    updateWarning({ state, budgetBytes, topHolders: [], startedAtMs })
+    updateWarning({ state, contentStore: store, budgetBytes, topHolders: [], startedAtMs })
     writeState(state)
   })
 }

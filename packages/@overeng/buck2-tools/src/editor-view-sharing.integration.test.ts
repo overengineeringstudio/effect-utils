@@ -25,6 +25,7 @@ import { basename, dirname, join, relative } from 'node:path'
 
 import { describe, expect, it, vi } from 'vitest'
 
+import { observeEditorViewProcessCandidates } from './editor-view-readers.ts'
 import {
   type EditorViewContentSharing,
   collectEditorViewContentStore,
@@ -1176,6 +1177,100 @@ describe('host-wide editor snapshot content store', () => {
     },
   )
 })
+
+describe.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
+  'positive editor-view directory readers',
+  () => {
+    for (const pathKind of ['store', 'unknown-child', 'known-generation'] as const) {
+      it.each(['cwd', 'fd', 'cwd-and-fd'] as const)(
+        `scopes ${pathKind} protection from a real %s reader`,
+        async (reference) => {
+          await withStore(async ({ root, candidate }) => {
+            const editorRoot = candidate('editor')
+            const first = candidate('editor', '.store', 'generation-one')
+            const second = candidate('editor', '.store', 'generation-one-other')
+            const otherRoot = candidate('other-editor')
+            const other = candidate('other-editor', '.store', 'generation-one')
+            const directory =
+              pathKind === 'store'
+                ? dirname(first)
+                : pathKind === 'unknown-child'
+                  ? candidate('editor', '.store', 'unidentified', 'child')
+                  : candidate('editor', '.store', 'generation-one', 'node_modules')
+            const script = join(root, 'directory-reader.ts')
+            writeFileSync(
+              script,
+              [
+                "import { openSync, closeSync } from 'node:fs'",
+                'const [directory, reference] = process.argv.slice(2)',
+                'if (reference !== "fd") process.chdir(directory)',
+                'const fd = reference === "cwd" ? undefined : openSync(directory, "r")',
+                'process.stdin.resume()',
+                'process.stdin.once("data", () => {',
+                '  if (fd !== undefined) closeSync(fd)',
+                '  process.exit(0)',
+                '})',
+                'process.stdout.write("ready\\n")',
+              ].join('\n'),
+            )
+            const child = spawn(bun, [script, directory, reference], {
+              cwd: root,
+              stdio: ['pipe', 'pipe', 'pipe'],
+            })
+            const ready = Promise.withResolvers<void>()
+            const exited = Promise.withResolvers<{
+              readonly code: number | null
+              readonly signal: NodeJS.Signals | null
+            }>()
+            let output = ''
+            let stderr = ''
+            child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+              output += chunk
+              if (output.includes('ready\n') === true) ready.resolve()
+            })
+            child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+              stderr += chunk
+            })
+            child.once('error', (error) => {
+              ready.reject(error)
+              exited.reject(error)
+            })
+            child.once('exit', (code, signal) => {
+              exited.resolve({ code, signal })
+              ready.reject(
+                new Error(`directory reader exited before readiness: ${code ?? signal}; ${stderr}`),
+              )
+            })
+            void ready.promise.catch(() => undefined)
+            void exited.promise.catch(() => undefined)
+            try {
+              await ready.promise
+              // cwd-and-fd observes the known path twice in the same census:
+              // holding it once must not widen the next reference to its root.
+              expect(
+                observeEditorViewProcessCandidates({
+                  candidates: [
+                    { key: 'first', editorRoot, snapshotRoot: first, linkedInodes: [] },
+                    { key: 'second', editorRoot, snapshotRoot: second, linkedInodes: [] },
+                    {
+                      key: 'other',
+                      editorRoot: otherRoot,
+                      snapshotRoot: other,
+                      linkedInodes: [],
+                    },
+                  ],
+                }),
+              ).toEqual(new Set(pathKind === 'known-generation' ? ['first'] : ['first', 'second']))
+            } finally {
+              if (child.exitCode === null && child.signalCode === null) child.stdin.end('release\n')
+              expect(await exited.promise).toEqual({ code: 0, signal: null })
+            }
+          })
+        },
+      )
+    }
+  },
+)
 
 describe('default editor-view content store', () => {
   it('resolves relative and absolute worktree .git files and commondir to one store beside .bare', async () => {

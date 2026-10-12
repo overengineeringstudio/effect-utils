@@ -254,9 +254,10 @@ type ProcessCandidateGroup = { readonly indices: number[]; remaining: number }
 
 /**
  * Return only candidates positively held by same-user cwd, descriptors or
- * mappings. Snapshot paths protect that candidate; editor-root paths outside
- * `.store` protect every candidate in that root. Shared payload inodes protect
- * every linking candidate, even through a canonical CAS path or external alias.
+ * mappings. Known snapshot paths protect only that candidate; all other paths
+ * in an editor root, including `.store` and unidentified children, protect every
+ * candidate in that root. Shared payload inodes protect every linking candidate,
+ * even through a canonical CAS path or external alias.
  *
  * Containment is lexical: this observation never walks symlinks. Uninspectable
  * processes contribute nothing, so managed pins and root recency remain the
@@ -280,10 +281,7 @@ export const observeEditorViewProcessCandidates = ({
   const hasInodes = new Uint8Array(candidates.length)
   let remaining = candidates.length
   let remainingWithInodes = 0
-  const roots = new Map<
-    string,
-    ProcessCandidateGroup & { readonly store: string; readonly storePrefix: string }
-  >()
+  const roots = new Map<string, ProcessCandidateGroup>()
   const snapshots = new Map<string, ProcessCandidateGroup>()
   // Keep each distinct inode once, with numeric candidate associations rather
   // than retaining duplicate inode strings or a per-generation reverse index.
@@ -292,8 +290,7 @@ export const observeEditorViewProcessCandidates = ({
   for (const [index, candidate] of candidates.entries()) {
     let root = roots.get(candidate.editorRoot)
     if (root === undefined) {
-      const store = join(candidate.editorRoot, '.store')
-      root = { store, storePrefix: `${store}${sep}`, indices: [], remaining: 0 }
+      root = { indices: [], remaining: 0 }
       roots.set(candidate.editorRoot, root)
     }
     root.indices.push(index)
@@ -342,8 +339,9 @@ export const observeEditorViewProcessCandidates = ({
       const root = roots.get(candidate.editorRoot)
       if (root !== undefined && --root.remaining === 0) roots.delete(candidate.editorRoot)
       const snapshot = snapshots.get(candidate.snapshotRoot)
-      if (snapshot !== undefined && --snapshot.remaining === 0)
-        snapshots.delete(candidate.snapshotRoot)
+      // Keep known snapshot identities after holding them: another reference to
+      // the same generation must not be mistaken for an unidentified root path.
+      if (snapshot !== undefined) snapshot.remaining--
     }
   }
 
@@ -369,10 +367,12 @@ export const observeEditorViewProcessCandidates = ({
     let ancestor = path
     // Look up ancestors, rather than comparing every observed path to every root.
     for (;;) {
-      hold(snapshots.get(ancestor)?.indices)
-      const root = roots.get(ancestor)
-      if (root !== undefined && path !== root.store && path.startsWith(root.storePrefix) === false)
-        hold(root.indices)
+      const snapshot = snapshots.get(ancestor)
+      if (snapshot !== undefined) {
+        if (snapshot.remaining !== 0) hold(snapshot.indices)
+        return
+      }
+      hold(roots.get(ancestor)?.indices)
       if (remaining === 0 || ancestor === '/') return
       const separator = ancestor.lastIndexOf('/')
       ancestor = separator === 0 ? '/' : ancestor.slice(0, separator)

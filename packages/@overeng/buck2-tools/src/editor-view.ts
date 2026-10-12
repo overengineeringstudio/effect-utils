@@ -240,6 +240,31 @@ const pathExists = (path: string): boolean => {
 const isNodeErrorCode = ({ error, code }: { error: unknown; code: string }): boolean =>
   error instanceof Error && 'code' in error && error.code === code
 
+/** Advisory maintenance never changes a successful publication into a command failure. */
+const runEditorViewMaintenance = async <T>({
+  editorRoot,
+  phase,
+  run,
+}: {
+  readonly editorRoot: string
+  readonly phase: string
+  readonly run: () => T | Promise<T>
+}): Promise<T | undefined> => {
+  try {
+    return await run()
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: 'editor-view.host-budget.maintenance-error',
+        editorRoot,
+        phase,
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    )
+    return undefined
+  }
+}
+
 const requireDirectory = ({ path, field }: { path: string; field: string }): void => {
   let status
   try {
@@ -1942,8 +1967,9 @@ const acquireLock = ({
     try {
       owner = readFileSync(join(lockPath, 'owner.json'), 'utf8').trim()
     } catch {}
-    fail(
-      `publication lock exists at ${lockPath}; owner=${owner}; recovery requires explicit: ${recoveryCommand} --token <owner-token>`,
+    throw new Error(
+      `editor view: publication lock exists at ${lockPath}; owner=${owner}; recovery requires explicit: ${recoveryCommand} --token <owner-token>`,
+      { cause: error },
     )
   }
   try {
@@ -1979,13 +2005,26 @@ const acquirePublicationLock = async ({
     try {
       return acquireLock({ editorRoot, recoveryCommand })
     } catch (error) {
+      if (
+        error instanceof Error === false ||
+        isNodeErrorCode({ error: error.cause, code: 'EEXIST' }) === false
+      )
+        throw error
       const path = join(editorRoot, '.publish.lock')
-      if (pathExists(path) === false) continue
+      if (pathExists(path) === false) {
+        // eslint-disable-next-line no-await-in-loop -- Yield when the contending lock vanished.
+        await Bun.sleep(10)
+        continue
+      }
       let owner: LockOwner
       try {
         owner = readLockOwner(join(path, 'owner.json'))
       } catch {
-        if (pathExists(path) === false) continue
+        if (pathExists(path) === false) {
+          // eslint-disable-next-line no-await-in-loop -- Yield when owner inspection races release.
+          await Bun.sleep(10)
+          continue
+        }
         throw error
       }
       if (
@@ -2003,7 +2042,13 @@ const acquirePublicationLock = async ({
 }
 
 const releaseLock = ({ path, token }: { path: string; token: string }): void => {
-  const owner = readLockOwner(join(path, 'owner.json'))
+  let owner: LockOwner
+  try {
+    owner = readLockOwner(join(path, 'owner.json'))
+  } catch (error) {
+    if (isNodeErrorCode({ error, code: 'ENOENT' }) === true && pathExists(path) === false) return
+    throw error
+  }
   if (owner.token !== token) fail(`publication lock ownership changed: ${path}`)
   rmSync(path, { recursive: true })
 }
@@ -2138,8 +2183,14 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
       if (pathExists(lockPath) === true) releaseLock({ path: lockPath, token: lock.token })
     }
   }
-  await collectEditorViewContentStore({ contentStore: paths.contentStore })
-  await collectEditorViewBudgetFootprints({ editorRoot: paths.editorRoot })
+  await runEditorViewMaintenance({
+    editorRoot: paths.editorRoot,
+    phase: 'release-cleanup',
+    run: async () => {
+      await collectEditorViewContentStore({ contentStore: paths.contentStore })
+      await collectEditorViewBudgetFootprints({ editorRoot: paths.editorRoot })
+    },
+  })
 }
 
 /** Remove the publication lock only when the caller presents its exact owner token. */
@@ -2321,6 +2372,18 @@ type PublicationCoordinator = {
   readonly workers: Map<string, PublicationWorkerState>
 }
 
+/** An uncertain sibling inventory disables this admission's eviction rather than guessing. */
+const unobservedBudgetDiscovery = ({ path, error }: { path: string; error: unknown }): never => {
+  console.error(
+    JSON.stringify({
+      event: 'editor-view.host-budget.unobserved',
+      path,
+      code: error instanceof Error && 'code' in error ? error.code : 'unknown',
+      message: error instanceof Error ? error.message : String(error),
+    }),
+  )
+  throw error
+}
 const discoverBudgetRoots = (root: EditorViewBudgetRoot): readonly EditorViewBudgetRoot[] => {
   const repositories = new Set([root.repoRoot])
   const common = editorViewGitCommonDirectory(root.repoRoot)
@@ -2331,7 +2394,8 @@ const discoverBudgetRoots = (root: EditorViewBudgetRoot): readonly EditorViewBud
     try {
       registrations = readdirSync(registered)
     } catch (error) {
-      if (isNodeErrorCode({ error, code: 'ENOENT' }) === false) throw error
+      if (isNodeErrorCode({ error, code: 'ENOENT' }) === false)
+        unobservedBudgetDiscovery({ path: registered, error })
       registrations = []
     }
     for (const name of registrations) {
@@ -2339,7 +2403,8 @@ const discoverBudgetRoots = (root: EditorViewBudgetRoot): readonly EditorViewBud
         const path = readFileSync(join(registered, name, 'gitdir'), 'utf8').trim()
         if (isAbsolute(path) === true) repositories.add(realpathSync(dirname(path)))
       } catch (error) {
-        if (isNodeErrorCode({ error, code: 'ENOENT' }) === false) throw error
+        if (isNodeErrorCode({ error, code: 'ENOENT' }) === false)
+          unobservedBudgetDiscovery({ path: join(registered, name), error })
       }
     }
   }
@@ -2351,7 +2416,8 @@ const discoverBudgetRoots = (root: EditorViewBudgetRoot): readonly EditorViewBud
         if (lstatSync(editorRoot).isDirectory() === true)
           roots.set(editorRoot, { repoRoot, editorRoot })
       } catch (error) {
-        if (isNodeErrorCode({ error, code: 'ENOENT' }) === false) throw error
+        if (isNodeErrorCode({ error, code: 'ENOENT' }) === false)
+          unobservedBudgetDiscovery({ path: editorRoot, error })
       }
     }
   return [...roots.values()]
@@ -2621,34 +2687,40 @@ const publishEditorViewCoordinated = async ({
     } else {
       // Do not let an obsolete current-snapshot scan race snapshot retention below.
       if (currentSnapshotValidation !== undefined) await currentSnapshotValidation.validation
-      const reserved = await reserveEditorViewBudget({
-        contentStore: paths.contentStore,
-        root: budgetRoot,
-        reservationBytes: budgetReservationBytes({
-          sources: finite === true ? roots.map((root) => root.source) : [selectedPath],
-          dereference: finite === false,
-        }),
-        heldEditorRoot: paths.editorRoot,
-        discoverRoots: () => discoverBudgetRoots(budgetRoot),
-        tryLockRoot: (root) => {
-          try {
-            const acquired = acquireLock({
-              editorRoot: root.editorRoot,
-              recoveryCommand: `recover-lock --repo-root ${root.repoRoot}`,
-              kind: 'eviction',
-            })
-            return { release: () => releaseLock(acquired) }
-          } catch (error) {
-            if (existsSync(join(root.editorRoot, '.publish.lock')) === true) return undefined
-            throw error
-          }
-        },
-        budgetBytes,
-        ...(options.beforeBudgetEviction === undefined
-          ? {}
-          : { beforeRetireRoot: options.beforeBudgetEviction }),
+      const reserved = await runEditorViewMaintenance({
+        editorRoot: paths.editorRoot,
+        phase: 'reserve',
+        run: () =>
+          reserveEditorViewBudget({
+            contentStore: paths.contentStore,
+            root: budgetRoot,
+            reservationBytes: budgetReservationBytes({
+              sources: finite === true ? roots.map((root) => root.source) : [selectedPath],
+              dereference: finite === false,
+            }),
+            heldEditorRoot: paths.editorRoot,
+            discoverRoots: () => discoverBudgetRoots(budgetRoot),
+            tryLockRoot: (root) => {
+              try {
+                const acquired = acquireLock({
+                  editorRoot: root.editorRoot,
+                  recoveryCommand: `recover-lock --repo-root ${root.repoRoot}`,
+                  kind: 'eviction',
+                })
+                return { release: () => releaseLock(acquired) }
+              } catch (error) {
+                if (isNodeErrorCode({ error, code: 'ENOENT' }) === true) return undefined
+                if (existsSync(join(root.editorRoot, '.publish.lock')) === true) return undefined
+                throw error
+              }
+            },
+            budgetBytes,
+            ...(options.beforeBudgetEviction === undefined
+              ? {}
+              : { beforeRetireRoot: options.beforeBudgetEviction }),
+          }),
       })
-      budgetReservation = reserved.token
+      budgetReservation = reserved?.token
       candidate = join(paths.storeDir, `.candidate-${token}`)
       mkdirSync(candidate)
       enterPhase('materialize')
@@ -2819,33 +2891,55 @@ const publishEditorViewCoordinated = async ({
         signalEditorResolution({ paths, token })
       enterPhase('gc')
       if (
-        (await garbageCollectSnapshots({
-          paths,
-          options,
-          ordered: retention,
-          current: snapshotName,
-          token,
+        (await runEditorViewMaintenance({
+          editorRoot: paths.editorRoot,
+          phase: 'snapshot-cleanup',
+          run: () =>
+            garbageCollectSnapshots({
+              paths,
+              options,
+              ordered: retention,
+              current: snapshotName,
+              token,
+            }),
         })) === true
       )
         onContentChanged()
       if (budgetReservation !== undefined) {
-        await finishEditorViewBudgetReservation({
-          contentStore: paths.contentStore,
-          root: budgetRoot,
-          token: budgetReservation,
-          snapshot: `.store/${snapshotName}`,
+        const reservation = budgetReservation
+        await runEditorViewMaintenance({
+          editorRoot: paths.editorRoot,
+          phase: 'finish',
+          run: () =>
+            finishEditorViewBudgetReservation({
+              contentStore: paths.contentStore,
+              root: budgetRoot,
+              token: reservation,
+              snapshot: `.store/${snapshotName}`,
+            }),
         })
         budgetReservation = undefined
       } else {
-        await touchEditorViewBudgetGeneration({
-          contentStore: paths.contentStore,
-          root: budgetRoot,
-          snapshot: `.store/${snapshotName}`,
-          discoverRoots: () => discoverBudgetRoots(budgetRoot),
-          budgetBytes,
+        await runEditorViewMaintenance({
+          editorRoot: paths.editorRoot,
+          phase: 'touch',
+          run: () =>
+            touchEditorViewBudgetGeneration({
+              contentStore: paths.contentStore,
+              root: budgetRoot,
+              snapshot: `.store/${snapshotName}`,
+              discoverRoots: () => discoverBudgetRoots(budgetRoot),
+              budgetBytes,
+            }),
         })
       }
-      if (pathExists(evictionMarker) === true) rmSync(evictionMarker)
+      await runEditorViewMaintenance({
+        editorRoot: paths.editorRoot,
+        phase: 'eviction-marker-cleanup',
+        run: () => {
+          if (pathExists(evictionMarker) === true) rmSync(evictionMarker)
+        },
+      })
       emitPhaseSpan({ created })
       return record
     }
@@ -2874,11 +2968,18 @@ const publishEditorViewCoordinated = async ({
       rmSync(candidate, { recursive: true, force: true })
       onContentChanged()
     }
-    if (budgetReservation !== undefined)
-      await cancelEditorViewBudgetReservation({
-        contentStore: paths.contentStore,
-        token: budgetReservation,
+    if (budgetReservation !== undefined) {
+      const reservation = budgetReservation
+      await runEditorViewMaintenance({
+        editorRoot: paths.editorRoot,
+        phase: 'cancel',
+        run: () =>
+          cancelEditorViewBudgetReservation({
+            contentStore: paths.contentStore,
+            token: reservation,
+          }),
       })
+    }
     workers.delete(token)
     if (coordinator === undefined) releaseLock(lock)
   }
@@ -2894,7 +2995,11 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
     },
   })
   if (contentChanges.changed === true)
-    await collectEditorViewContentStore({ contentStore: makePaths(options).contentStore })
+    await runEditorViewMaintenance({
+      editorRoot: makePaths(options).editorRoot,
+      phase: 'cas-cleanup',
+      run: () => collectEditorViewContentStore({ contentStore: makePaths(options).contentStore }),
+    })
   return record
 }
 
@@ -2997,7 +3102,11 @@ export const publishEditorViews = async ({
     // not hold its cross-worktree lock; only bounded link/unlink batches do.
     for (const contentStore of changedStores)
       // eslint-disable-next-line no-await-in-loop -- Distinct stores are independent maintenance units.
-      await collectEditorViewContentStore({ contentStore })
+      await runEditorViewMaintenance({
+        editorRoot: contentStore,
+        phase: 'cas-cleanup',
+        run: () => collectEditorViewContentStore({ contentStore }),
+      })
     return results.map((result) => {
       if (result.status === 'rejected') throw result.reason
       return result.value
