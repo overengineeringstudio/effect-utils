@@ -56,11 +56,16 @@ reads continue. Detail activation belongs to the host. Multiple strips can share
 one session. Hooks `useMeters`, `useSeries`, and `useSeriesSnapshot` read that
 provider's typed store.
 
+Presentation hooks publish every 250ms: in the frame publication phase when
+frames are supported, otherwise on a timer. Publication pauses while the session
+is hidden or stopped; raw event and interval acquisition remains independent.
+
 ## Headless gates
 
-Keep a scope alive around the work. No UI is needed. `beginMeasure`/`endMeasure`
-split an interaction bracket; `measureWindow` brackets an Effect and defaults to
-30 actual settlement frames (`endMeasure` defaults to zero).
+Keep a scope alive around the work. No UI is needed. `measurement` acquires a
+scope-owned capability for split interactions; its single-shot `end` defaults
+to zero settlement frames. `measureWindow` brackets an Effect and defaults to
+30 actual visible settlement frames.
 
 ```ts
 import { Effect } from 'effect'
@@ -84,6 +89,29 @@ complete frame evidence does not certify an unrelated source's availability.
 Unsupported capabilities produce tagged `Unavailable` observations shown as
 `n/a`, never fabricated zeros.
 
+For split work, acquire and end within the same owning scope:
+
+```ts
+const splitGate = Effect.gen(function* () {
+  yield* meters.start
+  const bracket = yield* meters.headless.measurement
+  yield* hostWork
+  return yield* bracket.end({ settleFrames: 5 })
+}).pipe(Effect.scoped)
+```
+
+`end` validates settlement before claiming the capability, so invalid options can
+be retried. Concurrent/repeated end fails `AlreadyEnded`; an unended resource
+used after scope closure fails `ScopeClosed`, and session restart fails
+`StaleGeneration`. Work failure/interruption abandons without settlement and
+preserves its original Cause. Resource scopes do not prolong collection.
+
+`MeasureResult` is both a value schema and a type exported by `/headless`;
+`MeasureError` is a schema-backed tagged error. Encode wire results with
+`Schema.encodeEffect(MeasureResult)` and decode untrusted results with
+`Schema.decodeUnknownEffect(MeasureResult)` from the pinned Effect 4 API.
+Capabilities are executable browser-local resources, not serializable data.
+
 ## Entry points
 
 - Root, `/series`, `/headless`: platform-independent contracts, bounded histories,
@@ -99,10 +127,15 @@ Unsupported capabilities produce tagged `Unavailable` observations shown as
   Profiler receives an explicit instrumentation registry and counter token;
   counts represent actual commits, not component function invocations.
 
-There is no automatically installed browser handle or global counter bag.
-Automation may opt into a host-selected, scoped bridge around the same headless
-API; registration is direct and release removes it. The package `src/stories`
-and `e2e` use a DOM-local bridge only with `testBridge=meters-e2e`.
+No browser global or counter bag is installed automatically. Automation may opt
+into a host-selected scoped bridge. The package `src/stories` and `e2e` use a
+DOM-local bridge only with `testBridge=meters-e2e`: `acquireMeasurement()` returns
+an opaque token for a browser-owned resource scope; host locator interactions
+run between acquisition and `finishMeasurement({ token, settleFrames })`.
+Finish encodes `MeasureResult` for the host to decode. Invalid options preserve
+the token for retry; claimed end closes its scope. Bridge teardown unregisters
+directly, closes outstanding scopes, and cancels pending settlement. Tokens are
+local to that bridge, not serialized core capabilities or callback protocols.
 
 Workspace install: `@overeng/meters: workspace:^`. Peers: `effect`, `react`,
 `react-dom`. The headless import graph does not include React or canvas.

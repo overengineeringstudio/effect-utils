@@ -1,4 +1,4 @@
-import { publishRevision } from './internal.ts'
+import { publishRevision, subscribePresentation } from './internal.ts'
 
 /** Cadence belongs to acquisition, independently of reader publication. */
 export type Cadence =
@@ -97,6 +97,7 @@ export interface SeriesStore {
   readonly subscribe: (options: { readonly notify: () => void }) => () => void
   readonly getRevision: () => number
   readonly [publishRevision]: () => void
+  readonly [subscribePresentation]: (notify: () => void) => () => void
 }
 /** Validate repository-local, case-sensitive identifiers. */
 export const validateId = (id: string): void => {
@@ -215,22 +216,20 @@ export const makeSeries = <TValue>(options: {
 }
 
 /** Construct an inert store with constant-time fixed-slot appends. */
-export const makeSeriesStore = (): SeriesStore => {
+export const makeSeriesStore = (options?: {
+  /** Session-supplied cadence; installed only while presentation readers subscribe. */
+  readonly subscribePublication: (publish: () => void) => () => void
+}): SeriesStore => {
   const owner = {}
   const identities = new Map<string, object>()
   const listeners = new Set<() => void>()
+  const presentationListeners = new Set<() => void>()
+  let stopPublication: (() => void) | undefined
   let revision = 0
   const publish = (): void => {
     revision++
-    let faults: unknown[] | undefined
-    for (const notify of listeners) {
-      try {
-        notify()
-      } catch (cause) {
-        ;(faults ??= []).push(cause)
-      }
-    }
-    if (faults !== undefined) throw new AggregateError(faults, 'Series subscriber failed')
+    notifyListeners(listeners)
+    if (options === undefined) notifyListeners(presentationListeners)
   }
   const seen = new Set<object>()
   const prepareValue = (value: unknown): void => {
@@ -292,6 +291,39 @@ export const makeSeriesStore = (): SeriesStore => {
       }
     },
     getRevision: () => revision,
-    [publishRevision]: publish,
+    [publishRevision]: () => {
+      try {
+        publish()
+      } finally {
+        // Lifecycle changes publish immediately; observations wait for session cadence.
+        if (options !== undefined) notifyListeners(presentationListeners)
+      }
+    },
+    [subscribePresentation]: (notify) => {
+      presentationListeners.add(notify)
+      if (stopPublication === undefined)
+        stopPublication = options?.subscribePublication(() =>
+          notifyListeners(presentationListeners),
+        )
+      return () => {
+        presentationListeners.delete(notify)
+        if (presentationListeners.size === 0) {
+          stopPublication?.()
+          stopPublication = undefined
+        }
+      }
+    },
   }
+}
+
+const notifyListeners = (subscribers: ReadonlySet<() => void>): void => {
+  let faults: unknown[] | undefined
+  for (const notify of subscribers) {
+    try {
+      notify()
+    } catch (cause) {
+      ;(faults ??= []).push(cause)
+    }
+  }
+  if (faults !== undefined) throw new AggregateError(faults, 'Series subscriber failed')
 }

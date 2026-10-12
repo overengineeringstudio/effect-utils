@@ -11,7 +11,7 @@ import {
   type SourceError,
   type SourceRegistration,
 } from './source.ts'
-import { visibility } from './types.ts'
+import { publication, visibility } from './types.ts'
 
 export type { FrameClock, FrameTick, ClockStopped, Platform } from './clock.ts'
 export { runInterval } from './clock.ts'
@@ -42,7 +42,9 @@ export const makeMeters = <TEnv = never>(options: {
     if (ids.has(source.id) === true) throw new TypeError(`Duplicate source: ${source.id}`)
     ids.add(source.id)
   }
-  const store = makeSeriesStore()
+  const store = makeSeriesStore({
+    subscribePublication: (publish) => controller.clock[publication](publish),
+  })
   const session: SessionEvidence = {
     running: false,
     generation: 0,
@@ -102,7 +104,11 @@ export const makeMeters = <TEnv = never>(options: {
         throw new TypeError(`Duplicate instrument: ${instrument.id}`)
       instruments.set(instrument.id, instrument.identity)
     }
-  const headless = makeHeadless({
+  const {
+    headless,
+    restart: restartHeadless,
+    stop: stopHeadless,
+  } = makeHeadless({
     sessionId: `meters-${++nextSessionId}`,
     timeOriginMs: options.platform.timeOriginMs,
     clock: controller.clock,
@@ -120,6 +126,7 @@ export const makeMeters = <TEnv = never>(options: {
     collectorScope = scope
     acquisitionActive = true
     session.generation++
+    yield* restartHeadless
     session.revision++
     const run = Effect.runForkWith(context)
     reportFault = (cause) => {
@@ -162,6 +169,7 @@ export const makeMeters = <TEnv = never>(options: {
     session.running = false
     deactivate?.()
     deactivate = undefined
+    yield* stopHeadless
     const scope = collectorScope
     collectorScope = undefined
     if (scope !== undefined) yield* Scope.close(scope, Exit.succeed(undefined))

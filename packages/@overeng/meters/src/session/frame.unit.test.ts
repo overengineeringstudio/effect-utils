@@ -51,18 +51,18 @@ describe('frame bookkeeping', () => {
       const first = yield* Scope.make()
       yield* Scope.provide(meters.start, first)
       for (let index = 0; index < 110; index++) host.tick()
-      const before = yield* meters.headless.beginMeasure
+      const before = yield* meters.headless.measurement
       host.tick(100)
-      const dropped = yield* meters.headless.endMeasure({ handle: before })
+      const dropped = yield* before.end()
       expect(dropped._tag).toBe('Complete')
       if (dropped._tag === 'Complete') expect(dropped.data.frameDrops).toBeGreaterThan(0)
-      const hiddenHandle = yield* meters.headless.beginMeasure
+      const hidden = yield* meters.headless.measurement
       host.setVisible(false)
       expect(host.pending).toBe(0)
       host.advance(10000)
       host.setVisible(true)
       host.tick()
-      const afterHidden = yield* meters.headless.endMeasure({ handle: hiddenHandle })
+      const afterHidden = yield* hidden.end()
       expect(afterHidden._tag).toBe('Incomplete')
       if (afterHidden._tag === 'Incomplete' && afterHidden.data.frameDrops._tag === 'Value')
         expect(afterHidden.data.frameDrops.value.value).toBe(0)

@@ -10,6 +10,7 @@ import {
 import { makeSeries, type NumberValue } from '../series/index.ts'
 import { testPlatform } from '../session/_test-platform.ts'
 import { frameSource, makeMeters, makeSource, type FpsValue } from '../session/index.ts'
+import { MeasureError, MeasureResult } from './index.ts'
 
 const fixture = (capacity = 2500) => {
   const host = testPlatform()
@@ -37,14 +38,14 @@ describe('headless brackets', () => {
         const test = fixture()
         yield* test.meters.start
         for (let index = 0; index < 110; index++) test.host.tick()
-        const handle = yield* test.meters.headless.beginMeasure
+        const bracket = yield* test.meters.headless.measurement
         test.instrumentation.counter({ token: test.token }).add({ by: increment })
         for (let index = 0; index < 4; index++)
           test.instrumentation.counter({ token: test.token }).add({ by: 0 })
         test.instrumentation.gauge({ token: test.gauge }).set({ value: -4 })
         test.host.tick()
         test.host.tick()
-        const measurement = yield* test.meters.headless.endMeasure({ handle })
+        const measurement = yield* bracket.end()
         expect(measurement._tag).toBe('Complete')
         expect(measurement.data.counterDelta).toEqual(increment === 0 ? {} : { jobs: increment })
         expect(measurement.data.framesCaptured).toBe(2)
@@ -72,10 +73,10 @@ describe('headless brackets', () => {
       })
       yield* meters.start
       for (let index = 0; index < 110; index++) test.host.tick()
-      const handle = yield* meters.headless.beginMeasure
+      const bracket = yield* meters.headless.measurement
       added = true
       test.host.tick()
-      expect((yield* meters.headless.endMeasure({ handle })).data.counterDelta).toEqual({ late: 7 })
+      expect((yield* bracket.end()).data.counterDelta).toEqual({ late: 7 })
     }),
   )
 
@@ -84,9 +85,9 @@ describe('headless brackets', () => {
       const test = fixture()
       yield* test.meters.start
       for (let index = 0; index < 110; index++) test.host.tick()
-      const handle = yield* test.meters.headless.beginMeasure
+      const bracket = yield* test.meters.headless.measurement
       test.host.tick()
-      expect((yield* test.meters.headless.endMeasure({ handle })).data.framesCaptured).toBe(1)
+      expect((yield* bracket.end()).data.framesCaptured).toBe(1)
       let done = false
       const window = yield* Effect.forkChild(
         test.meters.headless.measureWindow({ work: Effect.succeed('value') }).pipe(
@@ -109,56 +110,257 @@ describe('headless brackets', () => {
     }),
   )
 
-  it.effect(
-    'accepts serializable copies and rejects modified, duplicate, forged, cross-session and stale handles',
-    () =>
-      Effect.gen(function* () {
-        const test = fixture()
-        const scope = yield* Scope.make()
-        yield* Scope.provide(test.meters.start, scope)
-        const handle = yield* test.meters.headless.beginMeasure
-        expect(
-          (yield* Effect.flip(
-            test.meters.headless.endMeasure({
-              handle: { ...handle, startedAtMs: handle.startedAtMs + 1 },
+  it.effect('validates options before claiming and ends exactly once', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      yield* test.meters.start
+      const bracket = yield* test.meters.headless.measurement
+      for (const settleFrames of [-1, 0.5, NaN, Infinity]) {
+        expect((yield* Effect.flip(bracket.end({ settleFrames }))).reason).toBe('InvalidOptions')
+      }
+      yield* bracket.end()
+      expect((yield* Effect.flip(bracket.end())).reason).toBe('AlreadyEnded')
+    }),
+  )
+
+  it.effect('rejects a concurrent end while the first claimant is settling', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      yield* test.meters.start
+      for (let index = 0; index < 110; index++) test.host.tick()
+      const bracket = yield* test.meters.headless.measurement
+      const first = yield* Effect.forkChild(bracket.end({ settleFrames: 2 }), {
+        startImmediately: true,
+      })
+      expect((yield* Effect.flip(bracket.end())).reason).toBe('AlreadyEnded')
+      test.host.tick()
+      test.host.tick()
+      expect((yield* Fiber.join(first))._tag).toBe('Complete')
+      expect((yield* Effect.flip(bracket.end())).reason).toBe('AlreadyEnded')
+    }),
+  )
+
+  it.effect('abandons escaped resources when their owning scope closes', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      yield* test.meters.start
+      const bracket = yield* Effect.scoped(test.meters.headless.measurement)
+      expect((yield* Effect.flip(bracket.end())).reason).toBe('ScopeClosed')
+      expect(test.host.pending).toBe(1)
+    }),
+  )
+
+  it.effect('closing the owning scope cancels pending settlement promptly', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      yield* test.meters.start
+      const owner = yield* Scope.make()
+      const bracket = yield* Scope.provide(test.meters.headless.measurement, owner)
+      const ending = yield* Effect.forkChild(bracket.end({ settleFrames: 30 }), {
+        startImmediately: true,
+      })
+      yield* Scope.close(owner, Exit.succeed(undefined))
+      expect((yield* Effect.flip(Fiber.join(ending))).reason).toBe('ScopeClosed')
+      expect((yield* Effect.flip(bracket.end())).reason).toBe('AlreadyEnded')
+      expect(test.host.pending).toBe(1)
+    }),
+  )
+
+  it.effect('restart invalidates outstanding resources without changing delivered results', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      const lease = yield* Scope.make()
+      yield* Scope.provide(test.meters.start, lease)
+      const delivered = yield* (yield* test.meters.headless.measurement).end()
+      const outstanding = yield* test.meters.headless.measurement
+      yield* Scope.close(lease, Exit.succeed(undefined))
+      yield* test.meters.start
+      expect((yield* Effect.flip(outstanding.end())).reason).toBe('StaleGeneration')
+      expect(delivered._tag).toBe('Incomplete')
+      yield* (yield* test.meters.headless.measurement).end()
+    }),
+  )
+
+  it.effect('interrupted settlement remains single shot', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      yield* test.meters.start
+      const bracket = yield* test.meters.headless.measurement
+      const ending = yield* Effect.forkChild(bracket.end({ settleFrames: 30 }), {
+        startImmediately: true,
+      })
+      yield* Fiber.interrupt(ending)
+      expect((yield* Effect.flip(bracket.end())).reason).toBe('AlreadyEnded')
+      expect(test.host.pending).toBe(1)
+    }),
+  )
+
+  it.effect('invalid work settlement does not execute work', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      yield* test.meters.start
+      let executed = false
+      const error = yield* Effect.flip(
+        test.meters.headless.measureWindow({
+          work: Effect.sync(() => {
+            executed = true
+          }),
+          settleFrames: -1,
+        }),
+      )
+      expect(error.reason).toBe('InvalidOptions')
+      expect(executed).toBe(false)
+    }),
+  )
+
+  it.effect('releases completed resources within a long-lived parent scope', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      yield* test.meters.start
+      const parent = yield* Scope.make()
+      expect(parent.state._tag).toBe('Empty')
+      for (let index = 0; index < 200; index++) {
+        const bracket = yield* Scope.provide(test.meters.headless.measurement, parent)
+        expect(parent.state._tag).toBe('Open')
+        yield* bracket.end()
+        expect(parent.state._tag).toBe('Empty')
+        expect((yield* Effect.flip(bracket.end())).reason).toBe('AlreadyEnded')
+      }
+      yield* Scope.close(parent, Exit.succeed(undefined))
+      expect(test.host.pending).toBe(1)
+    }),
+  )
+
+  it.effect('freezes stopped counter evidence before collector teardown', () =>
+    Effect.gen(function* () {
+      const host = testPlatform()
+      let total = 0
+      const source = makeSource({
+        id: 'released-counter',
+        series: makeSeries<number>({
+          id: 'released-counter',
+          label: '',
+          unit: 'count',
+          capacity: 1,
+        }),
+        cadence: { _tag: 'Event' },
+        evidence: { counters: () => ({ released: total }) },
+        start: () =>
+          Effect.acquireRelease(Effect.void, () =>
+            Effect.sync(() => {
+              total = 0
             }),
-          )).reason,
-        ).toBe('InvalidHandle')
-        expect(
-          (yield* Effect.flip(
-            test.meters.headless.endMeasure({ handle: { ...handle, id: 100000 } }),
-          )).reason,
-        ).toBe('InvalidHandle')
-        expect(
-          (yield* Effect.flip(test.meters.headless.endMeasure({ handle, settleFrames: -1 })))
-            .reason,
-        ).toBe('InvalidOptions')
-        const other = fixture()
-        yield* other.meters.start
-        expect((yield* Effect.flip(other.meters.headless.endMeasure({ handle }))).reason).toBe(
-          'WrongSession',
+          ),
+      })
+      const meters = makeMeters({ platform: host.platform, sources: [source] })
+      const lease = yield* Scope.make()
+      yield* Scope.provide(meters.start, lease)
+      const open = yield* meters.headless.measurement
+      const pending = yield* meters.headless.measurement
+      total = 7
+      const ending = yield* Effect.forkChild(pending.end({ settleFrames: 30 }), {
+        startImmediately: true,
+      })
+      yield* Scope.close(lease, Exit.succeed(undefined))
+      expect(total).toBe(0)
+      for (const result of [yield* Fiber.join(ending), yield* open.end()]) {
+        expect(result._tag).toBe('Incomplete')
+        expect(result.data.counterDelta).toEqual({ released: 7 })
+        if (result._tag === 'Incomplete') expect(result.reasons).toContain('Stopped')
+      }
+    }),
+  )
+
+  it.effect('releasing a non-last lease does not invalidate measurements', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      yield* test.meters.start
+      const extra = yield* Scope.make()
+      yield* Scope.provide(test.meters.start, extra)
+      for (let index = 0; index < 110; index++) test.host.tick()
+      const bracket = yield* test.meters.headless.measurement
+      yield* Scope.close(extra, Exit.succeed(undefined))
+      test.host.tick()
+      expect((yield* bracket.end())._tag).toBe('Complete')
+    }),
+  )
+
+  it.effect('pending stopped settlement cannot read counters from a restarted generation', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      const lease = yield* Scope.make()
+      yield* Scope.provide(test.meters.start, lease)
+      for (let index = 0; index < 110; index++) test.host.tick()
+      const bracket = yield* test.meters.headless.measurement
+      test.instrumentation.counter({ token: test.token }).add({ by: 3 })
+      const ending = yield* Effect.forkChild(bracket.end({ settleFrames: 30 }), {
+        startImmediately: true,
+      })
+      yield* Scope.close(lease, Exit.succeed(undefined))
+      yield* test.meters.start
+      test.instrumentation.counter({ token: test.token }).add({ by: 100 })
+      const stopped = yield* Fiber.join(ending)
+      expect(stopped._tag).toBe('Incomplete')
+      expect(stopped.data.counterDelta).toEqual({ jobs: 3 })
+      if (stopped._tag === 'Incomplete') expect(stopped.reasons).toContain('Stopped')
+    }),
+  )
+
+  it.effect('round trips complete, incomplete and tagged error wire schemas', () =>
+    Effect.gen(function* () {
+      const test = fixture()
+      yield* test.meters.start
+      const incomplete = yield* (yield* test.meters.headless.measurement).end()
+      expect(incomplete._tag).toBe('Incomplete')
+      for (let index = 0; index < 110; index++) test.host.tick()
+      const bracket = yield* test.meters.headless.measurement
+      test.host.tick()
+      const complete = yield* bracket.end()
+      expect(complete._tag).toBe('Complete')
+      for (const result of [complete, incomplete]) {
+        const wire = yield* Schema.encodeEffect(MeasureResult)(result)
+        expect(yield* Schema.decodeEffect(MeasureResult)(wire)).toEqual(result)
+        expect(() =>
+          Schema.decodeUnknownSync(MeasureResult)({
+            ...wire,
+            eligible: !wire.eligible,
+          }),
+        ).toThrow()
+        expect(() =>
+          Schema.decodeUnknownSync(MeasureResult)({
+            ...wire,
+            data: { ...wire.data, durationMs: Infinity },
+          }),
+        ).toThrow()
+        expect(() =>
+          Schema.decodeUnknownSync(MeasureResult)({
+            ...wire,
+            data: { ...wire.data, counterDelta: { invalid: NaN } },
+          }),
+        ).toThrow()
+      }
+      expect(() =>
+        Schema.decodeUnknownSync(MeasureResult)({
+          ...Schema.encodeSync(MeasureResult)(incomplete),
+          reasons: [],
+        }),
+      ).toThrow()
+      for (const reason of [
+        'NotRunning',
+        'StaleGeneration',
+        'AlreadyEnded',
+        'ScopeClosed',
+        'InvalidOptions',
+      ] as const) {
+        const error = new MeasureError({ reason, message: `Measurement failed: ${reason}` })
+        const decoded = yield* Schema.decodeEffect(MeasureError)(
+          yield* Schema.encodeEffect(MeasureError)(error),
         )
-        const copy = {
-          _tag: handle._tag,
-          sessionId: handle.sessionId,
-          generation: handle.generation,
-          id: handle.id,
-          startedAtMs: handle.startedAtMs,
-        }
-        yield* test.meters.headless.endMeasure({ handle: copy })
-        expect((yield* Effect.flip(test.meters.headless.endMeasure({ handle }))).reason).toBe(
-          'AlreadyEnded',
-        )
-        const stale = yield* test.meters.headless.beginMeasure
-        yield* Scope.close(scope, Exit.succeed(undefined))
-        expect((yield* test.meters.headless.endMeasure({ handle: stale }))._tag).toBe('Incomplete')
-        const next = yield* Scope.make()
-        yield* Scope.provide(test.meters.start, next)
-        expect(
-          (yield* Effect.flip(test.meters.headless.endMeasure({ handle: stale }))).reason,
-        ).toBe('StaleGeneration')
-        yield* Scope.close(next, Exit.succeed(undefined))
-      }),
+        expect(decoded).toBeInstanceOf(MeasureError)
+        expect(decoded.reason).toBe(reason)
+        expect(decoded.message).toBe(error.message)
+      }
+    }),
   )
 
   it.effect(
@@ -180,14 +382,14 @@ describe('headless brackets', () => {
           sources: [frameSource({ id: 'frame', series: frame }), loss],
         })
         yield* meters.start
-        const handle = yield* meters.headless.beginMeasure
+        const bracket = yield* meters.headless.measurement
         for (let index = 0; index < 110; index++) host.tick()
         host.setVisible(false)
         host.advance(500)
         host.setVisible(true)
         host.tick()
         lost++
-        const result = yield* meters.headless.endMeasure({ handle })
+        const result = yield* bracket.end()
         expect(result._tag).toBe('Incomplete')
         if (result._tag === 'Incomplete') {
           expect(result.eligible).toBe(false)
@@ -204,34 +406,30 @@ describe('headless brackets', () => {
       const scope = yield* Scope.make()
       yield* Scope.provide(test.meters.start, scope)
       for (let index = 0; index < 110; index++) test.host.tick()
-      const handle = yield* test.meters.headless.beginMeasure
-      const ending = yield* Effect.forkChild(
-        test.meters.headless.endMeasure({ handle, settleFrames: 30 }),
-        { startImmediately: true },
-      )
+      const bracket = yield* test.meters.headless.measurement
+      const ending = yield* Effect.forkChild(bracket.end({ settleFrames: 30 }), {
+        startImmediately: true,
+      })
       test.host.setVisible(false)
       const hidden = yield* Fiber.join(ending)
       if (hidden._tag === 'Incomplete') expect(hidden.reasons).toContain('Hidden')
       test.host.setVisible(true)
-      const stopped = yield* test.meters.headless.beginMeasure
-      const settlingHandle = yield* test.meters.headless.beginMeasure
-      const stopping = yield* Effect.forkChild(
-        test.meters.headless.endMeasure({ handle: settlingHandle, settleFrames: 30 }),
-        { startImmediately: true },
-      )
+      const stopped = yield* test.meters.headless.measurement
+      const settling = yield* test.meters.headless.measurement
+      const stopping = yield* Effect.forkChild(settling.end({ settleFrames: 30 }), {
+        startImmediately: true,
+      })
       yield* Scope.close(scope, Exit.succeed(undefined))
       const settledOnRelease = yield* Fiber.join(stopping)
       expect(settledOnRelease._tag).toBe('Incomplete')
       if (settledOnRelease._tag === 'Incomplete')
         expect(settledOnRelease.reasons).toContain('Stopped')
-      const afterStop = yield* test.meters.headless.endMeasure({ handle: stopped, settleFrames: 1 })
+      const afterStop = yield* stopped.end({ settleFrames: 1 })
       if (afterStop._tag === 'Incomplete') expect(afterStop.reasons).toContain('Stopped')
-      expect((yield* Effect.flip(test.meters.headless.beginMeasure)).reason).toBe('NotRunning')
+      expect((yield* Effect.flip(test.meters.headless.measurement)).reason).toBe('NotRunning')
       const empty = makeMeters({ sources: [], platform: test.host.platform })
       yield* empty.start
-      const missing = yield* empty.headless.endMeasure({
-        handle: yield* empty.headless.beginMeasure,
-      })
+      const missing = yield* (yield* empty.headless.measurement).end()
       if (missing._tag === 'Incomplete') expect(missing.reasons).toContain('NotConfigured')
     }),
   )
@@ -245,6 +443,10 @@ describe('headless brackets', () => {
         test.meters.headless.measureWindow({ work: Effect.fail(failure) }),
       )
       expect(result).toBe(failure)
+      const defect = new Error('original defect')
+      expect(
+        yield* Effect.exit(test.meters.headless.measureWindow({ work: Effect.die(defect) })),
+      ).toEqual(yield* Effect.exit(Effect.die(defect)))
       const original = yield* Effect.exit(Effect.interrupt)
       const interrupted = yield* Effect.exit(
         test.meters.headless.measureWindow({ work: Effect.interrupt }),

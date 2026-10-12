@@ -53,7 +53,7 @@ shared observation seam and composition with meters.
 
 - **DT-R13 Honest availability:** Unsupported, unconfigured, hidden, failed, and incomplete measurements must be distinguishable from measured zero. No warmup value or fallback may masquerade as a real reading.
 - **DT-R14 Shared evidence:** Visual, accessible-text, detail, and headless consumers must read the same non-destructive typed history and cumulative instrumentation. Histories must expose capacity, retained time range, and overflow.
-- **DT-R15 Gate eligibility:** `endMeasure` must return tagged `Complete | Incomplete` outcomes with reasons for incomplete evidence. Performance gates must check completeness and relevant capability eligibility before applying numeric thresholds.
+- **DT-R15 Gate eligibility:** `Measurement.end` and `measureWindow` must return tagged `Complete | Incomplete` measurement outcomes with reasons for incomplete evidence. Performance gates must check completeness and relevant capability eligibility before applying numeric thresholds.
 - **DT-R16 Safe memory probes:** The strip must distinguish approximate `performance.memory` heap from opt-in application-memory probing. The latter must require cross-origin isolation and must never cause automatic COOP/COEP changes.
 - **DT-R17 Honest fibers:** A fibers meter must display the Effect `child_fibers_active` runtime gauge as **active child fibers**, and show `n/a`, not zero, until the host enables runtime metrics.
 
@@ -68,4 +68,4 @@ shared observation seam and composition with meters.
 ### Must prove the boundary and measurements
 
 - **DT-R23 Verification evidence:** Tests must prove zero disabled starts, production graph exclusion, scoped cleanup, single shared frame clock, independent readers, explicit availability, bounded retention, bracket eligibility, and accessible meter interactions. Assertions must use real measurements or injected deterministic capabilities, never fabricated production values.
-- **DT-R24 Clean cutover:** Every migrated caller, example, and test must use the new contracts; obsolete engines, global bags, destructive readers, storage props, and decoration exports must be removed without deprecated aliases or compatibility shims.
+- **DT-R24 Consistent public contracts:** Every caller, example, and test must use the source/session/renderer, explicit instrumentation, host-owned storage, and shared observer contracts without deprecated aliases or compatibility shims; independent engines, global bags, destructive readers, package-owned storage props, and explorer-owned decoration exports are outside those surfaces.

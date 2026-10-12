@@ -203,6 +203,67 @@ describe('canvas strip', () => {
         expect(f.host.pending).toBe(0)
       }),
   )
+  it.effect('publishes live text at 250ms while canvas and headless reads remain current', () =>
+    Effect.gen(function* () {
+      const f = fixture()
+      const scope = yield* Scope.make()
+      yield* Scope.provide(f.meters.start, scope)
+      const live = makeStripView({ store: f.meters.store, blocks: f.blocks })
+      const initial = live.getSnapshot()
+      const notify = vi.fn()
+      const unsubscribe = live.subscribe(notify)
+      yield* Scope.provide(
+        makeCanvasStrip({
+          canvas: f.surface.canvas,
+          meters: f.meters,
+          blocks: f.blocks,
+          view: live,
+          platform: f.surface.platform,
+          readTheme: () => lightMeterTheme,
+        }).attach,
+        scope,
+      )
+      // The first visible tick anchors publication; the next 250ms boundary is at 260ms.
+      for (let index = 0; index < 25; index++) f.host.tick(10)
+      expect(notify).not.toHaveBeenCalled()
+      expect(live.getSnapshot()).toBe(initial)
+      expect(f.meters.headless.snapshotSeries({ series: f.series }).samples.at(-1)).toEqual({
+        _tag: 'Value',
+        atMs: 250,
+        value: { _tag: 'Number', value: 25 },
+      })
+      expect(f.surface.texts.at(-1)).toBe(live.readers[0]?.describe())
+      expect(f.surface.texts.at(-1)).not.toBe(initial[0])
+      f.host.tick(10)
+      expect(notify).toHaveBeenCalledTimes(1)
+      const published = live.getSnapshot()
+      expect(published).not.toBe(initial)
+      expect(published[0]).toBe(f.surface.texts.at(-1))
+      const frozen = makeStripView({
+        store: f.meters.store,
+        blocks: f.blocks,
+        frozenAtMs: f.meters.clock.now(),
+      })
+      const frozenSnapshot = frozen.getSnapshot()
+      const frozenNotify = vi.fn()
+      const stopFrozen = frozen.subscribe(frozenNotify)
+      for (let index = 0; index < 24; index++) f.host.tick(10)
+      expect(live.getSnapshot()).toBe(published)
+      expect(notify).toHaveBeenCalledTimes(1)
+      f.host.tick(10)
+      expect(notify).toHaveBeenCalledTimes(2)
+      expect(frozen.getSnapshot()).toBe(frozenSnapshot)
+      expect(frozenNotify).not.toHaveBeenCalled()
+      unsubscribe()
+      stopFrozen()
+      f.host.tick(250)
+      expect(notify).toHaveBeenCalledTimes(2)
+      yield* Scope.close(scope, Exit.void)
+      expect(f.host.pending).toBe(0)
+      expect(f.surface.observed).toBe(0)
+      expect(notify).toHaveBeenCalledTimes(2)
+    }),
+  )
   it.effect('empty strips install no drawing or browser observers', () =>
     Effect.gen(function* () {
       const f = fixture()

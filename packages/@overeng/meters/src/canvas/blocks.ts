@@ -363,8 +363,6 @@ export const numberBlock = <TValue extends { readonly value: number }>(
 export const counterBlock = <TValue extends { readonly value: number }>(
   options: BlockOptions<TValue>,
 ): CanvasBlockSpec => numberBlock({ ...options, mode: 'Counter' })
-/** Stacked numeric history with a host-selected typed projection. */
-export const stackedBlock = numericBlock
 /** Observed frame timing expressed as FPS, without invented calibration. */
 export const frameBlock = (options: BlockOptions<FpsValue>): CanvasBlockSpec =>
   numericBlock({
@@ -388,8 +386,6 @@ export const jankBlock = <TValue extends { readonly durationMs: number }>(
   options: BlockOptions<TValue>,
 ): CanvasBlockSpec =>
   numericBlock({ ...options, mode: 'Event', values: (value) => value.durationMs })
-/** Span completion-duration event history. */
-export const spanBlock = jankBlock
 /** Actual Profiler commit-duration event history. */
 export const commitBlock = <TValue extends { readonly actualDurationMs: number }>(
   options: BlockOptions<TValue>,

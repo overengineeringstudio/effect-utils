@@ -39,7 +39,7 @@ introducing an RPC dependency into meters.
 - **DT.MET-R06 Shared rings:** Each source must declare its own finite series capacity. Appends must be constant-time without shifting/copying the whole history; readers must not drain or reset shared state.
 - **DT.MET-R07 Retention evidence:** Views/snapshots must expose capacity, retained time range, and cumulative overflow. The approximately 10s visual history window must not silently imply 10s of retained evidence when capacity is insufficient.
 - **DT.MET-R08 Stable snapshots:** Immutable external-store snapshots must keep identity until the observed revision changes. Full arrays must be materialized only on explicit snapshot reads, not every frame.
-- **DT.MET-R09 Cumulative instrumentation:** Typed session instrumentation must distinguish monotonic `counter.add` from `gauge.set`. Brackets and visual rates must read the same totals non-destructively; no `globalThis.__debug`, declaration-merging bag, or destructive reset helpers may remain.
+- **DT.MET-R09 Cumulative instrumentation:** Typed session instrumentation must distinguish monotonic `counter.add` from `gauge.set`. Brackets and visual rates must read the same totals non-destructively; `globalThis.__debug`, declaration-merging bags, and destructive reset helpers are outside the public contract.
 
 ### Must preserve frame bookkeeping honestly
 
@@ -56,10 +56,10 @@ introducing an RPC dependency into meters.
 
 ### Must support truthful performance brackets
 
-- **DT.MET-R17 Split brackets:** Headless APIs must expose `beginMeasure`, `endMeasure`, and `measureWindow`, with serializable handles suitable for a host-selected automation bridge and explicit settlement options.
+- **DT.MET-R17 Scoped brackets:** Headless APIs must expose `measurement`, a scope-owned split-bracket capability with single-shot `Measurement.end`, and `measureWindow`, with explicit settlement options and schema-defined serializable results suitable for a host-selected automation bridge.
 - **DT.MET-R18 Bracket deltas:** Results must contain bracket duration, captured/skipped-frame deltas, bracket-scoped average FPS, and monotonic instrument counter deltas. Gauges must not be treated as counters; history eviction must not erase cumulative deltas.
-- **DT.MET-R19 Completeness:** `endMeasure` must return `Complete | Incomplete`; hidden time, invalid calibration, stopped collection, missing source evidence, or correlation loss must make affected gates ineligible with explicit reasons, never an apparently healthy zero.
-- **DT.MET-R20 Handle integrity:** A handle must be validated against its session, generation, and live registry; duplicate end, forged/modified handle, and cross-session use must fail explicitly. Failed/interrupted work must close its bracket without masking the work failure.
+- **DT.MET-R19 Completeness:** `Measurement.end` and `measureWindow` must return `Complete | Incomplete` measurement results; hidden time, invalid calibration, stopped collection, missing source evidence, or correlation loss must make affected gates ineligible with explicit reasons, never an apparently healthy zero.
+- **DT.MET-R20 Capability integrity:** A measurement must remain bound to its acquiring session and generation, atomically permit one valid end, and fail explicitly on duplicate end, unended scope closure, or stale-generation use. Invalid settlement options must not consume an open capability. Results and expected errors must have schema-defined wire representations; executable capabilities must remain local to their owning scopes. Failed/interrupted work must close its bracket without masking the original work Cause.
 - **DT.MET-R21 No implicit bridge:** No browser global or automation bridge may be installed by default. An opt-in bridge must register/unregister directly within a scope without polling or serving as the instrumentation transport.
 
 ### Must cover actual built-in signals
@@ -76,10 +76,10 @@ introducing an RPC dependency into meters.
 
 - **DT.MET-R29 DPR canvas:** A strip must use one canvas at actual fractional DPR, with time-based history and history/value blocks. The devbar composition uses 32 CSS-pixel height and approximately 150 CSS-pixel blocks.
 - **DT.MET-R30 Equivalent outputs:** Each block must have labelled text output and a keyboard-accessible DOM tooltip exposing unit, sample age, retained range, and unavailable reason. Canvas output must not be the sole accessible evidence.
-- **DT.MET-R31 Separate actions:** The meter hit/focus target must expose a detail-activation callback independently from freeze. Freeze must be keyboard/pointer accessible and affect only the renderer snapshot; no hover-only pause behavior may remain.
+- **DT.MET-R31 Separate actions:** The meter hit/focus target must expose a detail-activation callback independently from freeze. Freeze must be keyboard/pointer accessible and affect only the renderer snapshot; hover-only pause behavior is prohibited.
 - **DT.MET-R32 Semantic themes:** Renderers must accept semantic theme tokens, support light/dark contrast and visible focus, and avoid style-system dependencies and per-frame computed-style reads.
 
-### Must support a clean migration and conformance
+### Must maintain one public contract and conformance
 
-- **DT.MET-R33 Clean surface:** Existing engine/block/global APIs must be replaced at all migrated callsites without aliases. Source sampling must no longer be bundled into block factories or owned by each grid.
+- **DT.MET-R33 Clean surface:** All callers, examples, and tests must use the source/session/renderer contracts without deprecated aliases or compatibility shims. Sources must own sampling independently of block factories and renderer grids; instrumentation must be explicit and non-destructive, without global bags.
 - **DT.MET-R34 Deterministic evidence:** Tests must drive injected clock/visibility/observer/probe capabilities and prove independent readers, source-specific overflow, calibration transitions, lifecycle cleanup, bracket integrity/completeness, DPR rendering, and accessible action parity, in addition to the system's disabled-boundary tests.

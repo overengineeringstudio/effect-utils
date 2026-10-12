@@ -4,7 +4,7 @@ This document specifies the separate RPC integration package. It builds on [requ
 
 ## Status
 
-Draft. These signatures are the intended integration contract, not existing package exports.
+Draft.
 
 ## Scope
 
@@ -34,7 +34,7 @@ Traces: DT.RPC-R01–R05, DT.RPC-R10, DT.RPC-R12.
 | devbar              | Shell geometry, slots, controlled panel interaction, shell theme tokens                                                                       | Sources, capture, transport, persistence      |
 | explorer-react      | Revision-safe projection, record/detail views and internal scrolling                                                                          | Application RPC control or source acquisition |
 
-Neither devbar nor explorer imports the other or integration; devbar has no meters dependency, and meters has no RPC dependency. `/core` has no React, StyleX, or browser-only initialization dependency. `/react` uses UI peers and a structural panel contract matching devbar without importing it; it dynamically imports explorer-react only on panel rendering. No package root eagerly re-exports UI. Host StyleX compilation includes the integration's styles and lazy explorer chunk. Adoption begins with the first canary host and then existing hosts; each host owns its bootstrap changes, without host identities recorded in this public contract.
+Neither devbar nor explorer imports the other or integration; devbar has no meters dependency, and meters has no RPC dependency. `/core` has no React, StyleX, or browser-only initialization dependency. `/react` uses UI peers and a structural panel contract matching devbar without importing it; it dynamically imports explorer-react only on panel rendering. No package root eagerly re-exports UI. Host StyleX compilation includes the integration's styles and lazy explorer chunk. Each host owns its bootstrap and enabling policy; public examples use neutral host terminology.
 
 ## Core API
 
@@ -144,7 +144,7 @@ export declare const makeExplorerClient: (options: {
 }) => Effect.Effect<ExplorerClient, never, Scope.Scope>
 ```
 
-Traces: DT.RPC-R05, DT.RPC-R08. The existing structural UI client contracts move to explorer core and callers import them there; remove explorer-react's duplicate client-type exports without aliases. The `unknown` boundary preserves the current UI decoder's runtime validation rather than claiming already-validated frames.
+Traces: DT.RPC-R05, DT.RPC-R08. Explorer core owns the structural UI client contracts, and callers import them there; explorer-react has no duplicate client-type exports or aliases. The `unknown` boundary requires the UI decoder's runtime validation rather than claiming already-validated frames.
 
 The local adapter invokes inspector handlers in-process and yields decoded wire frames, preserving revision cursors, reset frames, descriptor revisions, and overflow signals exactly. It never goes through the application's decorated transport and therefore cannot inspect its own Snapshot/Watch/ClearHistory traffic. Each watch iterator owns one scoped subscription; `return`, cancellation, projection unmount, and enclosing Scope close release it. Pending operations after release cannot publish to a closed projection. Clear history affects explorer diagnostic retention only, not RPC reducer active state, cumulative source counters, or the host transport. Remote standalone clients remain supported through the same structural contract.
 
@@ -294,7 +294,7 @@ const HostDiagnostics = () => {
 
 `hostBlocks` explicitly binds generic host meters and the selected `rpc.inFlight`, `rpc.durationP95`, and `rpc.errorsPerSecond` series using meters' block contract; it is not a default preset. `renderHostMeterDetail` supplies the host's per-meter detail content. The composition has three bottom-row controls: Dev tools, RPC, and Meters. The Meters panel lists all blocks, including RPC readings; only strip activation of `rpc.*` routes directly to RPC. Focus alone does not open a panel, while Enter/Space and click follow the same activation path.
 
-The host-composition story persists `openPanel` as an opaque string under its existing light/dark-specific panel storage key and the selected meter under `${storageKey}.meter`. An unknown stored meter falls back to the first supplied block; an empty block list leaves selection undefined. A stored per-meter panel ID from the previous composition opens Meters and supplies its selection when no separate meter preference exists. Unknown panel IDs render closed. Closing Meters removes only the open-panel preference, preserving the meter for reopening. Storage denial falls back to working in-memory state. The shell, RPC adapter, and `MetersPanel` own none of this persistence.
+The host-composition story persists `openPanel` as an opaque string under its light/dark-specific panel storage key and the selected meter under `${storageKey}.meter`. An unknown stored meter falls back to the first supplied block; an empty block list leaves selection undefined. When a stored panel ID identifies a supplied block, the host opens Meters and initializes its selection if no separate meter preference exists. Unknown panel IDs render closed. Closing Meters clears only the open-panel preference, preserving the meter for reopening. Storage denial falls back to working in-memory state. The shell, RPC adapter, and `MetersPanel` own none of this persistence.
 
 The host's mount function creates the DOM root, mounts this component under its theme ancestor, and returns a function that unmounts the React root and removes its node. It must not acquire a second session lease via a provider when bootstrap already owns `meters.start`. Host segments may contain real WebSocket/sync status without moving that domain into RPC integration. Freeze remains host-controlled and renderer-only; no package persists it automatically.
 
@@ -311,6 +311,6 @@ Disabling ends the diagnostic/application transport boundary and recreates an un
 | Host composition             | exactly Dev tools/RPC/Meters row controls; strip click/Enter selects Meters detail except `rpc.*`; all meters reachable in panel; restored selection and unknown-ID fallback |
 | Disabled host fixture        | no loader, constructor, source start, observer/metric/tracer/protocol hook, timer, frame callback, listener, or UI mount                                                     |
 | Production graph             | no reachable diagnostic module, chunk, or dynamic-import reference                                                                                                           |
-| Rebuild fixture              | old watches/sources/coordinator released; raw protocol restored when off; one observation installation when on                                                               |
+| Rebuild fixture              | Prior-scope watches/sources/coordinator released; raw protocol restored when off; one observation installation when on                                                       |
 
 Traces: DT.RPC-R01–R11. Tests use real lifecycle fixtures and injected clocks; unsupported/empty evidence remains explicit unavailable. They must not infer request latency from normalization telemetry or substitute synthetic zero values.

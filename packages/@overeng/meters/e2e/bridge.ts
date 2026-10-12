@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test'
+import { Schema } from 'effect'
 
-import type { MeasureHandle, MeasureResult, Snapshot } from '../src/headless/index.ts'
+import { MeasureResult, type Snapshot } from '../src/headless/index.ts'
 import type { StoryBridgeHost } from '../src/stories/fixtures.tsx'
 
 /** Select the explicitly registered DOM boundary; no browser global handle is published. */
@@ -19,31 +20,33 @@ export const snapshot = (host: Locator): Promise<Snapshot> =>
     return boundary.metersTestBridge.snapshot()
   })
 
-/** Open a serializable bracket from the live session, not a synthetic test engine. */
-export const beginMeasure = (host: Locator): Promise<MeasureHandle> =>
+/** Acquire a browser-owned scoped resource; only the bridge token crosses realms. */
+export const acquireMeasurement = (host: Locator): Promise<string> =>
   host.evaluate((element) => {
     const boundary: StoryBridgeHost = element as StoryBridgeHost
     if (boundary.metersTestBridge === undefined)
       throw new Error('Scoped meters test bridge is not registered')
-    return boundary.metersTestBridge.beginMeasure()
+    return boundary.metersTestBridge.acquireMeasurement()
   })
 
-/** Settle on actual browser frames and preserve tagged eligibility in the result. */
-export const endMeasure = (options: {
+/** Decode the wire result after real browser-frame settlement and scope release. */
+export const finishMeasurement = async (options: {
   readonly host: Locator
-  readonly handle: MeasureHandle
+  readonly token: string
   readonly settleFrames: number
-}): Promise<MeasureResult> =>
-  // oxlint-disable-next-line overeng/named-args -- Playwright evaluate supplies the selected element and serialized argument.
-  options.host.evaluate(
+}): Promise<MeasureResult> => {
+  // oxlint-disable-next-line overeng/named-args -- Playwright supplies the element and serialized argument.
+  const wire = await options.host.evaluate(
     (element, args) => {
       const boundary: StoryBridgeHost = element as StoryBridgeHost
       if (boundary.metersTestBridge === undefined)
         throw new Error('Scoped meters test bridge is not registered')
-      return boundary.metersTestBridge.endMeasure(args)
+      return boundary.metersTestBridge.finishMeasurement(args)
     },
-    { handle: options.handle, settleFrames: options.settleFrames },
+    { token: options.token, settleFrames: options.settleFrames },
   )
+  return Schema.decodeUnknownSync(MeasureResult)(wire)
+}
 
 /** Read calibration evidence rather than guessing a wall-clock warm-up delay. */
 export const waitForCalibration = async (host: Locator): Promise<void> => {

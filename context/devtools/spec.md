@@ -3,7 +3,7 @@
 This document specifies the devtools stack. It builds on
 [requirements.md](./requirements.md).
 
-Status: **Draft** — the target contract, not a claim that every package already implements it.
+Status: **Draft**.
 
 ## Scope
 
@@ -86,12 +86,12 @@ host app ----------------------------> @overeng/devbar + @overeng/meters UI (fil
 | `@overeng/effect-rpc-explorer`       | Descriptors, policy-governed capture, retained model, inspector API                    | A second protocol decoration implementation                        |
 | `@overeng/effect-rpc-explorer-react` | Standalone inspector presentation                                                      | Transport decoration, capture policy                               |
 
-Meters stays public at `packages/@overeng/meters`. Its package-local historical
-VRS is replaced by this cross-cutting tree; package documentation links here.
-Explorer's old decoration exports are replaced by imports from the observer
-package, without aliases or shims. Its middleware/capture/store responsibilities
-remain explorer responsibilities. Standalone explorer composition attaches its
-own sink to the same observer without requiring rpc-devtools or devbar.
+Meters is public at `packages/@overeng/meters`; its package documentation links
+to this normative cross-cutting tree. Explorer imports observation contracts
+from the observer package, without parallel decoration exports, aliases, or
+shims. Explorer owns capture/store responsibilities and supplies decoded
+middleware capture to the shared observer. Standalone explorer attaches its own
+sink to that observer without requiring rpc-devtools or devbar.
 
 ## RPC Composition Seam
 
@@ -169,9 +169,9 @@ scope, or install hooks. All imports and factories are declarative. Merely
 hiding a panel is not disabling diagnostics.
 
 Host state drives `openPanel` and `onOpenPanelChange`; storage, deep links, and
-preference policy stay outside devbar. Remove devbar's internal `persist` and
-`storageKey` paths. A production diagnostics build is an explicit separate host
-choice, not the ordinary production default.
+preference policy stay outside devbar. Devbar exposes no internal persistence
+or storage-key contract. A production diagnostics build is an explicit separate
+host choice, not the ordinary production default.
 
 Meters acquisition is lease-based and serialized behind unfinished cleanup;
 last-lease release synchronously deactivates browser callbacks before awaiting
@@ -216,8 +216,9 @@ for a one-series source but are not independent type discriminators.
 `_tag` discriminates a single semantic axis (sample kind, cadence, measurement
 completeness). An unknown tag at a serialization/test-bridge boundary is a
 decode error, never a healthy fallback. Bridges preserve typed identities and
-validate handles; these IDs do not establish a new global registry or durable
-wire format. RPC request identity and protocol keys follow the separate
+decode schema-defined results/errors; measurement capabilities and their owning
+scopes remain browser-local behind bridge-issued tokens. These IDs do not
+establish a new global registry or durable wire format. RPC request identity and protocol keys follow the separate
 [observer naming contract](./03-rpc-observer/spec.md), and explorer inspector
 identifiers follow its own specification.
 
@@ -243,23 +244,22 @@ These are implementation acceptance criteria, not a report that checks were run.
 
 Decision labels identify the agreed contract without encoding a date or a task plan.
 
-| Decision                                            | Normative destination                                                          |
-| --------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Q1 Canvas live meters                               | DT-R18; Layer Architecture; meters Canvas and Independent Renderers            |
-| Q2 Public meters composed by devbar                 | DT-R01; Package Graph                                                          |
-| Q3 Effect source/store/renderer split and removals  | DT-R02, R14, R24; Layer Architecture; meters lifecycle and migration           |
-| Q4 Host-owned canary adoption                       | DT-T04                                                                         |
-| Q5 Explicit host selection                          | DT-R03; Layer Architecture                                                     |
-| Q6 Heap versus opt-in isolated memory               | DT-R16; Measurement and Presentation Invariants; meters built-ins              |
-| Q7 Details versus freeze, keyboard tooltip          | DT-R20; Measurement and Presentation Invariants                                |
-| Q8 Active child fibers and unconfigured n/a         | DT-R17; meters built-ins                                                       |
-| Q9 Shared content-free observer                     | DT-R05–R06; Package Graph; RPC Composition Seam                                |
-| Q10 Source capacity, 2s statistics, ~10s history    | DT-R14; Measurement and Presentation Invariants; meters history/frame sections |
-| Q11 Complete/Incomplete gates                       | DT-R15; meters Headless Snapshots and Measure Brackets                         |
-| Q12 Separate headless integration                   | DT-R04, R07; Package Graph; RPC Composition Seam                               |
-| Q13 Lazy explorer panel and transport-scope rebuild | DT-R07, R12; RPC Composition Seam; Enabling, Persistence, and Lifetime         |
+| Decision                                            | Normative destination                                                                |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Q1 Canvas live meters                               | DT-R18; Layer Architecture; meters Canvas and Independent Renderers                  |
+| Q2 Public meters composed by devbar                 | DT-R01; Package Graph                                                                |
+| Q3 Effect source/store/renderer separation          | DT-R02, R14, R24; Layer Architecture; meters lifecycle and public surface invariants |
+| Q4 Host-owned canary adoption                       | DT-T04                                                                               |
+| Q5 Explicit host selection                          | DT-R03; Layer Architecture                                                           |
+| Q6 Heap versus opt-in isolated memory               | DT-R16; Measurement and Presentation Invariants; meters built-ins                    |
+| Q7 Details versus freeze, keyboard tooltip          | DT-R20; Measurement and Presentation Invariants                                      |
+| Q8 Active child fibers and unconfigured n/a         | DT-R17; meters built-ins                                                             |
+| Q9 Shared content-free observer                     | DT-R05–R06; Package Graph; RPC Composition Seam                                      |
+| Q10 Source capacity, 2s statistics, ~10s history    | DT-R14; Measurement and Presentation Invariants; meters history/frame sections       |
+| Q11 Complete/Incomplete gates                       | DT-R15; meters Headless Snapshots and Measure Brackets                               |
+| Q12 Separate headless integration                   | DT-R04, R07; Package Graph; RPC Composition Seam                                     |
+| Q13 Lazy explorer panel and transport-scope rebuild | DT-R07, R12; RPC Composition Seam; Enabling, Persistence, and Lifetime               |
 
 ## Open Design Questions
 
-None. The package implementation may lag this draft contract; implementation
-status is not a normative design question.
+None. Capability uncertainty is represented by explicit sample/result contracts.

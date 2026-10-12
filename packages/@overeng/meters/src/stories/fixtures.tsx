@@ -1,4 +1,4 @@
-import { Cause, Effect, Fiber } from 'effect'
+import { Cause, Effect, Exit, Fiber, Schema, Scope } from 'effect'
 import * as React from 'react'
 
 import {
@@ -9,6 +9,7 @@ import {
   jankBlock,
   type CanvasBlockSpec,
 } from '../canvas/index.ts'
+import { MeasureError, MeasureResult, type Measurement } from '../headless/index.ts'
 import {
   counterSource,
   counterToken,
@@ -18,8 +19,6 @@ import {
   type CounterToken,
   type Instrumentation,
   type FpsValue,
-  type MeasureHandle,
-  type MeasureResult,
   type Meters,
   type NumberValue,
   type Snapshot,
@@ -124,11 +123,11 @@ export interface StoryFixture {
 /** Promise conversion exists only at the explicitly enabled automation boundary. */
 export interface StoryTestBridge {
   readonly snapshot: () => Snapshot
-  readonly beginMeasure: () => Promise<MeasureHandle>
-  readonly endMeasure: (options: {
-    readonly handle: MeasureHandle
+  readonly acquireMeasurement: () => Promise<string>
+  readonly finishMeasurement: (options: {
+    readonly token: string
     readonly settleFrames?: number
-  }) => Promise<MeasureResult>
+  }) => Promise<typeof MeasureResult.Encoded>
 }
 
 /** Host-selected DOM boundary, never a global engine or counter transport. */
@@ -192,20 +191,84 @@ const ScopedTestBridge = (props: { readonly meters: Meters }) => {
       const register = Effect.gen(function* () {
         yield* props.meters.start
         const runPromise = Effect.runPromiseWith(yield* Effect.context<never>())
+        const parent = yield* Effect.scope
+        const measurements = new Map<string, { measurement: Measurement; scope: Scope.Closeable }>()
+        let registered = true
         yield* Effect.acquireRelease(
           Effect.sync(() => {
             boundary.metersTestBridge = {
               snapshot: props.meters.headless.snapshot,
-              beginMeasure: () => runPromise(props.meters.headless.beginMeasure),
-              endMeasure: (options) => runPromise(props.meters.headless.endMeasure(options)),
+              acquireMeasurement: () =>
+                runPromise(
+                  Effect.uninterruptible(
+                    Effect.gen(function* () {
+                      if (registered === false)
+                        return yield* new MeasureError({
+                          reason: 'ScopeClosed',
+                          message: 'Story bridge has been released',
+                        })
+                      const scope = yield* Scope.fork(parent)
+                      const measurement = yield* Scope.provide(
+                        props.meters.headless.measurement,
+                        scope,
+                      ).pipe(
+                        Effect.onExit((exit) =>
+                          Exit.isFailure(exit) === true ? Scope.close(scope, exit) : Effect.void,
+                        ),
+                      )
+                      const token = crypto.randomUUID()
+                      measurements.set(token, { measurement, scope })
+                      return token
+                    }),
+                  ),
+                ),
+              finishMeasurement: ({ token, settleFrames }) =>
+                runPromise(
+                  Effect.uninterruptibleMask((restore) =>
+                    Effect.gen(function* () {
+                      const entry = measurements.get(token)
+                      if (entry === undefined)
+                        return yield* new MeasureError({
+                          reason: 'ScopeClosed',
+                          message: 'Bridge token is not active',
+                        })
+                      const ended = yield* Effect.exit(
+                        restore(
+                          entry.measurement.end(settleFrames === undefined ? {} : { settleFrames }),
+                        ),
+                      )
+                      if (Exit.isFailure(ended) === true) {
+                        const retryable = ended.cause.reasons.some(
+                          (reason) =>
+                            reason._tag === 'Fail' &&
+                            reason.error instanceof MeasureError &&
+                            (reason.error.reason === 'InvalidOptions' ||
+                              reason.error.reason === 'AlreadyEnded'),
+                        )
+                        if (retryable === false) {
+                          measurements.delete(token)
+                          yield* Scope.close(entry.scope, ended)
+                        }
+                        return yield* Effect.failCause(ended.cause)
+                      }
+                      measurements.delete(token)
+                      yield* Scope.close(entry.scope, Exit.succeed(undefined))
+                      return yield* Schema.encodeEffect(MeasureResult)(ended.value)
+                    }),
+                  ),
+                ),
             }
             boundary.dataset.ready = 'true'
             boundary.dispatchEvent(new CustomEvent('meters-test-ready', { bubbles: true }))
           }),
           () =>
-            Effect.sync(() => {
+            Effect.gen(function* () {
+              registered = false
               delete boundary.metersTestBridge
               delete boundary.dataset.ready
+              for (const entry of measurements.values())
+                yield* Scope.close(entry.scope, Exit.succeed(undefined))
+              measurements.clear()
             }),
         )
         return yield* Effect.never

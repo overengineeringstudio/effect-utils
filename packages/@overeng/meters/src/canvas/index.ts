@@ -1,6 +1,7 @@
 import { Effect, type Scope } from 'effect'
 
 import type { SeriesStore } from '../series/index.ts'
+import { subscribePresentation } from '../series/internal.ts'
 import type { FrameClock } from '../session/clock.ts'
 import type { Meters } from '../session/index.ts'
 import type { BlockReader, CanvasBlockSpec, MeterTheme } from './blocks.ts'
@@ -19,8 +20,6 @@ export {
   lightMeterTheme,
   numberBlock,
   numericBlock,
-  spanBlock,
-  stackedBlock,
 } from './blocks.ts'
 export type { BlockOptions, BlockReader, CanvasBlockSpec, DrawInput, MeterTheme } from './blocks.ts'
 export { fitText, historyX, layoutBlockText, layoutStrip } from './layout.ts'
@@ -50,7 +49,10 @@ export const makeStripView = (options: {
   })
   let revision = ''
   let cached: readonly string[] = []
+  let subscribed = 0
+  let published = false
   const getSnapshot = (): readonly string[] => {
+    if (subscribed > 0 && published === true) return cached
     const nextRevision = readers.map((reader) => reader.revision()).join(',')
     if (nextRevision !== revision || cached.length !== readers.length) {
       revision = nextRevision
@@ -62,8 +64,24 @@ export const makeStripView = (options: {
     readers,
     frozenAtMs: options.frozenAtMs,
     getSnapshot,
-    subscribe: (notify) =>
-      options.frozenAtMs === undefined ? options.store.subscribe({ notify }) : () => {},
+    subscribe: (notify) => {
+      if (options.frozenAtMs !== undefined) return () => {}
+      getSnapshot()
+      subscribed++
+      published = true
+      const stop = options.store[subscribePresentation](() => {
+        published = false
+        const previous = cached
+        getSnapshot()
+        published = true
+        if (cached !== previous) notify()
+      })
+      return () => {
+        stop()
+        subscribed--
+        if (subscribed === 0) published = false
+      }
+    },
   }
 }
 /** Injected attachment capabilities for deterministic sizing and disposal tests. */

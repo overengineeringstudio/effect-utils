@@ -44,13 +44,12 @@ export type {
   Gauge,
   Instrumentation,
 } from './instrumentation/index.ts'
-export type {
-  Headless,
-  Snapshot,
-  MeasureHandle,
+export type { Headless, Snapshot, Measurement } from './headless/index.ts'
+export {
   CompleteData,
   PartialData,
   IncompleteReason,
+  SettlementFrames,
   MeasureResult,
   MeasureError,
 } from './headless/index.ts'

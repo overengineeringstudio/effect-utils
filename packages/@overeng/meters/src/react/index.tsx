@@ -13,6 +13,7 @@ import {
 } from '../canvas/index.ts'
 import type { CounterToken, Instrumentation } from '../instrumentation/index.ts'
 import type { Sample, Series, SeriesSnapshot } from '../series/index.ts'
+import { subscribePresentation } from '../series/internal.ts'
 import type { Meters } from '../session/index.ts'
 import { associateProfiler, type ReactCommit } from './commits.ts'
 
@@ -71,19 +72,37 @@ interface ExternalStore<TSnapshot> {
 /** Subscribe React to an identity-stable external store without an Effect runtime provider. */
 const useExternalStore = <TSnapshot,>(store: ExternalStore<TSnapshot>): TSnapshot =>
   React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
-/** Select a revision-stable series history through React's external-store subscription. */
+/** Select identity-stable history published on the session's 250ms presentation cadence. */
 export const useSeriesSnapshot = <TValue,>(series: Series<TValue>): SeriesSnapshot<TValue> => {
   const meters = useMeters()
-  const store = React.useMemo<ExternalStore<SeriesSnapshot<TValue>>>(
-    () => ({
-      getSnapshot: () => meters.store.snapshotSeries({ series }),
-      subscribe: (notify) => meters.store.subscribe({ notify }),
-    }),
-    [meters, series],
-  )
+  const store = React.useMemo<ExternalStore<SeriesSnapshot<TValue>>>(() => {
+    let cached = meters.store.snapshotSeries({ series })
+    let subscribed = 0
+    const getSnapshot = (): SeriesSnapshot<TValue> => {
+      if (subscribed === 0) cached = meters.store.snapshotSeries({ series })
+      return cached
+    }
+    return {
+      getSnapshot,
+      subscribe: (notify) => {
+        getSnapshot()
+        subscribed++
+        const stop = meters.store[subscribePresentation](() => {
+          const next = meters.store.snapshotSeries({ series })
+          if (next === cached) return
+          cached = next
+          notify()
+        })
+        return () => {
+          stop()
+          subscribed--
+        }
+      },
+    }
+  }, [meters, series])
   return useExternalStore(store)
 }
-/** Read current typed evidence, returning explicit NoSamples before the first observation. */
+/** Read the latest published evidence, returning explicit NoSamples before the first observation. */
 export const useSeries = <TValue,>(series: Series<TValue>): Sample<TValue> => {
   const snapshot = useSeriesSnapshot(series)
   return (

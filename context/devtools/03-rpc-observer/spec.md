@@ -4,7 +4,7 @@ This document specifies shared protocol observation. It builds on [requirements.
 
 ## Status
 
-Draft. Contracts describe the extraction and clean cutover, not existing exports.
+Draft.
 
 ## Scope
 
@@ -143,7 +143,7 @@ late Chunk/Exit without active request -> ignored
 
 Traces: DT.OBS-R02, DT.OBS-R04, DT.OBS-R06–R10.
 
-A canonical event is computed once, then delivered synchronously in registration order. Every callback is separately exception-isolated. Sinks may not mutate shared events or raw input; no per-sink event clone is required. Correlation state stores identity, request start, observation phase and scalar bookkeeping, never messages or values. No store-keyed WeakMap remains: one scoped observer is the coordinator shared by its decoration and middleware.
+A canonical event is computed once, then delivered synchronously in registration order. Every callback is separately exception-isolated. Sinks may not mutate shared events or raw input; no per-sink event clone is required. Correlation state stores identity, request start, observation phase and scalar bookkeeping, never messages or values. One scoped observer is the coordinator shared by its decoration and middleware; correlation is not keyed by an explorer store.
 
 `capacity` is a positive safe integer bounding active entries plus terminal tombstones. Evict oldest tombstones first. If all entries are active, terminalize the oldest active request as `transportFailure`, emit a `capacity` fault for its connection, then make room. Eviction never silently leaks in-flight accounting. Tombstones suppress duplicate terminal evidence while retained; once evicted, an unsolicited Exit/Chunk is still ignored. A new Request may reuse a completed wire ID; transport ordering must prevent stale responses being ambiguous with such reuse. New transport lifetimes require distinct connection identity.
 
@@ -172,7 +172,7 @@ Server middleware mode registers inbound identity at protocol entry but emits th
 
 Traces: DT.OBS-R05, DT.OBS-R08–R10. For a terminal server response, observe a send attempt but commit successful chunk/terminal evidence only on successful send completion; failed response send settles the affected request as transport failure. Capture `onMessage` exposes both phases without falsely declaring delivery. Preserve server `disconnects` and all capability fields; subscribe within the observer scope to real disconnect evidence. Preserve `end`'s original Effect result, observing successful connection closure; do not replace transport errors with observation errors. Duplicate fault evidence must not create duplicate request terminals. Fault callbacks are fault evidence, not an additional error-rate count.
 
-## Transient capture and explorer cutover
+## Transient capture and explorer composition
 
 ```text
 shared observer CaptureSink -> explorer policy/codec -> explorer store -> inspector
@@ -186,7 +186,7 @@ Raw attachments are callback-lifetime borrowed references, delivered only when `
 ```ts
 import type { ExplorerServices, ExplorerEncodedDecodersByTag } from '@overeng/effect-rpc-explorer'
 
-// The revised ExplorerServices contains this method instead of decoration/middleware.
+// ExplorerServices exposes capture; the observer package owns decoration/middleware.
 export interface ExplorerCaptureSurface {
   readonly makeCaptureSink: (options: {
     readonly side: ObserverSide
@@ -195,7 +195,7 @@ export interface ExplorerCaptureSurface {
 }
 ```
 
-Explorer retains descriptors, store, inspector, telemetry, and scoped descriptor registration. Remove its public `ProtocolObserver`, `makeProtocolObserver`, protocol decorators, server observation middleware, decorator option types, and corresponding `ExplorerServices.decorateClientProtocol`, `.decorateServerProtocol`, and `.middleware`. Replace all callers, tests, examples, and associated explorer VRS references with the shared package plus capture sink. Do not re-export removed observation APIs as aliases. Standalone explorer constructs `makeExplorer`, its capture sink, and `makeProtocolObserver` directly; it does not need rpc-devtools or devbar.
+Explorer owns descriptors, store, inspector, telemetry, scoped descriptor registration, and its capture sink. The observer package owns `ProtocolObserver`, `makeProtocolObserver`, protocol decorators, server observation middleware, and decorator option types; explorer exposes no parallel decoration/middleware surface or aliases. Standalone explorer constructs `makeExplorer`, its capture sink, and `makeProtocolObserver` directly; it does not need rpc-devtools or devbar.
 
 ## Conformance
 

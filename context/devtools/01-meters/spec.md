@@ -3,14 +3,13 @@
 This document specifies `@overeng/meters`. It builds on
 [requirements.md](./requirements.md).
 
-Status: **Draft** — the target API and implementation contract, not a description
-of the legacy engine currently being replaced.
+Status: **Draft**.
 
 ## Scope
 
 This spec defines sources, cadence, typed series/history, session acquisition,
 frame bookkeeping, instrumentation, renderers, React bindings, headless gates,
-and clean migration. Package composition and common identifier rules belong to
+and public surface invariants. Package composition and common identifier rules belong to
 [the parent spec](../spec.md). The [devbar](../02-devbar/spec.md) owns its shell;
 [RPC integration](../04-rpc-devtools/spec.md) owns RPC aggregation;
 [RPC observer](../03-rpc-observer/spec.md) owns transport interception.
@@ -709,14 +708,17 @@ and observation time. Unfreeze returns to current shared evidence.
 Trace: DT.MET-R17–R21; parent DT-R15 and Q11.
 
 ```text
-beginMeasure -> capture cumulative baselines + register handle
+caller Scope -> detachable measurement child Scope -> cumulative baselines
   -> host work / automation
-  -> endMeasure -> optional visible-frame settle -> validate evidence
-                   +-- Complete: eligible measured bracket
-                   +-- Incomplete: partial evidence + reasons, gate ineligible
+  -> Measurement.end -> atomic claim -> optional visible-frame settle
+       +-- Complete: eligible measured bracket
+       +-- Incomplete: partial evidence + reasons, gate ineligible
+  -> Scope closure: abandon unended resource and cancel pending settlement
 ```
 
 ```ts
+import { Effect, Schema, Scope } from 'effect'
+
 interface Snapshot {
   readonly sessionId: string
   readonly generation: number
@@ -726,63 +728,96 @@ interface Snapshot {
   readonly retention: readonly { readonly id: string; readonly range: Retention }[]
   readonly counters: Readonly<Record<string, number>>
 }
-interface MeasureHandle {
-  readonly _tag: 'MeasureHandle'
-  readonly sessionId: string
-  readonly generation: number
-  readonly id: number
-  readonly startedAtMs: number
-}
-interface CompleteData {
-  readonly durationMs: number
-  readonly framesCaptured: number
-  readonly frameDrops: number
-  readonly averageFps: number
-  readonly counterDelta: Readonly<Record<string, number>>
-}
-interface PartialData {
-  readonly durationMs: number
-  readonly framesCaptured: number
-  readonly frameDrops: Sample<NumberValue>
-  readonly averageFps: Sample<NumberValue>
-  readonly counterDelta: Readonly<Record<string, number>>
-}
-type IncompleteReason =
-  | 'Hidden'
-  | 'CalibrationInvalid'
-  | 'Stopped'
-  | 'NoSamples'
-  | 'NotConfigured'
-  | 'HistoryLost'
-  | 'ObservationLost'
-type MeasureResult =
-  | { readonly _tag: 'Complete'; readonly eligible: true; readonly data: CompleteData }
-  | {
-      readonly _tag: 'Incomplete'
-      readonly eligible: false
-      readonly reasons: readonly [IncompleteReason, ...IncompleteReason[]]
-      readonly data: PartialData
-    }
-interface MeasureError {
-  readonly _tag: 'MeasureError'
-  readonly reason:
-    | 'NotRunning'
-    | 'WrongSession'
-    | 'StaleGeneration'
-    | 'AlreadyEnded'
-    | 'InvalidHandle'
-    | 'InvalidOptions'
+const NonNegativeFinite = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
+const SettlementFrames = Schema.Natural.annotate({ identifier: 'Meters.SettlementFrames' })
+const UnavailableReason = Schema.Literals([
+  'Unsupported',
+  'NotConfigured',
+  'NotIsolated',
+  'PermissionDenied',
+  'MeasurementFailed',
+  'NoSamples',
+  'Hidden',
+  'HistoryLost',
+  'CalibrationInvalid',
+  'Stopped',
+])
+const NumberValue = Schema.TaggedStruct('Number', { value: Schema.Finite })
+const NumberSample = Schema.Union([
+  Schema.TaggedStruct('Value', { atMs: Schema.Finite, value: NumberValue }),
+  Schema.TaggedStruct('Unavailable', { atMs: Schema.Finite, reason: UnavailableReason }),
+  Schema.TaggedStruct('Gap', {
+    atMs: Schema.Finite,
+    durationMs: NonNegativeFinite,
+    reason: Schema.Literals(['MissedFrame', 'Hidden', 'Overflow']),
+  }),
+])
+const CounterDelta = Schema.Record(Schema.String, NonNegativeFinite)
+const CompleteData = Schema.Struct({
+  durationMs: NonNegativeFinite,
+  framesCaptured: Schema.Natural,
+  frameDrops: Schema.Natural,
+  averageFps: Schema.Natural,
+  counterDelta: CounterDelta,
+}).annotate({ identifier: 'Meters.CompleteData' })
+type CompleteData = typeof CompleteData.Type
+const PartialData = Schema.Struct({
+  durationMs: NonNegativeFinite,
+  framesCaptured: Schema.Natural,
+  frameDrops: NumberSample,
+  averageFps: NumberSample,
+  counterDelta: CounterDelta,
+}).annotate({ identifier: 'Meters.PartialData' })
+type PartialData = typeof PartialData.Type
+const IncompleteReason = Schema.Literals([
+  'Hidden',
+  'CalibrationInvalid',
+  'Stopped',
+  'NoSamples',
+  'NotConfigured',
+  'HistoryLost',
+  'ObservationLost',
+]).annotate({ identifier: 'Meters.IncompleteReason' })
+type IncompleteReason = typeof IncompleteReason.Type
+const MeasureResult = Schema.Union([
+  Schema.TaggedStruct('Complete', {
+    eligible: Schema.Literal(true),
+    data: CompleteData,
+  }),
+  Schema.TaggedStruct('Incomplete', {
+    eligible: Schema.Literal(false),
+    reasons: Schema.NonEmptyArray(IncompleteReason),
+    data: PartialData,
+  }),
+]).annotate({ identifier: 'Meters.MeasureResult' })
+type MeasureResult = typeof MeasureResult.Type
+
+class MeasureError extends Schema.TaggedError<MeasureError>()(
+  'MeasureError',
+  {
+    reason: Schema.Literals([
+      'NotRunning',
+      'StaleGeneration',
+      'AlreadyEnded',
+      'ScopeClosed',
+      'InvalidOptions',
+    ]),
+    message: Schema.String,
+  },
+  { identifier: 'Meters.MeasureError' },
+) {}
+
+interface Measurement {
+  readonly end: (options?: {
+    readonly settleFrames?: number
+  }) => Effect.Effect<MeasureResult, MeasureError>
 }
 interface Headless {
   readonly snapshot: () => Snapshot
   readonly snapshotSeries: <TValue>(options: {
     readonly series: Series<TValue>
   }) => SeriesSnapshot<TValue>
-  readonly beginMeasure: Effect.Effect<MeasureHandle, MeasureError>
-  readonly endMeasure: (options: {
-    readonly handle: MeasureHandle
-    readonly settleFrames?: number
-  }) => Effect.Effect<MeasureResult, MeasureError>
+  readonly measurement: Effect.Effect<Measurement, MeasureError, Scope.Scope>
   readonly measureWindow: <TValue, TError, TEnv>(options: {
     readonly work: Effect.Effect<TValue, TError, TEnv>
     readonly settleFrames?: number
@@ -799,25 +834,58 @@ payload union. Snapshot identity is stable until its relevant revision changes;
 explicit reads capture `atMs` at that revision. Source acquisition/visibility
 changes also publish revisions, so unavailable state is not hidden by caching.
 
-A session-owned active-handle registry stores immutable before-totals,
-visibility/calibration validity markers, and optional source loss markers.
-The returned handle contains only its serializable identity and time;
-JSON round trips preserve it. Validate every returned field against the
-registry, consume exactly once, reject modified/cross-session/stale-generation
-handles, and do not trust caller-supplied baseline counters.
+`Measurement` is an executable, scope-owned capability bound to its acquiring
+session, not serializable identity data. Each acquisition captures cumulative
+before-totals and visibility/calibration/source-loss markers in a detachable child
+scope forked from the caller's scope. Its state is atomically claimed:
 
-| Operation       | Default settlement | Semantics                                                                                                                                                        |
-| --------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `beginMeasure`  | None               | Requires a running lease; records baselines even if frame calibration is currently pending, making that bracket ineligible unless all bracket evidence was valid |
-| `endMeasure`    | 0 frames           | Claims the handle once, then settles and captures after-totals; settlement extends the measured interval                                                         |
-| `measureWindow` | 30 frames          | Begins, runs Effect work, ends; failure/interruption closes the handle in a finalizer and preserves the original cause                                           |
+```text
+Open -> Settling -> Ended
+Open -> ScopeClosed
+Open -> StaleGeneration (session restart)
+Settling -> Ended (success, incomplete result, or end interruption)
+Settling -> consumed + pending caller fails ScopeClosed (owning scope closes)
+```
 
-Settlement count is a finite nonnegative integer. No implicit timeout or wall
-clock delay replaces actual frame settlement. Hidden/stopped settlement returns
-`Incomplete` promptly; last-lease release settles pending measurements before
-closing resources. Calling `endMeasure` for an existing handle after collection
-stopped yields incomplete partial evidence rather than an apparently complete
-measurement. Beginning a new bracket while stopped is `NotRunning`.
+Only one valid `end` claims a resource. Concurrent and subsequent calls fail
+`AlreadyEnded`, including calls while settlement is pending or after interrupted
+end. Validate settlement before claiming; `InvalidOptions` leaves an open
+resource available for retry. An unended resource escaped from a closed scope
+fails `ScopeClosed`; restart invalidates still-open prior-generation resources
+with `StaleGeneration`. A capability always observes its acquiring session, even
+when passed to code that also owns another session. No caller-supplied baseline or
+session identity participates in its authority.
+
+The session tracks only live open/settling controls. Explicit end, abandonment,
+and invalidation clear retained baseline/frozen evidence, unregister the control,
+and close/detach the child scope. Completed results belong to callers, not a
+completed-result registry or resource closure. Sequential measurements inside a
+long-lived parent scope must not accumulate child scopes, finalizers, clock
+waiters, or evidence. Retention is proportional to currently owned live resources
+and their baseline counter count, plus the existing bounded source rings.
+
+| Operation         | Default settlement | Semantics                                                                                                                                                                         |
+| ----------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `measurement`     | None               | Requires a running lease; captures baselines even during pending calibration, preserving that incompleteness                                                                      |
+| `Measurement.end` | 0 frames           | Validates options, claims once, settles, and captures after-totals; settlement extends the measured interval                                                                      |
+| `measureWindow`   | 30 frames          | Validates options before acquiring or executing work; scopes acquisition, work, and end; failure/defect/interruption abandons without settlement and preserves the original Cause |
+
+Settlement count is a finite nonnegative integer. Actual visible frames, not a
+timeout or wall-clock delay, determine settlement. Hidden/stopped settlement
+returns `Incomplete` promptly. Scope closure actively wakes/cancels pending end
+with `ScopeClosed`; end interruption cancels its clock waiter and consumes the
+resource. Cleanup is non-waiting and cannot mask the original work failure.
+
+Measurements do not acquire an extra session lease or prolong collection.
+On last-lease release, deactivate collection and record stopped evidence, then
+freeze every live resource's endpoint/counter totals before releasing collector
+sources. Pending end returns `Incomplete(Stopped)` from that frozen endpoint;
+an open resource remains endable with partial evidence until end, scope closure,
+or restart. Releasing a non-last lease does not affect measurements. Acquiring
+while stopped fails `NotRunning`. A new first lease invalidates still-open
+prior-generation resources before new collection starts; check generation at
+claim and before any unfrozen post-settlement capture. Results already delivered
+or terminalized at stop remain valid immutable evidence of that generation.
 
 For an eligible bracket, `durationMs = endMs - startMs`, captured/skipped frames
 are cumulative deltas, and `averageFps = round(framesCaptured * 1000 / durationMs)`.
@@ -837,19 +905,48 @@ availability/loss must also be checked before gates over that source; frame
 completeness does not prove that heap, fibers, or RPC were configured.
 
 ```ts
-const measurement = yield * meters.headless.endMeasure({ handle, settleFrames: 5 })
-if (measurement._tag !== 'Complete') {
-  // Fail/skip the gate explicitly with measurement.reasons; never pass it.
-} else {
-  // Apply thresholds to measurement.data only after source eligibility checks.
-}
+const gate = Effect.gen(function* () {
+  const bracket = yield* meters.headless.measurement
+  yield* hostWork
+  const measurement = yield* bracket.end({ settleFrames: 5 })
+  if (measurement._tag !== 'Complete') {
+    return { eligible: false, reasons: measurement.reasons }
+  }
+  return applyThresholdsAfterSourceEligibilityChecks(measurement.data)
+}).pipe(Effect.scoped)
 ```
 
-An optional scoped automation bridge exposes Promise wrappers around the same
-snapshot/begin/end APIs. The host chooses its key, access boundary, and readiness
-handshake. Registration is direct and release removes it; no polling decorator,
-implicit `__metersEngine`, or counter transport global exists. The bridge is
-absent outside its explicitly enabled test scope.
+The `/headless` entrypoint exports `CompleteData`, `PartialData`,
+`IncompleteReason`, `SettlementFrames`, and `MeasureResult` value schemas with
+their derived types, and the `MeasureError` tagged-error schema/class with a
+structured reason and contextual message. Durations and counter deltas are
+finite and nonnegative; captured/dropped frame counts and complete average FPS
+are natural numbers. Partial number values and sample timestamps are finite;
+tagged unavailable/gap observations preserve their declared reasons.
+The result union fixes `Complete.eligible` to `true` and `Incomplete.eligible`
+to `false`; incomplete reasons are nonempty. Schemas reject tag/eligibility
+disagreement, invalid numeric evidence, and unknown reason/tag values rather
+than repairing them. Settlement decoding uses `SettlementFrames` and maps
+schema failure to `InvalidOptions`, without silently clamping values. Schema annotations
+use the repository-local `Meters.*` namespace. Encode with
+`Schema.encodeEffect(MeasureResult)` and decode untrusted transport data with
+`Schema.decodeUnknownEffect(MeasureResult)` using the pinned Effect 4 APIs;
+the same boundary rule applies to `MeasureError`. `Measurement` has no wire schema.
+
+An optional scoped automation bridge owns browser-local scopes and resources.
+`acquireMeasurement(): Promise<string>` creates a resource and registers it under
+a bridge-issued opaque token. `finishMeasurement({ token, settleFrames? })`
+resolves that browser-local entry, invokes `Measurement.end`, encodes its result,
+and closes the resource scope after a claimed end. Invalid options leave the
+token/resource retryable. Tokens are bridge-local lookup keys, not serialized core
+capabilities; unknown or consumed tokens fail explicitly and cannot designate
+another bridge's resource. The host may perform locator interactions between
+acquisition and finish; no serialized callback protocol is required. Snapshot
+wrappers use the same session. The host chooses the access boundary and readiness
+handshake. Registration is direct; release unregisters the bridge, abandons all
+open resources, cancels pending settlement, and prevents late publication.
+No polling decorator, implicit browser global, or counter transport is installed;
+the bridge is absent outside its explicitly enabled test scope.
 
 ## React Bindings
 
@@ -937,7 +1034,7 @@ with the generated detail container through `aria-controls`. Only the block
 matching `selected` is passed to `renderDetail`; clicking a button proposes
 `onSelect({ id })` without changing controlled selection. Unknown/absent selection
 shows a selection prompt, and an empty list shows "No meters configured."
-The host reconciles removed IDs, persists selection, and supplies domain-specific
+The host reconciles IDs absent from the current block list, persists selection, and supplies domain-specific
 detail content. List and detail scroll independently inside the available panel
 slot and use the supplied meter theme. No source lease, canvas attachment,
 storage access, RPC routing, or default meter selection is introduced.
@@ -953,49 +1050,32 @@ missing instrumentation/build support yields `NotConfigured`, not a guaranteed
 zero. Counts describe subtree commits, never every component function invocation
 or scheduler priorities. No Profiler mounts through a disabled enabling boundary.
 
-## Clean Migration
+## Public Surface Invariants
 
 Trace: DT.MET-R33; parent DT-R24.
 
-| Legacy API/behavior                                                                                                | Replacement and required caller change                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AppVitals({ blocks, exposeGlobally, engineRef })`                                                                 | Host enabling boundary + explicit `MetersProvider`/`MeterStrip`; direct session reference and optional scoped automation bridge; separate freeze action               |
-| `MeterGrid` owns engine and per-grid history                                                                       | `MeterStrip` reads session-owned SeriesStore and attaches a renderer; multiple strips share one clock; standalone use remains supported                               |
-| `MeterBlockFn` combines `getFrameValue`, sentinels, and drawing                                                    | `Source` + opaque typed `Series` + render-only `block`; sampling never depends on draw sizing or placeholder factory arguments                                        |
-| `makeFpsMeterBlock` / `makeFiberBlock`                                                                             | `frameSource` / `fibersSource` plus matching render blocks; host enables runtime metrics and supplies context explicitly                                              |
-| `makeCounterBlock`                                                                                                 | Declared counter/gauge source or explicitly cadenced reader plus numeric threshold block; semantic theme roles replace literal threshold colors                       |
-| `makeValueMeterBlock` / `makePolyValueMeterBlock`                                                                  | Typed series plus single/stacked renderer; tagged unavailable/gaps replace `FRAME_MISS` and uninitialized numeric sentinels; time bins replace FPS-sized arrays       |
-| `makeReactRenderBlock`                                                                                             | Actual Profiler commit source; any host scheduler-priority events are a separately explicit source, never inferred from Profiler                                      |
-| `RenderProfiler` / `makeRenderProfilerBlock`                                                                       | `/react` Profiler receives injected instrumentation/token; commit source and bracket read the same monotonic counter                                                  |
-| `DebugBag`, augmentation, `getDebug`, `setDebug`, `incrDebug`, `resetDebug`, `snapshotDebug`, `globalThis.__debug` | Explicit typed instrumentation service with distinct `counter.add` and `gauge.set`; no global transport, declaration merging, reset-on-read, or compatibility aliases |
-| `createMetersEngine`, `MetersEngine.start/stop/reset/dispose`, old `/headless` engine                              | `makeMeters` + scoped lease; fresh session is reset boundary; retain bracket names with Effect/named arguments; Promise conversion only at automation boundary        |
-| `MeasurementResult.debugDelta`                                                                                     | `counterDelta`; tagged Complete/Incomplete and eligibility checks; bracket totals never use trailing-window quantiles                                                 |
-| `exposeGlobally`, `METERS_ENGINE_GLOBAL_KEY`, polling `withEngineTap`                                              | Explicit scoped host-selected test bridge and direct readiness registration; no automatically published handle                                                        |
-| Hover-only pause                                                                                                   | Separate controlled freeze of a bounded renderer snapshot with keyboard/pointer parity                                                                                |
-| Devbar independent `FpsMeter`, `persist`, `storageKey`                                                             | Shared frame source/store; controlled `openPanel`/`onOpenPanelChange`; host owns storage and dynamic-import policy                                                    |
-| Meters RPC/explorer adapter idea                                                                                   | `@overeng/rpc-devtools/core`; meters core and source entrypoints import no RPC packages                                                                               |
-
-Migration replaces all affected callers, examples, tests, and old exports in one
-clean contract cutover. There are no deprecated re-exports or global shims.
-The package README distinguishes the current legacy implementation from this
-target contract until implementation cutover; this documentation change does
-not claim those code exports already changed. Old package-local VRS files are
-removed to avoid two normative meter designs.
+Sources own acquisition and cadence; blocks own rendering only. A fresh session
+is the explicit reset boundary. Instrumentation is injected and distinguishes
+monotonic counters from gauges, with non-destructive readers and no global
+transport or declaration-merging bag. The public surface has one contract per
+operation, with no deprecated aliases or compatibility shims. Automation adapts
+Effect at an explicit scoped boundary. Shell state and persistence belong to the
+host; meters owns neither RPC domain semantics nor shell storage.
 
 ## Conformance
 
 Trace: DT.MET-R34 and [parent verification](../spec.md#conformance-evidence).
 
-| Test family       | Required observations                                                                                                                                                                         |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Injected platform | Deterministic ticks, cancellation, source-before-draw order, no factory/import work                                                                                                           |
-| Frame calibration | 60/120/144/160/240, strict tolerance, unsupported/pending, refresh change rebasing, hidden gaps and no hidden missed-frame burst                                                              |
-| Storage           | O(1) bounded append, overflow/range metadata, independent readers, immutable snapshot identity, custom payload typing                                                                         |
-| Lifecycle         | One collector per source/one clock across multiple readers, last-release cleanup, single-flight probes, discarded late results, serialized StrictMode reacquisition                           |
-| Brackets          | Cumulative deltas, defaults 0/30 settlement, JSON handle validation, duplicate/modified/cross-session rejection, original work failure preserved, incomplete hidden/calibration/loss outcomes |
-| Built-ins         | Capability detection, distinct LoAF/fallback, heap versus app-memory, disabled metric n/a, exact completion/commit counters beyond ring capacity, no RPC imports or diagnostic sockets        |
-| Renderers         | Fractional DPR, sizing changes, timestamp history, value/text parity, semantic themes, keyboard tooltips/detail action, bounded freeze without collection pause                               |
-| Disabled host     | No loader/module/runtime/rAF/timer/observer/listener/hook/metric starts and no diagnostic production graph, as defined by the parent                                                          |
+| Test family       | Required observations                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Injected platform | Deterministic ticks, cancellation, source-before-draw order, no factory/import work                                                                                                                                                                                                                                                                                                                     |
+| Frame calibration | 60/120/144/160/240, strict tolerance, unsupported/pending, refresh change rebasing, hidden gaps and no hidden missed-frame burst                                                                                                                                                                                                                                                                        |
+| Storage           | O(1) bounded append, overflow/range metadata, independent readers, immutable snapshot identity, custom payload typing                                                                                                                                                                                                                                                                                   |
+| Lifecycle         | One collector per source/one clock across multiple readers, last-release cleanup, single-flight probes, discarded late results, serialized StrictMode reacquisition                                                                                                                                                                                                                                     |
+| Brackets          | Cumulative deltas; defaults 0/30; atomic concurrent/duplicate end; retry after invalid options; escaped scope and restart rejection; original work Cause preserved; hidden/calibration/loss reasons; stop endpoint frozen before source teardown; no live registry/finalizer growth after sequential end; schema round trips and malformed evidence rejection; browser-local bridge token/scope cleanup |
+| Built-ins         | Capability detection, distinct LoAF/fallback, heap versus app-memory, disabled metric n/a, exact completion/commit counters beyond ring capacity, no RPC imports or diagnostic sockets                                                                                                                                                                                                                  |
+| Renderers         | Fractional DPR, sizing changes, timestamp history, value/text parity, semantic themes, keyboard tooltips/detail action, bounded freeze without collection pause                                                                                                                                                                                                                                         |
+| Disabled host     | No loader/module/runtime/rAF/timer/observer/listener/hook/metric starts and no diagnostic production graph, as defined by the parent                                                                                                                                                                                                                                                                    |
 
 ## Open Design Questions
 

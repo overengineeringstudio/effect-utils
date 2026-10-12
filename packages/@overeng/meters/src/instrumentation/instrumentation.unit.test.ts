@@ -136,12 +136,12 @@ describe('typed instruments', () => {
       const meters = makeMeters({ sources: [source], platform: host.platform })
       yield* meters.start
       const before = meters.headless.snapshot()
-      const handle = yield* meters.headless.beginMeasure
+      const bracket = yield* meters.headless.measurement
       instrumentation.counter({ token }).add({ by: 3 })
       host.advance(1)
       expect(meters.headless.snapshot()).not.toBe(before)
       expect(meters.headless.snapshot().counters).toEqual({ commits: 3 })
-      expect((yield* meters.headless.endMeasure({ handle })).data.counterDelta).toEqual({
+      expect((yield* bracket.end()).data.counterDelta).toEqual({
         commits: 3,
       })
     }),

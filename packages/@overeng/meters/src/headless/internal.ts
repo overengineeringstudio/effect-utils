@@ -1,13 +1,6 @@
-import { Effect, Exit } from 'effect'
+import { Deferred, Effect, Exit, Ref, Schema, Scope } from 'effect'
 
-import type {
-  NumberValue,
-  Retention,
-  Sample,
-  Series,
-  SeriesSnapshot,
-  SeriesStore,
-} from '../series/index.ts'
+import type { Retention, Sample, Series, SeriesSnapshot, SeriesStore } from '../series/index.ts'
 import type { FrameClock } from '../session/clock.ts'
 import type { FrameStats } from '../session/frame.ts'
 import type { SourceEvidence } from '../session/source.ts'
@@ -23,70 +16,129 @@ export interface Snapshot {
   readonly retention: readonly { readonly id: string; readonly range: Retention }[]
   readonly counters: Readonly<Record<string, number>>
 }
-/** Serializable identity checked field-for-field against the session registry. */
-export interface MeasureHandle {
-  readonly _tag: 'MeasureHandle'
-  readonly sessionId: string
-  readonly generation: number
-  readonly id: number
-  readonly startedAtMs: number
-}
-/** Eligible bracket-scoped cumulative deltas, not trailing statistics. */
-export interface CompleteData {
-  readonly durationMs: number
-  readonly framesCaptured: number
-  readonly frameDrops: number
-  readonly averageFps: number
-  readonly counterDelta: Readonly<Record<string, number>>
-}
-/** Truthful partial evidence for an ineligible measurement. */
-export interface PartialData {
-  readonly durationMs: number
-  readonly framesCaptured: number
-  readonly frameDrops: Sample<NumberValue>
-  readonly averageFps: Sample<NumberValue>
-  readonly counterDelta: Readonly<Record<string, number>>
+/** Scope-owned executable authority; a valid end consumes it exactly once. */
+export interface Measurement {
+  readonly end: (options?: {
+    readonly settleFrames?: number
+  }) => Effect.Effect<MeasureResult, MeasureError>
 }
 /** Reasons retained across resume, recovery, and ring eviction. */
-export type IncompleteReason =
-  | 'Hidden'
-  | 'CalibrationInvalid'
-  | 'Stopped'
-  | 'NoSamples'
-  | 'NotConfigured'
-  | 'HistoryLost'
-  | 'ObservationLost'
-/** Only Complete measurements are eligible for performance gates. */
-export type MeasureResult =
-  | { readonly _tag: 'Complete'; readonly eligible: true; readonly data: CompleteData }
-  | {
-      readonly _tag: 'Incomplete'
-      readonly eligible: false
-      readonly reasons: readonly [IncompleteReason, ...IncompleteReason[]]
-      readonly data: PartialData
-    }
-/** Explicit identity, lifecycle, or settlement validation failure. */
-export interface MeasureError {
-  readonly _tag: 'MeasureError'
-  readonly reason:
-    | 'NotRunning'
-    | 'WrongSession'
-    | 'StaleGeneration'
-    | 'AlreadyEnded'
-    | 'InvalidHandle'
-    | 'InvalidOptions'
-}
+export const IncompleteReason = Schema.Literals([
+  'Hidden',
+  'CalibrationInvalid',
+  'Stopped',
+  'NoSamples',
+  'NotConfigured',
+  'HistoryLost',
+  'ObservationLost',
+]).annotate({ identifier: 'Meters.IncompleteReason' })
+/** Ineligibility reason decoded from measurement evidence. */
+export type IncompleteReason = typeof IncompleteReason.Type
+/** Visible-frame settlement option shared by scoped and work brackets. */
+export const SettlementFrames = Schema.Natural.annotate({ identifier: 'Meters.SettlementFrames' })
+/** Eligible bracket-scoped cumulative deltas, not trailing statistics. */
+export const CompleteData = Schema.Struct({
+  durationMs: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+  framesCaptured: Schema.Natural,
+  frameDrops: Schema.Natural,
+  averageFps: Schema.Natural,
+  counterDelta: Schema.Record(Schema.String, Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+})
+/** Eligible cumulative data. */
+export type CompleteData = typeof CompleteData.Type
+/** Truthful partial evidence for an ineligible measurement. */
+export const PartialData = Schema.Struct({
+  durationMs: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+  framesCaptured: Schema.Natural,
+  frameDrops: Schema.Union([
+    Schema.TaggedStruct('Value', {
+      atMs: Schema.Finite,
+      value: Schema.TaggedStruct('Number', { value: Schema.Finite }),
+    }),
+    Schema.TaggedStruct('Unavailable', {
+      atMs: Schema.Finite,
+      reason: Schema.Literals([
+        'Unsupported',
+        'NotConfigured',
+        'NotIsolated',
+        'PermissionDenied',
+        'MeasurementFailed',
+        'NoSamples',
+        'Hidden',
+        'HistoryLost',
+        'CalibrationInvalid',
+        'Stopped',
+      ]),
+    }),
+    Schema.TaggedStruct('Gap', {
+      atMs: Schema.Finite,
+      durationMs: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+      reason: Schema.Literals(['MissedFrame', 'Hidden', 'Overflow']),
+    }),
+  ]),
+  averageFps: Schema.Union([
+    Schema.TaggedStruct('Value', {
+      atMs: Schema.Finite,
+      value: Schema.TaggedStruct('Number', { value: Schema.Finite }),
+    }),
+    Schema.TaggedStruct('Unavailable', {
+      atMs: Schema.Finite,
+      reason: Schema.Literals([
+        'Unsupported',
+        'NotConfigured',
+        'NotIsolated',
+        'PermissionDenied',
+        'MeasurementFailed',
+        'NoSamples',
+        'Hidden',
+        'HistoryLost',
+        'CalibrationInvalid',
+        'Stopped',
+      ]),
+    }),
+    Schema.TaggedStruct('Gap', {
+      atMs: Schema.Finite,
+      durationMs: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+      reason: Schema.Literals(['MissedFrame', 'Hidden', 'Overflow']),
+    }),
+  ]),
+  counterDelta: Schema.Record(Schema.String, Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+})
+/** Partial cumulative data. */
+export type PartialData = typeof PartialData.Type
+/** Schema-encoded results; only Complete measurements are eligible for gates. */
+export const MeasureResult = Schema.Union([
+  Schema.TaggedStruct('Complete', { eligible: Schema.Literal(true), data: CompleteData }),
+  Schema.TaggedStruct('Incomplete', {
+    eligible: Schema.Literal(false),
+    reasons: Schema.NonEmptyArray(IncompleteReason),
+    data: PartialData,
+  }),
+]).annotate({ identifier: 'Meters.MeasureResult' })
+/** Decoded measurement result. */
+export type MeasureResult = typeof MeasureResult.Type
+/** Explicit lifecycle or settlement validation failure. */
+export class MeasureError extends Schema.TaggedError<MeasureError>()(
+  'MeasureError',
+  {
+    reason: Schema.Literals([
+      'NotRunning',
+      'StaleGeneration',
+      'AlreadyEnded',
+      'ScopeClosed',
+      'InvalidOptions',
+    ]),
+    message: Schema.String,
+  },
+  { identifier: 'Meters.MeasureError' },
+) {}
 /** Independent snapshots and scoped split/work brackets. */
 export interface Headless {
   readonly snapshot: () => Snapshot
   readonly snapshotSeries: <TValue>(options: {
     readonly series: Series<TValue>
   }) => SeriesSnapshot<TValue>
-  readonly beginMeasure: Effect.Effect<MeasureHandle, MeasureError>
-  readonly endMeasure: (options: {
-    readonly handle: MeasureHandle
-    readonly settleFrames?: number
-  }) => Effect.Effect<MeasureResult, MeasureError>
+  readonly measurement: Effect.Effect<Measurement, MeasureError, Scope.Scope>
   readonly measureWindow: <TValue, TError, TEnv>(options: {
     readonly work: Effect.Effect<TValue, TError, TEnv>
     readonly settleFrames?: number
@@ -105,7 +157,8 @@ export interface SessionEvidence {
   stopped: number
 }
 interface Before {
-  readonly handle: MeasureHandle
+  readonly generation: number
+  readonly startedAtMs: number
   readonly captured: number
   readonly skipped: number
   readonly invalid: number
@@ -115,7 +168,15 @@ interface Before {
   readonly counters: Readonly<Record<string, number>>
   readonly initialReasons: readonly IncompleteReason[]
 }
-const validSettlement = (count: number): boolean => Number.isInteger(count) === true && count >= 0
+type MeasurementState =
+  | { readonly _tag: 'Open'; readonly before: Before }
+  | { readonly _tag: 'Frozen'; readonly result: MeasureResult }
+  | {
+      readonly _tag: 'Settling'
+      readonly before: Before
+      readonly wake: Deferred.Deferred<MeasureResult, MeasureError>
+    }
+  | { readonly _tag: 'Ended' | 'Released' | 'Invalidated' }
 
 /** Build the session-owned headless view without installing a bridge or collector. */
 export const makeHeadless = (options: {
@@ -128,10 +189,15 @@ export const makeHeadless = (options: {
     readonly evidence: SourceEvidence
     readonly retention: () => { readonly id: string; readonly range: Retention }
   }[]
-}): Headless => {
-  const active = new Map<number, Before>()
-  const ended = new Map<number, MeasureHandle>()
-  let nextId = 0
+}): {
+  readonly headless: Headless
+  readonly restart: Effect.Effect<void>
+  readonly stop: Effect.Effect<void>
+} => {
+  const live = new Set<{
+    readonly state: Ref.Ref<MeasurementState>
+    readonly scope: Scope.Closeable
+  }>()
   let cached: Snapshot | undefined
   let cachedKey = ''
   const frames = options.clock[frameState]
@@ -144,79 +210,18 @@ export const makeHeadless = (options: {
     )
   const loss = (): number =>
     options.sources.reduce((total, source) => total + (source.evidence.loss?.() ?? 0), 0)
-  const beginMeasure = Effect.sync(() => options.session.running).pipe(
-    Effect.filterOrFail(
-      (running) => running === true,
-      (): MeasureError => ({ _tag: 'MeasureError', reason: 'NotRunning' }),
-    ),
-    Effect.map(() => {
-      const handle: MeasureHandle = Object.freeze({
-        _tag: 'MeasureHandle',
-        sessionId: options.sessionId,
-        generation: options.session.generation,
-        id: ++nextId,
-        startedAtMs: options.clock.now(),
-      })
-      const initialReasons: IncompleteReason[] = []
-      if (hasFrames === false || options.clock[frameSupport]() === false)
-        initialReasons.push('NotConfigured')
-      if (options.clock[visibility].isVisible() === false) initialReasons.push('Hidden')
-      if (frames.calibration._tag !== 'Calibrated') initialReasons.push('CalibrationInvalid')
-      active.set(handle.id, {
-        handle,
-        captured: frames.captured,
-        skipped: frames.skipped,
-        invalid: frames.invalid,
-        hidden: options.session.hidden,
-        stopped: options.session.stopped,
-        loss: loss(),
-        counters: counters(),
-        initialReasons,
-      })
-      return handle
-    }),
-  )
-  const endMeasure: Headless['endMeasure'] = Effect.fnUntraced(function* ({
-    handle,
-    settleFrames = 0,
-  }) {
-    if (validSettlement(settleFrames) === false)
-      return yield* Effect.fail<MeasureError>({ _tag: 'MeasureError', reason: 'InvalidOptions' })
-    if (handle._tag !== 'MeasureHandle' || Number.isInteger(handle.id) === false)
-      return yield* Effect.fail<MeasureError>({ _tag: 'MeasureError', reason: 'InvalidHandle' })
-    if (handle.sessionId !== options.sessionId)
-      return yield* Effect.fail<MeasureError>({ _tag: 'MeasureError', reason: 'WrongSession' })
-    if (handle.generation !== options.session.generation)
-      return yield* Effect.fail<MeasureError>({ _tag: 'MeasureError', reason: 'StaleGeneration' })
-    const before = active.get(handle.id)
-    const expected = before?.handle ?? ended.get(handle.id)
-    if (
-      expected === undefined ||
-      expected.startedAtMs !== handle.startedAtMs ||
-      expected.generation !== handle.generation ||
-      Object.keys(handle).length !== 5 ||
-      ['_tag', 'sessionId', 'generation', 'id', 'startedAtMs'].every((key) =>
-        Object.hasOwn(handle, key),
-      ) === false
-    )
-      return yield* Effect.fail<MeasureError>({ _tag: 'MeasureError', reason: 'InvalidHandle' })
-    if (before === undefined)
-      return yield* Effect.fail<MeasureError>({ _tag: 'MeasureError', reason: 'AlreadyEnded' })
-    active.delete(handle.id)
-    ended.set(handle.id, before.handle)
+  const capture = ({
+    before,
+    settlementReason,
+  }: {
+    readonly before: Before
+    readonly settlementReason?: 'Hidden' | 'Stopped'
+  }): MeasureResult => {
     const reasons = new Set<IncompleteReason>(before.initialReasons)
-    if (settleFrames > 0 && options.clock[frameSupport]() === true) {
-      yield* options.clock.waitFrames({ count: settleFrames }).pipe(
-        Effect.catchTag('ClockStopped', (stopped) =>
-          Effect.sync(() => {
-            reasons.add(stopped.reason)
-          }),
-        ),
-      )
-    }
+    if (settlementReason !== undefined) reasons.add(settlementReason)
     if (options.clock[frameSupport]() === false) reasons.add('NotConfigured')
     const atMs = options.clock.now()
-    const durationMs = atMs - before.handle.startedAtMs
+    const durationMs = atMs - before.startedAtMs
     const framesCaptured = frames.captured - before.captured
     const frameDrops = frames.skipped - before.skipped
     if (options.session.hidden !== before.hidden) reasons.add('Hidden')
@@ -269,8 +274,123 @@ export const makeHeadless = (options: {
       reasons: [first, ...remaining],
       data,
     } satisfies MeasureResult
-  })
-  return {
+  }
+  const validateSettlement = (count: number) =>
+    Schema.decodeEffect(SettlementFrames)(count).pipe(
+      Effect.mapError(() => measurementError('InvalidOptions')),
+    )
+  const measurement: Headless['measurement'] = Effect.uninterruptibleMask(() =>
+    Effect.gen(function* () {
+      if (options.session.running === false) return yield* measurementError('NotRunning')
+      const parent = yield* Effect.scope
+      const scope = yield* Scope.fork(parent)
+      const initialReasons: IncompleteReason[] = []
+      if (hasFrames === false || options.clock[frameSupport]() === false)
+        initialReasons.push('NotConfigured')
+      if (options.clock[visibility].isVisible() === false) initialReasons.push('Hidden')
+      if (frames.calibration._tag !== 'Calibrated') initialReasons.push('CalibrationInvalid')
+      const state = Ref.makeUnsafe<MeasurementState>({
+        _tag: 'Open',
+        before: {
+          generation: options.session.generation,
+          startedAtMs: options.clock.now(),
+          captured: frames.captured,
+          skipped: frames.skipped,
+          invalid: frames.invalid,
+          hidden: options.session.hidden,
+          stopped: options.session.stopped,
+          loss: loss(),
+          counters: counters(),
+          initialReasons,
+        },
+      })
+      const control = { state, scope }
+      yield* Scope.provide(
+        Effect.acquireRelease(
+          Effect.sync(() => live.add(control)),
+          () =>
+            Effect.gen(function* () {
+              const previous = yield* Ref.modify(
+                state,
+                (current): [MeasurementState, MeasurementState] => [
+                  current,
+                  current._tag === 'Open' || current._tag === 'Frozen'
+                    ? ({ _tag: 'Released' } as const)
+                    : current._tag === 'Settling'
+                      ? ({ _tag: 'Ended' } as const)
+                      : current,
+                ],
+              )
+              live.delete(control)
+              if (previous._tag === 'Settling')
+                yield* Deferred.fail(previous.wake, measurementError('ScopeClosed'))
+            }),
+        ),
+        scope,
+      )
+      return {
+        end: (endOptions = {}) =>
+          Effect.uninterruptibleMask((restore) =>
+            Effect.gen(function* () {
+              const settleFrames = yield* validateSettlement(endOptions.settleFrames ?? 0)
+              const wake = Deferred.makeUnsafe<MeasureResult, MeasureError>()
+              const previous = yield* Ref.modify(
+                state,
+                (current): [MeasurementState, MeasurementState] => {
+                  if (current._tag === 'Open')
+                    return [current, { _tag: 'Settling', before: current.before, wake }]
+                  if (current._tag === 'Frozen') return [current, { _tag: 'Ended' }]
+                  return [current, current]
+                },
+              )
+              if (previous._tag !== 'Open' && previous._tag !== 'Frozen')
+                return yield* measurementError(
+                  previous._tag === 'Released'
+                    ? 'ScopeClosed'
+                    : previous._tag === 'Invalidated'
+                      ? 'StaleGeneration'
+                      : 'AlreadyEnded',
+                )
+              const finish = Effect.gen(function* () {
+                if (previous._tag === 'Frozen') return previous.result
+                if (previous.before.generation !== options.session.generation)
+                  return yield* measurementError('StaleGeneration')
+                const settle = Effect.gen(function* () {
+                  let settlementReason: 'Hidden' | 'Stopped' | undefined
+                  if (settleFrames > 0 && options.clock[frameSupport]() === true)
+                    yield* options.clock.waitFrames({ count: settleFrames }).pipe(
+                      Effect.catchTag('ClockStopped', (error) =>
+                        Effect.sync(() => {
+                          settlementReason = error.reason
+                        }),
+                      ),
+                    )
+                  const current = yield* Ref.get(state)
+                  if (current._tag !== 'Settling') return yield* Deferred.await(wake)
+                  if (previous.before.generation !== options.session.generation)
+                    return yield* measurementError('StaleGeneration')
+                  return capture({
+                    before: previous.before,
+                    ...(settlementReason === undefined ? {} : { settlementReason }),
+                  })
+                })
+                return yield* restore(Effect.raceFirst(settle, Deferred.await(wake)))
+              })
+              return yield* finish.pipe(
+                Effect.ensuring(
+                  Effect.gen(function* () {
+                    yield* Ref.set(state, { _tag: 'Ended' })
+                    live.delete(control)
+                    yield* Scope.close(scope, Exit.succeed(undefined))
+                  }),
+                ),
+              )
+            }),
+          ),
+      } satisfies Measurement
+    }),
+  )
+  const headless: Headless = {
     snapshot: () => {
       const totals = counters()
       const key = `${options.session.revision}:${options.store.getRevision()}:${frames.revision}`
@@ -325,31 +445,61 @@ export const makeHeadless = (options: {
       return cached
     },
     snapshotSeries: options.store.snapshotSeries,
-    beginMeasure,
-    endMeasure,
+    measurement,
     measureWindow: ({ work, settleFrames = 30 }) =>
-      Effect.uninterruptibleMask((restore) =>
+      Effect.scoped(
         Effect.gen(function* () {
-          if (validSettlement(settleFrames) === false)
-            return yield* Effect.fail<MeasureError>({
-              _tag: 'MeasureError',
-              reason: 'InvalidOptions',
-            })
-          const handle = yield* beginMeasure
-          const workExit = yield* Effect.exit(restore(work))
-          if (Exit.isFailure(workExit) === true) {
-            yield* endMeasure({ handle }).pipe(Effect.ignoreCause)
-            return yield* Effect.failCause(workExit.cause)
-          }
-          const measurement = yield* restore(endMeasure({ handle, settleFrames })).pipe(
-            Effect.onExit((exit) =>
-              Exit.isFailure(exit) === true
-                ? endMeasure({ handle }).pipe(Effect.ignoreCause, Effect.asVoid)
-                : Effect.void,
-            ),
-          )
-          return { result: workExit.value, measurement }
+          yield* validateSettlement(settleFrames)
+          const resource = yield* measurement
+          const result = yield* work
+          const measured = yield* resource.end({ settleFrames })
+          return { result, measurement: measured }
         }),
       ),
   }
+  return {
+    headless,
+    stop: Effect.gen(function* () {
+      for (const control of live) {
+        const current = yield* Ref.get(control.state)
+        if (current._tag === 'Open') {
+          yield* Ref.set(control.state, {
+            _tag: 'Frozen',
+            result: capture({ before: current.before, settlementReason: 'Stopped' }),
+          })
+        } else if (current._tag === 'Settling') {
+          const result = capture({ before: current.before, settlementReason: 'Stopped' })
+          yield* Ref.set(control.state, { _tag: 'Ended' })
+          live.delete(control)
+          yield* Deferred.succeed(current.wake, result)
+        }
+      }
+    }),
+    restart: Effect.gen(function* () {
+      const controls = Array.from(live)
+      live.clear()
+      yield* Effect.forEach(
+        controls,
+        (control) =>
+          Effect.gen(function* () {
+            const current = yield* Ref.get(control.state)
+            yield* Ref.set(control.state, { _tag: 'Invalidated' })
+            if (current._tag === 'Settling')
+              yield* Deferred.fail(current.wake, measurementError('StaleGeneration'))
+            yield* Scope.close(control.scope, Exit.succeed(undefined))
+          }),
+        { discard: true },
+      )
+    }),
+  }
 }
+
+const measurementMessages: Readonly<Record<MeasureError['reason'], string>> = {
+  NotRunning: 'Measurement acquisition requires a running session.',
+  StaleGeneration: 'The measurement belongs to a previous collection generation.',
+  AlreadyEnded: 'The measurement has already been claimed.',
+  ScopeClosed: 'The owning measurement scope is closed.',
+  InvalidOptions: 'settleFrames must be a nonnegative integer.',
+}
+const measurementError = (reason: MeasureError['reason']): MeasureError =>
+  new MeasureError({ reason, message: measurementMessages[reason] })

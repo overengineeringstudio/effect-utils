@@ -8,7 +8,8 @@ import { vi } from 'vitest'
 import { testCanvas } from '../canvas/_test-canvas.ts'
 import { lightMeterTheme, numberBlock } from '../canvas/index.ts'
 import { counterToken, makeInstrumentation } from '../instrumentation/index.ts'
-import { makeSeries, type NumberValue } from '../series/index.ts'
+import { makeSeries, type NumberValue, type SeriesWriter } from '../series/index.ts'
+import { subscribePresentation } from '../series/internal.ts'
 import { testPlatform } from '../session/_test-platform.ts'
 import { makeMeters, makeSource } from '../session/index.ts'
 import {
@@ -18,6 +19,7 @@ import {
   RenderProfiler,
   useMeters,
   useSeries,
+  useSeriesSnapshot,
   type ReactCommit,
 } from './index.tsx'
 
@@ -207,6 +209,10 @@ describe('React meter strip', () => {
             )
           }),
         )
+        // The first visible frame anchors the 250ms React publication cadence.
+        act(() => f.host.tick(250))
+        const published = screen.getAllByLabelText('Work')[0]?.textContent
+        expect(f.canvas.texts.at(-1)).not.toBe(published)
         act(() => f.host.tick(250))
         const before = screen.getAllByLabelText('Work')[0]?.textContent
         expect(f.canvas.texts.at(-1)).toBe(before)
@@ -223,6 +229,195 @@ describe('React meter strip', () => {
         expect(screen.getAllByLabelText('Work')[0]?.textContent).toBe(
           screen.getAllByLabelText('Work')[1]?.textContent,
         )
+      }),
+  )
+  it.effect('publishes both series hooks at 250ms while raw acquisition stays current', () =>
+    Effect.gen(function* () {
+      const f = fixture()
+      const renders = { sample: 0, snapshot: 0 }
+      const SampleOutput = (): React.ReactNode => {
+        renders.sample++
+        const sample = useSeries(f.series)
+        return (
+          <output aria-label="Published sample">
+            {sample._tag === 'Value' ? sample.value.value : sample.reason}
+          </output>
+        )
+      }
+      const SnapshotOutput = (): React.ReactNode => {
+        renders.snapshot++
+        const snapshot = useSeriesSnapshot(f.series)
+        return <output aria-label="Published history">{snapshot.samples.length}</output>
+      }
+      let mounted: RenderResult | undefined
+      yield* Effect.promise(() =>
+        act(async () => {
+          mounted = render(
+            <MetersProvider meters={f.meters}>
+              <SampleOutput />
+              <SnapshotOutput />
+            </MetersProvider>,
+          )
+        }),
+      )
+      const initialRenders = { ...renders }
+      expect(screen.getByLabelText('Published sample').textContent).toBe('NoSamples')
+      expect(screen.getByLabelText('Published history').textContent).toBe('0')
+      act(() => f.host.tick(16))
+      act(() => f.host.tick(249))
+      expect(f.meters.store.read({ series: f.series }).latest).toMatchObject({
+        _tag: 'Value',
+        value: { value: 2 },
+      })
+      expect(f.meters.store.snapshotSeries({ series: f.series }).samples).toHaveLength(2)
+      expect(renders).toEqual(initialRenders)
+      expect(screen.getByLabelText('Published sample').textContent).toBe('NoSamples')
+      expect(screen.getByLabelText('Published history').textContent).toBe('0')
+      act(() => f.host.tick(1))
+      expect(renders).toEqual({
+        sample: initialRenders.sample + 1,
+        snapshot: initialRenders.snapshot + 1,
+      })
+      expect(screen.getByLabelText('Published sample').textContent).toBe('3')
+      expect(screen.getByLabelText('Published history').textContent).toBe('3')
+      const publishedRenders = { ...renders }
+      act(() => f.host.tick(16))
+      expect(f.meters.store.snapshotSeries({ series: f.series }).samples).toHaveLength(4)
+      expect(renders).toEqual(publishedRenders)
+      // An unrelated parent render must not expose acquisition ahead of publication.
+      act(() =>
+        mounted?.rerender(
+          <MetersProvider meters={f.meters}>
+            <SampleOutput />
+            <SnapshotOutput />
+          </MetersProvider>,
+        ),
+      )
+      expect(screen.getByLabelText('Published sample').textContent).toBe('3')
+      expect(screen.getByLabelText('Published history').textContent).toBe('3')
+      const parentRenders = { ...renders }
+      act(() => f.host.tick(234))
+      expect(renders).toEqual({
+        sample: parentRenders.sample + 1,
+        snapshot: parentRenders.snapshot + 1,
+      })
+      expect(screen.getByLabelText('Published sample').textContent).toBe('5')
+      expect(screen.getByLabelText('Published history').textContent).toBe('5')
+      yield* Effect.promise(() => act(async () => cleanup()))
+      expect(f.host.pending).toBe(0)
+    }),
+  )
+  it.effect(
+    'publishes event series without frames and pauses the timer while hidden or stopped',
+    () =>
+      Effect.gen(function* () {
+        let stopPublication: (() => void) | undefined
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        yield* Effect.addFinalizer(() =>
+          Effect.promise(async () => {
+            await act(async () => cleanup())
+            stopPublication?.()
+            vi.useRealTimers()
+          }),
+        )
+        const host = testPlatform()
+        const series = makeSeries<NumberValue>({
+          id: 'events',
+          label: 'Events',
+          unit: 'count',
+          capacity: 20,
+        })
+        let writer: SeriesWriter<NumberValue> | undefined
+        const source = makeSource({
+          id: 'events',
+          series,
+          cadence: { _tag: 'Event' },
+          start: ({ sink }) =>
+            Effect.sync(() => {
+              writer = sink
+            }),
+        })
+        const meters = makeMeters({
+          sources: [source],
+          platform: { ...host.platform, supportsFrames: () => false },
+        })
+        const Output = (): React.ReactNode => {
+          const sample = useSeries(series)
+          const snapshot = useSeriesSnapshot(series)
+          return (
+            <>
+              <output aria-label="Event sample">
+                {sample._tag === 'Value' ? sample.value.value : sample.reason}
+              </output>
+              <output aria-label="Event history">{snapshot.samples.length}</output>
+            </>
+          )
+        }
+        yield* Effect.promise(() =>
+          act(async () => {
+            render(
+              <MetersProvider meters={meters}>
+                <Output />
+              </MetersProvider>,
+            )
+          }),
+        )
+        expect(writer).toBeDefined()
+        expect(host.requests).toBe(0)
+        expect(vi.getTimerCount()).toBe(1)
+        act(() =>
+          writer?.append({
+            sample: {
+              _tag: 'Value',
+              atMs: host.platform.now(),
+              value: { _tag: 'Number', value: 1 },
+            },
+          }),
+        )
+        expect(meters.store.read({ series }).latest).toMatchObject({ value: { value: 1 } })
+        act(() => vi.advanceTimersByTime(249))
+        expect(screen.getByLabelText('Event sample').textContent).toBe('NoSamples')
+        expect(screen.getByLabelText('Event history').textContent).toBe('0')
+        act(() => vi.advanceTimersByTime(1))
+        expect(screen.getByLabelText('Event sample').textContent).toBe('1')
+        expect(screen.getByLabelText('Event history').textContent).toBe('1')
+        act(() => host.setVisible(false))
+        expect(vi.getTimerCount()).toBe(0)
+        act(() =>
+          writer?.append({
+            sample: {
+              _tag: 'Value',
+              atMs: host.platform.now(),
+              value: { _tag: 'Number', value: 2 },
+            },
+          }),
+        )
+        act(() => vi.advanceTimersByTime(1000))
+        expect(screen.getByLabelText('Event sample').textContent).toBe('1')
+        act(() => host.setVisible(true))
+        expect(vi.getTimerCount()).toBe(1)
+        act(() =>
+          writer?.append({
+            sample: {
+              _tag: 'Value',
+              atMs: host.platform.now(),
+              value: { _tag: 'Number', value: 3 },
+            },
+          }),
+        )
+        act(() => vi.advanceTimersByTime(249))
+        expect(screen.getByLabelText('Event sample').textContent).toBe('2')
+        act(() => vi.advanceTimersByTime(1))
+        expect(screen.getByLabelText('Event sample').textContent).toBe('3')
+        const notify = vi.fn()
+        stopPublication = meters.store[subscribePresentation](notify)
+        yield* Effect.promise(() => act(async () => cleanup()))
+        expect(vi.getTimerCount()).toBe(0)
+        expect(host.observers).toBe(0)
+        const stoppedNotifications = notify.mock.calls.length
+        act(() => vi.advanceTimersByTime(1000))
+        expect(notify).toHaveBeenCalledTimes(stoppedNotifications)
+        expect(host.requests).toBe(0)
       }),
   )
   it.effect(
@@ -254,6 +449,8 @@ describe('React meter strip', () => {
           }),
         )
         expect(sameSession).toBe(true)
+        expect(screen.getByLabelText('Hook value').textContent).toBe('NoSamples')
+        act(() => f.host.tick(250))
         expect(screen.getByLabelText('Hook value').textContent).toBe('NoSamples')
         act(() => f.host.tick(250))
         expect(screen.getByLabelText('Hook value').textContent).not.toBe('NoSamples')

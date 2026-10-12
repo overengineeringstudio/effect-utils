@@ -1,7 +1,7 @@
 import { Effect, Scope } from 'effect'
 
 import { FrameState } from './frame.ts'
-import { frameState, frameSupport, visibility } from './types.ts'
+import { frameState, frameSupport, publication, visibility } from './types.ts'
 
 /** A single visible frame opportunity delivered to all phases. */
 export interface FrameTick {
@@ -38,6 +38,7 @@ export interface FrameClock {
     readonly isVisible: () => boolean
     readonly waitVisible: Effect.Effect<void, ClockStopped>
   }
+  readonly [publication]: (listener: () => void) => () => void
 }
 const rethrowFault = (cause: unknown): never => {
   throw cause
@@ -57,6 +58,7 @@ export const makeFrameClock = (options: {
   const state = new FrameState(options.capacity)
   const sources = new Set<(tick: FrameTick) => void>()
   const draws = new Set<(tick: FrameTick) => void>()
+  const publications = new Set<() => void>()
   const waiters = new Set<{
     remaining: number
     readonly resume: (effect: Effect.Effect<void, ClockStopped>) => void
@@ -66,6 +68,7 @@ export const makeFrameClock = (options: {
   let visible = false
   let supportsFrames = true
   let pending: number | undefined
+  let pendingPublication: (() => void) | undefined
   let callbackGeneration = 0
   let previous: number | undefined
   let summaryAt: number | undefined
@@ -75,8 +78,24 @@ export const makeFrameClock = (options: {
     for (const waiter of waiters) waiter.resume(Effect.fail({ _tag: 'ClockStopped', reason }))
     waiters.clear()
   }
+  const cancelPublication = (): void => {
+    if (pendingPublication !== undefined) {
+      pendingPublication()
+      pendingPublication = undefined
+    }
+  }
+  const publishListeners = (): void => {
+    for (const listener of publications) {
+      try {
+        listener()
+      } catch (cause) {
+        report(cause)
+      }
+    }
+  }
   const cancel = (): void => {
     callbackGeneration++
+    cancelPublication()
     if (pending !== undefined) {
       options.platform.cancelFrame(pending)
       pending = undefined
@@ -86,13 +105,22 @@ export const makeFrameClock = (options: {
     state.rebase()
   }
   const request = (): void => {
-    if (
-      running === false ||
-      visible === false ||
-      supportsFrames === false ||
-      pending !== undefined ||
-      sources.size + draws.size + waiters.size === 0
-    )
+    if (running === false || visible === false) return
+    if (supportsFrames === false) {
+      if (publications.size > 0 && pendingPublication === undefined) {
+        const generation = callbackGeneration
+        const timer = setTimeout(() => {
+          if (generation !== callbackGeneration) return
+          pendingPublication = undefined
+          if (running === false || visible === false) return
+          publishListeners()
+          request()
+        }, 250)
+        pendingPublication = () => clearTimeout(timer)
+      }
+      return
+    }
+    if (pending !== undefined || sources.size + publications.size + draws.size + waiters.size === 0)
       return
     const generation = callbackGeneration
     pending = options.platform.requestFrame((atMs) => {
@@ -107,7 +135,8 @@ export const makeFrameClock = (options: {
       previous = atMs
       state.tick(atMs)
       if (summaryAt === undefined) summaryAt = atMs
-      if (atMs - summaryAt >= 250) {
+      const publish = atMs - summaryAt >= 250
+      if (publish === true) {
         state.summary(atMs)
         summaryAt = atMs
       }
@@ -118,6 +147,7 @@ export const makeFrameClock = (options: {
           report(cause)
         }
       }
+      if (publish === true) publishListeners()
       for (const listener of draws) {
         try {
           listener(tick)
@@ -139,6 +169,15 @@ export const makeFrameClock = (options: {
     now: options.platform.now,
     [frameState]: state,
     [frameSupport]: () => supportsFrames,
+    [publication]: (listener) => {
+      publications.add(listener)
+      request()
+      return () => {
+        publications.delete(listener)
+        if (publications.size === 0) cancelPublication()
+        if (sources.size + publications.size + draws.size + waiters.size === 0) cancel()
+      }
+    },
     [visibility]: {
       isVisible: () => running === true && visible === true,
       waitVisible: Effect.callback<void, ClockStopped>((resume) => {
@@ -167,7 +206,7 @@ export const makeFrameClock = (options: {
         (listeners) =>
           Effect.sync(() => {
             listeners.delete(listener)
-            if (sources.size + draws.size + waiters.size === 0) cancel()
+            if (sources.size + publications.size + draws.size + waiters.size === 0) cancel()
           }),
       ).pipe(Effect.asVoid),
     waitFrames: ({ count }) =>
@@ -195,7 +234,7 @@ export const makeFrameClock = (options: {
         request()
         return Effect.sync(() => {
           waiters.delete(waiter)
-          if (sources.size + draws.size + waiters.size === 0) cancel()
+          if (sources.size + publications.size + draws.size + waiters.size === 0) cancel()
         })
       }),
   }
