@@ -74,6 +74,7 @@ export const nativeDependencyPolicy = {
   '@img/sharp': { _tag: 'pure-package-artifact' },
   '@oxlint-tsgolint': { _tag: 'pure-package-artifact' },
   '@oxlint/binding': { _tag: 'pure-package-artifact' },
+  '@number0/iroh': { _tag: 'pure-package-artifact' },
 } as const satisfies Record<string, NativeDependencyPolicyEntry>
 
 /**
