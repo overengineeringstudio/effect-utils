@@ -14,6 +14,7 @@ import {
   templateReferences,
   templateText,
   type TextTemplate,
+  utf8ByteLength,
 } from './run-values.ts'
 
 describe('typed native interpolation', () => {
@@ -94,6 +95,13 @@ describe('typed native interpolation', () => {
     expect(() => doc`doc/${report}`).toThrow('must belong to a constructed step')
     expect(() => childMission`example/${report}`).toThrow('must belong to a constructed step')
   })
+
+  it.each(['', 'a', 'é', '€', '😀', '\ud800', '\udfff', '\ud800a', 'a\udfff', '😀é€a'])(
+    'counts platform-neutral UTF-8 bytes for %j',
+    (value) => {
+      expect(utf8ByteLength(value)).toBe(new TextEncoder().encode(value).length)
+    },
+  )
 
   it.each(['a'.repeat(160), 'é'.repeat(80), '😀'.repeat(40)])(
     'accepts a native 160-byte input name %s',

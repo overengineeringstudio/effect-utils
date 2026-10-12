@@ -1,5 +1,5 @@
-import { Buffer } from 'node:buffer'
-import { createHash } from 'node:crypto'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 
 import { Schema, SchemaGetter } from 'effect'
 
@@ -27,6 +27,7 @@ import {
   referenceText,
   templateReferences,
   templateText,
+  utf8ByteLength,
 } from './run-values.ts'
 export { childMission, doc, input, pr, product, runId, t } from './run-values.ts'
 export type {
@@ -133,7 +134,7 @@ const SubjectId = Schema.String.pipe(
 const LocalId = Schema.String.pipe(
   Schema.refine(
     (s): s is string =>
-      s.length > 0 && Buffer.byteLength(s, 'utf8') <= 160 && /[\s/]/u.test(s) === false,
+      s.length > 0 && utf8ByteLength(s) <= 160 && /[\s/]/u.test(s) === false,
     {
       message: 'invalid local ID',
     },
@@ -145,7 +146,7 @@ const MissionId = Schema.String.pipe(
   Schema.refine(
     (s): s is string =>
       s.length > 0 &&
-      Buffer.byteLength(s, 'utf8') <= 160 &&
+      utf8ByteLength(s) <= 160 &&
       s.startsWith('/') === false &&
       s.endsWith('/') === false &&
       s.includes('//') === false &&
@@ -355,7 +356,7 @@ export const AgentSchema = AgentSchemaFields.pipe(
 
 const isAgentDeclaration = Schema.is(AgentSchema)
 
-const GateName = Text.pipe(Schema.refine((s): s is string => Buffer.byteLength(s, 'utf8') <= 160))
+const GateName = Text.pipe(Schema.refine((s): s is string => utf8ByteLength(s) <= 160))
 const validName = ({
   value: s,
   full,
@@ -1119,12 +1120,13 @@ export type FieldIsInput<TFields extends ProductFields = ProductFields> = Omit<
       }
   )
 
+const gateNameEncoder = new TextEncoder()
 const derivedGateName = (kind: string, identity: string, name?: AuthoredText): string => {
   if (name !== undefined) return templateText(name)
   const derived = `${kind}:${identity}`
-  return Buffer.byteLength(derived, 'utf8') <= 160
+  return utf8ByteLength(derived) <= 160
     ? derived
-    : `${kind}:${createHash('sha256').update(identity).digest('hex')}`
+    : `${kind}:${bytesToHex(sha256(gateNameEncoder.encode(identity)))}`
 }
 const referencesInText = (value: AuthoredText): readonly RunReference[] =>
   typeof value === 'string' ? [] : templateReferences(value)

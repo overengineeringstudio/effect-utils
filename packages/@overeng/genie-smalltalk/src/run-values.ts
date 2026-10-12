@@ -1,11 +1,27 @@
-import { Buffer } from 'node:buffer'
-
 import { Schema } from 'effect'
+
+/** Counts TextEncoder-compatible UTF-8 bytes without allocating an encoded buffer. */
+export const utf8ByteLength = (value: string): number => {
+  let bytes = 0
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index)
+    if (code <= 0x7f) bytes++
+    else if (code <= 0x7ff) bytes += 2
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1)
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4
+        index++
+      } else bytes += 3
+    } else bytes += 3
+  }
+  return bytes
+}
 
 const Name = Schema.String.pipe(
   Schema.refine(
     (value): value is string =>
-      value.length > 0 && Buffer.byteLength(value, 'utf8') <= 160 && !/[\s/]/u.test(value),
+      value.length > 0 && utf8ByteLength(value) <= 160 && !/[\s/]/u.test(value),
     {
       message:
         'mission input name must be nonempty, slash/whitespace-free and at most 160 UTF-8 bytes',

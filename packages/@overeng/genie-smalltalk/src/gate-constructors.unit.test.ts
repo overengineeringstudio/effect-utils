@@ -43,6 +43,9 @@ describe('typed native gate constructors', () => {
   it('derives bounded distinct names for long human questions', () => {
     const first = gate.human({ reviewer: person('person/reviewer'), question: 'a'.repeat(200) })
     const second = gate.human({ reviewer: person('person/reviewer'), question: 'b'.repeat(200) })
+    expect(first.name).toBe(
+      'human:666061bfb6242accd51ad83318fd8f173e7abf9f75c83be671aa0eae3d4967ec',
+    )
     expect(new TextEncoder().encode(first.name).length).toBeLessThanOrEqual(160)
     expect(first.name).not.toBe(second.name)
     expect(() => gate.render(first)).not.toThrow()
