@@ -21,14 +21,14 @@ import {
   writeFileSync,
   utimesSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
-import { readEditorViewSourceManifest } from './editor-view-sharing.ts'
+import { editorViewStagingCreatorIdentity, readEditorViewSourceManifest } from './editor-view-sharing.ts'
 import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
@@ -3276,4 +3276,138 @@ describe('budget victim teardown after the census', () => {
       create.mockRestore()
     }
   })
+})
+
+describe('same-host abandoned publication lock recovery', () => {
+  const writeOwner = ({
+    fixture,
+    pid,
+    processIdentity,
+    host = hostname(),
+  }: {
+    readonly fixture: Fixture
+    readonly pid: number
+    readonly processIdentity: string
+    readonly host?: string
+  }): string => {
+    const lock = join(fixture.editorRoot, '.publish.lock')
+    mkdirSync(lock, { recursive: true })
+    const owner = JSON.stringify({
+      schema: 'effect-utils/editor-view-lock/v1',
+      token: 'abandoned-owner',
+      pid,
+      host,
+      process: processIdentity,
+    })
+    writeFileSync(join(lock, 'owner.json'), owner)
+    return owner
+  }
+
+  describe('a killed publisher process', () => {
+    let fixture: Fixture
+    let child: ChildProcess.ChildProcess | undefined
+    let publication: Promise<EditorViewRecord> | undefined
+    let exited: Promise<void> | undefined
+    let deadPid: number
+    beforeAll(async () => {
+      fixture = makeFixture()
+      const ready = Promise.withResolvers<void>()
+      child = ChildProcess.spawn(requireTool('BUN_BIN'), ['--eval', 'process.stdout.write("ready\\n"); process.stdin.resume()'], {
+        stdio: ['pipe', 'pipe', 'ignore'],
+      })
+      child.once('error', ready.reject)
+      child.stdout!.once('data', () => ready.resolve())
+      const closed = Promise.withResolvers<void>()
+      exited = closed.promise
+      child.once('close', () => closed.resolve())
+      await ready.promise
+      if (child.pid === undefined) throw new Error('reader process has no pid')
+      deadPid = child.pid
+      const processIdentity = editorViewStagingCreatorIdentity({ pid: deadPid })
+      expect(processIdentity).not.toBe('unknown')
+      expect(processIdentity).not.toBe('dead')
+      writeOwner({ fixture, pid: deadPid, processIdentity })
+      child.kill('SIGKILL')
+      await exited
+      expect(() => process.kill(deadPid, 0)).toThrow()
+    })
+    afterAll(async () => {
+      if (child !== undefined && child.exitCode === null && child.signalCode === null)
+        child.kill('SIGKILL')
+      if (exited !== undefined) await exited
+      if (publication !== undefined) await Promise.allSettled([publication])
+      cleanup(fixture)
+    })
+    it('recovers the dead owner through exact-token recovery and publishes', async () => {
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        publication = publishEditorView({
+          ...fixture.options,
+          beforeMaterialize: () => {
+            expect(JSON.parse(readFileSync(join(fixture.editorRoot, '.publish.lock', 'owner.json'), 'utf8')))
+              .toMatchObject({
+                pid: process.pid,
+                host: hostname(),
+                process: editorViewStagingCreatorIdentity({ pid: process.pid }),
+              })
+          },
+        })
+        const record = await publication
+        expect(currentTarget(fixture)).toBe(record.snapshot)
+        expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+        expect(log.mock.calls.some(([line]) =>
+          String(line).includes('"event":"editor-view.publication-lock.recovered"') &&
+          String(line).includes('"reason":"dead-pid"') &&
+          String(line).includes(`"pid":${deadPid}`),
+        )).toBe(true)
+      } finally {
+        if (publication !== undefined) await Promise.allSettled([publication])
+        log.mockRestore()
+      }
+    })
+  })
+
+  it('recovers a reused pid only when its recorded start incarnation differs', async () => {
+    const fixture = makeFixture()
+    const observed = editorViewStagingCreatorIdentity({ pid: process.pid })
+    expect(observed).not.toBe('unknown')
+    expect(observed).not.toBe('dead')
+    writeOwner({ fixture, pid: process.pid, processIdentity: `${observed}-previous-start` })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let publication: Promise<EditorViewRecord> | undefined
+    try {
+      publication = publishEditorView(fixture.options)
+      const record = await publication
+      expect(currentTarget(fixture)).toBe(record.snapshot)
+      expect(log.mock.calls.some(([line]) => String(line).includes('"reason":"reused-pid"'))).toBe(true)
+    } finally {
+      if (publication !== undefined) await Promise.allSettled([publication])
+      log.mockRestore()
+      cleanup(fixture)
+    }
+  })
+
+  it.each(['live', 'foreign-host', 'unknown-incarnation'])(
+    'preserves the %s owner and explicit recovery failure',
+    async (kind) => {
+      const fixture = makeFixture()
+      const owner = writeOwner({
+        fixture,
+        pid: process.pid,
+        processIdentity: kind === 'unknown-incarnation'
+          ? 'unknown'
+          : editorViewStagingCreatorIdentity({ pid: process.pid }),
+        host: kind === 'foreign-host' ? `${hostname()}-another-host` : hostname(),
+      })
+      let publication: Promise<EditorViewRecord> | undefined
+      try {
+        publication = publishEditorView(fixture.options)
+        await expect(publication).rejects.toThrow('publication lock exists')
+        expect(readFileSync(join(fixture.editorRoot, '.publish.lock', 'owner.json'), 'utf8')).toBe(owner)
+      } finally {
+        if (publication !== undefined) await Promise.allSettled([publication])
+        cleanup(fixture)
+      }
+    },
+  )
 })
