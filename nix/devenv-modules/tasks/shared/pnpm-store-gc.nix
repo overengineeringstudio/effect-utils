@@ -15,8 +15,9 @@ pkgs.writeShellApplication {
   runtimeInputs = [
     pkgs.bash
     pkgs.git
-    pkgs.gh
+    pkgs.nodejs
     pkgs.flock
+    pkgs.coreutils
   ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.lsof ];
   text = ''
     # Eligibility observations are private host/user state, not worktree state.

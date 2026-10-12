@@ -154,16 +154,31 @@ for outer tasks that must complete before the nested devenv process can evaluate
     repeat the dry-run, then opt in to `--apply` to retire eligible payloads.
     An initial `--apply` only establishes the observation, never skips grace.
   - Eligibility requires the root to be absent from Git's worktree registry
-    **and** have no `.git` marker, or all its same-repository PRs to be merged
-    or closed. Open/missing/ambiguous PRs, detached roots, Git worktree locks,
-    unknown origins, and API failures protect the cache. GitHub CLI uses the
-    supplied repository's `origin`, not caller-supplied PR status.
-  - The collector requires no live cwd/open-fd references anywhere under the
-    worktree: Linux `/proc`, Darwin `lsof`. Incomplete visibility fails closed;
-    run from outside the selected roots with sufficient process visibility.
-    It rechecks Git/PR state, process references, and every payload inode's
-    size/link-count/mtime/ctime under the exclusive Store Cache lease before
-    retirement. Changed eligibility resets the 24-hour observation grace.
+    **and** have no `.git` marker, or its own checkout to have stopped owning
+    the historical store. For effect-utils this is proved by HEAD containing
+    `727cb7544bea32ec031c9f6e5e840cbe717e772a` (#1794). Consumer checkouts can
+    prove resolved selection through matching `pnpm-storage-state` receipts
+    and `.modules.yaml` metadata naming the default shared store (or the
+    operator's `PNPM_SHARED_STORE_DIR`). Any projection still naming a
+    worktree-local store protects the cache. Unknown metadata, incomplete
+    ownership evidence, and Git worktree locks fail closed; PR closure alone
+    does not prove a checkout stopped referencing its store.
+  - The collector requires no own-UID cwd/open-fd references under the
+    historical **store**, not the entire checkout: Linux `/proc`, Darwin
+    UID-filtered `lsof` plus `ps`. Other-UID processes are outside the normal
+    user-owned-cache flow; the CLI states this assumption explicitly. Unreadable
+    own-UID processes fail closed, except the explicit Linux privileged-broker
+    allowlist. SSH brokers (`sshd-session`, Tailscale SSH's
+    `.tailscaled-wrapped` executable or truncated `.tailscaled-wra` comm)
+    require a root-owned fd directory. The `systemd` user-manager exception
+    requires `PPid=1` and nonzero permitted capabilities. No other unreadable
+    process class is excluded. Every exception prints the PID, comm, executable
+    (or its read error), parent, permitted capabilities, and the normal-flow
+    assumption that privileged brokers do not use pnpm stores. The invoking UID
+    must own the store; no privileged observer or GitHub/API access is needed.
+    It rechecks checkout ownership, process references, and every payload inode's
+    size/link-count/mtime/ctime under a proved exclusive Store Cache lease before
+    retirement. Changed observed eligibility resets the 24-hour grace.
     Observations live in `$XDG_STATE_HOME/effect-utils/pnpm-store-gc` (default
     `$HOME/.local/state/...`); the stable store directory and maintenance-lock
     inode remain, so cooperating pnpm mutations cannot bypass the lease.

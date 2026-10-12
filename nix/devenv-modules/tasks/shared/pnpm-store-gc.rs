@@ -79,50 +79,116 @@ fn text(path: &Path) -> Result<&str> {
     path.to_str().ok_or_else(|| format!("non-UTF8 path: {}", path.display()))
 }
 
-fn terminal_root_proof(git_dir: &Path, root: &Path) -> Result<String> {
+fn checkout_store_references(root: &Path, historical_store: &Path) -> Result<Vec<PathBuf>> {
+    let mut stores = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
+            let entry = entry.map_err(|error| error.to_string())?;
+            let name = entry.file_name();
+            if name == "node_modules" {
+                let metadata = entry.path().join(".modules.yaml");
+                if metadata.try_exists().map_err(|error| error.to_string())? {
+                    // pnpm 12 writes JSON to this historical filename. Unknown
+                    // older formats fail closed rather than guessing a store.
+                    let store = command("node", &["-e", "const fs=require('node:fs');const value=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(typeof value.storeDir!=='string')throw Error('missing storeDir');process.stdout.write(value.storeDir)", text(&metadata)?])?;
+                    let selected = fs::canonicalize(&store).map_err(|error| format!("cannot resolve projection store {store}: {error}"))?;
+                    if selected.starts_with(historical_store) || selected.components().any(|part| part.as_os_str() == STORE_NAME) {
+                        return Err(format!("checkout still references a worktree-local store: {}", selected.display()));
+                    }
+                    stores.push(selected);
+                }
+                continue;
+            }
+            if [".git", ".devenv", "buck-out", "target", "tmp", ".direnv", ".cache", ".pnpm-home"].iter().any(|skip| name == *skip) {
+                continue;
+            }
+            if entry.file_type().map_err(|error| error.to_string())?.is_dir() {
+                pending.push(entry.path());
+            }
+        }
+    }
+    stores.sort();
+    stores.dedup();
+    Ok(stores)
+}
+
+fn shared_receipt_proof(root: &Path, historical_store: &Path, projections: &[PathBuf]) -> Result<String> {
+    let home = PathBuf::from(env::var_os("HOME").ok_or("HOME is required")?);
+    let mut allowed = vec![home.join(".local/share/pnpm/store-shared-v1"), home.join(".local/share/pnpm/store")];
+    if let Some(custom) = env::var_os("PNPM_SHARED_STORE_DIR") { allowed.push(PathBuf::from(custom)); }
+    let allowed: Vec<_> = allowed.iter().filter_map(|path| fs::canonicalize(path).ok()).collect();
+    let mut selected = Vec::new();
+    let mut pending = vec![root.join(".devenv/task-cache/pnpm-install")];
+    while let Some(directory) = pending.pop() {
+        let entries = match fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.to_string()),
+        };
+        for entry in entries {
+            let entry = entry.map_err(|error| error.to_string())?;
+            let kind = entry.file_type().map_err(|error| error.to_string())?;
+            if kind.is_dir() { pending.push(entry.path()); }
+            if entry.file_name() != "pnpm-storage-state" { continue; }
+            if !kind.is_file() { return Err("pnpm storage receipt is not a regular file".into()); }
+            let receipt = fs::read_to_string(entry.path()).map_err(|error| error.to_string())?;
+            let selected_path = fs::canonicalize(receipt.lines().next().ok_or("empty pnpm storage receipt")?).map_err(|error| error.to_string())?;
+            if selected_path.starts_with(historical_store) || !allowed.contains(&selected_path) {
+                return Err(format!("pnpm storage receipt is not the selected host/user shared store: {}", selected_path.display()));
+            }
+            selected.push(selected_path.join("v11"));
+        }
+    }
+    selected.sort();
+    selected.dedup();
+    if projections.is_empty() || selected.is_empty() || projections.iter().any(|path| !selected.contains(path)) {
+        return Err("checkout lacks matching shared-store selection receipts and pnpm projection metadata".into());
+    }
+    Ok(format!("resolved-shared-store:{selected:?}"))
+}
+
+fn checkout_ownership_proof(git_dir: &Path, root: &Path) -> Result<String> {
     let listing = command("git", &["--git-dir", text(git_dir)?, "worktree", "list", "--porcelain"])?;
-    let mut registered_branch = None;
     let mut registered = false;
     for record in listing.split("\n\n") {
-        let mut lines = record.lines();
-        let Some(path) = lines.next().and_then(|line| line.strip_prefix("worktree ")) else { continue };
-        if Path::new(path) != root && fs::canonicalize(path).ok().as_deref() != Some(root) {
-            continue;
-        }
+        let Some(path) = record.lines().next().and_then(|line| line.strip_prefix("worktree ")) else { continue };
+        if Path::new(path) != root && fs::canonicalize(path).ok().as_deref() != Some(root) { continue; }
         registered = true;
         if record.lines().any(|line| line.starts_with("locked")) {
             return Err("git worktree is explicitly locked/pinned".into());
         }
-        registered_branch = lines.find_map(|line| line.strip_prefix("branch refs/heads/")).map(str::to_owned);
     }
     let git_marker_absent = match fs::symlink_metadata(root.join(".git")) {
         Ok(_) => false,
         Err(error) if error.kind() == io::ErrorKind::NotFound => true,
         Err(error) => return Err(error.to_string()),
     };
-    if !registered && git_marker_absent {
-        return Ok("worktree-gone".into());
+    if !registered && git_marker_absent { return Ok("worktree-gone".into()); }
+    if !registered { return Err("checkout is not registered in the supplied repository".into()); }
+    if env::var("GITHUB_ACTIONS").ok().as_deref() == Some("true")
+        || env::var("PNPM_JOB_LOCAL_STORE").ok().as_deref() == Some("1")
+    {
+        return Err("current context explicitly selects job-local pnpm storage".into());
     }
-    let branch = registered_branch.ok_or("worktree is detached or not registered in the supplied repository")?;
-    let remote = command("git", &["--git-dir", text(git_dir)?, "remote", "get-url", "origin"])?;
-    let remote = remote.trim().trim_end_matches(".git");
-    let repo = remote.strip_prefix("git@github.com:")
-        .or_else(|| remote.strip_prefix("https://github.com/"))
-        .or_else(|| remote.strip_prefix("ssh://git@github.com/"))
-        .ok_or("origin is not an unambiguous GitHub repository")?;
-    if repo.split('/').count() != 2 || repo.contains(char::is_whitespace) {
-        return Err("invalid GitHub origin".into());
+    let historical_store = fs::canonicalize(root.join(".devenv").join(STORE_NAME)).map_err(|error| error.to_string())?;
+    let projections = checkout_store_references(root, &historical_store)?;
+    let head = command("git", &["-C", text(root)?, "rev-parse", "HEAD"])?;
+    let shared_head = Command::new("git")
+        .args(["-C", text(root)?, "merge-base", "--is-ancestor", "727cb7544bea32ec031c9f6e5e840cbe717e772a", "HEAD"])
+        .output().map_err(|error| error.to_string())?.status.success();
+    if shared_head {
+        return Ok(format!("shared-selection-head:{}:{projections:?}", head.trim()));
     }
-    let states = command("gh", &["pr", "list", "--repo", repo, "--head", &branch, "--state", "all", "--limit", "100", "--json", "state,number,isCrossRepository", "--jq", "if length == 100 then \"protected\" else map(select(.isCrossRepository == false)) | if length == 0 or any(.[]; .state == \"OPEN\") then \"protected\" else map((.number|tostring) + \"=\" + .state) | sort | join(\",\") end end"])?;
-    let states = states.trim();
-    if states.is_empty() || states == "protected" {
-        return Err("branch has an open PR, no PR, or an incomplete PR inventory".into());
+    let resolved = shared_receipt_proof(root, &historical_store, &projections)?;
+    Ok(format!("{}:{resolved}", head.trim()))
+}
+
+fn own_uid() -> Result<u32> {
+    if Path::new("/proc/self").exists() {
+        return fs::metadata("/proc/self").map(|metadata| metadata.uid()).map_err(|error| error.to_string());
     }
-    if !states.split(',').all(|state| state.ends_with("=MERGED") || state.ends_with("=CLOSED")) {
-        return Err("unrecognized PR state".into());
-    }
-    let head = command("git", &["--git-dir", text(git_dir)?, "rev-parse", &format!("refs/heads/{branch}")])?;
-    Ok(format!("{repo}:{branch}:{}:{states}", head.trim()))
+    command("id", &["-u"])?.trim().parse().map_err(|error: std::num::ParseIntError| error.to_string())
 }
 
 fn reference_under(target: &Path, root: &Path) -> bool {
@@ -132,34 +198,87 @@ fn reference_under(target: &Path, root: &Path) -> bool {
     Path::new(target).starts_with(root)
 }
 
+fn broker_exception_allowed(uid: u32, fd_owner: u32, comm: &str, exe: Option<&Path>) -> bool {
+    // Explicitly approved privilege-separated brokers only. Root ownership of
+    // an own-UID process's fd directory is the kernel's non-dumpable boundary.
+    const BROKER_COMMS: &[&str] = &["sshd-session", ".tailscaled-wra"];
+    const BROKER_EXES: &[&str] = &["sshd-session", ".tailscaled-wrapped"];
+    uid != 0 && fd_owner == 0
+        && (BROKER_COMMS.contains(&comm) || exe.and_then(Path::file_name).is_some_and(|name| BROKER_EXES.iter().any(|broker| name == *broker)))
+}
+
+fn user_manager_exception_allowed(comm: &str, exe: Option<&Path>, parent: u32, permitted: u64) -> bool {
+    parent == 1 && permitted != 0
+        && (comm == "systemd" || exe.and_then(Path::file_name).is_some_and(|name| name == "systemd"))
+}
+
+fn exclude_privileged_broker(pid_dir: &Path, uid: u32, status: &str) -> Result<bool> {
+    let fd_owner = fs::metadata(pid_dir.join("fd")).map_err(|error| error.to_string())?.uid();
+    let comm = fs::read_to_string(pid_dir.join("comm")).unwrap_or_default();
+    let exe = fs::read_link(pid_dir.join("exe"));
+    let executable = exe.as_ref().ok().map(PathBuf::as_path);
+    let parent = status.lines().find_map(|line| line.strip_prefix("PPid:")).and_then(|value| value.trim().parse::<u32>().ok()).unwrap_or(0);
+    let permitted = status.lines().find_map(|line| line.strip_prefix("CapPrm:")).and_then(|value| u64::from_str_radix(value.trim(), 16).ok()).unwrap_or(0);
+    let ssh_broker = broker_exception_allowed(uid, fd_owner, comm.trim(), executable);
+    let user_manager = user_manager_exception_allowed(comm.trim(), executable, parent, permitted);
+    if !ssh_broker && !user_manager { return Ok(false); }
+    let exe = match exe {
+        Ok(path) => path.display().to_string(),
+        Err(error) => format!("<unreadable: {error}>"),
+    };
+    println!("excluded-broker\tpid={}\tcomm={}\texe={exe}\tfd-owner={fd_owner}\tparent={parent}\tcapPrm=0x{permitted:x}\tassumption=privileged broker does not use user pnpm stores", pid_dir.file_name().unwrap_or_default().to_string_lossy(), comm.trim());
+    Ok(true)
+}
+
 fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
     let entries = fs::read_dir(proc_root).map_err(|e| format!("cannot inventory processes: {e}"))?;
+    let uid = own_uid()?;
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         if !entry.file_name().to_string_lossy().chars().all(|c| c.is_ascii_digit()) { continue; }
         let pid_dir = entry.path();
+        let status = match fs::read_to_string(pid_dir.join("status")) {
+            Ok(status) => status,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("cannot classify process ownership: {error}")),
+        };
+        let fields = status.lines().find_map(|line| line.strip_prefix("Uid:")).ok_or("process status has no UID evidence")?;
+        let mut owned = false;
+        let mut count = 0;
+        for field in fields.split_whitespace() {
+            owned |= field.parse::<u32>().map_err(|error| error.to_string())? == uid;
+            count += 1;
+        }
+        if count != 4 { return Err("process status has incomplete UID evidence".into()); }
+        if !owned { continue; }
         let cwd = pid_dir.join("cwd");
         let fd_dir = pid_dir.join("fd");
-        let mut paths = vec![cwd];
-        match fs::read_dir(&fd_dir) {
-            Ok(fds) => {
-                for fd in fds { paths.push(fd.map_err(|e| e.to_string())?.path()); }
-            }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(format!("process visibility incomplete at {}: {e}", fd_dir.display())),
+        match fs::read_link(&cwd) {
+            Ok(target) if reference_under(&target, root) => return Err(format!("live process reference: {} -> {}", cwd.display(), target.display())),
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied && exclude_privileged_broker(&pid_dir, uid, &status)? => continue,
+            Err(error) => return Err(format!("process visibility incomplete at {}: {error}", cwd.display())),
         }
-        for path in paths {
+        let descriptors = match fs::read_dir(&fd_dir) {
+            Ok(descriptors) => descriptors,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied && exclude_privileged_broker(&pid_dir, uid, &status)? => continue,
+            Err(error) => return Err(format!("process visibility incomplete at {}: {error}", fd_dir.display())),
+        };
+        for descriptor in descriptors {
+            let path = descriptor.map_err(|error| error.to_string())?.path();
             match fs::read_link(&path) {
                 Ok(target) => {
-                    // The collector/its flock parent may hold precisely this lease,
-                    // never a dependency payload. It is retained during retirement.
-                    if target == root.join(".devenv").join(STORE_NAME).join(LEASE_NAME) { continue; }
+                    // Only our retained maintenance lease is not a payload reader.
+                    if target == root.join(LEASE_NAME) { continue; }
                     if reference_under(&target, root) {
                         return Err(format!("live process reference: {} -> {}", path.display(), target.display()));
                     }
                 }
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => return Err(format!("process visibility incomplete at {}: {e}", path.display())),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) if error.kind() == io::ErrorKind::PermissionDenied && exclude_privileged_broker(&pid_dir, uid, &status)? => break,
+                Err(error) => return Err(format!("process visibility incomplete at {}: {error}", path.display())),
             }
         }
     }
@@ -173,7 +292,8 @@ fn liveness(root: &Path) -> Result<()> {
     if env::consts::OS != "macos" {
         return Err("no supported process census (Linux /proc or Darwin lsof)".into());
     }
-    let output = Command::new("lsof").args(["-nP", "-Fpn"]).output().map_err(|e| e.to_string())?;
+    let uid = own_uid()?.to_string();
+    let output = Command::new("lsof").args(["-a", "-u", &uid, "-nP", "-Fpn"]).output().map_err(|error| error.to_string())?;
     // Warnings mean visibility is incomplete, not proof of an idle root.
     if !output.status.success() || !output.stderr.is_empty() {
         return Err(format!("lsof process visibility incomplete: {}", String::from_utf8_lossy(&output.stderr)));
@@ -184,16 +304,20 @@ fn liveness(root: &Path) -> Result<()> {
             observed_pids.insert(pid);
         }
         if let Some(name) = line.strip_prefix('n') {
-            if Path::new(name) == root.join(".devenv").join(STORE_NAME).join(LEASE_NAME) { continue; }
+            if Path::new(name) == root.join(LEASE_NAME) { continue; }
             if reference_under(Path::new(name), root) {
                 return Err(format!("live lsof reference: {name}"));
             }
         }
     }
-    // lsof can silently omit other users' processes. Compare the PID census
-    // rather than interpreting that omission as evidence of an idle root.
-    for pid in command("ps", &["-axo", "pid="])?.split_whitespace() {
-        let number = pid.parse::<u32>().map_err(|e| e.to_string())?;
+    // Verify lsof covered every still-live process of this UID. Other UIDs are
+    // outside the declared user-owned-cache workflow, not an implicit proof.
+    for process in command("ps", &["-axo", "pid=,uid="])?.lines() {
+        let fields: Vec<_> = process.split_whitespace().collect();
+        if fields.len() != 2 { return Err("cannot classify ps process ownership".into()); }
+        if fields[1] != uid { continue; }
+        let pid = fields[0];
+        let number = pid.parse::<u32>().map_err(|error| error.to_string())?;
         if number == 0 || observed_pids.contains(&number) { continue; }
         let still_live = Command::new("ps").args(["-p", pid, "-o", "pid="]).output().map_err(|e| e.to_string())?;
         if !still_live.stdout.is_empty() || !still_live.stderr.is_empty() {
@@ -296,6 +420,9 @@ fn collect(options: &Options, root: &Path) -> Result<u64> {
     {
         return Err("store, .devenv, and lease must not be bridges".into());
     }
+    if fs::metadata(&store).map_err(|error| error.to_string())?.uid() != own_uid()? {
+        return Err("historical store is not owned by the invoking UID".into());
+    }
     if options.mode != Mode::DryRun && !options.locked {
         let status = Command::new("bash")
             .args(["-c", r#"exec 203>>"$1"; flock --exclusive --nonblock 203 || exit 1; exec "$2" --locked --git-dir "$3" --root "$4" "$5""#, "pnpm-store-gc-lease"])
@@ -314,10 +441,10 @@ fn collect(options: &Options, root: &Path) -> Result<u64> {
     let stat = fs::symlink_metadata(&store).map_err(|e| e.to_string())?;
     let state = state_base.join(format!("{}-{}.observation", stat.dev(), stat.ino()));
     let proof = (|| {
-        let terminal = terminal_root_proof(&options.git_dir, root)?;
-        liveness(root)?;
+        let ownership = checkout_ownership_proof(&options.git_dir, root)?;
+        liveness(&store)?;
         let footprint = footprint(&store)?;
-        Ok::<_, String>((format!("{}\n{terminal}\n{}", root.display(), footprint.fingerprint), footprint))
+        Ok::<_, String>((format!("{}\n{ownership}\n{}", root.display(), footprint.fingerprint), footprint))
     })();
     let (proof, footprint) = match proof {
         Ok(value) => value,
@@ -351,10 +478,10 @@ fn collect(options: &Options, root: &Path) -> Result<u64> {
         // repeat both proofs immediately before unlinking. The lock inode/root
         // stay in place so late cooperating installs cannot acquire a new inode.
         let recheck = (|| {
-            let terminal = terminal_root_proof(&options.git_dir, root)?;
-            liveness(root)?;
+            let ownership = checkout_ownership_proof(&options.git_dir, root)?;
+            liveness(&store)?;
             let current = self::footprint(&store)?;
-            if format!("{}\n{terminal}\n{}", root.display(), current.fingerprint) != proof {
+            if format!("{}\n{ownership}\n{}", root.display(), current.fingerprint) != proof {
                 return Err("eligibility changed before retirement".into());
             }
             Ok::<_, String>(())
@@ -380,6 +507,7 @@ fn collect(options: &Options, root: &Path) -> Result<u64> {
 
 fn run() -> Result<()> {
     let options = options()?;
+    println!("assumption: own-uid={} census only; other-uid processes do not use user-owned historical .devenv stores in normal flow", own_uid()?);
     let mut total = 0;
     for root in &options.roots { total += collect(&options, root)?; }
     if options.mode == Mode::DryRun { println!("would-free-total\t{total}"); }
@@ -428,16 +556,19 @@ mod tests {
         let proc_root = root.join("proc");
         let worktree = root.join("worktree");
         fs::create_dir_all(proc_root.join("123/fd")).unwrap();
+        fs::write(proc_root.join("123/status"), format!("Uid:\t{0}\t{0}\t{0}\t{0}\n", own_uid().unwrap())).unwrap();
         symlink(&worktree, proc_root.join("123/cwd")).unwrap();
         assert!(process_proof(&proc_root, &worktree).unwrap_err().contains("live process"));
         let sibling = root.join("sibling");
         // Another process holds an fd, while its cwd is outside the root.
         fs::create_dir_all(proc_root.join("456/fd")).unwrap();
+        fs::write(proc_root.join("456/status"), format!("Uid:\t{0}\t{0}\t{0}\t{0}\n", own_uid().unwrap())).unwrap();
         symlink(&sibling, proc_root.join("456/cwd")).unwrap();
         symlink(worktree.join("dependency"), proc_root.join("456/fd/4")).unwrap();
         assert!(process_proof(&proc_root, &sibling).is_err());
         let only_fd = root.join("fd-only");
         fs::create_dir_all(only_fd.join("789/fd")).unwrap();
+        fs::write(only_fd.join("789/status"), format!("Uid:\t{0}\t{0}\t{0}\t{0}\n", own_uid().unwrap())).unwrap();
         symlink(&sibling, only_fd.join("789/cwd")).unwrap();
         symlink(worktree.join("dependency"), only_fd.join("789/fd/4")).unwrap();
         assert!(process_proof(&only_fd, &worktree).unwrap_err().contains("/fd/4"));
@@ -463,16 +594,87 @@ mod tests {
     }
 
     #[test]
-    fn terminal_proof_admits_only_gone_unregistered_roots() {
+    fn ownership_proof_admits_only_gone_unregistered_roots() {
         let root = fixture("git");
         let repo = root.join("repo.git");
         let orphan = root.join("orphan");
         fs::create_dir_all(&orphan).unwrap();
         command("git", &["init", "--bare", text(&repo).unwrap()]).unwrap();
-        assert_eq!(terminal_root_proof(&repo, &orphan).unwrap(), "worktree-gone");
+        assert_eq!(checkout_ownership_proof(&repo, &orphan).unwrap(), "worktree-gone");
         fs::write(orphan.join(".git"), "gitdir: /unavailable").unwrap();
-        assert!(terminal_root_proof(&repo, &orphan).is_err());
+        assert!(checkout_ownership_proof(&repo, &orphan).is_err());
     }
+    #[test]
+    fn resolved_shared_receipts_do_not_admit_legacy_projection_references() {
+        let root = fixture("resolved-selection");
+        let historical = root.join(".devenv").join(STORE_NAME);
+        let shared = PathBuf::from(env::var_os("HOME").unwrap()).join(".local/share/pnpm/store-shared-v1");
+        fs::create_dir_all(historical.join("v11/files")).unwrap();
+        fs::create_dir_all(shared.join("v11/files")).unwrap();
+        fs::create_dir_all(root.join("node_modules")).unwrap();
+        fs::create_dir_all(root.join(".devenv/task-cache/pnpm-install")).unwrap();
+        let modules = root.join("node_modules/.modules.yaml");
+        let receipt = root.join(".devenv/task-cache/pnpm-install/pnpm-storage-state");
+        fs::write(&modules, format!(r#"{{"storeDir":"{}"}}"#, shared.join("v11").display())).unwrap();
+        fs::write(&receipt, format!("{}\nauto\nfalse\n", shared.display())).unwrap();
+        let projections = checkout_store_references(&root, &historical).unwrap();
+        assert!(shared_receipt_proof(&root, &historical, &projections).unwrap().contains("resolved-shared-store"));
+        fs::write(&receipt, format!("{}\nauto\nfalse\n", historical.display())).unwrap();
+        assert!(shared_receipt_proof(&root, &historical, &projections).is_err());
+        fs::write(&receipt, format!("{}\nauto\nfalse\n", shared.display())).unwrap();
+        fs::create_dir_all(root.join("packages/app/node_modules")).unwrap();
+        fs::write(root.join("packages/app/node_modules/.modules.yaml"), format!(r#"{{"storeDir":"{}"}}"#, historical.join("v11").display())).unwrap();
+        assert!(checkout_store_references(&root, &historical).unwrap_err().contains("still references"));
+        // Unknown metadata is not an alternative ownership proof.
+        fs::write(&modules, "storeDir: unknown-yaml-format\n").unwrap();
+        assert!(checkout_store_references(&root, &historical).is_err());
+    }
+
+    #[test]
+    fn checkout_cwd_does_not_pin_an_unreferenced_historical_store() {
+        use std::os::unix::fs::symlink;
+        let root = fixture("store-census-scope");
+        let census = root.join("proc");
+        let checkout = root.join("checkout");
+        let store = checkout.join(".devenv").join(STORE_NAME);
+        fs::create_dir_all(census.join("123/fd")).unwrap();
+        fs::write(census.join("123/status"), format!("Uid:\t{0}\t{0}\t{0}\t{0}\n", own_uid().unwrap())).unwrap();
+        symlink(&checkout, census.join("123/cwd")).unwrap();
+        assert!(process_proof(&census, &store).is_ok());
+        fs::create_dir_all(census.join("456/fd")).unwrap();
+        fs::write(census.join("456/status"), format!("Uid:\t{0}\t{0}\t{0}\t{0}\n", own_uid().unwrap())).unwrap();
+        symlink(store.join("v11"), census.join("456/cwd")).unwrap();
+        assert!(process_proof(&census, &store).is_err());
+    }
+    #[test]
+    fn other_uid_processes_are_outside_the_declared_cache_workflow() {
+        let root = fixture("uid-scope");
+        let census = root.join("proc");
+        fs::create_dir_all(census.join("123")).unwrap();
+        let other = if own_uid().unwrap() == 0 { 1 } else { 0 };
+        fs::write(census.join("123/status"), format!("Uid:\t{other}\t{other}\t{other}\t{other}\n")).unwrap();
+        // There is deliberately no observable fd directory for this other UID.
+        assert!(process_proof(&census, &root.join("store")).is_ok());
+        fs::write(census.join("123/status"), "Uid:\tunknown\n").unwrap();
+        assert!(process_proof(&census, &root.join("store")).is_err());
+    }
+    #[test]
+    fn only_allowlisted_kernel_protected_brokers_can_be_excluded() {
+        assert!(broker_exception_allowed(1000, 0, "sshd-session", None));
+        assert!(broker_exception_allowed(1000, 0, "hidden-name", Some(Path::new("/nix/store/openssh/bin/sshd-session"))));
+        assert!(broker_exception_allowed(1000, 0, ".tailscaled-wra", None));
+        assert!(broker_exception_allowed(1000, 0, "hidden-name", Some(Path::new("/nix/store/tailscale/bin/.tailscaled-wrapped"))));
+        assert!(!broker_exception_allowed(1000, 1000, "sshd-session", None));
+        assert!(!broker_exception_allowed(1000, 0, "pnpm", None));
+        assert!(!broker_exception_allowed(0, 0, "sshd-session", None));
+        assert!(user_manager_exception_allowed("systemd", None, 1, 0x0000000800000000));
+        assert!(!user_manager_exception_allowed("systemd", None, 2, 0x0000000800000000));
+        assert!(!user_manager_exception_allowed("systemd", None, 1, 0));
+        assert!(!user_manager_exception_allowed("pnpm", None, 1, 0x0000000800000000));
+    }
+
+
+
     #[test]
     fn default_collection_never_changes_a_store_or_creates_a_lease() {
         let root = fixture("dry-run");
