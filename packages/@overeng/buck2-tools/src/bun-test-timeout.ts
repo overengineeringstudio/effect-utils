@@ -14,10 +14,21 @@ export const timeoutFactor = ({
   cpus,
   cap,
 }: {
-  readonly load1: number
-  readonly cpus: number
+  readonly load1?: number | undefined
+  readonly cpus?: number | undefined
   readonly cap: number
-}): number => Math.min(cap, Math.max(1, load1 / cpus))
+}): number => {
+  if (
+    load1 === undefined ||
+    cpus === undefined ||
+    Number.isFinite(load1) === false ||
+    Number.isFinite(cpus) === false ||
+    load1 <= 0 ||
+    cpus <= 0
+  )
+    return 1
+  return Math.min(cap, Math.max(1, load1 / cpus))
+}
 
 /** Resolves the bounded run-start factor and explicit opt-out from environment inputs. */
 export const configuredTimeoutFactor = ({

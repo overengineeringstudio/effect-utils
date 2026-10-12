@@ -118,13 +118,17 @@ to the process. The CLI default and explicit per-test deadlines use:
 effective = ceil(base × min(cap, max(1, load1 / cpus)))
 ```
 
+If `load1` or `cpus` is missing, non-finite, or `<=0`, the factor is `1`;
+otherwise the formula above applies.
+
 `BUN_TEST_TIMEOUT_CAP` sets the cap (default `4`, finite and at least `1`);
 `BUN_TEST_TIMEOUT_SCALING=0` disables scaling. Buck lanes can declare these as
 environment inputs; local external-test runs also accept the caller's environment.
 The factor stays fixed for the run. A shared preload intercepts native Bun test
 registration, including parameterized tests and modifiers, to scale explicit
-deadlines and record their base. Hooks, assertions, callbacks and exit statuses
-remain native; no tests are retried.
+deadlines and record each case's base. Expanded case titles and nested parameterized
+suites retain their own deadlines in JUnit classification. Hooks, assertions,
+callbacks and exit statuses remain native; no tests are retried.
 
 The wrapper requests Bun's JUnit reporter and leaves console output untouched.
 After the child exits, it samples host load and Linux memory PSI and emits one

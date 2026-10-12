@@ -25,6 +25,8 @@ export type TestDeadline = {
   readonly file: string
   readonly name: string
   readonly classname: string
+  readonly namePattern?: string | undefined
+  readonly classnamePattern?: string | undefined
   readonly base: number
   readonly effective: number
 }
@@ -48,19 +50,56 @@ export const classifyBunReport = ({
   let other = 0
   const lines: string[] = []
   const remaining = [...deadlines]
+  const patterns = new Map<string, RegExp>()
+  const matchesTitle = ({
+    actual,
+    expected,
+    pattern,
+  }: {
+    readonly actual: string | undefined
+    readonly expected: string
+    readonly pattern: string | undefined
+  }): boolean => {
+    if (actual === expected) return true
+    if (actual === undefined || pattern === undefined) return false
+    let compiled = patterns.get(pattern)
+    if (compiled === undefined) {
+      compiled = new RegExp(pattern, 'u')
+      patterns.set(pattern, compiled)
+    }
+    return compiled.test(actual)
+  }
   for (const test of xml.matchAll(/<testcase\b([^>]*)(?:\/>|>([\s\S]*?)<\/testcase>)/gu)) {
     const record = attributes(test[1]!)
     let deadlineIndex = remaining.findIndex(
       (entry) =>
         entry.file === record['file'] &&
-        entry.name === record['name'] &&
-        entry.classname === record['classname'],
+        matchesTitle({
+          actual: record['name'],
+          expected: entry.name,
+          pattern: entry.namePattern,
+        }) &&
+        matchesTitle({
+          actual: record['classname'],
+          expected: entry.classname,
+          pattern: entry.classnamePattern,
+        }),
     )
     // Imported registration helpers have their own source file, while JUnit reports
     // the active test file. Bun registers files sequentially; consume matching names in order.
     if (deadlineIndex < 0)
       deadlineIndex = remaining.findIndex(
-        (entry) => entry.name === record['name'] && entry.classname === record['classname'],
+        (entry) =>
+          matchesTitle({
+            actual: record['name'],
+            expected: entry.name,
+            pattern: entry.namePattern,
+          }) &&
+          matchesTitle({
+            actual: record['classname'],
+            expected: entry.classname,
+            pattern: entry.classnamePattern,
+          }),
       )
     const deadline = deadlineIndex < 0 ? undefined : remaining.splice(deadlineIndex, 1)[0]
     const failure = /<failure\b([^>]*)/u.exec(test[2] ?? '')
@@ -71,7 +110,7 @@ export const classifyBunReport = ({
       const testBase = deadline?.base ?? base
       const effective = deadline?.effective ?? Math.ceil(base * factor)
       lines.push(
-        `test-timeout-under-load file=${JSON.stringify(record['file'])} test=${JSON.stringify([record['classname'], record['name']].filter(Boolean).join(' > '))} base=${testBase} factor=${factor} effective=${effective} deadlineMs=${effective} elapsedMs=${Number(record['time']) * 1000} load1=${host.load1} cpus=${host.cpus} memPsiFullAvg10=${host.memPsiFullAvg10 ?? 'unavailable'}`,
+        `test-timeout-under-load file=${JSON.stringify(record['file'])} test=${JSON.stringify([record['classname']?.split(' > ').toReversed().join(' > '), record['name']].filter(Boolean).join(' > '))} base=${testBase} factor=${factor} effective=${effective} deadlineMs=${effective} elapsedMs=${Number(record['time']) * 1000} load1=${host.load1} cpus=${host.cpus} memPsiFullAvg10=${host.memPsiFullAvg10 ?? 'unavailable'}`,
       )
     } else if (type === 'AssertionError') assertions += 1
     else other += 1

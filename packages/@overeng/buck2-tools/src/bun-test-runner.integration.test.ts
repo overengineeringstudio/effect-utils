@@ -35,19 +35,58 @@ test('JUnit distinguishes timed-out tests from assertions without changing the f
     const timeouts = output
       .split('\n')
       .filter((line) => line.startsWith('test-timeout-under-load '))
-    expect(timeouts).toHaveLength(4)
-    expect(timeouts[0]).toContain('file="fixture.test.ts"')
-    expect(timeouts[0]).toContain('test="classification fixture > deliberate timeout"')
-    expect(timeouts[0]).toContain('base=20 factor=1 effective=20 deadlineMs=20')
-    for (const line of timeouts.slice(1, 3)) expect(line).toContain('base=10 factor=1 effective=10')
-    expect(timeouts[3]).toContain('base=15 factor=1 effective=15')
+    const cases = [
+      { title: 'classification fixture > deliberate timeout', base: 20 },
+      { title: 'classification fixture > parameterized timeout alpha', base: 10 },
+      { title: 'classification fixture > parameterized timeout beta', base: 10 },
+      { title: 'classification fixture > object case first', base: 13 },
+      { title: 'classification fixture > object case second', base: 13 },
+      { title: 'classification fixture > scope short > scoped timeout', base: 7 },
+      { title: 'classification fixture > scope long > scoped timeout', base: 11 },
+      { title: 'classification fixture > filtered timeout excluded', base: 23 },
+      { title: 'classification fixture > filtered timeout selected', base: 29 },
+      { title: 'imported helper timeout', base: 15 },
+    ]
+    expect(timeouts).toHaveLength(cases.length)
+    for (const { title, base } of cases) {
+      expect(output).toContain(`test=${JSON.stringify(title)} `)
+      const line = timeouts.find((entry) => entry.includes(`test=${JSON.stringify(title)} `))
+      expect(line).toContain(`base=${base} factor=1 effective=${base} deadlineMs=${base}`)
+      expect(line).toContain('file="fixture.test.ts"')
+    }
     for (const line of timeouts) {
       const elapsed = Number(/elapsedMs=([\d.]+)/u.exec(line)?.[1])
-      expect(elapsed).toBeGreaterThanOrEqual(10)
+      expect(elapsed).toBeGreaterThan(0)
       expect(line).toMatch(/load1=[\d.]+ cpus=\d+ memPsiFullAvg10=(?:[\d.]+|unavailable)/u)
     }
     expect(output).toContain(
-      'test-failure-summary timeoutFailures=4 assertionFailures=1 otherFailures=0',
+      'test-failure-summary timeoutFailures=10 assertionFailures=1 otherFailures=0',
+    )
+    const filtered = Bun.spawn(
+      [
+        process.execPath,
+        runner,
+        './fixture.test.ts',
+        '--test-name-pattern=filtered timeout selected',
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, BUN_TEST_TIMEOUT_CAP: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [filteredStatus, filteredOut, filteredError] = await Promise.all([
+      filtered.exited,
+      new Response(filtered.stdout).text(),
+      new Response(filtered.stderr).text(),
+    ])
+    expect(filteredStatus).toBe(1)
+    expect(`${filteredOut}${filteredError}`).toContain(
+      'base=29 factor=1 effective=29 deadlineMs=29',
+    )
+    expect(`${filteredOut}${filteredError}`).toContain(
+      'test-failure-summary timeoutFailures=1 assertionFailures=0 otherFailures=0',
     )
   } finally {
     await rm(root, { recursive: true, force: true })
