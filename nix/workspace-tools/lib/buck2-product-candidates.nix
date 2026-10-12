@@ -97,7 +97,9 @@ let
   # server are absolute binaries, so generated-file checks never depend on PATH.
   genie = mk "genie" {
     binaryName = "genie";
-    environment = genieProviders.environment // { CLI_BUILD_STAMP = buildStamp; };
+    environment = genieProviders.environment // {
+      CLI_BUILD_STAMP = buildStamp;
+    };
     expectedExternalCapabilities = genieProviders.capabilities;
     expectedExternalModules = genieProviders.externalModules;
     expectedProductKind = "cli";
