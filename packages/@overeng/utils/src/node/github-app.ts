@@ -147,7 +147,7 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         : scope.repositories,
       permissions: Object.fromEntries(Object.entries(scope.permissions).sort(([a], [b]) => a.localeCompare(b))),
     }
-    const normalized = yield* Schema.decodeEffect(InstallationScope)(canonical).pipe(
+    const normalized = yield* Schema.decodeUnknownEffect(InstallationScope)(canonical).pipe(
       Effect.mapError(() => new GitHubAppError({ operation: 'config', message: 'Invalid normalized scope' })),
     )
     const cacheKey = encodeScope(normalized)
