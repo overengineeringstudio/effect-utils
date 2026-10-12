@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "agent-trace/v2/public-minimal/audience",
-  "$comment": "Generated; do not edit; pnpm run generate; sha256=dd1d1e63431851ad32ccc8913860f8aa8bb432d503953d82c9810603e7ce1ca6; Effect 4.0.0",
+  "$comment": "Generated; do not edit; pnpm run generate; sha256=944c6b3252bece18f5418a30360a504416e4e7785645c62807edec2667411dd2; Effect 4.0.0",
   "title": "PublicAudienceV2",
   "type": "object",
   "properties": {

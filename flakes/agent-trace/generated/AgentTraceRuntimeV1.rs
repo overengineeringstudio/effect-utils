@@ -1,5 +1,5 @@
 // Generated; do not edit. Inputs: src/schema.ts, src/bindings.ts, src/projection.ts, src/generator.ts, src/registry.ts, ../schema-registry/rust/Cargo.toml, ../schema-registry/rust/src/lib.rs, ../schema-registry/rust/src/numbers.rs, ../schema-registry/rust/src/runtime.rs, ../schema-registry/rust/src/bin/schema-registry-rust.rs, rust/Cargo.lock, package.json, ../../.oxfmtrc.json.
-// Regenerate: pnpm run generate; sha256=dd1d1e63431851ad32ccc8913860f8aa8bb432d503953d82c9810603e7ce1ca6
+// Regenerate: pnpm run generate; sha256=944c6b3252bece18f5418a30360a504416e4e7785645c62807edec2667411dd2
 pub mod __schema_registry_runtime {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error { Invalid(String) }
@@ -614,6 +614,18 @@ pub r#host: Option<AgentTraceRuntimeV1WhereHost>,
 #[serde(default, deserialize_with = "self::__schema_registry_runtime::deserialize_optional", skip_serializing_if = "Option::is_none")]
 pub r#worktree: Option<AgentTraceRuntimeV1WhereWorktree>,
 }
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(transparent)]
+pub struct AgentTraceRuntimeV1BakeoffNote(String);
+impl AgentTraceRuntimeV1BakeoffNote { #[must_use] pub fn as_str(&self) -> &str { &self.0 }
+pub(crate) fn validate(value: &str) -> Result<(), self::__schema_registry_runtime::Error> {
+if value.is_empty() { return Err(self::__schema_registry_runtime::Error::Invalid("AgentTraceRuntimeV1BakeoffNote: minLength".into())); }
+if !self::__schema_registry_runtime::is_js_trimmed(value) { return Err(self::__schema_registry_runtime::Error::Invalid("AgentTraceRuntimeV1BakeoffNote: pattern".into())); }
+if value.is_empty() || value.contains(['\r', '\n']) { return Err(self::__schema_registry_runtime::Error::Invalid("AgentTraceRuntimeV1BakeoffNote: pattern".into())); }
+Ok(()) } }
+impl TryFrom<String> for AgentTraceRuntimeV1BakeoffNote { type Error = self::__schema_registry_runtime::Error; fn try_from(value: String) -> Result<Self, Self::Error> { Self::validate(&value)?; Ok(Self(value)) } }
+impl<'de> serde::Deserialize<'de> for AgentTraceRuntimeV1BakeoffNote { fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> { let value = <String as serde::Deserialize>::deserialize(d)?; Self::try_from(value).map_err(serde::de::Error::custom) } }
+#[allow(non_snake_case)]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentTraceRuntimeV1 {
@@ -623,4 +635,6 @@ pub r#who: AgentTraceRuntimeV1Who,
 pub r#why: Option<AgentTraceRuntimeV1Why>,
 pub r#how: AgentTraceRuntimeV1How,
 pub r#where: AgentTraceRuntimeV1Where,
+#[serde(default, deserialize_with = "self::__schema_registry_runtime::deserialize_optional", skip_serializing_if = "Option::is_none")]
+pub r#bakeoffNote: Option<AgentTraceRuntimeV1BakeoffNote>,
 }

@@ -332,6 +332,12 @@ export const AgentTraceRuntimeV1 = node({
     why: optional(AgentTraceV2.fields.why),
     how: AgentTraceV2.fields.how,
     where: AgentTraceV2.fields.where,
+    bakeoffNote: node({
+      schema: optional(Text),
+      title: 'Bakeoff note',
+      description: 'Optional note proving authority evolution across repository boundaries',
+      sensitivity: 'internal',
+    }),
   }),
   title: 'Agent Trace runtime',
   description: 'Private live identity, optional purpose, runtime configuration and issuance',

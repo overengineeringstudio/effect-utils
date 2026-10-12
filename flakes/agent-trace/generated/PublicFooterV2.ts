@@ -1,5 +1,5 @@
 // Generated; do not edit. Inputs: src/schema.ts, src/bindings.ts, src/projection.ts, src/generator.ts, src/registry.ts, ../schema-registry/rust/Cargo.toml, ../schema-registry/rust/src/lib.rs, ../schema-registry/rust/src/numbers.rs, ../schema-registry/rust/src/runtime.rs, ../schema-registry/rust/src/bin/schema-registry-rust.rs, rust/Cargo.lock, package.json, ../../.oxfmtrc.json; Effect 4.0.0.
-// Regenerate: pnpm run generate; sha256=dd1d1e63431851ad32ccc8913860f8aa8bb432d503953d82c9810603e7ce1ca6
+// Regenerate: pnpm run generate; sha256=944c6b3252bece18f5418a30360a504416e4e7785645c62807edec2667411dd2
 import { Schema } from 'effect'
 
 import type { Plan } from '../src/projection.ts'
