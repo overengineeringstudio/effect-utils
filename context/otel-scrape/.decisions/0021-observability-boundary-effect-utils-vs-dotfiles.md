@@ -94,7 +94,7 @@ adapter admission cross-reference is in
 
 ## Options
 
-| Recorded design state | Disposition |
-| --- | --- |
-| Decision stated above | Accepted in the original record |
+| Recorded design state                 | Disposition                                                                 |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| Decision stated above                 | Accepted in the original record                                             |
 | Prior limitation described in Context | Contrasted by the original rationale; no additional historical option claim |

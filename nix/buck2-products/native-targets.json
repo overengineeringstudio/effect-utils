@@ -29,6 +29,21 @@
       "version": "0.0.0"
     },
     {
+      "cargoWorkspaceRoot": "rust",
+      "kind": "native",
+      "name": "pingping",
+      "outputName": "artifact.tar",
+      "shellCompletions": true,
+      "sourcePaths": [
+        "packages/@overeng/pingping",
+        "rust/Cargo.lock",
+        "rust/Cargo.toml",
+        "rust/third-party"
+      ],
+      "target": "effect_utils//packages/@overeng/pingping:pingping-product",
+      "version": "0.0.0"
+    },
+    {
       "kind": "native",
       "name": "typescript-api-server",
       "outputName": "artifact.tar",
