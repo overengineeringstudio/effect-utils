@@ -25,11 +25,10 @@ const readGit = async ({ root, args }) =>
 /**
  * Resolve ordinary loose/packed refs without subprocesses, including linked worktrees.
  * Register each watch before reading it so atomic ref replacements cannot fall in a gap.
- * @param {string} root
- * @param {(path: string) => void} [subscribe]
+ * @param {{root: string, subscribe?: (path: string) => void}} options
  * @returns {Promise<{rev: string, paths: Set<string>}>}
  */
-export const readWorktreeGitMetadata = async (root, subscribe) => {
+export const readWorktreeGitMetadata = async ({ root, subscribe }) => {
   /** @type {Set<string>} */
   const paths = new Set()
   /** @param {string} path */
@@ -46,10 +45,13 @@ export const readWorktreeGitMetadata = async (root, subscribe) => {
       try {
         // oxlint-disable-next-line eslint/no-await-in-loop -- discover the nearest enclosing repository
         const info = await stat(candidate)
-        gitDir = info.isDirectory()
-          ? candidate
-          : // oxlint-disable-next-line eslint/no-await-in-loop -- gitdir files resolve relative to their repository
-            resolve(directory, (await readFile(candidate, 'utf8')).trim().replace(/^gitdir: /, ''))
+        if (info.isDirectory() === true) {
+          gitDir = candidate
+        } else {
+          // oxlint-disable-next-line eslint/no-await-in-loop -- gitdir files resolve relative to their repository
+          const gitFile = await readFile(candidate, 'utf8')
+          gitDir = resolve(directory, gitFile.trim().replace(/^gitdir: /, ''))
+        }
       } catch (error) {
         if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
         const parent = dirname(directory)
@@ -64,7 +66,7 @@ export const readWorktreeGitMetadata = async (root, subscribe) => {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
     }
     const config = await readFile(join(commonDir, 'config'), 'utf8')
-    if (/^\s*refstorage\s*=\s*reftable\s*$/im.test(config)) {
+    if (/^\s*refstorage\s*=\s*reftable\s*$/im.test(config) === true) {
       throw new Error('Reftable requires Git ref resolution')
     }
     const headPath = join(gitDir, 'HEAD')
@@ -73,9 +75,9 @@ export const readWorktreeGitMetadata = async (root, subscribe) => {
     let head = (await readFile(headPath, 'utf8')).trim()
     /** @type {Set<string>} */
     const seen = new Set()
-    while (head.startsWith('ref: ')) {
+    while (head.startsWith('ref: ') === true) {
       const ref = head.slice(5)
-      if (seen.has(ref)) throw new Error('Cyclic Git symbolic ref')
+      if (seen.has(ref) === true) throw new Error('Cyclic Git symbolic ref')
       seen.add(ref)
       const refPath = join(commonDir, ref)
       watch(refPath)
@@ -89,11 +91,12 @@ export const readWorktreeGitMetadata = async (root, subscribe) => {
         // oxlint-disable-next-line eslint/no-await-in-loop -- loose refs take precedence over packed refs
         const packed = await readFile(packedPath, 'utf8')
         const entry = packed.split('\n').find((line) => line.endsWith(` ${ref}`))
-        if (entry === undefined) throw new Error(`Git ref not found: ${ref}`)
+        if (entry === undefined) throw new Error(`Git ref not found: ${ref}`, { cause: error })
         head = entry.slice(0, entry.indexOf(' '))
       }
     }
-    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(head)) throw new Error('Invalid Git object ID')
+    if (/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(head) === false)
+      throw new Error('Invalid Git object ID')
     if (seen.size === 0) {
       // Git verifies detached revisions whose object is packed, missing, or unreadable.
       await access(join(commonDir, 'objects', head.slice(0, 2), head.slice(2)), constants.R_OK)
@@ -131,11 +134,10 @@ export const readWorktreeGitMetadata = async (root, subscribe) => {
 }
 
 /**
- * @param {string} root
- * @param {ReturnType<typeof readWorktreeGitMetadata>} metadata
+ * @param {{root: string, metadata: ReturnType<typeof readWorktreeGitMetadata>}} options
  * @returns {Promise<import('./cli-build-identity.js').LocalStamp>}
  */
-const localStamp = async (root, metadata) => {
+const localStamp = async ({ root, metadata }) => {
   const [git, status] = await Promise.all([
     metadata,
     readGit({ root, args: ['status', '--porcelain=v1', '--untracked-files=no'] }),
@@ -163,10 +165,9 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   /** @type {Promise<void> | undefined} */
   let refreshFlight
   /**
-   * @param {boolean} [preserveSnapshot]
-   * @param {ReturnType<typeof readWorktreeGitMetadata>} [metadata]
+   * @param {{preserveSnapshot?: boolean, metadata?: ReturnType<typeof readWorktreeGitMetadata>}} [options]
    */
-  const resolveIdentity = async (preserveSnapshot = false, metadata) => {
+  const resolveIdentity = async ({ preserveSnapshot = false, metadata } = {}) => {
     const options = {
       baseVersion,
       buildStamp,
@@ -175,7 +176,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
           ? {}
           : {
               CLI_BUILD_STAMP: JSON.stringify(
-                await localStamp(root, metadata ?? readWorktreeGitMetadata(root)),
+                await localStamp({ root, metadata: metadata ?? readWorktreeGitMetadata({ root }) }),
               ),
             },
     }
@@ -255,7 +256,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         watched.set(path, listener)
       }
       const updateWatches = async () => {
-        const metadata = await readWorktreeGitMetadata(root, subscribe)
+        const metadata = await readWorktreeGitMetadata({ root, subscribe })
         const { paths } = metadata
         for (const [path, listener] of watched) {
           if (paths.has(path) === false) {
@@ -283,7 +284,10 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
             if (performance.now() < requestedAt + 50) continue
             pending = false
             // oxlint-disable-next-line eslint/no-await-in-loop -- snapshots cannot overlap
-            const changed = await resolveIdentity(true, updateWatches())
+            const changed = await resolveIdentity({
+              preserveSnapshot: true,
+              metadata: updateWatches(),
+            })
             if (changed === false || isStopped() === true) continue
             const module = server.moduleGraph.getModuleById(resolvedId)
             if (module === undefined) continue

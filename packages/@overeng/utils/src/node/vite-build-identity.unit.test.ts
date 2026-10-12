@@ -26,9 +26,10 @@ it('resolves linked-worktree HEAD and index separately from the common branch re
     writeFileSync(join(common, 'HEAD'), `ref: refs/heads/main\n`)
     writeFileSync(join(common, 'refs/heads/main'), `${otherRevision}\n`)
     const subscribed: string[] = []
-    const result = await readWorktreeGitMetadata(join(linked, 'app'), (path) =>
-      subscribed.push(path),
-    )
+    const result = await readWorktreeGitMetadata({
+      root: join(linked, 'app'),
+      subscribe: (path) => subscribed.push(path),
+    })
     expect(result.rev).toBe(revision)
     expect(result.paths).toEqual(
       new Set([
@@ -54,12 +55,12 @@ it('reads packed refs and gives a subsequently-created loose ref precedence', as
       join(gitDir, 'packed-refs'),
       `# pack-refs with: peeled fully-peeled sorted\n${otherRevision} refs/heads/main-other\n${revision} refs/heads/main\n^${otherRevision}\n`,
     )
-    const packed = await readWorktreeGitMetadata(root)
+    const packed = await readWorktreeGitMetadata({ root })
     expect(packed.rev).toBe(revision)
     expect(packed.paths).toContain(join(gitDir, 'refs/heads/main'))
     expect(packed.paths).toContain(join(gitDir, 'packed-refs'))
     writeFileSync(join(gitDir, 'refs/heads/main'), `${otherRevision}\n`)
-    const loose = await readWorktreeGitMetadata(root)
+    const loose = await readWorktreeGitMetadata({ root })
     expect(loose.rev).toBe(otherRevision)
     expect(loose.paths).not.toContain(join(gitDir, 'packed-refs'))
   } finally {
@@ -78,7 +79,7 @@ it('reads a detached HEAD with a readable loose object without resolving any bra
       join(gitDir, 'objects', revision.slice(0, 2), revision.slice(2)),
       'object fixture',
     )
-    const result = await readWorktreeGitMetadata(root)
+    const result = await readWorktreeGitMetadata({ root })
     expect(result.rev).toBe(revision)
     expect(result.paths).toEqual(new Set([join(gitDir, 'HEAD'), join(gitDir, 'index')]))
   } finally {
