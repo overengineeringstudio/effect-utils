@@ -27,8 +27,8 @@ test('JUnit distinguishes timed-out tests from assertions without changing the f
     })
     const [status, stdout, stderr] = await Promise.all([
       child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
+      Bun.readableStreamToText(child.stdout),
+      Bun.readableStreamToText(child.stderr),
     ])
     const output = `${stdout}${stderr}`
     expect(status).toBe(1)
@@ -79,8 +79,8 @@ test('JUnit distinguishes timed-out tests from assertions without changing the f
     )
     const [filteredStatus, filteredOut, filteredError] = await Promise.all([
       filtered.exited,
-      new Response(filtered.stdout).text(),
-      new Response(filtered.stderr).text(),
+      Bun.readableStreamToText(filtered.stdout),
+      Bun.readableStreamToText(filtered.stderr),
     ])
     expect(filteredStatus).toBe(1)
     expect(`${filteredOut}${filteredError}`).toContain(
