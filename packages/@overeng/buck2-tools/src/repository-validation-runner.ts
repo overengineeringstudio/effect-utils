@@ -445,6 +445,7 @@ const checkWorkspaceContract = ({
     requireExactFields({
       value: entry,
       fields: [
+        'buildCapabilities',
         'kind',
         'name',
         'outputName',
@@ -457,6 +458,11 @@ const checkWorkspaceContract = ({
       subject: `native products[${index}]`,
     })
     const target = requireString(entry.target, `native products[${index}].target`)
+    const buildCapabilities = requireStrings(
+      entry.buildCapabilities,
+      `native products[${index}].buildCapabilities`,
+    )
+    requireUnique(buildCapabilities, `native products[${index}].buildCapabilities`)
     const packagePath = rust === true ? name : 'genie'
     const sourcePaths = requireStrings(entry.sourcePaths, `native products[${index}].sourcePaths`)
     requireUnique(sourcePaths, `native products[${index}].sourcePaths`)
