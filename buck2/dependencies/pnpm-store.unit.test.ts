@@ -920,6 +920,7 @@ describe('normalized store projection of the real lockfile', () => {
     // Assert the current lock's exact identities, including peer-qualified
     // packages whose optional native dependency edges vary by platform.
     expect(varying).toEqual([
+      '@number0+iroh@1.1.0',
       '@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10',
       'esbuild@0.28.2',
       'lightningcss@1.33.0',
@@ -936,8 +937,8 @@ describe('normalized store projection of the real lockfile', () => {
   })
 
   it('declares one entry per snapshot and one view per importer', () => {
-    expect(projection.entries).toHaveLength(731)
-    expect(new Set(projection.entries.map((entry) => entry.storeKey)).size).toBe(731)
+    expect(projection.entries).toHaveLength(743)
+    expect(new Set(projection.entries.map((entry) => entry.storeKey)).size).toBe(743)
     expect(projection.views).toHaveLength(Object.keys(metadata.importers).length)
     expect(computeStoreSccs({ metadata })).toEqual(projection.sccs.map((scc) => scc.members))
   })
