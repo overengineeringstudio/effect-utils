@@ -75,6 +75,44 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": [
+        "archive-tool",
+        "bun",
+        "product",
+        "python-bootstrap",
+        "rust-archiver",
+        "rust-c-compiler",
+        "rust-clippy-driver",
+        "rust-compiler",
+        "rust-cxx-compiler",
+        "rust-dwp",
+        "rust-linker",
+        "rust-nm",
+        "rust-objcopy",
+        "rust-objdump",
+        "rust-ranlib",
+        "rust-rustdoc",
+        "rust-shell",
+        "rust-strip",
+        "rust-wasm-compiler",
+        "rust-wasm-linker",
+        "rust-wasm-rustdoc"
+      ],
+      "cargoWorkspaceRoot": "rust",
+      "kind": "native",
+      "name": "pingping",
+      "outputName": "artifact.tar",
+      "shellCompletions": true,
+      "sourcePaths": [
+        "packages/@overeng/pingping",
+        "rust/Cargo.lock",
+        "rust/Cargo.toml",
+        "rust/third-party"
+      ],
+      "target": "effect_utils//packages/@overeng/pingping:pingping-product",
+      "version": "0.0.0"
+    },
+    {
       "buildCapabilities": ["action-env", "archive-tool", "bun", "product"],
       "kind": "native",
       "name": "typescript-api-server",

@@ -336,6 +336,8 @@ const checkWorkspaceContract = ({
     'math-interop',
     'otel-scrape',
     'otelite',
+    'pingping',
+    'pingping-netinfo-macos',
   ]
   const cargoPackageNames: string[] = []
   for (const memberPath of cargoMemberPaths) {
@@ -439,7 +441,7 @@ const checkWorkspaceContract = ({
   const nativeProducts = inventory.products.map((rawEntry, index) => {
     const entry = requireRecord(rawEntry, `native products[${index}]`)
     const name = requireString(entry.name, `native products[${index}].name`)
-    const rust = name === 'otelite' || name === 'otel-scrape'
+    const rust = name === 'otelite' || name === 'otel-scrape' || name === 'pingping'
     requireExactFields({
       value: entry,
       fields: [
@@ -450,6 +452,7 @@ const checkWorkspaceContract = ({
         'target',
         'version',
         ...(rust === true ? ['cargoWorkspaceRoot'] : []),
+        ...('shellCompletions' in entry ? ['shellCompletions'] : []),
       ],
       subject: `native products[${index}]`,
     })
@@ -472,6 +475,8 @@ const checkWorkspaceContract = ({
       entry.outputName !== 'artifact.tar' ||
       entry.version !== '0.0.0' ||
       (rust === true && entry.cargoWorkspaceRoot !== 'rust') ||
+      ('shellCompletions' in entry &&
+        (rust === false || typeof entry.shellCompletions !== 'boolean')) ||
       target !== `effect_utils//packages/@overeng/${packagePath}:${name}-product`
     ) {
       throw new Error(`native products[${index}] does not match its Buck target`)
@@ -481,7 +486,7 @@ const checkWorkspaceContract = ({
   requireUnique(nativeProducts, 'native products')
   if (
     JSON.stringify(sorted(nativeProducts)) !==
-    JSON.stringify(['otel-scrape', 'otelite', 'typescript-api-server'])
+    JSON.stringify(['otel-scrape', 'otelite', 'pingping', 'typescript-api-server'])
   )
     throw new Error('native product target census changed')
 

@@ -6,13 +6,14 @@ import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mo
 
 /** Build-product targets distributed as substituted native Nix store paths. */
 const products = [
-  ...nixOnlyPackages.map(({ name, cratePath }) => ({
+  ...nixOnlyPackages.map((pkg) => ({
     cargoWorkspaceRoot: 'rust',
     kind: 'native' as const,
-    name,
+    name: pkg.name,
     outputName: 'artifact.tar',
-    sourcePaths: [cratePath, 'rust/Cargo.toml', 'rust/Cargo.lock', 'rust/third-party'].toSorted(),
-    target: `effect_utils//${cratePath}:${name}-product`,
+    ...('shellCompletions' in pkg ? { shellCompletions: pkg.shellCompletions } : {}),
+    sourcePaths: [pkg.cratePath, 'rust/Cargo.toml', 'rust/Cargo.lock', 'rust/third-party'].toSorted(),
+    target: `effect_utils//${pkg.cratePath}:${pkg.name}-product`,
     version: '0.0.0',
   })),
   {

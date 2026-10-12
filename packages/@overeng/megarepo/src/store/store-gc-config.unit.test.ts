@@ -82,6 +82,25 @@ describe('store-gc-config', () => {
 
       expect(generatedArtifacts.allowlist).toEqual(['node_modules', '.direnv'])
     })
+
+    it('keeps activity sources and the budgets policy path only when configured', () => {
+      const merged = mergeStoreGcConfig({
+        generatedArtifacts: {
+          manifestPath: '/run/megarepo/workspace-activity.json',
+          agentLivenessProducers: ['st3', 'st3'],
+          builtin: false,
+        },
+        buildOutputBudgetsPath: '/etc/megarepo/build-output-budgets.json',
+      })
+      expect(merged.generatedArtifacts).toEqual({
+        ...DEFAULT_STORE_GC_CONFIG.generatedArtifacts,
+        manifestPath: '/run/megarepo/workspace-activity.json',
+        agentLivenessProducers: ['st3'],
+        builtin: false,
+      })
+      expect(merged.buildOutputBudgetsPath).toBe('/etc/megarepo/build-output-budgets.json')
+      expect('buildOutputBudgetsPath' in mergeStoreGcConfig({})).toBe(false)
+    })
   })
 
   describe('loadStoreGcConfig', () => {
@@ -141,6 +160,20 @@ describe('store-gc-config', () => {
         function* () {
           const storeBasePath = yield* writeConfig('{ not valid json ::: }')
           // Degrades to defaults rather than failing the gc path.
+          expect(yield* loadStoreGcConfig({ storeBasePath })).toEqual(DEFAULT_STORE_GC_CONFIG)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    effectIt.effect(
+      'relative activity manifest path ⇒ defaults (no unadmitted source)',
+      Effect.fnUntraced(
+        function* () {
+          const storeBasePath = yield* writeConfig(
+            encodeJson({ generatedArtifacts: { enabled: true, manifestPath: 'activity.json' } }),
+          )
           expect(yield* loadStoreGcConfig({ storeBasePath })).toEqual(DEFAULT_STORE_GC_CONFIG)
         },
         Effect.provide(NodeServices.layer),

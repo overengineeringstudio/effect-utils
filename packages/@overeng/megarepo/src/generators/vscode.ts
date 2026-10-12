@@ -256,6 +256,8 @@ export const generateVscodeContent = (options: VscodeGeneratorOptions): string =
 export const generateVscode = (options: VscodeGeneratorOptions) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
+    // Root authorization prevents a canonical caller from escaping through an output alias.
+    yield* assertCanonicalMutationAllowed({ target: options.megarepoRoot })
 
     const content = generateVscodeContent(options)
     const vscodeDir = EffectPath.ops.join(
