@@ -106,7 +106,7 @@ describe('reusable agent contract', () => {
       expectedConstants,
     )
     expect(agent.attributes.every((a) => a.type === 'string')).toBe(true)
-    expect(agent.foreignRefs).toEqual(['gen_ai.request.model'])
+    expect(agent.foreignRefs).toEqual([])
     const refs = agent.signals[0]!.attributes
     expect(refs.find((a) => a.ref === 'agent.principal.id')?.requirement_level).toBe('opt_in')
     expect(

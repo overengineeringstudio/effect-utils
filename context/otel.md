@@ -13,8 +13,6 @@ Recommended string attributes are `agent.actor.id`, `agent.persona`,
 `agent.supervisor.id`, `agent.mission.name`, `agent.mission.run.id`,
 `agent.step.name`, `agent.step.run.id`, `agent.harness.tool`,
 `agent.harness.version`, `agent.harness.session.id`, and `agent.model.effort`.
-The requested model is the upstream `gen_ai.request.model` reference, not a
-first-party replacement.
 
 The actor is a logical agent identity. `agent.harness.session.id` is the
 provider-native harness session identity, distinct from both that actor and a

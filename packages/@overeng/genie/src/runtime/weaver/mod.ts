@@ -474,24 +474,25 @@ const constantEntries = (
   readonly spans: ReadonlyArray<ConstEntry>
   readonly metrics: ReadonlyArray<ConstEntry>
 } => ({
-  attributes: byId(registry.groups.flatMap((g) => g.attributes)).map((a) => ({
-    name: a.id,
-    ...(a.constName !== undefined ? { constName: a.constName } : {}),
-  })),
+  attributes: byId(registry.groups.flatMap((g) => g.attributes)).map((a) =>
+    a.constName === undefined ? { name: a.id } : { name: a.id, constName: a.constName },
+  ),
   spans: registry.signals
     .filter((s): s is Extract<SignalDef, { kind: 'span' }> => s.kind === 'span')
     // Emit the runtime span name, falling back to the group id for plain spans.
-    .map((s) => ({
-      name: s.span_name ?? s.id,
-      ...(s.constName !== undefined ? { constName: s.constName } : {}),
-    }))
+    .map((s) =>
+      s.constName === undefined
+        ? { name: s.span_name ?? s.id }
+        : { name: s.span_name ?? s.id, constName: s.constName },
+    )
     .toSorted((a, b) => a.name.localeCompare(b.name)),
   metrics: registry.signals
     .filter((s): s is Extract<SignalDef, { kind: 'metric' }> => s.kind === 'metric')
-    .map((s) => ({
-      name: s.metric_name,
-      ...(s.constName !== undefined ? { constName: s.constName } : {}),
-    }))
+    .map((s) =>
+      s.constName === undefined
+        ? { name: s.metric_name }
+        : { name: s.metric_name, constName: s.constName },
+    )
     .toSorted((a, b) => a.name.localeCompare(b.name)),
 })
 
@@ -697,12 +698,14 @@ const rustModule = ({
     target: 'Rust',
     kind: name,
     names: entries,
-    identifier: ({ name, constName }) => constName ?? screamingSnake(name),
+    identifier: (entry) => entry.constName ?? screamingSnake(entry.name),
     valid: /^[A-Z_][A-Z0-9_]*$/,
   })
   const lines = [`/// ${doc}`, `pub mod ${name} {`]
-  for (const { name, constName } of entries) {
-    lines.push(`${indent}pub const ${constName ?? screamingSnake(name)}: &str = ${rustStr(name)};`)
+  for (const entry of entries) {
+    lines.push(
+      `${indent}pub const ${entry.constName ?? screamingSnake(entry.name)}: &str = ${rustStr(entry.name)};`,
+    )
   }
   lines.push('', ...rustAllSlice({ indent, keys: entries.map((e) => e.name) }), '}')
   return lines.join('\n')

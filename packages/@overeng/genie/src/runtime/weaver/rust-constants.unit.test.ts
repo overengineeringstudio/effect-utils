@@ -305,10 +305,15 @@ describe('renderRustConstants (otel-scrape fixture)', () => {
     const names = constNameRegistry({ attributes: [undefined] })
     const reservedRegistry: Registry = {
       ...names,
-      groups: names.groups.map((group) => ({
-        ...group,
-        attributes: group.attributes.map((attribute) => ({ ...attribute, id: 'all' })),
-      })),
+      groups: [
+        {
+          namespace: 'test',
+          displayName: 'Test',
+          attributes: [
+            { id: 'all', type: 'string', brief: 'Reserved slice.', stability: 'development' },
+          ],
+        },
+      ],
     }
     expect(() =>
       renderRustConstants({ registry: reservedRegistry, provenance: FIXTURE_PROVENANCE }),

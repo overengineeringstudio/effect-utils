@@ -108,7 +108,7 @@ const composition = registryFromMembers({
   schemaUrl: 'https://opentelemetry.io/schemas/acme/0.1.0',
   upstream: [
     {
-      // Pinned upstream OTel semconv. weaver resolves `http.*` and `gen_ai.*` refs here.
+      // Pinned upstream OTel semconv. weaver resolves `http.*` refs against this dependency.
       // The Buck `//:weaver_check` target materializes it hermetically as a local FS path
       // (SC-A03, confirmed working with 0.24.2). The committed string is the portable git-URL form.
       dependency: {
@@ -116,7 +116,7 @@ const composition = registryFromMembers({
         registry_path: `https://github.com/open-telemetry/semantic-conventions.git@${PINNED_UPSTREAM_SEMCONV_VERSION}[model]`,
         schema_url: `https://opentelemetry.io/schemas/${PINNED_UPSTREAM_SEMCONV_VERSION.slice(1)}`,
       },
-      providesNamespaces: ['http', 'gen_ai'],
+      providesNamespaces: ['http'],
     },
   ],
 })
