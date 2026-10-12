@@ -40,7 +40,7 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
       state.exchanges++
       const chunks: Buffer[] = []
       for await (const chunk of request) chunks.push(Buffer.from(chunk))
-      state.bodies.push(Schema.decodeUnknownSync(Json)(Buffer.concat(chunks).toString()))
+      state.bodies.push(Schema.decodeSync(Json)(Buffer.concat(chunks).toString()))
       if (state.delayMint) {
         await Effect.runPromiseWith(delay)(Deferred.succeed(started, undefined))
         await Effect.runPromiseWith(delay)(Deferred.await(release))
@@ -48,7 +48,7 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
       const jwt = request.headers.authorization?.slice('Bearer '.length) ?? ''
       const [header = '', claims = '', signature = ''] = jwt.split('.')
       state.jwts.push({
-        ...Schema.decodeUnknownSync(Claims)(Buffer.from(claims, 'base64url').toString()),
+        ...Schema.decodeSync(Claims)(Buffer.from(claims, 'base64url').toString()),
         verified: verify('RSA-SHA256', Buffer.from(`${header}.${claims}`), publicKey, Buffer.from(signature, 'base64url')),
       })
       response.writeHead(state.mintStatus, { 'content-type': 'application/json', 'x-ratelimit-remaining': '4999', 'x-ratelimit-resource': 'core' })

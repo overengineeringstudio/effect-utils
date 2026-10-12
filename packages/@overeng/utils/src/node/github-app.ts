@@ -82,13 +82,13 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
   input: typeof AppConfig.Type,
   options: GitHubAppOptions,
 ) {
-  const config = yield* Schema.decodeUnknownEffect(AppConfig)(input).pipe(
+  const config = yield* Schema.decodeEffect(AppConfig)(input).pipe(
     Effect.mapError(() => new GitHubAppError({ operation: 'config', message: 'Invalid GitHub App config' })),
   )
-  const consumer = yield* Schema.decodeUnknownEffect(Schema.NonEmptyString)(options.consumer).pipe(
+  const consumer = yield* Schema.decodeEffect(Schema.NonEmptyString)(options.consumer).pipe(
     Effect.mapError(() => new GitHubAppError({ operation: 'config', message: 'Consumer identity must be non-empty' })),
   )
-  const refreshMarginSeconds = yield* Schema.decodeUnknownEffect(PositiveID)(options.refreshMarginSeconds ?? 60).pipe(
+  const refreshMarginSeconds = yield* Schema.decodeEffect(PositiveID)(options.refreshMarginSeconds ?? 60).pipe(
     Effect.mapError(() => new GitHubAppError({ operation: 'config', message: 'Refresh margin must be a positive integer in seconds' })),
   )
   yield* Effect.annotateCurrentSpan({ 'github.app.client_id': config.identity.clientID, 'github.consumer': consumer, 'span.label': consumer })
@@ -137,7 +137,7 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
   })
 
   const token = Effect.fn('github-app.token')(function* (inputScope: InstallationScope) {
-    const scope = yield* Schema.decodeUnknownEffect(InstallationScope)(inputScope).pipe(
+    const scope = yield* Schema.decodeEffect(InstallationScope)(inputScope).pipe(
       Effect.mapError(() => new GitHubAppError({ operation: 'config', message: 'Invalid installation scope' })),
     )
     const canonical = {
@@ -147,7 +147,7 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         : scope.repositories,
       permissions: Object.fromEntries(Object.entries(scope.permissions).sort(([a], [b]) => a.localeCompare(b))),
     }
-    const normalized = yield* Schema.decodeUnknownEffect(InstallationScope)(canonical).pipe(
+    const normalized = yield* Schema.decodeEffect(InstallationScope)(canonical).pipe(
       Effect.mapError(() => new GitHubAppError({ operation: 'config', message: 'Invalid normalized scope' })),
     )
     const cacheKey = encodeScope(normalized)
@@ -156,9 +156,9 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
       // Sample time after acquiring the lock, never before waiting for another fiber.
       const now = yield* Clock.currentTimeMillis
       const cached = tokens.get(cacheKey)
-      if (cached !== undefined && cached.expiresAt - now > refreshMarginSeconds * 1000) return Effect.succeed(cached.token)
+      if (cached !== undefined && cached.expiresAt - now > refreshMarginSeconds * 1000) return { effect: Effect.succeed(cached.token) }
       const existing = flights.get(cacheKey)
-      if (existing !== undefined) return existing
+      if (existing !== undefined) return { effect: existing }
       const mint = Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis
       yield* Metric.update(Metric.withAttributes(mintCount, attributes(scope.installationID)), 1)
@@ -173,16 +173,17 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         },
         catch: () => new GitHubAppError({ operation: 'sign', message: 'Failed to sign GitHub App JWT' }),
       })
+      const body = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Struct({
+        repositories: Schema.optional(Schema.Array(RepositoryName)),
+        permissions: Schema.Record(Schema.NonEmptyString, Schema.Literals(['read', 'write'])),
+      })))({
+        permissions: canonical.permissions,
+        ...(canonical.repositories._tag === 'Selected' ? { repositories: canonical.repositories.names } : {}),
+      }).pipe(Effect.mapError(() => new GitHubAppError({ operation: 'exchange', message: 'Invalid installation token request' })))
       const request = HttpClientRequest.post(new URL(`/app/installations/${scope.installationID}/access_tokens`, apiBase)).pipe(
         HttpClientRequest.setHeaders(headers),
         HttpClientRequest.bearerToken(jwt),
-        HttpClientRequest.bodyText(Schema.encodeSync(Schema.fromJsonString(Schema.Struct({
-          repositories: Schema.optional(Schema.Array(RepositoryName)),
-          permissions: Schema.Record(Schema.NonEmptyString, Schema.Literals(['read', 'write'])),
-        })))({
-          permissions: canonical.permissions,
-          ...(canonical.repositories._tag === 'Selected' ? { repositories: canonical.repositories.names } : {}),
-        }), 'application/json'),
+        HttpClientRequest.bodyText(body, 'application/json'),
       )
       const response = yield* raw.execute(request).pipe(
         Effect.mapError(() => new GitHubAppError({ operation: 'exchange', message: 'Installation token transport failed' })),
@@ -212,9 +213,9 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         if (flights.get(cacheKey) === shared) flights.delete(cacheKey)
       }))))
       flights.set(cacheKey, shared)
-      return shared
+      return { effect: shared }
     }))
-    return yield* flight
+    return yield* flight.effect
   })
 
   const invalidate = Effect.fn('github-app.invalidate')(function* (rejected: Redacted.Redacted<string>) {
