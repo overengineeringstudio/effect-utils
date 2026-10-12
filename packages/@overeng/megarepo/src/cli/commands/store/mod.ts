@@ -4133,7 +4133,10 @@ const storeActivitySnapshotCommand = Cli.Command.make(
           message: 'Specify exactly one of --output or --stdout',
         })
       }
-      if (Option.isSome(outputPath) && isNormalizedAbsolutePath(outputPath.value) === false) {
+      if (
+        Option.isSome(outputPath) === true &&
+        isNormalizedAbsolutePath(outputPath.value) === false
+      ) {
         return yield* new StoreCommandError({
           message: '--output must be a normalized absolute file path',
         })
@@ -4147,7 +4150,7 @@ const storeActivitySnapshotCommand = Cli.Command.make(
       if (stdout === true) {
         // Machine-readable payload, not a TUI/log summary or trusted publication.
         yield* Console.log(yield* encodeWorkspaceActivityManifest(manifest))
-      } else if (Option.isSome(outputPath)) {
+      } else if (Option.isSome(outputPath) === true) {
         yield* writeWorkspaceActivityManifest({ fs, path: outputPath.value, manifest })
       }
     }).pipe(
