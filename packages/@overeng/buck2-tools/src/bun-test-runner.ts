@@ -50,12 +50,18 @@ export const classifyBunReport = ({
   const remaining = [...deadlines]
   for (const test of xml.matchAll(/<testcase\b([^>]*)(?:\/>|>([\s\S]*?)<\/testcase>)/gu)) {
     const record = attributes(test[1]!)
-    const deadlineIndex = remaining.findIndex(
+    let deadlineIndex = remaining.findIndex(
       (entry) =>
         entry.file === record['file'] &&
         entry.name === record['name'] &&
         entry.classname === record['classname'],
     )
+    // Imported registration helpers have their own source file, while JUnit reports
+    // the active test file. Bun registers files sequentially; consume matching names in order.
+    if (deadlineIndex < 0)
+      deadlineIndex = remaining.findIndex(
+        (entry) => entry.name === record['name'] && entry.classname === record['classname'],
+      )
     const deadline = deadlineIndex < 0 ? undefined : remaining.splice(deadlineIndex, 1)[0]
     const failure = /<failure\b([^>]*)/u.exec(test[2] ?? '')
     if (failure === null) continue
