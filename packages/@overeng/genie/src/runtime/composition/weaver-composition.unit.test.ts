@@ -48,7 +48,7 @@ describe('registryFromMembers (SC-R08/R09)', () => {
         name: 'r',
         description: 'd',
         schemaUrl: 's',
-        ...(explicit ? { upstream: agentContract.upstream! } : {}),
+        ...(explicit === true ? { upstream: agentContract.upstream! } : {}),
       })
       expect(issues).toEqual([])
       expect(registry.dependencies).toEqual(agentContract.upstream!.map((u) => u.dependency))
