@@ -15,11 +15,11 @@ model supports every schema.
 
 ## Options
 
-| Option | Tradeoff |
-| --- | --- |
+| Option                      | Tradeoff                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Chat Completions (selected) | Shared client ecosystem and a stable cross-provider wire; gateway translation is required for native-only backends. |
-| Provider-native endpoints | Couple consumers to provider families and expose incompatible request/SSE shapes. |
-| Gateway-private streams | Couple consumers to one gateway implementation's releases. |
+| Provider-native endpoints   | Couple consumers to provider families and expose incompatible request/SSE shapes.                                   |
+| Gateway-private streams     | Couple consumers to one gateway implementation's releases.                                                          |
 
 ## Decision
 

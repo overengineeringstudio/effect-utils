@@ -136,7 +136,7 @@ and `effect-utils/buck-product-provenance/v1` unchanged (decision 0037).
 
 ### Native products
 
-`otelite`, `otel-scrape`, and `typescript-api-server` use the same
+`otelite`, `otel-scrape`, `pingping`, and `typescript-api-server` use the same
 source-backed, cache-substituted Nix import as compiled executables. The
 generated `nix/buck2-products/native-targets.json` inventory binds each name
 to its Buck `build_product` target and `artifact.tar` output; the Rust rows
@@ -159,6 +159,16 @@ generators are excluded from that input. Neither the checkout's store root nor
 its Git revision is part of these recipes' identity. Unrelated commits retain
 the same per-platform derivation; edits to declared sources, pinned toolchains,
 archives or validation contracts invalidate it.
+
+Scoped Rust native products default to an embedded JSON stamp with the shared
+`type: "nix"`, `version`, `rev`, and `dirty` fields. `rev` is the first seven
+hexadecimal characters of the existing `sourceDigest`, not a Git revision;
+`dirty: false` describes the immutable source projection, not checkout
+cleanliness. No commit timestamp is invented for this source-addressed policy.
+An explicit `product.cliBuildStamp` overrides the default for callers selecting
+another identity policy. Buck rules opting into `cliBuildStamp` receive the
+stamp through `build_identity.cli_build_stamp`, so unrelated commits cannot
+change the embedded native version.
 
 Files passed to build-time helpers must be content-scoped too. The stage-zero
 root metadata, Cargo profile reader and descriptor contract are materialized

@@ -223,6 +223,8 @@ repository_static_checks(
     "//packages/@overeng/otelite:static_sources",
     "//packages/@overeng/outline:repository_validation_sources",
     "//packages/@overeng/oxc-config:repository_validation_sources",
+    "//packages/@overeng/pingping/crates/netinfo-macos:static_sources",
+    "//packages/@overeng/pingping:static_sources",
     "//packages/@overeng/pty-effect:repository_validation_sources",
     "//packages/@overeng/react-inspector:repository_validation_sources",
     "//packages/@overeng/restate-effect:repository_validation_sources",
