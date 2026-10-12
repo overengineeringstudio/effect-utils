@@ -12,6 +12,10 @@ ensure_local_pnpm_home_default() {
   fi
 }
 
+pnpm_use_job_local_store() {
+  [ "${GITHUB_ACTIONS:-}" = true ] || [ "${PNPM_JOB_LOCAL_STORE:-}" = 1 ]
+}
+
 configure_pnpm_storage() {
   local node_bin="$1"
   local materialization_root="$2"
@@ -26,7 +30,7 @@ configure_pnpm_storage() {
   export PNPM_CONFIG_VIRTUAL_STORE_DIR=node_modules/.pnpm
   export npm_config_virtual_store_dir=node_modules/.pnpm
 
-  if [ -n "${CI:-}" ]; then
+  if pnpm_use_job_local_store; then
     store_dir="$job_local_store"
   else
     if [ "$global_virtual_store" = true ]; then
@@ -170,7 +174,7 @@ assert_pnpm_storage_capacity() {
   local store_dir="$2"
   local materialization_root="$3"
 
-  if [ -n "${CI:-}" ]; then
+  if pnpm_use_job_local_store; then
     return 0
   fi
 

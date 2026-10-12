@@ -235,15 +235,17 @@ export const reconcileStandaloneCachePosture = ({
 export const probeArchiveOrigin = async ({
   urlPrefix,
   deadlineMs,
+  deadlineSignal,
 }: {
   readonly urlPrefix: string
   readonly deadlineMs: number
+  readonly deadlineSignal?: AbortSignal
 }): Promise<boolean> => {
   try {
     await fetch(urlPrefix, {
       method: 'HEAD',
       redirect: 'manual',
-      signal: AbortSignal.timeout(deadlineMs),
+      signal: deadlineSignal ?? AbortSignal.timeout(deadlineMs),
     })
     return true
   } catch {
@@ -333,6 +335,7 @@ export const probeRemoteCacheCapabilities = async ({
   header,
   env,
   deadlineMs,
+  deadlineSignal,
   onFailure,
   onConnectionEvent,
 }: {
@@ -342,6 +345,7 @@ export const probeRemoteCacheCapabilities = async ({
   readonly header: string | undefined
   readonly env: Readonly<Record<string, string | undefined>>
   readonly deadlineMs: number
+  readonly deadlineSignal?: AbortSignal
   readonly onFailure?: (failure: RemoteCacheProbeFailure) => void
   readonly onConnectionEvent?: (event: RemoteCacheProbeConnectionEvent) => void
 }): Promise<boolean> => {
@@ -393,6 +397,7 @@ export const probeRemoteCacheCapabilities = async ({
       headers[header.slice(0, colon).trim().toLowerCase()] = value
     }
     phase = isIP(url.hostname.replace(/^\[|\]$/gu, '')) === 0 ? 'dns' : 'tcp'
+    if (deadlineSignal?.aborted === true) return failProbe('deadline')
     return await new Promise<boolean>((resolveProbe) => {
       const client = connect(authority)
       let settled = false
@@ -457,11 +462,14 @@ export const probeRemoteCacheCapabilities = async ({
         if (settled === true) return
         settled = true
         clearTimeout(timer)
+        deadlineSignal?.removeEventListener('abort', onDeadline)
         client.destroy()
         if (result === false) failProbe(errorClass)
         resolveProbe(result)
       }
-      const timer = setTimeout(() => finish({ result: false, errorClass: 'deadline' }), deadlineMs)
+      const onDeadline = () => finish({ result: false, errorClass: 'deadline' })
+      const timer = deadlineSignal === undefined ? setTimeout(onDeadline, deadlineMs) : undefined
+      deadlineSignal?.addEventListener('abort', onDeadline, { once: true })
       client.on('connect', () => {
         phase = 'response'
       })

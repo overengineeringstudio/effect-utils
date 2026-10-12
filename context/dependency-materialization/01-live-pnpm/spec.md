@@ -172,6 +172,12 @@ dependency.
 CI jobs use a job-local pnpm home, Store Cache, virtual topology, and projection
 state. The job remains the sole mutation owner for all of those paths.
 
+Store selection recognizes GitHub Actions via `GITHUB_ACTIONS=true`; other CI
+runners opt in with `PNPM_JOB_LOCAL_STORE=1`. A non-empty `CI` alone does not
+identify an isolated runner: dev-host non-watch task invocations keep the local
+shared Store Cache policy described in
+[Store Authority placement](../04-store-authority/spec.md#placement).
+
 ## Health
 
 A live Materialization Root is healthy only when:

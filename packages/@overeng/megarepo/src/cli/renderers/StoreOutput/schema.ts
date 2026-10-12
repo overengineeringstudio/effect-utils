@@ -77,8 +77,16 @@ export const StoreGcResult = Schema.Struct({
   workspacePath: Schema.optional(Schema.String),
   allocatedBytes: Schema.optional(Schema.Finite),
   exclusiveClosureBytes: Schema.optional(Schema.NullOr(Schema.Finite)),
-  outcome: Schema.optional(Schema.Literals(['would-delete', 'deleted', 'keep', 'unknown'])),
+  outcome: Schema.optional(
+    Schema.Literals(['would-delete', 'deleted', 'keep', 'unknown', 'partial']),
+  ),
   mtimeMs: Schema.optional(Schema.Finite),
+  /** Merged teardown: allocated bytes (unique inodes, no symlink follow) of the deleted worklog. */
+  worklogBytesRemoved: Schema.optional(Schema.Finite),
+  /** Merged teardown: the budgets policy file that authorized worklog deletion. */
+  worklogPolicyPath: Schema.optional(Schema.String),
+  /** Merged teardown: canonical SHA-256 of that policy, re-checked under the worktree lock. */
+  worklogPolicySha256: Schema.optional(Schema.String),
 })
 
 /** Inferred type for a store GC result. */

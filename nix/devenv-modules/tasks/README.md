@@ -99,6 +99,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     apps, while `"**"` explicitly exempts an entire repository. A reason is
     required; other library paths remain guarded.
 - `megarepo.nix` - Megarepo workspace tasks
+  - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` makes
+    `mr:setup` prepare those members' nested megarepo trees in fresh commit
+    worktrees (readiness via `mr status --all`); unlisted members stay on
+    tracking worktrees. Default `[ ]` keeps the plain tracking setup.
 - `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
   - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`
     selects the lockfiles and only defines `nix:flake-lock:check-duplicates`.
@@ -112,7 +116,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
   - Local development shares one complete pnpm Store Cache between trusted
-    roots of the same OS user; CI uses a job-local Store Cache.
+    roots of the same OS user. `GITHUB_ACTIONS=true` or the explicit opt-in
+    `PNPM_JOB_LOCAL_STORE=1` selects the job-local Store Cache under
+    `<root>/.devenv/pnpm-store-pure-v1` (with a workspace suffix for nested roots).
+    `CI=1` alone keeps shared storage, so non-watch dev-host tasks reuse the cache.
   - By default dependency graphs and `node_modules/.pnpm` remain
     Materialization-Root-owned. Pass `globalVirtualStore = true;` to opt local
     development into pnpm's graph-hashed shared projections with the isolated
@@ -123,9 +130,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     The default complete store is `$HOME/.local/share/pnpm/store` in GVS mode
     versus `$HOME/.local/share/pnpm/store-shared-v1` otherwise;
     `PNPM_SHARED_STORE_DIR` overrides either local store.
-  - CI explicitly disables GVS (including inherited environment/YAML opt-ins)
-    and uses the job-local store and projection. Fixed-output preparation stays
-    root-local and GVS-disabled.
+  - Job-local mode explicitly disables GVS (including inherited environment/YAML
+    opt-ins) and uses the job-local store and projection. Other CI runners must
+    set `PNPM_JOB_LOCAL_STORE=1` to obtain that isolation. Fixed-output preparation
+    stays root-local and GVS-disabled.
   - Install, update, dedupe, status, doctor, and shell setup share the selected
     policy. Readiness receipts include effective GVS/store policy. Health and
     projection fingerprints visit only this root's reachable shared instances,

@@ -39,9 +39,6 @@ let
   releaseProfileScript = pkgs.writeText "cargo-release-profile.py" (
     builtins.readFile ../workspace-tools/lib/cargo-release-profile.py
   );
-  # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
-  # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
-  cliBuildStamp = product.cliBuildStamp or null;
   source =
     if sourcePaths != null then
       lib.fileset.toSource {
@@ -85,6 +82,23 @@ let
         );
       };
   sourceDigest = builtins.hashString "sha256" (toString source);
+  # Rust projections rendered with `cliBuildStamp` read this JSON through
+  # `build_identity.cli_build_stamp`. Scoped native recipes have no Git
+  # provenance: default to their existing source identity, never repository HEAD.
+  # Explicit stamps still belong to the caller's selected identity policy.
+  cliBuildStamp =
+    product.cliBuildStamp or (
+      if sourcePaths != null && product.kind == "native" && cargoWorkspaceRoot != null then
+        builtins.toJSON {
+          type = "nix";
+          version = product.version;
+          rev = builtins.substring 0 7 sourceDigest;
+          # This is an immutable source projection, not a Git cleanliness claim.
+          dirty = false;
+        }
+      else
+        null
+    );
 
   target = product.target;
   productName = product.name;
