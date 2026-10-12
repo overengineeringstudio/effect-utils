@@ -738,7 +738,7 @@ export default packageJson({
           }),
         )
         expect(Exit.isFailure(result)).toBe(true)
-        if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toContain(message)
+        if (Exit.isFailure(result) === true) expect(Cause.pretty(result.cause)).toContain(message)
       }, Effect.provide(TestLayer)),
     )
   })
