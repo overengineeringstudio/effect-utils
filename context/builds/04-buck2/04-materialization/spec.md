@@ -315,16 +315,21 @@ stopping Buck and relies on its process probe to veto a held worktree.
 
 ```text
 scripts/buck2-daemon-reaper.ts --buck2 <raw buck2> [--idle-seconds 10800]
-  -> buck2 status --all from a throwaway empty root
-  -> per daemon: root gone        -> report-gone (pid, daemon id, root, RSS + swap)
-                 active command   -> keep-active
-                 idle < threshold -> keep-recent
-                 idle >= threshold -> recheck from root -> buck2 --isolation-dir <i> kill
+  -> the user's live daemon processes: argv daemon id + isolation, cwd <root>/buck-out/<i>
+  -> per daemon: root gone           -> report-gone (pid, daemon id, root, RSS + swap)
+                 status fails/differs -> keep-unreachable (reason)
+                 active command      -> keep-active
+                 idle < threshold    -> keep-recent
+                 idle >= threshold   -> recheck from root -> buck2 --isolation-dir <i> kill
 ```
 
 The pinned `[buck2] daemon_idle_timeout_s` counts command arrivals rather than
 running work, so it can stop a build that runs longer than the timeout or an
 attached `buck2 lsp`. It stays at Buck's default; the reaper owns idle exit.
+Daemons are found from `/proc` rather than `buck2 status --all`, which probes
+every historical `~/.buck/buckd` entry and stalled past a 180 s test timeout on a busy host.
+Each daemon's status is read from its own root with a 30 s timeout and must
+report the same pid and daemon id; anything else keeps the daemon.
 Idle time runs from the later of the daemon's `start_time` and the newest entry
 under `<root>/buck-out/<isolation>/log`, where every streamed command writes its
 event log. `buck2 status` itself writes no event log. A daemon reporting any

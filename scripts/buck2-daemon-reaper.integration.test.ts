@@ -1,9 +1,14 @@
 import { afterAll, expect, it } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { discoverDaemons, reap } from './buck2-daemon-reaper.ts'
+import {
+  type DaemonProcess,
+  listDaemonProcesses,
+  observeDaemon,
+  reap,
+} from './buck2-daemon-reaper.ts'
 
 const buck2 = process.env['BUCK2_BIN']
 if (buck2 === undefined || buck2.length === 0)
@@ -16,7 +21,7 @@ const lspClients: Bun.Subprocess<'pipe', 'ignore', 'ignore'>[] = []
 
 const makeRoot = (name: string) => {
   const root = join(scratch, name)
-  mkdirSync(root)
+  mkdirSync(root, { recursive: true })
   writeFileSync(
     join(root, '.buckconfig'),
     '[cells]\n  root = .\n[buck2]\n  file_watcher = fs_hash_crawler\n',
@@ -26,12 +31,18 @@ const makeRoot = (name: string) => {
 }
 
 const buck = (root: string, args: readonly string[]) => {
-  const result = Bun.spawnSync([buck2, ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
+  const result = Bun.spawnSync([buck2, ...args], {
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: 60_000,
+  })
   if (result.exitCode !== 0)
     throw new Error(`buck2 ${args.join(' ')} failed in ${root}: ${result.stderr.toString()}`)
 }
 
-const daemonAt = (root: string) => discoverDaemons(buck2).find((d) => d.projectRoot === root)
+const daemonAt = (root: string): DaemonProcess | undefined =>
+  listDaemonProcesses().find((daemon) => daemon.projectRoot === root)
 
 // Process exit and LSP attachment expose no awaitable event to a non-parent;
 // poll the real condition with a deadline instead of guessing a delay.
@@ -48,9 +59,10 @@ const processExists = (pid: number | undefined) =>
 
 afterAll(() => {
   for (const client of lspClients) client.stdin.end()
-  for (const name of ['idle', 'editor', 'gone'])
-    if (existsSync(join(scratch, name)) === true) buck(join(scratch, name), ['kill'])
+  // The gone root is recreated so the CLI can address and stop its daemon.
+  for (const name of ['idle', 'editor', 'gone']) buck(makeRoot(name), ['kill'])
   rmSync(scratch, { recursive: true, force: true })
+  rmSync(join(homedir(), '.buck', 'buckd', scratch.slice(1)), { recursive: true, force: true })
 })
 
 it('kills only the idle daemon and its forkserver, keeps an editor session, reports a gone root', async () => {
@@ -64,7 +76,9 @@ it('kills only the idle daemon and its forkserver, keeps an editor session, repo
   )
   await waitFor('the editor session to be active', () => {
     const daemon = daemonAt(editor)
-    return daemon !== undefined && daemon.activeCommandCount > 0
+    if (daemon === undefined) return false
+    const observation = observeDaemon({ buck2, daemon })
+    return observation._tag === 'observed' && observation.status.activeCommandCount > 0
   })
   const idleDaemon = daemonAt(idle)
   const goneDaemon = daemonAt(gone)
@@ -82,29 +96,25 @@ it('kills only the idle daemon and its forkserver, keeps an editor session, repo
   })
   expect(early.find((entry) => entry.projectRoot === idle)?.decision).toBe('keep-recent')
 
-  renameSync(gone, `${gone}.moved`)
-  try {
-    // An hour later the idle root's last command is older than the threshold.
-    const entries = reap({
-      buck2,
-      idleThresholdMs: 5000,
-      rootPrefixes: [`${scratch}/`],
-      dryRun: false,
-      now: () => Date.now() + 60 * 60 * 1000,
-    })
-    const byRoot = new Map(entries.map((entry) => [entry.projectRoot, entry]))
-    expect(byRoot.get(idle)?.outcome?._tag).toBe('killed')
-    expect(byRoot.get(editor)?.decision).toBe('keep-active')
-    expect(byRoot.get(gone)).toMatchObject({
-      decision: 'report-gone',
-      pid: goneDaemon.pid,
-      daemonId: goneDaemon.daemonId,
-      outcome: undefined,
-    })
-    expect(byRoot.get(gone)?.memoryKiB).toBeGreaterThan(0)
-  } finally {
-    renameSync(`${gone}.moved`, gone)
-  }
+  rmSync(gone, { recursive: true, force: true })
+  // An hour later the idle root's last command is older than the threshold.
+  const entries = reap({
+    buck2,
+    idleThresholdMs: 5000,
+    rootPrefixes: [`${scratch}/`],
+    dryRun: false,
+    now: () => Date.now() + 60 * 60 * 1000,
+  })
+  const byRoot = new Map(entries.map((entry) => [entry.projectRoot, entry]))
+  expect(byRoot.get(idle)?.outcome?._tag).toBe('killed')
+  expect(byRoot.get(editor)?.decision).toBe('keep-active')
+  expect(byRoot.get(gone)).toMatchObject({
+    decision: 'report-gone',
+    pid: goneDaemon.pid,
+    daemonId: goneDaemon.daemonId,
+    outcome: undefined,
+  })
+  expect(byRoot.get(gone)?.memoryKiB).toBeGreaterThan(0)
 
   await waitFor(
     'the idle daemon and its forkserver to exit',

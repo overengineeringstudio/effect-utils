@@ -6,38 +6,54 @@
  * reaper only stops a daemon that reports no active command (an attached
  * `buck2 lsp` is an active command) and whose last command activity is older
  * than the idle threshold. Command activity is the newest event-log write
- * under `<root>/buck-out/<isolation>/log`: every streamed command writes there
- * while it runs. Daemons whose project root is gone are reported, never
- * signalled: the pinned CLI addresses a daemon only from inside its root.
+ * under `<root>/buck-out/<isolation>/log`: every streamed command writes there.
+ *
+ * Daemons are found from the user's live processes, not `buck2 status --all`,
+ * which probes every historical `~/.buck/buckd` entry and can hang on one
+ * unresponsive endpoint. Daemons whose project root is gone are reported,
+ * never signalled: the pinned CLI addresses a daemon only from inside its root.
  */
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 
+/** A live Buck2 daemon process of the current user, identified from `/proc`. */
+export type DaemonProcess = {
+  readonly pid: number
+  readonly daemonId: string
+  readonly isolationDir: string
+  readonly projectRoot: string
+  /** The daemon's cwd (`<root>/buck-out/<isolation>`) was unlinked or the root is no directory. */
+  readonly rootGone: boolean
+  readonly forkserverPid: number | undefined
+}
+
+/** The fields of `buck2 status` the policy reads. */
 export type DaemonStatus = {
   readonly daemonId: string
   readonly pid: number
-  readonly forkserverPid: number | undefined
   readonly projectRoot: string
-  readonly isolationDir: string
   readonly startTimeMs: number
   readonly activeCommandCount: number
 }
 
-/** Facts gathered outside `buck2 status` for one daemon. */
-export type DaemonObservation = {
-  readonly daemon: DaemonStatus
-  readonly rootExists: boolean
-  /** Newest event-log write, or `undefined` when the log directory has no entries. */
-  readonly lastLogWriteMs: number | undefined
-}
+export type DaemonObservation =
+  | { readonly _tag: 'gone'; readonly daemon: DaemonProcess }
+  | { readonly _tag: 'unreachable'; readonly daemon: DaemonProcess; readonly reason: string }
+  | {
+      readonly _tag: 'observed'
+      readonly daemon: DaemonProcess
+      readonly status: DaemonStatus
+      /** Newest event-log write, or `undefined` when the log directory has no entries. */
+      readonly lastLogWriteMs: number | undefined
+    }
 
 export type ReapDecision =
-  | { readonly _tag: 'keep-active'; readonly daemon: DaemonStatus }
-  | { readonly _tag: 'keep-recent'; readonly daemon: DaemonStatus; readonly idleForMs: number }
-  | { readonly _tag: 'kill-idle'; readonly daemon: DaemonStatus; readonly idleForMs: number }
-  | { readonly _tag: 'report-gone'; readonly daemon: DaemonStatus }
+  | { readonly _tag: 'report-gone'; readonly daemon: DaemonProcess }
+  | { readonly _tag: 'keep-unreachable'; readonly daemon: DaemonProcess; readonly reason: string }
+  | { readonly _tag: 'keep-active'; readonly daemon: DaemonProcess }
+  | { readonly _tag: 'keep-recent'; readonly daemon: DaemonProcess; readonly idleForMs: number }
+  | { readonly _tag: 'kill-idle'; readonly daemon: DaemonProcess; readonly idleForMs: number }
 
 /** Pure policy: what to do with one observed daemon at `nowMs`. */
 export const decideReap = ({
@@ -50,25 +66,115 @@ export const decideReap = ({
   readonly idleThresholdMs: number
 }): ReapDecision => {
   const { daemon } = observation
-  if (observation.rootExists === false) return { _tag: 'report-gone', daemon }
-  if (daemon.activeCommandCount > 0) return { _tag: 'keep-active', daemon }
+  if (observation._tag === 'gone') return { _tag: 'report-gone', daemon }
+  if (observation._tag === 'unreachable')
+    return { _tag: 'keep-unreachable', daemon, reason: observation.reason }
+  const { status } = observation
+  if (status.activeCommandCount > 0) return { _tag: 'keep-active', daemon }
   // A daemon is never idle for longer than it has existed.
-  const lastActivityMs = Math.max(daemon.startTimeMs, observation.lastLogWriteMs ?? 0)
-  const idleForMs = nowMs - lastActivityMs
+  const idleForMs = nowMs - Math.max(status.startTimeMs, observation.lastLogWriteMs ?? 0)
   return idleForMs >= idleThresholdMs
     ? { _tag: 'kill-idle', daemon, idleForMs }
     : { _tag: 'keep-recent', daemon, idleForMs }
 }
 
+/**
+ * Recognizes a pinned daemon from its argv (`… --isolation-dir <i> daemon
+ * --daemon-id <id> …`) and cwd, which the daemon sets to `<root>/buck-out/<i>`.
+ * Linux appends ` (deleted)` to an unlinked cwd.
+ */
+export const parseDaemonProcess = ({
+  pid,
+  argv,
+  cwd,
+}: {
+  readonly pid: number
+  readonly argv: readonly string[]
+  readonly cwd: string
+}): Omit<DaemonProcess, 'rootGone' | 'forkserverPid'> & { readonly cwdDeleted: boolean } => {
+  const isolationDir = argv[argv.indexOf('--isolation-dir') + 1]
+  const daemonId = argv[argv.indexOf('--daemon-id') + 1]
+  if (
+    argv.includes('daemon') === false ||
+    argv.includes('--isolation-dir') === false ||
+    argv.includes('--daemon-id') === false ||
+    isolationDir === undefined ||
+    daemonId === undefined
+  )
+    throw new Error(`pid ${pid} is not a Buck2 daemon`)
+  const cwdDeleted = cwd.endsWith(' (deleted)')
+  const directory = cwdDeleted === true ? cwd.slice(0, -' (deleted)'.length) : cwd
+  const suffix = `/buck-out/${isolationDir}`
+  if (directory.endsWith(suffix) === false)
+    throw new Error(`pid ${pid} has cwd ${cwd}, not <root>${suffix}`)
+  return {
+    pid,
+    daemonId,
+    isolationDir,
+    projectRoot: directory.slice(0, -suffix.length),
+    cwdDeleted,
+  }
+}
+
+type ProcEntry = {
+  readonly pid: number
+  readonly parentPid: number
+  readonly argv: readonly string[]
+  readonly cwd: string
+}
+
+/** Buck2 processes (daemons and forkservers) whose every uid is the current user's. */
+const readOwnBuckProcesses = (): ProcEntry[] => {
+  const uid = process.getuid?.()
+  if (uid === undefined) throw new Error('buck2-daemon-reaper requires a POSIX uid')
+  const entries: ProcEntry[] = []
+  for (const name of readdirSync('/proc')) {
+    if (/^\d+$/u.test(name) === false) continue
+    try {
+      const status = readFileSync(`/proc/${name}/status`, 'utf8')
+      const uids = /^Uid:\s+(.*)$/mu.exec(status)?.[1]?.trim().split(/\s+/u)
+      if (uids === undefined || uids.every((value) => value === String(uid)) === false) continue
+      if (readlinkSync(`/proc/${name}/exe`).endsWith('/buck2') === false) continue
+      entries.push({
+        pid: Number(name),
+        parentPid: Number(/^PPid:\s+(\d+)$/mu.exec(status)?.[1]),
+        argv: readFileSync(`/proc/${name}/cmdline`, 'utf8')
+          .split('\0')
+          .filter((a) => a !== ''),
+        cwd: readlinkSync(`/proc/${name}/cwd`),
+      })
+    } catch {
+      // The process exited mid-scan.
+    }
+  }
+  return entries
+}
+
+export const listDaemonProcesses = (): DaemonProcess[] => {
+  const processes = readOwnBuckProcesses()
+  return processes
+    .filter((entry) => entry.argv.includes('daemon') && entry.argv.includes('--daemon-id'))
+    .map((entry) => {
+      const { cwdDeleted, ...daemon } = parseDaemonProcess(entry)
+      let rootIsDirectory = false
+      try {
+        rootIsDirectory = statSync(daemon.projectRoot).isDirectory()
+      } catch {
+        // Missing root.
+      }
+      return {
+        ...daemon,
+        rootGone: cwdDeleted === true || rootIsDirectory === false,
+        forkserverPid: processes.find(
+          (child) => child.parentPid === entry.pid && child.argv[1] === 'forkserver',
+        )?.pid,
+      }
+    })
+}
+
 const requireString = (value: unknown, field: string): string => {
   if (typeof value !== 'string' || value.length === 0)
     throw new Error(`buck2 status: ${field} is not a non-empty string`)
-  return value
-}
-
-const requirePid = (value: unknown, field: string): number => {
-  if (typeof value !== 'number' || Number.isSafeInteger(value) === false || value <= 0)
-    throw new Error(`buck2 status: ${field} is not a positive pid`)
   return value
 }
 
@@ -81,7 +187,6 @@ export const decodeDaemonStatus = (value: unknown): DaemonStatus => {
     'daemon_constraints' in value === false ||
     'active_commands' in value === false ||
     'project_root' in value === false ||
-    'isolation_dir' in value === false ||
     'start_time' in value === false
   )
     throw new Error('buck2 status: entry lacks daemon status fields')
@@ -96,62 +201,22 @@ export const decodeDaemonStatus = (value: unknown): DaemonStatus => {
     throw new Error('buck2 status: daemon_constraints.daemon_id missing')
   if (Array.isArray(value.active_commands) === false)
     throw new Error('buck2 status: active_commands is not an array')
+  const { pid } = processInfo
+  if (typeof pid !== 'number' || Number.isSafeInteger(pid) === false || pid <= 0)
+    throw new Error('buck2 status: process_info.pid is not a positive pid')
   const startTimeMs = Date.parse(requireString(value.start_time, 'start_time'))
   if (Number.isFinite(startTimeMs) === false) throw new Error('buck2 status: invalid start_time')
-  const forkserver = 'forkserver_pid' in value ? value.forkserver_pid : undefined
   return {
     daemonId: requireString(constraints.daemon_id, 'daemon_constraints.daemon_id'),
-    pid: requirePid(processInfo.pid, 'process_info.pid'),
-    forkserverPid:
-      forkserver === null || forkserver === undefined
-        ? undefined
-        : requirePid(forkserver, 'forkserver_pid'),
+    pid,
     projectRoot: requireString(value.project_root, 'project_root'),
-    isolationDir: requireString(value.isolation_dir, 'isolation_dir'),
     startTimeMs,
     activeCommandCount: value.active_commands.length,
   }
 }
 
-const run = (command: readonly string[], cwd: string) => {
-  const result = Bun.spawnSync([...command], { cwd, stdout: 'pipe', stderr: 'pipe' })
-  return {
-    exitCode: result.exitCode,
-    stdout: result.stdout.toString(),
-    stderr: result.stderr.toString(),
-  }
-}
-
-/**
- * `buck2 status --all` resolves `~/.buck/buckd` only from inside a project
- * root, so it runs from a throwaway empty root. Status never starts a daemon.
- */
-export const discoverDaemons = (buck2: string): DaemonStatus[] => {
-  const anchor = mkdtempSync(join(tmpdir(), 'buck2-daemon-reaper-'))
-  try {
-    writeFileSync(join(anchor, '.buckconfig'), '[cells]\n  root = .\n')
-    writeFileSync(join(anchor, '.buckroot'), '')
-    const result = run([buck2, 'status', '--all'], anchor)
-    if (result.exitCode !== 0)
-      throw new Error(`buck2 status --all exited ${result.exitCode}: ${result.stderr.trim()}`)
-    const parsed: unknown = JSON.parse(result.stdout)
-    if (Array.isArray(parsed) === false) throw new Error('buck2 status --all: expected an array')
-    return parsed.map(decodeDaemonStatus)
-  } finally {
-    rmSync(anchor, { recursive: true, force: true })
-  }
-}
-
-const rootExists = (root: string): boolean => {
-  try {
-    return statSync(root).isDirectory()
-  } catch {
-    return false
-  }
-}
-
 /** Newest mtime among the isolation's event-log entries (`InvocationPaths::log_dir`). */
-export const lastLogWriteMs = (daemon: DaemonStatus): number | undefined => {
+export const lastLogWriteMs = (daemon: DaemonProcess): number | undefined => {
   const logDir = join(daemon.projectRoot, 'buck-out', daemon.isolationDir, 'log')
   let entries: string[]
   try {
@@ -169,6 +234,37 @@ export const lastLogWriteMs = (daemon: DaemonStatus): number | undefined => {
     }
   }
   return newest
+}
+
+const statusTimeoutMs = 30_000
+
+/** Reads one daemon's status from its own root; any doubt makes it unreachable. */
+export const observeDaemon = ({
+  buck2,
+  daemon,
+}: {
+  readonly buck2: string
+  readonly daemon: DaemonProcess
+}): DaemonObservation => {
+  if (daemon.rootGone === true) return { _tag: 'gone', daemon }
+  const result = Bun.spawnSync([buck2, '--isolation-dir', daemon.isolationDir, 'status'], {
+    cwd: daemon.projectRoot,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: statusTimeoutMs,
+  })
+  if (result.exitCode !== 0)
+    return { _tag: 'unreachable', daemon, reason: `status-exit-${result.exitCode}` }
+  let status: DaemonStatus
+  try {
+    status = decodeDaemonStatus(JSON.parse(result.stdout.toString()))
+  } catch {
+    // Includes the plain-text "no buckd running" answer.
+    return { _tag: 'unreachable', daemon, reason: 'status-unreadable' }
+  }
+  if (status.pid !== daemon.pid || status.daemonId !== daemon.daemonId)
+    return { _tag: 'unreachable', daemon, reason: 'status-identity-mismatch' }
+  return { _tag: 'observed', daemon, status, lastLogWriteMs: lastLogWriteMs(daemon) }
 }
 
 /** RSS plus swap in KiB for the given processes; exited processes count 0. */
@@ -193,8 +289,8 @@ export type KillOutcome =
   | { readonly _tag: 'skipped'; readonly reason: string }
 
 /**
- * Re-reads the daemon from its own root immediately before `buck2 kill` and
- * aborts on any identity change, new command, or new log activity.
+ * Re-observes the daemon immediately before `buck2 kill` and aborts on any
+ * identity change, new command, or new log activity.
  */
 export const killIfStillIdle = ({
   buck2,
@@ -203,35 +299,24 @@ export const killIfStillIdle = ({
   now,
 }: {
   readonly buck2: string
-  readonly daemon: DaemonStatus
+  readonly daemon: DaemonProcess
   readonly idleThresholdMs: number
   readonly now: () => number
 }): KillOutcome => {
-  const scoped = [buck2, '--isolation-dir', daemon.isolationDir]
-  const recheck = run([...scoped, 'status'], daemon.projectRoot)
-  if (recheck.exitCode !== 0) return { _tag: 'skipped', reason: 'recheck-failed' }
-  let fresh: DaemonStatus
-  try {
-    fresh = decodeDaemonStatus(JSON.parse(recheck.stdout))
-  } catch {
-    // Includes the plain-text "no buckd running" answer.
-    return { _tag: 'skipped', reason: 'recheck-unreadable' }
-  }
-  if (
-    fresh.daemonId !== daemon.daemonId ||
-    fresh.pid !== daemon.pid ||
-    fresh.projectRoot !== daemon.projectRoot
-  )
-    return { _tag: 'skipped', reason: 'identity-changed' }
   const decision = decideReap({
-    observation: { daemon: fresh, rootExists: true, lastLogWriteMs: lastLogWriteMs(fresh) },
+    observation: observeDaemon({ buck2, daemon }),
     nowMs: now(),
     idleThresholdMs,
   })
   if (decision._tag !== 'kill-idle') return { _tag: 'skipped', reason: decision._tag }
-  const freedKiB = memoryKiB([fresh.pid, fresh.forkserverPid])
-  const kill = run([...scoped, 'kill'], daemon.projectRoot)
-  if (kill.exitCode !== 0) return { _tag: 'skipped', reason: `kill-exited-${kill.exitCode}` }
+  const freedKiB = memoryKiB([daemon.pid, daemon.forkserverPid])
+  const kill = Bun.spawnSync([buck2, '--isolation-dir', daemon.isolationDir, 'kill'], {
+    cwd: daemon.projectRoot,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: statusTimeoutMs,
+  })
+  if (kill.exitCode !== 0) return { _tag: 'skipped', reason: `kill-exit-${kill.exitCode}` }
   return { _tag: 'killed', freedKiB }
 }
 
@@ -243,6 +328,7 @@ export type ReapEntry = {
   readonly projectRoot: string
   readonly isolationDir: string
   readonly idleForMs: number | undefined
+  readonly reason: string | undefined
   /** RSS plus swap of daemon and forkserver when sampled. */
   readonly memoryKiB: number
   readonly outcome: KillOutcome | undefined
@@ -263,20 +349,15 @@ export const reap = ({
   /** Clock seam for tests; decisions and pre-kill rechecks read it separately. */
   readonly now?: () => number
 }): readonly ReapEntry[] =>
-  discoverDaemons(buck2)
+  listDaemonProcesses()
     .filter(
       (daemon) =>
         rootPrefixes.length === 0 ||
         rootPrefixes.some((prefix) => daemon.projectRoot.startsWith(prefix)),
     )
     .map((daemon) => {
-      const exists = rootExists(daemon.projectRoot)
       const decision = decideReap({
-        observation: {
-          daemon,
-          rootExists: exists,
-          lastLogWriteMs: exists === true ? lastLogWriteMs(daemon) : undefined,
-        },
+        observation: observeDaemon({ buck2, daemon }),
         nowMs: now(),
         idleThresholdMs,
       })
@@ -288,6 +369,7 @@ export const reap = ({
         projectRoot: daemon.projectRoot,
         isolationDir: daemon.isolationDir,
         idleForMs: 'idleForMs' in decision ? decision.idleForMs : undefined,
+        reason: 'reason' in decision ? decision.reason : undefined,
         memoryKiB: memoryKiB([daemon.pid, daemon.forkserverPid]),
         outcome:
           decision._tag === 'kill-idle' && dryRun === false
