@@ -105,11 +105,13 @@ Budget discovery and maintenance failures are structured advisory diagnostics:
 uncertain discovery aborts that budget round without eviction, and maintenance
 failure never rejects an otherwise successful publication.
 The `editor-view.host-budget` OpenTelemetry span records over-budget publication
-and the protected-share early warning at 80%. Budget span delivery is deferred,
-fire-and-forget, and drop-on-full, with at most four queued/running exporters per
-publisher. Hung exporters are killed after one second and reaped; publication
-never awaits them. The shared host ledger permits one span per content store and
-event kind every 60 seconds, across publisher processes. Suppressed event counts
+and the protected-share early warning at 80%. Budget, publication, phase, and
+watch-build spans share deferred, fire-and-forget, drop-on-full delivery, with at
+most four queued/running exporters per process. Hung exporters are killed after
+one second and keep their slots until reaped; publication and watch cycles never
+await delivery, and telemetry never changes real command exit codes.
+The shared host ledger permits one budget span per content store and event kind
+every 60 seconds, across publisher processes. Suppressed event counts
 are durable and appear on the next admitted span as
 `editor_view.host_budget.suppressed_events`; synchronous structured logs remain
 unsuppressed and include `otelSuppressedEvents`. Existing ledgers without delivery

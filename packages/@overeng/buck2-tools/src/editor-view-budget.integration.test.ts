@@ -54,6 +54,21 @@ const hostGraceMs = 300_000
 const hostRecencyMs = 86_400_000
 const setupBudgetBytes = 40_000_000_000
 
+const savedBudgetTraceContext = {
+  TRACEPARENT: process.env.TRACEPARENT,
+  OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
+}
+beforeAll(() => {
+  // Phase spans also share the bound; ambient CI tracing must not compete with capture fixtures.
+  delete process.env.TRACEPARENT
+  delete process.env.OTEL_TASK_TRACEPARENT
+})
+afterAll(() => {
+  for (const [key, value] of Object.entries(savedBudgetTraceContext))
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+})
+
 const pathExists = (path: string): boolean => {
   try {
     lstatSync(path)
@@ -1577,8 +1592,11 @@ describe('budget telemetry never waits for exporter delivery', () => {
           const deliveryTurn = Promise.withResolvers<void>()
           setImmediate(deliveryTurn.resolve)
           await deliveryTurn.promise
-          expect(children).toHaveLength(2)
-          for (const child of children) {
+          const budgetChildren = children.filter((child) =>
+            child.spawnargs.includes('editor-view.host-budget'),
+          )
+          expect(budgetChildren).toHaveLength(2)
+          for (const child of budgetChildren) {
             expect(child.exitCode).toBeNull()
             expect(child.signalCode).toBeNull()
             const status = spawnSync(ps, ['-p', String(child.pid), '-o', 'pid='], {
@@ -1592,7 +1610,10 @@ describe('budget telemetry never waits for exporter delivery', () => {
         },
         { hangBudget: true },
       )
-      expect(captured.exits).toEqual([
+      const budgetExits = captured.exits.filter(
+        (_, index) => captured.invocations[index]?.includes('editor-view.host-budget') === true,
+      )
+      expect(budgetExits).toEqual([
         { code: null, signal: 'SIGKILL' },
         { code: null, signal: 'SIGKILL' },
       ])
@@ -1602,6 +1623,16 @@ describe('budget telemetry never waits for exporter delivery', () => {
           expect.arrayContaining([
             'editor-view.host-budget',
             'editor_view.host_budget.event=editor-view.host-budget.over-budget',
+            'exit.code=0',
+            'ok',
+          ]),
+        ]),
+      )
+      expect(captured.invocations).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining([
+            'editor-view.phases',
+            'snapshot.created=true',
             'exit.code=0',
             'ok',
           ]),

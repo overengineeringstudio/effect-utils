@@ -53,7 +53,7 @@ import {
   reuseEditorViewSourceFiles,
   type EditorViewSourceFile,
 } from './editor-view-sharing.ts'
-import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
+import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath } from './real-path.ts'
 import { runFingerprintTool } from './typescript-runner.ts'
 
@@ -2473,7 +2473,7 @@ const publishEditorViewCoordinated = async ({
     phaseStartedAt = performance.now()
   }
   const emitPhaseSpan = ({ created }: { readonly created: boolean }): void => {
-    emitCompletedSpan({
+    emitCompletedSpanAsync({
       name: 'editor-view.phases',
       label: `phases ${options.viewName}`,
       attributes: [
@@ -3062,8 +3062,8 @@ export const publishEditorViews = async ({
         const index = next++
         const option = options[index] ?? fail('batch publication option is absent')
         const startedAt = performance.now()
-        const emitPublicationSpan = (exitCode: number): void =>
-          emitCompletedSpan({
+        const emitPublicationSpan = (exitCode: number): void => {
+          emitCompletedSpanAsync({
             name: 'editor-view.publish',
             label: `publish ${option.viewName}`,
             attributes: [['package.path', option.package]],
@@ -3071,6 +3071,7 @@ export const publishEditorViews = async ({
             endedAtMs: performance.timeOrigin + performance.now(),
             exitCode,
           })
+        }
         try {
           const coordinator =
             coordinators.get(makePaths(option).editorRoot) ?? fail('batch root lock is absent')

@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { accessSync, constants, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -99,13 +99,6 @@ const completedSpanArguments = ({
   `span.label=${label}`,
 ]
 
-/** Existing generic delivery remains synchronous and best effort. */
-export const emitCompletedSpan = (options: CompletedSpanOptions): void => {
-  const otelSpan = otelSpanPath()
-  if (otelSpan === undefined) return
-  spawnSync(otelSpan, completedSpanArguments(options), { stdio: 'ignore' })
-}
-
 const maxAsyncSpans = 4
 const asyncSpanTimeoutMs = 1_000
 let pendingAsyncSpans = 0
@@ -115,7 +108,8 @@ process.once('exit', () => {
 })
 
 /**
- * Budget-only fire-and-forget delivery. At most four queued/running exporters;
+ * Shared fire-and-forget delivery for every procedural publisher/watch span.
+ * At most four queued/running exporters across all callers in this process;
  * saturation drops the event. Referenced children are killed after one second
  * and keep their slot until `close` reaps them. No detached processes or queues.
  * Returns whether delivery was queued, not whether the exporter succeeded.

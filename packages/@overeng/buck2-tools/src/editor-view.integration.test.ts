@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import * as ChildProcess from 'node:child_process'
 import { createHash } from 'node:crypto'
 import * as fs from 'node:fs'
 import {
@@ -60,13 +61,23 @@ const fingerprintTool = requireTool('FINGERPRINT_BIN')
 
 let integrationBudgetState: string
 const savedIntegrationBudgetState = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+const savedIntegrationTraceContext = {
+  TRACEPARENT: process.env.TRACEPARENT,
+  OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
+}
 beforeAll(() => {
+  // Unrelated publications must not consume the shared exporter bound from CI's ambient trace.
+  delete process.env.TRACEPARENT
+  delete process.env.OTEL_TASK_TRACEPARENT
   integrationBudgetState = realpathSync(
     mkdtempSync(join(tmpdir(), 'editor-view-test-host-budget-')),
   )
   process.env.EDITOR_VIEW_HOST_BUDGET_STATE = integrationBudgetState
 })
 afterAll(() => {
+  for (const [key, value] of Object.entries(savedIntegrationTraceContext))
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
   if (savedIntegrationBudgetState === undefined) delete process.env.EDITOR_VIEW_HOST_BUDGET_STATE
   else process.env.EDITOR_VIEW_HOST_BUDGET_STATE = savedIntegrationBudgetState
   const unlock = (path: string): void => {
@@ -301,6 +312,73 @@ const makeSiblingView = ({
       workspaceAuthority,
       consumerCache: join(fixture.root, '.devenv', 'vite-cache', packageName),
     },
+  }
+}
+
+/** Observe actual exporter requests/close events without making publication await delivery. */
+const withPublisherTelemetry = async <TValue>(
+  fixture: Fixture,
+  run: (children: readonly ChildProcess.ChildProcess[]) => Promise<TValue>,
+  { hang = false }: { readonly hang?: boolean } = {},
+) => {
+  const bin = join(fixture.root, 'record-otel-span')
+  const capture = join(fixture.root, 'otel-spans.txt')
+  writeFileSync(
+    bin,
+    hang === true
+      ? `#!${requireTool('BUN_BIN')}\nimport { watch } from 'node:fs'\nwatch(${JSON.stringify(bin)}, () => {})\nawait Promise.withResolvers().promise\n`
+      : `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(capture)}\n`,
+  )
+  chmodSync(bin, 0o755)
+  const values = {
+    OTEL_SPAN_BIN: bin,
+    OTEL_SPAN_SPOOL_DIR: fixture.root,
+    OTEL_TASK_TRACEPARENT: '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01',
+    OTELITE_HTTP_ENDPOINT: '',
+    OTEL_EXPORTER_OTLP_ENDPOINT: '',
+  }
+  const saved = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]))
+  Object.assign(process.env, values)
+  const children: ChildProcess.ChildProcess[] = []
+  const invocations: (readonly string[])[] = []
+  const exits: Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>[] =
+    []
+  const nativeSpawn = ChildProcess.spawn
+  const spawned = vi.spyOn(ChildProcess, 'spawn').mockImplementation((...args) => {
+    const child = Reflect.apply(nativeSpawn, ChildProcess, args) as ChildProcess.ChildProcess
+    if (String(args[0]) === bin) {
+      children.push(child)
+      invocations.push(child.spawnargs.slice(1))
+      const exited = Promise.withResolvers<{
+        readonly code: number | null
+        readonly signal: NodeJS.Signals | null
+      }>()
+      child.once('close', (code, signal) => exited.resolve({ code, signal }))
+      exits.push(exited.promise)
+    }
+    return child
+  })
+  const settle = async () => {
+    const turn = Promise.withResolvers<void>()
+    setImmediate(turn.resolve)
+    await turn.promise
+    return Promise.all(exits)
+  }
+  try {
+    const value = await run(children)
+    const settled = await settle()
+    return {
+      value,
+      invocations,
+      exits: settled,
+      captured: existsSync(capture) === true ? readFileSync(capture, 'utf8') : '',
+    }
+  } finally {
+    await settle()
+    spawned.mockRestore()
+    for (const [key, value] of Object.entries(saved))
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
   }
 }
 
@@ -2407,29 +2485,12 @@ describe('editor view publisher', () => {
   })
 
   it('emits one completed editor-view.phases span per publication when tracing is active', async () => {
-    const otelDirectory = mkdtempSync(join(tmpdir(), 'editor-view-otel-'))
-    const otelSpan = join(otelDirectory, 'otel-span')
-    const capture = join(otelDirectory, 'captured.txt')
-    writeFileSync(otelSpan, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(capture)}\n`)
-    chmodSync(otelSpan, 0o755)
-    const savedPath = process.env.PATH
-    const savedTraceparent = process.env.TRACEPARENT
-    const savedSpool = process.env.OTEL_SPAN_SPOOL_DIR
-    const savedSpanBin = process.env.OTEL_SPAN_BIN
-    const savedTaskTraceparent = process.env.OTEL_TASK_TRACEPARENT
-    const savedHttpEndpoint = process.env.OTELITE_HTTP_ENDPOINT
-    const savedOtlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-    process.env.PATH = `${otelDirectory}:${savedPath ?? ''}`
-    process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
-    process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
-    delete process.env.OTEL_SPAN_BIN
-    delete process.env.OTEL_TASK_TRACEPARENT
-    delete process.env.OTELITE_HTTP_ENDPOINT
-    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
     const fixture = makeFixture()
     try {
-      await publishEditorView(fixture.options)
-      const captured = readFileSync(capture, 'utf8')
+      const { captured, invocations } = await withPublisherTelemetry(fixture, () =>
+        publishEditorView(fixture.options),
+      )
+      expect(invocations).toHaveLength(1)
       expect(captured).toContain('emit-span effect-utils-devenv editor-view.phases')
       expect(captured).toContain('--attr-bool snapshot.created=true')
       expect(captured).toContain('--attr-int phase.fingerprint.ms=')
@@ -2438,22 +2499,70 @@ describe('editor view publisher', () => {
       expect(captured).toContain('--attr-string span.label=phases tui-core')
     } finally {
       cleanup(fixture)
-      process.env.PATH = savedPath
-      if (savedTraceparent === undefined) delete process.env.TRACEPARENT
-      else process.env.TRACEPARENT = savedTraceparent
-      if (savedSpool === undefined) delete process.env.OTEL_SPAN_SPOOL_DIR
-      else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
-      if (savedSpanBin === undefined) delete process.env.OTEL_SPAN_BIN
-      else process.env.OTEL_SPAN_BIN = savedSpanBin
-      if (savedTaskTraceparent === undefined) delete process.env.OTEL_TASK_TRACEPARENT
-      else process.env.OTEL_TASK_TRACEPARENT = savedTaskTraceparent
-      if (savedHttpEndpoint === undefined) delete process.env.OTELITE_HTTP_ENDPOINT
-      else process.env.OTELITE_HTTP_ENDPOINT = savedHttpEndpoint
-      if (savedOtlpEndpoint === undefined) delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-      else process.env.OTEL_EXPORTER_OTLP_ENDPOINT = savedOtlpEndpoint
-      rmSync(otelDirectory, { recursive: true, force: true })
     }
   })
+
+  it.each(['single', 'batch'] as const)(
+    'finishes %s publication while exporters are hung, then bounds and reaps delivery',
+    async (mode) => {
+      const fixture = makeFixture()
+      try {
+        const captured = await withPublisherTelemetry(
+          fixture,
+          async (children) => {
+            const records =
+              mode === 'single'
+                ? [await publishEditorView(fixture.options)]
+                : await publishEditorViews({ options: [fixture.options] })
+            expect(records).toHaveLength(1)
+            expect(currentTarget(fixture)).toBe(records[0]?.snapshot)
+            expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+            const turn = Promise.withResolvers<void>()
+            setImmediate(turn.resolve)
+            await turn.promise
+            expect(children).toHaveLength(mode === 'single' ? 1 : 2)
+            for (const child of children) {
+              expect(child.exitCode).toBeNull()
+              expect(child.signalCode).toBeNull()
+            }
+          },
+          { hang: true },
+        )
+        expect(captured.exits).toEqual(
+          Array.from({ length: mode === 'single' ? 1 : 2 }, () => ({
+            code: null,
+            signal: 'SIGKILL',
+          })),
+        )
+        expect(captured.invocations).toEqual(
+          expect.arrayContaining([
+            expect.arrayContaining([
+              'editor-view.phases',
+              'snapshot.created=true',
+              'package.path=packages/@overeng/tui-core',
+              'span.label=phases tui-core',
+              'exit.code=0',
+              'ok',
+            ]),
+          ]),
+        )
+        if (mode === 'batch')
+          expect(captured.invocations).toEqual(
+            expect.arrayContaining([
+              expect.arrayContaining([
+                'editor-view.publish',
+                'package.path=packages/@overeng/tui-core',
+                'span.label=publish tui-core',
+                'exit.code=0',
+                'ok',
+              ]),
+            ]),
+          )
+      } finally {
+        cleanup(fixture)
+      }
+    },
+  )
 
   it('republishes a distinct snapshot when only declared backing-root bytes change', async () => {
     const fixture = makeFixture()
