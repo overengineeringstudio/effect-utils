@@ -806,25 +806,39 @@ path-based removal, including its pre-existing ancestor-symlink TOCTOU exposure.
 
 ```bash
 MEGAREPO_STORE=<owner store> mr store activity snapshot --output <absolute file>
+MEGAREPO_STORE=<owner store> mr store activity snapshot --stdout
 ```
 
-Root producer of foreign-process evidence. Writes atomically (temp + rename,
-mode 0644) a `megarepo.workspace-activity.v2` manifest: producer `mr-process`
-with the package version, host epoch, `capturedAt`/`expiresAt` (TTL at most
-5 min), `complete`, `errors`, and `process` claims for every path under the
-store root referenced by any process cwd, root, fd, or map. It executes no
-hooks or external commands. Without full `/proc` visibility (non-root or any
-unreadable process) the manifest is still written with `complete: false`;
-consumers then treat activity as unknown and keep. `--output` is a file path,
-not an output mode.
+Process-only producer of foreign-process evidence. Requires exactly one of
+`--output` and `--stdout`. `--output` retains trusted publication semantics:
+the path must be a normalized absolute file path in a canonical root-controlled
+directory; publication uses exclusive temp creation + rename and mode 0644.
+`--stdout` emits only the exact manifest JSON plus a newline, without writing
+a manifest file or checking publication-directory ownership.
 
-Ownership contract: the host owner (dotfiles root oneshot, run right before
-hygiene plan and apply) owns the output file and its directory as root,
-readable but not writable by the store owner. The owner admits it via
-`gc-config.json` `generatedArtifacts.manifestPath` and
-`agentLivenessProducers: ["mr-process"]`; plan and apply use it for foreign
+Both destinations encode the same `megarepo.workspace-activity.v2` manifest:
+producer `mr-process` with the package version, host epoch,
+`capturedAt`/`expiresAt` (TTL at most 5 min), `complete`, `errors`,
+`processCoverage: "all-uids"`, `processRoots`, `processIdentities`, and
+`process` claims for every path under the store root referenced by any process
+cwd, root, fd, or map. The command executes no hooks or external commands.
+Without full `/proc` visibility the manifest is still emitted with
+`complete: false`; consumers treat activity as unknown and keep.
+
+Capture and publication are separate trust boundaries. `--stdout` allows a
+dedicated non-root collector with sufficient process access (for example Linux
+ambient `CAP_SYS_PTRACE` and `CAP_DAC_READ_SEARCH`) to redirect untrusted JSON
+into a collector-owned private staging directory. A separate root publisher
+must validate the capture and copy it into the final root-controlled location.
+Capturing as non-root does not change the schema or confer trust, and avoids
+giving the host-PID collector UID-0 write authority through `/proc/<pid>/root`.
+
+Reader ownership contract is unchanged: the published file and its directory
+chain must be root-controlled, readable but not writable by the store owner.
+The owner admits it via `gc-config.json` `generatedArtifacts.manifestPath`
+and `agentLivenessProducers: ["mr-process"]`; plan and apply use it for foreign
 processes and still run their own fresh process checks before deletion. The
-root snapshot also records each scanned process's PID and kernel start-time
+snapshot records each scanned process's PID and kernel start-time
 as `processIdentities`. An unreadable owner-UID process is admitted only
 when that exact identity is in the still-unexpired root snapshot, whose
 cwd/root/fd/maps claims remain protective. Uncovered unreadable processes
