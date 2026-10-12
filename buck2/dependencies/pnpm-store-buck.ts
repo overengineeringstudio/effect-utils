@@ -228,10 +228,12 @@ const renderView = ({
       for (const key of Object.values(workspaceEdges(edgesFor({ entry, platform })))) keys.add(key)
     }
     return Object.fromEntries(
-      [...keys].toSorted().map((key) => [
-        key,
-        view.workspaceTrees[key] ?? fail(`view ${view.importer} has no workspace tree ${key}`),
-      ]),
+      [...keys]
+        .toSorted()
+        .map((key) => [
+          key,
+          view.workspaceTrees[key] ?? fail(`view ${view.importer} has no workspace tree ${key}`),
+        ]),
     )
   })
   return [

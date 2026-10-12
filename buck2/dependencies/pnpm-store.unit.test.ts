@@ -401,7 +401,9 @@ describe('required-edge platform availability', () => {
       expect(owner.platforms).toEqual(pnpmPlatforms)
       expect(dependency.platforms).toEqual(linuxPlatforms)
       for (const platform of pnpmPlatforms) {
-        const direct = owner.variants.find((variant) => variant.platforms.includes(platform))!.direct
+        const direct = owner.variants.find((variant) =>
+          variant.platforms.includes(platform),
+        )!.direct
         expect(direct).toEqual(
           linuxPlatforms.includes(platform)
             ? {
