@@ -10,6 +10,14 @@ bun packages/@overeng/ai-gateway-edge/src/cli.ts serve \
 printf '%s' "$CONSUMER_TOKEN" | bun packages/@overeng/ai-gateway-edge/src/cli.ts hash-token
 ```
 
+The public flake package is `ai-gateway-edge`; its executable preserves the same `serve --config --bind [--metrics-bind]` and `hash-token` interface:
+
+```sh
+nix run github:overengineeringstudio/effect-utils#ai-gateway-edge -- --help
+```
+
+The package wraps the published Buck CLI product with Bun. It becomes available when the product publisher records the artifact in the cache manifest; the wrapper does not rebuild source or inject listener settings, consumers, credentials or environment overrides.
+
 The ports above are illustrative. All listener addresses and the upstream are runtime inputs. JSON configuration contains no bearer plaintext:
 
 ```json

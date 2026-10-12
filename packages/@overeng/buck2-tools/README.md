@@ -32,9 +32,9 @@ changes to transitive workspace source, declarations, or dependency bytes still
 select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
 
-Batch publication prepares one private candidate at a time and serializes
-commits within each editor state root. Independent root fingerprints within
-that candidate still run concurrently. All fingerprint subprocesses
+Batch publication prepares up to four private candidates concurrently and
+serializes commits within each editor state root. Independent root fingerprints
+within each candidate also run concurrently. All fingerprint subprocesses
 for a candidate settle before hardening, promotion, or failure cleanup can
 change it. A failed fingerprint does not release the candidate or its state-root
 lock while another payload walk remains active.
@@ -45,6 +45,14 @@ active workers' package, view, state root, phase, and private candidate. Payload
 failures capture these states when the first fingerprint child fails, before
 waiting for the remaining children; the original error remains available as
 the cause.
+
+Tree stability compares entry type, device, modification/change times, and
+regular-file size. File and symlink inode identities remain checked; directory
+inode numbers are not persistent on every filesystem and are not a content
+stability signal. In particular, overlayfs without persistent inode mapping can
+reassign a directory inode on cache eviction without changing its contents or
+other metadata. Byte digests, link-target checks, and byte-ownership proofs are
+unchanged.
 
 Normal per-view retention keeps the current generation plus the configured
 number of previous generations, a **five-minute grace period from supersession**,
