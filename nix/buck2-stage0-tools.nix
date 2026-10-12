@@ -19,14 +19,18 @@ let
     builtins.readFile (repositoryRoot + "/rust-toolchain.toml")
   );
   recipeFile = pkgs.writeText "buck2-stage0-tools.nix" (builtins.readFile ./buck2-stage0-tools.nix);
-  mkCrateFileset = packageRoot: lib.fileset.unions [
-    (packageRoot + "/Cargo.toml")
-    (lib.fileset.fileFilter (file: file.hasExt "rs") (packageRoot + "/src"))
-  ];
-  mkRustFileset = definition: lib.fileset.unions (
-    [ sharedRustFileset ]
-    ++ map mkCrateFileset ([ definition.packageRoot ] ++ definition.dependencyRoots)
-  );
+  mkCrateFileset =
+    packageRoot:
+    lib.fileset.unions [
+      (packageRoot + "/Cargo.toml")
+      (lib.fileset.fileFilter (file: file.hasExt "rs") (packageRoot + "/src"))
+    ];
+  mkRustFileset =
+    definition:
+    lib.fileset.unions (
+      [ sharedRustFileset ]
+      ++ map mkCrateFileset ([ definition.packageRoot ] ++ definition.dependencyRoots)
+    );
   mkSourceInputs = definition: sharedRootFiles ++ lib.fileset.toList (mkRustFileset definition);
   mkSource =
     definition:
@@ -97,7 +101,12 @@ let
       # only this crate and its actual path dependencies, with the root lock
       # remaining the dependency authority.
       postPatch = ''
-        awk -v members='${builtins.toJSON ([ workspaceMember ] ++ map (root: lib.removePrefix "${toString workspaceRoot}/" (toString root)) dependencyRoots)}' '
+        awk -v members='${
+          builtins.toJSON (
+            [ workspaceMember ]
+            ++ map (root: lib.removePrefix "${toString workspaceRoot}/" (toString root)) dependencyRoots
+          )
+        }' '
           /^members = \[/ { print "members = " members; skipping = 1; next }
           skipping && /^\]/ { skipping = 0; next }
           !skipping { print }
