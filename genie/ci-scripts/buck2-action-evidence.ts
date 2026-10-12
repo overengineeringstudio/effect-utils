@@ -19,9 +19,15 @@ export const darwinUnsandboxedCategories = [
   'tsgo_emit_darwin_unsandboxed',
   'package_tree_darwin_unsandboxed',
 ] as const
+export const nixOuterSandboxedCategories = [
+  'tsgo_typecheck_nix_outer_sandboxed',
+  'tsgo_emit_nix_outer_sandboxed',
+  'package_tree_nix_outer_sandboxed',
+] as const
 export const actionExclusionReasons = [
   'local-materialization-policy',
   'darwin-unsandboxed',
+  'nix-outer-sandboxed',
 ] as const
 export type ActionExclusionReason = (typeof actionExclusionReasons)[number]
 export type ActionExclusionCounts = Record<ActionExclusionReason, number>
@@ -30,12 +36,15 @@ export const actionExclusionReason = (
 ): ActionExclusionReason | null =>
   darwinUnsandboxedCategories.some((excluded) => excluded === category) === true
     ? 'darwin-unsandboxed'
-    : localMaterializationCategories.some((excluded) => excluded === category) === true
-      ? 'local-materialization-policy'
-      : null
+    : nixOuterSandboxedCategories.some((excluded) => excluded === category) === true
+      ? 'nix-outer-sandboxed'
+      : localMaterializationCategories.some((excluded) => excluded === category) === true
+        ? 'local-materialization-policy'
+        : null
 export const zeroActionExclusionCounts = (): ActionExclusionCounts => ({
   'local-materialization-policy': 0,
   'darwin-unsandboxed': 0,
+  'nix-outer-sandboxed': 0,
 })
 export const countActionExclusions = (
   actions: readonly { category: string | null }[],

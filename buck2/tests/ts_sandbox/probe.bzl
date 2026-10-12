@@ -5,12 +5,13 @@ load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constra
 load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
 
 def _ts_sandbox_probe_impl(ctx):
-    if ts_action_admission_status(ctx) != "linux-bwrap":
-        # Native Darwin actions still run; containment is explicitly unsupported.
+    status = ts_action_admission_status(ctx)
+    if status != "linux-bwrap":
+        # Neither native Darwin nor a broader Nix boundary proves per-action containment.
         unsupported = ctx.actions.write_json("unsupported.json", {
             "status": "unsupported",
-            "boundary": "darwin-unsandboxed",
-            "reason": "Linux Bubblewrap containment probes require Linux",
+            "boundary": status,
+            "reason": "Per-action Bubblewrap probes require linux-bwrap admission",
         })
         return [DefaultInfo(default_output = unsupported)]
     sandbox = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo]

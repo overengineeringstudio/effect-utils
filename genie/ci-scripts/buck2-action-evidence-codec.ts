@@ -49,11 +49,13 @@ export const boolean = (value: unknown): boolean => (typeof value === 'boolean' 
 export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : invalid())
 export const decodeActionExclusionCounts = (value: unknown): ActionExclusionCounts => {
   const darwinCount = field(value, 'darwin-unsandboxed')
+  const nixOuterCount = field(value, 'nix-outer-sandboxed')
   return {
     'local-materialization-policy': integer(field(value, 'local-materialization-policy')),
     // Retained artifacts predate Darwin-specific categories; full rows still
     // validate this zero against the current category policy below.
     'darwin-unsandboxed': darwinCount === undefined ? 0 : integer(darwinCount),
+    'nix-outer-sandboxed': nixOuterCount === undefined ? 0 : integer(nixOuterCount),
   }
 }
 const nullableText = (value: unknown, grammar = /^[a-zA-Z0-9_.:-]+$/): string | null => {
@@ -225,9 +227,11 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
     })),
   }
   const actions = values.map(decodeAction)
-  // Retained artifacts predate policy fields; complete rows recover the same category policy.
+  // Legacy policy fields can be recovered, but outer Nix categories require
+  // explicit counts: absent counters decode to zero and must agree with rows.
   const actualExclusions = countActionExclusions(actions)
-  if (field(value, 'excludedByDesign') === undefined) header.excludedByDesign = actualExclusions
+  if (field(value, 'excludedByDesign') === undefined)
+    header.excludedByDesign = { ...actualExclusions, 'nix-outer-sandboxed': 0 }
   if (
     header.complete &&
     actionExclusionReasons.some(
@@ -241,7 +245,7 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
       actions.filter((action) => action.buildId === invocation.buildId),
     )
     if (field(invocationValues[index], 'excludedByDesign') === undefined)
-      invocation.excludedByDesign = exclusions
+      invocation.excludedByDesign = { ...exclusions, 'nix-outer-sandboxed': 0 }
     if (
       header.complete &&
       actionExclusionReasons.some(

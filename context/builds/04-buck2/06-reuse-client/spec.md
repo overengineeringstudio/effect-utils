@@ -296,21 +296,27 @@ to describe omitted **representatives**, not missing full-artifact rows.
 Populate and replay invocations retain proof context labels; repeated native
 logs are deduplicated by build ID, preserving the first context.
 Summary and per-invocation `excludedByDesign` contain
-`{ "local-materialization-policy": <count>, "darwin-unsandboxed": <count> }`.
-Darwin TS execution uses the named exclusion defined by
+`{ "local-materialization-policy": <count>, "darwin-unsandboxed": <count>, "nix-outer-sandboxed": <count> }`.
+Darwin TS execution and explicitly selected outer Nix TS execution use the named
+exclusions defined by
 [the execution policy](../05-execution/spec.md#typescript-containment-and-platform-admission-buildbuck-r04):
-it runs locally but cannot enter shared-cache or hermetic shared immutable-store
-admission. Worktree-local editor snapshots remain reusable on Darwin; this
-exclusion does not alter existing npm/archive or Nix product boundaries.
+both run locally but cannot enter shared-cache or hermetic shared immutable-store
+admission. `nix-outer-sandboxed` trusts the declared outer Nix derivation sandbox,
+not the admitted per-action Linux `linux-bwrap` boundary required by BUILD.BUCK-R04.
+Only the exact `tsgo_typecheck_nix_outer_sandboxed`, `tsgo_emit_nix_outer_sandboxed`
+and `package_tree_nix_outer_sandboxed` categories receive this exclusion; unknown
+or unrelated categories do not. Worktree-local editor snapshots remain reusable
+on Darwin; these exclusions do not alter existing npm/archive or Nix product boundaries.
 Native `counts` still retain every observed outcome; the exclusion counters
 are a separate policy axis, not an alternative execution-kind mapping.
-Retained schema-1 full artifacts without policy fields derive exclusions from
-their complete category rows. Older bounded summaries may omit
-`excludedByDesign`: their sampled rows cannot reconstruct a complete total,
-so absence means unavailable, not zero. New collectors always emit the counters.
-Retained counters predating Darwin-specific categories decode a missing
-`darwin-unsandboxed` key as zero; complete artifact rows must agree with that
-count. New collectors always emit both keys.
+Retained schema-1 full artifacts without policy fields derive legacy exclusions from
+their complete category rows, but never infer an outer Nix counter. Older bounded
+summaries may omit `excludedByDesign`: their sampled rows cannot reconstruct a
+complete total, so absence means unavailable, not zero. Missing `darwin-unsandboxed`
+and `nix-outer-sandboxed` keys in retained counters decode as zero; complete artifact
+rows must agree with those counts. Thus outer Nix actions without explicit matching
+summary, header and invocation counters cannot claim complete evidence. New collectors
+always emit all three keys.
 
 Admission evidence is independent of native execution evidence. Before writer
 fail-closed handling, every direct invocation that probes cache appends a UTF-8

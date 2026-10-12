@@ -78,11 +78,19 @@ Darwin TS check/emit/package-tree action categories carry
 [the execution policy](../05-execution/spec.md#typescript-containment-and-platform-admission-buildbuck-r04).
 Their explicit `_darwin_unsandboxed` category suffix identifies selected
 execution policy without inferring executor OS from the target configuration.
-Other rows carry `null`. Summary, full-artifact header, and invocation
-`excludedByDesign` counters report both named reasons independently of native
-outcome counts. Excluded actions remain visible but cannot become avoidable
-local-execution candidates or eligible warm99 hits/misses. Local-action-cache
-hits remain native reuse outcomes, not fresh local executions.
+The exact `tsgo_typecheck_nix_outer_sandboxed`, `tsgo_emit_nix_outer_sandboxed`
+and `package_tree_nix_outer_sandboxed` categories carry
+`exclusionReason: "nix-outer-sandboxed"`. This mode trusts the declared outer
+Nix derivation sandbox, not the admitted per-action Linux `linux-bwrap` boundary
+required by BUILD.BUCK-R04. It does not admit Buck shared-cache reuse.
+Other rows, including unknown mode spellings and unrelated categories, carry
+`null`. Summary, full-artifact header, and invocation `excludedByDesign` counters
+report all three named reasons independently of native outcome counts. Retained
+counters missing the outer Nix key decode it as zero; complete full-artifact rows
+must match, and missing policy fields cannot infer outer Nix counts.
+Excluded actions remain visible but cannot become avoidable local-execution
+candidates or eligible warm99 hits/misses. Local-action-cache hits remain native
+reuse outcomes, not fresh local executions.
 
 `no-native-logs` means no native Buck invocation was observed, not a cache hit.
 In-Nix product jobs report `remote-cache-disabled-by-design` with no action rows:

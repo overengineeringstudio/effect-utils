@@ -2,7 +2,7 @@
 set -euo pipefail
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
-phase="$(nix eval --impure --raw --expr '
+contract="$(nix eval --impure --json --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
     flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
@@ -11,20 +11,26 @@ phase="$(nix eval --impure --raw --expr '
       inherit pkgs;
       buck2 = pkgs.buck2;
     };
-  in (mkProduct {
-    capabilities = repo;
-    pnpmArchives = repo;
-    repositorySource = repo;
-    runtimeClosureTarget = "root//:runtime";
-    producerCommit = "0123456789abcdef0123456789abcdef01234567";
-    product = {
-      name = "core-budget-fixture";
-      kind = "javascript";
-      target = "root//:product";
-      outputName = "artifact.tar";
+    product = mkProduct {
+      capabilities = repo;
+      pnpmArchives = repo;
+      repositorySource = repo;
+      runtimeClosureTarget = "root//:runtime";
+      producerCommit = "0123456789abcdef0123456789abcdef01234567";
+      product = {
+        name = "core-budget-fixture";
+        kind = "javascript";
+        target = "root//:product";
+        outputName = "artifact.tar";
+      };
     };
-  }).buildPhase
+  in {
+    phase = product.buildPhase;
+    isLinux = pkgs.stdenv.hostPlatform.isLinux;
+  }
 ')"
+phase="$(jq -r .phase <<<"$contract")"
+is_linux="$(jq -r .isLinux <<<"$contract")"
 # Check all three build paths in the evaluated derivation, not the Nix source.
 count=0
 while IFS= read -r line; do
@@ -33,6 +39,11 @@ while IFS= read -r line; do
     [[ "${line%% build *}" != *'--config'* ]]
     [[ "$line" == *' build -j "$NIX_BUILD_CORES" --config build.num_tokio_workers="$NIX_BUILD_CORES"'* ]]
     [[ "$line" == *'--local-only --no-remote-cache'* ]]
+    if [[ "$is_linux" == true ]]; then
+      [[ "$line" == *'--config ts_action.outer_sandbox=nix-build/v1'* ]]
+    else
+      [[ "$line" != *'ts_action.outer_sandbox='* ]]
+    fi
     count=$((count + 1))
   fi
 done <<<"$phase"

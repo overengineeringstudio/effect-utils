@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   darwinUnsandboxedCategories,
   localMaterializationCategories,
+  nixOuterSandboxedCategories,
   type ActionInvocation,
   type ActionRecord,
 } from './buck2-action-evidence.ts'
@@ -204,6 +205,7 @@ describe('native Buck cache evidence projection', () => {
         expect(summary.excludedByDesign).toEqual({
           'local-materialization-policy': 1,
           'darwin-unsandboxed': 0,
+          'nix-outer-sandboxed': 0,
         })
         expect(summary.invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
         expect(invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
@@ -223,6 +225,7 @@ describe('native Buck cache evidence projection', () => {
     expect(eligible.excludedByDesign).toEqual({
       'local-materialization-policy': 0,
       'darwin-unsandboxed': 0,
+      'nix-outer-sandboxed': 0,
     })
     expect(eligible.actions[0]?.exclusionReason).toBeNull()
   })
@@ -248,6 +251,7 @@ describe('native Buck cache evidence projection', () => {
       expect(summary.excludedByDesign).toEqual({
         'local-materialization-policy': 0,
         'darwin-unsandboxed': 1,
+        'nix-outer-sandboxed': 0,
       })
       expect(summary.actions[0]?.exclusionReason).toBe('darwin-unsandboxed')
       expect(summary.counts.local).toBe(1)
@@ -258,6 +262,59 @@ describe('native Buck cache evidence projection', () => {
     for (const category of ['tsgo_typecheck', 'tsgo_emit', 'rust_compile']) {
       const summary = project([nativeEvent('SpanEnd', actionEnd({ name: { category } }))])
       expect(summary.actions[0]?.exclusionReason).toBeNull()
+    }
+  })
+
+  it('names outer Nix TS exclusions without changing raw native outcomes or excluding lookalikes', () => {
+    for (const executionKind of [1, 3, 8, 10]) {
+      const rows: ActionRecord[] = []
+      const summaries = nixOuterSandboxedCategories.map((category, index) => {
+        const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+        projector.add(
+          nativeEvent(
+            'SpanEnd',
+            actionEnd({
+              name: { category },
+              execution_kind: executionKind,
+              cache_upload_result: 0,
+              commands: executionKind === 10 ? [] : [fixtureCommand],
+            }),
+            index,
+            `outer-${index}`,
+          ),
+        )
+        return projector.finish()
+      })
+      const outcome =
+        executionKind === 3 ? 'remote-hit' : executionKind === 10 ? 'local-cache' : 'local'
+      for (const [index, summary] of summaries.entries()) {
+        expect(summary.excludedByDesign).toEqual({
+          'local-materialization-policy': 0,
+          'darwin-unsandboxed': 0,
+          'nix-outer-sandboxed': 1,
+        })
+        expect(summary.invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
+        expect(rows[index]).toMatchObject({
+          executionKind,
+          cacheUploadResult: 0,
+          outcome,
+          exclusionReason: 'nix-outer-sandboxed',
+        })
+        expect(summary.counts[outcome]).toBe(1)
+      }
+      const merged = summaries.reduce((previous, next) => mergeCacheEvidence({ previous, next }))
+      expect(merged.excludedByDesign?.['nix-outer-sandboxed']).toBe(3)
+      expect(decodeCacheEvidence(merged)).toEqual(merged)
+    }
+    for (const category of [
+      'tsgo_emit',
+      'tsgo_emit_nix_outer_sandboxed_unknown',
+      'tsgo_typecheck_nix_outer_sandboxed_v2',
+      'rust_compile_nix_outer_sandboxed',
+    ]) {
+      const summary = project([nativeEvent('SpanEnd', actionEnd({ name: { category } }))])
+      expect(summary.actions[0]?.exclusionReason).toBeNull()
+      expect(summary.excludedByDesign?.['nix-outer-sandboxed']).toBe(0)
     }
   })
 
@@ -290,11 +347,12 @@ describe('native Buck cache evidence projection', () => {
     expect(merged.excludedByDesign).toEqual({
       'local-materialization-policy': 200,
       'darwin-unsandboxed': 0,
+      'nix-outer-sandboxed': 0,
     })
     expect(merged.counts['remote-hit']).toBe(200)
     expect(merged.invocations.map((invocation) => invocation.excludedByDesign)).toEqual([
-      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0 },
-      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0 },
+      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0, 'nix-outer-sandboxed': 0 },
+      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0, 'nix-outer-sandboxed': 0 },
     ])
     expect(decodeCacheEvidence(merged)).toEqual(merged)
     expect(mergeCacheEvidence({ previous: merged, next })).toEqual(merged)
@@ -777,7 +835,11 @@ describe('native Buck cache evidence projection', () => {
         context: 'populate',
         freshRoot: true,
         actionCount: 100,
-        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+        excludedByDesign: {
+          'local-materialization-policy': 0,
+          'darwin-unsandboxed': 0,
+          'nix-outer-sandboxed': 0,
+        },
         complete: true,
         startedAt: 1700000000000,
         completedAt: 1700000003000,
