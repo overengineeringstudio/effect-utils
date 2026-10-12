@@ -80,8 +80,10 @@ export const decideReap = ({
 
 /**
  * Recognizes a pinned daemon from its argv (`… --isolation-dir <i> daemon
- * --daemon-id <id> …`) and cwd, which the daemon sets to `<root>/buck-out/<i>`.
- * Linux appends ` (deleted)` to an unlinked cwd.
+ * --daemon-id <id> …`) and cwd. The daemon chdirs to its project root
+ * (`buck2_daemon/src/daemon.rs:245`); established daemons are observed in
+ * `<root>/buck-out/<i>`. Linux appends ` (deleted)` to an unlinked cwd. The derived root is only a
+ * candidate: a kill requires status read from it to report this pid and id.
  */
 export const parseDaemonProcess = ({
   pid,
@@ -105,13 +107,11 @@ export const parseDaemonProcess = ({
   const cwdDeleted = cwd.endsWith(' (deleted)')
   const directory = cwdDeleted === true ? cwd.slice(0, -' (deleted)'.length) : cwd
   const suffix = `/buck-out/${isolationDir}`
-  if (directory.endsWith(suffix) === false)
-    throw new Error(`pid ${pid} has cwd ${cwd}, not <root>${suffix}`)
   return {
     pid,
     daemonId,
     isolationDir,
-    projectRoot: directory.slice(0, -suffix.length),
+    projectRoot: directory.endsWith(suffix) ? directory.slice(0, -suffix.length) : directory,
     cwdDeleted,
   }
 }

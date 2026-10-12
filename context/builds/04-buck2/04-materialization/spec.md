@@ -315,7 +315,7 @@ stopping Buck and relies on its process probe to veto a held worktree.
 
 ```text
 scripts/buck2-daemon-reaper.ts --buck2 <raw buck2> [--idle-seconds 10800]
-  -> the user's live daemon processes: argv daemon id + isolation, cwd <root>/buck-out/<i>
+  -> the user's live daemon processes: argv daemon id + isolation, cwd <root>[/buck-out/<i>]
   -> per daemon: root gone           -> report-gone (pid, daemon id, root, RSS + swap)
                  status fails/differs -> keep-unreachable (reason)
                  active command      -> keep-active

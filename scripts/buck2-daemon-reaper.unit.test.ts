@@ -106,8 +106,8 @@ describe('parseDaemonProcess', () => {
     ).toBe(true)
   })
 
-  it('refuses a cwd outside the isolation buck-out', () => {
-    expect(() => parseDaemonProcess({ pid: 100, argv, cwd: '/work/root' })).toThrow('not <root>')
+  it('uses the cwd itself as the candidate root while the daemon works from its root', () => {
+    expect(parseDaemonProcess({ pid: 100, argv, cwd: '/work/root' }).projectRoot).toBe('/work/root')
   })
 })
 

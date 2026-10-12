@@ -57,13 +57,14 @@ const waitFor = async (description: string, condition: () => boolean, timeoutMs 
 const processExists = (pid: number | undefined) =>
   pid !== undefined && existsSync(`/proc/${pid}`) === true
 
+// Three sequential `buck2 kill`s exceed the 5 s default hook timeout on a loaded host.
 afterAll(() => {
   for (const client of lspClients) client.stdin.end()
   // The gone root is recreated so the CLI can address and stop its daemon.
   for (const name of ['idle', 'editor', 'gone']) buck(makeRoot(name), ['kill'])
   rmSync(scratch, { recursive: true, force: true })
   rmSync(join(homedir(), '.buck', 'buckd', scratch.slice(1)), { recursive: true, force: true })
-})
+}, 120_000)
 
 it('kills only the idle daemon and its forkserver, keeps an editor session, reports a gone root', async () => {
   const idle = makeRoot('idle')
