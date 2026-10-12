@@ -70,6 +70,16 @@ The local Store Cache path is configurable so operators can place it on an
 appropriate volume. Storage placement is excluded from Materialization Profile
 identity: moving or discarding a cache does not change dependency identity.
 
+Live pnpm tasks select a job-local Store Cache only when `GITHUB_ACTIONS=true`
+or `PNPM_JOB_LOCAL_STORE=1`. Its path is `<root>/.devenv/pnpm-store-pure-v1`,
+with a workspace suffix for nested Materialization Roots. Other CI runners must
+set the explicit opt-in to preserve job isolation. `CI=1` alone is a non-watch
+execution flag, not a Store Cache ownership boundary; dev-host tasks retain the
+same-user shared store. `PNPM_SHARED_STORE_DIR` overrides the shared path;
+otherwise it is `$HOME/.local/share/pnpm/store-shared-v1`, or
+`$HOME/.local/share/pnpm/store` for the opted-in global virtual store. Job-local
+mode disables global virtual store reuse regardless of local opt-ins.
+
 ## Import Policy
 
 | Context          | Import method   | Gate                                      |

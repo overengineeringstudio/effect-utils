@@ -81,7 +81,8 @@ export const reconcileGithubRuleset = async ({
   if (applied === true) {
     await ghJson({
       endpoint: `repos/${options.repo}/rulesets/${summary.id}`,
-      args: ['--method', 'PUT', '--input', options.file],
+      args: ['--method', 'PUT'],
+      body: mergeGithubRulesetForApply({ desired, actual }),
     })
   }
 
@@ -129,7 +130,13 @@ export const diffGithubRuleset = ({
 
   return controlledFields.flatMap((field) => {
     const desiredValue = normalizeRulesetField({ field, value: desiredObject[field] })
-    const actualValue = normalizeRulesetField({ field, value: actualObject[field] })
+    const actualValue = normalizeRulesetField({
+      field,
+      value:
+        field === 'rules'
+          ? projectRulesetParameters({ desired: desiredObject.rules, actual: actualObject.rules })
+          : actualObject[field],
+    })
 
     return stableStringify(desiredValue) === stableStringify(actualValue)
       ? []
@@ -171,27 +178,129 @@ const normalizeRules = (value: unknown): unknown => {
   }
 
   return value
-    .map(normalizeRule)
+    .map(deepSort)
     .toSorted((left, right) =>
       String(asRecord(left).type ?? '').localeCompare(String(asRecord(right).type ?? '')),
     )
 }
 
-const normalizeRule = (value: unknown): unknown => {
-  const rule = deepSort(value)
-  const ruleObject = asRecord(rule)
-
-  if (ruleObject.type !== 'pull_request') {
-    return rule
-  }
-
-  const parameters = asRecord(ruleObject.parameters)
-  const { allowed_merge_methods: _allowedMergeMethods, ...restParameters } = parameters
-
-  return deepSort({
-    ...ruleObject,
-    parameters: restParameters,
+/** Rule presence is managed; only declared parameter keys are compared within matching types. */
+const projectRulesetParameters = ({
+  desired,
+  actual,
+}: {
+  readonly desired: unknown
+  readonly actual: unknown
+}): unknown => {
+  if (Array.isArray(desired) === false || Array.isArray(actual) === false) return actual
+  return actual.map((rule) => {
+    const actualRule = asRecord(rule)
+    const desiredRule = desired.find((candidate) => asRecord(candidate).type === actualRule.type)
+    if (desiredRule === undefined) return rule
+    const { parameters, ...rest } = actualRule
+    const desiredObject = asRecord(desiredRule)
+    return Object.hasOwn(desiredObject, 'parameters') === true
+      ? Object.assign(rest, {
+          parameters: projectDeclaredParameters({
+            desired: desiredObject.parameters,
+            actual: parameters,
+          }),
+        })
+      : rest
   })
+}
+
+/** Objects use desired-subset semantics; arrays remain exact, including their entries and order. */
+const projectDeclaredParameters = ({
+  desired,
+  actual,
+}: {
+  readonly desired: unknown
+  readonly actual: unknown
+}): unknown => {
+  if (
+    desired === null ||
+    typeof desired !== 'object' ||
+    Array.isArray(desired) === true ||
+    actual === null ||
+    typeof actual !== 'object' ||
+    Array.isArray(actual) === true
+  ) {
+    return actual
+  }
+  const actualObject = asRecord(actual)
+  return Object.fromEntries(
+    Object.entries(desired).map(([key, value]) => [
+      key,
+      projectDeclaredParameters({ desired: value, actual: actualObject[key] }),
+    ]),
+  )
+}
+
+/** A rules-array PUT must not discard undeclared parameters of retained rule types. */
+export const mergeGithubRulesetForApply = ({
+  desired,
+  actual,
+}: {
+  readonly desired: unknown
+  readonly actual: unknown
+}): Record<string, unknown> => {
+  const desiredObject = asRecord(desired)
+  const actualRules = asRecord(actual).rules
+  if (Array.isArray(desiredObject.rules) === false || Array.isArray(actualRules) === false) {
+    return desiredObject
+  }
+  return {
+    ...desiredObject,
+    rules: desiredObject.rules.map((rule) => {
+      const desiredRule = asRecord(rule)
+      const actualRule = actualRules.find(
+        (candidate) => asRecord(candidate).type === desiredRule.type,
+      )
+      if (actualRule === undefined) return rule
+      const actualParameters = asRecord(actualRule).parameters
+      if (Object.hasOwn(desiredRule, 'parameters') === false) {
+        return actualParameters === undefined
+          ? rule
+          : Object.assign({}, desiredRule, { parameters: actualParameters })
+      }
+      return Object.assign({}, desiredRule, {
+        parameters: mergeDeclaredParameters({
+          desired: desiredRule.parameters,
+          actual: actualParameters,
+        }),
+      })
+    }),
+  }
+}
+
+const mergeDeclaredParameters = ({
+  desired,
+  actual,
+}: {
+  readonly desired: unknown
+  readonly actual: unknown
+}): unknown => {
+  if (
+    desired === null ||
+    typeof desired !== 'object' ||
+    Array.isArray(desired) === true ||
+    actual === null ||
+    typeof actual !== 'object' ||
+    Array.isArray(actual) === true
+  ) {
+    return desired
+  }
+  const actualObject = asRecord(actual)
+  return {
+    ...actualObject,
+    ...Object.fromEntries(
+      Object.entries(desired).map(([key, value]) => [
+        key,
+        mergeDeclaredParameters({ desired: value, actual: actualObject[key] }),
+      ]),
+    ),
+  }
 }
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -238,14 +347,19 @@ const findRuleset = async ({
   return match
 }
 
-const ghJson = async ({
+/** Shared GitHub CLI transport; JSON bodies are sent on stdin, never temporary files. */
+export const ghJson = async ({
   endpoint,
   args = [],
+  body,
 }: {
   readonly endpoint: string
   readonly args?: ReadonlyArray<string>
+  readonly body?: unknown
 }): Promise<unknown> => {
-  const proc = Bun.spawn(['gh', 'api', endpoint, ...args], {
+  const inputArgs = body === undefined ? [] : ['--input', '-']
+  const proc = Bun.spawn(['gh', 'api', endpoint, ...args, ...inputArgs], {
+    stdin: body === undefined ? 'ignore' : new TextEncoder().encode(JSON.stringify(body)),
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -261,5 +375,5 @@ const ghJson = async ({
     )
   }
 
-  return stdout.trim() === '' ? undefined : JSON.parse(stdout)
+  return stdout.trim() === '' ? undefined : (JSON.parse(stdout) as unknown)
 }

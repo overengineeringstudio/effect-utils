@@ -2,7 +2,7 @@
   "darwin": [
     {
       "task": "test:buck2:unit",
-      "rationale": "Selected bounded host-filesystem, locking and native SQLite lanes through the Darwin Buck daemon and native runner."
+      "rationale": "Selected bounded host-filesystem, locking, native SQLite and native runner lanes; pingping exercises Unix sockets, Linux route parsing and the macOS netinfo boundary."
     },
     {
       "task": "devenv-modules:test",
