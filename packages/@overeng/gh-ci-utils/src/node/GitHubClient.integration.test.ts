@@ -25,7 +25,7 @@ it.live('keeps gh-ci-utils App auth on the shared minter with repository-scoped 
       if (request.url === '/app/installations/123/access_tokens') {
         const chunks: Buffer[] = []
         for await (const chunk of request) chunks.push(Buffer.from(chunk))
-        bodies.push(Schema.decodeUnknownSync(Json)(Buffer.concat(chunks).toString()))
+        bodies.push(Schema.decodeSync(Json)(Buffer.concat(chunks).toString()))
         response.writeHead(201, { 'content-type': 'application/json' })
         response.end(Schema.encodeSync(Json)({ token: 'installation-gh-ci', expires_at: new Date(Date.now() + 3_600_000).toISOString() }))
       } else {
