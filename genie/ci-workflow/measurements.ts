@@ -1210,6 +1210,11 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
     run: String.raw`set -euo pipefail
 
 mkdir -p "$BASELINE_OUTPUT_DIR"
+${ciMeasurementToolBootstrapScript}
+if ! ensure_ci_measurement_tool node nodejs; then
+  echo "::notice::node is not available; skipping unvalidated baseline download"
+  exit 0
+fi
 measurement_validator_dir="$(mktemp -d)"
 measurement_validator="$measurement_validator_dir/validate.mjs"
 cat >"$measurement_validator" <<'NODE'
@@ -2015,6 +2020,9 @@ if [ "$mode" = "off" ]; then
   exit 0
 fi
 
+${ciMeasurementToolBootstrapScript}
+require_ci_measurement_tool node nodejs
+
 current_index="$(mktemp)"
 baseline_index="$(mktemp)"
 find "$current_dir" -name baseline -type d -prune -o -name measurements.json -type f -print | sort >"$current_index" || true
@@ -2526,21 +2534,6 @@ ${
     can_render_pr_comment=false
     is_fork_pr=true
   fi
-
-  ensure_ci_measurement_tool() {
-    tool_name="$1"
-    nix_attr="$2"
-    if command -v "$tool_name" >/dev/null 2>&1; then
-      return 0
-    fi
-    if ! command -v nix >/dev/null 2>&1; then
-      return 1
-    fi
-    if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
-      export PATH="$tool_out/bin:$PATH"
-    fi
-    command -v "$tool_name" >/dev/null 2>&1
-  }
 
   if ! ensure_ci_measurement_tool gh gh; then
     echo "::error::gh is not available; unable to publish required CI measurement PR comment"

@@ -1,4 +1,4 @@
-import { Schema, SchemaAST } from 'effect'
+import type { Schema, SchemaAST } from 'effect'
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)

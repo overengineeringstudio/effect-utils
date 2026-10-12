@@ -2551,6 +2551,44 @@ jobs:
           set -euo pipefail
 
           mkdir -p "$BASELINE_OUTPUT_DIR"
+          ensure_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if command -v "$tool_name" >/dev/null 2>&1; then
+              return 0
+            fi
+            if ! command -v nix >/dev/null 2>&1; then
+              return 1
+            fi
+            if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+              while IFS= read -r tool_path; do
+                [ -n "$tool_path" ] || continue
+                [ -d "$tool_path/bin" ] || continue
+                export PATH="$tool_path/bin:$PATH"
+                if command -v "$tool_name" >/dev/null 2>&1; then
+                  return 0
+                fi
+              done <<EOF
+          $tool_out
+          EOF
+            fi
+            command -v "$tool_name" >/dev/null 2>&1
+          }
+
+          require_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if ensure_ci_measurement_tool "$tool_name" "$nix_attr"; then
+              return 0
+            fi
+            echo "::error::$tool_name is not available; unable to produce CI measurement artifact"
+            exit 1
+          }
+
+          if ! ensure_ci_measurement_tool node nodejs; then
+            echo "::notice::node is not available; skipping unvalidated baseline download"
+            exit 0
+          fi
           measurement_validator_dir="$(mktemp -d)"
           measurement_validator="$measurement_validator_dir/validate.mjs"
           cat >"$measurement_validator" <<'NODE'
@@ -2843,6 +2881,44 @@ jobs:
           set -euo pipefail
 
           mkdir -p "$BASELINE_OUTPUT_DIR"
+          ensure_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if command -v "$tool_name" >/dev/null 2>&1; then
+              return 0
+            fi
+            if ! command -v nix >/dev/null 2>&1; then
+              return 1
+            fi
+            if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+              while IFS= read -r tool_path; do
+                [ -n "$tool_path" ] || continue
+                [ -d "$tool_path/bin" ] || continue
+                export PATH="$tool_path/bin:$PATH"
+                if command -v "$tool_name" >/dev/null 2>&1; then
+                  return 0
+                fi
+              done <<EOF
+          $tool_out
+          EOF
+            fi
+            command -v "$tool_name" >/dev/null 2>&1
+          }
+
+          require_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if ensure_ci_measurement_tool "$tool_name" "$nix_attr"; then
+              return 0
+            fi
+            echo "::error::$tool_name is not available; unable to produce CI measurement artifact"
+            exit 1
+          }
+
+          if ! ensure_ci_measurement_tool node nodejs; then
+            echo "::notice::node is not available; skipping unvalidated baseline download"
+            exit 0
+          fi
           measurement_validator_dir="$(mktemp -d)"
           measurement_validator="$measurement_validator_dir/validate.mjs"
           cat >"$measurement_validator" <<'NODE'
@@ -3135,6 +3211,44 @@ jobs:
           set -euo pipefail
 
           mkdir -p "$BASELINE_OUTPUT_DIR"
+          ensure_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if command -v "$tool_name" >/dev/null 2>&1; then
+              return 0
+            fi
+            if ! command -v nix >/dev/null 2>&1; then
+              return 1
+            fi
+            if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+              while IFS= read -r tool_path; do
+                [ -n "$tool_path" ] || continue
+                [ -d "$tool_path/bin" ] || continue
+                export PATH="$tool_path/bin:$PATH"
+                if command -v "$tool_name" >/dev/null 2>&1; then
+                  return 0
+                fi
+              done <<EOF
+          $tool_out
+          EOF
+            fi
+            command -v "$tool_name" >/dev/null 2>&1
+          }
+
+          require_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if ensure_ci_measurement_tool "$tool_name" "$nix_attr"; then
+              return 0
+            fi
+            echo "::error::$tool_name is not available; unable to produce CI measurement artifact"
+            exit 1
+          }
+
+          if ! ensure_ci_measurement_tool node nodejs; then
+            echo "::notice::node is not available; skipping unvalidated baseline download"
+            exit 0
+          fi
           measurement_validator_dir="$(mktemp -d)"
           measurement_validator="$measurement_validator_dir/validate.mjs"
           cat >"$measurement_validator" <<'NODE'
@@ -3440,6 +3554,42 @@ jobs:
               >"$comparison_file"
             exit 0
           fi
+
+          ensure_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if command -v "$tool_name" >/dev/null 2>&1; then
+              return 0
+            fi
+            if ! command -v nix >/dev/null 2>&1; then
+              return 1
+            fi
+            if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+              while IFS= read -r tool_path; do
+                [ -n "$tool_path" ] || continue
+                [ -d "$tool_path/bin" ] || continue
+                export PATH="$tool_path/bin:$PATH"
+                if command -v "$tool_name" >/dev/null 2>&1; then
+                  return 0
+                fi
+              done <<EOF
+          $tool_out
+          EOF
+            fi
+            command -v "$tool_name" >/dev/null 2>&1
+          }
+
+          require_ci_measurement_tool() {
+            tool_name="$1"
+            nix_attr="$2"
+            if ensure_ci_measurement_tool "$tool_name" "$nix_attr"; then
+              return 0
+            fi
+            echo "::error::$tool_name is not available; unable to produce CI measurement artifact"
+            exit 1
+          }
+
+          require_ci_measurement_tool node nodejs
 
           current_index="$(mktemp)"
           baseline_index="$(mktemp)"
@@ -3952,21 +4102,6 @@ jobs:
               can_render_pr_comment=false
               is_fork_pr=true
             fi
-
-            ensure_ci_measurement_tool() {
-              tool_name="$1"
-              nix_attr="$2"
-              if command -v "$tool_name" >/dev/null 2>&1; then
-                return 0
-              fi
-              if ! command -v nix >/dev/null 2>&1; then
-                return 1
-              fi
-              if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
-                export PATH="$tool_out/bin:$PATH"
-              fi
-              command -v "$tool_name" >/dev/null 2>&1
-            }
 
             if ! ensure_ci_measurement_tool gh gh; then
               echo "::error::gh is not available; unable to publish required CI measurement PR comment"
