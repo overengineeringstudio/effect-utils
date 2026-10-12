@@ -64,6 +64,17 @@ example `devenv.shell_eval_warm.duration`, `nix.closure.nar_size`, or
 to improve hierarchy, but IDs should only change when the measurement protocol
 or semantic target changes.
 
+The executable record authority is
+[`packages/@overeng/genie/src/runtime/ci-measurements/schema.ts`](../../packages/@overeng/genie/src/runtime/ci-measurements/schema.ts).
+It defines the artifact, comparison, and managed-comment cache schemas. Every
+producer emits numeric `schemaVersion: 1`, including the timing summary.
+Workflow generation compiles these schemas to dependency-free validators for
+plain Node consumers. Current artifact or comparison decode failures fail the
+measurement step. Invalid or incompatible downloaded baselines are rejected so
+another successful producer run can rebuild them. Invalid comment-history
+caches start fresh; the artifacts, not the comment cache, remain authoritative.
+
+
 New measurement producers should emit the shared artifact format directly:
 
 ```text

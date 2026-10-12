@@ -21,6 +21,39 @@ import type { LabelDef } from '../packages/@overeng/genie/src/runtime/github-lab
 /** Single, axis-consistent color for every `system:*` chip (violet, distinct from area blue). */
 export const systemLabelColor = 'a371f7'
 
+export interface DeriveSystemNamesArgs {
+  /** Candidate names from repo-owned discovery boundaries (including tracked-file discovery). */
+  sources: readonly (readonly string[])[]
+  include?: readonly string[]
+  exclude?: readonly string[]
+  aliases?: Readonly<Record<string, string>>
+  /** When supplied, every surviving name must have a reviewed description. */
+  descriptions?: Readonly<Record<string, string>>
+}
+
+/** Merge multiple sources before aliasing, deduplicating, sorting, and classifying the system axis. */
+export const deriveSystemNames = ({
+  sources,
+  include = [],
+  exclude = [],
+  aliases = {},
+  descriptions,
+}: DeriveSystemNamesArgs): readonly string[] => {
+  const names = Array.from(new Set([...sources.flat(), ...include].map((name) => aliases[name] ?? name)))
+    .filter((name) => !exclude.includes(name))
+    .toSorted()
+  if (descriptions !== undefined) {
+    const unclassified = names.filter((name) => descriptions[name] === undefined)
+    if (unclassified.length > 0) {
+      throw new Error(
+        `${unclassified.length} derived system name(s) are classified nowhere: ${unclassified.join(', ')}. ` +
+        'Add a description, exclusion, or alias for each name.',
+      )
+    }
+  }
+  return names
+}
+
 export interface DeriveSystemLabelsArgs {
   /**
    * Absolute directory whose immediate subdirectories each become one
@@ -47,15 +80,14 @@ export const deriveSystemLabels = ({
   exclude = [],
   aliases = {},
 }: DeriveSystemLabelsArgs): readonly LabelDef[] => {
-  const excluded = new Set(exclude)
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .filter((name) => excluded.has(name) === false)
-    .toSorted()
-    .map((name) => ({
-      name: `system:${aliases[name] ?? name}`,
-      color: systemLabelColor,
-      description: `${describe(name)} · Set: manual`,
-    }))
+  return deriveSystemNames({
+    sources: [readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) => !exclude.includes(name))],
+  }).map((name) => ({
+    name: `system:${aliases[name] ?? name}`,
+    color: systemLabelColor,
+    description: `${describe(name)} · Set: manual`,
+  }))
 }

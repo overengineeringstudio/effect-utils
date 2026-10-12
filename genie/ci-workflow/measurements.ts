@@ -1,3 +1,16 @@
+import {
+  ciMeasurementSchemaVersion,
+  ciMeasurementCommentStateTag,
+  renderCiMeasurementValidators,
+  type CiMeasurementGatePolicy as MeasurementGatePolicy,
+} from '../../packages/@overeng/genie/src/runtime/ci-measurements/schema.ts'
+export type {
+  CiMeasurementArtifact,
+  CiMeasurementComparison,
+  CiMeasurementCommentState,
+  CiMeasurementObservation,
+  CiMeasurementTarget,
+} from '../../packages/@overeng/genie/src/runtime/ci-measurements/schema.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   checkoutStep,
@@ -23,20 +36,8 @@ export type CiMeasurementDescriptor = {
   readonly dimensions?: Record<string, string | number | boolean | null>
 }
 
-export type CiMeasurementGatePolicy = {
-  readonly enabled?: boolean
+export type CiMeasurementGatePolicy = Omit<MeasurementGatePolicy, 'gate' | 'comparisonMode'> & {
   readonly comparisonMode?: 'budget' | 'historical' | 'paired'
-  readonly minBaselineSources?: number
-  readonly minCurrentSamples?: number
-  readonly minPairedSamples?: number
-  readonly noiseFloor?: number
-  readonly statisticalToleranceRatio?: number
-  readonly statisticalToleranceAbs?: number
-  readonly pairedEvidenceQuantile?: number
-  readonly warnRatio?: number
-  readonly failRatio?: number
-  readonly warnAbs?: number
-  readonly failAbs?: number
 }
 
 export type DevenvPerfProbe = CiMeasurementDescriptor & {
@@ -45,45 +46,6 @@ export type DevenvPerfProbe = CiMeasurementDescriptor & {
   readonly warmupRepetitions?: number
   readonly repetitions?: number
   readonly gate?: CiMeasurementGatePolicy
-}
-
-export type CiMeasurementObservation = {
-  readonly id?: string
-  readonly label?: string
-  readonly group?: string
-  readonly path?: readonly string[]
-  readonly description?: string
-  readonly measurementKind?: 'deterministic' | 'wall-clock' | 'diagnostic' | (string & {})
-  readonly name: string
-  readonly unit: CiMeasurementUnit
-  readonly value: number
-  readonly dimensions?: Record<string, string | number | boolean | null>
-  readonly policy?: CiMeasurementGatePolicy
-  readonly comparison?: {
-    readonly mode?: 'budget' | 'historical' | 'paired' | (string & {})
-    readonly baseline?: number
-    readonly pairedSampleCount?: number
-  }
-  readonly statistics?: {
-    readonly sampleCount?: number
-    readonly measuredSampleCount?: number
-    readonly min?: number
-    readonly max?: number
-    readonly median?: number
-    readonly p25?: number
-    readonly p75?: number
-    readonly p95?: number
-    readonly pairedSampleCount?: number
-    readonly pairedBaselineMedian?: number
-    readonly pairedCurrentMedian?: number
-    readonly pairedDeltaMedian?: number
-    readonly pairedDeltaMin?: number
-    readonly pairedDeltaMax?: number
-    readonly pairedDeltaP25?: number
-    readonly pairedDeltaP75?: number
-    readonly pairedDeltaMad?: number
-    readonly pairedDeltaSamples?: readonly number[]
-  }
 }
 
 export type CiMeasurementUnit =
@@ -96,39 +58,6 @@ export type CiMeasurementUnit =
   | 'ratio'
   | 'percent'
   | (string & {})
-
-export type CiMeasurementTarget = {
-  readonly kind: string
-  readonly id: string
-  readonly name?: string
-  readonly label?: string
-  readonly group?: string
-  readonly path?: readonly string[]
-  readonly system?: string
-}
-
-export type CiMeasurementArtifact = {
-  readonly schemaVersion: number
-  readonly generatedAt: string
-  readonly producer: {
-    readonly name: string
-    readonly version: number
-    readonly measurementProtocol: string
-  }
-  readonly subject?: {
-    readonly ref?: string
-    readonly sha?: string
-    readonly label?: string
-  }
-  readonly target: CiMeasurementTarget
-  readonly observations: readonly CiMeasurementObservation[]
-  readonly attachments?: readonly {
-    readonly name: string
-    readonly path: string
-    readonly contentType?: string
-  }[]
-  readonly summary?: unknown
-}
 
 export const ciMeasurementMetrics = {
   devenvProbeDuration: 'devenv.<probe>.duration',
@@ -1001,7 +930,7 @@ printf ']\n' >>"$ARTIFACT_DIR/timings.json"
 jq . "$ARTIFACT_DIR/timings.json" >"$ARTIFACT_DIR/timings.pretty.json"
 jq -n \
   --slurpfile timings "$ARTIFACT_DIR/timings.json" \
-  --arg schemaVersion "1" \
+  --argjson schemaVersion ${ciMeasurementSchemaVersion} \
   --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
   --arg ref "${dollar}{GITHUB_REF:-unknown}" \
@@ -1025,7 +954,7 @@ jq -n \
 
 jq -n \
   --slurpfile timings "$ARTIFACT_DIR/timings.json" \
-  --argjson schemaVersion 1 \
+  --argjson schemaVersion ${ciMeasurementSchemaVersion} \
   --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
   --arg branchKind "${dollar}{GITHUB_EVENT_NAME:-unknown}" \
@@ -1281,6 +1210,21 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
     run: String.raw`set -euo pipefail
 
 mkdir -p "$BASELINE_OUTPUT_DIR"
+measurement_validator_dir="$(mktemp -d)"
+measurement_validator="$measurement_validator_dir/validate.mjs"
+cat >"$measurement_validator" <<'NODE'
+import { readFileSync } from 'node:fs'
+${renderCiMeasurementValidators()}
+for (const path of process.argv.slice(2)) {
+  try {
+    if (!isCiMeasurementArtifact(JSON.parse(readFileSync(path, 'utf8')))) throw new Error('schema mismatch')
+  } catch (error) {
+    console.error('Invalid CI measurement artifact: ' + path + ': ' + error.message)
+    process.exit(1)
+  }
+}
+NODE
+trap 'rm -rf "$measurement_validator_dir"' EXIT
 
 if command -v gh >/dev/null 2>&1; then
   GH_BIN="$(command -v gh)"
@@ -1429,9 +1373,16 @@ download_artifact_archive() {
     curl_args+=(--header "Authorization: Bearer ${dollar}{GH_TOKEN}")
   fi
 
-  "$CURL_BIN" "${dollar}{curl_args[@]}" "$artifact_url"
-  "$UNZIP_BIN" -q -o "$archive_file" -d "$output_dir"
+  "$CURL_BIN" "${dollar}{curl_args[@]}" "$artifact_url" || return $?
+  "$UNZIP_BIN" -q -o "$archive_file" -d "$output_dir" || return $?
   rm -f "$archive_file"
+  local measurement_files=()
+  mapfile -d '' measurement_files < <(find "$output_dir" -name measurements.json -type f -print0)
+  if [ "${dollar}{#measurement_files[@]}" -eq 0 ]; then
+    echo "::notice::baseline artifact has no measurement records; skipping candidate"
+    return 1
+  fi
+  node "$measurement_validator" "${dollar}{measurement_files[@]}"
 }
 
 run_id=""
@@ -1507,7 +1458,7 @@ jq -n \
   --slurpfile runs "$downloaded_runs_file" \
   --slurpfile seedRuns "$seed_runs_file" \
   --slurpfile observationCounts "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" \
-  --argjson schemaVersion 1 \
+  --argjson schemaVersion ${ciMeasurementSchemaVersion} \
   --arg repository "$repo" \
   --arg workflow "$workflow" \
   --arg branch "$branch" \
@@ -1613,7 +1564,7 @@ jq 'to_entries | map({ path: .key, narSize: (.value.narSize // 0), closureSize: 
 
 jq -n \
   --slurpfile paths "$paths_file" \
-  --argjson schemaVersion 1 \
+  --argjson schemaVersion ${ciMeasurementSchemaVersion} \
   --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
   --arg branchKind "${dollar}{GITHUB_EVENT_NAME:-unknown}" \
@@ -1967,7 +1918,7 @@ for (const scope of scopes) {
 }
 
 const artifact = {
-  schemaVersion: 1,
+  schemaVersion: ${ciMeasurementSchemaVersion},
   generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
   producer: {
     name: 'effect-utils-ci-measurement',
@@ -2058,7 +2009,7 @@ mode="${dollar}{CI_MEASUREMENT_REGRESSION_MODE:-warn}"
 mkdir -p "$(dirname "$comparison_file")"
 
 if [ "$mode" = "off" ]; then
-  jq -n --argjson schemaVersion 1 --arg status skipped --arg mode "$mode" \
+  jq -n --argjson schemaVersion ${ciMeasurementSchemaVersion} --arg status skipped --arg mode "$mode" \
     '{schemaVersion:$schemaVersion,status:$status,mode:$mode,comparisons:{}}' \
     >"$comparison_file"
   exit 0
@@ -2076,6 +2027,32 @@ if [ ! -s "$current_index" ]; then
   exit 1
 fi
 
+measurement_validator_dir="$(mktemp -d)"
+measurement_validator="$measurement_validator_dir/validate.mjs"
+cat >"$measurement_validator" <<'NODE'
+import { readFileSync } from 'node:fs'
+${renderCiMeasurementValidators()}
+try {
+  const validate = process.argv[3] === 'comparison' ? isCiMeasurementComparison : isCiMeasurementArtifact
+  if (!validate(JSON.parse(readFileSync(process.argv[2], 'utf8')))) throw new Error('schema mismatch')
+} catch (error) {
+  console.error('Invalid CI measurement artifact: ' + process.argv[2] + ': ' + error.message)
+  process.exit(1)
+}
+NODE
+trap 'rm -rf "$measurement_validator_dir"' EXIT
+while IFS= read -r measurement_file; do
+  node "$measurement_validator" "$measurement_file"
+done <"$current_index"
+valid_baseline_index="$(mktemp)"
+while IFS= read -r measurement_file; do
+  if node "$measurement_validator" "$measurement_file"; then
+    printf '%s\n' "$measurement_file" >>"$valid_baseline_index"
+  else
+    echo "::notice::ignoring invalid baseline; a compatible producer run must rebuild it"
+  fi
+done <"$baseline_index"
+mv "$valid_baseline_index" "$baseline_index"
 current_json="$comparison_file.current.json"
 baseline_json="$comparison_file.baseline.json"
 xargs -r jq -s '.' <"$current_index" >"$current_json"
@@ -2088,7 +2065,7 @@ fi
 jq -n \
   --slurpfile current "$current_json" \
   --slurpfile baseline "$baseline_json" \
-  --argjson schemaVersion 1 \
+  --argjson schemaVersion ${ciMeasurementSchemaVersion} \
   --arg mode "$mode" \
   --arg currentDir "$current_dir" \
   --arg baselineDir "$baseline_dir" \
@@ -2481,6 +2458,7 @@ if [ -f "$baseline_provenance_file" ]; then
     "$comparison_file" >"$comparison_with_provenance"
   mv "$comparison_with_provenance" "$comparison_file"
 fi
+node "$measurement_validator" "$comparison_file" comparison
 
 status="$(jq -r '.status' "$comparison_file")"
 exit_code=0
@@ -2682,21 +2660,18 @@ const markerScope = (process.env.CI_MEASUREMENT_PR_COMMENT_MARKER || title)
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '') || 'default'
 const marker = '<!-- ci-measurement-comment:managed:' + markerScope + ' -->'
-const legacyMarker = '<!-- ci-measurement-comment:managed -->'
 const statePrefix = '<!-- ci-measurement-comment:state\n'
 const stateSuffix = '\n-->'
-const stateTag = 'ci-measurement-comment-state'
-const schemaVersion = 1
+const stateTag = '${ciMeasurementCommentStateTag}'
+const schemaVersion = ${ciMeasurementSchemaVersion}
+${renderCiMeasurementValidators()}
 
 const comparison = JSON.parse(readFileSync(comparisonPath, 'utf8'))
+if (!isCiMeasurementComparison(comparison)) throw new Error('Invalid CI measurement comparison')
 const comments = JSON.parse(readFileSync(commentsPath, 'utf8'))
 if (!Array.isArray(comments)) throw new Error('comments response must be an array')
 
-const existing = comments.find((comment) => {
-  if (typeof comment?.body !== 'string') return false
-  return comment.body.includes(marker) ||
-    (comment.body.includes(legacyMarker) && comment.body.includes('## ' + title))
-})
+const existing = comments.find((comment) => typeof comment?.body === 'string' && comment.body.includes(marker))
 
 const extractState = (body) => {
   if (typeof body !== 'string') return undefined
@@ -2706,7 +2681,7 @@ const extractState = (body) => {
   if (end === -1) return undefined
   try {
     const parsed = JSON.parse(body.slice(start + statePrefix.length, end))
-    if (parsed && parsed._tag === stateTag && Array.isArray(parsed.runs)) return parsed
+    if (isCiMeasurementCommentState(parsed) && parsed.title === title) return parsed
   } catch {
     return undefined
   }
@@ -3383,7 +3358,7 @@ const currentRun = {
   generatedAt: new Date().toISOString(),
   status: statusWord,
   mode: comparison.mode || 'unknown',
-  runUrl,
+  ...(runUrl === undefined ? {} : { runUrl }),
   runAttempt,
   workflow,
   job,
@@ -3408,6 +3383,7 @@ const hasComparableHistory = (run) => Array.isArray(run.visibleRows) && run.visi
 const previousRuns = (existingState?.runs || []).filter((run) => run.commitSha !== currentRun.commitSha && hasComparableHistory(run))
 const historyLimit = Number.isFinite(maxHistory) && maxHistory > 0 ? maxHistory : 20
 const state = { _tag: stateTag, schemaVersion, title, runs: [currentRun, ...previousRuns].slice(0, historyLimit) }
+if (!isCiMeasurementCommentState(state)) throw new Error('Invalid generated CI measurement comment state')
 const gateModeLabel = (mode) => {
   if (mode === 'fail') return 'enforced'
   if (mode === 'warn') return 'advisory'

@@ -322,4 +322,81 @@ if [ "$actual_status" != "partial" ] || [ "$actual_row" != "pass" ] || [ "$actua
   exit 1
 fi
 
+for invalid_version in '"1"' 2; do
+  rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+  write_measurement "$tmp_dir/current/measurements.json" 12 devenv-perf-warm-median-v2 "$policy"
+  write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$policy"
+  jq --argjson version "$invalid_version" '.schemaVersion = $version' \
+    "$tmp_dir/baseline/run-1/measurements.json" >"$tmp_dir/invalid.json"
+  mv "$tmp_dir/invalid.json" "$tmp_dir/baseline/run-1/measurements.json"
+  run_compare
+  if [ "$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")" != "missing_baseline" ]; then
+    echo "expected incompatible baseline schema to require a rebuild" >&2
+    exit 1
+  fi
+done
+
+printf '{broken json\n' >"$tmp_dir/baseline/run-1/measurements.json"
+run_compare
+if [ "$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")" != "missing_baseline" ]; then
+  echo "expected malformed baseline to require a rebuild" >&2
+  exit 1
+fi
+
+node --input-type=module - "$tmp_dir" <<'NODE'
+import assert from 'node:assert/strict'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+
+const dir = process.argv[2]
+const renderer = readFileSync(join(dir, 'compare.sh'), 'utf8')
+  .match(/cat > "\$renderer_script" <<'EOF'\n([\s\S]*?)\nEOF/)?.[1]
+assert.ok(renderer, 'generated comparison script must include the real renderer')
+const script = join(dir, 'renderer.mjs')
+writeFileSync(script, renderer)
+const row = {
+  status: 'warn', target: 'shell', observation: 'duration', meaning: 'regressed',
+  dimensions: '', baseline: '10', current: '12', delta: '2', ratio: '1.2x', impact: '1x',
+}
+const history = {
+  _tag: 'ci-measurement-comment-state', schemaVersion: 1, title: 'CI Measurements',
+  runs: [{
+    commitSha: 'previous', shortSha: 'prev', generatedAt: '2026-10-12T00:00:00Z',
+    status: 'warn', mode: 'warn', runAttempt: '1', workflow: 'CI', job: 'measurement',
+    visibleRows: [row],
+  }],
+}
+for (const [cached, expectedRuns] of [
+  [history, 2],
+  [{ ...history, schemaVersion: '1' }, 1],
+  [{ ...history, schemaVersion: 2 }, 1],
+  [{ ...history, runs: [{}] }, 1],
+  [{ ...history, runs: [{ ...history.runs[0], visibleRows: [{}] }] }, 1],
+]) {
+  const comments = join(dir, 'comments.json')
+  const body = join(dir, 'comment.md')
+  const id = join(dir, 'comment-id.txt')
+  writeFileSync(comments, JSON.stringify([{
+    id: 123,
+    body: '<!-- ci-measurement-comment:managed:ci-measurements -->\n'
+      + '<!-- ci-measurement-comment:state\n' + JSON.stringify(cached) + '\n-->',
+  }]))
+  execFileSync(process.execPath, [script, join(dir, 'comparison.json'), comments, body, id], {
+    env: { ...process.env, CI_MEASUREMENT_PR_COMMENT_TITLE: 'CI Measurements', GITHUB_SHA: 'current' },
+  })
+  const encoded = readFileSync(body, 'utf8')
+    .match(/<!-- ci-measurement-comment:state\n([\s\S]*?)\n-->/)?.[1]
+  assert.ok(encoded)
+  assert.equal(JSON.parse(encoded).runs.length, expectedRuns)
+  assert.equal(readFileSync(id, 'utf8').trim(), '123', 'invalid cache must still update the scoped comment')
+}
+NODE
+
+printf '{broken json\n' >"$tmp_dir/current/measurements.json"
+if run_compare; then
+  echo "expected malformed current measurements to fail closed" >&2
+  exit 1
+fi
+
 echo "ci-measurement-comparison tests passed"

@@ -8,6 +8,8 @@ export type {
   Strict,
 } from './core.ts'
 
+export * from './ci-measurements/schema.ts'
+export * from './json-schema-validation/mod.ts'
 export * from './github-action/mod.ts'
 export * from './github-labels/mod.ts'
 export * from './github-repo-settings/mod.ts'
