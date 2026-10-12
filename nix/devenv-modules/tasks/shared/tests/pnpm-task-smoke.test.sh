@@ -4,6 +4,8 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 
+unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+
 assert_exit_code() {
   local expected="$1"
   local actual="$2"
@@ -698,7 +700,7 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   test ! -e "$workspace/node_modules/corrupt-edge"
   test -f "$workspace/node_modules/.install-ok"
   grep -qxF "PWD=$workspace" "$tmpdir/pnpm.log"
-  CI=1 bash "$tmpdir/pnpm-install.exec.sh"
+  CI=1 GITHUB_ACTIONS=true bash "$tmpdir/pnpm-install.exec.sh"
   set +e
   bash "$tmpdir/pnpm-install.status.sh"
   exit_code=$?

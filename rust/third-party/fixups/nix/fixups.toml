@@ -1,0 +1,2 @@
+# nix uses its build script to probe target capabilities and generate cfg flags.
+buildscript.run = true
