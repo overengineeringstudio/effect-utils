@@ -204,7 +204,7 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
   const results = await mkdtemp(join(tmpdir(), 'bun-test-classify-'))
   try {
     process.exitCode = await runBunTests({
-      command: [process.execPath, 'test', ...process.argv.slice(2)],
+      command: [process.execPath, ...process.argv.slice(2)],
       cwd: process.cwd(),
       env: process.env,
       results,

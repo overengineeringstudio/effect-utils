@@ -19,7 +19,7 @@ test('JUnit distinguishes timed-out tests from assertions without changing the f
       join(root, 'fixture.test.ts'),
       "\nimport { registerTimeout } from './shared-helper.ts'\nregisterTimeout()\n",
     )
-    const child = Bun.spawn([process.execPath, runner, './fixture.test.ts'], {
+    const child = Bun.spawn([process.execPath, runner, 'test', './fixture.test.ts'], {
       cwd: root,
       env: { ...process.env, BUN_TEST_TIMEOUT_CAP: '1' },
       stdout: 'pipe',
@@ -66,6 +66,7 @@ test('JUnit distinguishes timed-out tests from assertions without changing the f
       [
         process.execPath,
         runner,
+        'test',
         './fixture.test.ts',
         '--test-name-pattern=filtered timeout selected',
       ],

@@ -111,6 +111,10 @@ This includes cases registered by imported helpers such as rule-test generators.
 ## Bun wall deadlines and failure classification
 
 Repository devenv Bun test tasks and Buck Bun lanes share `src/bun-test-runner.ts`.
+The CLI accepts Bun's explicit `test` command followed by its source paths and flags:
+`bun ./src/bun-test-runner.ts test ./src/`. Use explicit relative source directories
+instead of substring filters so discovery does not include Buck's staged copies.
+
 At run start it samples the one-minute host load and the CPU parallelism available
 to the process. The CLI default and explicit per-test deadlines use:
 
