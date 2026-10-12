@@ -52,25 +52,26 @@ const nativeLog = (
     const end = event(buildId, 'SpanEnd', index + 2, 1700000002 + offset, {
       ActionExecution: {
         ...action,
-        execution_kind: localCache ? 10 : executionKind,
-        cache_upload_result: localCache ? 3 : executionKind === 3 ? 0 : 1,
-        commands: localCache
-          ? []
-          : [
-              {
-                details: {
-                  command_kind: {
-                    command: {
-                      LocalCommand: {
-                        action_digest: `${index.toString(16).padStart(64, '0')}:123`,
-                        argv: ['/private/root/SECRET_ARG'],
-                        env: [{ key: 'TOKEN', value: 'SECRET_VALUE' }],
+        execution_kind: localCache === true ? 10 : executionKind,
+        cache_upload_result: localCache === true ? 3 : executionKind === 3 ? 0 : 1,
+        commands:
+          localCache === true
+            ? []
+            : [
+                {
+                  details: {
+                    command_kind: {
+                      command: {
+                        LocalCommand: {
+                          action_digest: `${index.toString(16).padStart(64, '0')}:123`,
+                          argv: ['/private/root/SECRET_ARG'],
+                          env: [{ key: 'TOKEN', value: 'SECRET_VALUE' }],
+                        },
                       },
                     },
                   },
                 },
-              },
-            ],
+              ],
       },
     })
     records.push(end, end)
@@ -129,7 +130,7 @@ describe('complete normalized action artifact CLI', () => {
       expect(await finalize.exited).toBe(0)
       const summary: CacheEvidence = await Bun.file(output).json()
       const bytes = new Uint8Array(await Bun.file(actions).arrayBuffer())
-      const full = decodeEvidence(bytes, summary, 'main-writer')
+      const full = decodeEvidence({ compressed: bytes, summary, expectedLane: 'main-writer' })
       expect(summary.actionCount).toBe(600)
       expect(summary.actions).toHaveLength(6)
       expect(summary.counts['remote-hit']).toBe(600)
@@ -328,7 +329,7 @@ describe('complete normalized action artifact CLI', () => {
             stderr: 'ignore',
           },
         )
-        expect(await child.exited).toBe(bounds.valid ? 0 : 1)
+        expect(await child.exited).toBe(bounds.valid === true ? 0 : 1)
         const full = decodeActionArtifact(
           gunzipSync(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString(
             'utf8',
@@ -338,7 +339,7 @@ describe('complete normalized action artifact CLI', () => {
         expect(full.header.complete).toBe(bounds.valid)
         expect(full.header.invocations[0]?.freshRoot).toBe(bounds.valid)
         expect(full.header.evidenceGaps).toEqual(
-          bounds.valid ? [] : ['native-invocation-outside-job-window'],
+          bounds.valid === true ? [] : ['native-invocation-outside-job-window'],
         )
       } finally {
         await rm(directory, { recursive: true, force: true })

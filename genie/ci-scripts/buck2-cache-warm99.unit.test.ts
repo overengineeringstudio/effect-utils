@@ -24,17 +24,21 @@ describe('strict action boundary', () => {
       for (const freshRoot of [false, true]) {
         for (const digest of [null, 'a'.repeat(64) + ':123']) {
           const action = actionFixture({ buildId: invocation.buildId, executionKind, digest })
-          expect(classifyCacheAction(action, { ...invocation, freshRoot })).toBe(
+          expect(
+            classifyCacheAction({ action: action, invocation: { ...invocation, freshRoot } }),
+          ).toBe(
             executionKind === 10
               ? 'local-action-cache-hit'
-              : freshRoot && digest !== null
+              : freshRoot === true && digest !== null
                 ? 'fresh-local-execution'
                 : 'other',
           )
         }
       }
     }
-    expect(classifyCacheAction(actionFixture({ executionKind: 1 }), undefined)).toBe('other')
+    expect(
+      classifyCacheAction({ action: actionFixture({ executionKind: 1 }), invocation: undefined }),
+    ).toBe('other')
   })
   it('excludes policy executions from R08 candidates but preserves native local-action-cache hits', () => {
     const invocation = artifactFixture().header.invocations[0]!
@@ -47,21 +51,21 @@ describe('strict action boundary', () => {
           digest: executionKind === 10 ? null : 'abcd:12',
         })
         expect(action.exclusionReason).toBe('local-materialization-policy')
-        expect(classifyCacheAction(action, invocation)).toBe(
+        expect(classifyCacheAction({ action: action, invocation: invocation })).toBe(
           executionKind === 10 ? 'local-action-cache-hit' : 'other',
         )
       }
     }
     for (const executionKind of [1, 8]) {
       expect(
-        classifyCacheAction(
-          actionFixture({
+        classifyCacheAction({
+          action: actionFixture({
             category: 'tsgo_emit',
             executionKind,
             buildId: invocation.buildId,
           }),
-          invocation,
-        ),
+          invocation: invocation,
+        }),
       ).toBe('fresh-local-execution')
     }
   })
@@ -72,7 +76,13 @@ describe('strict action boundary', () => {
       actionFixture({ category: 'tsgo_emit' }),
     ])
     const encoded = encodedFixture(artifact)
-    expect(decodeEvidence(encoded.compressed, encoded.summary, 'main-reader')).toEqual(artifact)
+    expect(
+      decodeEvidence({
+        compressed: encoded.compressed,
+        summary: encoded.summary,
+        expectedLane: 'main-reader',
+      }),
+    ).toEqual(artifact)
     const { excludedByDesign: _root, ...header } = artifact.header
     const historical = {
       ...header,
@@ -92,9 +102,9 @@ describe('strict action boundary', () => {
     })
     expect(decoded.actions.map((action) => action.outcome)).toEqual(Array(6).fill('remote-hit'))
     expect(() =>
-      decodeEvidence(
-        encoded.compressed,
-        {
+      decodeEvidence({
+        compressed: encoded.compressed,
+        summary: {
           ...encoded.summary,
           excludedByDesign: {
             'local-materialization-policy': 0,
@@ -102,25 +112,26 @@ describe('strict action boundary', () => {
             'nix-outer-sandboxed': 0,
           },
         },
-        'main-reader',
-      ),
+        expectedLane: 'main-reader',
+      }),
     ).toThrow()
     expect(() =>
-      decodeEvidence(
-        encoded.compressed,
-        {
+      decodeEvidence({
+        compressed: encoded.compressed,
+        summary: {
           ...encoded.summary,
-          invocations: encoded.summary.invocations.map((invocation) => ({
-            ...invocation,
-            excludedByDesign: {
-              'local-materialization-policy': 0,
-              'darwin-unsandboxed': 0,
-              'nix-outer-sandboxed': 0,
-            },
-          })),
+          invocations: encoded.summary.invocations.map((invocation) =>
+            Object.assign({}, invocation, {
+              excludedByDesign: {
+                'local-materialization-policy': 0,
+                'darwin-unsandboxed': 0,
+                'nix-outer-sandboxed': 0,
+              },
+            }),
+          ),
         },
-        'main-reader',
-      ),
+        expectedLane: 'main-reader',
+      }),
     ).toThrow()
     expect(() =>
       decodeActionArtifact(
@@ -140,7 +151,13 @@ describe('strict action boundary', () => {
       ),
     )
     const encoded = encodedFixture(artifact)
-    expect(decodeEvidence(encoded.compressed, encoded.summary, 'main-reader')).toEqual(artifact)
+    expect(
+      decodeEvidence({
+        compressed: encoded.compressed,
+        summary: encoded.summary,
+        expectedLane: 'main-reader',
+      }),
+    ).toEqual(artifact)
     expect(artifact.header.excludedByDesign).toEqual({
       'local-materialization-policy': 0,
       'darwin-unsandboxed': darwinUnsandboxedCategories.length,
@@ -148,12 +165,14 @@ describe('strict action boundary', () => {
     })
     for (const action of artifact.actions) {
       expect(action.exclusionReason).toBe('darwin-unsandboxed')
-      expect(classifyCacheAction(action, artifact.header.invocations[0])).toBe('other')
+      expect(
+        classifyCacheAction({ action: action, invocation: artifact.header.invocations[0] }),
+      ).toBe('other')
     }
     expect(() =>
-      decodeEvidence(
-        encoded.compressed,
-        {
+      decodeEvidence({
+        compressed: encoded.compressed,
+        summary: {
           ...encoded.summary,
           excludedByDesign: {
             'local-materialization-policy': 0,
@@ -161,8 +180,8 @@ describe('strict action boundary', () => {
             'nix-outer-sandboxed': 0,
           },
         },
-        'main-reader',
-      ),
+        expectedLane: 'main-reader',
+      }),
     ).toThrow()
     expect(() =>
       decodeActionArtifact(
@@ -175,7 +194,7 @@ describe('strict action boundary', () => {
     const legacy = artifactFixture()
     const withoutOuterCounts = (artifact: typeof legacy, omitAll = false): string =>
       JSON.stringify(artifact.header, (key, value) =>
-        key === 'nix-outer-sandboxed' || (omitAll && key === 'excludedByDesign')
+        key === 'nix-outer-sandboxed' || (omitAll === true && key === 'excludedByDesign')
           ? undefined
           : value,
       ) +
@@ -187,18 +206,17 @@ describe('strict action boundary', () => {
     const { 'nix-outer-sandboxed': _legacyOuter, ...legacyCounts } =
       legacyEncoded.summary.excludedByDesign
     expect(
-      decodeEvidence(
-        legacyEncoded.compressed,
-        {
+      decodeEvidence({
+        compressed: legacyEncoded.compressed,
+        summary: {
           ...legacyEncoded.summary,
           excludedByDesign: legacyCounts,
-          invocations: legacyEncoded.summary.invocations.map((invocation) => ({
-            ...invocation,
-            excludedByDesign: legacyCounts,
-          })),
+          invocations: legacyEncoded.summary.invocations.map((invocation) =>
+            Object.assign({}, invocation, { excludedByDesign: legacyCounts }),
+          ),
         },
-        'main-reader',
-      ),
+        expectedLane: 'main-reader',
+      }),
     ).toEqual(legacy)
     const artifact = artifactFixture(
       false,
@@ -207,16 +225,24 @@ describe('strict action boundary', () => {
       ),
     )
     const encoded = encodedFixture(artifact)
-    expect(decodeEvidence(encoded.compressed, encoded.summary, 'main-reader')).toEqual(artifact)
+    expect(
+      decodeEvidence({
+        compressed: encoded.compressed,
+        summary: encoded.summary,
+        expectedLane: 'main-reader',
+      }),
+    ).toEqual(artifact)
     expect(artifact.header.excludedByDesign['nix-outer-sandboxed']).toBe(3)
     for (const action of artifact.actions) {
       expect(action.exclusionReason).toBe('nix-outer-sandboxed')
-      expect(classifyCacheAction(action, artifact.header.invocations[0])).toBe('other')
       expect(
-        classifyCacheAction(
-          { ...action, executionKind: 10, digest: null },
-          artifact.header.invocations[0],
-        ),
+        classifyCacheAction({ action: action, invocation: artifact.header.invocations[0] }),
+      ).toBe('other')
+      expect(
+        classifyCacheAction({
+          action: { ...action, executionKind: 10, digest: null },
+          invocation: artifact.header.invocations[0],
+        }),
       ).toBe('local-action-cache-hit')
     }
     for (const omitAll of [false, true])
@@ -239,15 +265,22 @@ describe('strict action boundary', () => {
         const summary = {
           ...encoded.summary,
           ...(scope === 'summary'
-            ? { excludedByDesign: omitAll ? undefined : legacyCounts }
+            ? { excludedByDesign: omitAll === true ? undefined : legacyCounts }
             : {
-                invocations: encoded.summary.invocations.map((invocation) => ({
-                  ...invocation,
-                  excludedByDesign: omitAll ? undefined : legacyCounts,
-                })),
+                invocations: encoded.summary.invocations.map((invocation) =>
+                  Object.assign({}, invocation, {
+                    excludedByDesign: omitAll === true ? undefined : legacyCounts,
+                  }),
+                ),
               }),
         }
-        expect(() => decodeEvidence(encoded.compressed, summary, 'main-reader')).toThrow()
+        expect(() =>
+          decodeEvidence({
+            compressed: encoded.compressed,
+            summary: summary,
+            expectedLane: 'main-reader',
+          }),
+        ).toThrow()
       }
     }
     expect(() =>
@@ -366,7 +399,7 @@ describe('warm99 identity acceptance', () => {
           ]),
         ]
       }
-      const report = evaluateWarm99(manifest, loaded)
+      const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
       expect(report.accepted).toBe(true)
       expect(report.lanes[0]?.observations[0]).toMatchObject({
         complete: true,
@@ -414,7 +447,7 @@ describe('warm99 identity acceptance', () => {
         ]
         item.readers = [artifactFixture(false, [actionFixture({ category })])]
       }
-      const report = evaluateWarm99(manifest, loaded)
+      const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
       expect(report.accepted).toBe(true)
       expect(report.lanes[0]?.observations[0]).toMatchObject({
         eligible: 1,
@@ -434,7 +467,7 @@ describe('warm99 identity acceptance', () => {
         if (bound === 'start') reader.header.metadata.startedAt = 201
         else reader.header.metadata.finishedAt = 299
       }
-      const report = evaluateWarm99(manifest, loaded)
+      const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
       expect(report.accepted).toBe(false)
       expect(report.lanes[0]?.observations[0]?.complete).toBe(false)
       expect(report.lanes[0]?.observations[0]?.evidenceGap).toBeGreaterThan(0)
@@ -442,12 +475,12 @@ describe('warm99 identity acceptance', () => {
   })
   it('requires two observations for every lane and keeps Nix separate', () => {
     const manifest = manifestFixture(['main-reader', 'merge_group', 'pr'])
-    const report = evaluateWarm99(manifest, loadedFixture(manifest))
+    const report = evaluateWarm99({ manifest: manifest, loaded: loadedFixture(manifest) })
     expect(report.accepted).toBe(true)
     expect(report.lanes.map((lane) => lane.consecutive)).toEqual([2, 2, 2])
     expect(report.lanes[0]?.observations[0]?.nixSubstitution.substituted).toBe(5)
     const single = manifestFixture(['main-reader'], 1)
-    expect(evaluateWarm99(single, loadedFixture(single)).accepted).toBe(false)
+    expect(evaluateWarm99({ manifest: single, loaded: loadedFixture(single) }).accepted).toBe(false)
   })
   it('strictly orders upload before reader (equality is cold) and matches configuration', () => {
     for (const mode of ['equal', 'later', 'configuration']) {
@@ -460,7 +493,7 @@ describe('warm99 identity acceptance', () => {
         if (mode === 'configuration') action.configuration = 'linux#other'
         else action.uploadCompletedAt = mode === 'equal' ? 200 : 201
       }
-      const report = evaluateWarm99(manifest, loaded)
+      const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
       expect(report.accepted).toBe(false)
       expect(report.lanes[0]?.observations[0]?.eligible).toBe(0)
       expect(report.lanes[0]?.observations[0]?.cold).toBe(1)
@@ -474,7 +507,7 @@ describe('warm99 identity acceptance', () => {
         item.readers = [
           artifactFixture(false, [actionFixture(), actionFixture({ executionKind: kind })]),
         ]
-      const report = evaluateWarm99(manifest, loaded)
+      const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
       expect(report.lanes[0]?.observations[0]?.eligible).toBe(1)
       expect(report.lanes[0]?.observations[0]?.remoteHits).toBe(kind === 3 ? 1 : 0)
       expect(report.accepted).toBe(kind === 3)
@@ -494,7 +527,7 @@ describe('warm99 identity acceptance', () => {
           }),
         ]),
       ]
-    expect(evaluateWarm99(manifest, loaded).accepted).toBe(true)
+    expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(true)
   })
   it('aggregates eligible readers only and reports earlier cold occurrence separately', () => {
     for (const start of [50, 200]) {
@@ -511,7 +544,7 @@ describe('warm99 identity acceptance', () => {
         for (const invocation of early.header.invocations) invocation.startedAt = start
         item.readers = [early, artifactFixture()]
       }
-      const report = evaluateWarm99(manifest, loaded)
+      const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
       expect(report.lanes[0]?.observations[0]).toMatchObject({
         eligible: 1,
         remoteHits: start === 50 ? 1 : 0,
@@ -549,7 +582,7 @@ describe('warm99 identity acceptance', () => {
       })
       item.readers = [reader]
     }
-    const report = evaluateWarm99(manifest, loaded)
+    const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
     expect(report.accepted).toBe(true)
     expect(report.lanes[0]?.observations[0]).toMatchObject({
       eligible: 1,
@@ -580,7 +613,7 @@ describe('warm99 identity acceptance', () => {
           for (const inv of artifact.header.invocations) inv.complete = false
         if (mode === 'missing') item.readers = [undefined]
       }
-      expect(evaluateWarm99(manifest, loaded).accepted).toBe(false)
+      expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(false)
     }
   })
   it('gap breaks streak and zero eligible never passes', () => {
@@ -589,9 +622,9 @@ describe('warm99 identity acceptance', () => {
     const gap = loaded[2]
     if (gap === undefined) throw new Error('fixture')
     gap.writers = [undefined]
-    expect(evaluateWarm99(manifest, loaded).lanes[0]?.consecutive).toBe(1)
+    expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).lanes[0]?.consecutive).toBe(1)
     for (const item of loaded) item.readers = [artifactFixture(false, [])]
-    expect(evaluateWarm99(manifest, loaded).accepted).toBe(false)
+    expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(false)
   })
   it('reports cold, changed, exclusions, noncacheable and upload failures separately', () => {
     const manifest = manifestFixture()
@@ -610,7 +643,7 @@ describe('warm99 identity acceptance', () => {
       if (writer === undefined) throw new Error('fixture')
       writer.actions.push(actionFixture({ uploadOutcome: 'failed', cacheUploadResult: 9 }))
     }
-    const result = evaluateWarm99(manifest, loaded).lanes[0]?.observations[0]
+    const result = evaluateWarm99({ manifest: manifest, loaded: loaded }).lanes[0]?.observations[0]
     expect(result).toMatchObject({
       eligible: 1,
       changed: 1,
@@ -654,7 +687,7 @@ describe('warm99 identity acceptance', () => {
           ),
         ]
       }
-      expect(evaluateWarm99(manifest, loaded).accepted).toBe(hits === 99)
+      expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(hits === 99)
     }
   })
   it('rejects equal/decreasing sequences, duplicate IDs and unknown lanes', () => {
@@ -703,7 +736,7 @@ describe('evidence trust boundaries', () => {
     const second = loaded[1]
     if (first === undefined || second === undefined) throw new Error('fixture')
     second.readers = first.readers
-    const report = evaluateWarm99(manifest, loaded)
+    const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
     expect(report.accepted).toBe(false)
     expect(report.lanes[0]?.observations[1]?.evidenceGap).toBe(1)
   })
@@ -715,7 +748,7 @@ describe('evidence trust boundaries', () => {
       if (writer === undefined) throw new Error('fixture')
       writer.header.metadata.repo = 'unrelated/repo'
     }
-    const report = evaluateWarm99(manifest, loaded)
+    const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
     expect(report.accepted).toBe(false)
     expect(report.lanes[0]?.observations[0]?.evidenceGap).toBeGreaterThan(0)
   })
@@ -734,7 +767,7 @@ describe('known failure reporting', () => {
       item.writers = [writer]
       item.readers = [reader]
     }
-    const report = evaluateWarm99(manifest, loaded)
+    const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
     expect(report.accepted).toBe(false)
     expect(report.lanes[0]?.observations[0]).toMatchObject({
       uploadFailure: 2,
@@ -753,7 +786,7 @@ describe('cache lane posture', () => {
         if (artifact === undefined) throw new Error('fixture')
         artifact.header.metadata.posture = 'writer'
       }
-    const report = evaluateWarm99(manifest, loaded)
+    const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
     expect(report.accepted).toBe(true)
     expect(report.lanes.map((lane) => lane.consecutive)).toEqual([2, 2])
   })
@@ -782,7 +815,7 @@ describe('cache lane posture', () => {
           writer.header.metadata.posture = 'read-only'
         }
       }
-      expect(evaluateWarm99(manifest, loaded).accepted).toBe(mode === 'queue')
+      expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(mode === 'queue')
     }
   })
 })

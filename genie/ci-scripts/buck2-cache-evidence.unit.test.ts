@@ -133,10 +133,11 @@ describe('native Buck cache evidence projection', () => {
       }),
     ).toThrow('Cache admission aggregate mismatch')
     const second = project(
-      events.map((event) => ({
-        ...event,
-        Event: { ...event.Event, trace_id: 'second-build' },
-      })),
+      events.map((event) =>
+        Object.assign({}, event, {
+          Event: { ...event.Event, trace_id: 'second-build' },
+        }),
+      ),
     )
     expect(mergeCacheEvidence({ previous: merged, next: second }).admissionFallbacks).toEqual({
       reapi: 1,
