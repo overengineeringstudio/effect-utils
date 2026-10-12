@@ -288,17 +288,15 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
             HttpClientRequest.bearerToken(jwt),
             HttpClientRequest.bodyText(body, 'application/json'),
           )
-          const response = yield* raw
-            .execute(request)
-            .pipe(
-              Effect.mapError(
-                () =>
-                  new GitHubAppError({
-                    operation: 'exchange',
-                    message: 'Installation token transport failed',
-                  }),
-              ),
-            )
+          const response = yield* raw.execute(request).pipe(
+            Effect.mapError(
+              () =>
+                new GitHubAppError({
+                  operation: 'exchange',
+                  message: 'Installation token transport failed',
+                }),
+            ),
+          )
           yield* observeResponse(scope.installationID, response.headers)
           if (response.status !== 201)
             return yield* new GitHubAppError({
