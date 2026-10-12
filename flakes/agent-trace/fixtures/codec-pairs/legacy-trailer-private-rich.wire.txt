@@ -1,0 +1,8 @@
+agent-identity: agent/dotfiles/annotations
+agent-persona: generalist
+agent-supervisor: unavailable
+agent-tool: OMP
+agent-tool-version: 18.6.0
+agent-runtime: OMP 18.6.0
+agent-model: anthropic/claude-opus-5-5
+tooling-profile: dotfiles@ee606ef985f5d9e32423fb148893a694e1a4444a

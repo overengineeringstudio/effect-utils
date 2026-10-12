@@ -1,0 +1,791 @@
+{
+  "version": 1,
+  "provenance": {
+    "generated": true,
+    "regenerate": "pnpm --filter @schickling/agent-trace run fixtures:generate",
+    "fingerprint": "8ed31642bc25fecafc7a6ec162fc8d29649553cfdaa4d55f41cd1d8248211b2f"
+  },
+  "cases": [
+    {
+      "id": "managed-public-trailer",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "kind": "current",
+      "wire": "On-Behalf-Of: @schickling via dotfiles/ci · cache-health › compare\nAgent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}}}",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": {
+          "agent": "agent/dotfiles/ci",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "01a14e79"
+        },
+        "why": { "mission": { "name": "dotfiles/ci/cache-health" }, "step": { "name": "compare" } },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5" }
+        }
+      },
+      "viewPath": "codec-pairs/managed-public-trailer.view.json",
+      "wirePath": "codec-pairs/managed-public-trailer.wire.txt",
+      "summary": "@schickling via dotfiles/ci · cache-health › compare"
+    },
+    {
+      "id": "managed-private-trailer",
+      "binding": "trailer/v2",
+      "audience": "private-rich",
+      "kind": "current",
+      "wire": "On-Behalf-Of: @schickling via dotfiles/ci · cache-health › compare\nAgent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\",\"run\":\"0123456789abcdef0123456789abcdef\"},\"step\":{\"name\":\"compare\",\"run\":\"fedcba9876543210fedcba9876543210\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":{\"_tag\":\"st-issued\",\"step_run\":\"step-run/fedcba9876543210fedcba9876543210/compare\"}}}",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": {
+          "agent": "agent/dotfiles/ci",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "dev3.01a14e79"
+        },
+        "why": {
+          "mission": {
+            "name": "dotfiles/ci/cache-health",
+            "run": "0123456789abcdef0123456789abcdef"
+          },
+          "step": { "name": "compare", "run": "fedcba9876543210fedcba9876543210" }
+        },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@fixture-->",
+          "runtime_profile": "runtime@fixture",
+          "skills_manifest": "skills@fixture",
+          "invocation_id": "invocation-managed",
+          "issuance": {
+            "_tag": "st-issued",
+            "step_run": "step-run/fedcba9876543210fedcba9876543210/compare"
+          }
+        }
+      },
+      "viewPath": "codec-pairs/managed-private-trailer.view.json",
+      "wirePath": "codec-pairs/managed-private-trailer.wire.txt",
+      "summary": "@schickling via dotfiles/ci · cache-health › compare"
+    },
+    {
+      "id": "managed-public-footer",
+      "binding": "footer/v4",
+      "audience": "public-minimal",
+      "kind": "current",
+      "wire": "<!-- agent-trace:begin -->\n<details>\n<summary>Posted on behalf of @schickling via dotfiles/ci · cache-health › compare</summary>\n\n**Who**\n\nIdentities accountable for producing and publishing this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Agent | agent/dotfiles/ci | `who.agent` | Seat or direct-session identity responsible for producing this artifact |\n| Accountable human | schickling | `who.principal` | Human principal on whose behalf the artifact was produced |\n| GitHub actor | schickling | `who.actor` | GitHub account authenticated to publish this artifact |\n| Persona | generalist | `who.persona` | Behavioral persona used by the artifact-producing agent |\n| Supervisor | 01a14e79 | `who.supervisor` | Seat that delegated this work and receives its terminal signal |\n\n**Why**\n\nMission and step context motivating this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Mission | cache-health | `why.mission` | Mission subject and execution that motivated this artifact |\n| Step | compare | `why.step` | Mission step and execution that produced this artifact |\n\n**How**\n\nHarness, model and tooling configuration used to produce this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Harness | OMP 18.6.0 | `how.harness` | Coding harness and its observed release for the producing session |\n| Model | anthropic/claude-opus-5-5 | `how.model` | Provider-qualified model route and configured reasoning effort |\n\n**Where**\n\nSession lookup and execution topology for this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Session lookup | 01a14e79 | `where.session` | Short lookup identifying the artifact-producing session |\n</details>\n<!-- agent-trace/v2 footer/v4 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}},\"where\":{\"session\":\"01a14e79\"}} -->\n<!-- agent-trace:end -->",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": {
+          "agent": "agent/dotfiles/ci",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "01a14e79"
+        },
+        "why": { "mission": { "name": "dotfiles/ci/cache-health" }, "step": { "name": "compare" } },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5" }
+        },
+        "where": { "session": "01a14e79" }
+      },
+      "viewPath": "codec-pairs/managed-public-footer.view.json",
+      "wirePath": "codec-pairs/managed-public-footer.wire.txt",
+      "summary": "@schickling via dotfiles/ci · cache-health › compare"
+    },
+    {
+      "id": "managed-private-footer",
+      "binding": "footer/v4",
+      "audience": "private-rich",
+      "kind": "current",
+      "wire": "<!-- agent-trace:begin -->\n<details>\n<summary>Posted on behalf of @schickling via dotfiles/ci · cache-health › compare</summary>\n\n**Who**\n\nIdentities accountable for producing and publishing this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Agent | agent/dotfiles/ci | `who.agent` | Seat or direct-session identity responsible for producing this artifact |\n| Accountable human | schickling | `who.principal` | Human principal on whose behalf the artifact was produced |\n| GitHub actor | schickling | `who.actor` | GitHub account authenticated to publish this artifact |\n| Persona | generalist | `who.persona` | Behavioral persona used by the artifact-producing agent |\n| Supervisor | dev3.01a14e79 | `who.supervisor` | Seat that delegated this work and receives its terminal signal |\n\n**Why**\n\nMission and step context motivating this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Mission | cache-health · 0123456789abcdef0123456789abcdef | `why.mission` | Mission subject and execution that motivated this artifact |\n| Step | compare · fedcba9876543210fedcba9876543210 | `why.step` | Mission step and execution that produced this artifact |\n\n**How**\n\nHarness, model and tooling configuration used to produce this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Harness | OMP 18.6.0 | `how.harness` | Coding harness and its observed release for the producing session |\n| Model | anthropic/claude-opus-5-5 · medium | `how.model` | Provider-qualified model route and configured reasoning effort |\n| Tooling profile | dotfiles@fixture--&gt; | `how.tooling_profile` | Dotfiles revision identifying the activated tooling configuration (private only) |\n| Runtime profile | runtime@fixture | `how.runtime_profile` | Activated runtime configuration used by the producing session (private only) |\n| Skills manifest | skills@fixture | `how.skills_manifest` | Manifest identifying the skills available to the producing session (private only) |\n| Invocation identifier | invocation-managed | `how.invocation_id` | Identifier of the runtime invocation that produced this artifact (private only) |\n\n**Where**\n\nSession lookup and execution topology for this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Session lookup | dev3.01a14e79 | `where.session` | Short lookup identifying the artifact-producing session |\n| Host | dev3 | `where.host` | Capture host on which the artifact-producing session ran (private only) |\n| Worktree | dotfiles/fixture | `where.worktree` | Repository-qualified worktree used by the artifact-producing session (private only) |\n</details>\n<!-- agent-trace/v2 footer/v4 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\",\"run\":\"0123456789abcdef0123456789abcdef\"},\"step\":{\"name\":\"compare\",\"run\":\"fedcba9876543210fedcba9876543210\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture\\u002d\\u002d\\u003e\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":{\"_tag\":\"st-issued\",\"step_run\":\"step-run/fedcba9876543210fedcba9876543210/compare\"}},\"where\":{\"session\":\"dev3.01a14e79\",\"host\":\"dev3\",\"worktree\":\"dotfiles/fixture\"}} -->\n<!-- agent-trace:end -->",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": {
+          "agent": "agent/dotfiles/ci",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "dev3.01a14e79"
+        },
+        "why": {
+          "mission": {
+            "name": "dotfiles/ci/cache-health",
+            "run": "0123456789abcdef0123456789abcdef"
+          },
+          "step": { "name": "compare", "run": "fedcba9876543210fedcba9876543210" }
+        },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@fixture-->",
+          "runtime_profile": "runtime@fixture",
+          "skills_manifest": "skills@fixture",
+          "invocation_id": "invocation-managed",
+          "issuance": {
+            "_tag": "st-issued",
+            "step_run": "step-run/fedcba9876543210fedcba9876543210/compare"
+          }
+        },
+        "where": { "session": "dev3.01a14e79", "host": "dev3", "worktree": "dotfiles/fixture" }
+      },
+      "viewPath": "codec-pairs/managed-private-footer.view.json",
+      "wirePath": "codec-pairs/managed-private-footer.wire.txt",
+      "summary": "@schickling via dotfiles/ci · cache-health › compare"
+    },
+    {
+      "id": "direct-public-trailer",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "kind": "current",
+      "wire": "On-Behalf-Of: @schickling via direct session · OMP › investigate\nAgent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"direct.omp.01a14e79\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"step\":{\"name\":\"investigate\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}}}",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": {
+          "agent": "direct.omp.01a14e79",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "01a14e79"
+        },
+        "why": { "step": { "name": "investigate" } },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5" }
+        }
+      },
+      "viewPath": "codec-pairs/direct-public-trailer.view.json",
+      "wirePath": "codec-pairs/direct-public-trailer.wire.txt",
+      "summary": "@schickling via direct session · OMP › investigate"
+    },
+    {
+      "id": "direct-private-trailer",
+      "binding": "trailer/v2",
+      "audience": "private-rich",
+      "kind": "current",
+      "wire": "On-Behalf-Of: @schickling via direct session · OMP › investigate\nAgent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"dev3.direct.omp.01a14e79\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"step\":{\"name\":\"investigate\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-direct\",\"issuance\":{\"_tag\":\"not-st-issued\",\"launcher\":\"agent-omp\"}}}",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": {
+          "agent": "dev3.direct.omp.01a14e79",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "dev3.01a14e79"
+        },
+        "why": { "step": { "name": "investigate" } },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@fixture-->",
+          "runtime_profile": "runtime@fixture",
+          "skills_manifest": "skills@fixture",
+          "invocation_id": "invocation-direct",
+          "issuance": { "_tag": "not-st-issued", "launcher": "agent-omp" }
+        }
+      },
+      "viewPath": "codec-pairs/direct-private-trailer.view.json",
+      "wirePath": "codec-pairs/direct-private-trailer.wire.txt",
+      "summary": "@schickling via direct session · OMP › investigate"
+    },
+    {
+      "id": "direct-public-footer",
+      "binding": "footer/v4",
+      "audience": "public-minimal",
+      "kind": "current",
+      "wire": "<!-- agent-trace:begin -->\n<details>\n<summary>Posted on behalf of @schickling via direct session · OMP › investigate</summary>\n\n**Who**\n\nIdentities accountable for producing and publishing this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Agent | direct.omp.01a14e79 | `who.agent` | Seat or direct-session identity responsible for producing this artifact |\n| Accountable human | schickling | `who.principal` | Human principal on whose behalf the artifact was produced |\n| GitHub actor | schickling | `who.actor` | GitHub account authenticated to publish this artifact |\n| Persona | generalist | `who.persona` | Behavioral persona used by the artifact-producing agent |\n| Supervisor | 01a14e79 | `who.supervisor` | Seat that delegated this work and receives its terminal signal |\n\n**Why**\n\nMission and step context motivating this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Step | investigate | `why.step` | Mission step and execution that produced this artifact |\n\n**How**\n\nHarness, model and tooling configuration used to produce this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Harness | OMP 18.6.0 | `how.harness` | Coding harness and its observed release for the producing session |\n| Model | anthropic/claude-opus-5-5 | `how.model` | Provider-qualified model route and configured reasoning effort |\n\n**Where**\n\nSession lookup and execution topology for this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Session lookup | 01a14e79 | `where.session` | Short lookup identifying the artifact-producing session |\n</details>\n<!-- agent-trace/v2 footer/v4 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"direct.omp.01a14e79\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"step\":{\"name\":\"investigate\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}},\"where\":{\"session\":\"01a14e79\"}} -->\n<!-- agent-trace:end -->",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": {
+          "agent": "direct.omp.01a14e79",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "01a14e79"
+        },
+        "why": { "step": { "name": "investigate" } },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5" }
+        },
+        "where": { "session": "01a14e79" }
+      },
+      "viewPath": "codec-pairs/direct-public-footer.view.json",
+      "wirePath": "codec-pairs/direct-public-footer.wire.txt",
+      "summary": "@schickling via direct session · OMP › investigate"
+    },
+    {
+      "id": "direct-private-footer",
+      "binding": "footer/v4",
+      "audience": "private-rich",
+      "kind": "current",
+      "wire": "<!-- agent-trace:begin -->\n<details>\n<summary>Posted on behalf of @schickling via direct session · OMP › investigate</summary>\n\n**Who**\n\nIdentities accountable for producing and publishing this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Agent | dev3.direct.omp.01a14e79 | `who.agent` | Seat or direct-session identity responsible for producing this artifact |\n| Accountable human | schickling | `who.principal` | Human principal on whose behalf the artifact was produced |\n| GitHub actor | schickling | `who.actor` | GitHub account authenticated to publish this artifact |\n| Persona | generalist | `who.persona` | Behavioral persona used by the artifact-producing agent |\n| Supervisor | dev3.01a14e79 | `who.supervisor` | Seat that delegated this work and receives its terminal signal |\n\n**Why**\n\nMission and step context motivating this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Step | investigate | `why.step` | Mission step and execution that produced this artifact |\n\n**How**\n\nHarness, model and tooling configuration used to produce this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Harness | OMP 18.6.0 | `how.harness` | Coding harness and its observed release for the producing session |\n| Model | anthropic/claude-opus-5-5 · medium | `how.model` | Provider-qualified model route and configured reasoning effort |\n| Tooling profile | dotfiles@fixture--&gt; | `how.tooling_profile` | Dotfiles revision identifying the activated tooling configuration (private only) |\n| Runtime profile | runtime@fixture | `how.runtime_profile` | Activated runtime configuration used by the producing session (private only) |\n| Skills manifest | skills@fixture | `how.skills_manifest` | Manifest identifying the skills available to the producing session (private only) |\n| Invocation identifier | invocation-direct | `how.invocation_id` | Identifier of the runtime invocation that produced this artifact (private only) |\n\n**Where**\n\nSession lookup and execution topology for this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Session lookup | dev3.01a14e79 | `where.session` | Short lookup identifying the artifact-producing session |\n| Host | dev3 | `where.host` | Capture host on which the artifact-producing session ran (private only) |\n| Worktree | dotfiles/fixture | `where.worktree` | Repository-qualified worktree used by the artifact-producing session (private only) |\n</details>\n<!-- agent-trace/v2 footer/v4 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"dev3.direct.omp.01a14e79\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"step\":{\"name\":\"investigate\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture\\u002d\\u002d\\u003e\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-direct\",\"issuance\":{\"_tag\":\"not-st-issued\",\"launcher\":\"agent-omp\"}},\"where\":{\"session\":\"dev3.01a14e79\",\"host\":\"dev3\",\"worktree\":\"dotfiles/fixture\"}} -->\n<!-- agent-trace:end -->",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": {
+          "agent": "dev3.direct.omp.01a14e79",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "dev3.01a14e79"
+        },
+        "why": { "step": { "name": "investigate" } },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@fixture-->",
+          "runtime_profile": "runtime@fixture",
+          "skills_manifest": "skills@fixture",
+          "invocation_id": "invocation-direct",
+          "issuance": { "_tag": "not-st-issued", "launcher": "agent-omp" }
+        },
+        "where": { "session": "dev3.01a14e79", "host": "dev3", "worktree": "dotfiles/fixture" }
+      },
+      "viewPath": "codec-pairs/direct-private-footer.view.json",
+      "wirePath": "codec-pairs/direct-private-footer.wire.txt",
+      "summary": "@schickling via direct session · OMP › investigate"
+    },
+    {
+      "id": "legacy-trailer-public-minimal",
+      "binding": "trailer/v1",
+      "audience": "public-minimal",
+      "kind": "legacy",
+      "wire": "agent-identity: agent/dotfiles/annotations\nagent-persona: generalist\nagent-supervisor: unavailable\nagent-tool: OMP\nagent-tool-version: 18.6.0\nagent-runtime: OMP 18.6.0\nagent-model: anthropic/claude-opus-5-5\ntooling-profile: dotfiles@ee606ef985f5d9e32423fb148893a694e1a4444a\n",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": { "agent": "agent/dotfiles/annotations", "persona": "generalist" },
+        "why": {},
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5" }
+        }
+      },
+      "observations": {
+        "agent-identity": { "_tag": "value", "value": "agent/dotfiles/annotations" },
+        "agent-persona": { "_tag": "value", "value": "generalist" },
+        "agent-supervisor": { "_tag": "unavailable" },
+        "agent-tool": { "_tag": "value", "value": "OMP" },
+        "agent-tool-version": { "_tag": "value", "value": "18.6.0" },
+        "agent-runtime": { "_tag": "value", "value": "OMP 18.6.0" },
+        "agent-model": { "_tag": "value", "value": "anthropic/claude-opus-5-5" },
+        "tooling-profile": {
+          "_tag": "value",
+          "value": "dotfiles@ee606ef985f5d9e32423fb148893a694e1a4444a"
+        }
+      },
+      "viewPath": "codec-pairs/legacy-trailer-public-minimal.view.json",
+      "wirePath": "codec-pairs/legacy-trailer-public-minimal.wire.txt",
+      "summary": "dotfiles/annotations"
+    },
+    {
+      "id": "legacy-footer-public-minimal",
+      "binding": "footer/v3",
+      "audience": "public-minimal",
+      "kind": "legacy",
+      "wire": "<!-- agent-footer:begin v=3 -->\n<details>\n<summary>Posted on behalf of @schickling</summary>\n\n| field | value |\n| --- | --- |\n| `agent_identity` | agent/dotfiles/annotations |\n| `session` | dev3.01a14e79 |\n| `agent_persona` | generalist |\n| `agent_supervisor` | unavailable |\n| `agent_tool` | OMP |\n| `agent_tool_version` | 18.6.0 |\n| `agent_runtime` | OMP 18.6.0 |\n| `agent_model` | anthropic/claude-opus-5-5 |\n| `worktree` | dotfiles/2026-10-10-annotations-impl |\n| `agent_effort` | medium |\n| `agent_model_provider` | unavailable |\n| `agent_model_id` | unavailable |\n| `tooling_profile` | dotfiles@65a6161ffefe635d677a3acc3930d652ded968f7 |\n</details>\n<!-- agent-footer:end -->\n",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": { "agent": "agent/dotfiles/annotations", "persona": "generalist" },
+        "why": {},
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5" }
+        },
+        "where": { "session": "01a14e79" }
+      },
+      "observations": {
+        "agent-identity": { "_tag": "value", "value": "agent/dotfiles/annotations" },
+        "session": { "_tag": "value", "value": "dev3.01a14e79" },
+        "agent-persona": { "_tag": "value", "value": "generalist" },
+        "agent-supervisor": { "_tag": "unavailable" },
+        "agent-tool": { "_tag": "value", "value": "OMP" },
+        "agent-tool-version": { "_tag": "value", "value": "18.6.0" },
+        "agent-runtime": { "_tag": "value", "value": "OMP 18.6.0" },
+        "agent-model": { "_tag": "value", "value": "anthropic/claude-opus-5-5" },
+        "worktree": { "_tag": "value", "value": "dotfiles/2026-10-10-annotations-impl" },
+        "agent-effort": { "_tag": "value", "value": "medium" },
+        "agent-model-provider": { "_tag": "unavailable" },
+        "agent-model-id": { "_tag": "unavailable" },
+        "tooling-profile": {
+          "_tag": "value",
+          "value": "dotfiles@65a6161ffefe635d677a3acc3930d652ded968f7"
+        }
+      },
+      "viewPath": "codec-pairs/legacy-footer-public-minimal.view.json",
+      "wirePath": "codec-pairs/legacy-footer-public-minimal.wire.txt",
+      "summary": "dotfiles/annotations"
+    },
+    {
+      "id": "legacy-no-principal-public-minimal",
+      "binding": "trailer/v1",
+      "audience": "public-minimal",
+      "kind": "legacy",
+      "wire": "agent-identity: agent/dotfiles/disk-steward-dev3\n",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": { "agent": "agent/dotfiles/disk-steward-dev3" },
+        "why": {},
+        "how": {}
+      },
+      "observations": {
+        "agent-identity": { "_tag": "value", "value": "agent/dotfiles/disk-steward-dev3" }
+      },
+      "viewPath": "codec-pairs/legacy-no-principal-public-minimal.view.json",
+      "wirePath": "codec-pairs/legacy-no-principal-public-minimal.wire.txt",
+      "summary": "dotfiles/disk-steward-dev3"
+    },
+    {
+      "id": "legacy-empty-summary-public-minimal",
+      "binding": "trailer/v1",
+      "audience": "public-minimal",
+      "kind": "legacy",
+      "wire": "agent-identity: unknown\nagent-tool: unavailable\nagent-model: unknown\n",
+      "view": { "type": "agent-trace/v2", "who": {}, "why": {}, "how": {} },
+      "observations": {
+        "agent-identity": { "_tag": "unknown" },
+        "agent-tool": { "_tag": "unavailable" },
+        "agent-model": { "_tag": "unknown" }
+      },
+      "viewPath": "codec-pairs/legacy-empty-summary-public-minimal.view.json",
+      "wirePath": "codec-pairs/legacy-empty-summary-public-minimal.wire.txt",
+      "summary": ""
+    },
+    {
+      "id": "legacy-trailer-private-rich",
+      "binding": "trailer/v1",
+      "audience": "private-rich",
+      "kind": "legacy",
+      "wire": "agent-identity: agent/dotfiles/annotations\nagent-persona: generalist\nagent-supervisor: unavailable\nagent-tool: OMP\nagent-tool-version: 18.6.0\nagent-runtime: OMP 18.6.0\nagent-model: anthropic/claude-opus-5-5\ntooling-profile: dotfiles@ee606ef985f5d9e32423fb148893a694e1a4444a\n",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": { "agent": "agent/dotfiles/annotations", "persona": "generalist" },
+        "why": {},
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5" },
+          "tooling_profile": "dotfiles@ee606ef985f5d9e32423fb148893a694e1a4444a"
+        }
+      },
+      "observations": {
+        "agent-identity": { "_tag": "value", "value": "agent/dotfiles/annotations" },
+        "agent-persona": { "_tag": "value", "value": "generalist" },
+        "agent-supervisor": { "_tag": "unavailable" },
+        "agent-tool": { "_tag": "value", "value": "OMP" },
+        "agent-tool-version": { "_tag": "value", "value": "18.6.0" },
+        "agent-runtime": { "_tag": "value", "value": "OMP 18.6.0" },
+        "agent-model": { "_tag": "value", "value": "anthropic/claude-opus-5-5" },
+        "tooling-profile": {
+          "_tag": "value",
+          "value": "dotfiles@ee606ef985f5d9e32423fb148893a694e1a4444a"
+        }
+      },
+      "viewPath": "codec-pairs/legacy-trailer-private-rich.view.json",
+      "wirePath": "codec-pairs/legacy-trailer-private-rich.wire.txt",
+      "summary": "dotfiles/annotations"
+    },
+    {
+      "id": "legacy-footer-private-rich",
+      "binding": "footer/v3",
+      "audience": "private-rich",
+      "kind": "legacy",
+      "wire": "<!-- agent-footer:begin v=3 -->\n<details>\n<summary>Posted on behalf of @schickling</summary>\n\n| field | value |\n| --- | --- |\n| `agent_identity` | agent/dotfiles/annotations |\n| `session` | dev3.01a14e79 |\n| `agent_persona` | generalist |\n| `agent_supervisor` | unavailable |\n| `agent_tool` | OMP |\n| `agent_tool_version` | 18.6.0 |\n| `agent_runtime` | OMP 18.6.0 |\n| `agent_model` | anthropic/claude-opus-5-5 |\n| `worktree` | dotfiles/2026-10-10-annotations-impl |\n| `agent_effort` | medium |\n| `agent_model_provider` | unavailable |\n| `agent_model_id` | unavailable |\n| `tooling_profile` | dotfiles@65a6161ffefe635d677a3acc3930d652ded968f7 |\n</details>\n<!-- agent-footer:end -->\n",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": { "agent": "agent/dotfiles/annotations", "persona": "generalist" },
+        "why": {},
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@65a6161ffefe635d677a3acc3930d652ded968f7"
+        },
+        "where": { "session": "dev3.01a14e79", "worktree": "dotfiles/2026-10-10-annotations-impl" }
+      },
+      "observations": {
+        "agent-identity": { "_tag": "value", "value": "agent/dotfiles/annotations" },
+        "session": { "_tag": "value", "value": "dev3.01a14e79" },
+        "agent-persona": { "_tag": "value", "value": "generalist" },
+        "agent-supervisor": { "_tag": "unavailable" },
+        "agent-tool": { "_tag": "value", "value": "OMP" },
+        "agent-tool-version": { "_tag": "value", "value": "18.6.0" },
+        "agent-runtime": { "_tag": "value", "value": "OMP 18.6.0" },
+        "agent-model": { "_tag": "value", "value": "anthropic/claude-opus-5-5" },
+        "worktree": { "_tag": "value", "value": "dotfiles/2026-10-10-annotations-impl" },
+        "agent-effort": { "_tag": "value", "value": "medium" },
+        "agent-model-provider": { "_tag": "unavailable" },
+        "agent-model-id": { "_tag": "unavailable" },
+        "tooling-profile": {
+          "_tag": "value",
+          "value": "dotfiles@65a6161ffefe635d677a3acc3930d652ded968f7"
+        }
+      },
+      "viewPath": "codec-pairs/legacy-footer-private-rich.view.json",
+      "wirePath": "codec-pairs/legacy-footer-private-rich.wire.txt",
+      "summary": "dotfiles/annotations"
+    },
+    {
+      "id": "legacy-no-principal-private-rich",
+      "binding": "trailer/v1",
+      "audience": "private-rich",
+      "kind": "legacy",
+      "wire": "agent-identity: agent/dotfiles/disk-steward-dev3\n",
+      "view": {
+        "type": "agent-trace/v2",
+        "who": { "agent": "agent/dotfiles/disk-steward-dev3" },
+        "why": {},
+        "how": {}
+      },
+      "observations": {
+        "agent-identity": { "_tag": "value", "value": "agent/dotfiles/disk-steward-dev3" }
+      },
+      "viewPath": "codec-pairs/legacy-no-principal-private-rich.view.json",
+      "wirePath": "codec-pairs/legacy-no-principal-private-rich.wire.txt",
+      "summary": "dotfiles/disk-steward-dev3"
+    },
+    {
+      "id": "legacy-empty-summary-private-rich",
+      "binding": "trailer/v1",
+      "audience": "private-rich",
+      "kind": "legacy",
+      "wire": "agent-identity: unknown\nagent-tool: unavailable\nagent-model: unknown\n",
+      "view": { "type": "agent-trace/v2", "who": {}, "why": {}, "how": {} },
+      "observations": {
+        "agent-identity": { "_tag": "unknown" },
+        "agent-tool": { "_tag": "unavailable" },
+        "agent-model": { "_tag": "unknown" }
+      },
+      "viewPath": "codec-pairs/legacy-empty-summary-private-rich.view.json",
+      "wirePath": "codec-pairs/legacy-empty-summary-private-rich.wire.txt",
+      "summary": ""
+    }
+  ],
+  "runtimeCases": [
+    {
+      "id": "managed-runtime",
+      "wire": "{\"type\":\"agent-trace-runtime/v1\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\",\"run\":\"0123456789abcdef0123456789abcdef\"},\"step\":{\"name\":\"compare\",\"run\":\"fedcba9876543210fedcba9876543210\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":{\"_tag\":\"st-issued\",\"step_run\":\"step-run/fedcba9876543210fedcba9876543210/compare\"}},\"where\":{\"session\":\"dev3.01a14e79\",\"host\":\"dev3\",\"worktree\":\"dotfiles/fixture\"}}",
+      "runtime": {
+        "type": "agent-trace-runtime/v1",
+        "who": {
+          "agent": "agent/dotfiles/ci",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "dev3.01a14e79"
+        },
+        "why": {
+          "mission": {
+            "name": "dotfiles/ci/cache-health",
+            "run": "0123456789abcdef0123456789abcdef"
+          },
+          "step": { "name": "compare", "run": "fedcba9876543210fedcba9876543210" }
+        },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@fixture-->",
+          "runtime_profile": "runtime@fixture",
+          "skills_manifest": "skills@fixture",
+          "invocation_id": "invocation-managed",
+          "issuance": {
+            "_tag": "st-issued",
+            "step_run": "step-run/fedcba9876543210fedcba9876543210/compare"
+          }
+        },
+        "where": { "session": "dev3.01a14e79", "host": "dev3", "worktree": "dotfiles/fixture" }
+      },
+      "facts": {
+        "id": "event-managed",
+        "at": "2026-10-10T00:00:00Z",
+        "artifact": "commit:fixture"
+      },
+      "captured": {
+        "type": "agent-trace/v2",
+        "id": "event-managed",
+        "at": "2026-10-10T00:00:00Z",
+        "artifact": "commit:fixture",
+        "who": {
+          "agent": "agent/dotfiles/ci",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "dev3.01a14e79"
+        },
+        "why": {
+          "mission": {
+            "name": "dotfiles/ci/cache-health",
+            "run": "0123456789abcdef0123456789abcdef"
+          },
+          "step": { "name": "compare", "run": "fedcba9876543210fedcba9876543210" }
+        },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@fixture-->",
+          "runtime_profile": "runtime@fixture",
+          "skills_manifest": "skills@fixture",
+          "invocation_id": "invocation-managed",
+          "issuance": {
+            "_tag": "st-issued",
+            "step_run": "step-run/fedcba9876543210fedcba9876543210/compare"
+          }
+        },
+        "where": { "session": "dev3.01a14e79", "host": "dev3", "worktree": "dotfiles/fixture" }
+      }
+    },
+    {
+      "id": "idle-runtime",
+      "wire": "{\"type\":\"agent-trace-runtime/v1\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":{\"_tag\":\"st-issued\",\"step_run\":\"step-run/fedcba9876543210fedcba9876543210/compare\"}},\"where\":{\"session\":\"dev3.01a14e79\",\"host\":\"dev3\",\"worktree\":\"dotfiles/fixture\"}}",
+      "runtime": {
+        "type": "agent-trace-runtime/v1",
+        "who": {
+          "agent": "agent/dotfiles/ci",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "dev3.01a14e79"
+        },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@fixture-->",
+          "runtime_profile": "runtime@fixture",
+          "skills_manifest": "skills@fixture",
+          "invocation_id": "invocation-managed",
+          "issuance": {
+            "_tag": "st-issued",
+            "step_run": "step-run/fedcba9876543210fedcba9876543210/compare"
+          }
+        },
+        "where": { "session": "dev3.01a14e79", "host": "dev3", "worktree": "dotfiles/fixture" }
+      }
+    },
+    {
+      "id": "direct-runtime",
+      "wire": "{\"type\":\"agent-trace-runtime/v1\",\"who\":{\"agent\":\"dev3.direct.omp.01a14e79\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"step\":{\"name\":\"investigate\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-direct\",\"issuance\":{\"_tag\":\"not-st-issued\",\"launcher\":\"agent-omp\"}},\"where\":{\"session\":\"dev3.01a14e79\",\"host\":\"dev3\",\"worktree\":\"dotfiles/fixture\"}}",
+      "runtime": {
+        "type": "agent-trace-runtime/v1",
+        "who": {
+          "agent": "dev3.direct.omp.01a14e79",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "dev3.01a14e79"
+        },
+        "why": { "step": { "name": "investigate" } },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@fixture-->",
+          "runtime_profile": "runtime@fixture",
+          "skills_manifest": "skills@fixture",
+          "invocation_id": "invocation-direct",
+          "issuance": { "_tag": "not-st-issued", "launcher": "agent-omp" }
+        },
+        "where": { "session": "dev3.01a14e79", "host": "dev3", "worktree": "dotfiles/fixture" }
+      },
+      "facts": { "id": "event-direct", "at": "2026-10-10T00:00:00Z", "artifact": "commit:fixture" },
+      "captured": {
+        "type": "agent-trace/v2",
+        "id": "event-direct",
+        "at": "2026-10-10T00:00:00Z",
+        "artifact": "commit:fixture",
+        "who": {
+          "agent": "dev3.direct.omp.01a14e79",
+          "principal": "schickling",
+          "actor": "schickling",
+          "persona": "generalist",
+          "supervisor": "dev3.01a14e79"
+        },
+        "why": { "step": { "name": "investigate" } },
+        "how": {
+          "harness": { "tool": "OMP", "version": "18.6.0" },
+          "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+          "tooling_profile": "dotfiles@fixture-->",
+          "runtime_profile": "runtime@fixture",
+          "skills_manifest": "skills@fixture",
+          "invocation_id": "invocation-direct",
+          "issuance": { "_tag": "not-st-issued", "launcher": "agent-omp" }
+        },
+        "where": { "session": "dev3.01a14e79", "host": "dev3", "worktree": "dotfiles/fixture" }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "id": "duplicate-machine-trailer",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "wire": "On-Behalf-Of: @schickling via dotfiles/ci · cache-health › compare\nAgent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}}}\nAgent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}}}"
+    },
+    {
+      "id": "unknown-binding-version",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "wire": "On-Behalf-Of: @schickling via dotfiles/ci · cache-health › compare\nAgent-Trace: agent-trace/v2 trailer/v99 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}}}"
+    },
+    {
+      "id": "public-host-injection",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\",\"host\":\"dev3\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}}}"
+    },
+    {
+      "id": "public-runtime_profile-injection",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"},\"runtime_profile\":\"private-fact\"}}"
+    },
+    {
+      "id": "public-skills_manifest-injection",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"},\"skills_manifest\":\"private-fact\"}}"
+    },
+    {
+      "id": "public-invocation_id-injection",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"},\"invocation_id\":\"private-fact\"}}"
+    },
+    {
+      "id": "public-issuance-injection",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"},\"issuance\":{\"_tag\":\"st-issued\",\"step_run\":\"step-run/fedcba9876543210fedcba9876543210/compare\"}}}"
+    },
+    {
+      "id": "invalid-private-issuance-0",
+      "binding": "trailer/v2",
+      "audience": "private-rich",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\",\"run\":\"0123456789abcdef0123456789abcdef\"},\"step\":{\"name\":\"compare\",\"run\":\"fedcba9876543210fedcba9876543210\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":null}}"
+    },
+    {
+      "id": "invalid-private-issuance-1",
+      "binding": "trailer/v2",
+      "audience": "private-rich",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\",\"run\":\"0123456789abcdef0123456789abcdef\"},\"step\":{\"name\":\"compare\",\"run\":\"fedcba9876543210fedcba9876543210\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":{\"_tag\":\"unknown\",\"launcher\":\"agent-omp\"}}}"
+    },
+    {
+      "id": "invalid-private-issuance-2",
+      "binding": "trailer/v2",
+      "audience": "private-rich",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\",\"run\":\"0123456789abcdef0123456789abcdef\"},\"step\":{\"name\":\"compare\",\"run\":\"fedcba9876543210fedcba9876543210\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":{\"_tag\":\"st-issued\"}}}"
+    },
+    {
+      "id": "invalid-private-issuance-3",
+      "binding": "trailer/v2",
+      "audience": "private-rich",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\",\"run\":\"0123456789abcdef0123456789abcdef\"},\"step\":{\"name\":\"compare\",\"run\":\"fedcba9876543210fedcba9876543210\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":{\"_tag\":\"st-issued\",\"step_run\":\"not-a-step-run\"}}}"
+    },
+    {
+      "id": "invalid-private-issuance-4",
+      "binding": "trailer/v2",
+      "audience": "private-rich",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\",\"run\":\"0123456789abcdef0123456789abcdef\"},\"step\":{\"name\":\"compare\",\"run\":\"fedcba9876543210fedcba9876543210\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":{\"_tag\":\"not-st-issued\",\"launcher\":\" \"}}}"
+    },
+    {
+      "id": "invalid-private-issuance-5",
+      "binding": "trailer/v2",
+      "audience": "private-rich",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"dev3.01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\",\"run\":\"0123456789abcdef0123456789abcdef\"},\"step\":{\"name\":\"compare\",\"run\":\"fedcba9876543210fedcba9876543210\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\",\"effort\":\"medium\"},\"tooling_profile\":\"dotfiles@fixture-->\",\"runtime_profile\":\"runtime@fixture\",\"skills_manifest\":\"skills@fixture\",\"invocation_id\":\"invocation-managed\",\"issuance\":{\"_tag\":\"not-st-issued\",\"launcher\":\"agent-omp\",\"step_run\":\"unexpected\"}}}"
+    },
+    {
+      "id": "missing-accountable-principal",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}}}"
+    },
+    {
+      "id": "empty-purpose",
+      "binding": "trailer/v2",
+      "audience": "public-minimal",
+      "wire": "Agent-Trace: agent-trace/v2 trailer/v2 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}}}"
+    },
+    {
+      "id": "raw-session-id",
+      "binding": "footer/v4",
+      "audience": "public-minimal",
+      "wire": "<!-- agent-trace:begin -->\n<details>\n<summary>Posted on behalf of @schickling via dotfiles/ci · cache-health › compare</summary>\n\n**Who**\n\nIdentities accountable for producing and publishing this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Agent | agent/dotfiles/ci | `who.agent` | Seat or direct-session identity responsible for producing this artifact |\n| Accountable human | schickling | `who.principal` | Human principal on whose behalf the artifact was produced |\n| GitHub actor | schickling | `who.actor` | GitHub account authenticated to publish this artifact |\n| Persona | generalist | `who.persona` | Behavioral persona used by the artifact-producing agent |\n| Supervisor | 01a14e79 | `who.supervisor` | Seat that delegated this work and receives its terminal signal |\n\n**Why**\n\nMission and step context motivating this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Mission | cache-health | `why.mission` | Mission subject and execution that motivated this artifact |\n| Step | compare | `why.step` | Mission step and execution that produced this artifact |\n\n**How**\n\nHarness, model and tooling configuration used to produce this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Harness | OMP 18.6.0 | `how.harness` | Coding harness and its observed release for the producing session |\n| Model | anthropic/claude-opus-5-5 | `how.model` | Provider-qualified model route and configured reasoning effort |\n\n**Where**\n\nSession lookup and execution topology for this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Session lookup | 01a14e79 | `where.session` | Short lookup identifying the artifact-producing session |\n</details>\n<!-- agent-trace/v2 footer/v4 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}},\"where\":{\"session\":\"01a14e79-1234-1234-1234-0123456789ab\"}} -->\n<!-- agent-trace:end -->"
+    },
+    {
+      "id": "host-qualified-public-session",
+      "binding": "footer/v4",
+      "audience": "public-minimal",
+      "wire": "<!-- agent-trace:begin -->\n<details>\n<summary>Posted on behalf of @schickling via dotfiles/ci · cache-health › compare</summary>\n\n**Who**\n\nIdentities accountable for producing and publishing this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Agent | agent/dotfiles/ci | `who.agent` | Seat or direct-session identity responsible for producing this artifact |\n| Accountable human | schickling | `who.principal` | Human principal on whose behalf the artifact was produced |\n| GitHub actor | schickling | `who.actor` | GitHub account authenticated to publish this artifact |\n| Persona | generalist | `who.persona` | Behavioral persona used by the artifact-producing agent |\n| Supervisor | 01a14e79 | `who.supervisor` | Seat that delegated this work and receives its terminal signal |\n\n**Why**\n\nMission and step context motivating this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Mission | cache-health | `why.mission` | Mission subject and execution that motivated this artifact |\n| Step | compare | `why.step` | Mission step and execution that produced this artifact |\n\n**How**\n\nHarness, model and tooling configuration used to produce this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Harness | OMP 18.6.0 | `how.harness` | Coding harness and its observed release for the producing session |\n| Model | anthropic/claude-opus-5-5 | `how.model` | Provider-qualified model route and configured reasoning effort |\n\n**Where**\n\nSession lookup and execution topology for this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Session lookup | 01a14e79 | `where.session` | Short lookup identifying the artifact-producing session |\n</details>\n<!-- agent-trace/v2 footer/v4 {\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}},\"where\":{\"session\":\"dev3.01a14e79\"}} -->\n<!-- agent-trace:end -->"
+    },
+    {
+      "id": "malformed-machine-json",
+      "binding": "footer/v4",
+      "audience": "public-minimal",
+      "wire": "<!-- agent-trace:begin -->\n<details>\n<summary>Posted on behalf of @schickling via dotfiles/ci · cache-health › compare</summary>\n\n**Who**\n\nIdentities accountable for producing and publishing this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Agent | agent/dotfiles/ci | `who.agent` | Seat or direct-session identity responsible for producing this artifact |\n| Accountable human | schickling | `who.principal` | Human principal on whose behalf the artifact was produced |\n| GitHub actor | schickling | `who.actor` | GitHub account authenticated to publish this artifact |\n| Persona | generalist | `who.persona` | Behavioral persona used by the artifact-producing agent |\n| Supervisor | 01a14e79 | `who.supervisor` | Seat that delegated this work and receives its terminal signal |\n\n**Why**\n\nMission and step context motivating this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Mission | cache-health | `why.mission` | Mission subject and execution that motivated this artifact |\n| Step | compare | `why.step` | Mission step and execution that produced this artifact |\n\n**How**\n\nHarness, model and tooling configuration used to produce this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Harness | OMP 18.6.0 | `how.harness` | Coding harness and its observed release for the producing session |\n| Model | anthropic/claude-opus-5-5 | `how.model` | Provider-qualified model route and configured reasoning effort |\n\n**Where**\n\nSession lookup and execution topology for this artifact\n\n| Field | Value | Key | Description |\n|---|---|---|---|\n| Session lookup | 01a14e79 | `where.session` | Short lookup identifying the artifact-producing session |\n</details>\n<!-- agent-trace/v2 footer/v4 {invalid\"type\":\"agent-trace/v2\",\"who\":{\"agent\":\"agent/dotfiles/ci\",\"principal\":\"schickling\",\"actor\":\"schickling\",\"persona\":\"generalist\",\"supervisor\":\"01a14e79\"},\"why\":{\"mission\":{\"name\":\"dotfiles/ci/cache-health\"},\"step\":{\"name\":\"compare\"}},\"how\":{\"harness\":{\"tool\":\"OMP\",\"version\":\"18.6.0\"},\"model\":{\"route\":\"anthropic/claude-opus-5-5\"}},\"where\":{\"session\":\"01a14e79\"}} -->\n<!-- agent-trace:end -->"
+    }
+  ],
+  "modelRoutes": [
+    {
+      "id": "ascii-64",
+      "value": "p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "utf16Length": 64,
+      "valid": true
+    },
+    {
+      "id": "ascii-65",
+      "value": "p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "utf16Length": 65,
+      "valid": false
+    },
+    {
+      "id": "supplementary-utf16-64",
+      "value": "p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀",
+      "utf16Length": 64,
+      "valid": false
+    },
+    {
+      "id": "supplementary-utf16-65",
+      "value": "p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀",
+      "utf16Length": 65,
+      "valid": false
+    },
+    { "id": "missing-provider", "value": "model", "utf16Length": 5, "valid": false },
+    { "id": "multiline-route", "value": "p/a\nb", "utf16Length": 5, "valid": false }
+  ],
+  "untraced": [
+    {
+      "id": "plain-commit-public-minimal",
+      "wire": "Update disk monitoring\n\nOrdinary human-authored changes.\n",
+      "audience": "public-minimal",
+      "trace": null
+    },
+    {
+      "id": "human-trailers-public-minimal",
+      "wire": "Update disk monitoring\n\nSigned-off-by: Johannes <johannes@example.com>\nCo-authored-by: Human <human@example.com>\n",
+      "audience": "public-minimal",
+      "trace": null
+    },
+    {
+      "id": "tooling-only-public-minimal",
+      "wire": "Update disk monitoring\n\ntooling-profile: dotfiles@0123456789abcdef\n",
+      "audience": "public-minimal",
+      "trace": null
+    },
+    {
+      "id": "plain-commit-private-rich",
+      "wire": "Update disk monitoring\n\nOrdinary human-authored changes.\n",
+      "audience": "private-rich",
+      "trace": null
+    },
+    {
+      "id": "human-trailers-private-rich",
+      "wire": "Update disk monitoring\n\nSigned-off-by: Johannes <johannes@example.com>\nCo-authored-by: Human <human@example.com>\n",
+      "audience": "private-rich",
+      "trace": null
+    },
+    {
+      "id": "tooling-only-private-rich",
+      "wire": "Update disk monitoring\n\ntooling-profile: dotfiles@0123456789abcdef\n",
+      "audience": "private-rich",
+      "trace": null
+    }
+  ]
+}

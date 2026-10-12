@@ -1,0 +1,50 @@
+<!-- agent-trace:begin -->
+<details>
+<summary>Posted on behalf of @schickling via dotfiles/ci · cache-health › compare</summary>
+
+**Who**
+
+Identities accountable for producing and publishing this artifact
+
+| Field | Value | Key | Description |
+|---|---|---|---|
+| Agent | agent/dotfiles/ci | `who.agent` | Seat or direct-session identity responsible for producing this artifact |
+| Accountable human | schickling | `who.principal` | Human principal on whose behalf the artifact was produced |
+| GitHub actor | schickling | `who.actor` | GitHub account authenticated to publish this artifact |
+| Persona | generalist | `who.persona` | Behavioral persona used by the artifact-producing agent |
+| Supervisor | dev3.01a14e79 | `who.supervisor` | Seat that delegated this work and receives its terminal signal |
+
+**Why**
+
+Mission and step context motivating this artifact
+
+| Field | Value | Key | Description |
+|---|---|---|---|
+| Mission | cache-health · 0123456789abcdef0123456789abcdef | `why.mission` | Mission subject and execution that motivated this artifact |
+| Step | compare · fedcba9876543210fedcba9876543210 | `why.step` | Mission step and execution that produced this artifact |
+
+**How**
+
+Harness, model and tooling configuration used to produce this artifact
+
+| Field | Value | Key | Description |
+|---|---|---|---|
+| Harness | OMP 18.6.0 | `how.harness` | Coding harness and its observed release for the producing session |
+| Model | anthropic/claude-opus-5-5 · medium | `how.model` | Provider-qualified model route and configured reasoning effort |
+| Tooling profile | dotfiles@fixture--&gt; | `how.tooling_profile` | Dotfiles revision identifying the activated tooling configuration (private only) |
+| Runtime profile | runtime@fixture | `how.runtime_profile` | Activated runtime configuration used by the producing session (private only) |
+| Skills manifest | skills@fixture | `how.skills_manifest` | Manifest identifying the skills available to the producing session (private only) |
+| Invocation identifier | invocation-managed | `how.invocation_id` | Identifier of the runtime invocation that produced this artifact (private only) |
+
+**Where**
+
+Session lookup and execution topology for this artifact
+
+| Field | Value | Key | Description |
+|---|---|---|---|
+| Session lookup | dev3.01a14e79 | `where.session` | Short lookup identifying the artifact-producing session |
+| Host | dev3 | `where.host` | Capture host on which the artifact-producing session ran (private only) |
+| Worktree | dotfiles/fixture | `where.worktree` | Repository-qualified worktree used by the artifact-producing session (private only) |
+</details>
+<!-- agent-trace/v2 footer/v4 {"type":"agent-trace/v2","who":{"agent":"agent/dotfiles/ci","principal":"schickling","actor":"schickling","persona":"generalist","supervisor":"dev3.01a14e79"},"why":{"mission":{"name":"dotfiles/ci/cache-health","run":"0123456789abcdef0123456789abcdef"},"step":{"name":"compare","run":"fedcba9876543210fedcba9876543210"}},"how":{"harness":{"tool":"OMP","version":"18.6.0"},"model":{"route":"anthropic/claude-opus-5-5","effort":"medium"},"tooling_profile":"dotfiles@fixture\u002d\u002d\u003e","runtime_profile":"runtime@fixture","skills_manifest":"skills@fixture","invocation_id":"invocation-managed","issuance":{"_tag":"st-issued","step_run":"step-run/fedcba9876543210fedcba9876543210/compare"}},"where":{"session":"dev3.01a14e79","host":"dev3","worktree":"dotfiles/fixture"}} -->
+<!-- agent-trace:end -->

@@ -1,0 +1,517 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-trace/v2/private-rich/footer/v4",
+  "$comment": "Generated; do not edit; pnpm run generate; sha256=dd1d1e63431851ad32ccc8913860f8aa8bb432d503953d82c9810603e7ce1ca6; Effect 4.0.0",
+  "title": "PrivateFooterV2",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["agent-trace/v2"],
+      "allOf": [
+        {
+          "title": "Record type",
+          "description": "Versioned identifier of the semantic Agent Trace record",
+          "x-sensitivity": "public",
+          "x-row": false
+        }
+      ]
+    },
+    "who": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "pattern": "^(?:agent(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)+|(?:[a-z0-9]+(?:-[a-z0-9]+)*\\.)?(?:direct\\.[a-z0-9]+(?:-[a-z0-9]+)*\\.)?[a-z0-9](?:[a-z0-9-]{0,6}[a-z0-9])?)$"
+            },
+            {
+              "title": "Agent",
+              "description": "Seat or direct-session identity responsible for producing this artifact",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-public": "strip-host"
+            }
+          ]
+        },
+        "principal": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Accountable human",
+              "description": "Human principal on whose behalf the artifact was produced",
+              "x-sensitivity": "public",
+              "x-row": true
+            }
+          ]
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "GitHub actor",
+              "description": "GitHub account authenticated to publish this artifact",
+              "x-sensitivity": "public",
+              "x-row": true
+            }
+          ]
+        },
+        "persona": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Persona",
+              "description": "Behavioral persona used by the artifact-producing agent",
+              "x-sensitivity": "public",
+              "x-row": true
+            }
+          ]
+        },
+        "supervisor": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "pattern": "^(?:agent(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)+|(?:[a-z0-9]+(?:-[a-z0-9]+)*\\.)?(?:direct\\.[a-z0-9]+(?:-[a-z0-9]+)*\\.)?[a-z0-9](?:[a-z0-9-]{0,6}[a-z0-9])?)$"
+            },
+            {
+              "title": "Supervisor",
+              "description": "Seat that delegated this work and receives its terminal signal",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-public": "strip-host"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "title": "Who",
+          "description": "Identities accountable for producing and publishing this artifact",
+          "x-sensitivity": "public",
+          "x-row": false
+        }
+      ]
+    },
+    "why": {
+      "type": "object",
+      "properties": {
+        "mission": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                {
+                  "title": "Mission name",
+                  "description": "Canonical owner-qualified mission subject",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ]
+            },
+            "run": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                { "pattern": "^[0-9a-f]{32}$" },
+                {
+                  "title": "Mission run",
+                  "description": "Identifier of the mission execution containing this work",
+                  "x-sensitivity": "internal",
+                  "x-row": false
+                }
+              ]
+            }
+          },
+          "required": ["name"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "title": "Mission",
+              "description": "Mission subject and execution that motivated this artifact",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-format": "join"
+            }
+          ]
+        },
+        "step": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                {
+                  "title": "Step name",
+                  "description": "Named step within the artifact-producing mission",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ]
+            },
+            "run": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                { "pattern": "^[0-9a-f]{32}$" },
+                {
+                  "title": "Step run",
+                  "description": "Identifier of the step execution that produced this artifact",
+                  "x-sensitivity": "internal",
+                  "x-row": false
+                }
+              ]
+            }
+          },
+          "required": ["name"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "title": "Step",
+              "description": "Mission step and execution that produced this artifact",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-format": "join"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "title": "Why",
+          "description": "Mission and step context motivating this artifact",
+          "x-sensitivity": "public",
+          "x-row": false
+        }
+      ]
+    },
+    "how": {
+      "type": "object",
+      "properties": {
+        "harness": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                {
+                  "title": "Harness tool",
+                  "description": "Coding harness that produced this artifact",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ]
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                {
+                  "title": "Harness version",
+                  "description": "Observed release of the artifact-producing coding harness",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ]
+            }
+          },
+          "required": ["tool"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "title": "Harness",
+              "description": "Coding harness and its observed release for the producing session",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-format": "space"
+            }
+          ]
+        },
+        "model": {
+          "type": "object",
+          "properties": {
+            "route": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                { "pattern": "^[a-z0-9][a-z0-9._-]*\\/[a-z0-9][a-z0-9._+-]*$" },
+                {
+                  "title": "Model route",
+                  "description": "Observed provider-qualified model route used by the producing session",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ],
+              "maxLength": 64
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                {
+                  "title": "Model effort",
+                  "description": "Configured reasoning effort for the producing session",
+                  "x-sensitivity": "internal",
+                  "x-row": false
+                }
+              ]
+            }
+          },
+          "required": ["route"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "title": "Model",
+              "description": "Provider-qualified model route and configured reasoning effort",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-format": "join"
+            }
+          ]
+        },
+        "tooling_profile": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Tooling profile",
+              "description": "Dotfiles revision identifying the activated tooling configuration",
+              "x-sensitivity": "internal",
+              "x-row": true
+            }
+          ]
+        },
+        "runtime_profile": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Runtime profile",
+              "description": "Activated runtime configuration used by the producing session",
+              "x-sensitivity": "internal",
+              "x-row": true
+            }
+          ]
+        },
+        "skills_manifest": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Skills manifest",
+              "description": "Manifest identifying the skills available to the producing session",
+              "x-sensitivity": "internal",
+              "x-row": true
+            }
+          ]
+        },
+        "invocation_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Invocation identifier",
+              "description": "Identifier of the runtime invocation that produced this artifact",
+              "x-sensitivity": "internal",
+              "x-row": true
+            }
+          ]
+        },
+        "issuance": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "_tag": {
+                  "type": "string",
+                  "enum": ["st-issued"],
+                  "allOf": [
+                    {
+                      "title": "Issuance kind",
+                      "description": "Trace issued from a Smalltalk step execution",
+                      "x-sensitivity": "internal",
+                      "x-row": false
+                    }
+                  ]
+                },
+                "step_run": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+                  "allOf": [
+                    { "pattern": "^[^\\r\\n]+$" },
+                    { "pattern": "^step-run\\/[0-9a-f]{32}\\/[a-z0-9][a-z0-9._-]*$" },
+                    {
+                      "title": "Issuing step run",
+                      "description": "Full Smalltalk step-run reference that issued this trace",
+                      "x-sensitivity": "internal",
+                      "x-row": false
+                    }
+                  ]
+                }
+              },
+              "required": ["_tag", "step_run"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "_tag": {
+                  "type": "string",
+                  "enum": ["not-st-issued"],
+                  "allOf": [
+                    {
+                      "title": "Issuance kind",
+                      "description": "Trace issued outside a Smalltalk step execution",
+                      "x-sensitivity": "internal",
+                      "x-row": false
+                    }
+                  ]
+                },
+                "launcher": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+                  "allOf": [
+                    { "pattern": "^[^\\r\\n]+$" },
+                    {
+                      "title": "Issuing launcher",
+                      "description": "Launcher responsible for issuance outside Smalltalk",
+                      "x-sensitivity": "internal",
+                      "x-row": false
+                    }
+                  ]
+                }
+              },
+              "required": ["_tag", "launcher"],
+              "additionalProperties": false
+            }
+          ],
+          "allOf": [
+            {
+              "title": "Issuance",
+              "description": "Private authority or launcher that issued this trace",
+              "x-sensitivity": "internal",
+              "x-row": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "title": "How",
+          "description": "Harness, model and tooling configuration used to produce this artifact",
+          "x-sensitivity": "public",
+          "x-row": false
+        }
+      ]
+    },
+    "where": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            { "pattern": "^(?:[a-z0-9]+(?:-[a-z0-9]+)*\\.)?[a-z0-9](?:[a-z0-9-]{0,6}[a-z0-9])?$" },
+            {
+              "title": "Session lookup",
+              "description": "Short lookup identifying the artifact-producing session",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-public": "short-session"
+            }
+          ]
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Host",
+              "description": "Capture host on which the artifact-producing session ran",
+              "x-sensitivity": "internal",
+              "x-row": true
+            }
+          ]
+        },
+        "worktree": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Worktree",
+              "description": "Repository-qualified worktree used by the artifact-producing session",
+              "x-sensitivity": "internal",
+              "x-row": true
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "title": "Where",
+          "description": "Session lookup and execution topology for this artifact",
+          "x-sensitivity": "public",
+          "x-row": false
+        }
+      ]
+    }
+  },
+  "required": ["type", "who", "why", "how", "where"],
+  "additionalProperties": false,
+  "$defs": {}
+}

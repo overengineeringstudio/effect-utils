@@ -1,0 +1,10 @@
+{
+  "type": "agent-trace/v2",
+  "who": { "agent": "agent/dotfiles/annotations", "persona": "generalist" },
+  "why": {},
+  "how": {
+    "harness": { "tool": "OMP", "version": "18.6.0" },
+    "model": { "route": "anthropic/claude-opus-5-5" },
+    "tooling_profile": "dotfiles@ee606ef985f5d9e32423fb148893a694e1a4444a"
+  }
+}

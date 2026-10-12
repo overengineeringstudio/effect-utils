@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-trace/v2/public-minimal/trailer/v2",
+  "$comment": "Generated; do not edit; pnpm run generate; sha256=dd1d1e63431851ad32ccc8913860f8aa8bb432d503953d82c9810603e7ce1ca6; Effect 4.0.0",
+  "title": "PublicTrailerV2",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["agent-trace/v2"],
+      "allOf": [
+        {
+          "title": "Record type",
+          "description": "Versioned identifier of the semantic Agent Trace record",
+          "x-sensitivity": "public",
+          "x-row": false
+        }
+      ]
+    },
+    "who": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "pattern": "^(?:agent(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)+|(?:direct\\.[a-z0-9]+(?:-[a-z0-9]+)*\\.)?[a-z0-9](?:[a-z0-9-]{0,6}[a-z0-9])?)$"
+            },
+            {
+              "title": "Agent",
+              "description": "Seat or direct-session identity responsible for producing this artifact",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-public": "strip-host"
+            }
+          ]
+        },
+        "principal": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Accountable human",
+              "description": "Human principal on whose behalf the artifact was produced",
+              "x-sensitivity": "public",
+              "x-row": true
+            }
+          ]
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "GitHub actor",
+              "description": "GitHub account authenticated to publish this artifact",
+              "x-sensitivity": "public",
+              "x-row": true
+            }
+          ]
+        },
+        "persona": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "title": "Persona",
+              "description": "Behavioral persona used by the artifact-producing agent",
+              "x-sensitivity": "public",
+              "x-row": true
+            }
+          ]
+        },
+        "supervisor": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+          "allOf": [
+            { "pattern": "^[^\\r\\n]+$" },
+            {
+              "pattern": "^(?:agent(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)+|(?:direct\\.[a-z0-9]+(?:-[a-z0-9]+)*\\.)?[a-z0-9](?:[a-z0-9-]{0,6}[a-z0-9])?)$"
+            },
+            {
+              "title": "Supervisor",
+              "description": "Seat that delegated this work and receives its terminal signal",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-public": "strip-host"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "title": "Who",
+          "description": "Identities accountable for producing and publishing this artifact",
+          "x-sensitivity": "public",
+          "x-row": false
+        }
+      ]
+    },
+    "why": {
+      "type": "object",
+      "properties": {
+        "mission": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                {
+                  "title": "Mission name",
+                  "description": "Canonical owner-qualified mission subject",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ]
+            }
+          },
+          "required": ["name"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "title": "Mission",
+              "description": "Mission subject and execution that motivated this artifact",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-format": "join"
+            }
+          ]
+        },
+        "step": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                {
+                  "title": "Step name",
+                  "description": "Named step within the artifact-producing mission",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ]
+            }
+          },
+          "required": ["name"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "title": "Step",
+              "description": "Mission step and execution that produced this artifact",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-format": "join"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "title": "Why",
+          "description": "Mission and step context motivating this artifact",
+          "x-sensitivity": "public",
+          "x-row": false
+        }
+      ]
+    },
+    "how": {
+      "type": "object",
+      "properties": {
+        "harness": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                {
+                  "title": "Harness tool",
+                  "description": "Coding harness that produced this artifact",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ]
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                {
+                  "title": "Harness version",
+                  "description": "Observed release of the artifact-producing coding harness",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ]
+            }
+          },
+          "required": ["tool"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "title": "Harness",
+              "description": "Coding harness and its observed release for the producing session",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-format": "space"
+            }
+          ]
+        },
+        "model": {
+          "type": "object",
+          "properties": {
+            "route": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+              "allOf": [
+                { "pattern": "^[^\\r\\n]+$" },
+                { "pattern": "^[a-z0-9][a-z0-9._-]*\\/[a-z0-9][a-z0-9._+-]*$" },
+                {
+                  "title": "Model route",
+                  "description": "Observed provider-qualified model route used by the producing session",
+                  "x-sensitivity": "public",
+                  "x-row": false
+                }
+              ],
+              "maxLength": 64
+            }
+          },
+          "required": ["route"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "title": "Model",
+              "description": "Provider-qualified model route and configured reasoning effort",
+              "x-sensitivity": "public",
+              "x-row": true,
+              "x-format": "join"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "title": "How",
+          "description": "Harness, model and tooling configuration used to produce this artifact",
+          "x-sensitivity": "public",
+          "x-row": false
+        }
+      ]
+    }
+  },
+  "required": ["type", "who", "why", "how"],
+  "additionalProperties": false,
+  "$defs": {}
+}

@@ -1,0 +1,36 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "flakes/agent-trace",
+      "flakes/schema-registry"
+    ]
+  },
+  "name": "@schickling/agent-trace",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "scripts": {
+    "generate": "bun src/generator.ts generate",
+    "generate:check": "bun src/generator.ts check",
+    "fixtures:generate": "bun src/fixture-corpus.ts generate",
+    "fixtures:check": "bun src/fixture-corpus.ts check",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:negative": "bun src/negative-check.ts",
+    "test": "vitest run --exclude \"dist/**\" --testTimeout=30000",
+    "check": "pnpm run typecheck && pnpm run typecheck:negative && pnpm run test && pnpm run generate:check && pnpm run fixtures:check"
+  },
+  "dependencies": {
+    "@schickling/schema-registry": "workspace:^",
+    "effect": "4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

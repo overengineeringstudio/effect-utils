@@ -1,0 +1,6 @@
+{
+  "type": "agent-trace/v2",
+  "who": { "agent": "agent/dotfiles/disk-steward-dev3" },
+  "why": {},
+  "how": {}
+}

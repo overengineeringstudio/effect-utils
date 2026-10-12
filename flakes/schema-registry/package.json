@@ -1,0 +1,30 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "flakes/schema-registry"
+    ]
+  },
+  "name": "@schickling/schema-registry",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --emitDeclarationOnly",
+    "check": "pnpm run build && pnpm run test",
+    "test": "vitest run --exclude 'dist/**' --testTimeout=30000",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

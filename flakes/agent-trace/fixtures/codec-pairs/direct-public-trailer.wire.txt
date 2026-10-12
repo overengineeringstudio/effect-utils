@@ -1,0 +1,2 @@
+On-Behalf-Of: @schickling via direct session · OMP › investigate
+Agent-Trace: agent-trace/v2 trailer/v2 {"type":"agent-trace/v2","who":{"agent":"direct.omp.01a14e79","principal":"schickling","actor":"schickling","persona":"generalist","supervisor":"01a14e79"},"why":{"step":{"name":"investigate"}},"how":{"harness":{"tool":"OMP","version":"18.6.0"},"model":{"route":"anthropic/claude-opus-5-5"}}}

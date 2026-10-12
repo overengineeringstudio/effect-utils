@@ -1,0 +1,19 @@
+[package]
+name = "schema-registry-rust"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+description = "Strict JSON Schema to Rust serde lowering"
+workspace = "../../agent-trace/rust"
+
+[dependencies]
+serde_json = { version = "1.0.145", features = ["preserve_order"] }
+regex = "1.12"
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }

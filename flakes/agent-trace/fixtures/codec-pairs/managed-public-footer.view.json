@@ -1,0 +1,16 @@
+{
+  "type": "agent-trace/v2",
+  "who": {
+    "agent": "agent/dotfiles/ci",
+    "principal": "schickling",
+    "actor": "schickling",
+    "persona": "generalist",
+    "supervisor": "01a14e79"
+  },
+  "why": { "mission": { "name": "dotfiles/ci/cache-health" }, "step": { "name": "compare" } },
+  "how": {
+    "harness": { "tool": "OMP", "version": "18.6.0" },
+    "model": { "route": "anthropic/claude-opus-5-5" }
+  },
+  "where": { "session": "01a14e79" }
+}

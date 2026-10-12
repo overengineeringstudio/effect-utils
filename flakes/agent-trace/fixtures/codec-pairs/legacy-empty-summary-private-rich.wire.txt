@@ -1,0 +1,3 @@
+agent-identity: unknown
+agent-tool: unavailable
+agent-model: unknown

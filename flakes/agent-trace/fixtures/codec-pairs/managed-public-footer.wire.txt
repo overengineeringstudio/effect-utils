@@ -1,0 +1,44 @@
+<!-- agent-trace:begin -->
+<details>
+<summary>Posted on behalf of @schickling via dotfiles/ci · cache-health › compare</summary>
+
+**Who**
+
+Identities accountable for producing and publishing this artifact
+
+| Field | Value | Key | Description |
+|---|---|---|---|
+| Agent | agent/dotfiles/ci | `who.agent` | Seat or direct-session identity responsible for producing this artifact |
+| Accountable human | schickling | `who.principal` | Human principal on whose behalf the artifact was produced |
+| GitHub actor | schickling | `who.actor` | GitHub account authenticated to publish this artifact |
+| Persona | generalist | `who.persona` | Behavioral persona used by the artifact-producing agent |
+| Supervisor | 01a14e79 | `who.supervisor` | Seat that delegated this work and receives its terminal signal |
+
+**Why**
+
+Mission and step context motivating this artifact
+
+| Field | Value | Key | Description |
+|---|---|---|---|
+| Mission | cache-health | `why.mission` | Mission subject and execution that motivated this artifact |
+| Step | compare | `why.step` | Mission step and execution that produced this artifact |
+
+**How**
+
+Harness, model and tooling configuration used to produce this artifact
+
+| Field | Value | Key | Description |
+|---|---|---|---|
+| Harness | OMP 18.6.0 | `how.harness` | Coding harness and its observed release for the producing session |
+| Model | anthropic/claude-opus-5-5 | `how.model` | Provider-qualified model route and configured reasoning effort |
+
+**Where**
+
+Session lookup and execution topology for this artifact
+
+| Field | Value | Key | Description |
+|---|---|---|---|
+| Session lookup | 01a14e79 | `where.session` | Short lookup identifying the artifact-producing session |
+</details>
+<!-- agent-trace/v2 footer/v4 {"type":"agent-trace/v2","who":{"agent":"agent/dotfiles/ci","principal":"schickling","actor":"schickling","persona":"generalist","supervisor":"01a14e79"},"why":{"mission":{"name":"dotfiles/ci/cache-health"},"step":{"name":"compare"}},"how":{"harness":{"tool":"OMP","version":"18.6.0"},"model":{"route":"anthropic/claude-opus-5-5"}},"where":{"session":"01a14e79"}} -->
+<!-- agent-trace:end -->

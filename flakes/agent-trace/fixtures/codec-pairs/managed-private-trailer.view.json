@@ -1,0 +1,26 @@
+{
+  "type": "agent-trace/v2",
+  "who": {
+    "agent": "agent/dotfiles/ci",
+    "principal": "schickling",
+    "actor": "schickling",
+    "persona": "generalist",
+    "supervisor": "dev3.01a14e79"
+  },
+  "why": {
+    "mission": { "name": "dotfiles/ci/cache-health", "run": "0123456789abcdef0123456789abcdef" },
+    "step": { "name": "compare", "run": "fedcba9876543210fedcba9876543210" }
+  },
+  "how": {
+    "harness": { "tool": "OMP", "version": "18.6.0" },
+    "model": { "route": "anthropic/claude-opus-5-5", "effort": "medium" },
+    "tooling_profile": "dotfiles@fixture-->",
+    "runtime_profile": "runtime@fixture",
+    "skills_manifest": "skills@fixture",
+    "invocation_id": "invocation-managed",
+    "issuance": {
+      "_tag": "st-issued",
+      "step_run": "step-run/fedcba9876543210fedcba9876543210/compare"
+    }
+  }
+}
