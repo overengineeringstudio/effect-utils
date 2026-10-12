@@ -171,6 +171,7 @@ const warning = ({
     process.stderr.write(`::warning title=Buck2 cache::${message}\n`)
 }
 
+/** Admission probe whose deadline a test can control through `probeDeadlineSignal`. */
 export type AdmissionProbeEndpoint = 'watchman' | 'reapi' | 'archiveOrigin'
 
 /** Admit the initial file watcher and cache posture before pinned native startup. */
