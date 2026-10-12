@@ -180,6 +180,7 @@
         "src/BuildIdentitySegment.unit.test.tsx",
         "src/Devbar.unit.test.tsx",
         "src/boundary.unit.test.ts",
+        "src/disclosure.unit.test.tsx",
         "src/fitSegments.unit.test.ts",
         "src/stories/host/production-host.unit.test.ts"
       ],
@@ -190,6 +191,7 @@
         "src/BuildIdentitySegment.unit.test.tsx",
         "src/Devbar.unit.test.tsx",
         "src/boundary.unit.test.ts",
+        "src/disclosure.unit.test.tsx",
         "src/fitSegments.unit.test.ts",
         "src/stories/host/production-host.unit.test.ts"
       ],
