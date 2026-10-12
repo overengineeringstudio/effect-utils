@@ -116,7 +116,7 @@
           semconv-model = pkgs.runCommand "semconv-model-${semconvVersion}" { } ''
             cp -r ${semconvBaseModel} $out
             chmod u+w $out
-            printf '{"opentelemetry":"%s","semantic-conventions-genai":"%s"}\n' \
+            printf '{"otel":"%s","semantic-conventions-genai":"%s"}\n' \
               "$out" "${genaiModel}" > $out/registry-paths.json
           '';
 
