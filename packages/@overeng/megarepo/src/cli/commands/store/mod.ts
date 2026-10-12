@@ -84,6 +84,7 @@ import {
 } from '../../../store/store-pr-state.ts'
 import {
   captureProcessActivityManifest,
+  encodeWorkspaceActivityManifest,
   isWorkspaceActive,
   readWorkspaceActivity,
   readBudgetWorkspaceActivity,
@@ -4101,24 +4102,41 @@ const storeLeaseCommand = Cli.Command.make(
 ).pipe(Cli.Command.withDescription('Run a command while holding a store deletion lease'))
 
 /**
- * `mr store activity snapshot --output <file>`
+ * `mr store activity snapshot (--output <file> | --stdout)`
  *
- * Root producer for foreign-process evidence: captures every process cwd/root/
- * fd/map under the store root into a `megarepo.workspace-activity.v2` manifest
- * (producer `mr-process`, TTL ≤ 5 min). Partial `/proc` visibility still writes
- * the manifest, marked `complete: false`, which consumers treat as unknown.
+ * Captures every process cwd/root/fd/map under the store root into a
+ * `megarepo.workspace-activity.v2` manifest (producer `mr-process`, TTL ≤ 5 min).
+ * `--stdout` only captures; `--output` publishes in a root-controlled directory.
+ * Partial `/proc` visibility emits `complete: false`, treated as unknown.
  * Runs no hooks or external commands.
  */
 const storeActivitySnapshotCommand = Cli.Command.make(
   'snapshot',
   {
     outputPath: Cli.Flag.String('output').pipe(
-      Cli.Flag.withDescription('Absolute manifest file path to write atomically (mode 0644)'),
+      Cli.Flag.withDescription(
+        'Absolute manifest file path to publish atomically (mode 0644; root-controlled directory)',
+      ),
+      Cli.Flag.optional,
+    ),
+    stdout: Cli.Flag.Boolean('stdout').pipe(
+      Cli.Flag.withDescription(
+        'Emit only manifest JSON to stdout without publishing a file (untrusted until validated and root-published)',
+      ),
+      Cli.Flag.withDefault(false),
     ),
   },
-  ({ outputPath }) =>
+  ({ outputPath, stdout }) =>
     Effect.gen(function* () {
-      if (isNormalizedAbsolutePath(outputPath) === false) {
+      if (stdout === Option.isSome(outputPath)) {
+        return yield* new StoreCommandError({
+          message: 'Specify exactly one of --output or --stdout',
+        })
+      }
+      if (
+        Option.isSome(outputPath) === true &&
+        isNormalizedAbsolutePath(outputPath.value) === false
+      ) {
         return yield* new StoreCommandError({
           message: '--output must be a normalized absolute file path',
         })
@@ -4129,7 +4147,12 @@ const storeActivitySnapshotCommand = Cli.Command.make(
         fs,
         storeRoots: [normalizeStorePath(store.basePath)],
       })
-      yield* writeWorkspaceActivityManifest({ fs, path: outputPath, manifest })
+      if (stdout === true) {
+        // Machine-readable payload, not a TUI/log summary or trusted publication.
+        yield* Console.log(yield* encodeWorkspaceActivityManifest(manifest))
+      } else if (Option.isSome(outputPath) === true) {
+        yield* writeWorkspaceActivityManifest({ fs, path: outputPath.value, manifest })
+      }
     }).pipe(
       Effect.provide(StoreLayer),
       Observability.withCommandSpan({
@@ -4137,7 +4160,9 @@ const storeActivitySnapshotCommand = Cli.Command.make(
         command: 'store activity snapshot',
       }),
     ),
-).pipe(Cli.Command.withDescription('Write a process-activity manifest for the store (run as root)'))
+).pipe(
+  Cli.Command.withDescription('Capture process activity as JSON or publish a trusted manifest'),
+)
 
 /** Activity subcommand group */
 const storeActivityCommand = Cli.Command.make('activity', {}).pipe(
