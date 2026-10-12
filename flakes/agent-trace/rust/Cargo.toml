@@ -1,0 +1,40 @@
+[workspace]
+members = [".", "../../schema-registry/rust", "../../schema-registry/rust/consumer"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[package]
+name = "agent-trace"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+build = "build.rs"
+
+[lib]
+name = "agent_trace"
+
+[[bin]]
+name = "agent-trace"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.145", features = ["preserve_order"] }
+regex = "1.12"
+thiserror = "2.0"
+clap = { version = "4.5", features = ["derive"] }
+
+[build-dependencies]
+schema-registry-rust = { path = "../../schema-registry/rust" }
+serde_json = { version = "1.0.145", features = ["preserve_order"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }

@@ -1,0 +1,112 @@
+{
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "gate-slot.receipt/v1"
+    },
+    "host": {
+      "type": "string"
+    },
+    "class": {
+      "type": "string"
+    },
+    "pid": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "cmd": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "startedAt": {
+      "type": "string"
+    },
+    "endedAt": {
+      "type": "string"
+    },
+    "exit": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "headStart": {
+      "type": "string"
+    },
+    "headEnd": {
+      "type": "string"
+    },
+    "treeStart": {
+      "type": "string"
+    },
+    "cleanStart": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "const": "unknown"
+        }
+      ]
+    },
+    "cleanEnd": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "const": "unknown"
+        }
+      ]
+    },
+    "exact": {
+      "type": "boolean"
+    },
+    "expectShort": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "not-short",
+        "completed",
+        "failed"
+      ]
+    },
+    "stAgent": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "host",
+    "class",
+    "pid",
+    "cwd",
+    "cmd",
+    "startedAt",
+    "endedAt",
+    "exit",
+    "headStart",
+    "headEnd",
+    "treeStart",
+    "cleanStart",
+    "cleanEnd",
+    "exact",
+    "expectShort",
+    "outcome",
+    "stAgent"
+  ],
+  "additionalProperties": false
+}

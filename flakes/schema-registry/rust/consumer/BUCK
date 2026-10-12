@@ -1,0 +1,218 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: flakes/schema-registry/rust/consumer/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:5a77c922f9d4cc90c49cbef62ac796053bc49b21db70846a86d85ef5eb3c7c06
+# Semantic inputs: flakes/agent-trace/rust/Cargo.lock, flakes/agent-trace/rust/Cargo.toml, flakes/agent-trace/rust/reindeer.toml, flakes/agent-trace/rust/third-party/BUCK, flakes/schema-registry/rust/Cargo.toml, flakes/schema-registry/rust/consumer/BUCK.genie.ts, flakes/schema-registry/rust/consumer/Cargo.toml, flakes/schema-registry/rust/consumer/src/**/*.rs, flakes/schema-registry/rust/consumer/tests/**/*.rs, genie/buck2/cargo-projection.ts
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("@rules//buck2:static_checks.bzl", "static_source_set")
+load("@rules//buck2/rust:defs.bzl", "buildscript_run", "cargo_build_script")
+static_source_set(
+    name = "static_sources",
+    prefix = "flakes/schema-registry/rust/consumer",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "build.rs",
+        "cases.schema.json",
+        "receipt.schema.json",
+        "src/bin/receipt-roundtrip.rs",
+        "src/lib.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/build.rs",
+    src = "build.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/cases.schema.json",
+    src = "cases.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/receipt.schema.json",
+    src = "receipt.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/bin/receipt-roundtrip.rs",
+    src = "src/bin/receipt-roundtrip.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_binary(
+    name = "schema-registry-rust-consumer-build-script-build",
+    crate = "build_script_build",
+    crate_root = "build.rs",
+    srcs = [
+        "build.rs",
+    ],
+    deps = [
+        "//flakes/schema-registry/rust:lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "schema-registry-rust-consumer",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "build_script_build",
+        "CARGO_MANIFEST_DIR": "flakes/schema-registry/rust/consumer",
+    },
+)
+
+cargo_build_script(
+    name = "schema-registry-rust-consumer-build-script",
+    build_script = ":schema-registry-rust-consumer-build-script-build",
+    package_path = "flakes/schema-registry/rust/consumer",
+    srcs = {
+        "flakes/agent-trace/generated/AgentTraceRuntimeV1.rs": "//flakes/agent-trace:AgentTraceRuntimeV1.rs",
+        "flakes/schema-registry/rust/consumer/Cargo.toml": "Cargo.toml",
+        "flakes/schema-registry/rust/consumer/build.rs": "build.rs",
+        "flakes/schema-registry/rust/consumer/cases.schema.json": "cases.schema.json",
+        "flakes/schema-registry/rust/consumer/receipt.schema.json": "receipt.schema.json",
+        "flakes/schema-registry/rust/consumer/src/bin/receipt-roundtrip.rs": "src/bin/receipt-roundtrip.rs",
+        "flakes/schema-registry/rust/consumer/src/lib.rs": "src/lib.rs",
+    },
+)
+
+buildscript_run(
+    name = "schema-registry-rust-consumer-build-script-run",
+    package_name = "schema-registry-rust-consumer",
+    buildscript_rule = ":schema-registry-rust-consumer-build-script",
+    manifest_dir = ":schema-registry-rust-consumer-build-script",
+    env = {
+        "CARGO_PKG_NAME": "schema-registry-rust-consumer",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "build_script_build",
+        "DEBUG": "false",
+        "NUM_JOBS": "1",
+        "PROFILE": "debug",
+    },
+    version = "0.1.0",
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "schema_registry_rust_consumer",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/bin/receipt-roundtrip.rs",
+        "src/lib.rs",
+    ],
+    deps = [
+        "//flakes/agent-trace/rust/third-party:regex",
+        "//flakes/agent-trace/rust/third-party:serde",
+        "//flakes/agent-trace/rust/third-party:serde_json",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "schema-registry-rust-consumer",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "schema_registry_rust_consumer",
+        "CARGO_MANIFEST_DIR": "flakes/schema-registry/rust/consumer",
+        "OUT_DIR": "$(location :schema-registry-rust-consumer-build-script-run[out_dir])",
+    },
+    rustc_flags = ["@$(location :schema-registry-rust-consumer-build-script-run[rustc_flags])"],
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "receipt-roundtrip",
+    crate = "receipt_roundtrip",
+    crate_root = "src/bin/receipt-roundtrip.rs",
+    srcs = [
+        "src/bin/receipt-roundtrip.rs",
+        "src/lib.rs",
+    ],
+    deps = [
+        "//flakes/agent-trace/rust/third-party:regex",
+        "//flakes/agent-trace/rust/third-party:serde",
+        "//flakes/agent-trace/rust/third-party:serde_json",
+        ":lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "schema-registry-rust-consumer",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "receipt_roundtrip",
+        "CARGO_MANIFEST_DIR": "flakes/schema-registry/rust/consumer",
+        "CARGO_BIN_NAME": "receipt-roundtrip",
+        "OUT_DIR": "$(location :schema-registry-rust-consumer-build-script-run[out_dir])",
+    },
+    rustc_flags = ["@$(location :schema-registry-rust-consumer-build-script-run[rustc_flags])"],
+    visibility = [
+        "PUBLIC",
+    ],
+)

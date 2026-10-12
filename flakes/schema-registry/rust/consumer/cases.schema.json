@@ -1,0 +1,146 @@
+{
+  "Integer": {
+    "type": "integer",
+    "minimum": -2,
+    "maximum": 4,
+    "multipleOf": 2
+  },
+  "Number": {
+    "type": "number",
+    "exclusiveMinimum": 0,
+    "exclusiveMaximum": 1,
+    "multipleOf": 0.1
+  },
+  "Flag": {
+    "type": "boolean",
+    "const": true
+  },
+  "Text": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 2,
+    "allOf": [
+      {
+        "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+      }
+    ]
+  },
+  "List": {
+    "type": "array",
+    "minItems": 1,
+    "maxItems": 3,
+    "uniqueItems": true,
+    "items": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "Choice": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "const": "ok"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "const": "error"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "Referenced": {
+    "$defs": {
+      "Count": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "Counts": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Count"
+        }
+      }
+    },
+    "type": "object",
+    "properties": {
+      "counts": {
+        "$ref": "#/$defs/Counts"
+      },
+      "maybe": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "counts"
+    ],
+    "additionalProperties": false
+  },
+  "Nullable": {
+    "anyOf": [
+      {
+        "type": "string",
+        "minLength": 1
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "Finite": {
+    "type": "number"
+  },
+  "NumericConst": {
+    "const": 3
+  },
+  "ConstChoice": {
+    "anyOf": [
+      {
+        "const": "one"
+      },
+      {
+        "const": "two"
+      }
+    ]
+  },
+  "Context": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string", "minLength": 1 }
+    },
+    "additionalProperties": false,
+    "minProperties": 1
+  },
+  "IntegerLimit": {
+    "type": "integer",
+    "maximum": 9007199254740992
+  }
+}
