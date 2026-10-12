@@ -247,13 +247,42 @@ export const syncMegarepo = <R = never>({
     // Load config
     const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
 
-    // Top-level apply may mount into the invoking workspace and fetch may also rewrite its lock;
-    // the guard grants this only for non-default branch worktrees. Nested roots stay shared caches.
+    // Top-level apply owns only its root and mount: an author branch, or an exact
+    // commit workspace with lock sync off. Nested roots need invocation-local freshness.
     const ownsTopLevelRoot = depth === 0 && (isApplyMode === true || isFetchMode === true)
     if (dryRun === false) {
+      let commitApplyRoot: string | undefined
+      const pathCommit = resolvedRoot.match(/\/refs\/commits\/([0-9a-f]{40})$/)?.[1]
+      if (
+        depth === 0 &&
+        isApplyMode === true &&
+        (options.lockSyncMode ?? 'off') === 'off' &&
+        pathCommit !== undefined
+      ) {
+        const identity = yield* Git.runCommand({
+          args: ['rev-parse', '--show-toplevel', 'HEAD'],
+          cwd: megarepoRoot,
+        }).pipe(Effect.orElseSucceed(() => ''))
+        const [gitRoot, head] = identity.split('\n')
+        if (
+          gitRoot !== undefined &&
+          head === pathCommit &&
+          (yield* fs.realPath(gitRoot)) === resolvedRoot
+        ) {
+          commitApplyRoot = resolvedRoot
+        }
+      }
+      // Materialization permission never authorizes generators, including outputs
+      // aliased outside the store. Reject before changing any member mounts.
+      if (commitApplyRoot !== undefined && getEnabledGenerators(config).length > 0) {
+        yield* assertCanonicalMutationAllowed({ target: megarepoRoot })
+      }
       const authorization =
         ownsTopLevelRoot === true
-          ? { materializationRoot: megarepoRoot }
+          ? {
+              materializationRoot: megarepoRoot,
+              ...(commitApplyRoot !== undefined ? { commitApplyRoot } : {}),
+            }
           : isApplyMode === true &&
               (options.lockSyncMode ?? 'off') === 'off' &&
               createdWorktrees.has(resolvedRoot) === true

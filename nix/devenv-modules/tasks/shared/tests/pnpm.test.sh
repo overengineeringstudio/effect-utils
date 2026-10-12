@@ -10,6 +10,9 @@ PROJECTION_SCRIPT="$ROOT/nix/devenv-modules/tasks/shared/check-node-modules-proj
 # duplicated test-only copies.
 source "$HELPERS_SCRIPT"
 
+# Store selection fixtures must not inherit the test runner's CI policy.
+unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+
 assert_eq() {
   local expected="$1"
   local actual="$2"
@@ -684,6 +687,53 @@ echo "Test 34: Linux shared storage selects one full store and automatic zero-co
   test ! -L "$shared_store/v11/files"
 )
 
+echo "Test 34h: CI alone retains shared storage while runner identity or opt-in selects job-local storage"
+(
+  storage_root="$test_dir/store-selection-root"
+  shared_store="$test_dir/store-selection-shared"
+  job_store="$test_dir/store-selection-job"
+  isolated_home="$test_dir/store-selection-home"
+  mkdir -p "$storage_root"
+  export HOME="$isolated_home"
+
+  for scenario in ci-only github-actions opt-in neither false-flags; do
+    unset CI GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE PNPM_SHARED_STORE_DIR
+    expected_store="$shared_store"
+    case "$scenario" in
+      ci-only) export CI=1 ;;
+      github-actions) export GITHUB_ACTIONS=true; expected_store="$job_store" ;;
+      opt-in) export PNPM_JOB_LOCAL_STORE=1; expected_store="$job_store" ;;
+      false-flags) export GITHUB_ACTIONS=false PNPM_JOB_LOCAL_STORE=0 ;;
+    esac
+
+    # Exercise both the explicit shared override and the default shared path.
+    for shared_policy in override default; do
+      unset PNPM_SHARED_STORE_DIR
+      if [ "$shared_policy" = override ]; then
+        export PNPM_SHARED_STORE_DIR="$shared_store"
+        selected_shared_store="$shared_store"
+      else
+        selected_shared_store="$HOME/.local/share/pnpm/store-shared-v1"
+      fi
+      if [ "$expected_store" != "$job_store" ]; then
+        expected_store="$selected_shared_store"
+      fi
+      configure_pnpm_storage node "$storage_root" "$job_store" true false
+      assert_eq "$expected_store" "$PNPM_STORE_DIR" "$scenario/$shared_policy selects the declared store"
+      assert_eq "$expected_store" "$PNPM_CONFIG_STORE_DIR" "$scenario/$shared_policy agrees with pnpm's config"
+      assert_eq "$expected_store" "$npm_config_store_dir" "$scenario/$shared_policy agrees with npm's config"
+      assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "$scenario keeps the default root-local projection"
+      echo "PASS: store selection $scenario/$shared_policy"
+    done
+  done
+
+  unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+  export CI=1 PNPM_SHARED_STORE_DIR="$shared_store"
+  configure_pnpm_storage node "$storage_root" "$job_store" true true
+  assert_eq "$shared_store" "$npm_config_store_dir" "CI alone retains the opted-in shared GVS store"
+  assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "CI alone does not disable the local GVS opt-in"
+)
+
 echo "Test 34b: historical shared-files pools stay outside the managed store"
 (
   storage_root="$test_dir/fresh-storage-root"
@@ -818,12 +868,13 @@ else
   echo "SKIP: no writable second filesystem is available"
 fi
 
-echo "Test 35b: CI forces its declared job-local store"
+echo "Test 35b: GitHub Actions forces its declared job-local store"
 (
   storage_root="$test_dir/ci-storage-root"
   job_store="$test_dir/ci-job-store"
   mkdir -p "$storage_root"
   export CI=1
+  export GITHUB_ACTIONS=true
   export PNPM_STORE_DIR="$test_dir/runner-shared-store"
   export PNPM_CONFIG_STORE_DIR="$test_dir/runner-shared-store"
   export npm_config_store_dir="$test_dir/runner-shared-store"
@@ -839,7 +890,8 @@ echo "Test 35b: CI forces its declared job-local store"
 
 echo "Test 35c: capacity checks each distinct writable device exactly once"
 (
-  unset CI
+  unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+  export CI=1
   export PNPM_MIN_FREE_KIB=0
   capacity_log="$test_dir/capacity-df.log"
   store_dir="$test_dir/capacity-store"
