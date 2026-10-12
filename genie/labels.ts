@@ -227,7 +227,7 @@ const sharedAreaLabels: readonly LabelDef[] = [
 //   dotfiles' hypermerge flake) and deprecates every `mq:*`. No runtime acts on
 //   `mq:*` anymore, so the catalog no longer *provisions* them — it only exports
 //   their names as `mqDeprecated` so each repo can DELETE the vestigial live labels
-//   by composing them into its `deprecated` list. Do not re-add `mqLabels`.
+//   by composing them into its `deprecated` list.
 // ============================================================================
 
 const mqPriorityLevels = [0, 1, 10, 20, 30, 100] as const
@@ -245,14 +245,6 @@ export const mqDeprecated: readonly string[] = [
   'mq:status',
   ...mqPriorityLevels.map((n) => `mq:priority-${n}`),
 ]
-
-/**
- * @deprecated The `mq:*` axis is retired — no labels are provisioned anymore. This is
- * kept as an empty array purely so existing `...mqLabels` spreads / `mqLabels.map(...)`
- * in consumer repos keep evaluating (non-breaking) until they migrate to `mqDeprecated`.
- * Remove once no consumer references it.
- */
-export const mqLabels: readonly LabelDef[] = []
 
 // ============================================================================
 // andon:* — cross-machine incident states (see /sk-andon)
