@@ -779,6 +779,7 @@ export const runCommand = ({
   worktreeMode,
   lockSyncMode,
   commitMembers,
+  commitAllMembers = false,
 }: {
   mode: SyncMode
   output: OutputModeValue
@@ -798,6 +799,8 @@ export const runCommand = ({
   lockSyncMode?: LockSyncMode
   /** Root members applied as commit worktrees with their nested trees prepared recursively. */
   commitMembers?: Option.Option<string>
+  /** Selects every root member as a commit member, without a lossy name list. */
+  commitAllMembers?: boolean
 }) =>
   Effect.gen(function* () {
     const json = output === 'json' || output === 'ndjson'
@@ -813,20 +816,28 @@ export const runCommand = ({
       })
     }
 
-    const nestedCommitMembers =
+    const listedCommitMembers =
       commitMembers !== undefined && Option.isSome(commitMembers) === true
         ? parseMemberList(commitMembers.value)
         : []
-    if (nestedCommitMembers.length > 0 && all === true) {
+    if (listedCommitMembers.length > 0 && commitAllMembers === true) {
       return yield* new InvalidOptionsError({
-        message: '--commit-members and --all are mutually exclusive',
+        message: '--commit-members and --commit-all-members are mutually exclusive',
+      })
+    }
+    const commitSelectorFlag =
+      commitAllMembers === true ? '--commit-all-members' : '--commit-members'
+    const commitSelected = listedCommitMembers.length > 0 || commitAllMembers === true
+    if (commitSelected === true && all === true) {
+      return yield* new InvalidOptionsError({
+        message: `${commitSelectorFlag} and --all are mutually exclusive`,
       })
     }
     // Recursive population is authorized only for fresh commit worktrees, which lock sync
     // never receives (see context/megarepo/spec.md, recursive materialization ownership).
-    if (nestedCommitMembers.length > 0 && (lockSyncMode ?? 'off') !== 'off') {
+    if (commitSelected === true && (lockSyncMode ?? 'off') !== 'off') {
       return yield* new InvalidOptionsError({
-        message: '--commit-members requires --lock-sync off',
+        message: `${commitSelectorFlag} requires --lock-sync off`,
       })
     }
 
@@ -841,6 +852,7 @@ export const runCommand = ({
     const { config } = yield* readMegarepoConfig(root.value)
     yield* rejectRetiredRootConfig({ megarepoRoot: root.value, config })
     const memberNames = Object.keys(config.members)
+    const nestedCommitMembers = commitAllMembers === true ? memberNames : listedCommitMembers
     const unknownCommitMembers = nestedCommitMembers.filter(
       (memberName) => memberNames.includes(memberName) === false,
     )

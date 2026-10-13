@@ -41,6 +41,12 @@ export const applyCommand = Cli.Command.make(
       ),
       Cli.Flag.optional,
     ),
+    commitAllMembers: Cli.Flag.Boolean('commit-all-members').pipe(
+      Cli.Flag.withDescription(
+        'Like --commit-members, selecting every root member without listing names (requires --lock-sync off; exclusive with --commit-members)',
+      ),
+      Cli.Flag.withDefault(false),
+    ),
     only: Cli.Flag.String('only').pipe(
       Cli.Flag.withDescription('Only apply specified members (comma-separated)'),
       Cli.Flag.optional,
@@ -70,6 +76,7 @@ export const applyCommand = Cli.Command.make(
     force,
     all,
     commitMembers,
+    commitAllMembers,
     only,
     skip,
     gitProtocol,
@@ -93,6 +100,7 @@ export const applyCommand = Cli.Command.make(
           worktreeMode,
           lockSyncMode: lockSync,
           commitMembers,
+          commitAllMembers,
         }),
       ),
     ),
