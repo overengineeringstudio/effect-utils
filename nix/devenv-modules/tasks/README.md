@@ -188,6 +188,12 @@ for outer tasks that must complete before the nested devenv process can evaluate
     It rechecks checkout ownership, process references, and every payload inode's
     size/link-count/mtime/ctime under a proved exclusive Store Cache lease before
     retirement. Changed observed eligibility resets the 24-hour grace.
+    The candidate is opened once at admission: its directory descriptor and
+    inode/mount identity remain held through lease acquisition, proofs, and
+    retirement. The lease is opened relative to that descriptor, and its locked
+    open-file description remains held in the same collector process. Pathname
+    replacement aborts rather than admitting a replacement directory; deletion
+    never reopens the root path and verifies its identity again at the end.
     Linux retirement walks held directory descriptors with `O_NOFOLLOW` and
     compares each opened directory's mount ID before descending or unlinking;
     a newly inserted mount or replacement symlink cannot redirect the walk.

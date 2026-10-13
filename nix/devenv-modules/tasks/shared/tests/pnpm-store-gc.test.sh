@@ -27,12 +27,25 @@ if flock --shared "$store/.effect-utils-pnpm-store-cache-maintenance.lock" \
   echo "FAIL: observer entered while a consumer held the shared maintenance lease" >&2
   exit 1
 fi
-if "$fixture/engine" --locked --git-dir "$fixture/repo.git" --root "$fixture/retired-root" --observe; then
-  echo "FAIL: observer accepted an unproved inherited lease" >&2
+test "$(cat "$store/v11/files/sentinel")" = preserve
+echo "PASS: real exclusive lease admission and shared-consumer exclusion; no payloads deleted"
+# Empty directories prove rejection without deleting even fixture payloads.
+swap_root="$fixture/swap-root"
+swap_store="$swap_root/.devenv/pnpm-store-pure-v1"
+mkdir -p "$swap_store" "$fixture/replacement"
+XDG_STATE_HOME="$fixture/swap-state" "$fixture/engine" \
+  --git-dir "$fixture/repo.git" --root "$swap_root" --observe
+records=("$fixture/swap-state/effect-utils/pnpm-store-gc/"*.observation)
+test "${#records[@]}" = 1
+node -e 'const fs=require("node:fs");const p=process.argv[1];const v=fs.readFileSync(p,"utf8");fs.writeFileSync(p,"0"+v.slice(v.indexOf("\n")))' "${records[0]}"
+if XDG_STATE_HOME="$fixture/swap-state" PNPM_GC_TEST_SWAP_WITH="$fixture/replacement" \
+  "$fixture/engine" --git-dir "$fixture/repo.git" --root "$swap_root" --apply; then
+  echo "FAIL: retirement admitted a pathname replacement after the final proof" >&2
   exit 1
 fi
-test "$(cat "$store/v11/files/sentinel")" = preserve
-echo "PASS: real exclusive lease admission, shared-consumer exclusion, and inherited-lease proof; no payloads deleted"
+test -d "$swap_store"
+test -d "$swap_store.proved"
+echo "PASS: post-proof directory swap aborts without deleting either directory"
 shared_commit=727cb7544bea32ec031c9f6e5e840cbe717e772a
 if git -C "$ROOT" cat-file -e "$shared_commit^{commit}" 2>/dev/null; then
   repo="$HOME/.megarepo/github.com/fixture/store-config/.bare"

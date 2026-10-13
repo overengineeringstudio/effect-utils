@@ -28,7 +28,6 @@ struct Options {
     git_dir: PathBuf,
     roots: Vec<PathBuf>,
     mode: Mode,
-    locked: bool,
 }
 
 fn options() -> Result<Options> {
@@ -36,7 +35,6 @@ fn options() -> Result<Options> {
     let mut git_dir = None;
     let mut roots = Vec::new();
     let mut mode = Mode::DryRun;
-    let mut locked = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--git-dir" => {
@@ -50,7 +48,6 @@ fn options() -> Result<Options> {
                     Mode::Observe
                 };
             }
-            "--locked" => locked = true,
             "--help" => {
                 println!(
                     "usage: pnpm-store-gc --git-dir REPO/.bare --root WORKTREE [--root WORKTREE ...] [--observe | --apply]\nDefault: read-only dry-run. --observe records eligibility; --apply rechecks it and requires 24 hours of unchanged eligibility. Never collects the shared host store."
@@ -77,7 +74,6 @@ fn options() -> Result<Options> {
         git_dir,
         roots,
         mode,
-        locked,
     })
 }
 
@@ -444,6 +440,7 @@ fn process_directory_proof(
     root: &Path,
     uid: u32,
     status: &str,
+    ignored_directory: Option<i32>,
 ) -> Result<bool> {
     let cwd = directory.join("cwd");
     match fs::read_link(&cwd) {
@@ -494,6 +491,15 @@ fn process_directory_proof(
             Err(error) if process_gone(pid_dir, &error) => return Ok(true),
             Err(error) => return Err(error.to_string()),
         };
+        if ignored_directory.is_some()
+            && path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.parse::<i32>().ok())
+                == ignored_directory
+        {
+            continue;
+        }
         match fs::read_link(&path) {
             Ok(target) => {
                 if target == root.join(LEASE_NAME) {
@@ -527,7 +533,16 @@ fn process_directory_proof(
     Ok(true)
 }
 
+#[cfg(test)]
 fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
+    process_proof_ignoring_directory(proc_root, root, None)
+}
+
+fn process_proof_ignoring_directory(
+    proc_root: &Path,
+    root: &Path,
+    admitted_directory: Option<i32>,
+) -> Result<()> {
     let entries =
         fs::read_dir(proc_root).map_err(|e| format!("cannot inventory processes: {e}"))?;
     let uid = own_uid()?;
@@ -560,7 +575,17 @@ fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
         if count != 4 {
             return Err("process status has incomplete UID evidence".into());
         }
-        if !owned || process_directory_proof(&pid_dir, &pid_dir, root, uid, &status)? {
+        let ignored = if pid_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.parse::<u32>().ok())
+            == Some(std::process::id())
+        {
+            admitted_directory
+        } else {
+            None
+        };
+        if !owned || process_directory_proof(&pid_dir, &pid_dir, root, uid, &status, ignored)? {
             continue;
         }
         // A leader can exit while worker threads retain cwd and open files.
@@ -577,7 +602,7 @@ fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
         let mut observed = false;
         for task in tasks {
             let task = task.map_err(|error| error.to_string())?.path();
-            if process_directory_proof(&pid_dir, &task, root, uid, &status)? {
+            if process_directory_proof(&pid_dir, &task, root, uid, &status, ignored)? {
                 observed = true;
             } else if task.try_exists().map_err(|error| error.to_string())? {
                 return Err(format!(
@@ -596,22 +621,24 @@ fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn liveness(root: &Path) -> Result<()> {
+fn liveness(root: &Path, admitted_directory: &fs::File) -> Result<()> {
+    use std::os::fd::AsRawFd;
+    let ignored = Some(admitted_directory.as_raw_fd());
     // Only the explicitly test-compiled CLI accepts this fixture. Production
     // packages contain no environment/argument bypass of the real census.
     #[cfg(pnpm_gc_test)]
     if let Some(proc_root) = env::var_os("PNPM_GC_TEST_PROC_ROOT") {
-        return process_proof(Path::new(&proc_root), root);
+        return process_proof_ignoring_directory(Path::new(&proc_root), root, ignored);
     }
     if Path::new("/proc/self/fd").is_dir() {
-        return process_proof(Path::new("/proc"), root);
+        return process_proof_ignoring_directory(Path::new("/proc"), root, ignored);
     }
     if env::consts::OS != "macos" {
         return Err("no supported process census (Linux /proc or Darwin lsof)".into());
     }
     let uid = own_uid()?.to_string();
     let output = Command::new("lsof")
-        .args(["-a", "-u", &uid, "-nP", "-Fpn"])
+        .args(["-a", "-u", &uid, "-nP", "-Fpfn"])
         .output()
         .map_err(|error| error.to_string())?;
     // Warnings mean visibility is incomplete, not proof of an idle root.
@@ -622,14 +649,24 @@ fn liveness(root: &Path) -> Result<()> {
         ));
     }
     let mut observed_pids = std::collections::BTreeSet::new();
+    let mut current_pid = None;
+    let mut current_fd = None;
     for line in String::from_utf8_lossy(&output.stdout).lines() {
         if let Some(pid) = line
             .strip_prefix('p')
             .and_then(|pid| pid.parse::<u32>().ok())
         {
             observed_pids.insert(pid);
+            current_pid = Some(pid);
+            current_fd = None;
+        }
+        if let Some(fd) = line.strip_prefix('f') {
+            current_fd = fd.parse::<i32>().ok();
         }
         if let Some(name) = line.strip_prefix('n') {
+            if current_pid == Some(std::process::id()) && current_fd == ignored {
+                continue;
+            }
             if Path::new(name) == root.join(LEASE_NAME) {
                 continue;
             }
@@ -805,34 +842,154 @@ fn reject_mounts(store: &Path) -> Result<()> {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn retire_payloads(store: &Path) -> Result<()> {
+fn descriptor_path(file: &fs::File) -> PathBuf {
     use std::os::fd::AsRawFd;
+    #[cfg(target_os = "linux")]
+    let namespace = "/proc/self/fd";
+    #[cfg(not(target_os = "linux"))]
+    let namespace = "/dev/fd";
+    PathBuf::from(namespace).join(file.as_raw_fd().to_string())
+}
+
+fn open_directory(path: &Path) -> Result<fs::File> {
     use std::os::unix::fs::OpenOptionsExt;
-    fn directory(path: &Path) -> Result<fs::File> {
-        // Linux O_DIRECTORY | O_NOFOLLOW. Open held dirfds, never follow a
-        // replacement symlink while descending through /proc/self/fd.
-        fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(0x10000 | 0x20000)
-            .open(path)
-            .map_err(|error| error.to_string())
+    #[cfg(target_os = "linux")]
+    let flags = 0x10000 | 0x20000; // O_DIRECTORY | O_NOFOLLOW
+    #[cfg(not(target_os = "linux"))]
+    let flags = 0x100000 | 0x100; // Darwin O_DIRECTORY | O_NOFOLLOW
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(flags)
+        .open(path)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn mount_id(directory: &fs::File) -> Result<u64> {
+    use std::os::fd::AsRawFd;
+    fs::read_to_string(format!("/proc/self/fdinfo/{}", directory.as_raw_fd()))
+        .map_err(|error| error.to_string())?
+        .lines()
+        .find_map(|line| line.strip_prefix("mnt_id:"))
+        .ok_or("held directory has no mount identity")?
+        .trim()
+        .parse()
+        .map_err(|error: std::num::ParseIntError| error.to_string())
+}
+
+struct AdmittedStore {
+    path: PathBuf,
+    directory: fs::File,
+    identity: (u64, u64),
+    #[cfg(target_os = "linux")]
+    mount: u64,
+}
+
+impl AdmittedStore {
+    fn open(path: &Path) -> Result<Self> {
+        reject_shared_store(path)?;
+        reject_mounts(path)?;
+        let parent = open_directory(path.parent().ok_or("store has no parent")?)?;
+        let directory = open_directory(
+            &descriptor_path(&parent).join(path.file_name().ok_or("store has no name")?),
+        )?;
+        let stat = directory.metadata().map_err(|error| error.to_string())?;
+        if stat.uid() != own_uid()? {
+            return Err("historical store is not owned by the invoking UID".into());
+        }
+        #[cfg(target_os = "linux")]
+        let mount = {
+            let mount = mount_id(&directory)?;
+            if mount != mount_id(&parent)? {
+                return Err("store root is a mount point".into());
+            }
+            mount
+        };
+        let admitted = Self {
+            path: path.to_path_buf(),
+            directory,
+            identity: (stat.dev(), stat.ino()),
+            #[cfg(target_os = "linux")]
+            mount,
+        };
+        admitted.assert_identity()?;
+        Ok(admitted)
     }
-    fn mount_id(directory: &fs::File) -> Result<u64> {
-        fs::read_to_string(format!("/proc/self/fdinfo/{}", directory.as_raw_fd()))
+
+    fn assert_identity(&self) -> Result<()> {
+        let stat = fs::symlink_metadata(&self.path)
+            .map_err(|error| format!("admitted store path disappeared: {error}"))?;
+        if !stat.is_dir() || (stat.dev(), stat.ino()) != self.identity {
+            return Err("historical store path no longer identifies the admitted directory".into());
+        }
+        #[cfg(target_os = "linux")]
+        if mount_id(&self.directory)? != self.mount {
+            return Err("admitted store mount identity changed".into());
+        }
+        Ok(())
+    }
+
+    fn lease(&self, mode: Mode) -> Result<Option<fs::File>> {
+        use std::os::unix::fs::OpenOptionsExt;
+        if mode == Mode::DryRun {
+            return Ok(None);
+        }
+        #[cfg(target_os = "linux")]
+        let nofollow = 0x20000;
+        #[cfg(not(target_os = "linux"))]
+        let nofollow = 0x100;
+        let lease = fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .mode(0o600)
+            .custom_flags(nofollow)
+            .open(descriptor_path(&self.directory).join(LEASE_NAME))
+            .map_err(|error| error.to_string())?;
+        if !lease
+            .metadata()
             .map_err(|error| error.to_string())?
-            .lines()
-            .find_map(|line| line.strip_prefix("mnt_id:"))
-            .ok_or("held directory has no mount identity")?
-            .trim()
-            .parse()
-            .map_err(|error: std::num::ParseIntError| error.to_string())
+            .is_file()
+        {
+            return Err("maintenance lease is not a regular file".into());
+        }
+        // stdin duplicates this same open-file description. The lock remains
+        // held by our original File after flock exits; no pathname re-exec.
+        let status = Command::new("flock")
+            .args(["--exclusive", "--nonblock", "0"])
+            .stdin(std::process::Stdio::from(
+                lease.try_clone().map_err(|error| error.to_string())?,
+            ))
+            .status()
+            .map_err(|error| error.to_string())?;
+        if !status.success() {
+            return Err("Store Cache maintenance lease busy".into());
+        }
+        self.assert_identity()?;
+        Ok(Some(lease))
     }
+
+    fn prove(&self, git_dir: &Path, root: &Path) -> Result<(String, Footprint)> {
+        self.assert_identity()?;
+        reject_shared_store(&self.path)?;
+        reject_mounts(&self.path)?;
+        let ownership = checkout_ownership_proof(git_dir, root)?;
+        liveness(&self.path, &self.directory)?;
+        let footprint = footprint_held(self)?;
+        self.assert_identity()?;
+        Ok((
+            format!("{}\n{ownership}\n{}", root.display(), footprint.fingerprint),
+            footprint,
+        ))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn retire_payloads(store: &AdmittedStore) -> Result<()> {
     fn walk(held_directory: &fs::File, expected_mount: u64, preserve_lease: bool) -> Result<()> {
         if mount_id(held_directory)? != expected_mount {
             return Err("retirement crossed a mount boundary".into());
         }
-        let held = PathBuf::from(format!("/proc/self/fd/{}", held_directory.as_raw_fd()));
+        let held = descriptor_path(held_directory);
         for entry in fs::read_dir(&held).map_err(|error| error.to_string())? {
             let entry = entry.map_err(|error| error.to_string())?;
             if preserve_lease && entry.file_name() == LEASE_NAME {
@@ -846,7 +1003,7 @@ fn retire_payloads(store: &Path) -> Result<()> {
                 return Err("retirement encountered a replacement bridge".into());
             }
             if kind.is_dir() {
-                let child = directory(&path)?;
+                let child = open_directory(&path)?;
                 walk(&child, expected_mount, false)?;
                 fs::remove_dir(&path).map_err(|error| error.to_string())?;
             } else if kind.is_file() {
@@ -857,26 +1014,21 @@ fn retire_payloads(store: &Path) -> Result<()> {
         }
         Ok(())
     }
-    reject_shared_store(store)?;
-    reject_mounts(store)?;
-    let expected = fs::symlink_metadata(store).map_err(|error| error.to_string())?;
-    let parent = directory(store.parent().ok_or("store has no parent")?)?;
-    let root_path = PathBuf::from(format!("/proc/self/fd/{}", parent.as_raw_fd()))
-        .join(store.file_name().ok_or("store has no directory name")?);
-    let root = directory(&root_path)?;
-    let held = root.metadata().map_err(|error| error.to_string())?;
-    if (held.dev(), held.ino()) != (expected.dev(), expected.ino()) {
-        return Err("historical store changed before held-directory retirement".into());
-    }
-    let mount = mount_id(&parent)?;
-    walk(&root, mount, true)
+    store.assert_identity()?;
+    reject_shared_store(&store.path)?;
+    reject_mounts(&store.path)?;
+    walk(&store.directory, store.mount, true)?;
+    store.assert_identity()
 }
 
 #[cfg(not(target_os = "linux"))]
-fn retire_payloads(store: &Path) -> Result<()> {
-    reject_shared_store(store)?;
-    reject_mounts(store)?;
-    for entry in fs::read_dir(store).map_err(|error| error.to_string())? {
+fn retire_payloads(store: &AdmittedStore) -> Result<()> {
+    store.assert_identity()?;
+    reject_shared_store(&store.path)?;
+    reject_mounts(&store.path)?;
+    for entry in
+        fs::read_dir(descriptor_path(&store.directory)).map_err(|error| error.to_string())?
+    {
         let entry = entry.map_err(|error| error.to_string())?;
         if entry.file_name() == LEASE_NAME {
             continue;
@@ -892,25 +1044,29 @@ fn retire_payloads(store: &Path) -> Result<()> {
             fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
         }
     }
-    Ok(())
+    store.assert_identity()
 }
 
+#[cfg(test)]
 fn footprint(store: &Path) -> Result<Footprint> {
-    reject_shared_store(store)?;
-    reject_mounts(store)?;
-    let metadata = fs::symlink_metadata(store).map_err(|e| e.to_string())?;
-    if !metadata.is_dir()
-        || fs::symlink_metadata(store.parent().ok_or("missing parent")?)
-            .map_err(|e| e.to_string())?
-            .file_type()
-            .is_symlink()
-    {
-        return Err("store and .devenv must be real directories, not bridges".into());
-    }
+    footprint_held(&AdmittedStore::open(store)?)
+}
+
+fn footprint_held(admitted: &AdmittedStore) -> Result<Footprint> {
+    let store = descriptor_path(&admitted.directory);
+    let metadata = admitted
+        .directory
+        .metadata()
+        .map_err(|error| error.to_string())?;
     let mut inodes: BTreeMap<(u64, u64), InodeFootprint> = BTreeMap::new();
     let mut stack = vec![store.to_path_buf()];
     while let Some(path) = stack.pop() {
-        let stat = fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let stat = if path == store {
+            admitted.directory.metadata()
+        } else {
+            fs::symlink_metadata(&path)
+        }
+        .map_err(|e| format!("{}: {e}", path.display()))?;
         if stat.file_type().is_symlink() {
             return Err(format!("store contains a bridge: {}", path.display()));
         }
@@ -980,19 +1136,6 @@ fn observation_matches(record: &str, proof: &str, now: u64) -> bool {
     }) && recorded_proof == proof
 }
 
-fn verify_inherited_lease(store: &Path) -> Result<()> {
-    let inherited = fs::metadata("/dev/fd/203")
-        .map_err(|e| format!("missing inherited maintenance lease: {e}"))?;
-    let selected = fs::metadata(store.join(LEASE_NAME)).map_err(|e| e.to_string())?;
-    if (inherited.dev(), inherited.ino()) != (selected.dev(), selected.ino()) {
-        return Err("inherited maintenance lease does not own the selected store".into());
-    }
-    // Re-lock the inherited open-file description, not a newly opened inode.
-    // This succeeds for our lease and cannot bypass another consumer's lease.
-    command("flock", &["--exclusive", "--nonblock", "203"])?;
-    Ok(())
-}
-
 fn collect(options: &Options, root: &Path) -> Result<u64> {
     let store = root.join(".devenv").join(STORE_NAME);
     if !store.try_exists().map_err(|e| e.to_string())? {
@@ -1013,45 +1156,18 @@ fn collect(options: &Options, root: &Path) -> Result<u64> {
     {
         return Err("store, .devenv, and lease must not be bridges".into());
     }
-    if fs::metadata(&store)
-        .map_err(|error| error.to_string())?
-        .uid()
-        != own_uid()?
-    {
-        return Err("historical store is not owned by the invoking UID".into());
-    }
-    if options.mode != Mode::DryRun && !options.locked {
-        let status = Command::new("bash")
-            .args(["-c", r#"exec 203>>"$1"; flock --exclusive --nonblock 203 || exit 1; exec "$2" --locked --git-dir "$3" --root "$4" "$5""#, "pnpm-store-gc-lease"])
-            .arg(store.join(LEASE_NAME))
-            .arg(env::current_exe().map_err(|e| e.to_string())?)
-            .arg(&options.git_dir).arg(root)
-            .arg(if options.mode == Mode::Apply { "--apply" } else { "--observe" })
-            .status().map_err(|e| e.to_string())?;
-        if !status.success() {
-            return Err("collection refused or Store Cache maintenance lease busy".into());
-        }
-        return Ok(0);
-    }
-    if options.locked {
-        verify_inherited_lease(&store)?;
-    }
+    let admitted = AdmittedStore::open(&store)?;
+    let _lease = admitted.lease(options.mode)?;
     let state_base = env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
         .ok_or("HOME or XDG_STATE_HOME is required")?
         .join("effect-utils/pnpm-store-gc");
-    let stat = fs::symlink_metadata(&store).map_err(|e| e.to_string())?;
-    let state = state_base.join(format!("{}-{}.observation", stat.dev(), stat.ino()));
-    let proof = (|| {
-        let ownership = checkout_ownership_proof(&options.git_dir, root)?;
-        liveness(&store)?;
-        let footprint = footprint(&store)?;
-        Ok::<_, String>((
-            format!("{}\n{ownership}\n{}", root.display(), footprint.fingerprint),
-            footprint,
-        ))
-    })();
+    let state = state_base.join(format!(
+        "{}-{}.observation",
+        admitted.identity.0, admitted.identity.1
+    ));
+    let proof = admitted.prove(&options.git_dir, root);
     let (proof, footprint) = match proof {
         Ok(value) => value,
         Err(error) => {
@@ -1095,10 +1211,8 @@ fn collect(options: &Options, root: &Path) -> Result<u64> {
         // repeat both proofs immediately before unlinking. The lock inode/root
         // stay in place so late cooperating installs cannot acquire a new inode.
         let recheck = (|| {
-            let ownership = checkout_ownership_proof(&options.git_dir, root)?;
-            liveness(&store)?;
-            let current = self::footprint(&store)?;
-            if format!("{}\n{ownership}\n{}", root.display(), current.fingerprint) != proof {
+            let (current, _) = admitted.prove(&options.git_dir, root)?;
+            if current != proof {
                 return Err("eligibility changed before retirement".into());
             }
             Ok::<_, String>(())
@@ -1107,7 +1221,13 @@ fn collect(options: &Options, root: &Path) -> Result<u64> {
             fs::write(&state, "protected").map_err(|e| e.to_string())?;
             return Err(error);
         }
-        retire_payloads(&store)?;
+        #[cfg(pnpm_gc_test)]
+        if let Some(replacement) = env::var_os("PNPM_GC_TEST_SWAP_WITH") {
+            fs::rename(&store, store.with_extension("proved"))
+                .map_err(|error| error.to_string())?;
+            fs::rename(replacement, &store).map_err(|error| error.to_string())?;
+        }
+        retire_payloads(&admitted)?;
         fs::write(&state, "retired").map_err(|e| e.to_string())?;
     }
     println!(
@@ -1195,7 +1315,6 @@ mod tests {
                 git_dir: root.join("repo.git"),
                 roots: vec![root.to_path_buf()],
                 mode: Mode::DryRun,
-                locked: false,
             };
             assert!(
                 collect(&options, root)
@@ -1541,7 +1660,6 @@ mod tests {
             git_dir: repo,
             roots: vec![orphan.clone()],
             mode: Mode::DryRun,
-            locked: false,
         };
         // A fresh candidate is either census-protected or awaiting observation.
         assert_eq!(collect(&options, &orphan).unwrap(), 0);
