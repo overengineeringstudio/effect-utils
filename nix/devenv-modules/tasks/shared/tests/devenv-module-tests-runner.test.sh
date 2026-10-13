@@ -4,6 +4,7 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$TESTS_DIR/../../local/devenv-module-tests.sh"
 TEST_BASH="${BASH_BIN:-$BASH}"
+TEST_JQ="${JQ_BIN:-jq}"
 tmpdir="$(mktemp -d)"
 runner_pid=""
 gates_open=false
@@ -91,8 +92,15 @@ for pid_file in "$RUNNER_FIXTURE_STATE/"*.pid; do [ ! -f "$pid_file" ]; done
 printf 'serial\n' >"$RUNNER_FIXTURE_STATE/serial-last"
 SCRIPT
 
+  printf '%s\0' "${names[@]}" devenv-task-graph.test.sh 'zz-unreviewed fixture.test.sh' |
+    "$TEST_JQ" -Rrs '
+      {darwin: [], neutral: (split("\u0000") | map(select(length > 0)) |
+        map({script: ., rationale: "Scheduler fixture"}))}
+    ' >"$fixture/platforms.json"
+
   RUNNER_FIXTURE_STATE="$fixture/state" \
     MODULE_TEST_WORKERS="$workers" MODULE_TEST_WEIGHTS="$fixture/weights.json" \
+    MODULE_TEST_PLATFORM="" MODULE_TEST_PLATFORMS="$fixture/platforms.json" \
     RUNNER_FIXTURE_BLOCKED="$(IFS=:; printf '%s' "${names[*]:0:$workers}")" \
     RUNNER_FIXTURE_READY="$fixture/ready" \
     RUNNER_FIXTURE_RELEASE_FIRST="$fixture/release-first" \
@@ -180,3 +188,77 @@ for workers in 0 -1 two 1.5; do
   grep -qF 'Expected a positive integer MODULE_TEST_WORKERS' "$tmpdir/invalid.stderr"
 done
 printf 'PASS: invalid worker counts fail before dispatch\n'
+
+# Use one admitted parallel script and one serial script in each class, so the
+# platform filter is exercised before both scheduler queues without timing.
+selection_fixture="$tmpdir/platform-selection"
+mkdir -p "$selection_fixture/tests" "$selection_fixture/state"
+for name in buck2-capability-daemon.test.sh buck2-capability-publish.test.sh \
+  darwin-serial.test.sh neutral-serial.test.sh; do
+  cat >"$selection_fixture/tests/$name" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ran\n' >"$RUNNER_SELECTION_STATE/${0##*/}"
+SCRIPT
+done
+cat >"$selection_fixture/platforms.json" <<'JSON'
+{
+  "darwin": [
+    {"script":"buck2-capability-daemon.test.sh","rationale":"Parallel Darwin fixture"},
+    {"script":"darwin-serial.test.sh","rationale":"Serial Darwin fixture"}
+  ],
+  "neutral": [
+    {"script":"buck2-capability-publish.test.sh","rationale":"Parallel neutral fixture"},
+    {"script":"neutral-serial.test.sh","rationale":"Serial neutral fixture"}
+  ]
+}
+JSON
+for platform in darwin linux ""; do
+  rm -f "$selection_fixture/state/"*.test.sh
+  RUNNER_SELECTION_STATE="$selection_fixture/state" \
+    MODULE_TEST_PLATFORM="$platform" MODULE_TEST_PLATFORMS="$selection_fixture/platforms.json" \
+    MODULE_TEST_WEIGHTS=/dev/null \
+    "$TEST_BASH" "$RUNNER" "$selection_fixture/tests" \
+    >"$selection_fixture/stdout" 2>"$selection_fixture/stderr"
+  for name in buck2-capability-daemon.test.sh darwin-serial.test.sh; do
+    [ -f "$selection_fixture/state/$name" ] || fail "$platform: Darwin script was dropped: $name"
+  done
+  for name in buck2-capability-publish.test.sh neutral-serial.test.sh; do
+    if [ "$platform" = darwin ]; then
+      [ ! -f "$selection_fixture/state/$name" ] || fail "Darwin ran neutral script: $name"
+    else
+      [ -f "$selection_fixture/state/$name" ] || fail "$platform: neutral script was dropped: $name"
+    fi
+  done
+done
+printf 'PASS: Darwin selects only Darwin scripts; Linux and empty select every script\n'
+
+for defect in unclassified stale overlap duplicate missing-rationale missing-catalog invalid-platform; do
+  case "$defect" in
+    unclassified) filter='.neutral |= .[1:]' ;;
+    stale) filter='.neutral += [{script:"absent.test.sh",rationale:"Stale fixture"}]' ;;
+    overlap) filter='.neutral += [.darwin[0]]' ;;
+    duplicate) filter='.darwin += [.darwin[0]]' ;;
+    missing-rationale) filter='del(.neutral[0].rationale)' ;;
+    *) filter='.' ;;
+  esac
+  "$TEST_JQ" "$filter" "$selection_fixture/platforms.json" >"$selection_fixture/invalid.json"
+  catalog="$selection_fixture/invalid.json"
+  platform=darwin
+  if [ "$defect" = missing-catalog ]; then catalog=""; fi
+  if [ "$defect" = invalid-platform ]; then platform=windows; fi
+  for selected_platform in "$platform" linux ""; do
+    rm -f "$selection_fixture/state/"*.test.sh
+    if RUNNER_SELECTION_STATE="$selection_fixture/state" \
+      MODULE_TEST_PLATFORM="$selected_platform" MODULE_TEST_PLATFORMS="$catalog" \
+      "$TEST_BASH" "$RUNNER" "$selection_fixture/tests" \
+      >"$selection_fixture/stdout" 2>"$selection_fixture/stderr"; then
+      fail "$defect ($selected_platform): invalid selection succeeded"
+    fi
+    for marker in "$selection_fixture/state/"*.test.sh; do
+      [ ! -f "$marker" ] || fail "$defect: invalid selection dispatched a script"
+    done
+    if [ "$defect" = invalid-platform ]; then break; fi
+  done
+done
+printf 'PASS: invalid or incomplete classifications fail before dispatch on every platform\n'
