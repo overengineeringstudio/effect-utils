@@ -139,14 +139,18 @@ def watched(argv, terminate_when=None, timeout=60, observer=None, **kwargs):
         # Kill all descendants before reaping the leader or draining inherited pipes.
         try:
             os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
+            # Protected platform children may reject signals even after exit.
+            # Still drain/wait below; never unwind into keychain cleanup first.
             pass
         process.communicate()
         raise
     # A successful leader must not leave descendants holding our pipes open either.
     try:
         os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
+        # The leader was observed terminal without reaping. macOS can return
+        # EPERM for signalling an exited protected Apple binary.
         pass
     stdout, stderr = process.communicate()
     return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
@@ -187,6 +191,7 @@ keychains.mkdir(parents=True)
 keychain = keychains / 'signing.keychain-db'
 unpinned = keychains / 'unpinned.keychain-db'
 chain_missing = keychains / 'chain-missing.keychain-db'
+fixture_keychain = keychains / 'fixture.keychain-db'
 password = 'macos-app-ctl-test-' + os.urandom(8).hex()
 identity = 'macos-app-ctl test signer'
 # A test CA issues the code-signing certificates from the CSRs the ctl primitives write.
@@ -205,9 +210,10 @@ def cleanup():
             try: os.kill(job['pid'], signal.SIGTERM)
             except ProcessLookupError: pass
     # File removal only: the keychains were never on the search list.
-    for path in (keychain, unpinned, chain_missing):
+    for path in (keychain, unpinned, chain_missing, fixture_keychain):
         path.unlink(missing_ok=True)
         Path(f'{path}.acl.json').unlink(missing_ok=True)
+        Path(f'{path}.fixture-identity.json').unlink(missing_ok=True)
     (work / 'ca.key').unlink(missing_ok=True)
     assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
 
@@ -370,6 +376,11 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert imported['imported'] and imported['identity'] and imported['subject'] == identity
     assert not key_call('import-signing-cert', keychain, '--cert', work / 'signing.pem')['result']['imported']
     leaf = imported['certificateSha1']
+    key_call('provision-signing-key', fixture_keychain, '--common-name-hint', 'fixture signer',
+             '--csr-out', work / 'fixture.csr', '--test-self-signed-cert-out', work / 'fixture.pem')
+    fixture_leaf = key_call('import-signing-cert', fixture_keychain, '--cert', work / 'fixture.pem')['result']['certificateSha1']
+    fixture_record_path = Path(f'{fixture_keychain}.acl.json')
+    fixture_record = json.loads(fixture_record_path.read_text())
     # A not-yet-pinned key with a foreign ACL record must refuse before even the
     # test-build sentinel is spawned. Preparation must not "repair" unknown ACLs.
     fixture = work / 'Fixture.app'
@@ -382,17 +393,44 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         if not path.is_symlink(): path.chmod(path.stat().st_mode | 0o200)
     inventory_file = work / 'fixture-inventory.json'
     inventory_file.write_text(json.dumps(['Contents/Helpers/Nested.app']))
-    fixture_requirement = f'identifier "dev.example.synthetic-host" and certificate leaf = H"{leaf}"'
-    before_codesign = (work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else ''
-    record_path.write_text(json.dumps(dict(record, keychain='foreign')))
+    fixture_identifier = 'dev.overeng.macos-app.fixture.synthetic-host'
+    fixture_requirement = f'identifier "{fixture_identifier}" and certificate leaf = H"{fixture_leaf}"'
+    production_requirements = work / 'production-requirements.json'
+    production_requirements.write_text('[]')
+    fixture_options = ['--certificate-sha1', fixture_leaf, '--identifier', fixture_identifier,
+                       '--target', fixture, '--production-requirements', production_requirements]
+    # These refusals require no password or usable signing identity.
+    refused = key_call('sign-fixture', fixture_keychain, *fixture_options,
+                      '--requirement', config['requirement'], code=64, secret=None)
+    assert 'ctl-constructed' in refused['error']['reason'], refused
+    refused = key_call('sign-fixture', fixture_keychain, '--certificate-sha1', fixture_leaf,
+                      '--identifier', 'dev.example.production', '--target', fixture, code=64, secret=None)
+    assert 'fixture.' in refused['error']['reason'], refused
+    refused = key_call('sign-fixture', fixture_keychain, '--certificate-sha1', leaf, code=64, secret=None)
+    assert 'fixture identity' in refused['error']['reason'], refused
+    write_config(signer={'teamId': 'TEST', 'identity': fixture_leaf})
     try:
-        refusal = key_call('sign-fixture', keychain, '--certificate-sha1', leaf,
-                           '--requirement', fixture_requirement, '--target', fixture, code=64)
+        refused = key_call('sign-fixture', fixture_keychain, *fixture_options, code=64, secret=None)
+        assert 'production signer' in refused['error']['reason'], refused
+    finally:
+        write_config()
+    production_requirements.write_text(json.dumps([fixture_requirement.replace(' and ', '\n and ')]))
+    try:
+        refused = key_call('sign-fixture', fixture_keychain, *fixture_options, code=64, secret=None)
+        assert 'production designated requirement' in refused['error']['reason'], refused
+    finally:
+        production_requirements.write_text('[]')
+    assert not unlocked(fixture_keychain)
+    print('PASS fixture namespace, unlisted/production identity and compiled-equivalent production DR refuse before unlocking', flush=True)
+    before_codesign = (work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else ''
+    fixture_record_path.write_text(json.dumps(dict(fixture_record, keychain='foreign')))
+    try:
+        refusal = key_call('sign-fixture', fixture_keychain, *fixture_options, code=64)
         assert refusal['error']['kind'] == 'invalid-input' and 'ACL record' in refusal['error']['reason'], refusal
         assert ((work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else '') == before_codesign
-        assert not unlocked()
+        assert not unlocked(fixture_keychain)
     finally:
-        record_path.write_text(json.dumps(record))
+        fixture_record_path.write_text(json.dumps(fixture_record))
     print('PASS unpinned fixture key with foreign ACL record refuses before sentinel codesign starts', flush=True)
     bad_inventory = work / 'bad-inventory.json'
     bad_inventory.write_text('{}')
@@ -402,24 +440,22 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     fixture_inputs = [
         ([], 64),
         (['--certificate-sha1', 'bad'], 64),
-        (['--certificate-sha1', leaf], 64),
-        (['--certificate-sha1', leaf, '--target', work / 'absent.app'], 23),
-        (['--certificate-sha1', leaf, '--target', fixture], 64),
-        (['--certificate-sha1', leaf, '--target', fixture, '--requirement', 'not-a-requirement'], 23),
-        (['--certificate-sha1', leaf, '--target', fixture, '--requirement', fixture_requirement,
-          '--inventory', bad_inventory], 64),
-        (['--certificate-sha1', leaf, '--target', fixture, '--requirement', fixture_requirement,
-          '--inventory', escaping_inventory], 64),
+        (['--certificate-sha1', fixture_leaf], 64),
+        (['--certificate-sha1', fixture_leaf, '--target', work / 'absent.app'], 23),
+        (['--certificate-sha1', fixture_leaf, '--target', fixture], 64),
+        (['--certificate-sha1', fixture_leaf, '--target', fixture, '--identifier', 'not-a-fixture'], 64),
+        ([*fixture_options, '--inventory', bad_inventory], 64),
+        ([*fixture_options, '--inventory', escaping_inventory], 64),
     ]
     try:
         for args, code in fixture_inputs:
-            unlock_for_test()
-            key_call('sign-fixture', keychain, *args, code=code)
-            assert not unlocked(), f'Fixture input refusal left the interrupted keychain unlocked: {args}'
-        unlock_for_test()
-        refused = key_call('sign-fixture', keychain, '--certificate-sha1', 'bad', code=20, failpoint='relock')
+            unlock_for_test(fixture_keychain)
+            key_call('sign-fixture', fixture_keychain, *args, code=code)
+            assert not unlocked(fixture_keychain), f'Fixture input refusal left the interrupted keychain unlocked: {args}'
+        unlock_for_test(fixture_keychain)
+        refused = key_call('sign-fixture', fixture_keychain, '--certificate-sha1', 'bad', code=20, failpoint='relock')
         assert refused['error']['category'] == 'relock-failed', refused
-        assert not unlocked()
+        assert not unlocked(fixture_keychain)
     finally:
         (fixture / 'Contents/escaped').unlink()
     print('PASS fixture input failures relock interrupted K and report a checked final-lock failure', flush=True)
@@ -498,13 +534,13 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert proof['lockedAfterWindow'] and proof['lockOnSleep'] and proof['lockIntervalSeconds'] == 300, proof
     assert not unlocked()
     print(f'PASS signing-key proof: {json.dumps(proof, sort_keys=True)}', flush=True)
-    sealed = key_call('sign-fixture', keychain, '--certificate-sha1', leaf,
-                      '--requirement', fixture_requirement, '--target', fixture,
+    key_call('prove-signing-key', fixture_keychain, '--no-sign')
+    sealed = key_call('sign-fixture', fixture_keychain, *fixture_options,
                       '--inventory', inventory_file)['result']
     assert sealed['signedPaths'] == [str(nested), str(fixture)], sealed
     for target in (nested, fixture):
         assert tool('/usr/bin/codesign', '--verify', '--strict', f'-R={fixture_requirement}', str(target)).returncode == 0
-    assert not unlocked()
+    assert not unlocked(fixture_keychain)
     print('PASS pinned fixture signs through ctl and verifies with the declared requirement', flush=True)
 
     # The fake signer pauses only after ctl has unlocked K and passed its exact guard.

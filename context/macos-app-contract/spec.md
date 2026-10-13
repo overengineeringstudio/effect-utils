@@ -442,8 +442,32 @@ trust or treats that prerequisite as a passing signature test.
 
 Agents sign only through `ctl`, including test and fixture bundles. Use
 `sign-fixture --keychain K --keychain-password-fd N --certificate-sha1 SHA1
---requirement REQ --target APP [--inventory FILE]` with the usual `--config`.
-It reads back non-extractability, performs the password-authorized partition
+--identifier ID --production-requirements FILE --target APP [--inventory FILE]`
+with the usual `--config`. `ID` must be in `dev.overeng.macos-app.fixture.` with
+a nonempty identifier-character suffix. Every signed item gets that explicit
+codesign identifier, overriding bundle metadata. ctl constructs the requirement
+as `identifier "<ID>" and certificate leaf = H"<SHA1>"`; caller-supplied
+requirements and identifiers outside the fixture namespace refuse before unlock.
+This keeps fixture code outside production designated requirements and their TCC
+grants, even when host and fixture keychains are controlled by the same account.
+
+The certificate must be explicitly allowlisted by `<K>.fixture-identity.json`,
+a regular 0600 file owned by the current user, naming K and its fixture
+certificate SHA1, subject and public-key SHA256. Only deliberate test-feature
+provisioning with `--test-self-signed-cert-out` writes this record; production
+provisioning never does. Missing/foreign records, unlisted SHA1s and the production
+signer named in config refuse before unlocking. Each product ctl config pins one
+production requirement, not a repository-wide product inventory, so the mandatory
+`--production-requirements` file supplies that inventory as a JSON array of DR
+strings. ctl adds its configured product requirement and refuses a canonical,
+compiled-equivalent match before unlock. The inventory must enumerate all
+production DRs the caller protects.
+
+The same shared helper as `prove-signing-key` reads back non-extractability and
+requires export refusal `errSecDataNotAvailable` (-25316) before pinning. A key
+already passing the exact pin/ACL guard uses its non-extractable readback instead,
+because attempting export from ctl's excluded partition could request approval.
+The signer then performs the password-authorized partition
 pin preparation, and runs the exact ACL guard and trust-chain preflight before
 spawning codesign. A missing or foreign ACL record refuses before preparation;
 other unsafe ACLs refuse before codesign. The password never reaches a child.
@@ -453,7 +477,7 @@ previously interrupted signing window and pass through the checked final lock.
 The optional inventory is a JSON array of relative nested-code paths beneath
 the target. Entries are canonicalized and checked for containment, deduplicated,
 then signed deepest-first before the outer target, without `--deep`. Each
-signature is verified against the supplied requirement.
+signature is verified against the ctl-constructed fixture requirement.
 
 The accepted residual is that invoking `/usr/bin/codesign` or `/usr/bin/security`
 by absolute path bypasses host PATH wrappers. This is covered by agent process

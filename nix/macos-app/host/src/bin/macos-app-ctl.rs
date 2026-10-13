@@ -621,7 +621,7 @@ fn known_option(key: &str) -> bool {
     matches!(key, "config" | "app-dir" | "state" | "socket" | "plist-dir" | "domain" |
         "desired" | "generation" | "keychain" | "keychain-password-fd" | "common-name-hint" |
         "csr-out" | "cert" | "restore-host" | "signing-auth-pending" | "replace" | "no-sign" |
-        "certificate-sha1" | "requirement" | "target" | "inventory")
+        "certificate-sha1" | "requirement" | "target" | "inventory" | "identifier" | "production-requirements")
 }
 fn run() -> Result<Value> {
     let _signals = install_signal_handlers()?;
