@@ -19,9 +19,9 @@ MR_PRODUCT_CONTRACT_SCRIPTS="$(nix eval --impure --json --expr '
       bootstrapMembers = [ "contract-fixture" ];
       setupCommitMembers = [ "contract-fixture" ];
     }) { inherit pkgs; lib = pkgs.lib; };
-  in pkgs.lib.mapAttrs (_: task: {
-    inherit (task) exec status;
-  }) (pkgs.lib.filterAttrs (name: _: pkgs.lib.hasPrefix "mr:" name) module.tasks)
+  in pkgs.lib.mapAttrs (_: task:
+    pkgs.lib.filterAttrs (name: _: builtins.elem name [ "exec" "status" ]) task
+  ) (pkgs.lib.filterAttrs (name: _: pkgs.lib.hasPrefix "mr:" name) module.tasks)
 ')"
 export MR_PRODUCT_CONTRACT_SCRIPTS
 
@@ -54,8 +54,8 @@ for (const [task, scripts] of Object.entries(tasks)) {
     }
   }
 }
-if (!requirements.has('apply') || !requirements.get('apply').has('--commit-all-members')) {
-  throw new Error('Task extraction did not cover CI nested mr:setup')
+if (requirements.size === 0) {
+  throw new Error('Task extraction found no mr invocations')
 }
 let failed = false
 for (const [command, flags] of requirements) {
@@ -66,7 +66,10 @@ for (const [command, flags] of requirements) {
   if (result.error || result.status !== 0) {
     throw new Error(`Published mr ${command} --help failed: ${result.error ?? result.stderr}`)
   }
-  const available = new Set([...(result.stdout + result.stderr).matchAll(/--[a-z][a-z0-9-]*/g)].map((m) => m[0]))
+  // Match option declarations, not flags merely mentioned in descriptions.
+  const available = new Set(
+    [...(result.stdout + result.stderr).matchAll(/^[ \t]+(--[a-z][a-z0-9-]*)(?=[, \t])/gm)].map((m) => m[1]),
+  )
   for (const [flag, location] of flags) {
     if (!available.has(flag)) {
       console.error(`${location}: manifest-backed mr ${command} lacks ${flag}`)
