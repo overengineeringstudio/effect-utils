@@ -99,6 +99,18 @@ describe('loadSubjectTree', () => {
     }),
   )
 
+  it.effect('orders canonical paths when an alias sorts before its target', () =>
+    Effect.gen(function* () {
+      const root = fixture({
+        'b/agent.kdl': 'version 2\nagent "b"\n',
+        'z/agent.kdl': 'version 2\nagent "z"\n',
+      })
+      symlinkSync(join(root, 'z'), join(root, 'a'))
+      const subjects = yield* load(root)
+      expect(subjects.map(({ path }) => path)).toEqual(['b/agent.kdl', 'z/agent.kdl'])
+    }),
+  )
+
   it.effect('lowers typed supervisors, loop workers and final workers', () =>
     Effect.gen(function* () {
       const root = fixture({

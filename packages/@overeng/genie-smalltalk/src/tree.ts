@@ -444,5 +444,5 @@ export const loadSubjectTree = Effect.fn('genie-smalltalk.loadSubjectTree')(func
         : yield* loadModule({ root: tree.real, file, path, kind, id, context }),
     )
   }
-  return subjects
+  return subjects.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 })
