@@ -57,6 +57,7 @@ let
     export DATE_BIN=${pkgs.coreutils}/bin/date
     export XARGS_BIN=${pkgs.findutils}/bin/xargs
     export JQ_BIN=${pkgs.jq}/bin/jq
+    export RUSTC_BIN=${pkgs.rustc}/bin/rustc
     export MODULE_TEST_WORKERS=${toString workerCount}
     export MODULE_TEST_WEIGHTS=${weightsFile}
     export MODULE_TEST_PLATFORM=${lib.escapeShellArg testPlatform}
