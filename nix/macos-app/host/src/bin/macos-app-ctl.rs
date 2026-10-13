@@ -148,6 +148,13 @@ impl Keychain {
         if status != 0 { return Err(signing("relock-failed", format!("Initial SecKeychainLock status {status}"))); }
         Ok(keychain)
     }
+    /// Checked final lock, including failed operations; lock failure overrides their result.
+    fn finish<T>(&self, result: Result<T>) -> Result<T> {
+        // SAFETY: self owns a live keychain reference.
+        let status = unsafe { SecKeychainLock(self.0) };
+        if status != 0 || failpoint("relock") { return Err(signing("relock-failed", format!("SecKeychainLock status {status}"))); }
+        result
+    }
     /// Unlocks for one window. `close` must succeed before the result is used. The caller
     /// drops (and so zeroes) the password as soon as it has no further use for it.
     fn unlock(&self, password: &Password) -> Result<UnlockWindow<'_>> {
@@ -155,7 +162,10 @@ impl Keychain {
         // SAFETY: the password pointer is valid for length bytes; usePassword is true, so no UI is shown.
         let status = unsafe { SecKeychainUnlock(self.0, length, password.bytes.as_ptr().cast(), 1) };
         let window = UnlockWindow { keychain: self, open: true };
-        if status != 0 { return Err(signing("unlock-failed", format!("SecKeychainUnlock status {status}"))); }
+        if status != 0 {
+            window.close()?;
+            return Err(signing("unlock-failed", format!("SecKeychainUnlock status {status}")));
+        }
         Ok(window)
     }
 }
@@ -209,9 +219,9 @@ impl Ctl {
     /// Runs only codesign, so it is admissible inside the unlocked signing window.
     fn signature_with(&self, app: &Path, requirement: &str) -> Result<String> {
         let path = text(app)?;
-        let strict = command("codesign", &["--verify", "--strict", path])?;
-        let matches = command("codesign", &["-v", &format!("-R={requirement}"), path])?;
-        let details = command("codesign", &["-d", "-r-", path])?;
+        let strict = command(keys::codesign_program(), &["--verify", "--strict", path])?;
+        let matches = command(keys::codesign_program(), &["-v", &format!("-R={requirement}"), path])?;
+        let details = command(keys::codesign_program(), &["-d", "-r-", path])?;
         let details_text = format!("{}\n{}", String::from_utf8_lossy(&details.stdout), String::from_utf8_lossy(&details.stderr));
         let dr = details_text.lines().find_map(|line| line.strip_prefix("designated => ").map(str::to_owned)).unwrap_or_default();
         if !strict.status.success() || !matches.status.success() || !details.status.success() || dr != requirement { return Err(mismatch(format!("Signature/DR mismatch: {dr}"))); }
@@ -249,13 +259,15 @@ impl Ctl {
         let password = Password::read(self.password_fd()?)?;
         let window = keychain.unlock(&password)?;
         drop(password);
-        keys::require_codesign_ready(keychain_path, keychain, identity)?;
-        let signed = keys::bounded_codesign(&["--force", "--keychain", text(keychain_path)?, "--sign", identity, "--requirements", &format!("=designated => {declared}"), text(stage)?])?;
-        if !signed.status.success() { return Err(signing("sign-failed", String::from_utf8_lossy(&signed.stderr).trim().to_owned())); }
-        let verified = self.signature_with(stage, &requirement);
+        let result = (|| {
+            keys::require_codesign_ready(keychain_path, keychain, identity)?;
+            let signed = keys::bounded_codesign(&["--force", "--keychain", text(keychain_path)?, "--sign", identity, "--requirements", &format!("=designated => {declared}"), text(stage)?])?;
+            if !signed.status.success() { return Err(signing("sign-failed", String::from_utf8_lossy(&signed.stderr).trim().to_owned())); }
+            let verified = self.signature_with(stage, &requirement);
+            verified.map(|_| ()).map_err(|e| signing("dr-mismatch", e.reason))
+        })();
         window.close()?;
-        verified.map_err(|e| signing("dr-mismatch", e.reason))?;
-        Ok(())
+        result
     }
     /// Roll-forward publication after the exchange, which is the install commit point. Every step
     /// is idempotent and `D.txn.json` is removed last, so a failure or crash here is completed by

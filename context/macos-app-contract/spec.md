@@ -288,7 +288,10 @@ can only force a failure or a crash, never make a check pass.
   signing ACLs equal to `{/usr/bin/codesign, recorded ctl}`. Anything wider or
   different fails with `verification-failed` and runs no `codesign`. Each
   signing `codesign` also has a 30-second deadline, after which it is killed
-  (`sign-timeout`).
+  (`sign-timeout`). Production always executes the absolute
+  `/usr/bin/codesign`, for signing and verification, never a PATH-selected
+  executable. Only the separate `test-signing-cert` build selects a PATH
+  shim, to inject signing failures and record arguments.
 - **Certificate chain preflight.** Before codesign, `ctl` evaluates the
   identity's certificate with `SecTrust` and the code-signing policy.
   Network fetching is disabled; intermediates and trusted anchors must
@@ -319,7 +322,9 @@ can only force a failure or a crash, never make a check pass.
   verification; no other child process, network or op-proxy call runs inside
   it. A checked `SecKeychainLock` closes it before any signing result is used;
   if that lock fails the run fails with `relock-failed` and nothing is
-  exchanged. Early returns relock best effort.
+  exchanged. Failures inside the unlock window also pass through a checked
+  final lock before they are returned; relock failure overrides the original
+  error. Destructors provide additional best-effort cleanup for unwinding.
 - **Never the login keychain.** A path that resolves to the login keychain,
   by name or by `security login-keychain`, is refused before it is opened.
 
@@ -332,6 +337,14 @@ non-partition-capable locations. `ctl` disables keychain user interaction
 process-wide (`SecKeychainSetUserInteractionAllowed(false)`), so any call of
 its own that would need UI fails with `errSecInteractionNotAllowed` instead of
 prompting.
+
+For an existing `K`, all three provisioning primitives open and lock it before
+reading passwords, certificate files or remaining operation arguments. A
+newly created `K` is likewise locked before its provisioning window begins.
+Every return path after opening `K`, including invalid input and keychain
+operation failures, passes through a checked final `SecKeychainLock`; failure
+is `relock-failed` rather than an apparently successful or safely failed
+operation. This also closes a window left open by a previously killed process.
 
 For file-based keychains, `SecKeyCreateRandomKey`'s CDSA branch reads the
 top-level generation attributes; nested private/public attribute dictionaries

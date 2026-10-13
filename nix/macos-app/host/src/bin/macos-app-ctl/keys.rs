@@ -18,6 +18,14 @@ const LOCK_INTERVAL: u32 = 300;
 /// (`security` alone gets `apple-tool:`, others `teamid:`/`cdhash:`/`unsigned:`; nothing is ever
 /// assigned `codesign:`). A caller outside the list triggers a confirmation prompt on use.
 const CODESIGN_PARTITION: &str = "apple:";
+/// Only the feature-built test executable can select the injected PATH shim. Production always
+/// executes the same absolute Apple binary that the signing ACL guard identifies.
+pub(super) fn codesign_program() -> &'static str {
+    #[cfg(feature = "test-signing-cert")]
+    { "codesign" }
+    #[cfg(not(feature = "test-signing-cert"))]
+    { CODESIGN }
+}
 /// Upper bound for one signing `codesign` run; a run blocked on a confirmation is killed.
 pub(super) const SIGN_DEADLINE: Duration = Duration::from_secs(30);
 const CODESIGN: &str = "/usr/bin/codesign";
@@ -395,23 +403,27 @@ fn keychain_settings(keychain: &Keychain) -> Result<Settings> {
 /// RSA-2048 key and a PKCS#10 request signed by it. Existing keys are never deleted.
 pub(super) fn provision(ctl: &Ctl) -> Result<Value> {
     let path = dedicated_keychain(ctl)?;
+    let mut held = if path.exists() { Some(Keychain::open_locked(&path)?) } else { None };
+    let result = (|| {
     let common_name = ctl.arg("common-name-hint")?;
     if common_name.is_empty() || common_name.chars().count() > 64 || common_name.chars().any(char::is_control) {
         return Err(fail(64, "invalid-input", "--common-name-hint must be 1-64 printable characters"));
     }
     let csr_out = PathBuf::from(ctl.arg("csr-out")?);
     let password = Password::read(ctl.password_fd()?)?;
-    let created = !path.exists();
+    let created = held.is_none();
     if created {
         let c_path = CString::new(text(&path)?).map_err(|e| fail(64, "invalid-input", e.to_string()))?;
         let mut keychain = std::ptr::null();
         // SAFETY: the password is valid for len bytes; promptUser is false; SecKeychainCreate
         // does not add the keychain to the search list or make it the default.
         checked_status(unsafe { SecKeychainCreate(c_path.as_ptr(), password.len as u32, password.bytes.as_ptr().cast(), 0, std::ptr::null(), &mut keychain) }, "SecKeychainCreate")?;
-        drop(owned(keychain, "SecKeychainCreate")?);
+        if keychain.is_null() { return Err(fail(23, "operation-failed", "SecKeychainCreate returned no keychain")); }
+        held = Some(Keychain(keychain.cast_mut()));
+        held.as_ref().expect("created keychain").finish(Ok(()))?;
     }
     fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
-    let keychain = Keychain::open_locked(&path)?;
+    let keychain = held.as_ref().expect("opened or created keychain");
     let window = keychain.unlock(&password)?;
     drop(password);
     let settings = Settings { version: 1, lock_on_sleep: 1, use_lock_interval: 1, lock_interval: LOCK_INTERVAL };
@@ -439,15 +451,18 @@ pub(super) fn provision(ctl: &Ctl) -> Result<Value> {
     if let Some(parent) = csr_out.parent() { fs::create_dir_all(parent)?; }
     atomic_write(&csr_out, pem("CERTIFICATE REQUEST", &certification_request(&info, &signature)).as_bytes())?;
     Ok(json!({"keychain": path, "createdKeychain": created, "mode": "0600", "lockOnSleep": true, "lockIntervalSeconds": LOCK_INTERVAL, "keyLabel": common_name, "publicKeySha256": sha256(&spki), "csr": csr_out, "retainedPrivateKeys": retained, "aclRecord": sidecar_path(&path), "ctlPath": ctl_path, "ctlCdhash": ctl_cdhash}))
+    })();
+    match held { Some(keychain) => keychain.finish(result), None => result }
 }
 
 /// `import-signing-cert`: adds the issued certificate only when a private key in the
 /// keychain pairs with it, then confirms the identity resolves.
 pub(super) fn import_certificate(ctl: &Ctl) -> Result<Value> {
     let path = dedicated_keychain(ctl)?;
+    let keychain = Keychain::open_locked(&path)?;
+    let result = (|| {
     let der = certificate_der(&fs::read(ctl.arg("cert")?)?)?;
     let password = Password::read(ctl.password_fd()?)?;
-    let keychain = Keychain::open_locked(&path)?;
     let data = cf_data(&der)?;
     // SAFETY: data is live; the certificate follows the create rule.
     let certificate = owned(unsafe { SecCertificateCreateWithData(std::ptr::null(), data.0) }, "SecCertificateCreateWithData")
@@ -480,6 +495,8 @@ pub(super) fn import_certificate(ctl: &Ctl) -> Result<Value> {
     // The identity lookup install-host uses (codesigning policy, keychain may be locked).
     if !identity_in_keychain(&path, &certificate_sha1)? { return Err(fail(22, "verification-failed", "Imported identity is not found by find-identity")); }
     Ok(json!({"keychain": path, "imported": imported, "certificateSha1": certificate_sha1, "subject": subject, "publicKeySha256": sha256(&spki), "identity": true}))
+    })();
+    keychain.finish(result)
 }
 
 fn identity_parts(identity: Ref) -> Result<(Cf, Cf)> {
@@ -759,7 +776,7 @@ fn export_status(identity: Ref) -> Result<i32> {
 /// Runs one signing `codesign` with `SIGN_DEADLINE`; a run that has not finished (for example
 /// because it waits on a confirmation) is killed and reported as `sign-timeout`.
 pub(super) fn bounded_codesign(args: &[&str]) -> Result<Output> {
-    let mut child = Command::new("codesign").args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
+    let mut child = Command::new(codesign_program()).args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
     let drain = |pipe: Option<Box<dyn Read + Send>>| std::thread::spawn(move || { let mut buffer = Vec::new(); if let Some(mut pipe) = pipe { let _ = pipe.read_to_end(&mut buffer); } buffer });
     let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
@@ -785,7 +802,7 @@ fn codesign_probe(keychain: &Path, identity_sha1: &str) -> Result<bool> {
         fs::write(&file, b"macos-app-ctl signing-key proof\n")?;
         let signed = bounded_codesign(&["--force", "--keychain", text(keychain)?, "--sign", identity_sha1, text(&file)?])?;
         if !signed.status.success() { return Err(fail(22, "verification-failed", format!("Signing-key codesign probe: {}", String::from_utf8_lossy(&signed.stderr)))); }
-        let verified = command("codesign", &["--verify", text(&file)?])?;
+        let verified = command(codesign_program(), &["--verify", text(&file)?])?;
         if !verified.status.success() { return Err(fail(22, "verification-failed", format!("Signing-key codesign probe verification: {}", String::from_utf8_lossy(&verified.stderr)))); }
         Ok(true)
     })();
@@ -808,10 +825,11 @@ fn keychain_locked(keychain: &Keychain) -> Result<bool> {
 /// unless every property holds.
 pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
     let path = dedicated_keychain(ctl)?;
+    let keychain = Keychain::open_locked(&path)?;
+    let result = (|| {
     let partition_capable = path.parent().is_some_and(partition_capable);
     let no_sign = ctl.args.contains_key("no-sign");
     let password = Password::read(ctl.password_fd()?)?;
-    let keychain = Keychain::open_locked(&path)?;
     let window = keychain.unlock(&password)?;
     let (identity, key, certificate) = sole_identity(&keychain)?;
     let identity_sha1 = certificate_sha1(certificate.0)?;
@@ -842,10 +860,19 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
     let ok = partition_capable && guard.ready && export_refused && extractable == Some(false) && locked_after
         && settings.lock_on_sleep != 0 && settings.lock_interval == LOCK_INTERVAL && (no_sign || sign_ok == Some(true));
     if ok { Ok(proof) } else { Err(fail(22, "verification-failed", format!("Signing-key proof failed: {proof}"))) }
+    })();
+    keychain.finish(result)
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn codesign_selection_matches_the_build_contract() {
+        #[cfg(not(feature = "test-signing-cert"))]
+        assert_eq!(codesign_program(), "/usr/bin/codesign");
+        #[cfg(feature = "test-signing-cert")]
+        assert_eq!(codesign_program(), "codesign");
+    }
     #[test]
     fn security_structs_match_the_sdk_abi() {
         assert_eq!(std::mem::size_of::<Settings>(), 12);

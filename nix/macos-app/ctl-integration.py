@@ -3,11 +3,11 @@
 
 Signing uses throwaway keychains under tmp/<work>/Library/Keychains/ (a partition-capable location,
 so securityd's partition checks are real) provisioned by the ctl primitives: a non-extractable key,
-a CSR signed by a test CA, the imported certificate and the codesign pin. The keychains are never
-on the search list, the login keychain is never touched, and only the keychain files are removed.
+a feature-built self-signed test certificate and the codesign pin. An unanchored CA-issued leaf is
+a negative chain-preflight case. Keychains never enter the search list; login is never touched.
 A fake launchctl on PATH starts real hosts directly, so no background item is registered.
-Every keychain operation has a timeout, and every ctl call is watched for a new on-screen
-SecurityAgent window: a hang or a window means a UI prompt and aborts the run loudly.
+Every keychain operation has a timeout; each ctl call checks a zero SecurityAgent window baseline
+before it starts and is watched for a new window. A hang or window aborts the run loudly.
 
 From the Darwin checkout root:
   nix run .#macos-app-ctl-integration --option builders '' --option max-jobs 2
@@ -150,9 +150,10 @@ try:
         # SecKeychainGetStatus reads state only; it never shows UI.
         assert security.SecKeychainGetStatus(reference, ctypes.byref(status)) == 0
         return bool(status.value & 1)
-    def unlock_for_test():
-        tool('/usr/bin/security', 'unlock-keychain', '-p', password, str(keychain))
-        assert unlocked()
+    def unlock_for_test(path=keychain):
+        result = watched(['/usr/bin/security', 'unlock-keychain', '-p', password, str(path)])
+        assert result.returncode == 0, result.stderr
+        assert unlocked(path)
 
     config = dict(base_config, signer={'teamId': 'TEST', 'identity': identity})
     config_file = work / 'config.json'
@@ -263,8 +264,8 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
                     secret=secret, failpoint=failpoint)
 
     # Provisioning: key and CSR by ctl, certificate by the test CA, then the codesign pin.
-    def key_call(action, path, *args, code=0, secret=password):
-        return call(action, '--keychain', path, *args, code=code, secret=secret)
+    def key_call(action, path, *args, code=0, secret=password, failpoint=None):
+        return call(action, '--keychain', path, *args, code=code, secret=secret, failpoint=failpoint)
     provisioned = key_call('provision-signing-key', keychain, '--common-name-hint', identity, '--csr-out', work / 'signing.csr',
                            '--test-self-signed-cert-out', work / 'signing.pem')['result']
     assert provisioned['createdKeychain'] and provisioned['mode'] == '0600' and provisioned['retainedPrivateKeys'] == []
@@ -308,6 +309,33 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert not (work / 'elsewhere.keychain-db').exists() and not (work / 'x.csr').exists()
     print('PASS provisioning: 0600 keychain off the search list, lock on sleep/300s, CSR verifies, '
           'existing key refused, non-pairing cert refused, idempotent import, login/elsewhere/empty password refused', flush=True)
+
+    # Simulate SIGKILL leaving K unlocked: even argument/password/certificate failures must
+    # acquire it locked and finish with a checked lock. An injected final-lock failure overrides
+    # the original error, rather than silently relying on a best-effort destructor.
+    errors = [
+        ('provision-signing-key', ['--common-name-hint', '', '--csr-out', work / 'bad.csr'], 64, password),
+        ('provision-signing-key', ['--common-name-hint', 'x', '--csr-out', work / 'bad.csr'], 20, b''),
+        ('import-signing-cert', ['--cert', work / 'absent.pem'], 23, password),
+        ('import-signing-cert', ['--cert', work / 'signing.pem'], 20, b''),
+        ('import-signing-cert', ['--cert', work / 'ca.pem'], 22, password),
+        ('prove-signing-key', ['--no-sign'], 20, b''),
+        ('prove-signing-key', ['--no-sign'], 20, 'incorrect-password'),
+    ]
+    for action, args, code, secret in errors:
+        unlock_for_test()
+        key_call(action, keychain, *args, code=code, secret=secret)
+        assert not unlocked(), f'{action} left the interrupted keychain unlocked on error'
+    for action, args in [
+        ('provision-signing-key', ['--common-name-hint', '', '--csr-out', work / 'bad.csr']),
+        ('import-signing-cert', ['--cert', work / 'absent.pem']),
+        ('prove-signing-key', ['--no-sign']),
+    ]:
+        unlock_for_test()
+        failed = key_call(action, keychain, *args, code=20, secret=b'', failpoint='relock')
+        assert failed['error']['category'] == 'relock-failed', failed
+        assert not unlocked()
+    print('PASS provisioning/import/proof failures relock interrupted K, with checked final-lock failure reporting', flush=True)
 
     # Dry pass first: pin and guard without running codesign, then the full proof.
     dry = key_call('prove-signing-key', keychain, '--no-sign')['result']
@@ -366,6 +394,18 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert log(work / 'launchctl.log') == mutation_log
     assert log(work / 'sign.log') == signing_log
     print('PASS no-op: no writes, signing or launchctl mutations; keychain relocked unconditionally', flush=True)
+
+    # Production must ignore the PATH codesign shim for verification as well as signing.
+    test_ctl = ctl
+    ctl = example / 'primitives/bin/macos-app-ctl'
+    codesign_before = log(work / 'codesign.log')
+    try:
+        assert call('status')['result']['drValid']
+        assert not install(desired)['result']['changed']
+    finally:
+        ctl = test_ctl
+    assert log(work / 'codesign.log') == codesign_before, 'production exec used PATH codesign'
+    print('PASS production uses absolute /usr/bin/codesign despite the PATH shim', flush=True)
 
     call('select-generation', '--generation', second)
     assert not call('converge-launchd')['result']['changed']
