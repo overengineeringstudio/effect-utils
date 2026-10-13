@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:89dc5b039c88af047156e5a95f9aa5ee3dbec6293c9ed385f0621e39559547d2",
-  "generatedAt": "2026-10-13T02:56:13.468Z",
+  "inputFingerprint": "sha256:dab004d9c783ec0402512955a369b81cefe7db5e276c205a053bf5ecb47fa7ca",
+  "generatedAt": "2026-10-13T12:15:01.572Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.2"
@@ -85,7 +85,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/effect-rust.ts",
-      "sha256": "575abaa26b71f99a9ef4ce80e46480bf36006b93730da6f53971fafe50d6f0fe"
+      "sha256": "abdf56edd1b73073b5f2480a7ef075db910874e4893d3c21d2292d4394e01aeb"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/json.ts",
@@ -127,7 +127,7 @@
   "artifacts": [
     {
       "path": "Cargo.toml",
-      "sha256": "0bd8c7ca5a9a1222eea92534559c9a7fcd446075f0be1197c5210c83c31628dc"
+      "sha256": "2af50a0410ca07a734e94315f3e2a25f0e2a881643b5f169b6d349dcba9057fb"
     },
     {
       "path": "schema/Codec.json",
@@ -151,7 +151,7 @@
     },
     {
       "path": "src/lib.rs",
-      "sha256": "b0224c2964210c3f371859a139a710b89d80dbcba31e56734d74eaca9752aa18"
+      "sha256": "9f586a7380b0ed09e6c998189374518b92a658e8f3e64316b8a578b3b1841e37"
     }
   ]
 }
