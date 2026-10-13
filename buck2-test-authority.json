@@ -360,7 +360,8 @@
         "src/runtime/host.unit.test.ts",
         "src/runtime/instance.unit.test.ts",
         "src/runtime/worker.unit.test.ts",
-        "src/schema/contract-json.unit.test.ts"
+        "src/schema/contract-json.unit.test.ts",
+        "src/schema/effect-rust.unit.test.ts"
       ],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/effect-rust:test",
@@ -373,7 +374,8 @@
         "src/runtime/host.unit.test.ts",
         "src/runtime/instance.unit.test.ts",
         "src/runtime/worker.unit.test.ts",
-        "src/schema/contract-json.unit.test.ts"
+        "src/schema/contract-json.unit.test.ts",
+        "src/schema/effect-rust.unit.test.ts"
       ],
       "unboundedAfter": [],
       "unboundedFiles": []
@@ -698,6 +700,7 @@
         "src/json-wire-baseline.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
+        "src/store/store-buck-daemons.unit.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-fs-atomic.unit.test.ts",
         "src/store/store-gc-config.unit.test.ts",
@@ -756,6 +759,7 @@
         "src/json-wire-baseline.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
+        "src/store/store-buck-daemons.unit.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-fs-atomic.unit.test.ts",
         "src/store/store-gc-config.unit.test.ts",

@@ -26,6 +26,9 @@
  * (`status`/`reason` in the JSON document and the on-disk effect).
  */
 
+import { homedir } from 'node:os'
+import { dirname } from 'node:path'
+
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Clock, Duration, Effect, Exit, Layer, Schema } from 'effect'
@@ -38,6 +41,11 @@ import { expect, vi } from 'vitest'
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
+import {
+  BuckDaemonStatus,
+  BuckDaemonStopped,
+  BuckDaemonUnreachable,
+} from '../store/store-buck-daemons.ts'
 import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
 import {
   makeStubPrStateResolverLayer,
@@ -117,10 +125,11 @@ const StoreGcJsonOutput = Schema.Struct({
       recoverPath: Schema.optional(Schema.String),
       pathRef: Schema.optional(Schema.String),
       actualHeadBranch: Schema.optional(Schema.String),
+      buckDaemonsStopped: Schema.optional(Schema.Array(BuckDaemonStopped)),
+      buckDaemonsUnreachable: Schema.optional(Schema.Array(BuckDaemonUnreachable)),
     }),
   ),
 })
-const decodeGc = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
 type GcResult = Schema.Schema.Type<typeof StoreGcJsonOutput>['results'][number]
 
 const findByRef = (results: ReadonlyArray<GcResult>, ref: string) =>
@@ -166,7 +175,10 @@ const runGc = ({
     else process.env['MEGAREPO_STORE'] = previous
 
     const stdout = (yield* getStdoutLines).join('\n')
-    return { exitCode: Exit.isSuccess(exit) === true ? 0 : 1, results: decodeGc(stdout).results }
+    if (stdout.length === 0 && Exit.isFailure(exit) === true)
+      return yield* Effect.failCause(exit.cause)
+    const decoded = yield* Schema.decodeEffect(Schema.fromJsonString(StoreGcJsonOutput))(stdout)
+    return { exitCode: Exit.isSuccess(exit) === true ? 0 : 1, results: decoded.results }
   }).pipe(Effect.scoped)
 
 const REPO = { host: 'github.com', owner: 'acme', repo: 'widget' } as const
@@ -238,6 +250,222 @@ const outsideCwd = () =>
     yield* fs.makeDirectory(cwd, { recursive: true })
     return cwd
   })
+
+/** The repository devenv provisions the pinned Buck2 as `BUCK2_BIN`. */
+const PINNED_BUCK2 = process.env['BUCK2_BIN'] ?? ''
+const buckSkipReason = (() => {
+  if (process.platform !== 'linux') return 'daemon discovery reads Linux /proc'
+  if (PINNED_BUCK2 === '') return 'BUCK2_BIN is unset; run inside the repository devenv shell'
+  return undefined
+})()
+if (buckSkipReason !== undefined) console.warn(`Skipping real Buck2 GC tests: ${buckSkipReason}`)
+const BUCK_ISOLATION = 'gc-acceptance'
+
+/** Poll real readiness/exit evidence until a wall-clock deadline, never a fixed settling sleep. */
+const awaitBuckCondition = Effect.fn('test.awaitBuckCondition')(function* ({
+  condition,
+  label,
+}: {
+  condition: Effect.Effect<boolean, never, FileSystem.FileSystem | ChildProcessSpawner>
+  label: string
+}) {
+  const deadline = Date.now() + 30_000
+  while ((yield* condition) === false) {
+    expect(Date.now(), `deadline waiting for ${label}`).toBeLessThan(deadline)
+    yield* Effect.sleep('20 millis')
+  }
+})
+
+const readBuckStatus = (root: string) =>
+  Effect.gen(function* () {
+    const stdout = yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(
+        Command.make(PINNED_BUCK2, ['--isolation-dir', BUCK_ISOLATION, 'status'], { cwd: root }),
+      ),
+    )
+    return yield* Schema.decodeEffect(Schema.fromJsonString(BuckDaemonStatus))(stdout)
+  })
+
+describe.skipIf(buckSkipReason !== undefined)('mr store gc — real pinned Buck2 daemons', () => {
+  for (const attached of [false, true]) {
+    it.effect(
+      attached === true
+        ? 'real pinned buck2 lsp ⇒ process-in-use, daemon and worktree survive'
+        : 'real pinned idle buck2 ⇒ daemon + forkserver exit before cold archive, stop receipt',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          expect(yield* fs.exists(PINNED_BUCK2)).toBe(true)
+          const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+            { ...REPO, branches: ['feature/buck-gc'], withRemote: true },
+          ])
+          const root = worktreePaths[`${REPO_KEY}#feature/buck-gc`]!
+          const bare = bareRepoPaths[REPO_KEY]!
+          const commit = yield* getWorktreeCommit(root)
+          yield* materializeBranchRef({ bareRepoPath: bare, branch: 'feature/buck-gc', commit })
+          yield* fs.writeFileString(
+            `${root}.buckconfig`,
+            '[cells]\n  root = .\n[buck2]\n  file_watcher = fs_hash_crawler\n',
+          )
+          yield* fs.writeFileString(`${root}.buckroot`, '')
+          // Keep the fixture Git-clean without creating commits absent from the upstream.
+          yield* fs.writeFileString(`${bare}info/exclude`, '.buckconfig\n.buckroot\nbuck-out/\n')
+          const cwd = yield* outsideCwd()
+          yield* seedColdObservation({ cwd, storePath })
+          const previousBinary = process.env['MEGAREPO_GC_BUCK2_BIN']
+          process.env['MEGAREPO_GC_BUCK2_BIN'] = PINNED_BUCK2
+          let recoverPath: string | undefined
+          const cleanupRoot = Effect.gen(function* () {
+            // If an assertion after a move fails, restore only our scratch root so Buck
+            // can still use its original address. Never leave our own daemon stranded.
+            if ((yield* fs.exists(root)) === false && recoverPath === undefined) {
+              const archiveRoot = `${storePath}${REPO_KEY}/.archive/feature/`
+              const entries = yield* fs
+                .readDirectory(archiveRoot)
+                .pipe(Effect.orElseSucceed(() => []))
+              const archive = entries.find((name) => name.startsWith('buck-gc--') === true)
+              if (archive !== undefined) recoverPath = `${archiveRoot}${archive}`
+            }
+            if (
+              (yield* fs.exists(root)) === false &&
+              recoverPath !== undefined &&
+              (yield* fs.exists(recoverPath)) === true
+            ) {
+              yield* fs.rename(recoverPath, root)
+            }
+            if ((yield* fs.exists(root)) === true) {
+              yield* ChildProcessSpawner.use((spawner) =>
+                spawner.exitCode(
+                  Command.make(PINNED_BUCK2, ['--isolation-dir', BUCK_ISOLATION, 'kill'], {
+                    cwd: root,
+                  }),
+                ),
+              )
+            }
+            yield* fs.remove(
+              `${homedir()}/.buck/buckd/${dirname(storePath.replace(/\/+$/, '')).replace(/^\//, '')}`,
+              { recursive: true, force: true },
+            )
+          })
+          yield* Effect.addFinalizer(() =>
+            cleanupRoot.pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  if (previousBinary === undefined) delete process.env['MEGAREPO_GC_BUCK2_BIN']
+                  else process.env['MEGAREPO_GC_BUCK2_BIN'] = previousBinary
+                }),
+              ),
+              Effect.orDie,
+            ),
+          )
+          yield* ChildProcessSpawner.use((spawner) =>
+            spawner.string(
+              Command.make(PINNED_BUCK2, ['--isolation-dir', BUCK_ISOLATION, 'audit', 'cell'], {
+                cwd: root,
+              }),
+            ),
+          )
+          const before = yield* readBuckStatus(root)
+          const pid = before.process_info.pid
+          let forkserverPid: number | undefined
+          yield* awaitBuckCondition({
+            label: 'the daemon forkserver child',
+            condition: Effect.gen(function* () {
+              // Forkservers may be spawned by any daemon thread: the main thread's
+              // /proc/<pid>/task/<pid>/children does not list every child.
+              for (const child of yield* fs.readDirectory('/proc')) {
+                if (/^\d+$/u.test(child) === false) continue
+                const status = yield* fs
+                  .readFileString(`/proc/${child}/status`)
+                  .pipe(Effect.orElseSucceed(() => ''))
+                if (Number(/^PPid:\s+(\d+)$/mu.exec(status)?.[1]) !== pid) continue
+                const args = yield* fs
+                  .readFileString(`/proc/${child}/cmdline`)
+                  .pipe(Effect.orElseSucceed(() => ''))
+                if (args.split('\0')[1] === 'forkserver') {
+                  forkserverPid = Number(child)
+                  return true
+                }
+              }
+              return false
+            }).pipe(Effect.orElseSucceed(() => false)),
+          })
+          if (attached === true) {
+            const lsp = yield* ChildProcessSpawner.use((spawner) =>
+              spawner.spawn(
+                Command.make(PINNED_BUCK2, ['--isolation-dir', BUCK_ISOLATION, 'lsp'], {
+                  cwd: root,
+                  stdin: 'pipe',
+                }),
+              ),
+            )
+            // Shut down through Buck before the scoped CLI finalizer, never by signal.
+            yield* Effect.addFinalizer(() =>
+              cleanupRoot.pipe(Effect.andThen(lsp.exitCode), Effect.orDie),
+            )
+            yield* awaitBuckCondition({
+              label: 'the attached LSP active command',
+              condition: readBuckStatus(root).pipe(
+                Effect.map((status) => status.active_commands.length > 0),
+                Effect.orElseSucceed(() => false),
+              ),
+            })
+          }
+          const { results, exitCode } = yield* runGc({
+            cwd,
+            storePath,
+            prRepos: [
+              {
+                relativePath: REPO_RELATIVE,
+                prs: [mergedPr('feature/buck-gc', NOW - 30 * DAY_MS)],
+              },
+            ],
+          })
+          expect(exitCode).toBe(0)
+          const result = findByRef(results, 'feature/buck-gc')
+          recoverPath = result?.recoverPath
+          if (attached === true) {
+            expect(result?.status).toBe('kept')
+            expect(result?.reason).toBe('process-in-use')
+            expect(result?.buckDaemonsStopped).toEqual([])
+            expect(yield* fs.exists(root)).toBe(true)
+            expect((yield* readBuckStatus(root)).process_info.pid).toBe(pid)
+            expect(yield* fs.exists(`/proc/${pid}`)).toBe(true)
+            expect(yield* fs.exists(`/proc/${forkserverPid}`)).toBe(true)
+          } else {
+            expect(result?.status).toBe('archived')
+            expect(yield* fs.exists(root)).toBe(false)
+            expect(result?.buckDaemonsStopped).toHaveLength(1)
+            expect(result?.buckDaemonsStopped?.[0]).toMatchObject({
+              _tag: 'stopped',
+              pid,
+              daemonId: before.daemon_constraints.daemon_id,
+              isolation: BUCK_ISOLATION,
+              root: root.replace(/\/+$/, ''),
+            })
+            expect(result?.buckDaemonsStopped?.[0]?.freedKiB).toBeGreaterThan(0)
+            yield* awaitBuckCondition({
+              label: 'daemon and forkserver exit',
+              condition: Effect.all([
+                fs.exists(`/proc/${pid}`),
+                fs.exists(`/proc/${forkserverPid}`),
+              ]).pipe(
+                Effect.map(
+                  ([daemonExists, forkserverExists]) =>
+                    daemonExists === false && forkserverExists === false,
+                ),
+                Effect.orElseSucceed(() => false),
+              ),
+            })
+          }
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.provideService(Clock.Clock, liveClock),
+        Effect.scoped,
+      ),
+    )
+  }
+})
 
 describe('mr store gc — cold named-branch reclamation', () => {
   it.effect(
