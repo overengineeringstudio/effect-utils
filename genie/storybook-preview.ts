@@ -11,6 +11,7 @@ import {
   cachixCliBuildStep,
   cachixStep,
   installNixStep,
+  tsSandboxRunnerProbeStep,
   namespaceRunner,
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
@@ -74,6 +75,7 @@ const binaryCache = readBinaryCacheDescriptors(
 /** Nix + devenv setup after checkout. Read-only caches; no secrets. */
 export const storybookPreviewSetupSteps = [
   installNixStep({ binaryCaches: [binaryCache] }),
+  tsSandboxRunnerProbeStep,
   cachixCliBuildStep,
   cachixStep({ name: 'overeng-effect-utils' }),
   prepareCiScriptsStep,

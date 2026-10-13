@@ -17,7 +17,10 @@ concurrency:
 jobs:
   resolve-preview:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' }}
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true',
+      ]
     timeout-minutes: 5
     permissions:
       pull-requests: read
@@ -86,7 +89,10 @@ jobs:
   deploy-preview:
     needs: [resolve-preview]
     if: ${{ needs.resolve-preview.outputs.deploy == 'true' }}
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true',
+      ]
     timeout-minutes: 30
     permissions:
       actions: read
@@ -113,6 +119,28 @@ jobs:
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Probe Linux Nix and nested TS sandbox
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "TS sandbox probe: unshare -Ur true passed"
+          export TS_SANDBOX_PROBE_REPO="$PWD"
+          nix build --impure --no-link --print-out-paths -L --option sandbox true --option sandbox-fallback false --expr '
+            let
+              repo = builtins.toPath (builtins.getEnv "TS_SANDBOX_PROBE_REPO");
+              flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
+              pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+            in import (repo + "/genie/ci-scripts/ts-sandbox-probe.nix") {
+              inherit pkgs;
+              bubblewrap = import (repo + "/nix/bubblewrap.nix") { inherit pkgs; };
+              nonce = builtins.getEnv "GITHUB_RUN_ID" + "-" + builtins.getEnv "GITHUB_RUN_ATTEMPT";
+            }'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -237,7 +265,10 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   publish-preview-comment:
     needs: [resolve-preview, deploy-preview]
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true',
+      ]
     timeout-minutes: 30
     permissions:
       contents: read
@@ -263,6 +294,28 @@ jobs:
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Probe Linux Nix and nested TS sandbox
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "TS sandbox probe: unshare -Ur true passed"
+          export TS_SANDBOX_PROBE_REPO="$PWD"
+          nix build --impure --no-link --print-out-paths -L --option sandbox true --option sandbox-fallback false --expr '
+            let
+              repo = builtins.toPath (builtins.getEnv "TS_SANDBOX_PROBE_REPO");
+              flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
+              pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+            in import (repo + "/genie/ci-scripts/ts-sandbox-probe.nix") {
+              inherit pkgs;
+              bubblewrap = import (repo + "/nix/bubblewrap.nix") { inherit pkgs; };
+              nonce = builtins.getEnv "GITHUB_RUN_ID" + "-" + builtins.getEnv "GITHUB_RUN_ATTEMPT";
+            }'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:

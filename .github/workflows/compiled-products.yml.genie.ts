@@ -1,6 +1,5 @@
 import {
   RUNNER_PROFILES,
-  type RunnerProfile,
   bashShellDefaults,
   cachixCliBuildStep,
   cachixPushStep,
@@ -49,12 +48,14 @@ export default ciWorkflow({
       if: protectedMainIf,
       strategy: {
         'fail-fast': false,
-        matrix: { runner: [...RUNNER_PROFILES] },
+        matrix: {
+          include: RUNNER_PROFILES.map((runner) => ({
+            runner,
+            runnerLabel: namespaceRunner({ profile: runner, runId: '{0}' })[0],
+          })),
+        },
       },
-      'runs-on': namespaceRunner({
-        profile: '${{ matrix.runner }}' as RunnerProfile,
-        runId: '${{ github.run_id }}',
-      }),
+      'runs-on': ['${{ format(matrix.runnerLabel, github.run_id) }}'],
       'timeout-minutes': 120,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,

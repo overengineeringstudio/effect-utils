@@ -151,6 +151,15 @@ unusable, or failing criteria refuse execution with
 and the actual failures. No failure falls back to unsandboxed execution or retries
 Bubblewrap. There is no automatic environment detection: an absent declaration
 still requires Bubblewrap, and unknown declaration versions fail analysis.
+
+Namespace Linux CI runner labels request `container.privileged=true`: the runner
+container is inside an ephemeral per-job VM, and this permission allows Nix to
+create its real build namespaces instead of automatically disabling sandboxing.
+Darwin runner labels do not request this feature. The temporary #1212 CI probe
+records effective Nix sandbox settings, user-namespace sysctls and an unprivileged
+namespace check, then runs the pinned Bubblewrap with the default TS mount,
+environment and namespace arguments inside a strict Nix derivation. Its evidence
+must be observed before changing the declared outer-mode policy.
 Default Linux and Darwin execution remain unchanged.
 
 The verifier establishes a filesystem/network boundary, not proof of Nix

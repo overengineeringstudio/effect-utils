@@ -58,6 +58,8 @@ export const evictCachedPnpmDepsStep = ({
  * Namespace accepts the `namespace-features:` label only next to a
  * `-with-features` machine label; runner profiles take features appended as
  * `;key=value` to the profile label itself.
+ * Linux containers need privilege for Nix and nested Bubblewrap namespaces.
+ * Namespace isolates this privilege inside each ephemeral per-job VM.
  * @see https://namespace.so/docs/solutions/github-actions/runner-controls
  */
 export const namespaceRunner = ({
@@ -66,10 +68,17 @@ export const namespaceRunner = ({
 }: {
   profile: RunnerProfile | (string & {})
   runId: string
-}): readonly [string] | readonly [string, string] =>
-  profile.endsWith('-with-features') === true
-    ? [profile, `namespace-features:github.run-id=${runId}`]
-    : [`${profile};github.run-id=${runId}`]
+}): readonly [string] | readonly [string, string] => {
+  const features = [
+    `github.run-id=${runId}`,
+    ...(profile.includes('linux') === true || profile.startsWith('nscloud-ubuntu-') === true
+      ? ['container.privileged=true']
+      : []),
+  ].join(';')
+  return profile.endsWith('-with-features') === true
+    ? [profile, `namespace-features:${features}`]
+    : [`${profile};${features}`]
+}
 
 // =============================================================================
 // Step Atoms
@@ -214,6 +223,35 @@ export const installNixStep = (opts?: {
     summarize: opts?.summarize ?? true,
   },
 })
+
+/** Temporary #1212 probe: observe runner namespaces and exercise default nested TS containment. */
+export const tsSandboxRunnerProbeStep = {
+  name: 'Probe Linux Nix and nested TS sandbox',
+  if: "${{ runner.os == 'Linux' }}",
+  shell: 'bash',
+  run: withCiSourceRoot(
+    [
+      'set -euo pipefail',
+      "nix config show | grep -E '^sandbox'",
+      'for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do',
+      '  if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\\n" "$key"; fi',
+      'done',
+      'unshare -Ur true',
+      'echo "TS sandbox probe: unshare -Ur true passed"',
+      'export TS_SANDBOX_PROBE_REPO="$PWD"',
+      "nix build --impure --no-link --print-out-paths -L --option sandbox true --option sandbox-fallback false --expr '",
+      '  let',
+      '    repo = builtins.toPath (builtins.getEnv "TS_SANDBOX_PROBE_REPO");',
+      '    flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");',
+      '    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };',
+      '  in import (repo + "/genie/ci-scripts/ts-sandbox-probe.nix") {',
+      '    inherit pkgs;',
+      '    bubblewrap = import (repo + "/nix/bubblewrap.nix") { inherit pkgs; };',
+      '    nonce = builtins.getEnv "GITHUB_RUN_ID" + "-" + builtins.getEnv "GITHUB_RUN_ATTEMPT";',
+      "  }'",
+    ].join('\n'),
+  ),
+} as const
 
 /**
  * Provide the cachix CLI to subsequent steps from a /nix/store output.
