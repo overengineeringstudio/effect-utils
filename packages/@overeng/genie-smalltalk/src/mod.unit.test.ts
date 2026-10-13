@@ -1707,6 +1707,7 @@ const withIsolatedSt = async (
   return Effect.runPromise(
     Effect.gen(function* () {
       const daemon = yield* ScratchDaemon
+      const runPromise = Effect.runPromiseWith(yield* Effect.context())
       const dir = daemon.directory
       const socket = daemon.socket
       const isolatedEnv = daemon.env
@@ -1740,7 +1741,7 @@ const withIsolatedSt = async (
           socket,
           isolatedEnv,
           get,
-          runCommand: (args) => Effect.runPromise(daemon.run(args), { signal: scopeSignal }),
+          runCommand: (args) => runPromise(daemon.run(args), { signal: scopeSignal }),
           command: (...args) => {
             scopeSignal.throwIfAborted()
             return spawnSync(daemon.binary, ['--endpoint', daemon.endpoint, '--json', ...args], {
