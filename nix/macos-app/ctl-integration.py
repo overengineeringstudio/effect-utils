@@ -333,6 +333,8 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     # test-build sentinel is spawned. Preparation must not "repair" unknown ACLs.
     fixture = work / 'Fixture.app'
     shutil.copytree(desired, fixture)
+    for path in [fixture, *fixture.rglob('*')]:
+        if not path.is_symlink(): path.chmod(path.stat().st_mode | 0o200)
     nested = fixture / 'Contents/Helpers/Nested.app'
     shutil.copytree(desired, nested)
     for path in [fixture, *fixture.rglob('*')]:
