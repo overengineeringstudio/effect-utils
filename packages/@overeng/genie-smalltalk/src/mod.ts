@@ -591,7 +591,7 @@ export const DependsOnSchema = Schema.Struct({
 const DependencyItem = Schema.Union([LocalId, DependsOnSchema])
 const DependencyInput = Schema.Union([DependencyItem, Schema.NonEmptyArray(DependencyItem)])
 const Dependencies = DependencyInput.pipe(
-  Schema.decodeTo(Schema.NonEmptyArray(DependsOnSchema), {
+  Schema.decodeTo(Schema.NonEmptyArray(Schema.toType(DependsOnSchema)), {
     decode: SchemaGetter.transform((value) => {
       const values: readonly [typeof DependencyItem.Type, ...(typeof DependencyItem.Type)[]] =
         typeof value === 'string' || 'step' in value ? [value] : value
