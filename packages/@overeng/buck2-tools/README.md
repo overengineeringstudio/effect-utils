@@ -137,3 +137,47 @@ The JavaScript runner loads test modules when collecting their inventory without
 executing assertions. Static parsing is opt-in: the runner passes an explicit
 negative flag otherwise, rather than relying on the pinned Vitest CLI's default.
 This includes cases registered by imported helpers such as rule-test generators.
+
+## Bun wall deadlines and failure classification
+
+Repository devenv Bun test tasks and Buck Bun lanes share `src/bun-test-runner.ts`.
+The CLI accepts Bun's explicit `test` command followed by its source paths and flags:
+`bun ./src/bun-test-runner.ts test ./src/`. Use explicit relative source directories
+instead of substring filters so discovery does not include Buck's staged copies.
+
+At run start it samples the one-minute host load and the CPU parallelism available
+to the process. The CLI default and explicit per-test deadlines use:
+
+```text
+effective = ceil(base × min(cap, max(1, load1 / cpus)))
+```
+
+If `load1` or `cpus` is missing, non-finite, or `<=0`, the factor is `1`;
+otherwise the formula above applies.
+
+`BUN_TEST_TIMEOUT_CAP` sets the cap (default `4`, finite and at least `1`);
+`BUN_TEST_TIMEOUT_SCALING=0` disables scaling. Buck lanes can declare these as
+environment inputs; local external-test runs also accept the caller's environment.
+The factor stays fixed for the run. A shared preload intercepts native Bun test
+registration, including parameterized tests and modifiers, to scale explicit
+deadlines and record each case's base. Expanded case titles and nested parameterized
+suites retain their own deadlines in JUnit classification. Hooks, assertions,
+callbacks and exit statuses remain native; no tests are retried.
+
+The wrapper requests Bun's JUnit reporter and leaves console output untouched.
+After the child exits, it samples host load and Linux memory PSI and emits one
+`test-timeout-under-load` line for each JUnit `TimeoutError`, including the test
+identity, base, factor, effective deadline, measured JUnit elapsed milliseconds,
+load, CPU count and `memPsiFullAvg10` (`unavailable` outside Linux or without PSI).
+`test-failure-summary` counts timeout, assertion and other failures separately.
+Self-closing passing records and skipped cases are consumed individually, so a
+later failure keeps its own test identity, elapsed time and registered deadline.
+Attribute boundaries are quote-aware: literal `>` and `/>` in test names or failure
+messages are data, not tag delimiters.
+“Under load” is a diagnostic category, not proof that load caused the timeout.
+Reports live in executor results for Buck and disposable scratch for direct tasks.
+
+Bun's inspector reporter protocol can stream lifecycle events, but would require
+a debugger connection. Its ordinary lifecycle/preload hooks do not expose failure
+results or deadlines. JUnit provides typed outcomes and measured durations without
+parsing stdout, changing assertion semantics or opening a debugger port.

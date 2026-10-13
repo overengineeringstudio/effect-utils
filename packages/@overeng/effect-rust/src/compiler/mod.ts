@@ -125,9 +125,9 @@ export const emitVitest = (ir: ContractIR, vectors: readonly Vector[]): string =
       const body =
         vector.accept === true
           ? `const value = ContractJson.decode(${vector.contract})(${text})\n  expect(ContractJson.encode(${vector.contract})(value)).toBe(${JSON.stringify(canonicalJson(vector.canonical ?? vector.input, tags, numericFloats))})`
-          : `expect(() => ContractJson.decode(${vector.contract})(${text})).toThrow()`
+          : `expect(() => ContractJson.decode(${vector.contract})(${text})).toThrow(Schema.SchemaError)`
       return `it(${JSON.stringify(`${vector.contract}/${vector.name}`)}, () => {\n  ${body}\n})`
     })
     .join('\n')
-  return `import { it } from '@effect/vitest'\nimport { expect } from 'vitest'\nimport { ContractJson } from '@overeng/effect-rust'\n${imports}\n${tests}\n`
+  return `import { it } from '@effect/vitest'\nimport { Schema } from 'effect'\nimport { expect } from 'vitest'\nimport { ContractJson } from '@overeng/effect-rust'\n${imports}\n${tests}\n`
 }

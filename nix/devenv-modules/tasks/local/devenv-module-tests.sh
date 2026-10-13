@@ -35,6 +35,51 @@ if [[ ! "$worker_count" =~ ^[1-9][0-9]*$ ]]; then
   printf 'Expected a positive integer MODULE_TEST_WORKERS: %s\n' "$worker_count" >&2
   exit 1
 fi
+test_platform="${MODULE_TEST_PLATFORM:-}"
+case "$test_platform" in
+  "" | linux | darwin) ;;
+  *) printf 'Expected MODULE_TEST_PLATFORM to be empty, linux or darwin: %s\n' "$test_platform" >&2; exit 1 ;;
+esac
+
+# Validate the checkout census before selection: neither platform may silently
+# lose a newly added script, accept a stale entry, or classify a script twice.
+all_tests=()
+for test_file in "$test_dir"/*.test.sh; do
+  [ -f "$test_file" ] || continue
+  all_tests+=("${test_file##*/}")
+done
+if [ "${#all_tests[@]}" -eq 0 ]; then
+  printf 'No devenv module tests found in %s\n' "$test_dir" >&2
+  exit 1
+fi
+if [ -z "${MODULE_TEST_PLATFORMS:-}" ] || [ ! -f "$MODULE_TEST_PLATFORMS" ]; then
+  printf 'Expected MODULE_TEST_PLATFORMS to name the module script classification JSON\n' >&2
+  exit 1
+fi
+selected_names="$(printf '%s\0' "${all_tests[@]}" |
+  "$TEST_JQ" -Rrs --arg platform "$test_platform" --slurpfile catalogs "$MODULE_TEST_PLATFORMS" '
+    split("\u0000") | map(select(length > 0)) | sort as $discovered |
+    if ($catalogs | length) != 1 then error("Expected one module script classification")
+    else $catalogs[0] as $catalog |
+      if ($catalog | type) != "object" or ($catalog | keys) != ["darwin", "neutral"] then
+        error("Expected darwin/neutral module script classifications")
+      elif ($catalog.darwin | type) != "array" or ($catalog.neutral | type) != "array" then
+        error("Expected module script classification arrays")
+      else ($catalog.darwin + $catalog.neutral) as $entries |
+        if ($entries | all(.[];
+          type == "object" and (.script | type) == "string" and
+          (.rationale | type) == "string" and (.rationale | test("\\S"))
+        ) | not) then error("Expected module script entries with scripts and rationales")
+        else ($entries | map(.script) | sort) as $classified |
+          if $classified != $discovered or ($classified | unique | length) != ($classified | length) then
+            error("Module script platforms must classify every discovered *.test.sh exactly once")
+          elif $platform == "darwin" then $catalog.darwin | map(.script) | sort | .[]
+          else $discovered[]
+          end
+        end
+      end
+    end
+  ')"
 
 parallel_safe() {
   # Explicitly audited admission, not a default assumption about future scripts.
@@ -69,20 +114,17 @@ serial_tests=()
 isolated_tests=()
 serial_count=0
 isolated_count=0
-for test_file in "$test_dir"/*.test.sh; do
-  [ -f "$test_file" ] || continue
-  if parallel_safe "${test_file##*/}"; then
+while IFS= read -r name; do
+  [ -n "$name" ] || continue
+  test_file="$test_dir/$name"
+  if parallel_safe "$name"; then
     isolated_tests+=("$test_file")
     isolated_count=$((isolated_count + 1))
   else
     serial_tests+=("$test_file")
     serial_count=$((serial_count + 1))
   fi
-done
-if [ "$serial_count" -eq 0 ] && [ "$isolated_count" -eq 0 ]; then
-  printf 'No devenv module tests found in %s\n' "$test_dir" >&2
-  exit 1
-fi
+done <<<"$selected_names"
 
 # Only admitted names enter the weighted queue; future scripts remain serial.
 # Capture jq's exit status before dispatch, rather than hiding it in a process

@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:aa4909fa46c1151f23158c5009090956396e563e29c43c0cc8764c21f960a435
+# Store fingerprint: sha256:5e9c2f2b79475a8845730cf3cc71a868bcac33eb6a74ba745798815c109b60d3
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -8244,6 +8244,12 @@ pnpm_store_entry(
     package = ":package_esbuild_aix_ppc64_0_28_2_871cc5d65513",
     store_key = "@esbuild+aix-ppc64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/aix-ppc64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/aix-ppc64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/aix-ppc64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/aix-ppc64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8254,6 +8260,12 @@ pnpm_store_entry(
     package = ":package_esbuild_android_arm64_0_28_2_4be40444f42b",
     store_key = "@esbuild+android-arm64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/android-arm64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/android-arm64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/android-arm64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/android-arm64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8264,6 +8276,12 @@ pnpm_store_entry(
     package = ":package_esbuild_android_arm_0_28_2_fb0735fb4372",
     store_key = "@esbuild+android-arm@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/android-arm@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/android-arm@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/android-arm@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/android-arm@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8274,6 +8292,12 @@ pnpm_store_entry(
     package = ":package_esbuild_android_x64_0_28_2_79ad4988a964",
     store_key = "@esbuild+android-x64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/android-x64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/android-x64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/android-x64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/android-x64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8284,6 +8308,12 @@ pnpm_store_entry(
     package = ":package_esbuild_darwin_arm64_0_28_2_721282d04d4b",
     store_key = "@esbuild+darwin-arm64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/darwin-arm64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/darwin-arm64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/darwin-arm64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8294,6 +8324,12 @@ pnpm_store_entry(
     package = ":package_esbuild_darwin_x64_0_28_2_e9240b0374a9",
     store_key = "@esbuild+darwin-x64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/darwin-x64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/darwin-x64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/darwin-x64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/darwin-x64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8304,6 +8340,12 @@ pnpm_store_entry(
     package = ":package_esbuild_freebsd_arm64_0_28_2_21c256003196",
     store_key = "@esbuild+freebsd-arm64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/freebsd-arm64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/freebsd-arm64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/freebsd-arm64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/freebsd-arm64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8314,6 +8356,12 @@ pnpm_store_entry(
     package = ":package_esbuild_freebsd_x64_0_28_2_9e2cf66fce5e",
     store_key = "@esbuild+freebsd-x64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/freebsd-x64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/freebsd-x64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/freebsd-x64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/freebsd-x64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8324,6 +8372,12 @@ pnpm_store_entry(
     package = ":package_esbuild_linux_arm64_0_28_2_a67bfa3d5003",
     store_key = "@esbuild+linux-arm64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/linux-arm64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @esbuild/linux-arm64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/linux-arm64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8334,6 +8388,12 @@ pnpm_store_entry(
     package = ":package_esbuild_linux_arm_0_28_2_17250275c14f",
     store_key = "@esbuild+linux-arm@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/linux-arm@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/linux-arm@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/linux-arm@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/linux-arm@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8344,6 +8404,12 @@ pnpm_store_entry(
     package = ":package_esbuild_linux_ia32_0_28_2_cfbdb746fc2f",
     store_key = "@esbuild+linux-ia32@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/linux-ia32@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/linux-ia32@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/linux-ia32@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/linux-ia32@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8354,6 +8420,12 @@ pnpm_store_entry(
     package = ":package_esbuild_linux_loong64_0_28_2_be69df79296c",
     store_key = "@esbuild+linux-loong64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/linux-loong64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/linux-loong64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/linux-loong64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/linux-loong64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8364,6 +8436,12 @@ pnpm_store_entry(
     package = ":package_esbuild_linux_mips64el_0_28_2_bf9f6f497f1e",
     store_key = "@esbuild+linux-mips64el@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/linux-mips64el@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/linux-mips64el@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/linux-mips64el@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/linux-mips64el@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8374,6 +8452,12 @@ pnpm_store_entry(
     package = ":package_esbuild_linux_ppc64_0_28_2_0efa1c1569ba",
     store_key = "@esbuild+linux-ppc64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/linux-ppc64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/linux-ppc64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/linux-ppc64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/linux-ppc64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8384,6 +8468,12 @@ pnpm_store_entry(
     package = ":package_esbuild_linux_riscv64_0_28_2_d61e12048a24",
     store_key = "@esbuild+linux-riscv64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/linux-riscv64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/linux-riscv64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/linux-riscv64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/linux-riscv64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8394,6 +8484,12 @@ pnpm_store_entry(
     package = ":package_esbuild_linux_s390x_0_28_2_5443530d55fe",
     store_key = "@esbuild+linux-s390x@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/linux-s390x@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/linux-s390x@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/linux-s390x@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/linux-s390x@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8404,6 +8500,12 @@ pnpm_store_entry(
     package = ":package_esbuild_linux_x64_0_28_2_a925772984e9",
     store_key = "@esbuild+linux-x64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/linux-x64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/linux-x64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @esbuild/linux-x64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8414,6 +8516,12 @@ pnpm_store_entry(
     package = ":package_esbuild_netbsd_arm64_0_28_2_3994ec5d9457",
     store_key = "@esbuild+netbsd-arm64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/netbsd-arm64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/netbsd-arm64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/netbsd-arm64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/netbsd-arm64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8424,6 +8532,12 @@ pnpm_store_entry(
     package = ":package_esbuild_netbsd_x64_0_28_2_38dd2d6056d3",
     store_key = "@esbuild+netbsd-x64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/netbsd-x64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/netbsd-x64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/netbsd-x64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/netbsd-x64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8434,6 +8548,12 @@ pnpm_store_entry(
     package = ":package_esbuild_openbsd_arm64_0_28_2_748750854a20",
     store_key = "@esbuild+openbsd-arm64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/openbsd-arm64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/openbsd-arm64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/openbsd-arm64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/openbsd-arm64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8444,6 +8564,12 @@ pnpm_store_entry(
     package = ":package_esbuild_openbsd_x64_0_28_2_bf3020fb5485",
     store_key = "@esbuild+openbsd-x64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/openbsd-x64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/openbsd-x64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/openbsd-x64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/openbsd-x64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8454,6 +8580,12 @@ pnpm_store_entry(
     package = ":package_esbuild_openharmony_arm64_0_28_2_36d0987ef905",
     store_key = "@esbuild+openharmony-arm64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/openharmony-arm64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/openharmony-arm64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/openharmony-arm64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/openharmony-arm64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8464,6 +8596,12 @@ pnpm_store_entry(
     package = ":package_esbuild_sunos_x64_0_28_2_7abcde447e28",
     store_key = "@esbuild+sunos-x64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/sunos-x64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/sunos-x64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/sunos-x64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/sunos-x64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8474,6 +8612,12 @@ pnpm_store_entry(
     package = ":package_esbuild_win32_arm64_0_28_2_63f6455413b5",
     store_key = "@esbuild+win32-arm64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/win32-arm64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/win32-arm64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/win32-arm64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/win32-arm64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8484,6 +8628,12 @@ pnpm_store_entry(
     package = ":package_esbuild_win32_ia32_0_28_2_2205ba786d3c",
     store_key = "@esbuild+win32-ia32@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/win32-ia32@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/win32-ia32@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/win32-ia32@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/win32-ia32@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8494,6 +8644,12 @@ pnpm_store_entry(
     package = ":package_esbuild_win32_x64_0_28_2_db8cea0c6f46",
     store_key = "@esbuild+win32-x64@0.28.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @esbuild/win32-x64@0.28.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @esbuild/win32-x64@0.28.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @esbuild/win32-x64@0.28.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @esbuild/win32-x64@0.28.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8644,6 +8800,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_darwin_arm64_0_34_5_3171750647af",
     store_key = "@img+sharp-darwin-arm64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-darwin-arm64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-darwin-arm64@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-darwin-arm64@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies_by_platform = {
         "javascript_portable": {
         },
@@ -8663,6 +8825,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_darwin_x64_0_34_5_c48bcd6db78d",
     store_key = "@img+sharp-darwin-x64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-darwin-x64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-darwin-x64@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-darwin-x64@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-darwin-x64@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8673,6 +8841,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_darwin_arm64_1_2_4_c116a798f4b6",
     store_key = "@img+sharp-libvips-darwin-arm64@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-darwin-arm64@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-libvips-darwin-arm64@1.2.4 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-libvips-darwin-arm64@1.2.4 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8683,6 +8857,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_darwin_x64_1_2_4_1ea16cd9f934",
     store_key = "@img+sharp-libvips-darwin-x64@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-darwin-x64@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-libvips-darwin-x64@1.2.4 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-libvips-darwin-x64@1.2.4 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-libvips-darwin-x64@1.2.4 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8693,6 +8873,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_linux_arm64_1_2_4_b6019c9a6095",
     store_key = "@img+sharp-libvips-linux-arm64@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-linux-arm64@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @img/sharp-libvips-linux-arm64@1.2.4 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-libvips-linux-arm64@1.2.4 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8703,6 +8889,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_linux_arm_1_2_4_89cdf7cbb988",
     store_key = "@img+sharp-libvips-linux-arm@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-linux-arm@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-libvips-linux-arm@1.2.4 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-libvips-linux-arm@1.2.4 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-libvips-linux-arm@1.2.4 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8713,6 +8905,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_linux_ppc64_1_2_4_0268e261d497",
     store_key = "@img+sharp-libvips-linux-ppc64@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-linux-ppc64@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-libvips-linux-ppc64@1.2.4 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-libvips-linux-ppc64@1.2.4 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-libvips-linux-ppc64@1.2.4 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8723,6 +8921,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_linux_riscv64_1_2_4_55769c4bf77c",
     store_key = "@img+sharp-libvips-linux-riscv64@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-linux-riscv64@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-libvips-linux-riscv64@1.2.4 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-libvips-linux-riscv64@1.2.4 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-libvips-linux-riscv64@1.2.4 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8733,6 +8937,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_linux_s390x_1_2_4_e64436388d1e",
     store_key = "@img+sharp-libvips-linux-s390x@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-linux-s390x@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-libvips-linux-s390x@1.2.4 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-libvips-linux-s390x@1.2.4 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-libvips-linux-s390x@1.2.4 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8743,6 +8953,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_linux_x64_1_2_4_24655fa4f14d",
     store_key = "@img+sharp-libvips-linux-x64@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-linux-x64@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-libvips-linux-x64@1.2.4 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @img/sharp-libvips-linux-x64@1.2.4 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8753,6 +8969,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_linuxmusl_arm64_1_2_4_100e277f77a7",
     store_key = "@img+sharp-libvips-linuxmusl-arm64@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-linuxmusl-arm64@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-libvips-linuxmusl-arm64@1.2.4 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-libvips-linuxmusl-arm64@1.2.4 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-libvips-linuxmusl-arm64@1.2.4 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8763,6 +8985,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_libvips_linuxmusl_x64_1_2_4_53d51acf0d28",
     store_key = "@img+sharp-libvips-linuxmusl-x64@1.2.4",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-libvips-linuxmusl-x64@1.2.4 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-libvips-linuxmusl-x64@1.2.4 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-libvips-linuxmusl-x64@1.2.4 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-libvips-linuxmusl-x64@1.2.4 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8773,6 +9001,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_linux_arm64_0_34_5_0e29d277db2c",
     store_key = "@img+sharp-linux-arm64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-linux-arm64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @img/sharp-linux-arm64@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-linux-arm64@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies_by_platform = {
         "javascript_portable": {
         },
@@ -8792,6 +9026,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_linux_arm_0_34_5_480c94e623e8",
     store_key = "@img+sharp-linux-arm@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-linux-arm@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-linux-arm@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-linux-arm@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-linux-arm@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8802,6 +9042,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_linux_ppc64_0_34_5_38b7190b635e",
     store_key = "@img+sharp-linux-ppc64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-linux-ppc64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-linux-ppc64@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-linux-ppc64@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-linux-ppc64@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8812,6 +9058,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_linux_riscv64_0_34_5_d32a15efd353",
     store_key = "@img+sharp-linux-riscv64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-linux-riscv64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-linux-riscv64@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-linux-riscv64@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-linux-riscv64@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8822,6 +9074,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_linux_s390x_0_34_5_06013468fc24",
     store_key = "@img+sharp-linux-s390x@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-linux-s390x@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-linux-s390x@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-linux-s390x@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-linux-s390x@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8832,6 +9090,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_linux_x64_0_34_5_17e18c9342f6",
     store_key = "@img+sharp-linux-x64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-linux-x64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-linux-x64@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @img/sharp-linux-x64@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies_by_platform = {
         "javascript_portable": {
         },
@@ -8851,6 +9115,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_linuxmusl_arm64_0_34_5_4bca370b71b6",
     store_key = "@img+sharp-linuxmusl-arm64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-linuxmusl-arm64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-linuxmusl-arm64@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-linuxmusl-arm64@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-linuxmusl-arm64@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8861,6 +9131,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_linuxmusl_x64_0_34_5_1dc248f031d1",
     store_key = "@img+sharp-linuxmusl-x64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-linuxmusl-x64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-linuxmusl-x64@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-linuxmusl-x64@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-linuxmusl-x64@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8871,6 +9147,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_wasm32_0_34_5_675da5c7de59",
     store_key = "@img+sharp-wasm32@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-wasm32@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-wasm32@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-wasm32@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-wasm32@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8881,6 +9163,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_win32_arm64_0_34_5_c8cf805f4424",
     store_key = "@img+sharp-win32-arm64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-win32-arm64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-win32-arm64@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-win32-arm64@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-win32-arm64@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8891,6 +9179,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_win32_ia32_0_34_5_c8bf26670ab1",
     store_key = "@img+sharp-win32-ia32@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-win32-ia32@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-win32-ia32@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-win32-ia32@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-win32-ia32@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -8901,6 +9195,12 @@ pnpm_store_entry(
     package = ":package_img_sharp_win32_x64_0_34_5_808739f01b8e",
     store_key = "@img+sharp-win32-x64@0.34.5",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @img/sharp-win32-x64@0.34.5 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @img/sharp-win32-x64@0.34.5 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @img/sharp-win32-x64@0.34.5 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @img/sharp-win32-x64@0.34.5 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9088,6 +9388,12 @@ pnpm_store_entry(
     package = ":package_next_swc_darwin_arm64_16_2_6_0bd6a3e45322",
     store_key = "@next+swc-darwin-arm64@16.2.6",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @next/swc-darwin-arm64@16.2.6 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @next/swc-darwin-arm64@16.2.6 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @next/swc-darwin-arm64@16.2.6 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9098,6 +9404,12 @@ pnpm_store_entry(
     package = ":package_next_swc_darwin_x64_16_2_6_52f19c42e4db",
     store_key = "@next+swc-darwin-x64@16.2.6",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @next/swc-darwin-x64@16.2.6 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @next/swc-darwin-x64@16.2.6 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @next/swc-darwin-x64@16.2.6 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @next/swc-darwin-x64@16.2.6 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9108,6 +9420,12 @@ pnpm_store_entry(
     package = ":package_next_swc_linux_arm64_gnu_16_2_6_0efad7ea4b0d",
     store_key = "@next+swc-linux-arm64-gnu@16.2.6",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @next/swc-linux-arm64-gnu@16.2.6 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @next/swc-linux-arm64-gnu@16.2.6 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @next/swc-linux-arm64-gnu@16.2.6 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9118,6 +9436,12 @@ pnpm_store_entry(
     package = ":package_next_swc_linux_arm64_musl_16_2_6_bd786ec49b3b",
     store_key = "@next+swc-linux-arm64-musl@16.2.6",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @next/swc-linux-arm64-musl@16.2.6 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @next/swc-linux-arm64-musl@16.2.6 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @next/swc-linux-arm64-musl@16.2.6 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @next/swc-linux-arm64-musl@16.2.6 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9128,6 +9452,12 @@ pnpm_store_entry(
     package = ":package_next_swc_linux_x64_gnu_16_2_6_ca41a8394656",
     store_key = "@next+swc-linux-x64-gnu@16.2.6",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @next/swc-linux-x64-gnu@16.2.6 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @next/swc-linux-x64-gnu@16.2.6 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @next/swc-linux-x64-gnu@16.2.6 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9138,6 +9468,12 @@ pnpm_store_entry(
     package = ":package_next_swc_linux_x64_musl_16_2_6_ff0e3c148ddd",
     store_key = "@next+swc-linux-x64-musl@16.2.6",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @next/swc-linux-x64-musl@16.2.6 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @next/swc-linux-x64-musl@16.2.6 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @next/swc-linux-x64-musl@16.2.6 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @next/swc-linux-x64-musl@16.2.6 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9148,6 +9484,12 @@ pnpm_store_entry(
     package = ":package_next_swc_win32_arm64_msvc_16_2_6_3c08dd2fc60f",
     store_key = "@next+swc-win32-arm64-msvc@16.2.6",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @next/swc-win32-arm64-msvc@16.2.6 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @next/swc-win32-arm64-msvc@16.2.6 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @next/swc-win32-arm64-msvc@16.2.6 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @next/swc-win32-arm64-msvc@16.2.6 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9158,6 +9500,12 @@ pnpm_store_entry(
     package = ":package_next_swc_win32_x64_msvc_16_2_6_85f3c4f242ba",
     store_key = "@next+swc-win32-x64-msvc@16.2.6",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @next/swc-win32-x64-msvc@16.2.6 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @next/swc-win32-x64-msvc@16.2.6 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @next/swc-win32-x64-msvc@16.2.6 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @next/swc-win32-x64-msvc@16.2.6 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9212,6 +9560,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_android_arm_eabi_1_1_0_fde2d9e0ed88",
     store_key = "@number0+iroh-android-arm-eabi@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-android-arm-eabi@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-android-arm-eabi@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @number0/iroh-android-arm-eabi@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @number0/iroh-android-arm-eabi@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9222,6 +9576,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_android_arm64_1_1_0_cd7e429de9d1",
     store_key = "@number0+iroh-android-arm64@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-android-arm64@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-android-arm64@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @number0/iroh-android-arm64@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @number0/iroh-android-arm64@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9232,6 +9592,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_darwin_arm64_1_1_0_ce069bb76980",
     store_key = "@number0+iroh-darwin-arm64@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-darwin-arm64@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-darwin-arm64@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @number0/iroh-darwin-arm64@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9242,6 +9608,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_linux_arm_gnueabihf_1_1_0_7b25c8fa29b9",
     store_key = "@number0+iroh-linux-arm-gnueabihf@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-linux-arm-gnueabihf@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-linux-arm-gnueabihf@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @number0/iroh-linux-arm-gnueabihf@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @number0/iroh-linux-arm-gnueabihf@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9252,6 +9624,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_linux_arm_musleabihf_1_1_0_10400269535d",
     store_key = "@number0+iroh-linux-arm-musleabihf@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-linux-arm-musleabihf@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-linux-arm-musleabihf@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @number0/iroh-linux-arm-musleabihf@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @number0/iroh-linux-arm-musleabihf@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9262,6 +9640,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_linux_arm64_gnu_1_1_0_7961c958dcbe",
     store_key = "@number0+iroh-linux-arm64-gnu@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-linux-arm64-gnu@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @number0/iroh-linux-arm64-gnu@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @number0/iroh-linux-arm64-gnu@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9272,6 +9656,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_linux_arm64_musl_1_1_0_b909b74b5f7d",
     store_key = "@number0+iroh-linux-arm64-musl@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-linux-arm64-musl@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-linux-arm64-musl@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @number0/iroh-linux-arm64-musl@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @number0/iroh-linux-arm64-musl@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9282,6 +9672,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_linux_x64_gnu_1_1_0_7796493391c2",
     store_key = "@number0+iroh-linux-x64-gnu@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-linux-x64-gnu@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-linux-x64-gnu@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @number0/iroh-linux-x64-gnu@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9292,6 +9688,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_linux_x64_musl_1_1_0_4fcde50b08c5",
     store_key = "@number0+iroh-linux-x64-musl@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-linux-x64-musl@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-linux-x64-musl@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @number0/iroh-linux-x64-musl@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @number0/iroh-linux-x64-musl@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9302,6 +9704,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_win32_arm64_msvc_1_1_0_afc2ecbac273",
     store_key = "@number0+iroh-win32-arm64-msvc@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-win32-arm64-msvc@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-win32-arm64-msvc@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @number0/iroh-win32-arm64-msvc@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @number0/iroh-win32-arm64-msvc@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9312,6 +9720,12 @@ pnpm_store_entry(
     package = ":package_number0_iroh_win32_x64_msvc_1_1_0_b2afd1aebde2",
     store_key = "@number0+iroh-win32-x64-msvc@1.1.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @number0/iroh-win32-x64-msvc@1.1.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @number0/iroh-win32-x64-msvc@1.1.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @number0/iroh-win32-x64-msvc@1.1.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @number0/iroh-win32-x64-msvc@1.1.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9540,6 +9954,12 @@ pnpm_store_entry(
     package = ":package_opentui_core_darwin_arm64_0_5_11_b33ab39400ed",
     store_key = "@opentui+core-darwin-arm64@0.5.11",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @opentui/core-darwin-arm64@0.5.11 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @opentui/core-darwin-arm64@0.5.11 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @opentui/core-darwin-arm64@0.5.11 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9550,6 +9970,12 @@ pnpm_store_entry(
     package = ":package_opentui_core_darwin_x64_0_5_11_279b7bc4ce0d",
     store_key = "@opentui+core-darwin-x64@0.5.11",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @opentui/core-darwin-x64@0.5.11 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @opentui/core-darwin-x64@0.5.11 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @opentui/core-darwin-x64@0.5.11 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @opentui/core-darwin-x64@0.5.11 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9560,6 +9986,12 @@ pnpm_store_entry(
     package = ":package_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
     store_key = "@opentui+core-linux-arm64-musl@0.5.11",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @opentui/core-linux-arm64-musl@0.5.11 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @opentui/core-linux-arm64-musl@0.5.11 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @opentui/core-linux-arm64-musl@0.5.11 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9570,6 +10002,12 @@ pnpm_store_entry(
     package = ":package_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
     store_key = "@opentui+core-linux-arm64@0.5.11",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @opentui/core-linux-arm64@0.5.11 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @opentui/core-linux-arm64@0.5.11 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @opentui/core-linux-arm64@0.5.11 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9580,6 +10018,12 @@ pnpm_store_entry(
     package = ":package_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
     store_key = "@opentui+core-linux-x64-musl@0.5.11",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @opentui/core-linux-x64-musl@0.5.11 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @opentui/core-linux-x64-musl@0.5.11 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @opentui/core-linux-x64-musl@0.5.11 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9590,6 +10034,12 @@ pnpm_store_entry(
     package = ":package_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
     store_key = "@opentui+core-linux-x64@0.5.11",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @opentui/core-linux-x64@0.5.11 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @opentui/core-linux-x64@0.5.11 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @opentui/core-linux-x64@0.5.11 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9600,6 +10050,12 @@ pnpm_store_entry(
     package = ":package_opentui_core_win32_arm64_0_5_11_d619858821de",
     store_key = "@opentui+core-win32-arm64@0.5.11",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @opentui/core-win32-arm64@0.5.11 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @opentui/core-win32-arm64@0.5.11 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @opentui/core-win32-arm64@0.5.11 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @opentui/core-win32-arm64@0.5.11 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9610,6 +10066,12 @@ pnpm_store_entry(
     package = ":package_opentui_core_win32_x64_0_5_11_be130e89d866",
     store_key = "@opentui+core-win32-x64@0.5.11",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @opentui/core-win32-x64@0.5.11 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @opentui/core-win32-x64@0.5.11 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @opentui/core-win32-x64@0.5.11 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @opentui/core-win32-x64@0.5.11 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9684,6 +10146,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_android_arm_eabi_0_127_0_a7691244969a",
     store_key = "@oxc-parser+binding-android-arm-eabi@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-android-arm-eabi@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-android-arm-eabi@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-android-arm-eabi@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-android-arm-eabi@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9694,6 +10162,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_android_arm64_0_127_0_39d742cc0aa5",
     store_key = "@oxc-parser+binding-android-arm64@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-android-arm64@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-android-arm64@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-android-arm64@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-android-arm64@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9704,6 +10178,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_darwin_arm64_0_127_0_880c7e783637",
     store_key = "@oxc-parser+binding-darwin-arm64@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-darwin-arm64@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-darwin-arm64@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-darwin-arm64@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9714,6 +10194,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_darwin_x64_0_127_0_d830e615e791",
     store_key = "@oxc-parser+binding-darwin-x64@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-darwin-x64@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-darwin-x64@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-darwin-x64@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-darwin-x64@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9724,6 +10210,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_freebsd_x64_0_127_0_ec705517e161",
     store_key = "@oxc-parser+binding-freebsd-x64@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-freebsd-x64@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-freebsd-x64@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-freebsd-x64@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-freebsd-x64@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9734,6 +10226,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_arm_gnueabihf_0_127_0_08973ed3a91b",
     store_key = "@oxc-parser+binding-linux-arm-gnueabihf@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-arm-gnueabihf@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-arm-gnueabihf@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-arm-gnueabihf@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-arm-gnueabihf@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9744,6 +10242,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_arm_musleabihf_0_127_0_a2180cd742ff",
     store_key = "@oxc-parser+binding-linux-arm-musleabihf@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-arm-musleabihf@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-arm-musleabihf@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-arm-musleabihf@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-arm-musleabihf@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9754,6 +10258,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_arm64_gnu_0_127_0_339d8e222bd1",
     store_key = "@oxc-parser+binding-linux-arm64-gnu@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-arm64-gnu@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-arm64-gnu@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-arm64-gnu@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9764,6 +10274,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_arm64_musl_0_127_0_d7bc5fb5e465",
     store_key = "@oxc-parser+binding-linux-arm64-musl@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-arm64-musl@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-arm64-musl@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-arm64-musl@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-arm64-musl@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9774,6 +10290,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_ppc64_gnu_0_127_0_1517531f6297",
     store_key = "@oxc-parser+binding-linux-ppc64-gnu@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-ppc64-gnu@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-ppc64-gnu@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-ppc64-gnu@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-ppc64-gnu@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9784,6 +10306,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_riscv64_gnu_0_127_0_aacc4f3db7f2",
     store_key = "@oxc-parser+binding-linux-riscv64-gnu@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-riscv64-gnu@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-riscv64-gnu@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-riscv64-gnu@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-riscv64-gnu@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9794,6 +10322,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_riscv64_musl_0_127_0_32376f45b17f",
     store_key = "@oxc-parser+binding-linux-riscv64-musl@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-riscv64-musl@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-riscv64-musl@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-riscv64-musl@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-riscv64-musl@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9804,6 +10338,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_s390x_gnu_0_127_0_b2e5b17589d8",
     store_key = "@oxc-parser+binding-linux-s390x-gnu@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-s390x-gnu@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-s390x-gnu@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-s390x-gnu@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-s390x-gnu@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9814,6 +10354,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_x64_gnu_0_127_0_1c216b7b5e59",
     store_key = "@oxc-parser+binding-linux-x64-gnu@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-x64-gnu@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-x64-gnu@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-x64-gnu@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9824,6 +10370,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_linux_x64_musl_0_127_0_d74c488273be",
     store_key = "@oxc-parser+binding-linux-x64-musl@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-x64-musl@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-x64-musl@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-x64-musl@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-x64-musl@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9834,6 +10386,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_openharmony_arm64_0_127_0_de2f66328880",
     store_key = "@oxc-parser+binding-openharmony-arm64@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-openharmony-arm64@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-openharmony-arm64@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-openharmony-arm64@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-openharmony-arm64@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9844,6 +10402,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_wasm32_wasi_0_127_0_10289bad8043",
     store_key = "@oxc-parser+binding-wasm32-wasi@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-wasm32-wasi@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-wasm32-wasi@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-wasm32-wasi@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-wasm32-wasi@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9854,6 +10418,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_win32_arm64_msvc_0_127_0_795e7d4381ef",
     store_key = "@oxc-parser+binding-win32-arm64-msvc@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-win32-arm64-msvc@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-win32-arm64-msvc@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-win32-arm64-msvc@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-win32-arm64-msvc@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9864,6 +10434,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_win32_ia32_msvc_0_127_0_f48941c3388f",
     store_key = "@oxc-parser+binding-win32-ia32-msvc@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-win32-ia32-msvc@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-win32-ia32-msvc@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-win32-ia32-msvc@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-win32-ia32-msvc@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9874,6 +10450,12 @@ pnpm_store_entry(
     package = ":package_oxc_parser_binding_win32_x64_msvc_0_127_0_b3b41af735e1",
     store_key = "@oxc-parser+binding-win32-x64-msvc@0.127.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-win32-x64-msvc@0.127.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-win32-x64-msvc@0.127.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-win32-x64-msvc@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-win32-x64-msvc@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9904,6 +10486,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_android_arm_eabi_11_21_2_27042d0495e8",
     store_key = "@oxc-resolver+binding-android-arm-eabi@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-android-arm-eabi@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-android-arm-eabi@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-android-arm-eabi@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-android-arm-eabi@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9914,6 +10502,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_android_arm64_11_21_2_f6e077b6c604",
     store_key = "@oxc-resolver+binding-android-arm64@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-android-arm64@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-android-arm64@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-android-arm64@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-android-arm64@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9924,6 +10518,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_darwin_arm64_11_21_2_25266647abbc",
     store_key = "@oxc-resolver+binding-darwin-arm64@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-darwin-arm64@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-darwin-arm64@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-darwin-arm64@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9934,6 +10534,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_darwin_x64_11_21_2_59b34f738e90",
     store_key = "@oxc-resolver+binding-darwin-x64@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-darwin-x64@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-darwin-x64@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-darwin-x64@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-darwin-x64@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9944,6 +10550,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_freebsd_x64_11_21_2_a17f6663efbc",
     store_key = "@oxc-resolver+binding-freebsd-x64@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-freebsd-x64@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-freebsd-x64@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-freebsd-x64@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-freebsd-x64@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9954,6 +10566,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_arm_gnueabihf_11_21_2_e55cf14499be",
     store_key = "@oxc-resolver+binding-linux-arm-gnueabihf@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-arm-gnueabihf@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-linux-arm-gnueabihf@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-linux-arm-gnueabihf@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-arm-gnueabihf@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9964,6 +10582,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_arm_musleabihf_11_21_2_10f401b814ad",
     store_key = "@oxc-resolver+binding-linux-arm-musleabihf@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-arm-musleabihf@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-linux-arm-musleabihf@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-linux-arm-musleabihf@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-arm-musleabihf@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9974,6 +10598,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_arm64_gnu_11_21_2_9c2d6fc5e608",
     store_key = "@oxc-resolver+binding-linux-arm64-gnu@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-arm64-gnu@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @oxc-resolver/binding-linux-arm64-gnu@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-arm64-gnu@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9984,6 +10614,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_arm64_musl_11_21_2_75b5a8ec62d9",
     store_key = "@oxc-resolver+binding-linux-arm64-musl@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-arm64-musl@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-linux-arm64-musl@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-linux-arm64-musl@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-arm64-musl@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -9994,6 +10630,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_ppc64_gnu_11_21_2_61080756a315",
     store_key = "@oxc-resolver+binding-linux-ppc64-gnu@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-ppc64-gnu@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-linux-ppc64-gnu@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-linux-ppc64-gnu@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-ppc64-gnu@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10004,6 +10646,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_riscv64_gnu_11_21_2_59b5e153cd98",
     store_key = "@oxc-resolver+binding-linux-riscv64-gnu@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-riscv64-gnu@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-linux-riscv64-gnu@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-linux-riscv64-gnu@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-riscv64-gnu@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10014,6 +10662,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_riscv64_musl_11_21_2_b61fe8a045d5",
     store_key = "@oxc-resolver+binding-linux-riscv64-musl@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-riscv64-musl@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-linux-riscv64-musl@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-linux-riscv64-musl@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-riscv64-musl@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10024,6 +10678,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_s390x_gnu_11_21_2_328759c62ad4",
     store_key = "@oxc-resolver+binding-linux-s390x-gnu@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-s390x-gnu@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-linux-s390x-gnu@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-linux-s390x-gnu@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-s390x-gnu@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10034,6 +10694,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_x64_gnu_11_21_2_209b1e41e38c",
     store_key = "@oxc-resolver+binding-linux-x64-gnu@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-x64-gnu@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-linux-x64-gnu@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-x64-gnu@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10044,6 +10710,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_linux_x64_musl_11_21_2_02ada4ad9027",
     store_key = "@oxc-resolver+binding-linux-x64-musl@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-linux-x64-musl@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-linux-x64-musl@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-linux-x64-musl@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-linux-x64-musl@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10054,6 +10726,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_openharmony_arm64_11_21_2_eadcd9e8c636",
     store_key = "@oxc-resolver+binding-openharmony-arm64@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-openharmony-arm64@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-openharmony-arm64@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-openharmony-arm64@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-openharmony-arm64@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10064,6 +10742,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_wasm32_wasi_11_21_2_d2b7dc739c67",
     store_key = "@oxc-resolver+binding-wasm32-wasi@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-wasm32-wasi@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-wasm32-wasi@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-wasm32-wasi@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-wasm32-wasi@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10074,6 +10758,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_win32_arm64_msvc_11_21_2_999db65e3420",
     store_key = "@oxc-resolver+binding-win32-arm64-msvc@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-win32-arm64-msvc@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-win32-arm64-msvc@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-win32-arm64-msvc@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-win32-arm64-msvc@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10084,6 +10774,12 @@ pnpm_store_entry(
     package = ":package_oxc_resolver_binding_win32_x64_msvc_11_21_2_5096706754b8",
     store_key = "@oxc-resolver+binding-win32-x64-msvc@11.21.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-resolver/binding-win32-x64-msvc@11.21.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-resolver/binding-win32-x64-msvc@11.21.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-resolver/binding-win32-x64-msvc@11.21.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-resolver/binding-win32-x64-msvc@11.21.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10094,6 +10790,12 @@ pnpm_store_entry(
     package = ":package_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
     store_key = "@oxlint-tsgolint+darwin-arm64@7.0.2001",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint-tsgolint/darwin-arm64@7.0.2001 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/darwin-arm64@7.0.2001 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint-tsgolint/darwin-arm64@7.0.2001 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10104,6 +10806,12 @@ pnpm_store_entry(
     package = ":package_oxlint_tsgolint_darwin_x64_7_0_2001_bb4a26bf5778",
     store_key = "@oxlint-tsgolint+darwin-x64@7.0.2001",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint-tsgolint/darwin-x64@7.0.2001 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/darwin-x64@7.0.2001 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint-tsgolint/darwin-x64@7.0.2001 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint-tsgolint/darwin-x64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10114,6 +10822,12 @@ pnpm_store_entry(
     package = ":package_oxlint_tsgolint_linux_arm64_7_0_2001_edffccc99dea",
     store_key = "@oxlint-tsgolint+linux-arm64@7.0.2001",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint-tsgolint/linux-arm64@7.0.2001 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @oxlint-tsgolint/linux-arm64@7.0.2001 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint-tsgolint/linux-arm64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10124,6 +10838,12 @@ pnpm_store_entry(
     package = ":package_oxlint_tsgolint_linux_x64_7_0_2001_bc3b288436e4",
     store_key = "@oxlint-tsgolint+linux-x64@7.0.2001",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint-tsgolint/linux-x64@7.0.2001 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/linux-x64@7.0.2001 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @oxlint-tsgolint/linux-x64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10134,6 +10854,12 @@ pnpm_store_entry(
     package = ":package_oxlint_tsgolint_win32_arm64_7_0_2001_13e4afc64c3a",
     store_key = "@oxlint-tsgolint+win32-arm64@7.0.2001",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint-tsgolint/win32-arm64@7.0.2001 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/win32-arm64@7.0.2001 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint-tsgolint/win32-arm64@7.0.2001 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint-tsgolint/win32-arm64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10144,6 +10870,12 @@ pnpm_store_entry(
     package = ":package_oxlint_tsgolint_win32_x64_7_0_2001_448011f72ac4",
     store_key = "@oxlint-tsgolint+win32-x64@7.0.2001",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint-tsgolint/win32-x64@7.0.2001 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/win32-x64@7.0.2001 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint-tsgolint/win32-x64@7.0.2001 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint-tsgolint/win32-x64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10154,6 +10886,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_android_arm_eabi_1_82_0_17b3c960b549",
     store_key = "@oxlint+binding-android-arm-eabi@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-android-arm-eabi@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-android-arm-eabi@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-android-arm-eabi@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-android-arm-eabi@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10164,6 +10902,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_android_arm64_1_82_0_b0db0015d127",
     store_key = "@oxlint+binding-android-arm64@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-android-arm64@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-android-arm64@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-android-arm64@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-android-arm64@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10174,6 +10918,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
     store_key = "@oxlint+binding-darwin-arm64@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-darwin-arm64@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-darwin-arm64@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-darwin-arm64@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10184,6 +10934,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_darwin_x64_1_82_0_e54212cebc57",
     store_key = "@oxlint+binding-darwin-x64@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-darwin-x64@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-darwin-x64@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-darwin-x64@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-darwin-x64@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10194,6 +10950,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_freebsd_x64_1_82_0_2d8d7ed77b30",
     store_key = "@oxlint+binding-freebsd-x64@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-freebsd-x64@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-freebsd-x64@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-freebsd-x64@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-freebsd-x64@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10204,6 +10966,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_arm_gnueabihf_1_82_0_6c5f6b351cbf",
     store_key = "@oxlint+binding-linux-arm-gnueabihf@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-arm-gnueabihf@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-arm-gnueabihf@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-arm-gnueabihf@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-arm-gnueabihf@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10214,6 +10982,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_arm_musleabihf_1_82_0_825ab3dcd7a5",
     store_key = "@oxlint+binding-linux-arm-musleabihf@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-arm-musleabihf@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-arm-musleabihf@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-arm-musleabihf@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-arm-musleabihf@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10224,6 +10998,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
     store_key = "@oxlint+binding-linux-arm64-gnu@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-arm64-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @oxlint/binding-linux-arm64-gnu@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-arm64-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10234,6 +11014,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_arm64_musl_1_82_0_c7dda0149c3e",
     store_key = "@oxlint+binding-linux-arm64-musl@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-arm64-musl@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-arm64-musl@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-arm64-musl@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-arm64-musl@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10244,6 +11030,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_ppc64_gnu_1_82_0_4c415a180705",
     store_key = "@oxlint+binding-linux-ppc64-gnu@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-ppc64-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-ppc64-gnu@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-ppc64-gnu@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-ppc64-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10254,6 +11046,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_riscv64_gnu_1_82_0_306b77562593",
     store_key = "@oxlint+binding-linux-riscv64-gnu@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-riscv64-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-riscv64-gnu@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-riscv64-gnu@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-riscv64-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10264,6 +11062,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_riscv64_musl_1_82_0_67887b144248",
     store_key = "@oxlint+binding-linux-riscv64-musl@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-riscv64-musl@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-riscv64-musl@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-riscv64-musl@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-riscv64-musl@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10274,6 +11078,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_s390x_gnu_1_82_0_114c6d8983b7",
     store_key = "@oxlint+binding-linux-s390x-gnu@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-s390x-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-s390x-gnu@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-s390x-gnu@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-s390x-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10284,6 +11094,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
     store_key = "@oxlint+binding-linux-x64-gnu@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-x64-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-x64-gnu@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @oxlint/binding-linux-x64-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10294,6 +11110,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_linux_x64_musl_1_82_0_3b99abaa2cd5",
     store_key = "@oxlint+binding-linux-x64-musl@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-linux-x64-musl@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-x64-musl@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-x64-musl@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-x64-musl@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10304,6 +11126,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_openharmony_arm64_1_82_0_2d927a84f037",
     store_key = "@oxlint+binding-openharmony-arm64@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-openharmony-arm64@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-openharmony-arm64@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-openharmony-arm64@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-openharmony-arm64@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10314,6 +11142,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_win32_arm64_msvc_1_82_0_f407c8ca29f4",
     store_key = "@oxlint+binding-win32-arm64-msvc@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-win32-arm64-msvc@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-win32-arm64-msvc@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-win32-arm64-msvc@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-win32-arm64-msvc@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10324,6 +11158,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_win32_ia32_msvc_1_82_0_427524bf3b4f",
     store_key = "@oxlint+binding-win32-ia32-msvc@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-win32-ia32-msvc@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-win32-ia32-msvc@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-win32-ia32-msvc@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-win32-ia32-msvc@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10334,6 +11174,12 @@ pnpm_store_entry(
     package = ":package_oxlint_binding_win32_x64_msvc_1_82_0_d1eb57188aed",
     store_key = "@oxlint+binding-win32-x64-msvc@1.82.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxlint/binding-win32-x64-msvc@1.82.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-win32-x64-msvc@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-win32-x64-msvc@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-win32-x64-msvc@1.82.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10488,6 +11334,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_android_arm_eabi_1_2_7_1f9b00662b70",
     store_key = "@rolldown+binding-android-arm-eabi@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-android-arm-eabi@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-android-arm-eabi@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-android-arm-eabi@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-android-arm-eabi@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10498,6 +11350,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_android_arm64_1_2_7_9ed97ffc6294",
     store_key = "@rolldown+binding-android-arm64@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-android-arm64@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-android-arm64@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-android-arm64@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-android-arm64@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10508,6 +11366,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_darwin_arm64_1_2_7_c213ca2a9ab4",
     store_key = "@rolldown+binding-darwin-arm64@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-darwin-arm64@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-darwin-arm64@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-darwin-arm64@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10518,6 +11382,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_darwin_x64_1_2_7_192aa6d2bd5f",
     store_key = "@rolldown+binding-darwin-x64@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-darwin-x64@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-darwin-x64@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-darwin-x64@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-darwin-x64@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10528,6 +11398,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_freebsd_x64_1_2_7_3b2418fab170",
     store_key = "@rolldown+binding-freebsd-x64@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-freebsd-x64@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-freebsd-x64@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-freebsd-x64@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-freebsd-x64@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10538,6 +11414,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_linux_arm_gnueabihf_1_2_7_599d24135036",
     store_key = "@rolldown+binding-linux-arm-gnueabihf@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-linux-arm-gnueabihf@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-linux-arm-gnueabihf@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-linux-arm-gnueabihf@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-linux-arm-gnueabihf@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10548,6 +11430,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_linux_arm64_gnu_1_2_7_b564cdf057d1",
     store_key = "@rolldown+binding-linux-arm64-gnu@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-linux-arm64-gnu@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @rolldown/binding-linux-arm64-gnu@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-linux-arm64-gnu@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10558,6 +11446,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_linux_arm64_musl_1_2_7_16dba6c62ec7",
     store_key = "@rolldown+binding-linux-arm64-musl@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-linux-arm64-musl@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-linux-arm64-musl@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-linux-arm64-musl@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-linux-arm64-musl@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10568,6 +11462,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_linux_ppc64_gnu_1_2_7_731276b8f7c0",
     store_key = "@rolldown+binding-linux-ppc64-gnu@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-linux-ppc64-gnu@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-linux-ppc64-gnu@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-linux-ppc64-gnu@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-linux-ppc64-gnu@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10578,6 +11478,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_linux_s390x_gnu_1_2_7_967c18005b0f",
     store_key = "@rolldown+binding-linux-s390x-gnu@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-linux-s390x-gnu@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-linux-s390x-gnu@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-linux-s390x-gnu@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-linux-s390x-gnu@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10588,6 +11494,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_linux_x64_gnu_1_2_7_2b8bc0885731",
     store_key = "@rolldown+binding-linux-x64-gnu@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-linux-x64-gnu@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-linux-x64-gnu@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @rolldown/binding-linux-x64-gnu@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10598,6 +11510,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_linux_x64_musl_1_2_7_757eee3af354",
     store_key = "@rolldown+binding-linux-x64-musl@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-linux-x64-musl@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-linux-x64-musl@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-linux-x64-musl@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-linux-x64-musl@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10608,6 +11526,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_openharmony_arm64_1_2_7_d3dc6b9598b1",
     store_key = "@rolldown+binding-openharmony-arm64@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-openharmony-arm64@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-openharmony-arm64@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-openharmony-arm64@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-openharmony-arm64@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10618,6 +11542,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_win32_arm64_msvc_1_2_7_87c37a59c440",
     store_key = "@rolldown+binding-win32-arm64-msvc@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-win32-arm64-msvc@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-win32-arm64-msvc@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-win32-arm64-msvc@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-win32-arm64-msvc@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -10628,6 +11558,12 @@ pnpm_store_entry(
     package = ":package_rolldown_binding_win32_x64_msvc_1_2_7_911bf0834668",
     store_key = "@rolldown+binding-win32-x64-msvc@1.2.7",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @rolldown/binding-win32-x64-msvc@1.2.7 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @rolldown/binding-win32-x64-msvc@1.2.7 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @rolldown/binding-win32-x64-msvc@1.2.7 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @rolldown/binding-win32-x64-msvc@1.2.7 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11723,6 +12659,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_aix_ppc64_7_0_2_04df16daf2d2",
     store_key = "@typescript+typescript-aix-ppc64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-aix-ppc64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-aix-ppc64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-aix-ppc64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-aix-ppc64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11733,6 +12675,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_darwin_arm64_7_0_2_38ca3d6d9939",
     store_key = "@typescript+typescript-darwin-arm64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-darwin-arm64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-darwin-arm64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-darwin-arm64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11743,6 +12691,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_darwin_x64_7_0_2_35f16cb76d9c",
     store_key = "@typescript+typescript-darwin-x64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-darwin-x64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-darwin-x64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-darwin-x64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-darwin-x64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11753,6 +12707,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_freebsd_arm64_7_0_2_1e051741279c",
     store_key = "@typescript+typescript-freebsd-arm64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-freebsd-arm64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-freebsd-arm64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-freebsd-arm64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-freebsd-arm64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11763,6 +12723,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_freebsd_x64_7_0_2_f502cf33948d",
     store_key = "@typescript+typescript-freebsd-x64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-freebsd-x64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-freebsd-x64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-freebsd-x64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-freebsd-x64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11773,6 +12739,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_linux_arm64_7_0_2_dbe899afde8f",
     store_key = "@typescript+typescript-linux-arm64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-linux-arm64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @typescript/typescript-linux-arm64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-linux-arm64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11783,6 +12755,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_linux_arm_7_0_2_7b6615dff0b4",
     store_key = "@typescript+typescript-linux-arm@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-linux-arm@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-linux-arm@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-linux-arm@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-linux-arm@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11793,6 +12771,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_linux_loong64_7_0_2_d6bc6d513b2d",
     store_key = "@typescript+typescript-linux-loong64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-linux-loong64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-linux-loong64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-linux-loong64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-linux-loong64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11803,6 +12787,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_linux_mips64el_7_0_2_3cdbccef50fd",
     store_key = "@typescript+typescript-linux-mips64el@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-linux-mips64el@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-linux-mips64el@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-linux-mips64el@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-linux-mips64el@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11813,6 +12803,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_linux_ppc64_7_0_2_6809ffdf80d1",
     store_key = "@typescript+typescript-linux-ppc64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-linux-ppc64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-linux-ppc64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-linux-ppc64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-linux-ppc64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11823,6 +12819,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_linux_riscv64_7_0_2_23f11afd3316",
     store_key = "@typescript+typescript-linux-riscv64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-linux-riscv64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-linux-riscv64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-linux-riscv64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-linux-riscv64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11833,6 +12835,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_linux_s390x_7_0_2_8fc6094d68b0",
     store_key = "@typescript+typescript-linux-s390x@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-linux-s390x@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-linux-s390x@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-linux-s390x@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-linux-s390x@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11843,6 +12851,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_linux_x64_7_0_2_f03df44f666b",
     store_key = "@typescript+typescript-linux-x64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-linux-x64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-linux-x64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @typescript/typescript-linux-x64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11853,6 +12867,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_netbsd_arm64_7_0_2_06b4c5c2deaf",
     store_key = "@typescript+typescript-netbsd-arm64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-netbsd-arm64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-netbsd-arm64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-netbsd-arm64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-netbsd-arm64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11863,6 +12883,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_netbsd_x64_7_0_2_c369664ce3c4",
     store_key = "@typescript+typescript-netbsd-x64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-netbsd-x64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-netbsd-x64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-netbsd-x64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-netbsd-x64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11873,6 +12899,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_openbsd_arm64_7_0_2_f9234fced35b",
     store_key = "@typescript+typescript-openbsd-arm64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-openbsd-arm64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-openbsd-arm64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-openbsd-arm64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-openbsd-arm64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11883,6 +12915,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_openbsd_x64_7_0_2_b11ef36ab8c9",
     store_key = "@typescript+typescript-openbsd-x64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-openbsd-x64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-openbsd-x64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-openbsd-x64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-openbsd-x64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11893,6 +12931,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_sunos_x64_7_0_2_550fefbf4a79",
     store_key = "@typescript+typescript-sunos-x64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-sunos-x64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-sunos-x64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-sunos-x64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-sunos-x64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11903,6 +12947,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_win32_arm64_7_0_2_43041e56232a",
     store_key = "@typescript+typescript-win32-arm64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-win32-arm64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-win32-arm64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-win32-arm64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-win32-arm64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -11913,6 +12963,12 @@ pnpm_store_entry(
     package = ":package_typescript_typescript_win32_x64_7_0_2_5337e59284a0",
     store_key = "@typescript+typescript-win32-x64@7.0.2",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @typescript/typescript-win32-x64@7.0.2 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @typescript/typescript-win32-x64@7.0.2 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @typescript/typescript-win32-x64@7.0.2 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @typescript/typescript-win32-x64@7.0.2 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13238,6 +14294,12 @@ pnpm_store_entry(
     package = ":package_fsevents_2_3_3_6dbcd7937292",
     store_key = "fsevents@2.3.3",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry fsevents@2.3.3 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry fsevents@2.3.3 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry fsevents@2.3.3 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13729,6 +14791,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_android_arm64_1_33_0_5bf19c202cf0",
     store_key = "lightningcss-android-arm64@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-android-arm64@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-android-arm64@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry lightningcss-android-arm64@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry lightningcss-android-arm64@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13739,6 +14807,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_darwin_arm64_1_33_0_4e7915734c17",
     store_key = "lightningcss-darwin-arm64@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-darwin-arm64@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-darwin-arm64@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry lightningcss-darwin-arm64@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13749,6 +14823,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_darwin_x64_1_33_0_e8e7fff14fa1",
     store_key = "lightningcss-darwin-x64@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-darwin-x64@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-darwin-x64@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry lightningcss-darwin-x64@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry lightningcss-darwin-x64@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13759,6 +14839,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_freebsd_x64_1_33_0_f89c7ab838de",
     store_key = "lightningcss-freebsd-x64@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-freebsd-x64@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-freebsd-x64@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry lightningcss-freebsd-x64@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry lightningcss-freebsd-x64@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13769,6 +14855,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_linux_arm_gnueabihf_1_33_0_7c12cc3ac674",
     store_key = "lightningcss-linux-arm-gnueabihf@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-linux-arm-gnueabihf@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-linux-arm-gnueabihf@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry lightningcss-linux-arm-gnueabihf@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry lightningcss-linux-arm-gnueabihf@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13779,6 +14871,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_linux_arm64_gnu_1_33_0_3c8fab71fd68",
     store_key = "lightningcss-linux-arm64-gnu@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-linux-arm64-gnu@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry lightningcss-linux-arm64-gnu@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry lightningcss-linux-arm64-gnu@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13789,6 +14887,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_linux_arm64_musl_1_33_0_adabeaa93f75",
     store_key = "lightningcss-linux-arm64-musl@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-linux-arm64-musl@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-linux-arm64-musl@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry lightningcss-linux-arm64-musl@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry lightningcss-linux-arm64-musl@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13799,6 +14903,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_linux_x64_gnu_1_33_0_abda693e4089",
     store_key = "lightningcss-linux-x64-gnu@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-linux-x64-gnu@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-linux-x64-gnu@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry lightningcss-linux-x64-gnu@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13809,6 +14919,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_linux_x64_musl_1_33_0_53d607a77efe",
     store_key = "lightningcss-linux-x64-musl@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-linux-x64-musl@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-linux-x64-musl@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry lightningcss-linux-x64-musl@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry lightningcss-linux-x64-musl@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13819,6 +14935,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_win32_arm64_msvc_1_33_0_0b4bbd71240e",
     store_key = "lightningcss-win32-arm64-msvc@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-win32-arm64-msvc@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-win32-arm64-msvc@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry lightningcss-win32-arm64-msvc@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry lightningcss-win32-arm64-msvc@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
@@ -13829,6 +14951,12 @@ pnpm_store_entry(
     package = ":package_lightningcss_win32_x64_msvc_1_33_0_99451d2032fc",
     store_key = "lightningcss-win32-x64-msvc@1.33.0",
     runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry lightningcss-win32-x64-msvc@1.33.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry lightningcss-win32-x64-msvc@1.33.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry lightningcss-win32-x64-msvc@1.33.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry lightningcss-win32-x64-msvc@1.33.0 has no complete required dependency closure on macos_aarch64",
+    },
     dependencies = {
     },
     visibility = ["PUBLIC"],
