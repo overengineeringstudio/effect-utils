@@ -295,8 +295,9 @@ can only force a failure or a crash, never make a check pass.
   executable. Only the separate `test-signing-cert` build selects a PATH
   shim, to inject signing failures and record arguments.
   Process waits and nonblocking stdout/stderr reads share that deadline and
-  the signal self-pipe. When the leader exits, its whole process group is
-  killed before output draining finishes, so descendants cannot retain pipes
+  the signal self-pipe. Leader exit is observed without reaping (`waitid`
+  with `WNOWAIT`), keeping its PID/PGID reserved until its whole process group
+  is killed. Only then is the leader reaped, so descendants cannot retain pipes
   indefinitely. The final drain is bounded by one second and the remaining
   overall deadline; there are no blocking output-thread joins.
 - **Certificate chain preflight.** Before codesign, `ctl` evaluates the

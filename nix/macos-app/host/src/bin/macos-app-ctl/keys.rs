@@ -752,14 +752,14 @@ fn export_status(identity: Ref) -> Result<i32> {
     if !data.is_null() { drop(Cf(data)); }
     Ok(status)
 }
-/// Bounds both process lifetime and pipe draining. A reaped leader does not imply EOF:
-/// descendants may still own stdout/stderr, so kill its whole group before finishing the drain.
+/// Bounds process lifetime and pipe draining. Observe leader exit without reaping it,
+/// keeping its PGID reserved until the whole group is killed; only then reap and drain.
 pub(super) fn bounded_codesign(args: &[&str]) -> Result<Output> {
     cancellation()?;
     use std::os::unix::process::CommandExt;
     let mut child = Command::new(codesign_program()).args(args).process_group(0).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
     let kill_group = |child: &std::process::Child| {
-        // SAFETY: child leads the process group created by this invocation.
+        // SAFETY: child leads our process group and is not reaped until after this kill.
         unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL); }
     };
     let mut group_killed = false;
@@ -795,10 +795,19 @@ pub(super) fn bounded_codesign(args: &[&str]) -> Result<Output> {
                 }
             }
             if !group_killed {
-                if failure.is_some() { kill_group(&child); group_killed = true; status = Some(child.wait()?); }
-                else { status = child.try_wait()?; }
-                if status.is_some() {
-                    if !group_killed { kill_group(&child); group_killed = true; }
+                // SAFETY: waitid writes a live siginfo_t. WNOWAIT observes exit without
+                // reaping, so the leader's PID/PGID cannot be reused before kill_group.
+                let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+                if failure.is_none() && unsafe {
+                    libc::waitid(libc::P_PID, child.id() as libc::id_t, &mut info,
+                                 libc::WEXITED | libc::WNOWAIT | libc::WNOHANG)
+                } != 0 {
+                    return Err(io::Error::last_os_error().into());
+                }
+                if failure.is_some() || info.si_signo == libc::SIGCHLD {
+                    kill_group(&child);
+                    group_killed = true;
+                    status = Some(child.wait()?);
                     drain_deadline = deadline.min(Instant::now() + Duration::from_secs(1));
                 }
             }
