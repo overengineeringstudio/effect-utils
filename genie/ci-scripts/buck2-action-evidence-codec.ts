@@ -1,5 +1,6 @@
 import {
   actionExclusionReason,
+  actionExclusionReasons,
   countActionExclusions,
   cacheOutcomeMapping,
   invocationWithinJobWindow,
@@ -15,44 +16,64 @@ import {
 import type { CacheOutcome } from './buck2-cache-evidence.ts'
 
 /** Local cache hits are reuse, never avoidable local-execution candidates. */
-export const classifyCacheAction = (
-  action: ActionRecord,
-  invocation: ActionInvocation | undefined,
-): 'local-action-cache-hit' | 'fresh-local-execution' | 'other' => {
+export const classifyCacheAction = ({
+  action,
+  invocation,
+}: {
+  action: ActionRecord
+  invocation: ActionInvocation | undefined
+}): 'local-action-cache-hit' | 'fresh-local-execution' | 'other' => {
   if (action.executionKind === 10) return 'local-action-cache-hit'
   if (actionExclusionReason(action.category) !== null) return 'other'
   if (
-    action.commandAction &&
+    action.commandAction === true &&
     (action.executionKind === 1 || action.executionKind === 8) &&
     action.digest !== null &&
     invocation?.buildId === action.buildId &&
-    invocation.freshRoot
+    invocation.freshRoot === true
   )
     return 'fresh-local-execution'
   return 'other'
 }
 
 /** Untrusted JSON boundaries: reconstruct allowlisted fields, never cast parsed input. */
-export const field = (value: unknown, key: string): unknown => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+export const field = ({ value, key }: { value: unknown; key: string }): unknown => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) === true) return undefined
   return Reflect.get(value, key)
 }
 export const invalid = (): never => {
   throw new Error('Invalid cache evidence')
 }
 export const integer = (value: unknown): number =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : invalid()
+  typeof value === 'number' && Number.isSafeInteger(value) === true && value >= 0
+    ? value
+    : invalid()
 export const text = (value: unknown): string =>
   typeof value === 'string' && value.length > 0 ? value : invalid()
 export const boolean = (value: unknown): boolean => (typeof value === 'boolean' ? value : invalid())
-export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : invalid())
-export const decodeActionExclusionCounts = (value: unknown): ActionExclusionCounts => ({
-  'local-materialization-policy': integer(field(value, 'local-materialization-policy')),
-})
-const nullableText = (value: unknown, grammar = /^[a-zA-Z0-9_.:-]+$/): string | null => {
+export const list = (value: unknown): unknown[] =>
+  Array.isArray(value) === true ? value : invalid()
+export const decodeActionExclusionCounts = (value: unknown): ActionExclusionCounts => {
+  const darwinCount = field({ value: value, key: 'darwin-unsandboxed' })
+  return {
+    'local-materialization-policy': integer(
+      field({ value: value, key: 'local-materialization-policy' }),
+    ),
+    // Retained artifacts predate Darwin-specific categories; full rows still
+    // validate this zero against the current category policy below.
+    'darwin-unsandboxed': darwinCount === undefined ? 0 : integer(darwinCount),
+  }
+}
+const nullableText = ({
+  value,
+  grammar = /^[a-zA-Z0-9_.:-]+$/,
+}: {
+  value: unknown
+  grammar?: RegExp
+}): string | null => {
   if (value === null) return null
   const result = text(value)
-  return result.length <= 4096 && grammar.test(result) ? result : invalid()
+  return result.length <= 4096 && grammar.test(result) === true ? result : invalid()
 }
 const timestamp = (value: unknown): number | null => (value === null ? null : integer(value))
 export const lane = (value: unknown): CacheLane => {
@@ -81,8 +102,8 @@ const outcome = (value: unknown): CacheOutcome => {
   }
 }
 const decodeAction = (value: unknown): ActionRecord => {
-  if (field(value, 'type') !== 'action') return invalid()
-  const uploadOutcome = field(value, 'uploadOutcome')
+  if (field({ value: value, key: 'type' }) !== 'action') return invalid()
+  const uploadOutcome = field({ value: value, key: 'uploadOutcome' })
   if (
     uploadOutcome !== 'uploaded' &&
     uploadOutcome !== 'failed' &&
@@ -91,31 +112,45 @@ const decodeAction = (value: unknown): ActionRecord => {
     return invalid()
   const action: ActionRecord = {
     type: 'action',
-    buildId: nullableText(field(value, 'buildId'), /^[a-zA-Z0-9_.-]+$/),
-    context: nullableText(field(value, 'context')),
-    category: nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/),
-    exclusionReason: actionExclusionReason(nullableText(field(value, 'category'), /^[a-zA-Z0-9_.-]+$/)),
-    target: nullableText(
-      field(value, 'target'),
-      /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/,
+    buildId: nullableText({
+      value: field({ value: value, key: 'buildId' }),
+      grammar: /^[a-zA-Z0-9_.-]+$/,
+    }),
+    context: nullableText({ value: field({ value: value, key: 'context' }) }),
+    category: nullableText({
+      value: field({ value: value, key: 'category' }),
+      grammar: /^[a-zA-Z0-9_.-]+$/,
+    }),
+    exclusionReason: actionExclusionReason(
+      nullableText({
+        value: field({ value: value, key: 'category' }),
+        grammar: /^[a-zA-Z0-9_.-]+$/,
+      }),
     ),
-    configuration: nullableText(
-      field(value, 'configuration'),
-      /^[a-zA-Z0-9_.-]+(?:\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+)?#[a-fA-F0-9]+$/,
-    ),
-    digest: nullableText(field(value, 'digest'), /^[a-fA-F0-9]+:[0-9]+$/),
-    executionKind: integer(field(value, 'executionKind')),
-    cacheUploadResult: integer(field(value, 'cacheUploadResult')),
-    outcome: outcome(field(value, 'outcome')),
-    cacheOutcome: outcome(field(value, 'cacheOutcome')),
+    target: nullableText({
+      value: field({ value: value, key: 'target' }),
+      grammar: /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/,
+    }),
+    configuration: nullableText({
+      value: field({ value: value, key: 'configuration' }),
+      grammar: /^[a-zA-Z0-9_.-]+(?:\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+)?#[a-fA-F0-9]+$/,
+    }),
+    digest: nullableText({
+      value: field({ value: value, key: 'digest' }),
+      grammar: /^[a-fA-F0-9]+:[0-9]+$/,
+    }),
+    executionKind: integer(field({ value: value, key: 'executionKind' })),
+    cacheUploadResult: integer(field({ value: value, key: 'cacheUploadResult' })),
+    outcome: outcome(field({ value: value, key: 'outcome' })),
+    cacheOutcome: outcome(field({ value: value, key: 'cacheOutcome' })),
     uploadOutcome,
-    startedAt: timestamp(field(value, 'startedAt')),
-    completedAt: timestamp(field(value, 'completedAt')),
-    endTime: timestamp(field(value, 'endTime')),
-    uploadCompletedAt: timestamp(field(value, 'uploadCompletedAt')),
-    commandAction: boolean(field(value, 'commandAction')),
+    startedAt: timestamp(field({ value: value, key: 'startedAt' })),
+    completedAt: timestamp(field({ value: value, key: 'completedAt' })),
+    endTime: timestamp(field({ value: value, key: 'endTime' })),
+    uploadCompletedAt: timestamp(field({ value: value, key: 'uploadCompletedAt' })),
+    commandAction: boolean(field({ value: value, key: 'commandAction' })),
   }
-  const exclusionReason = field(value, 'exclusionReason')
+  const exclusionReason = field({ value: value, key: 'exclusionReason' })
   if (exclusionReason !== undefined && exclusionReason !== action.exclusionReason) return invalid()
   if (
     action.uploadOutcome !==
@@ -149,106 +184,125 @@ const decodeAction = (value: unknown): ActionRecord => {
 }
 export const decodeActionArtifact = (raw: string): ActionArtifact => {
   // A final newline is part of the wire boundary: a cut-off last JSON row is never trusted.
-  if (!raw.endsWith('\n')) return invalid()
+  if (raw.endsWith('\n') === false) return invalid()
   const lines = raw.slice(0, -1).split('\n')
   const values: unknown[] = lines.map((line) => JSON.parse(line))
   const value = values.shift()
   if (
-    field(value, 'type') !== 'header' ||
-    field(value, 'schemaVersion') !== 1 ||
-    field(value, 'cacheOutcomeMapping') !== cacheOutcomeMapping
+    field({ value: value, key: 'type' }) !== 'header' ||
+    field({ value: value, key: 'schemaVersion' }) !== 1 ||
+    field({ value: value, key: 'cacheOutcomeMapping' }) !== cacheOutcomeMapping
   )
     return invalid()
-  const metadata = field(value, 'metadata')
-  const posture = field(metadata, 'posture')
+  const metadata = field({ value: value, key: 'metadata' })
+  const posture = field({ value: metadata, key: 'posture' })
   if (posture !== 'read-only' && posture !== 'writer' && posture !== 'disabled-by-design')
     return invalid()
-  const status = field(value, 'status')
+  const status = field({ value: value, key: 'status' })
   if (
     status !== 'collected' &&
     status !== 'no-native-logs' &&
     status !== 'remote-cache-disabled-by-design'
   )
     return invalid()
-  const rawLane = field(metadata, 'lane')
+  const rawLane = field({ value: metadata, key: 'lane' })
   const header: ActionArtifactHeader = {
     type: 'header',
     schemaVersion: 1,
     cacheOutcomeMapping,
     metadata: {
-      repo: nullableText(field(metadata, 'repo'), /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/),
-      runId: nullableText(field(metadata, 'runId'), /^[0-9]+$/),
-      runAttempt: nullableText(field(metadata, 'runAttempt'), /^[0-9]+$/),
-      job: nullableText(field(metadata, 'job'), /^[a-zA-Z0-9_.-]+$/),
+      repo: nullableText({
+        value: field({ value: metadata, key: 'repo' }),
+        grammar: /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/,
+      }),
+      runId: nullableText({ value: field({ value: metadata, key: 'runId' }), grammar: /^[0-9]+$/ }),
+      runAttempt: nullableText({
+        value: field({ value: metadata, key: 'runAttempt' }),
+        grammar: /^[0-9]+$/,
+      }),
+      job: nullableText({
+        value: field({ value: metadata, key: 'job' }),
+        grammar: /^[a-zA-Z0-9_.-]+$/,
+      }),
       lane: rawLane === null ? null : lane(rawLane),
-      headSha: nullableText(field(metadata, 'headSha'), /^[a-fA-F0-9]{40}$/),
+      headSha: nullableText({
+        value: field({ value: metadata, key: 'headSha' }),
+        grammar: /^[a-fA-F0-9]{40}$/,
+      }),
       posture,
-      startedAt: timestamp(field(metadata, 'startedAt')),
-      finishedAt: timestamp(field(metadata, 'finishedAt')),
+      startedAt: timestamp(field({ value: metadata, key: 'startedAt' })),
+      finishedAt: timestamp(field({ value: metadata, key: 'finishedAt' })),
     },
     status,
-    complete: boolean(field(value, 'complete')),
-    actionCount: integer(field(value, 'actionCount')),
+    complete: boolean(field({ value: value, key: 'complete' })),
+    actionCount: integer(field({ value: value, key: 'actionCount' })),
     excludedByDesign:
-      field(value, 'excludedByDesign') === undefined
+      field({ value: value, key: 'excludedByDesign' }) === undefined
         ? zeroActionExclusionCounts()
-        : decodeActionExclusionCounts(field(value, 'excludedByDesign')),
-    rows: integer(field(value, 'rows')),
-    missingDigestCount: integer(field(value, 'missingDigestCount')),
-    missingIdentityCount: integer(field(value, 'missingIdentityCount')),
-    missingTimestampCount: integer(field(value, 'missingTimestampCount')),
-    droppedActionCount: integer(field(value, 'droppedActionCount')),
-    evidenceGaps: list(field(value, 'evidenceGaps')).map(
-      (gap) => nullableText(gap, /^[a-zA-Z0-9_.:-]+$/) ?? invalid(),
+        : decodeActionExclusionCounts(field({ value: value, key: 'excludedByDesign' })),
+    rows: integer(field({ value: value, key: 'rows' })),
+    missingDigestCount: integer(field({ value: value, key: 'missingDigestCount' })),
+    missingIdentityCount: integer(field({ value: value, key: 'missingIdentityCount' })),
+    missingTimestampCount: integer(field({ value: value, key: 'missingTimestampCount' })),
+    droppedActionCount: integer(field({ value: value, key: 'droppedActionCount' })),
+    evidenceGaps: list(field({ value: value, key: 'evidenceGaps' })).map(
+      (gap) => nullableText({ value: gap, grammar: /^[a-zA-Z0-9_.:-]+$/ }) ?? invalid(),
     ),
-    invocations: list(field(value, 'invocations')).map((item) => ({
-      buildId: nullableText(field(item, 'buildId'), /^[a-zA-Z0-9_.-]+$/) ?? invalid(),
-      context: nullableText(field(item, 'context')),
-      startedAt: timestamp(field(item, 'startedAt')),
-      completedAt: timestamp(field(item, 'completedAt')),
-      freshRoot: boolean(field(item, 'freshRoot')),
-      actionCount: integer(field(item, 'actionCount')),
+    invocations: list(field({ value: value, key: 'invocations' })).map((item) => ({
+      buildId:
+        nullableText({
+          value: field({ value: item, key: 'buildId' }),
+          grammar: /^[a-zA-Z0-9_.-]+$/,
+        }) ?? invalid(),
+      context: nullableText({ value: field({ value: item, key: 'context' }) }),
+      startedAt: timestamp(field({ value: item, key: 'startedAt' })),
+      completedAt: timestamp(field({ value: item, key: 'completedAt' })),
+      freshRoot: boolean(field({ value: item, key: 'freshRoot' })),
+      actionCount: integer(field({ value: item, key: 'actionCount' })),
       excludedByDesign:
-        field(item, 'excludedByDesign') === undefined
+        field({ value: item, key: 'excludedByDesign' }) === undefined
           ? zeroActionExclusionCounts()
-          : decodeActionExclusionCounts(field(item, 'excludedByDesign')),
-      complete: boolean(field(item, 'complete')),
+          : decodeActionExclusionCounts(field({ value: item, key: 'excludedByDesign' })),
+      complete: boolean(field({ value: item, key: 'complete' })),
     })),
   }
   const actions = values.map(decodeAction)
   // Retained artifacts predate policy fields; complete rows recover the same category policy.
   const actualExclusions = countActionExclusions(actions)
-  if (field(value, 'excludedByDesign') === undefined) header.excludedByDesign = actualExclusions
+  if (field({ value: value, key: 'excludedByDesign' }) === undefined)
+    header.excludedByDesign = actualExclusions
   if (
-    header.complete &&
-    header.excludedByDesign['local-materialization-policy'] !==
-      actualExclusions['local-materialization-policy']
+    header.complete === true &&
+    actionExclusionReasons.some(
+      (reason) => header.excludedByDesign[reason] !== actualExclusions[reason],
+    ) === true
   )
     return invalid()
-  const invocationValues = list(field(value, 'invocations'))
+  const invocationValues = list(field({ value: value, key: 'invocations' }))
   for (const [index, invocation] of header.invocations.entries()) {
     const exclusions = countActionExclusions(
       actions.filter((action) => action.buildId === invocation.buildId),
     )
-    if (field(invocationValues[index], 'excludedByDesign') === undefined)
+    if (field({ value: invocationValues[index], key: 'excludedByDesign' }) === undefined)
       invocation.excludedByDesign = exclusions
     if (
-      header.complete &&
-      invocation.excludedByDesign['local-materialization-policy'] !==
-        exclusions['local-materialization-policy']
+      header.complete === true &&
+      actionExclusionReasons.some(
+        (reason) => invocation.excludedByDesign[reason] !== exclusions[reason],
+      ) === true
     )
       return invalid()
   }
   if (
-    header.complete &&
+    header.complete === true &&
     actions.some(
       (action) =>
         action.executionKind > 11 || action.executionKind === 5 || action.cacheUploadResult > 16,
-    )
+    ) === true
   )
     return invalid()
   if (
-    header.complete &&
+    header.complete === true &&
     (header.rows !== actions.length ||
       header.actionCount !== actions.length ||
       header.droppedActionCount !== 0)
@@ -256,11 +310,15 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
     return invalid()
   const ids = new Set<string>()
   for (const invocation of header.invocations) {
-    if (ids.has(invocation.buildId)) return invalid()
+    if (ids.has(invocation.buildId) === true) return invalid()
     ids.add(invocation.buildId)
-    if (header.complete && !invocationWithinJobWindow(invocation, header.metadata)) return invalid()
     if (
-      header.complete &&
+      header.complete === true &&
+      invocationWithinJobWindow({ invocation, metadata: header.metadata }) === false
+    )
+      return invalid()
+    if (
+      header.complete === true &&
       actions.filter((action) => action.buildId === invocation.buildId).length !==
         invocation.actionCount
     )
@@ -272,12 +330,14 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
     )
       return invalid()
     if (
-      header.complete &&
-      (!invocation.complete || invocation.startedAt === null || invocation.completedAt === null)
+      header.complete === true &&
+      (invocation.complete === false ||
+        invocation.startedAt === null ||
+        invocation.completedAt === null)
     )
       return invalid()
     if (
-      header.complete &&
+      header.complete === true &&
       actions.some(
         (action) =>
           action.buildId === invocation.buildId &&
@@ -287,22 +347,22 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
             (action.completedAt !== null &&
               invocation.completedAt !== null &&
               action.completedAt > invocation.completedAt)),
-      )
+      ) === true
     )
       return invalid()
   }
   if (
-    header.complete &&
-    actions.some((action) => action.buildId === null || !ids.has(action.buildId))
+    header.complete === true &&
+    actions.some((action) => action.buildId === null || ids.has(action.buildId) === false) === true
   )
     return invalid()
   if (
-    header.complete &&
+    header.complete === true &&
     header.missingDigestCount !== actions.filter((action) => action.digest === null).length
   )
     return invalid()
   if (
-    header.complete &&
+    header.complete === true &&
     header.missingIdentityCount !==
       actions.filter(
         (action) =>
@@ -314,7 +374,7 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
   )
     return invalid()
   if (
-    header.complete &&
+    header.complete === true &&
     header.missingTimestampCount !==
       actions.filter(
         (action) =>

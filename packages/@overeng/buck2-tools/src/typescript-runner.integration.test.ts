@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -46,9 +47,14 @@ it('creates removable scratch copies of immutable inputs without following symli
   }
 })
 
-it.each(['unchanged', 'package', 'sibling'] as const)(
-  'rejects staged input mutation by the compiler: %s',
-  async (mutation) => {
+it.each([
+  { mutation: 'unchanged', preExistingOutput: false },
+  { mutation: 'unchanged', preExistingOutput: true },
+  { mutation: 'package', preExistingOutput: true },
+  { mutation: 'sibling', preExistingOutput: true },
+] as const)(
+  'preserves output lifecycle and input fingerprints: $mutation (pre-existing root: $preExistingOutput)',
+  async ({ mutation, preExistingOutput }) => {
     const root = mkdtempSync(join(tmpdir(), 'typescript-emit-invariant-'))
     const artifactRoot = join(root, 'artifacts')
     const packageTree = join(artifactRoot, 'owner', '__package_tree__', 'package_tree')
@@ -61,6 +67,18 @@ it.each(['unchanged', 'package', 'sibling'] as const)(
       writeFileSync(join(tree, 'src', 'mod.ts'), 'export const value = 1\n')
       writeFileSync(join(tree, 'tsconfig.json'), '{"compilerOptions":{"noEmit":true}}\n')
     }
+    const abandoned = join(output, '.abandoned')
+    if (preExistingOutput === true) {
+      mkdirSync(abandoned, { recursive: true })
+      writeFileSync(join(abandoned, 'old.d.ts'), 'stale declaration\n')
+      chmodSync(join(abandoned, 'old.d.ts'), 0o444)
+      symlinkSync(packageTree, join(output, 'dependency'))
+      symlinkSync('missing', join(output, 'dangling'))
+      chmodSync(abandoned, 0o555)
+      chmodSync(output, 0o555)
+    }
+    const outputInode = preExistingOutput === true ? statSync(output).ino : undefined
+    const packageMode = statSync(packageTree).mode
     // A real child executable deliberately violates the compiler's input contract.
     writeFileSync(
       compiler,
@@ -94,9 +112,15 @@ it.each(['unchanged', 'package', 'sibling'] as const)(
         `export const value = ${mutation === 'unchanged' ? 1 : 2}\n`,
       )
       expect(status).toBe(mutation === 'unchanged' ? 0 : 1)
+      if (preExistingOutput === true) expect(statSync(output).ino).toBe(outputInode)
+      expect(readdirSync(output).toSorted()).toEqual(['mod.d.ts', 'mutation.txt'])
+      expect(statSync(packageTree).mode).toBe(packageMode)
       for (const tree of [packageTree, siblingTree])
         expect(readFileSync(join(tree, 'src', 'mod.ts'), 'utf8')).toBe('export const value = 1\n')
     } finally {
+      // Restore permissions even when an assertion fails before the runner prepares output.
+      if (existsSync(output) === true) chmodSync(output, 0o755)
+      if (existsSync(abandoned) === true) chmodSync(abandoned, 0o755)
       rmSync(root, { recursive: true, force: true })
     }
   },

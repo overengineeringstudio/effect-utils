@@ -9,7 +9,7 @@ import testPlatforms from './test-platforms.json' with { type: 'json' }
 describe('namespaceRunner', () => {
   it('appends run-id affinity to runner profiles, including matrix-selected profiles', () => {
     expect(namespaceRunner({ profile: 'namespace-profile-linux-x86-64', runId: '42' })).toEqual([
-      'namespace-profile-linux-x86-64;github.run-id=42',
+      'namespace-profile-linux-x86-64;github.run-id=42;container.privileged=true',
     ])
     expect(
       namespaceRunner({ profile: '${{ matrix.runner }}', runId: '${{ github.run_id }}' }),
@@ -21,7 +21,13 @@ describe('namespaceRunner', () => {
       namespaceRunner({ profile: 'nscloud-ubuntu-24.04-amd64-16x64-with-features', runId: '42' }),
     ).toEqual([
       'nscloud-ubuntu-24.04-amd64-16x64-with-features',
-      'namespace-features:github.run-id=42',
+      'namespace-features:github.run-id=42;container.privileged=true',
+    ])
+  })
+
+  it('does not privilege Darwin runners', () => {
+    expect(namespaceRunner({ profile: 'namespace-profile-macos-arm64', runId: '42' })).toEqual([
+      'namespace-profile-macos-arm64;github.run-id=42',
     ])
   })
 })
@@ -36,6 +42,7 @@ describe('required platform test classification', () => {
       'devenv-modules:test',
       'genie:buck2:test',
       'genie:ci-workflow:test',
+      'buck2:rust:generators:test',
       'test:buck2-tools',
       ...buck2TestAuthority.lanes.flatMap((lane) =>
         'unboundedTaskName' in lane ? [lane.unboundedTaskName] : [],
@@ -46,6 +53,7 @@ describe('required platform test classification', () => {
     expect(suites.every(({ rationale }) => rationale.trim().length > 0)).toBe(true)
     expect(testPlatforms.darwin.map(({ task }) => task)).toContain('test:buck2:unit')
     expect(testPlatforms.darwin.map(({ task }) => task)).toContain('test:run')
+    expect(testPlatforms.neutral.map(({ task }) => task)).toContain('buck2:rust:generators:test')
     for (const task of [
       'test:ci-tools:unbounded',
       'test:notion-cli:unbounded',
