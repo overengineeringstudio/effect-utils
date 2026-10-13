@@ -89,8 +89,8 @@ def fixture_ts_policy_with_helper(name):
     fixture_ts_policy(name = name, exec_compatible_with = ts_action_execution_constraints())
 
 def _fixture_ts_output_impl(ctx):
-    if ts_action_admission_status(ctx) != ctx.attrs.expected_status:
-        fail("native output fixture must exercise its declared execution branch")
+    if ts_action_admission_status(ctx) != "darwin-unsandboxed":
+        fail("native output fixture must exercise the actual Darwin execution branch")
     directory = ctx.actions.declare_output("verdict", dir = True)
     receipt = directory.project("typecheck.ok")
     shell = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo].shell
@@ -98,8 +98,8 @@ def _fixture_ts_output_impl(ctx):
         ctx,
         cmd_args([
             shell, "--noprofile", "--norc", "-c",
-            'test -d "${1%/*}"; test ! -e "$1"; printf "%s\\n" "$2" > "$1"',
-            "--", receipt, ctx.attrs.expected_status,
+            'test -d "${1%/*}"; test ! -e "$1"; printf "fresh-darwin-verdict\\n" > "$1"',
+            "--", receipt,
         ]),
         inputs = [],
         outputs = [directory],
@@ -110,7 +110,7 @@ def _fixture_ts_output_impl(ctx):
 
 fixture_ts_output = rule(
     impl = _fixture_ts_output_impl,
-    attrs = dict(ts_action_attrs(), expected_status = attrs.string()),
+    attrs = ts_action_attrs(),
 )
 
 def _dependency_impl(ctx):
@@ -277,8 +277,7 @@ tsgo_emit(name = "admitted_emit", package_tree = ":package_tree")
 fixture_ts_policy(name = "ts_policy_default")
 fixture_ts_policy(name = "ts_policy_cache", exec_compatible_with = ["@rules//buck2/platforms:cache_hermetic"])
 fixture_ts_policy_with_helper(name = "ts_policy_helper")
-fixture_ts_output(name = "darwin_fresh_verdict", expected_status = "darwin-unsandboxed")
-fixture_ts_output(name = "nix_fresh_verdict", expected_status = "nix-outer-sandboxed")
+fixture_ts_output(name = "darwin_fresh_verdict")
 
 vitest_collect(
     name = "admitted_collect",
@@ -460,96 +459,11 @@ fi
 darwin_receipt="$("${JQ_BIN:?Pinned JQ_BIN is required}" -er \
   '."effect_utils//:darwin_fresh_verdict"' "$work/darwin-fresh-verdict.json")"
 IFS= read -r darwin_verdict < "$darwin_receipt"
-if [[ "$darwin_verdict" != darwin-unsandboxed ]]; then
+if [[ "$darwin_verdict" != fresh-darwin-verdict ]]; then
   printf 'Darwin launcher did not create and populate its fresh nested verdict\n' >&2
   exit 1
 fi
 printf 'PASS fresh Darwin-branch nested verdict: declared output created by shared launcher\n'
-
-# The explicit outer boundary must select native nonremote execution on either
-# Linux executor, never inherit cache admission from the host or retry bwrap.
-for platform in linux_x86_64 linux_aarch64; do
-  execution_platform="effect_utils//buck2/platforms:exec_$platform"
-  "$buck" --isolation-dir cache-admission-check audit providers \
-    -c ts_action.outer_sandbox=nix-build/v1 \
-    -c "build.execution_platforms=$execution_platform" \
-    effect_utils//:ts_policy_default > "$work/ts-policy-nix-$platform.log" 2>&1 || {
-    cat "$work/ts-policy-nix-$platform.log" >&2
-    exit 1
-  }
-  if ! grep -Fq 'nix-outer-sandboxed' "$work/ts-policy-nix-$platform.log"; then
-    cat "$work/ts-policy-nix-$platform.log" >&2
-    exit 1
-  fi
-  if "$buck" --isolation-dir cache-admission-check audit providers \
-    -c ts_action.outer_sandbox=nix-build/v1 \
-    -c "build.execution_platforms=$execution_platform" \
-    effect_utils//:ts_policy_cache > "$work/ts-policy-nix-cache-$platform.log" 2>&1; then
-    printf 'Nix outer boundary unexpectedly obtained TS cache admission\n' >&2
-    exit 1
-  fi
-  if ! grep -Fq 'nix-outer-sandboxed: TypeScript execution cannot use the cache-admitted execution platform' \
-    "$work/ts-policy-nix-cache-$platform.log"; then
-    cat "$work/ts-policy-nix-cache-$platform.log" >&2
-    exit 1
-  fi
-done
-for spelling in canonical relative alias alias_at; do
-  if "$buck" --isolation-dir cache-admission-check audit providers \
-    -c ts_action.outer_sandbox=nix-build/v1 \
-    -c build.execution_platforms=effect_utils//buck2/platforms:exec_linux_x86_64 \
-    "effect_utils//$spelling:ts_policy_$spelling" \
-    > "$work/ts-policy-nix-$spelling.log" 2>&1; then
-    printf 'Nix outer boundary cache override unexpectedly accepted: %s\n' "$spelling" >&2
-    exit 1
-  fi
-  if ! grep -Fq 'nix-outer-sandboxed: TypeScript execution cannot use the cache-admitted execution platform' \
-    "$work/ts-policy-nix-$spelling.log"; then
-    cat "$work/ts-policy-nix-$spelling.log" >&2
-    exit 1
-  fi
-done
-if "$buck" --isolation-dir cache-admission-check audit providers \
-  -c ts_action.outer_sandbox=nix-build/v1 \
-  -c build.execution_platforms=effect_utils//buck2/platforms:exec_linux_x86_64_hermetic \
-  effect_utils//:ts_policy_default > "$work/ts-policy-nix-implicit.log" 2>&1; then
-  printf 'Nix outer boundary implicitly selected a cache-admitted executor\n' >&2
-  exit 1
-fi
-if ! grep -Fq 'nix-outer-sandboxed: TypeScript execution cannot use the cache-admitted execution platform' \
-  "$work/ts-policy-nix-implicit.log"; then
-  cat "$work/ts-policy-nix-implicit.log" >&2
-  exit 1
-fi
-if "$buck" --isolation-dir cache-admission-check audit providers \
-  -c ts_action.outer_sandbox=unknown/v1 effect_utils//:ts_policy_helper \
-  > "$work/ts-policy-unknown-outer.log" 2>&1; then
-  printf 'Unknown TS outer boundary unexpectedly accepted\n' >&2
-  exit 1
-fi
-if ! grep -Fq 'TypeScript outer sandbox has unsupported declared boundary unknown/v1' \
-  "$work/ts-policy-unknown-outer.log"; then
-  cat "$work/ts-policy-unknown-outer.log" >&2
-  exit 1
-fi
-# The fixture bwrap path is deliberately nonexistent; success proves that the
-# declared outer mode directly executes the shared launcher rather than nesting.
-"$buck" --isolation-dir cache-admission-check build \
-  -c ts_action.outer_sandbox=nix-build/v1 \
-  -c build.execution_platforms=effect_utils//buck2/platforms:exec_linux_x86_64 \
-  --local-only --show-full-json-output effect_utils//:nix_fresh_verdict \
-  > "$work/nix-fresh-verdict.json" 2> "$work/nix-fresh-verdict.log" || {
-    cat "$work/nix-fresh-verdict.log" >&2
-    exit 1
-  }
-nix_receipt="$("$JQ_BIN" -er \
-  '."effect_utils//:nix_fresh_verdict"' "$work/nix-fresh-verdict.json")"
-IFS= read -r nix_verdict < "$nix_receipt"
-if [[ "$nix_verdict" != nix-outer-sandboxed ]]; then
-  printf 'Nix launcher did not create and populate its fresh nested verdict\n' >&2
-  exit 1
-fi
-printf 'PASS declared Nix outer boundary: no nested bwrap, no TS cache admission\n'
 
 for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
   for spelling in canonical relative alias alias_at; do

@@ -115,10 +115,6 @@ let
   # Descriptor-bearing products: JavaScript product-v2 and build_product.
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
-  # Linux TS actions trust the declared outer Nix derivation boundary instead
-  # of nesting Bubblewrap. This is not per-action BUCK-R04 hermeticity: the
-  # caller owns Nix's sandbox policy, including when sandboxing is disabled.
-  # Keep these actions local and outside Buck's remote action cache.
   buckBuildArgs = "-j \"$NIX_BUILD_CORES\" --config build.num_tokio_workers=\"$NIX_BUILD_CORES\" --config nix_store.root=${pnpmArchives}${
     lib.optionalString (product.kind == "native") " --config rust_profile.mode=release"
   }${
@@ -127,7 +123,7 @@ let
     ) nativeStorePackages
   }${lib.optionalString (cargoWorkspaceRoot != null) " --config external_cells.prelude=disabled"}${
     lib.optionalString (cargoArchives != null) " --config nix_store.crates_root=${cargoArchives}"
-  }${lib.optionalString pkgs.stdenv.hostPlatform.isLinux " --config ts_action.outer_sandbox=nix-build/v1"}${
+  }${
     lib.optionalString (
       cliBuildStamp != null
     ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"

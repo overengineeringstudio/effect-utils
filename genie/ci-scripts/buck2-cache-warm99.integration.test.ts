@@ -212,11 +212,7 @@ describe('warm99 CLI manifest completeness', () => {
         eligible: 1,
         remoteHits: 1,
         excluded: 5,
-        excludedByDesign: {
-          'local-materialization-policy': 5,
-          'darwin-unsandboxed': 0,
-          'nix-outer-sandboxed': 0,
-        },
+        excludedByDesign: { 'local-materialization-policy': 5, 'darwin-unsandboxed': 0 },
         cold: 0,
         changed: 0,
       })

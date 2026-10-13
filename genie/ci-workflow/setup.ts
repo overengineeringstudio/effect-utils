@@ -224,33 +224,24 @@ export const installNixStep = (opts?: {
   },
 })
 
-/** Temporary #1212 probe: observe runner namespaces and exercise default nested TS containment. */
-export const tsSandboxRunnerProbeStep = {
-  name: 'Probe Linux Nix and nested TS sandbox',
+/**
+ * Read-only Linux record of the namespace prerequisites behind Nix's build
+ * sandbox and nested TS Bubblewrap; the namespace check fails fast if the
+ * privileged runner feature is lost.
+ */
+export const linuxSandboxPrerequisitesStep = {
+  name: 'Log Linux sandbox prerequisites',
   if: "${{ runner.os == 'Linux' }}",
   shell: 'bash',
-  run: withCiSourceRoot(
-    [
-      'set -euo pipefail',
-      "nix config show | grep -E '^sandbox'",
-      'for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do',
-      '  if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\\n" "$key"; fi',
-      'done',
-      'unshare -Ur true',
-      'echo "TS sandbox probe: unshare -Ur true passed"',
-      'export TS_SANDBOX_PROBE_REPO="$PWD"',
-      "nix build --impure --no-link --print-out-paths -L --option sandbox true --option sandbox-fallback false --expr '",
-      '  let',
-      '    repo = builtins.toPath (builtins.getEnv "TS_SANDBOX_PROBE_REPO");',
-      '    flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");',
-      '    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };',
-      '  in import (repo + "/genie/ci-scripts/ts-sandbox-probe.nix") {',
-      '    inherit pkgs;',
-      '    bubblewrap = import (repo + "/nix/bubblewrap.nix") { inherit pkgs; };',
-      '    nonce = builtins.getEnv "GITHUB_RUN_ID" + "-" + builtins.getEnv "GITHUB_RUN_ATTEMPT";',
-      "  }'",
-    ].join('\n'),
-  ),
+  run: [
+    'set -euo pipefail',
+    "nix config show | grep -E '^sandbox'",
+    'for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do',
+    '  if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\\n" "$key"; fi',
+    'done',
+    'unshare -Ur true',
+    'echo "unshare -Ur true: passed"',
+  ].join('\n'),
 } as const
 
 /**

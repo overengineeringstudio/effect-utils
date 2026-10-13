@@ -144,12 +144,12 @@ assert.equal(
 )
 assert.equal(process.env.TS_SANDBOX_INHERITED_SENTINEL, undefined)
 
-const interfaces = Object.entries(networkInterfaces())
+// Down fallback tunnels (tunl0, ip6tnl0) can exist in every new netns; only an
+// addressed non-loopback interface or a non-loopback route grants egress.
+const interfaces = Object.values(networkInterfaces())
 assert(
-  interfaces.every(
-    ([name, addresses]) => name === 'lo' && addresses?.every((address) => address.internal),
-  ),
-  'non-loopback network interface exposed',
+  interfaces.every((addresses) => addresses?.every((address) => address.internal) === true),
+  'non-loopback network address exposed',
 )
 const routes = (await readFile('/proc/net/route', 'utf8')).trim().split('\n')
 assert.equal(routes.length, 1, 'network namespace must have no IPv4 route')

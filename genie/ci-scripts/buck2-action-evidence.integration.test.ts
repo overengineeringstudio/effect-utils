@@ -137,16 +137,14 @@ describe('complete normalized action artifact CLI', () => {
       expect(summary.excludedByDesign).toEqual({
         'local-materialization-policy': 500,
         'darwin-unsandboxed': 0,
-        'nix-outer-sandboxed': 0,
       })
       expect(full.header.excludedByDesign).toEqual(summary.excludedByDesign)
       expect(full.header.invocations.map((invocation) => invocation.excludedByDesign)).toEqual([
         ...localMaterializationCategories.map(() => ({
           'local-materialization-policy': 100,
           'darwin-unsandboxed': 0,
-          'nix-outer-sandboxed': 0,
         })),
-        { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0, 'nix-outer-sandboxed': 0 },
+        { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
       ])
       expect(
         full.actions.filter((action) => action.exclusionReason === 'local-materialization-policy'),

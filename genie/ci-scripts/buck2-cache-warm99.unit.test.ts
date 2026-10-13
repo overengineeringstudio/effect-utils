@@ -4,7 +4,6 @@ import { classifyCacheAction, decodeActionArtifact } from './buck2-action-eviden
 import {
   darwinUnsandboxedCategories,
   localMaterializationCategories,
-  nixOuterSandboxedCategories,
 } from './buck2-action-evidence.ts'
 import {
   actionFixture,
@@ -98,7 +97,6 @@ describe('strict action boundary', () => {
     expect(decoded.header.excludedByDesign).toEqual({
       'local-materialization-policy': 5,
       'darwin-unsandboxed': 0,
-      'nix-outer-sandboxed': 0,
     })
     expect(decoded.actions.map((action) => action.outcome)).toEqual(Array(6).fill('remote-hit'))
     expect(() =>
@@ -106,11 +104,7 @@ describe('strict action boundary', () => {
         compressed: encoded.compressed,
         summary: {
           ...encoded.summary,
-          excludedByDesign: {
-            'local-materialization-policy': 0,
-            'darwin-unsandboxed': 0,
-            'nix-outer-sandboxed': 0,
-          },
+          excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
         },
         expectedLane: 'main-reader',
       }),
@@ -125,7 +119,6 @@ describe('strict action boundary', () => {
               excludedByDesign: {
                 'local-materialization-policy': 0,
                 'darwin-unsandboxed': 0,
-                'nix-outer-sandboxed': 0,
               },
             }),
           ),
@@ -161,7 +154,6 @@ describe('strict action boundary', () => {
     expect(artifact.header.excludedByDesign).toEqual({
       'local-materialization-policy': 0,
       'darwin-unsandboxed': darwinUnsandboxedCategories.length,
-      'nix-outer-sandboxed': 0,
     })
     for (const action of artifact.actions) {
       expect(action.exclusionReason).toBe('darwin-unsandboxed')
@@ -174,11 +166,7 @@ describe('strict action boundary', () => {
         compressed: encoded.compressed,
         summary: {
           ...encoded.summary,
-          excludedByDesign: {
-            'local-materialization-policy': 0,
-            'darwin-unsandboxed': 0,
-            'nix-outer-sandboxed': 0,
-          },
+          excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
         },
         expectedLane: 'main-reader',
       }),
@@ -190,105 +178,6 @@ describe('strict action boundary', () => {
     ).toThrow()
   })
 
-  it('requires explicit outer Nix counters while decoding older missing counters as zero', () => {
-    const legacy = artifactFixture()
-    const withoutOuterCounts = (artifact: typeof legacy, omitAll = false): string =>
-      JSON.stringify(artifact.header, (key, value) =>
-        key === 'nix-outer-sandboxed' || (omitAll === true && key === 'excludedByDesign')
-          ? undefined
-          : value,
-      ) +
-      '\n' +
-      artifact.actions.map((action) => JSON.stringify(action)).join('\n') +
-      '\n'
-    expect(decodeActionArtifact(withoutOuterCounts(legacy))).toEqual(legacy)
-    const legacyEncoded = encodedFixture(legacy)
-    const { 'nix-outer-sandboxed': _legacyOuter, ...legacyCounts } =
-      legacyEncoded.summary.excludedByDesign
-    expect(
-      decodeEvidence({
-        compressed: legacyEncoded.compressed,
-        summary: {
-          ...legacyEncoded.summary,
-          excludedByDesign: legacyCounts,
-          invocations: legacyEncoded.summary.invocations.map((invocation) =>
-            Object.assign({}, invocation, { excludedByDesign: legacyCounts }),
-          ),
-        },
-        expectedLane: 'main-reader',
-      }),
-    ).toEqual(legacy)
-    const artifact = artifactFixture(
-      false,
-      nixOuterSandboxedCategories.map((category) =>
-        actionFixture({ category, executionKind: 1, cacheUploadResult: 0 }),
-      ),
-    )
-    const encoded = encodedFixture(artifact)
-    expect(
-      decodeEvidence({
-        compressed: encoded.compressed,
-        summary: encoded.summary,
-        expectedLane: 'main-reader',
-      }),
-    ).toEqual(artifact)
-    expect(artifact.header.excludedByDesign['nix-outer-sandboxed']).toBe(3)
-    for (const action of artifact.actions) {
-      expect(action.exclusionReason).toBe('nix-outer-sandboxed')
-      expect(
-        classifyCacheAction({ action: action, invocation: artifact.header.invocations[0] }),
-      ).toBe('other')
-      expect(
-        classifyCacheAction({
-          action: { ...action, executionKind: 10, digest: null },
-          invocation: artifact.header.invocations[0],
-        }),
-      ).toBe('local-action-cache-hit')
-    }
-    for (const omitAll of [false, true])
-      expect(() => decodeActionArtifact(withoutOuterCounts(artifact, omitAll))).toThrow()
-    for (const scope of ['header', 'invocation'] as const) {
-      const counts = artifact.header.excludedByDesign
-      const changed = artifactFixture(false, artifact.actions)
-      if (scope === 'header')
-        changed.header.excludedByDesign = { ...counts, 'nix-outer-sandboxed': 0 }
-      else
-        changed.header.invocations[0]!.excludedByDesign = {
-          ...counts,
-          'nix-outer-sandboxed': 0,
-        }
-      expect(() => decodeActionArtifact(rawArtifact(changed))).toThrow()
-    }
-    for (const scope of ['summary', 'invocation'] as const) {
-      for (const omitAll of [false, true]) {
-        const { 'nix-outer-sandboxed': _outer, ...legacyCounts } = encoded.summary.excludedByDesign
-        const summary = {
-          ...encoded.summary,
-          ...(scope === 'summary'
-            ? { excludedByDesign: omitAll === true ? undefined : legacyCounts }
-            : {
-                invocations: encoded.summary.invocations.map((invocation) =>
-                  Object.assign({}, invocation, {
-                    excludedByDesign: omitAll === true ? undefined : legacyCounts,
-                  }),
-                ),
-              }),
-        }
-        expect(() =>
-          decodeEvidence({
-            compressed: encoded.compressed,
-            summary: summary,
-            expectedLane: 'main-reader',
-          }),
-        ).toThrow()
-      }
-    }
-    expect(() =>
-      decodeActionArtifact(
-        encoded.raw.replace('"exclusionReason":"nix-outer-sandboxed"', '"exclusionReason":null'),
-      ),
-    ).toThrow()
-  })
 
   it('preserves unsupported raw enums only in explicitly incomplete artifacts', () => {
     const artifact = artifactFixture(false, [
@@ -338,7 +227,7 @@ describe('strict action boundary', () => {
   })
 })
 describe('warm99 identity acceptance', () => {
-  it('keeps materialization, Darwin and outer Nix TS outside eligible, cold, changed and upload-failure cohorts', () => {
+  it('keeps materialization and Darwin TS outside eligible, cold, changed and upload-failure cohorts', () => {
     for (const executionKind of [1, 3, 8, 10]) {
       const manifest = manifestFixture()
       const loaded = loadedFixture(manifest)
@@ -355,47 +244,43 @@ describe('warm99 identity acceptance', () => {
               endTime: 100,
               uploadCompletedAt: 100,
             }),
-            ...[
-              ...localMaterializationCategories,
-              ...darwinUnsandboxedCategories,
-              ...nixOuterSandboxedCategories,
-            ].flatMap((category) => [
-              actionFixture({
-                category,
-                executionKind: 1,
-                cacheUploadResult: 1,
-                uploadOutcome: 'uploaded',
-                startedAt: 10,
-                completedAt: 100,
-                endTime: 100,
-                uploadCompletedAt: 100,
-              }),
-              actionFixture({
-                category,
-                executionKind: 1,
-                cacheUploadResult: 9,
-                uploadOutcome: 'failed',
-              }),
-            ]),
+            ...[...localMaterializationCategories, ...darwinUnsandboxedCategories].flatMap(
+              (category) => [
+                actionFixture({
+                  category,
+                  executionKind: 1,
+                  cacheUploadResult: 1,
+                  uploadOutcome: 'uploaded',
+                  startedAt: 10,
+                  completedAt: 100,
+                  endTime: 100,
+                  uploadCompletedAt: 100,
+                }),
+                actionFixture({
+                  category,
+                  executionKind: 1,
+                  cacheUploadResult: 9,
+                  uploadOutcome: 'failed',
+                }),
+              ],
+            ),
           ]),
         ]
         item.readers = [
           artifactFixture(false, [
             actionFixture({ category: 'tsgo_emit' }),
-            ...[
-              ...localMaterializationCategories,
-              ...darwinUnsandboxedCategories,
-              ...nixOuterSandboxedCategories,
-            ].flatMap((category) => [
-              actionFixture({ category, executionKind }),
-              actionFixture({ category, executionKind, digest: 'ffff:12' }),
-              actionFixture({
-                category,
-                executionKind: 1,
-                cacheUploadResult: 9,
-                uploadOutcome: 'failed',
-              }),
-            ]),
+            ...[...localMaterializationCategories, ...darwinUnsandboxedCategories].flatMap(
+              (category) => [
+                actionFixture({ category, executionKind }),
+                actionFixture({ category, executionKind, digest: 'ffff:12' }),
+                actionFixture({
+                  category,
+                  executionKind: 1,
+                  cacheUploadResult: 9,
+                  uploadOutcome: 'failed',
+                }),
+              ],
+            ),
           ]),
         ]
       }
@@ -406,12 +291,8 @@ describe('warm99 identity acceptance', () => {
         eligible: 1,
         remoteHits: 1,
         hitRate: 1,
-        excluded: 33,
-        excludedByDesign: {
-          'local-materialization-policy': 15,
-          'darwin-unsandboxed': 9,
-          'nix-outer-sandboxed': 9,
-        },
+        excluded: 24,
+        excludedByDesign: { 'local-materialization-policy': 15, 'darwin-unsandboxed': 9 },
         cold: 0,
         changed: 0,
         noncacheable: 0,
@@ -421,41 +302,6 @@ describe('warm99 identity acceptance', () => {
     }
   })
 
-  it('does not exclude unknown outer-mode spellings or unrelated actions from admission', () => {
-    for (const category of [
-      'tsgo_emit',
-      'tsgo_emit_nix_outer_sandboxed_unknown',
-      'tsgo_typecheck_nix_outer_sandboxed_v2',
-      'rust_compile_nix_outer_sandboxed',
-    ]) {
-      const manifest = manifestFixture()
-      const loaded = loadedFixture(manifest)
-      for (const item of loaded) {
-        item.writers = [
-          artifactFixture(true, [
-            actionFixture({
-              category,
-              executionKind: 1,
-              cacheUploadResult: 1,
-              uploadOutcome: 'uploaded',
-              startedAt: 10,
-              completedAt: 100,
-              endTime: 100,
-              uploadCompletedAt: 100,
-            }),
-          ]),
-        ]
-        item.readers = [artifactFixture(false, [actionFixture({ category })])]
-      }
-      const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
-      expect(report.accepted).toBe(true)
-      expect(report.lanes[0]?.observations[0]).toMatchObject({
-        eligible: 1,
-        remoteHits: 1,
-        excluded: 0,
-      })
-    }
-  })
 
   it('invalidates observations whose native invocations fall outside the job window', () => {
     for (const bound of ['start', 'finish'] as const) {
@@ -573,11 +419,7 @@ describe('warm99 identity acceptance', () => {
         completedAt: 300,
         freshRoot: false,
         actionCount: 1,
-        excludedByDesign: {
-          'local-materialization-policy': 0,
-          'darwin-unsandboxed': 0,
-          'nix-outer-sandboxed': 0,
-        },
+        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
         complete: true,
       })
       item.readers = [reader]

@@ -45,10 +45,9 @@ Any input fingerprint change fails the action, including a compiler exit of zero
 selected Linux executor -> mandatory linux-bwrap -> admitted check/emit
                                                 -> local-only package projection
 selected Darwin executor -> darwin-unsandboxed   -> local execution, no admission/reuse
-declared Linux Nix builder -> nix-outer-sandboxed -> local execution, no action-cache admission
 ```
 
-Outside the explicitly declared Nix builder mode below, Linux TS check, emit and package-tree run actions use the declared Nix
+The Linux TS check, emit and package-tree run actions use the declared Nix
 Bubblewrap capability. There is no unsandboxed fallback: a missing capability,
 failed namespace setup, denied access or failed compiler makes the action fail.
 Analysis emits the exact bind argv in a declared shell argument script. The
@@ -75,26 +74,36 @@ there is no copied input-view grouping, overlay, image, or FUSE dependency.
 
 Every TS run action declares directory outputs, including directories holding
 projected file receipts. The shared scrubbed launcher creates those directories
-before Linux containment, outer-Nix execution, or unsandboxed Darwin execution, so fresh nested verdicts
+before Linux containment or unsandboxed Darwin execution, so fresh nested verdicts
 do not depend on a pre-existing output root. Runners reset their contents without deleting the
 mount point. Outputs are written in place: there is no staging publication
 copy, rename, or post-action observer. Files staged into scratch remain writable
 for abandoned-action cleanup; compiler mutation
 of staged inputs still fails the fingerprint check. Read-only input mounts and
 the exact closure prevent ambient reads and live-input mutation independently
-of that check. Only `linux-bwrap` TS actions hold BUILD.BUCK-R04 at this per-action boundary;
-outer Nix containment, environment scrubbing or fingerprint detection alone does not establish it.
+of that check. Linux TS actions hold BUILD.BUCK-R04 at this declared boundary;
+environment scrubbing or fingerprint detection alone does not establish it.
+
+Linux Nix from-source product builds run the same Bubblewrap boundary nested in
+the Nix build sandbox; there is no outer-sandbox mode or substitute boundary.
+Namespace Linux CI runner labels therefore request `container.privileged=true`.
+The privilege applies inside each ephemeral per-job VM. It lets Nix create its
+real build namespaces instead of disabling sandboxing, and lets nested
+Bubblewrap pivot its root. Darwin runner labels do not request it. Network
+isolation is judged by egress properties: no addressed non-loopback interface
+and no non-loopback IPv4/IPv6 route. Down kernel fallback tunnel devices such as
+`tunl0` and `ip6tnl0` may appear in every new network namespace.
 
 `buck2/platforms:ts_action_execution_policy` is a default-only execution
 dependency, selected in Buck's actual execution configuration. The policy does
 not infer execution OS from a portable target, host metadata or tool strings.
 `ts_action_policy_attrs()` installs that dependency;
 `ts_action_execution_constraints(constraints = [])` preserves caller constraints,
-pins the native host executor, and adds `cache_hermetic` only for default Linux Bubblewrap mode.
-Rule-owned `ts_action_cache_eligible(ctx)` admits `linux-bwrap` only, and
+pins the native host executor, and adds `cache_hermetic` only on Linux.
+Rule-owned `ts_action_cache_eligible(ctx)` admits Linux only, and
 `ts_action_admission_status(ctx)` checks actual execution before registering any
 TS run action. Explicit `exec_compatible_with` cache overrides cannot admit a
-Darwin executor or the declared Nix outer boundary. These helpers do not change other action families' platform
+Darwin executor. These helpers do not change other action families' platform
 policy.
 
 Darwin TS actions continue to run locally unsandboxed with `local_only = True`.
@@ -117,26 +126,6 @@ separately from `local-materialization-policy`, using the explicit
 `_darwin_unsandboxed` category suffix rather than guessing executor OS from a
 target configuration. Both exclusions stay outside eligible shared-cache
 cohorts without rewriting native execution/cache outcome enums.
-
-Linux Nix from-source products explicitly set `ts_action.outer_sandbox=nix-build/v1`
-in their declared Buck build arguments. Their Nix derivation owns filesystem and
-network containment over the complete declared build inputs; nested Bubblewrap
-user namespaces and `pivot_root` are not available on all Nix builders. These
-actions use the named `nix-outer-sandboxed` mode, the shared scrubbed/output-owning
-launcher, and native nonremote execution with cache uploads disabled. There is
-no automatic environment detection, namespace-error retry, or Bubblewrap-failure
-fallback. An absent declaration still requires Bubblewrap; unknown declaration
-versions fail analysis.
-
-The declaration is an assertion by the Nix builder, not proof that the caller's
-Nix daemon enabled sandboxing and not per-action input isolation: other declared
-derivation inputs can be visible. Even with an outer sandbox, these TS actions
-are not hermetic action-cache candidates or eligible for shared immutable TS-store
-reuse. Their `_nix_outer_sandboxed` action categories produce a separate
-`nix-outer-sandboxed` evidence exclusion, preserving raw Buck outcomes. The
-Bubblewrap probe reports this boundary as unsupported rather than claiming its
-per-action checks passed. A from-source product build regression executes the
-production path in the existing CI contract lane.
 
 ## Rust Actions
 
@@ -346,7 +335,7 @@ scratch config, so package-local startup hooks cannot bypass the runner contract
 | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Dependency extraction/store assembly and package-tree projections                                | Not admitted: the five cheap filesystem categories use `local-materialization-policy`, with remote-cache reads and writes disabled despite their declared inputs and scrubbed execution. See [the policy decision](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10).                                                                                                                                                             |
 | Declared pnpm runtime closure                                                                    | Admitted: normalized declared read roots, exact runtime tools, no install-time network or ambient tool discovery.                                                                                                                                                                                                                                                                                                                                              |
-| TypeScript check/emit                                                                            | Admitted only for Linux `linux-bwrap` over declared inputs and exact tool closure. Explicit Nix from-source mode is local-only and excluded as `nix-outer-sandboxed`; its derivation, not the action, owns containment. Darwin is local-only and excluded as `darwin-unsandboxed`. Caller cache constraints cannot override either exclusion.                                                                                                                  |
+| TypeScript check/emit                                                                            | Linux only: mandatory `linux-bwrap` boundary over declared source/dependency view, declarations, exact Bun/tsgo closure and arguments. Darwin is local-only, unsandboxed and explicitly excluded as `darwin-unsandboxed`; caller cache constraints cannot override this exclusion.                                                                                                                                                                             |
 | Static formatter/linter, Nix-source and Devenv trace-source checks                               | Admitted: declared source set, configuration, projected native tool and runner; scrubbed outer launcher. Trace-source audit reads only the declared source view; Nix-source mode invokes attested nixfmt/deadnix over explicit files.                                                                                                                                                                                                                          |
 | Weaver registry and version-pin checks                                                           | Admitted: declared registry/model and pin sources, attested Weaver/model locator, and scrubbed Bun launcher; registry copy/rewrite uses executor scratch and invokes only the pinned checker.                                                                                                                                                                                                                                                                  |
 | JavaScript collection runner                                                                     | Admitted only for deterministic `cacheable` lanes: complete runner-relative module closure, declared package/read roots, config/selection/runtime and fingerprint tool. The runner constructs the child's env/PATH from declared tools and scratch, checks input immutability, and normalizes collected paths. A false-cacheable lane uses the default deny platform and disables uploads while retaining env scrubbing. Inherited-env collection is rejected. |
@@ -356,9 +345,9 @@ scratch config, so package-local startup hooks cannot bypass the runner contract
 
 The prerequisite categories `pnpm_extract`, `pnpm_store_entry`,
 `pnpm_store_scc`, `pnpm_store_view`, and `package_tree` use the default
-nonremote platform under `local-materialization-policy`; default Linux `tsgo_emit`
-retains the cache-admitted TypeScript platform, while declared Nix outer mode and Darwin check/emit use
-the nonremote platform under `nix-outer-sandboxed` and `darwin-unsandboxed`, respectively. Each macro owns its own
+nonremote platform under `local-materialization-policy`; Linux `tsgo_emit`
+retains the cache-admitted TypeScript platform, while Darwin check/emit uses
+the nonremote platform under `darwin-unsandboxed`. Each macro owns its own
 admission: a verdict hit does not admit its ancestors. This classification
 does not admit native compilation or executable build scripts.
 

@@ -204,11 +204,6 @@ export const decodeEvidence = ({
   }
   if (total !== artifact.actions.length) return invalid()
   const excludedByDesign = field({ value: summary, key: 'excludedByDesign' })
-  if (
-    excludedByDesign === undefined &&
-    artifact.header.excludedByDesign['nix-outer-sandboxed'] !== 0
-  )
-    return invalid()
   if (excludedByDesign !== undefined) {
     const declared = decodeActionExclusionCounts(excludedByDesign)
     if (
@@ -230,8 +225,6 @@ export const decodeEvidence = ({
     )
       return invalid()
     const exclusions = field({ value: matches[0], key: 'excludedByDesign' })
-    if (exclusions === undefined && invocation.excludedByDesign['nix-outer-sandboxed'] !== 0)
-      return invalid()
     if (exclusions !== undefined) {
       const declared = decodeActionExclusionCounts(exclusions)
       if (

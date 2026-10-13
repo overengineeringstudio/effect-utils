@@ -185,22 +185,10 @@ def ts_action_policy_attrs():
         )),
     }
 
-def _ts_outer_sandbox():
-    boundary = read_root_config("ts_action", "outer_sandbox", "")
-    if boundary not in ["", "nix-build/v1"]:
-        fail("TypeScript outer sandbox has unsupported declared boundary {}".format(boundary))
-    return boundary
-
-
 def ts_action_admission_status(ctx):
     """Checks the actual executor before registering a TS action."""
     policy = ctx.attrs._ts_action_execution_policy[TsActionExecutionPolicyInfo]
-    outer_sandbox = _ts_outer_sandbox()
     if policy.os == "linux":
-        if outer_sandbox == "nix-build/v1":
-            if policy.cache_admitted:
-                fail("nix-outer-sandboxed: TypeScript execution cannot use the cache-admitted execution platform")
-            return "nix-outer-sandboxed"
         return "linux-bwrap"
     if policy.os == "darwin":
         if policy.cache_admitted:
@@ -212,10 +200,10 @@ def ts_action_cache_eligible(ctx):
     return ts_action_admission_status(ctx) == "linux-bwrap"
 
 def ts_action_execution_constraints(constraints = []):
-    """Nix owns outer containment explicitly; other Linux actions require bwrap."""
+    """Linux requires bwrap; Darwin keeps only local, nonremote execution."""
     native = host_execution_constraints()
     result = constraints + [constraint for constraint in native if constraint not in constraints]
-    if host_info().os.is_linux and _ts_outer_sandbox() == "":
+    if host_info().os.is_linux:
         admission = "@rules//buck2/platforms:cache_hermetic"
         if admission not in result:
             result = result + [admission]

@@ -16,7 +16,7 @@ import {
   preparePinnedDevenvStep,
   prepareCiOtelSpoolStep,
   installNixStep,
-  tsSandboxRunnerProbeStep,
+  linuxSandboxPrerequisitesStep,
   runDevenvTasksBefore,
   ciWorkflow,
   type CiWorkflowArgs,
@@ -70,7 +70,7 @@ const binaryCache = readBinaryCacheDescriptors(
 const baseSteps = [
   checkoutStep(),
   installNixStep({ binaryCaches: [binaryCache] }),
-  tsSandboxRunnerProbeStep,
+  linuxSandboxPrerequisitesStep,
   ciMeasurementBaselineCheckoutStep,
   cachixCliBuildStep,
   trustedCachixStep,

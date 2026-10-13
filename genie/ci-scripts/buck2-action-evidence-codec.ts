@@ -55,7 +55,6 @@ export const list = (value: unknown): unknown[] =>
   Array.isArray(value) === true ? value : invalid()
 export const decodeActionExclusionCounts = (value: unknown): ActionExclusionCounts => {
   const darwinCount = field({ value: value, key: 'darwin-unsandboxed' })
-  const nixOuterCount = field({ value: value, key: 'nix-outer-sandboxed' })
   return {
     'local-materialization-policy': integer(
       field({ value: value, key: 'local-materialization-policy' }),
@@ -63,7 +62,6 @@ export const decodeActionExclusionCounts = (value: unknown): ActionExclusionCoun
     // Retained artifacts predate Darwin-specific categories; full rows still
     // validate this zero against the current category policy below.
     'darwin-unsandboxed': darwinCount === undefined ? 0 : integer(darwinCount),
-    'nix-outer-sandboxed': nixOuterCount === undefined ? 0 : integer(nixOuterCount),
   }
 }
 const nullableText = ({
@@ -269,11 +267,10 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
     })),
   }
   const actions = values.map(decodeAction)
-  // Legacy policy fields can be recovered, but outer Nix categories require
-  // explicit counts: absent counters decode to zero and must agree with rows.
+  // Retained artifacts predate policy fields; complete rows recover the same category policy.
   const actualExclusions = countActionExclusions(actions)
   if (field({ value: value, key: 'excludedByDesign' }) === undefined)
-    header.excludedByDesign = { ...actualExclusions, 'nix-outer-sandboxed': 0 }
+    header.excludedByDesign = actualExclusions
   if (
     header.complete === true &&
     actionExclusionReasons.some(
@@ -287,7 +284,7 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
       actions.filter((action) => action.buildId === invocation.buildId),
     )
     if (field({ value: invocationValues[index], key: 'excludedByDesign' }) === undefined)
-      invocation.excludedByDesign = { ...exclusions, 'nix-outer-sandboxed': 0 }
+      invocation.excludedByDesign = exclusions
     if (
       header.complete === true &&
       actionExclusionReasons.some(

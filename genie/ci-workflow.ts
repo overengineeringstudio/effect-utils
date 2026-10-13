@@ -231,7 +231,7 @@ export {
   githubAppInstallationTokenStep,
   installNixStep,
   namespaceRunner,
-  tsSandboxRunnerProbeStep,
+  linuxSandboxPrerequisitesStep,
   nixCacheSetupStep,
   nixDiagnosticsArtifactStep,
   defaultPnpmStateKeyPrefix,

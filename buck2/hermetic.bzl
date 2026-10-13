@@ -99,11 +99,9 @@ def ts_action(ctx, arguments, inputs, outputs, tools = [], cacheable = True, **k
     status = ts_action_admission_status(ctx)
     kwargs["local_only"] = True
     sandbox = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo]
-    if status in ["darwin-unsandboxed", "nix-outer-sandboxed"]:
-        suffix = "_darwin_unsandboxed" if status == "darwin-unsandboxed" else "_nix_outer_sandboxed"
-        kwargs["category"] = kwargs["category"] + suffix
-        # Nix's declared derivation boundary cannot nest bwrap; neither this
-        # outer-sandbox mode nor native Darwin is admitted to the action cache.
+    if status == "darwin-unsandboxed":
+        kwargs["category"] = kwargs["category"] + "_darwin_unsandboxed"
+        # Unsupported admission is not refusal to execute the native macOS lane.
         command = _ts_action_launcher(
             ctx,
             sandbox,
