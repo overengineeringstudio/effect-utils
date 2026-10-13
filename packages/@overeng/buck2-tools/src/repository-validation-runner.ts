@@ -447,6 +447,7 @@ const checkWorkspaceContract = ({
       fields: [
         'buildCapabilities',
         'kind',
+        'linuxBuildCapabilities',
         'name',
         'outputName',
         'sourcePaths',
@@ -463,6 +464,20 @@ const checkWorkspaceContract = ({
       `native products[${index}].buildCapabilities`,
     )
     requireUnique(buildCapabilities, `native products[${index}].buildCapabilities`)
+    const linuxBuildCapabilities = requireStrings(
+      entry.linuxBuildCapabilities,
+      `native products[${index}].linuxBuildCapabilities`,
+    )
+    // Pnpm-backed products materialize package trees through sandboxed TS
+    // actions; Cargo products run none. Buck analysis rejects an undeclared set.
+    const tsSandbox = rust === false
+    if (
+      (tsSandbox === true &&
+        (buildCapabilities.includes('bun') === false ||
+          buildCapabilities.includes('rust-shell') === false)) ||
+      linuxBuildCapabilities.join('\0') !== (tsSandbox === true ? 'bubblewrap' : '')
+    )
+      throw new Error(`native products[${index}] must declare exactly the TS sandbox capabilities it uses`)
     const packagePath = rust === true ? name : 'genie'
     const sourcePaths = requireStrings(entry.sourcePaths, `native products[${index}].sourcePaths`)
     requireUnique(sourcePaths, `native products[${index}].sourcePaths`)

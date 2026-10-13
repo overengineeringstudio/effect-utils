@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:5e9c2f2b79475a8845730cf3cc71a868bcac33eb6a74ba745798815c109b60d3
+# Store fingerprint: sha256:a2dff2eab28957e55b0facc9a5be991d524db7f045bbde8b81a38a538dc31836
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -51663,6 +51663,7 @@ pnpm_store_view(
     direct = {
         "@effect/opentelemetry": "@effect+opentelemetry@4.0.0_@opentelemetry+api-logs@0.222.0_@opentelemetry+api@1.9.1_@opentelemetry+res_c43af81790ad3e8c",
         "@effect/vitest": "@effect+vitest@4.0.0_effect@4.0.0_vitest@5.0.3",
+        "@noble/hashes": "@noble+hashes@2.4.0",
         "@types/node": "@types+node@26.5.0",
         "effect": "effect@4.0.0",
         "typescript": "typescript@7.0.2",
@@ -51676,6 +51677,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -51757,6 +51759,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -51841,6 +51844,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -51925,6 +51929,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -52024,6 +52029,7 @@ pnpm_store_view(
     direct = {
         "@effect/opentelemetry": "@effect+opentelemetry@4.0.0_@opentelemetry+api-logs@0.222.0_@opentelemetry+api@1.9.1_@opentelemetry+res_c43af81790ad3e8c",
         "@effect/vitest": "@effect+vitest@4.0.0_effect@4.0.0_vitest@5.0.3",
+        "@noble/hashes": "@noble+hashes@2.4.0",
         "@types/node": "@types+node@26.5.0",
         "effect": "effect@4.0.0",
         "typescript": "typescript@7.0.2",
@@ -52037,6 +52043,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -52118,6 +52125,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -52202,6 +52210,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -52286,6 +52295,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -52385,6 +52395,7 @@ pnpm_store_view(
     direct = {
         "@effect/opentelemetry": "@effect+opentelemetry@4.0.0_@opentelemetry+api-logs@0.222.0_@opentelemetry+api@1.9.1_@opentelemetry+res_c43af81790ad3e8c",
         "@effect/vitest": "@effect+vitest@4.0.0_effect@4.0.0_vitest@5.0.3",
+        "@noble/hashes": "@noble+hashes@2.4.0",
         "@types/node": "@types+node@26.5.0",
         "effect": "effect@4.0.0",
         "typescript": "typescript@7.0.2",
@@ -52398,6 +52409,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -52479,6 +52491,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -52563,6 +52576,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",
@@ -52647,6 +52661,7 @@ pnpm_store_view(
             "@jridgewell+resolve-uri@3.1.2": ":entry_jridgewell_resolve_uri_3_1_2_3ba312251f16",
             "@jridgewell+sourcemap-codec@1.6.0": ":entry_jridgewell_sourcemap_codec_1_6_0_c92d70f5295d",
             "@jridgewell+trace-mapping@0.3.31": ":entry_jridgewell_trace_mapping_0_3_31_91e8c3876d1a",
+            "@noble+hashes@2.4.0": ":entry_noble_hashes_2_4_0_1855898e0984",
             "@opentelemetry+api-logs@0.222.0": ":entry_opentelemetry_api_logs_0_222_0_bfebcf0e0720",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@opentelemetry+context-async-hooks@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_context_async_hooks_2_11_0_opentelemetry_api_1_9_1_5178dd0494f2",

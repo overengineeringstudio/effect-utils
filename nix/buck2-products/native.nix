@@ -28,6 +28,7 @@ let
         ++ pkgs.lib.optional (product ? cargoWorkspaceRoot) "cargoWorkspaceRoot"
         ++ [
           "kind"
+          "linuxBuildCapabilities"
           "name"
           "outputName"
         ]
@@ -84,7 +85,7 @@ builtins.listToAttrs (
             repositoryRoot
             rootProjection
             ;
-          capabilities = capabilities.select product.buildCapabilities;
+          capabilities = capabilities.selectProduct product;
           sourcePaths = product.sourcePaths;
           # producerCommit is deliberately absent: unrelated commits must keep the
           # exact source product and its validated native import substitutable.

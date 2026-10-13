@@ -380,8 +380,13 @@ const prepareStagedOutput = async (options: {
 
   const stagedOutput = join(packageRoot, outDir)
   await removeTree(stagedOutput)
-  await removeTree(output)
   await mkdir(output, { recursive: true })
+  // Preserve the declared output's mount point while removing abandoned readonly trees.
+  await ensureWritableDirectory(output)
+  await forEachSequential({
+    iterator: (await readdir(output)).values(),
+    visit: async (entry) => removeTree(join(output, entry)),
+  })
   await symlink(resolve(output), stagedOutput)
 }
 

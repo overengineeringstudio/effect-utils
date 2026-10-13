@@ -1,4 +1,4 @@
-import { productBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
+import { productBuildCapabilities, productLinuxBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
 import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
 import { nixOnlyPackages } from '../../genie/packages.ts'
 import geniePkg from '../../packages/@overeng/genie/package.json.genie.ts'
@@ -28,7 +28,9 @@ const products = [
     version: '0.0.0',
   },
 ]
-  .map((product) => ({ ...product, buildCapabilities: productBuildCapabilities(product) }))
+  .map((product) => ({ ...product, buildCapabilities: productBuildCapabilities(product),
+    linuxBuildCapabilities: productLinuxBuildCapabilities(product),
+  }))
   .toSorted((left, right) => left.name.localeCompare(right.name))
 
 export default projectionArtifact.json({

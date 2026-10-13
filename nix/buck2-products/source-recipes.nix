@@ -24,7 +24,7 @@ builtins.listToAttrs (
         producerCommit
         repositoryRoot
         ;
-      capabilities = capabilities.select product.buildCapabilities;
+      capabilities = capabilities.selectProduct product;
     };
   }) inventory.products
 )

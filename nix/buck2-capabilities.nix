@@ -108,6 +108,7 @@ pkgs.runCommand "buck2-capabilities"
     nativeBuildInputs = [ pkgs.bun ];
     passthru = {
       inherit capabilityPackages;
+      inherit extraCapabilities;
       src = projectionSource;
       inherit requiredCapabilities;
       select =
@@ -120,6 +121,21 @@ pkgs.runCommand "buck2-capabilities"
             extraCapabilities
             ;
           requiredCapabilities = names;
+        };
+      # Products declare host-neutral capabilities plus Linux-only ones (the TS
+      # sandbox's Bubblewrap); both lists go through the same fail-closed select.
+      selectProduct =
+        product:
+        import ./buck2-capabilities.nix {
+          inherit
+            pkgs
+            src
+            capabilityPackages
+            extraCapabilities
+            ;
+          requiredCapabilities =
+            product.buildCapabilities
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux product.linuxBuildCapabilities;
         };
     };
   }

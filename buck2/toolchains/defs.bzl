@@ -72,7 +72,10 @@ def require_capability_closure(capabilities, generation, platform, tool_id):
     The projection publishes the transitive `/nix/store` requisites of each realization
     (`closureStorePaths`). An incomplete or non-normalized closure must fail analysis.
     """
-    metadata = require_capability(capabilities, generation, platform, tool_id)
+    return validated_capability_closure(require_capability(capabilities, generation, platform, tool_id), tool_id)
+
+def validated_capability_closure(metadata, tool_id):
+    """Validates an already-required capability's published runtime closure."""
     closure = metadata.get("closureStorePaths")
     if not closure:
         fail("generated {} capability has no closureStorePaths".format(tool_id))
@@ -258,8 +261,12 @@ def bun_toolchain(name, capabilities, generation, **kwargs):
 
 EffectTsgoToolchainInfo = provider(fields = {
     "bun": str,
+    # Complete effect-tsgo store closure a sandboxed TS action binds read-only.
+    "closure_paths": list[str],
     "executable": str,
     "identity": str,
+    # effect-tsgo capability artifacts carried as hidden action inputs.
+    "inputs": list[Artifact],
     "runner": Artifact,
 })
 
@@ -270,8 +277,10 @@ def _effect_tsgo_toolchain_impl(ctx):
         DefaultInfo(),
         EffectTsgoToolchainInfo(
             bun = ctx.attrs.bun,
+            closure_paths = ctx.attrs.closure_paths,
             executable = ctx.attrs.executable,
             identity = "bun={};tsgo={}".format(ctx.attrs.bun, ctx.attrs.executable),
+            inputs = ctx.attrs.inputs,
             runner = ctx.attrs.runner,
         ),
     ]
@@ -280,7 +289,9 @@ _effect_tsgo_toolchain = cache_guarded_rule(
     impl = _effect_tsgo_toolchain_impl,
     attrs = {
         "bun": attrs.string(),
+        "closure_paths": attrs.list(attrs.string()),
         "executable": attrs.string(),
+        "inputs": attrs.list(attrs.source()),
         "runner": attrs.source(),
     },
 )
@@ -301,10 +312,13 @@ def effect_tsgo_toolchain(name, capabilities, generation, runner, **kwargs):
     )["executableStorePath"]
     _require_nix_store_binary(bun, "bun", "Bun")
     _require_nix_store_binary(executable, "tsgo", "effect-tsgo")
+    capability = "capabilities//generations/{}/{}/effect-tsgo".format(generation, platform)
     _effect_tsgo_toolchain(
         name = name,
         bun = bun,
+        closure_paths = require_capability_closure(capabilities, generation, platform, "effect-tsgo"),
         executable = executable,
+        inputs = [capability + ":executable", capability + ":manifest"],
         runner = runner,
         exec_compatible_with = host_execution_constraints(),
         **kwargs

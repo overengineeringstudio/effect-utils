@@ -24,6 +24,7 @@ let
       builtins.attrNames product == [
         "buildCapabilities"
         "kind"
+        "linuxBuildCapabilities"
         "name"
         "outputName"
         "packagePath"
@@ -73,7 +74,7 @@ builtins.listToAttrs (
         ;
       inherit rootProjection;
       sourcePaths = product.sourcePaths;
-      capabilities = capabilities.select product.buildCapabilities;
+      capabilities = capabilities.selectProduct product;
       importNative = true;
     };
   }) inventory.products

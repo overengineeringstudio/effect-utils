@@ -55,6 +55,10 @@
   ],
   "neutral": [
     {
+      "task": "buck2:rust:generators:test",
+      "rationale": "Platform-neutral Bun/JS contract generation and USTAR round-trips through pinned GNU tar; no Darwin-specific behavior."
+    },
+    {
       "task": "test:agent-session-ingest:unbounded",
       "rationale": "Session-file parsing contracts."
     },
@@ -438,12 +442,20 @@
         "rationale": "pnpm virtual-store graph identity and package projection contract over local archive fixtures; no Darwin-specific import or teardown regression."
       },
       {
+        "script": "pnpm-historical-store-safety.test.sh",
+        "rationale": "Platform-neutral two-worktree shared-store reuse, offline frozen installs, disabled lifecycle scripts and root-local virtual-store authority; does not invoke the Linux-only collector or exercise Darwin-specific host lifecycle."
+      },
+      {
         "script": "pnpm-nested-roots-and-source-inputs.test.sh",
         "rationale": "Nested install-root source-resolution and isolation contracts; no Darwin-specific filesystem behavior."
       },
       {
         "script": "pnpm-source-input-refresh.integration.test.sh",
         "rationale": "Generation refresh and installed-source freshness contract; no Darwin-specific mode, alias or hardlink regression."
+      },
+      {
+        "script": "pnpm-store-gc.test.sh",
+        "rationale": "Linux-only collector coverage for /proc process evidence, directory mount identities, bind/overlay mounts, maintenance leases and post-proof root replacement; non-Linux execution only refuses before filesystem access, so Linux is the authoritative lane."
       },
       {
         "script": "pnpm-task-smoke.test.sh",

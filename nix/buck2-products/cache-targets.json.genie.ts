@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 
-import { productBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
+import { productBuildCapabilities, productLinuxBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
 
 import {
   assertPublishedPackageClosure,
@@ -138,7 +138,9 @@ const buckProductSourceEntries = [
   })),
   ...packageEntries,
 ]
-  .map((product) => ({ ...product, buildCapabilities: productBuildCapabilities(product) }))
+  .map((product) => ({ ...product, buildCapabilities: productBuildCapabilities(product),
+    linuxBuildCapabilities: productLinuxBuildCapabilities(product),
+  }))
   .toSorted((left, right) => left.name.localeCompare(right.name))
 
 export default projectionArtifact.json({

@@ -404,6 +404,57 @@ pub mod f32 {
         }
         deserializer.deserialize_f64(Visitor)
     }
+
+    /// Required nullable binary32 fields: null is distinct from a missing key.
+    pub mod nullable {
+        use serde::{de, Deserializer, Serialize, Serializer};
+
+        struct Finite(f32);
+        impl Serialize for Finite {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                super::serialize(&self.0, serializer)
+            }
+        }
+
+        /// # Errors
+        /// Rejects non-finite present values instead of serializing JSON null.
+        pub fn serialize<S: Serializer>(
+            value: &Option<f32>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error> {
+            match value {
+                Some(value) => serializer.serialize_some(&Finite(*value)),
+                None => serializer.serialize_none(),
+            }
+        }
+
+        /// # Errors
+        /// Rejects missing keys, non-numeric values, non-finite values and overflow.
+        pub fn deserialize<'de, D: Deserializer<'de>>(
+            deserializer: D,
+        ) -> Result<Option<f32>, D::Error> {
+            struct Visitor;
+            impl<'de> de::Visitor<'de> for Visitor {
+                type Value = Option<f32>;
+                fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.write_str("null or a finite binary32 number")
+                }
+                fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+                    Ok(None)
+                }
+                fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+                    Ok(None)
+                }
+                fn visit_some<D: Deserializer<'de>>(
+                    self,
+                    deserializer: D,
+                ) -> Result<Self::Value, D::Error> {
+                    super::deserialize(deserializer).map(Some)
+                }
+            }
+            deserializer.deserialize_option(Visitor)
+        }
+    }
 }
 
 /// Decodes unique-key JSON into a contract type, keeping nested error paths.
@@ -554,6 +605,44 @@ mod tests {
             assert_eq!(decode_json::<FloatSample>(&json).unwrap().value, expected);
         }
         assert!(serde_json::from_str::<FloatSample>("{\"value\":3.4028236e38}").is_err());
+    }
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct NullableFloatSample {
+        #[serde(with = "super::f32::nullable")]
+        value: Option<f32>,
+    }
+
+    #[test]
+    fn nullable_binary32_requires_a_key_and_preserves_the_finite_codec() {
+        for (text, expected) in [("null", None), ("1", Some(1.0)), ("0.1", Some(0.1))] {
+            let json = format!("{{\"value\":{text}}}");
+            let decoded = decode_json::<NullableFloatSample>(&json).unwrap();
+            assert_eq!(decoded.value, expected);
+            assert_eq!(
+                serde_json::from_value::<NullableFloatSample>(serde_json::from_str(&json).unwrap())
+                    .unwrap(),
+                decoded
+            );
+            let encoded = encode_json(&decoded, &[]).unwrap();
+            assert_eq!(
+                decode_json::<NullableFloatSample>(&encoded).unwrap(),
+                decoded
+            );
+        }
+        for json in ["{}", r#"{"value":3.5e38}"#, r#"{"value":"NaN"}"#] {
+            assert!(
+                decode_json::<NullableFloatSample>(json).is_err(),
+                "accepted {json}"
+            );
+            assert!(
+                serde_json::from_str::<NullableFloatSample>(json).is_err(),
+                "accepted {json}"
+            );
+        }
+        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(encode_json(&NullableFloatSample { value: Some(value) }, &[]).is_err());
+        }
     }
 
     #[test]

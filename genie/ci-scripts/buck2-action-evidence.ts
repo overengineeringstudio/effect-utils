@@ -14,16 +14,28 @@ export const localMaterializationCategories = [
   'package_tree',
   'pnpm_store_scc',
 ] as const
-export type ActionExclusionReason = 'local-materialization-policy'
+export const darwinUnsandboxedCategories = [
+  'tsgo_typecheck_darwin_unsandboxed',
+  'tsgo_emit_darwin_unsandboxed',
+  'package_tree_darwin_unsandboxed',
+] as const
+export const actionExclusionReasons = [
+  'local-materialization-policy',
+  'darwin-unsandboxed',
+] as const
+export type ActionExclusionReason = (typeof actionExclusionReasons)[number]
 export type ActionExclusionCounts = Record<ActionExclusionReason, number>
 export const actionExclusionReason = (
   category: string | null | undefined,
 ): ActionExclusionReason | null =>
-  localMaterializationCategories.some((excluded) => excluded === category)
-    ? 'local-materialization-policy'
-    : null
+  darwinUnsandboxedCategories.some((excluded) => excluded === category) === true
+    ? 'darwin-unsandboxed'
+    : localMaterializationCategories.some((excluded) => excluded === category) === true
+      ? 'local-materialization-policy'
+      : null
 export const zeroActionExclusionCounts = (): ActionExclusionCounts => ({
   'local-materialization-policy': 0,
+  'darwin-unsandboxed': 0,
 })
 export const countActionExclusions = (
   actions: readonly { category: string | null }[],
@@ -95,10 +107,13 @@ export type ActionArtifactHeader = {
 }
 export type ActionArtifact = { header: ActionArtifactHeader; actions: ActionRecord[] }
 /** Native time, not filesystem mtime, binds retained invocations to this fresh-state observation. */
-export const invocationWithinJobWindow = (
-  invocation: ActionInvocation,
-  metadata: ActionArtifactHeader['metadata'],
-): boolean =>
+export const invocationWithinJobWindow = ({
+  invocation,
+  metadata,
+}: {
+  invocation: ActionInvocation
+  metadata: ActionArtifactHeader['metadata']
+}): boolean =>
   metadata.startedAt !== null &&
   metadata.finishedAt !== null &&
   invocation.startedAt !== null &&

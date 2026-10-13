@@ -16,6 +16,7 @@ import {
   preparePinnedDevenvStep,
   prepareCiOtelSpoolStep,
   installNixStep,
+  linuxSandboxPrerequisitesStep,
   runDevenvTasksBefore,
   ciWorkflow,
   type CiWorkflowArgs,
@@ -69,6 +70,7 @@ const binaryCache = readBinaryCacheDescriptors(
 const baseSteps = [
   checkoutStep(),
   installNixStep({ binaryCaches: [binaryCache] }),
+  linuxSandboxPrerequisitesStep,
   ciMeasurementBaselineCheckoutStep,
   cachixCliBuildStep,
   trustedCachixStep,
@@ -822,14 +824,18 @@ const nixClosureMeasurementTargets = [
 // in genie/ci.ts for required-check policy.
 const extraJobs: Record<string, any> = {
   /**
-   * Fresh-checkout merge-group PR-A proof. This deliberately uses only a GitHub-hosted runner,
-   * public caches, read-only permissions, and inert commands: it can validate product
-   * and editor machinery from an untrusted fork without publication authority.
+   * Fresh-checkout merge-group PR-A proof. This deliberately uses only public caches,
+   * read-only permissions, and inert commands: it can validate product and editor machinery
+   * from an untrusted fork without publication authority. Its from-source Nix and Buck TS
+   * builds need nested user namespaces, so it uses the privileged Namespace Linux runner.
    */
   'pr-a-inert-buck': {
     if: heavyCiIf,
     needs: ['tested-tree'],
-    'runs-on': 'ubuntu-latest',
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
     permissions: { contents: 'read' },
@@ -1627,7 +1633,11 @@ const withCiOtelCapture = (jobMap: Record<string, any>) =>
 const pipelineTracesJob = {
   needs: ['pipeline-attempt-close'],
   if: "${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CI_EVIDENCE_MODE == 'upload' }}",
-  'runs-on': 'ubuntu-latest',
+  // ci-tools may build from source (nested TS Bubblewrap), so this needs the privileged runner.
+  'runs-on': namespaceRunner({
+    profile: 'namespace-profile-linux-x86-64',
+    runId: '${{ github.run_id }}',
+  }),
   permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
   steps: [

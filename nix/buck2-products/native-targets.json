@@ -26,6 +26,7 @@
       ],
       "cargoWorkspaceRoot": "rust",
       "kind": "native",
+      "linuxBuildCapabilities": [],
       "name": "otel-scrape",
       "outputName": "artifact.tar",
       "sourcePaths": [
@@ -63,6 +64,7 @@
       ],
       "cargoWorkspaceRoot": "rust",
       "kind": "native",
+      "linuxBuildCapabilities": [],
       "name": "otelite",
       "outputName": "artifact.tar",
       "sourcePaths": [
@@ -100,6 +102,7 @@
       ],
       "cargoWorkspaceRoot": "rust",
       "kind": "native",
+      "linuxBuildCapabilities": [],
       "name": "pingping",
       "outputName": "artifact.tar",
       "shellCompletions": true,
@@ -113,8 +116,9 @@
       "version": "0.0.0"
     },
     {
-      "buildCapabilities": ["action-env", "archive-tool", "bun", "product"],
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "product", "rust-shell"],
       "kind": "native",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "typescript-api-server",
       "outputName": "artifact.tar",
       "sourcePaths": [

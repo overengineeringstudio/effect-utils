@@ -1,8 +1,16 @@
 {
   "products": [
     {
-      "buildCapabilities": ["action-env", "archive-tool", "bun", "bun-compile-runtime", "product"],
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "bun",
+        "bun-compile-runtime",
+        "product",
+        "rust-shell"
+      ],
       "kind": "compiled-executable",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "ci-tools",
       "outputName": "artifact.tar",
       "packagePath": "packages/@overeng/ci-tools",

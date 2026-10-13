@@ -2,6 +2,7 @@ import { describe, it } from '@effect/vitest'
 import { DateTime, Effect, Schema, SchemaTransformation } from 'effect'
 import { expect, expectTypeOf } from 'vitest'
 
+import { importRustSchema } from '../compiler/import-rust.ts'
 import { AdmissionError } from '../compiler/mod.ts'
 import * as Borsh from './borsh.ts'
 import * as Columns from './columns.ts'
@@ -73,6 +74,41 @@ describe('ContractJson control plane', () => {
     }
     expect(() => ContractJson.decode(nullableFloat)('3.4028236e38')).toThrow(Schema.SchemaError)
     expect(() => Direct.decode(nullableFloat)(Number.POSITIVE_INFINITY)).toThrow(Schema.SchemaError)
+  })
+  it('keeps Rust-owned nullable binary32 fields required and finite', () => {
+    const { ir } = importRustSchema({
+      title: 'Output',
+      type: 'object',
+      additionalProperties: false,
+      required: ['score'],
+      properties: {
+        score: {
+          type: ['number', 'null'],
+          format: 'float',
+          'x-effect-rust-width': 'f32',
+          'x-effect-rust-nonfinite': 'reject',
+        },
+      },
+    })
+    expect(ir.defs.Output).toEqual({
+      kind: 'struct',
+      excess: 'error',
+      fields: [
+        { wire: 'score', presence: 'required', type: { kind: 'nullable', inner: { kind: 'f32' } } },
+      ],
+    })
+    const schema = Schema.Struct({ score: Schema.NullOr(EffectRust.F32) })
+    expect(ContractJson.decode(schema)('{"score":null}')).toEqual({ score: null })
+    expect(ContractJson.decode(schema)('{"score":0.1}')).toEqual({ score: Math.fround(0.1) })
+    expect(Direct.decode(schema)({ score: null })).toEqual({ score: null })
+    expect(Direct.decode(schema)({ score: 0.1 })).toEqual({ score: Math.fround(0.1) })
+    expect(() => ContractJson.decode(schema)('{}')).toThrow()
+    expect(() => Direct.decode(schema)({})).toThrow()
+    expect(() => ContractJson.decode(schema)('{"score":3.5e38}')).toThrow()
+    for (const score of [NaN, Infinity, -Infinity, 3.5e38]) {
+      expect(() => Direct.decode(schema)({ score })).toThrow()
+      expect(() => ContractJson.encode(schema)({ score })).toThrow()
+    }
   })
   it('applies explicit nested excess-ignore without weakening strict siblings', () => {
     const ignored = Schema.Struct({ n: unsigned8 }).annotate({ [EffectRust.excess]: 'ignore' })

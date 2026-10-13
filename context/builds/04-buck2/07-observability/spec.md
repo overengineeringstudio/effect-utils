@@ -73,10 +73,16 @@ Uploads, hits and failed invocations remain in one job artifact.
 Action rows carry `exclusionReason: "local-materialization-policy"` for the
 cheap filesystem categories specified by
 [the reuse policy](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10);
-other rows carry `null`. Summary, full-artifact header, and invocation
-`excludedByDesign` counters report that named reason independently of the
-native outcome counts. These actions remain visible but cannot become
-avoidable local-execution candidates or eligible warm99 hits/misses.
+Darwin TS check/emit/package-tree action categories carry
+`exclusionReason: "darwin-unsandboxed"`, as specified by
+[the execution policy](../05-execution/spec.md#typescript-containment-and-platform-admission-buildbuck-r04).
+Their explicit `_darwin_unsandboxed` category suffix identifies selected
+execution policy without inferring executor OS from the target configuration.
+Other rows carry `null`. Summary, full-artifact header, and invocation
+`excludedByDesign` counters report both named reasons independently of native
+outcome counts. Excluded actions remain visible but cannot become avoidable
+local-execution candidates or eligible warm99 hits/misses. Local-action-cache
+hits remain native reuse outcomes, not fresh local executions.
 
 `no-native-logs` means no native Buck invocation was observed, not a cache hit.
 In-Nix product jobs report `remote-cache-disabled-by-design` with no action rows:

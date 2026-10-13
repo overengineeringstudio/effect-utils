@@ -24,6 +24,8 @@ unknown="$(nix eval --impure --json --expr "let x = $expression; in (builtins.tr
 buck2="$(jq -r .buck2 <<<"$contract")/bin/buck2"
 mkdir -p "$fixture/root" "$fixture/home"
 cp -R "$(jq -r .source <<<"$contract")/." "$fixture/root/"
+# The root projection overlays files the source closure also carries.
+chmod -R u+w "$fixture/root"
 cp -R "$(jq -r .root <<<"$contract")/." "$fixture/root/"
 chmod -R u+w "$fixture/root"
 export HOME="$fixture/home"
@@ -34,7 +36,7 @@ target="$(jq -r .target <<<"$contract")"
 
 analyze() {
   (cd "$fixture/root" && "$buck2" --isolation-dir capability-control cquery \
-    --config "nix_store.root=$archives" --console simple "$target")
+    --config "nix_store.root=$archives" --console simple "${1:-$target}")
 }
 install_projection() {
   rm -rf "$fixture/root/.buck2/capabilities"
@@ -58,3 +60,26 @@ fi
   exit 1
 }
 printf 'Capability declaration negative control passed: declared product_tool analyzes; omitted product_tool is rejected\n'
+(cd "$fixture/root" && "$buck2" --isolation-dir capability-control kill)
+
+# TS sandbox control: a typecheck recipe whose capabilities omit the sandbox's
+# host containment (Linux Bubblewrap; Darwin's launcher shell) must fail Buck
+# analysis because the sandbox toolchain target is absent; it never runs bare.
+typecheck_target="effect_utils//packages/@overeng/ci-tools:typecheck"
+typecheck_tools='[ "effect-tsgo" "buck2-fingerprint" ]'
+sandbox_tool="$(nix eval --impure --raw --expr "let x = $expression; in if x.packages.buck2-capabilities.extraCapabilities ? bubblewrap then \"bubblewrap\" else \"rust-shell\"")"
+typecheck_positive="$(nix build --impure --no-link --print-out-paths --expr "let x = $expression; in x.packages.buck2-capabilities.select (x.product.capabilities.requiredCapabilities ++ $typecheck_tools)")"
+install_projection "$typecheck_positive"
+analyze "$typecheck_target"
+(cd "$fixture/root" && "$buck2" --isolation-dir capability-control kill)
+typecheck_negative="$(nix build --impure --no-link --print-out-paths --expr "let x = $expression; in x.packages.buck2-capabilities.select (builtins.filter (name: name != \"$sandbox_tool\") (x.product.capabilities.requiredCapabilities ++ $typecheck_tools))")"
+install_projection "$typecheck_negative"
+if failure="$(analyze "$typecheck_target" 2>&1)"; then
+  printf 'Typecheck without the declared TS sandbox capability unexpectedly passed analysis\n' >&2
+  exit 1
+fi
+[[ "$failure" == *"ts_sandbox"* && "$failure" == *"Unknown target"* ]] || {
+  printf 'TS sandbox negative control failed for an unrelated reason:\n%s\n' "$failure" >&2
+  exit 1
+}
+printf 'TS sandbox negative control passed: typecheck without %s is rejected at analysis\n' "$sandbox_tool"

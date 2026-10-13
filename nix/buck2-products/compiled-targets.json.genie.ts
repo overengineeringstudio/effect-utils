@@ -1,5 +1,5 @@
 import { javaScriptProductRegistry } from '../../genie/buck2/javascript-product-registry.ts'
-import { productBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
+import { productBuildCapabilities, productLinuxBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
 import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
 import ciToolsPkg from '../../packages/@overeng/ci-tools/package.json.genie.ts'
 import type { WorkspacePackageLike } from '../../packages/@overeng/genie/src/runtime/package-json/mod.ts'
@@ -38,6 +38,7 @@ const compiledProducts = Object.entries(javaScriptProductRegistry)
     return {
       ...product,
       buildCapabilities: productBuildCapabilities(product),
+      linuxBuildCapabilities: productLinuxBuildCapabilities(product),
       sourcePaths: projectBuckProductSourcePaths({
         pkg,
         additionalPaths: ['packages/@overeng/buck2-tools', 'patches'],
