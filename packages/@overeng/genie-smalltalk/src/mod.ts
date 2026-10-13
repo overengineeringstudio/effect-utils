@@ -186,7 +186,11 @@ const Revision = Schema.String.pipe(
     (s): s is string => {
       const at = s.lastIndexOf('@')
       const id = s.slice(0, at).replace(/^mission\//u, '')
-      return at > 0 && Schema.is(MissionId)(id) && /^[a-fA-F0-9]{64}$/u.test(s.slice(at + 1))
+      return (
+        at > 0 &&
+        Schema.is(MissionId)(id) === true &&
+        /^[a-fA-F0-9]{64}$/u.test(s.slice(at + 1)) === true
+      )
     },
     { message: 'expected mission@64-hex revision' },
   ),
@@ -214,8 +218,9 @@ const AgentTaskFields = Schema.Struct({
 
 const AgentTask = Schema.declare<typeof AgentTaskFields.Encoded>(
   (input): input is typeof AgentTaskFields.Encoded =>
-    Schema.is(AgentTaskFields)(input) &&
-    Reflect.ownKeys(input).every((key) => Object.hasOwn(AgentTaskFields.schema.fields, key)),
+    Schema.is(AgentTaskFields)(input) === true &&
+    Reflect.ownKeys(input).every((key) => Object.hasOwn(AgentTaskFields.schema.fields, key)) ===
+      true,
 ).annotate({ identifier: 'St.AgentTask' })
 
 const RenderOperation = Schema.Struct({
@@ -259,7 +264,7 @@ export interface AgentReference {
 }
 
 const isAgentReference = (input: unknown): input is AgentReference =>
-  isAgentDeclaration(input) && input.id.includes('//') === false
+  isAgentDeclaration(input) === true && input.id.includes('//') === false
 
 /** An imported agent object, validated lazily without copying launch or kit metadata. */
 export const AgentReferenceSchema = Schema.declare<AgentReference>(isAgentReference).annotate({
@@ -272,10 +277,10 @@ export const PersonReferenceSchema = Schema.Struct({
   subject: Schema.String.pipe(
     Schema.refine(
       (subject): subject is `person/${string}` =>
-        subject.startsWith('person/') &&
+        subject.startsWith('person/') === true &&
         subject.length > 'person/'.length &&
         subject.includes('//') === false &&
-        Schema.is(SubjectId)(subject),
+        Schema.is(SubjectId)(subject) === true,
       { message: 'invalid person subject' },
     ),
   ),
@@ -337,7 +342,7 @@ const isValidAgent = (a: typeof AgentSchemaFields.Type): boolean =>
     Number(a.harness !== undefined) <=
     1 &&
   (a.env === undefined ||
-    Object.keys(a.env).every((key) => /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) === true)) &&
+    Object.keys(a.env).every((key) => /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) === true) === true) &&
   (a.render === undefined || a.render.length > 0) &&
   [a.missionAuthority, a.queueAuthority, a.seatAuthority].every(
     (rules) => rules === undefined || rules.length > 0,
@@ -364,9 +369,9 @@ const validName = ({
 }): boolean =>
   s.length > 0 &&
   s.length <= 512 &&
-  /^[A-Za-z0-9][A-Za-z0-9._@/-]*$/u.test(s) &&
-  s.split('/').every((part) => part !== '' && part !== '..') &&
-  (!full || s.includes('/'))
+  /^[A-Za-z0-9][A-Za-z0-9._@/-]*$/u.test(s) === true &&
+  s.split('/').every((part) => part !== '' && part !== '..') === true &&
+  (full === false || s.includes('/') === true)
 const validSubject = (s: string): boolean => {
   if (/^\$\{[A-Za-z0-9_.-]*\}$/u.test(s) === true) return true
   const concrete = s.replace(/\$\{[^}]*\}/gu, 'x')
@@ -377,10 +382,10 @@ const validSubject = (s: string): boolean => {
     const path = concrete.slice(colon + 1)
     return (
       colon > 5 &&
-      validName({ value: host, full: false }) &&
-      path.startsWith('/') &&
-      !path.includes('/../') &&
-      !path.endsWith('/..')
+      validName({ value: host, full: false }) === true &&
+      path.startsWith('/') === true &&
+      path.includes('/../') === false &&
+      path.endsWith('/..') === false
     )
   }
   return validName({ value: concrete, full: true })
@@ -439,16 +444,18 @@ export const DocumentReferenceSchema = Text.pipe(
     const name = at < 0 ? s : s.slice(0, at)
     return (
       name.length > 4 &&
-      !name.includes('..') &&
-      !name.endsWith('/') &&
-      (at < 0 || /^[0-9a-fA-F]{64}$/u.test(s.slice(at + 1)))
+      name.includes('..') === false &&
+      name.endsWith('/') === false &&
+      (at < 0 || /^[0-9a-fA-F]{64}$/u.test(s.slice(at + 1)) === true)
     )
   }),
 ).annotate({ identifier: 'St.DocumentReference' })
 
 /** Step documents always pin an exact immutable version. */
 export const PinnedDocumentReferenceSchema = DocumentReferenceSchema.pipe(
-  Schema.refine((s): s is string => !s.includes('${') && /@[0-9a-fA-F]{64}$/u.test(s)),
+  Schema.refine(
+    (s): s is string => s.includes('${') === false && /@[0-9a-fA-F]{64}$/u.test(s) === true,
+  ),
 ).annotate({ identifier: 'St.PinnedDocumentReference' })
 
 /** A native graph-field predicate; the former nested field form is not accepted. */
@@ -465,7 +472,9 @@ export const FieldGateSchema = Schema.Struct({
   value: Schema.Union([
     Schema.String,
     Schema.Finite.pipe(
-      Schema.refine((n): n is number => !Number.isInteger(n) || Number.isSafeInteger(n)),
+      Schema.refine(
+        (n): n is number => Number.isInteger(n) === false || Number.isSafeInteger(n) === true,
+      ),
     ),
     Schema.Boolean,
   ]),
@@ -518,7 +527,8 @@ export const GateSchema = Schema.Union([
     kind: Schema.Literal('merged'),
     locator: Text.pipe(
       Schema.refine(
-        (s): s is string => s.includes('${') || /^[^/#]+\/[^/#]+#[1-9][0-9]*$/u.test(s),
+        (s): s is string =>
+          s.includes('${') === true || /^[^/#]+\/[^/#]+#[1-9][0-9]*$/u.test(s) === true,
       ),
     ),
     host: Schema.optionalKey(Text),
@@ -545,7 +555,8 @@ export const GateSchema = Schema.Union([
       Env.pipe(
         Schema.refine((env): env is typeof env =>
           Object.keys(env).every(
-            (key) => /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) && reservedGateEnvNames[key] !== true,
+            (key) =>
+              /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) === true && reservedGateEnvNames[key] !== true,
           ),
         ),
       ),
@@ -630,7 +641,9 @@ export const ObserverSchema = Schema.Struct({
       const repository = s.slice(0, at)
       const slash = repository.indexOf('/')
       return (
-        slash > 0 && slash < repository.length - 1 && !repository.slice(slash + 1).includes('/')
+        slash > 0 &&
+        slash < repository.length - 1 &&
+        repository.slice(slash + 1).includes('/') === false
       )
     }),
   ),
@@ -658,7 +671,9 @@ export const SubscriptionSchema = Schema.Struct({
       value: Schema.Union([
         Schema.String,
         Schema.Finite.pipe(
-          Schema.refine((n): n is number => !Number.isInteger(n) || Number.isSafeInteger(n)),
+          Schema.refine(
+            (n): n is number => Number.isInteger(n) === false || Number.isSafeInteger(n) === true,
+          ),
         ),
         Schema.Boolean,
       ]),
@@ -713,7 +728,7 @@ export const StepSchema = Schema.Struct({
     Schema.NonEmptyArray(ProductSchema).pipe(
       Schema.refine(
         (values): values is typeof values =>
-          values.every((value) => validSubject(value.subject)) &&
+          values.every((value) => validSubject(value.subject)) === true &&
           new Set(values.map((value) => value.subject)).size === values.length,
       ),
     ),
@@ -731,9 +746,12 @@ export const StepSchema = Schema.Struct({
     (s): s is typeof s => s.producesMission === undefined || s.usesMission === undefined,
     { message: 'a step cannot both produce and use a mission' },
   ),
-  Schema.refine((s): s is typeof s => s.agentless !== true || withoutFeedback(s.gates ?? []), {
-    message: 'feedback human gates require a worker step',
-  }),
+  Schema.refine(
+    (s): s is typeof s => s.agentless !== true || withoutFeedback(s.gates ?? []) === true,
+    {
+      message: 'feedback human gates require a worker step',
+    },
+  ),
   Schema.annotate({ identifier: 'St.Step' }),
 )
 /** All exhausted work, or an explicit completion frontier of normal steps. */
@@ -760,21 +778,21 @@ const validGraph = (m: {
       phase.every((s) => {
         const used = s.usesMission
         return (
-          (s.dependsOn ?? []).every((d) => phase.some((target) => target.id === d.step)) &&
+          (s.dependsOn ?? []).every((d) => phase.some((target) => target.id === d.step)) === true &&
           (used?.kind !== 'output' ||
             (phase.some(
               (target) => target.id === used.outputOf && target.producesMission !== undefined,
-            ) &&
+            ) === true &&
               (s.dependsOn ?? []).some(
                 (dependency) =>
                   dependency.step === used.outputOf && dependency.state === 'completed',
-              )))
+              ) === true))
         )
       }),
-    ) &&
+    ) === true &&
     (m.completion === undefined ||
       'when' in m.completion ||
-      m.completion.dependsOn.every((d) => m.steps.some((s) => s.id === d.step)))
+      m.completion.dependsOn.every((d) => m.steps.some((s) => s.id === d.step)) === true)
   )
 }
 
@@ -1120,7 +1138,15 @@ export type FieldIsInput<TFields extends ProductFields = ProductFields> = Omit<
   )
 
 const gateNameEncoder = new TextEncoder()
-const derivedGateName = (kind: string, identity: string, name?: AuthoredText): string => {
+const derivedGateName = ({
+  kind,
+  identity,
+  name,
+}: {
+  readonly kind: string
+  readonly identity: string
+  readonly name?: AuthoredText
+}): string => {
   if (name !== undefined) return templateText(name)
   const derived = `${kind}:${identity}`
   return utf8ByteLength(derived) <= 160
@@ -1166,7 +1192,11 @@ const human = (
   return withReferences<HumanGate>({
     value: {
       ...rest,
-      name: derivedGateName('human', `${input.reviewer.subject}:${questionText ?? ''}`, input.name),
+      name: derivedGateName({
+        kind: 'human',
+        identity: `${input.reviewer.subject}:${questionText ?? ''}`,
+        name: input.name,
+      }),
       kind: 'human',
       ...(questionText === undefined ? {} : { question: questionText }),
       ...(review === undefined ? {} : { review: review.map(targetText) }),
@@ -1194,7 +1224,11 @@ const exec = (
   return withReferences<ExecGate>({
     value: {
       ...rest,
-      name: derivedGateName('exec', `${hostText}:${workspaceText}:${commandText}`, input.name),
+      name: derivedGateName({
+        kind: 'exec',
+        identity: `${hostText}:${workspaceText}:${commandText}`,
+        name: input.name,
+      }),
       kind: 'exec',
       command: commandText,
       host: hostText,
@@ -1223,7 +1257,11 @@ const fieldIs = <const TFields extends ProductFields>(input: FieldIsInput<TField
   return withReferences<FieldGate>({
     value: {
       ...input,
-      name: derivedGateName('field', `${subject}:${input.path}:${value}`, input.name),
+      name: derivedGateName({
+        kind: 'field',
+        identity: `${subject}:${input.path}:${value}`,
+        name: input.name,
+      }),
       kind: 'field',
       operator: 'is',
       subject,
@@ -1237,10 +1275,13 @@ const fieldIs = <const TFields extends ProductFields>(input: FieldIsInput<TField
   })
 }
 
-const merged = (
-  target: PullRequestReference | TextTemplate,
-  options: GateOptions & ExecutionOptions = {},
-): MergedGate => {
+const merged = ({
+  target,
+  ...options
+}: GateOptions &
+  ExecutionOptions & {
+    readonly target: PullRequestReference | TextTemplate
+  }): MergedGate => {
   const { host: _host, workspace: _workspace, ...rest } = options
   const locator =
     target.kind === 'pull-request' ? `${target.repo}#${target.number}` : templateText(target)
@@ -1248,7 +1289,7 @@ const merged = (
     value: {
       ...rest,
       ...executionFields(options),
-      name: derivedGateName('merged', locator, options.name),
+      name: derivedGateName({ kind: 'merged', identity: locator, name: options.name }),
       kind: 'merged',
       locator,
     },
@@ -1265,7 +1306,10 @@ type CiPassedOptions = GateOptions &
     | { readonly commit: AuthoredText | TextInput; readonly branch?: never }
     | { readonly branch: AuthoredText | TextInput; readonly commit?: never }
   )
-const ciPassed = (check: AuthoredText, options: CiPassedOptions): CiPassedGate => {
+const ciPassed = ({
+  check,
+  ...options
+}: CiPassedOptions & { readonly check: AuthoredText }): CiPassedGate => {
   const { commit, branch, host: _host, workspace: _workspace, ...rest } = options
   const value = commit ?? branch
   if (value === undefined || (commit !== undefined && branch !== undefined))
@@ -1273,7 +1317,7 @@ const ciPassed = (check: AuthoredText, options: CiPassedOptions): CiPassedGate =
   const text =
     typeof value === 'string'
       ? value
-      : isInputHandle(value)
+      : isInputHandle(value) === true
         ? referenceText(value)
         : templateText(value)
   const checkText = templateText(check)
@@ -1282,7 +1326,11 @@ const ciPassed = (check: AuthoredText, options: CiPassedOptions): CiPassedGate =
     value: {
       ...rest,
       ...executionFields(options),
-      name: derivedGateName('ci-passed', `${repo}:${checkText}:${text}`, options.name),
+      name: derivedGateName({
+        kind: 'ci-passed',
+        identity: `${repo}:${checkText}:${text}`,
+        name: options.name,
+      }),
       kind: 'ci-passed',
       repo,
       check: checkText,
@@ -1295,7 +1343,7 @@ const ciPassed = (check: AuthoredText, options: CiPassedOptions): CiPassedGate =
       ...referencesInText(options.repo),
       ...(typeof value === 'string'
         ? []
-        : isInputHandle(value)
+        : isInputHandle(value) === true
           ? [value]
           : templateReferences(value)),
     ],
@@ -1309,57 +1357,73 @@ export const gate = {
   fieldIs,
   merged,
   ciPassed,
-  document: (
-    target: DocumentReference,
-    options: GateOptions = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'document' }> =>
+  document: ({
+    target,
+    ...options
+  }: GateOptions & { readonly target: DocumentReference }): Extract<
+    typeof GateSchema.Encoded,
+    { readonly kind: 'document' }
+  > =>
     withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'document' }>>({
       value: {
         kind: 'document',
-        name: derivedGateName('document', target.subject, options.name),
+        name: derivedGateName({ kind: 'document', identity: target.subject, name: options.name }),
         subject: target.subject,
       },
       references: [...referencesInName(options), ...templateReferences(target)],
     }),
-  exists: (
-    subject: ReviewTarget,
-    options: GateOptions = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'exists' }> => {
+  exists: ({
+    subject,
+    ...options
+  }: GateOptions & { readonly subject: ReviewTarget }): Extract<
+    typeof GateSchema.Encoded,
+    { readonly kind: 'exists' }
+  > => {
     const rendered = targetText(subject)
     return withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'exists' }>>({
       value: {
         kind: 'exists',
-        name: derivedGateName('exists', rendered, options.name),
+        name: derivedGateName({ kind: 'exists', identity: rendered, name: options.name }),
         subject: rendered,
       },
       references: [...referencesInName(options), ...targetReferences(subject)],
     })
   },
-  empty: (
-    subject: AuthoredText,
-    options: GateOptions = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'empty' }> => {
+  empty: ({
+    subject,
+    ...options
+  }: GateOptions & { readonly subject: AuthoredText }): Extract<
+    typeof GateSchema.Encoded,
+    { readonly kind: 'empty' }
+  > => {
     const rendered = templateText(subject)
     return withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'empty' }>>({
       value: {
         kind: 'empty',
-        name: derivedGateName('empty', rendered, options.name),
+        name: derivedGateName({ kind: 'empty', identity: rendered, name: options.name }),
         subject: rendered,
       },
       references: [...referencesInName(options), ...referencesInText(subject)],
     })
   },
-  has: (
-    subject: ReviewTarget,
-    text: AuthoredText,
-    options: GateOptions = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }> => {
+  has: ({
+    subject,
+    text,
+    ...options
+  }: GateOptions & {
+    readonly subject: ReviewTarget
+    readonly text: AuthoredText
+  }): Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }> => {
     const rendered = targetText(subject)
     const renderedText = templateText(text)
     return withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }>>({
       value: {
         kind: 'has',
-        name: derivedGateName('has', `${rendered}:${renderedText}`, options.name),
+        name: derivedGateName({
+          kind: 'has',
+          identity: `${rendered}:${renderedText}`,
+          name: options.name,
+        }),
         subject: rendered,
         text: renderedText,
       },
@@ -1370,17 +1434,24 @@ export const gate = {
       ],
     })
   },
-  lacks: (
-    subject: ReviewTarget,
-    text: AuthoredText,
-    options: GateOptions = {},
-  ): Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }> => {
+  lacks: ({
+    subject,
+    text,
+    ...options
+  }: GateOptions & {
+    readonly subject: ReviewTarget
+    readonly text: AuthoredText
+  }): Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }> => {
     const rendered = targetText(subject)
     const renderedText = templateText(text)
     return withReferences<Extract<typeof GateSchema.Encoded, { readonly kind: 'has' | 'lacks' }>>({
       value: {
         kind: 'lacks',
-        name: derivedGateName('lacks', `${rendered}:${renderedText}`, options.name),
+        name: derivedGateName({
+          kind: 'lacks',
+          identity: `${rendered}:${renderedText}`,
+          name: options.name,
+        }),
         subject: rendered,
         text: renderedText,
       },
@@ -1611,8 +1682,10 @@ export function step(input: StepInput<string>): StepHandle {
   const { missionId, assignedTo, dependsOn, produces, waitFor, goal, ...rest } = input
   const goalValues: readonly AuthoredText[] =
     goal === undefined ? [] : typeof goal === 'string' || 'kind' in goal ? [goal] : goal
-  const childOutput = produces !== undefined && isChildMission(produces) ? produces : undefined
-  const missionOutput = waitFor !== undefined && isStepHandle(waitFor) ? waitFor : undefined
+  const childOutput =
+    produces !== undefined && isChildMission(produces) === true ? produces : undefined
+  const missionOutput =
+    waitFor !== undefined && isStepHandle(waitFor) === true ? waitFor : undefined
   if (waitFor !== undefined && isStepHandle(waitFor) === false && waitFor.kind !== 'revision')
     throw new TypeError('waitFor must reference a producing step or an exact mission revision')
   if (waitFor !== undefined && input.agentless !== true)
@@ -1628,7 +1701,7 @@ export function step(input: StepInput<string>): StepHandle {
       : typeof dependsOn === 'string' ||
           'step' in dependsOn ||
           dependencyBrand in dependsOn ||
-          isStepHandle(dependsOn)
+          isStepHandle(dependsOn) === true
         ? [dependsOn]
         : dependsOn
   const dependencies: readonly StepDependency[] = dependencyInputs.flatMap((dependency) =>
@@ -1636,12 +1709,12 @@ export function step(input: StepInput<string>): StepHandle {
       ? []
       : dependencyBrand in dependency
         ? [dependency]
-        : isStepHandle(dependency)
+        : isStepHandle(dependency) === true
           ? [completed(dependency)]
           : [],
   )
   const seenProducts = new Set<ProductHandle>()
-  const products = produces === undefined || isChildMission(produces) ? {} : produces
+  const products = produces === undefined || isChildMission(produces) === true ? {} : produces
   const materializedProducts = Object.entries(products).map(([name, value]) => {
     Schema.decodeSync(LocalId)(name)
     if (productOwners.has(value) === true)
@@ -1691,7 +1764,7 @@ export function step(input: StepInput<string>): StepHandle {
                 ? dependency
                 : dependencyBrand in dependency
                   ? { step: dependency.handle.id, state: dependency.state }
-                  : isStepHandle(dependency)
+                  : isStepHandle(dependency) === true
                     ? { step: dependency.id, state: 'completed' }
                     : dependency,
             ),
@@ -1975,7 +2048,7 @@ const assembleMission = <const TMission extends string>(
         if (inputNames.has(match[1]!) === false)
           throw new TypeError(`Input ${match[1]} is not declared by this mission`)
       }
-    } else if (Array.isArray(value)) {
+    } else if (Array.isArray(value) === true) {
       for (const item of value) validateInputText(item)
     } else if (value !== null && typeof value === 'object') {
       for (const [key, item] of Object.entries(value)) {

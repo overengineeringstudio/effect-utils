@@ -26,17 +26,17 @@ const parent = {
 const pin = `example/child@${'a'.repeat(64)}`
 
 const textGates = (value: TextInput) => [
-  gate.exists(t`resource/example/${value}`, { name: 'exists' }),
-  gate.empty(t`mission-run/example/${value}`, { name: 'empty' }),
-  gate.has(t`message/example/${value}`, t`contains ${value}`, { name: 'has' }),
-  gate.lacks(t`doc/example/${value}`, t`absent ${value}`, { name: 'lacks' }),
+  gate.exists({ subject: t`resource/example/${value}`, name: 'exists' }),
+  gate.empty({ subject: t`mission-run/example/${value}`, name: 'empty' }),
+  gate.has({ subject: t`message/example/${value}`, text: t`contains ${value}`, name: 'has' }),
+  gate.lacks({ subject: t`doc/example/${value}`, text: t`absent ${value}`, name: 'lacks' }),
   gate.fieldIs({
     subject: t`resource/example/${value}`,
     path: 'sha',
     value: t`${value}`,
     name: 'field',
   }),
-  gate.exists('resource/example', { name: t`${value}` }),
+  gate.exists({ subject: 'resource/example', name: t`${value}` }),
   gate.human({
     name: 'review',
     reviewer: person('person/reviewer'),
@@ -50,31 +50,33 @@ const textGates = (value: TextInput) => [
     workspace: '/work',
     env: { CHECK: value },
   }),
-  gate.merged(t`example/repo#${value}`, {
+  gate.merged({
+    target: t`example/repo#${value}`,
     name: 'merged',
     host: t`${value}`,
     workspace: t`/work/${value}`,
   }),
-  gate.ciPassed(t`check-${value}`, {
+  gate.ciPassed({
+    check: t`check-${value}`,
     name: 'ci',
     repo: t`example/${value}`,
     branch: t`${value}`,
     host: t`${value}`,
     workspace: t`/work/${value}`,
   }),
-  gate.document(doc`doc/example/proof`, { name: t`proof-${value}` }),
+  gate.document({ target: doc`doc/example/proof`, name: t`proof-${value}` }),
 ]
 
 const isolatedGateTexts: readonly [
   string,
   (value: TextInput) => Parameters<typeof gate.render>[0],
 ][] = [
-  ['exists subject', (v) => gate.exists(t`resource/example/${v}`)],
-  ['empty subject', (v) => gate.empty(t`mission-run/example/${v}`)],
-  ['has subject', (v) => gate.has(t`message/example/${v}`, 'ready')],
-  ['has text', (v) => gate.has('message/example', t`${v}`)],
-  ['lacks subject', (v) => gate.lacks(t`doc/example/${v}`, 'ready')],
-  ['lacks text', (v) => gate.lacks('doc/example', t`${v}`)],
+  ['exists subject', (v) => gate.exists({ subject: t`resource/example/${v}` })],
+  ['empty subject', (v) => gate.empty({ subject: t`mission-run/example/${v}` })],
+  ['has subject', (v) => gate.has({ subject: t`message/example/${v}`, text: 'ready' })],
+  ['has text', (v) => gate.has({ subject: 'message/example', text: t`${v}` })],
+  ['lacks subject', (v) => gate.lacks({ subject: t`doc/example/${v}`, text: 'ready' })],
+  ['lacks text', (v) => gate.lacks({ subject: 'doc/example', text: t`${v}` })],
   [
     'field subject',
     (v) => gate.fieldIs({ subject: t`resource/example/${v}`, path: 'sha', value: 'ready' }),
@@ -83,7 +85,7 @@ const isolatedGateTexts: readonly [
     'field value',
     (v) => gate.fieldIs({ subject: 'resource/example', path: 'sha', value: t`${v}` }),
   ],
-  ['explicit name', (v) => gate.exists('resource/example', { name: t`${v}` })],
+  ['explicit name', (v) => gate.exists({ subject: 'resource/example', name: t`${v}` })],
   [
     'human review text',
     (v) => gate.human({ reviewer: person('person/reviewer'), review: [t`resource/example/${v}`] }),
@@ -99,21 +101,32 @@ const isolatedGateTexts: readonly [
     'exec env',
     (v) => gate.exec({ command: 'true', host: 'dev3', workspace: '/work', env: { CHECK: v } }),
   ],
-  ['merged host', (v) => gate.merged(t`example/repo#7`, { host: t`${v}` })],
-  ['merged workspace', (v) => gate.merged(t`example/repo#7`, { workspace: t`/work/${v}` })],
-  ['CI check', (v) => gate.ciPassed(t`check-${v}`, { repo: 'example/repo', branch: 'main' })],
-  ['CI repository', (v) => gate.ciPassed('build', { repo: t`example/${v}`, branch: 'main' })],
-  ['CI branch', (v) => gate.ciPassed('build', { repo: 'example/repo', branch: t`${v}` })],
+  ['merged host', (v) => gate.merged({ target: t`example/repo#7`, host: t`${v}` })],
+  ['merged workspace', (v) => gate.merged({ target: t`example/repo#7`, workspace: t`/work/${v}` })],
+  [
+    'CI check',
+    (v) => gate.ciPassed({ check: t`check-${v}`, repo: 'example/repo', branch: 'main' }),
+  ],
+  [
+    'CI repository',
+    (v) => gate.ciPassed({ check: 'build', repo: t`example/${v}`, branch: 'main' }),
+  ],
+  ['CI branch', (v) => gate.ciPassed({ check: 'build', repo: 'example/repo', branch: t`${v}` })],
   [
     'CI host',
-    (v) => gate.ciPassed('build', { repo: 'example/repo', branch: 'main', host: t`${v}` }),
+    (v) => gate.ciPassed({ check: 'build', repo: 'example/repo', branch: 'main', host: t`${v}` }),
   ],
   [
     'CI workspace',
     (v) =>
-      gate.ciPassed('build', { repo: 'example/repo', branch: 'main', workspace: t`/work/${v}` }),
+      gate.ciPassed({
+        check: 'build',
+        repo: 'example/repo',
+        branch: 'main',
+        workspace: t`/work/${v}`,
+      }),
   ],
-  ['document name', (v) => gate.document(doc`doc/example/proof`, { name: t`proof-${v}` })],
+  ['document name', (v) => gate.document({ target: doc`doc/example/proof`, name: t`proof-${v}` })],
 ]
 
 const textPlacements = [
@@ -246,7 +259,7 @@ describe('authoring and native wire boundaries', () => {
       'Product reference belongs to a step outside this mission',
     )
     expect(() =>
-      missionWire({ ...parent, gates: [gate.exists(t`${foreign}`)], steps: [] }),
+      missionWire({ ...parent, gates: [gate.exists({ subject: t`${foreign}` })], steps: [] }),
     ).toThrow('Product reference belongs to a step outside this mission')
   })
 
@@ -295,7 +308,7 @@ describe('authoring and native wire boundaries', () => {
       missionWire({
         ...parent,
         inputs: [declared],
-        gates: [gate.document(doc`doc/example/${foreign}`)],
+        gates: [gate.document({ target: doc`doc/example/${foreign}` })],
         steps: [{ id: 'review', agentless: true }],
       }),
     ).toThrow('Input commit is not declared by this mission')
@@ -326,7 +339,11 @@ describe('authoring and native wire boundaries', () => {
   it('retains exact template ownership in human questions and dynamic merged locators', () => {
     const declared = input.text('locator')
     const foreign = input.text('locator')
-    const local = step({ id: 'land', agentless: true, gates: [gate.merged(t`${foreign}`)] })
+    const local = step({
+      id: 'land',
+      agentless: true,
+      gates: [gate.merged({ target: t`${foreign}` })],
+    })
     expect(() => missionWire({ ...parent, inputs: [declared], steps: [local] })).toThrow(
       'Input locator is not declared by this mission',
     )

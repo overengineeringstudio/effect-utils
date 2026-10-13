@@ -172,7 +172,7 @@ The synthetic public PR-landing fixture exercises resource/text input pins and a
 
 ## Native gate authoring
 
-Use `gate.human`, `gate.exec`, `gate.fieldIs`, `gate.merged(pr(repo, number))`, `gate.ciPassed(check, { repo, commit | branch })`, ``gate.document(doc`SUBJECT`)``, `gate.exists`, `gate.empty`, `gate.has` and `gate.lacks`. These produce tagged native gate data, not exec wrappers. `gate.render` renders an isolated gate for exact predicate assertions. Plain tagged native gate declarations remain accepted.
+Use `gate.human`, `gate.exec`, `gate.fieldIs`, `gate.merged({ target: pr({ repo, number }), ...options })`, `gate.ciPassed({ check, repo, commit | branch, ...options })`, ``gate.document({ target: doc`SUBJECT`, ...options })``, `gate.exists({ subject, ...options })`, `gate.empty({ subject, ...options })`, `gate.has({ subject, text, ...options })` and `gate.lacks({ subject, text, ...options })`. All constructors take one flat named-argument object; CI gates require exactly one of `commit` or `branch`. These produce tagged native gate data, not exec wrappers. `gate.render` renders an isolated gate for exact predicate assertions. Plain tagged native gate declarations remain accepted.
 
 Gate names may be omitted for deterministic constructor-derived names. Explicit names preserve existing gate identities and should be retained when migrating a pinned native definition. Human approve is the default; explicit names, predicates, reviewer attribution and review targets are otherwise lowered unchanged.
 

@@ -10,10 +10,17 @@ describe('typed native gate constructors', () => {
     expect(
       emit([
         gate.render(
-          gate.ciPassed('linux-gate', { name: 'linux', repo: 'example/repository', commit: head }),
+          gate.ciPassed({
+            check: 'linux-gate',
+            name: 'linux',
+            repo: 'example/repository',
+            commit: head,
+          }),
         ),
-        gate.render(gate.merged(pr('example/repository', 7), { name: 'merged' })),
-        gate.render(gate.document(doc`doc/example/${runId}/proof`, { name: 'proof' })),
+        gate.render(
+          gate.merged({ target: pr({ repo: 'example/repository', number: 7 }), name: 'merged' }),
+        ),
+        gate.render(gate.document({ target: doc`doc/example/${runId}/proof`, name: 'proof' })),
         gate.render(
           gate.human({ name: 'accept', reviewer: person('person/reviewer'), question: 'Accept?' }),
         ),
@@ -29,14 +36,14 @@ describe('typed native gate constructors', () => {
 
   it('derives deterministic names without a repetition helper', () => {
     const checks = ['linux-gate', 'isolation-vm'].map((check) =>
-      gate.ciPassed(check, { repo: 'example/repository', commit: 'a'.repeat(40) }),
+      gate.ciPassed({ check: check, repo: 'example/repository', commit: 'a'.repeat(40) }),
     )
     expect(checks.map((value) => value.name)).toEqual([
       `ci-passed:example/repository:linux-gate:${'a'.repeat(40)}`,
       `ci-passed:example/repository:isolation-vm:${'a'.repeat(40)}`,
     ])
-    expect(gate.merged(pr('example/repository', 7))).toEqual(
-      gate.merged(pr('example/repository', 7)),
+    expect(gate.merged({ target: pr({ repo: 'example/repository', number: 7 }) })).toEqual(
+      gate.merged({ target: pr({ repo: 'example/repository', number: 7 }) }),
     )
   })
 
@@ -90,7 +97,7 @@ describe('typed native gate constructors', () => {
         {
           id: 'proof',
           agentless: true,
-          gates: [gate.ciPassed('build', { repo: 'example/repository', commit: head })],
+          gates: [gate.ciPassed({ check: 'build', repo: 'example/repository', commit: head })],
         },
       ],
     })

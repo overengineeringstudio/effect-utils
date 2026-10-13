@@ -43,7 +43,7 @@ export const prLanding = (): Node => {
         path: 'state',
         value: 'approved',
       }),
-      gate.ciPassed('build', { name: 'build', repo: 'acme/garden', commit }),
+      gate.ciPassed({ check: 'build', name: 'build', repo: 'acme/garden', commit }),
     ],
   })
   const land = step({
@@ -58,7 +58,7 @@ export const prLanding = (): Node => {
         fields: { text: 'The PR was landed.' },
       }),
     },
-    gates: [gate.merged(t`${locator}`, { name: 'merged' })],
+    gates: [gate.merged({ target: t`${locator}`, name: 'merged' })],
   })
   return mission({
     id: 'pr-landing',
@@ -112,7 +112,7 @@ export const prLandingFragment = (pr: {
         path: 'state',
         value: 'approved',
       }),
-      gate.ciPassed('build', { name: 'build', repo: 'acme/garden', commit: pr.commit }),
+      gate.ciPassed({ check: 'build', name: 'build', repo: 'acme/garden', commit: pr.commit }),
     ],
   })
   const land = step({
@@ -127,7 +127,12 @@ export const prLandingFragment = (pr: {
         fields: { text: 'The PR was landed.' },
       }),
     },
-    gates: [gate.merged(pullRequest('acme/garden', pr.number), { name: 'merged' })],
+    gates: [
+      gate.merged({
+        target: pullRequest({ repo: 'acme/garden', number: pr.number }),
+        name: 'merged',
+      }),
+    ],
   })
   return mission({
     id,

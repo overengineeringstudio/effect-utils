@@ -123,7 +123,7 @@ describe('typed native interpolation', () => {
   )
 
   it('constructs a typed pull request without conflating it with an input or person', () => {
-    expect(pr('example/repository', 7)).toEqual({
+    expect(pr({ repo: 'example/repository', number: 7 })).toEqual({
       kind: 'pull-request',
       repo: 'example/repository',
       number: 7,
@@ -131,13 +131,13 @@ describe('typed native interpolation', () => {
   })
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects invalid PR number %s', (number) => {
-    expect(() => pr('example/repository', number)).toThrow()
+    expect(() => pr({ repo: 'example/repository', number })).toThrow()
   })
 
   it.each(['repository', '/repository', 'owner/', 'owner/repository/extra', 'owner/repo name'])(
     'rejects invalid repository %s',
     (repo) => {
-      expect(() => pr(repo, 7)).toThrow()
+      expect(() => pr({ repo, number: 7 })).toThrow()
     },
   )
 })

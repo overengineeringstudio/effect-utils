@@ -21,7 +21,7 @@ export const utf8ByteLength = (value: string): number => {
 const Name = Schema.String.pipe(
   Schema.refine(
     (value): value is string =>
-      value.length > 0 && utf8ByteLength(value) <= 160 && !/[\s/]/u.test(value),
+      value.length > 0 && utf8ByteLength(value) <= 160 && /[\s/]/u.test(value) === false,
     {
       message:
         'mission input name must be nonempty, slash/whitespace-free and at most 160 UTF-8 bytes',
@@ -44,7 +44,7 @@ export const ProductSchema = Schema.Struct({
 }).pipe(
   Schema.refine(
     (value): value is typeof value =>
-      !value.subject.startsWith('resource/') ||
+      value.subject.startsWith('resource/') === false ||
       (typeof value.fields.kind === 'string' && value.fields.kind.length > 0),
   ),
 )
@@ -108,10 +108,13 @@ export const templateReferences = (value: object): readonly RunReference[] =>
   referencesByTemplate.get(value) ?? noReferences
 
 type TemplateValue = string | number | boolean | RunReference | ContextReference | TextTemplate
-const interpolate = (
-  strings: TemplateStringsArray,
-  values: readonly TemplateValue[],
-): { readonly text: string; readonly references: readonly RunReference[] } => {
+const interpolate = ({
+  strings,
+  values,
+}: {
+  readonly strings: TemplateStringsArray
+  readonly values: readonly TemplateValue[]
+}): { readonly text: string; readonly references: readonly RunReference[] } => {
   let text = strings[0] ?? ''
   const references: RunReference[] = []
   for (let index = 0; index < values.length; index++) {
@@ -137,12 +140,13 @@ export const t = (
   strings: TemplateStringsArray,
   ...values: readonly TemplateValue[]
 ): TextTemplate => {
-  const { text, references } = interpolate(strings, values)
+  const { text, references } = interpolate({ strings, values })
   const value: TextTemplate = { kind: 'template', text }
   referencesByTemplate.set(value, references)
   return value
 }
 
+/** An authored document subject with retained input and product reference identity. */
 export interface DocumentReference {
   readonly kind: 'document'
   readonly subject: string
@@ -153,12 +157,13 @@ export const doc = (
   strings: TemplateStringsArray,
   ...values: readonly TemplateValue[]
 ): DocumentReference => {
-  const { text, references } = interpolate(strings, values)
+  const { text, references } = interpolate({ strings, values })
   const value: DocumentReference = { kind: 'document', subject: text }
   referencesByTemplate.set(value, references)
   return value
 }
 
+/** An authored child mission ID with retained input and product reference identity. */
 export interface ChildMission {
   readonly kind: 'child-mission'
   readonly id: string
@@ -173,12 +178,13 @@ export const childMission = (
   strings: TemplateStringsArray,
   ...values: readonly TemplateValue[]
 ): ChildMission => {
-  const { text, references } = interpolate(strings, values)
+  const { text, references } = interpolate({ strings, values })
   const value: ChildMission = { kind: 'child-mission', id: text }
   referencesByTemplate.set(value, references)
   return value
 }
 
+/** A literal repository and pull request number identifying a native review target. */
 export interface PullRequestReference {
   readonly kind: 'pull-request'
   readonly repo: string
@@ -186,7 +192,13 @@ export interface PullRequestReference {
 }
 
 /** A literal pull request locator for a native merged gate. */
-export const pr = (repo: string, number: number): PullRequestReference => {
+export const pr = ({
+  repo,
+  number,
+}: {
+  readonly repo: string
+  readonly number: number
+}): PullRequestReference => {
   if (
     /^[^/#\s]+\/[^/#\s]+$/u.test(repo) === false ||
     Number.isSafeInteger(number) === false ||

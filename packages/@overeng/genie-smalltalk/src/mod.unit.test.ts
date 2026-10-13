@@ -912,9 +912,9 @@ describe('native mission grammar', () => {
       goal: t`Verify ${commit}.`,
       steps: [],
       gates: [
-        gate.ciPassed('build', { repo: 'acme/garden', commit, name: 'build' }),
-        gate.merged(pr('acme/garden', 7), { name: 'merged' }),
-        gate.document(doc`doc/report/${runId}`, { name: 'report' }),
+        gate.ciPassed({ check: 'build', repo: 'acme/garden', commit, name: 'build' }),
+        gate.merged({ target: pr({ repo: 'acme/garden', number: 7 }), name: 'merged' }),
+        gate.document({ target: doc`doc/report/${runId}`, name: 'report' }),
         gate.human({ reviewer: operator, name: 'review', question: 'Is the exact report ready?' }),
       ],
     })
@@ -924,9 +924,11 @@ describe('native mission grammar', () => {
     expect(kdl).toContain('merged "acme/garden#7"')
     expect(kdl).toContain('document "doc/report/${ST_MISSION_RUN}"')
     expect(kdl).toContain('gate "review" mode="approve" type="human"')
-    expect(gate.merged(pr('acme/garden', 7)).name).toBe(gate.merged(pr('acme/garden', 7)).name)
-    expect(gate.ciPassed('build', { repo: 'acme/garden', commit }).name).not.toBe(
-      gate.ciPassed('test', { repo: 'acme/garden', commit }).name,
+    expect(gate.merged({ target: pr({ repo: 'acme/garden', number: 7 }) }).name).toBe(
+      gate.merged({ target: pr({ repo: 'acme/garden', number: 7 }) }).name,
+    )
+    expect(gate.ciPassed({ check: 'build', repo: 'acme/garden', commit }).name).not.toBe(
+      gate.ciPassed({ check: 'test', repo: 'acme/garden', commit }).name,
     )
   })
   it('retains every native gate, retry, completion and finalization in the synthetic graph', () => {
