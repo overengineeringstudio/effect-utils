@@ -301,12 +301,8 @@ Darwin TS execution and explicitly selected outer Nix TS execution use the named
 exclusions defined by
 [the execution policy](../05-execution/spec.md#typescript-containment-and-platform-admission-buildbuck-r04):
 both run locally but cannot enter shared-cache or hermetic shared immutable-store
-admission. `nix-outer-sandboxed` requires runtime verification of the declared
-outer Nix derivation boundary before output creation or child execution, not
-caller trust or the admitted per-action Linux `linux-bwrap` boundary required by
-BUILD.BUCK-R04. Its category identifies selected policy, including failed
-verification, rather than proving containment; verification failure cannot
-fall back to unsandboxed execution.
+admission. `nix-outer-sandboxed` trusts the declared outer Nix derivation sandbox,
+not the admitted per-action Linux `linux-bwrap` boundary required by BUILD.BUCK-R04.
 Only the exact `tsgo_typecheck_nix_outer_sandboxed`, `tsgo_emit_nix_outer_sandboxed`
 and `package_tree_nix_outer_sandboxed` categories receive this exclusion; unknown
 or unrelated categories do not. Worktree-local editor snapshots remain reusable
