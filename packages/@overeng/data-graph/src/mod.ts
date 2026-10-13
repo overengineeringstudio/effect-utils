@@ -167,13 +167,32 @@ const readJson = Effect.fn('DataGraph.readJson')(function* <TSchema extends Sche
 })
 export const writeJson = Effect.fn('DataGraph.writeJson')(function* <
   TSchema extends Schema.Codec<unknown>,
->(schema: TSchema, value: TSchema['Type']) {
+>(schema: TSchema, value: Schema.Schema.Type<TSchema>) {
   const store = yield* GraphStore
   return yield* store.put(
     canonicalJsonBytes({ schema, value }),
     'application/json',
     'canonical-json',
     1,
+  )
+})
+
+/** Unsuccessful invocations are recorded without publishing a selected head or action pin. */
+const recordAttempt = Effect.fn('DataGraph.recordAttempt')(function* (
+  action: ContentDescriptor,
+  statusTag: 'Failed' | 'Rejected',
+  reason: string,
+  receipts: ReadonlyArray<ContentDescriptor>,
+) {
+  const store = yield* GraphStore
+  for (const descriptor of receipts) yield* store.get(descriptor)
+  const status = yield* writeJson(Schema.Json, { _tag: statusTag, attemptId: randomUUID(), reason })
+  return yield* store.manifest(
+    manifest('data-graph.attempt', [
+      { role: 'action', descriptor: action },
+      { role: 'status', descriptor: status },
+      ...receipts.map((descriptor) => ({ role: 'receipt', descriptor })),
+    ]),
   )
 })
 
@@ -225,9 +244,10 @@ export interface MaterializeResult extends NodeOutcome {
   readonly output: ContentDescriptor
   readonly trace: ReadonlyArray<NodeOutcome>
 }
-const outputsOf = Effect.fn('DataGraph.outputsOf')(function* (
+/** Historical materializations retain their own output set across recipe upgrades. */
+const readOutputs = Effect.fn('DataGraph.readOutputs')(function* (
   descriptor: ContentDescriptor,
-  node: NodeDef,
+  kind: NodeKind,
   action?: ContentDescriptor,
 ) {
   const store = yield* GraphStore
@@ -239,26 +259,36 @@ const outputsOf = Effect.fn('DataGraph.outputsOf')(function* (
     (action !== undefined && boundAction.descriptor.digest !== action.digest)
   ) {
     return yield* new GraphError({
-      nodeId: node.kind,
+      nodeId: kind,
       message: 'Invalid materialization or mismatched action',
     })
   }
   const actionRecord = yield* readJson(ContentManifest, boundAction.descriptor)
   if (actionRecord.role !== 'data-graph.action')
-    return yield* new GraphError({ nodeId: node.kind, message: 'Invalid action manifest' })
+    return yield* new GraphError({ nodeId: kind, message: 'Invalid action manifest' })
   for (const entry of actionRecord.entries) yield* store.get(entry.descriptor)
-  const outputs: Record<string, ContentDescriptor> = {}
+  const outputs: Record<string, ContentDescriptor> = Object.create(null)
   for (const entry of record.entries) {
     yield* store.get(entry.descriptor)
     if (entry.role === 'output' && entry.logicalPath !== undefined) {
-      if (outputs[entry.logicalPath] !== undefined)
+      if (Object.hasOwn(outputs, entry.logicalPath))
         return yield* new GraphError({
-          nodeId: node.kind,
+          nodeId: kind,
           message: 'Duplicate output in materialization',
         })
       outputs[entry.logicalPath] = entry.descriptor
     }
   }
+  return outputs
+})
+
+/** Current selections and cache hits must match the current declared output contract. */
+const outputsOf = Effect.fn('DataGraph.outputsOf')(function* (
+  descriptor: ContentDescriptor,
+  node: NodeDef,
+  action?: ContentDescriptor,
+) {
+  const outputs = yield* readOutputs(descriptor, node.kind, action)
   if (Object.keys(outputs).toSorted().join('\0') !== [...node.outputs].toSorted().join('\0'))
     return yield* new GraphError({
       nodeId: node.kind,
@@ -302,7 +332,7 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
       const previousResult = completed.get(id)
       if (previousResult !== undefined) return previousResult
       visiting.add(id)
-      const inputs: Record<string, ContentDescriptor> = {}
+      const inputs: Record<string, ContentDescriptor> = Object.create(null)
       const declared = node.inputs(scope)
       for (const name of Object.keys(declared).toSorted()) {
         if (name.length === 0 || name.trim() !== name)
@@ -367,24 +397,17 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
         }
       }
       const execution = yield* node.execute({ scope, inputs }).pipe(Effect.result)
-      if (execution._tag === 'Failure' || execution.success._tag === 'Rejected') {
-        const reason =
-          execution._tag === 'Failure' ? String(execution.failure) : execution.success.reason
-        const receipts = execution._tag === 'Failure' ? [] : execution.success.receipts
-        for (const descriptor of receipts) yield* store.get(descriptor)
-        const status = yield* writeJson(Schema.Json, {
-          _tag: execution._tag === 'Failure' ? 'Failed' : 'Rejected',
-          attemptId: randomUUID(),
-          reason,
-        })
-        const attempt = yield* store.manifest(
-          manifest('data-graph.attempt', [
-            { role: 'action', descriptor: action },
-            { role: 'status', descriptor: status },
-            ...receipts.map((descriptor) => ({ role: 'receipt', descriptor })),
-          ]),
+      if (execution._tag === 'Failure') {
+        yield* recordAttempt(action, 'Failed', String(execution.failure), [])
+        return yield* execution.failure
+      }
+      if (execution.success._tag === 'Rejected') {
+        const attempt = yield* recordAttempt(
+          action,
+          'Rejected',
+          execution.success.reason,
+          execution.success.receipts,
         )
-        if (execution._tag === 'Failure') return yield* execution.failure
         if (node._tag === 'Derive')
           return yield* invalid('Deterministic executor rejected its output; attempt recorded')
         if (Option.isNone(previous))
@@ -394,7 +417,7 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
         return finish(
           { _tag: 'Rejected', attempt },
           previous.value.materialization,
-          yield* outputsOf(previous.value.materialization, node),
+          yield* readOutputs(previous.value.materialization, node.kind),
         )
       }
       const accepted = execution.success
@@ -403,7 +426,7 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
         [...node.outputs].toSorted().join('\0')
       )
         return yield* invalid('Executor outputs must exactly match declared outputs')
-      const outputs: Record<string, ContentDescriptor> = {}
+      const outputs: Record<string, ContentDescriptor> = Object.create(null)
       for (const name of [...node.outputs].toSorted()) {
         const payload = accepted.outputs[name]
         if (payload === undefined) return yield* invalid('Missing executor output')
@@ -424,10 +447,10 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
           ...accepted.receipts.map((receipt) => ({ role: 'receipt', descriptor: receipt })),
         ]),
       )
-      const priorOutputs = Option.isSome(previous)
-        ? yield* outputsOf(previous.value.materialization, node)
-        : {}
-      const changedOutputs = Object.keys(outputs)
+      const priorOutputs: Record<string, ContentDescriptor> = Option.isSome(previous)
+        ? yield* readOutputs(previous.value.materialization, node.kind)
+        : Object.create(null)
+      const changedOutputs = [...new Set([...Object.keys(outputs), ...Object.keys(priorOutputs)])]
         .toSorted()
         .filter((name) => outputs[name]?.digest !== priorOutputs[name]?.digest)
       if (node._tag === 'Derive')
