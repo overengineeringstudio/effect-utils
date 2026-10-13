@@ -7,6 +7,21 @@ export PNPM_GC_TEST_ROOT="$fixture"
 export XDG_STATE_HOME="$fixture/state"
 export HOME="$fixture/home"
 unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+# Exercise the same early-refusal entry point on Linux without filesystem input.
+"${RUSTC_BIN:-rustc}" --edition=2024 -D warnings --cfg pnpm_gc_unsupported_test \
+  "$ROOT/nix/devenv-modules/tasks/shared/pnpm-store-gc.rs" -o "$fixture/unsupported"
+if unsupported="$("$fixture/unsupported" --git-dir "$fixture/missing-repo" --root "$fixture/missing-root" 2>&1)"; then
+  echo "FAIL: unsupported-platform entry point succeeded" >&2
+  exit 1
+fi
+test "$unsupported" = "pnpm-store-gc: unsupported platform (Linux only; Darwin census not implemented)"
+test ! -e "$fixture/missing-repo"
+test ! -e "$fixture/missing-root"
+echo "PASS: unsupported platforms refuse before filesystem input access"
+if [ "$(uname -s)" != Linux ]; then
+  echo "Linux-only collector scenarios skipped on this platform"
+  exit 0
+fi
 "${RUSTC_BIN:-rustc}" --edition=2024 -D warnings --test \
   "$ROOT/nix/devenv-modules/tasks/shared/pnpm-store-gc.rs" -o "$fixture/tests"
 "$fixture/tests"

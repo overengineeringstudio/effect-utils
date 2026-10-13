@@ -148,6 +148,8 @@ for outer tasks that must complete before the nested devenv process can evaluate
     installs and unknown bridges fail closed.
   - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
     reports historical root-local store retirement in a read-only dry-run.
+    The collector is Linux-only. On other platforms it exits nonzero before
+    filesystem input access with `pnpm-store-gc: unsupported platform (Linux only; Darwin census not implemented)`.
     Repeat `--root` for explicitly selected worktrees; there is no fleet traversal.
     It never targets `$HOME/.local/share/pnpm` or `PNPM_SHARED_STORE_DIR`.
     Before ownership admission or lease creation, resolved paths and inode
@@ -168,8 +170,8 @@ for outer tasks that must complete before the nested devenv process can evaluate
     ownership evidence, and Git worktree locks fail closed; PR closure alone
     does not prove a checkout stopped referencing its store.
   - The collector requires no own-UID cwd/open-fd references under the
-    historical **store**, not the entire checkout: Linux `/proc`, Darwin
-    UID-filtered `lsof` plus `ps`. Other-UID processes are outside the normal
+    historical **store**, not the entire checkout, using Linux `/proc`.
+    Other-UID processes are outside the normal
     user-owned-cache flow; the CLI states this assumption explicitly. Unreadable
     own-UID processes fail closed, except the explicit Linux privileged-broker
     allowlist. SSH brokers (`sshd-session`, Tailscale SSH's
