@@ -89,7 +89,11 @@ the Nix build sandbox; there is no outer-sandbox mode or substitute boundary.
 Linux from-source builds of TS products therefore require nested unprivileged
 user namespaces; where the host restricts them, the build fails with a named
 diagnostic and the package must be substituted from the binary cache instead.
-Namespace Linux CI runner labels therefore request `container.privileged=true`.
+Namespace Linux CI jobs explicitly select `always`, `trusted` or `never`
+container privilege. Nix/Bubblewrap build jobs request `container.privileged=true`
+only when the job's event policy permits it; PR-reachable builds use `trusted`
+and fork PRs select unprivileged runners. Buck TS setup rejects those untrusted
+PRs explicitly rather than falling back to an unsandboxed action.
 The privilege applies inside each ephemeral per-job VM. It lets Nix create its
 real build namespaces instead of disabling sandboxing, and lets nested
 Bubblewrap pivot its root. Darwin runner labels do not request it. Network
