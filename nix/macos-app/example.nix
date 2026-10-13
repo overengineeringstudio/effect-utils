@@ -12,7 +12,12 @@ let
       name = "SyntheticHost";
       bundleId = "dev.example.synthetic-host";
       displayName = "Synthetic Host";
-      teamId = "EXAMPLE123";
+      signer = {
+        teamId = "EXAMPLE123";
+        identity = "Example certificate identity (not used by tests)";
+      };
+      session = "background-agent";
+      launchd.label = "dev.example.synthetic-host";
       statusAllowedUids = [ 501 ];
       actions.echo = {
         executable = payload text;
@@ -75,6 +80,18 @@ let
   '';
   example = pkgs.linkFarm "macos-app-example" [
     {
+      name = "ctl";
+      path = first.ctl;
+    }
+    {
+      name = "primitives";
+      path = first.primitives;
+    }
+    {
+      name = "ctl-config.json";
+      path = first.ctlConfig;
+    }
+    {
       name = "hostApp";
       path = first.hostApp;
     }
@@ -107,7 +124,16 @@ let
     exec ${pkgs.python3.withPackages (p: [ p.jsonschema ])}/bin/python3 \
       "$PWD/nix/macos-app/integration.py" "$@"
   '';
+  ctlIntegration = pkgs.writeShellScriptBin "macos-app-ctl-integration" ''
+    exec ${pkgs.python3}/bin/python3 "$PWD/nix/macos-app/ctl-integration.py" "$@"
+  '';
 in
 {
-  inherit example check integration;
+  inherit
+    example
+    check
+    integration
+    ctlIntegration
+    ;
+  inherit (first) primitives;
 }

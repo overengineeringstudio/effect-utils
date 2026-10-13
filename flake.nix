@@ -335,6 +335,7 @@ rec {
         buckProducts = trackedBuck2Products;
         checks = pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           macos-app-host-stability = macosAppExample.check;
+          macos-app-primitives = macosAppExample.primitives;
           macos-app-appkit-link = import ./nix/macos-app/appkit-link-check.nix {
             inherit pkgs;
             nixpkgsRevision = nixpkgs.rev;
@@ -379,6 +380,7 @@ rec {
           // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
             macos-app-example = macosAppExample.example;
             macos-app-integration = macosAppExample.integration;
+            macos-app-ctl-integration = macosAppExample.ctlIntegration;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             buck2-vite-runtime-closure-fixture = viteRuntimeFixture;

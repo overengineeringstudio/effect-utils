@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""Real codesign/rename/socket tests; fake launchctl never registers a background item."""
+"""Real codesign/keychain/rename/socket tests for macos-app-ctl.
+
+Signing uses a throwaway keychain in tmp/ holding a self-signed, non-extractable
+code-signing identity. The keychain is never added to the search list, the login
+keychain is never touched, and the keychain file is removed afterwards. A fake
+launchctl on PATH starts real hosts directly, so no background item is registered.
+Every keychain operation has a timeout: a hang means a UI prompt and aborts the run.
+
+From the Darwin checkout root:
+  nix run .#macos-app-ctl-integration --option builders '' --option max-jobs 2
+An existing macos-app-example store path can be passed as the first argument.
+"""
+import ctypes
 import hashlib
 import json
 import os
@@ -7,11 +19,9 @@ from pathlib import Path
 import plistlib
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
-import time
 
 root = Path.cwd()
 example = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(subprocess.check_output([
@@ -21,16 +31,10 @@ scratch = root / 'tmp'
 scratch.mkdir(exist_ok=True)
 work = Path(tempfile.mkdtemp(prefix='macos-app-ctl-', dir=scratch))
 with (scratch / 'TEMPORARY_FILES.md').open('a') as log:
-    log.write(f'\n- `{work.relative_to(root)}`: primitive integration apps, fake launchctl state, signing logs.\n')
-# The raw executable is intentionally separate from the product wrapper, which refuses test signing.
-wrapper = (example / 'ctl/bin/macos-app-ctl').read_text()
-import re
-ctl = Path(re.search(r"exec '([^']+)'", wrapper)[1])
-config_path = Path(re.search(r"--config '([^']+)'", wrapper)[1])
-config = json.loads(config_path.read_text())
-config['allowTestSigning'] = True
-config_file = work / 'config.json'
-config_file.write_text(json.dumps(config))
+    log.write(f'\n- `{work.relative_to(root)}`: primitive integration apps, fake launchctl state, '
+              'signing logs; its throwaway keychain file is removed by the runner.\n')
+ctl = example / 'primitives/bin/macos-app-ctl'
+base_config = json.loads((example / 'ctl-config.json').read_text())
 bin_dir = work / 'bin'
 bin_dir.mkdir()
 state = work / 'state'
@@ -47,9 +51,83 @@ for source, target in [(example / 'generation', first), (example / 'secondGenera
     manifest['statusAllowedUids'] = [uid]
     (target / 'manifest.json').write_text(json.dumps(manifest))
 
-# The substitute models per-domain jobs and starts actual hosts directly, without launchd.
-launchctl = bin_dir / 'launchctl'
-launchctl.write_text(f'#!{sys.executable}\n' + r'''
+PROMPT_TIMEOUT = 15
+def tool(*args, check=True):
+    try:
+        result = subprocess.run(list(args), capture_output=True, text=True, timeout=PROMPT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        sys.exit(f'ABORT: {args[0]} {args[1]} hung; a keychain UI prompt may be pending. Stopping.')
+    if check and result.returncode != 0:
+        raise RuntimeError(f'{args}: {result.stderr}')
+    return result
+
+# Throwaway signing keychain; the password is test-only and may appear in test argv.
+search_list = tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout
+keychain = work / 'signing.keychain-db'
+password = 'macos-app-ctl-test-' + os.urandom(8).hex()
+identity = 'macos-app-ctl test signer'
+(work / 'cs.cnf').write_text('[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n'
+    f'[dn]\nCN={identity}\n[ext]\nbasicConstraints=critical,CA:false\n'
+    'keyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\n')
+tool('/usr/bin/openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(work / 'key.pem'),
+     '-out', str(work / 'cert.pem'), '-days', '2', '-config', str(work / 'cs.cnf'))
+tool('/usr/bin/openssl', 'pkcs12', '-export', '-inkey', str(work / 'key.pem'), '-in', str(work / 'cert.pem'),
+     '-out', str(work / 'id.p12'), '-passout', 'pass:p12', '-name', identity)
+(work / 'key.pem').unlink()
+leaf = tool('/usr/bin/openssl', 'x509', '-in', str(work / 'cert.pem'), '-noout', '-fingerprint', '-sha1').stdout
+leaf = leaf.split('=', 1)[1].strip().replace(':', '').lower()
+
+hosts = []
+def cleanup():
+    if (work / 'jobs.json').exists():
+        for job in json.loads((work / 'jobs.json').read_text()).values():
+            try: os.kill(job['pid'], signal.SIGTERM)
+            except ProcessLookupError: pass
+    # File removal only: the keychain was never on the search list.
+    keychain.unlink(missing_ok=True)
+    assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
+
+try:
+    tool('/usr/bin/security', 'create-keychain', '-p', password, str(keychain))
+    # -x: the imported private key is non-extractable; the PEM/P12 copies are deleted at once.
+    tool('/usr/bin/security', 'import', str(work / 'id.p12'), '-k', str(keychain), '-P', 'p12', '-x',
+         '-T', '/usr/bin/codesign')
+    (work / 'id.p12').unlink()
+    # Minimal partition list: codesign: alone lets codesign use the key without a prompt.
+    tool('/usr/bin/security', 'set-key-partition-list', '-S', 'codesign:', '-s', '-k', password, str(keychain))
+    assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
+    tool('/usr/bin/security', 'lock-keychain', str(keychain))
+    print('PASS throwaway keychain: not on search list, partition list codesign: only', flush=True)
+
+    security = ctypes.CDLL('/System/Library/Frameworks/Security.framework/Security')
+    def unlocked():
+        reference = ctypes.c_void_p()
+        assert security.SecKeychainOpen(str(keychain).encode(), ctypes.byref(reference)) == 0
+        status = ctypes.c_uint32()
+        # SecKeychainGetStatus reads state only; it never shows UI.
+        assert security.SecKeychainGetStatus(reference, ctypes.byref(status)) == 0
+        return bool(status.value & 1)
+    def unlock_for_test():
+        tool('/usr/bin/security', 'unlock-keychain', '-p', password, str(keychain))
+        assert unlocked()
+
+    unlock_for_test()
+    exported = tool('/usr/bin/security', 'export', '-k', str(keychain), '-t', 'identities', '-f', 'pkcs12',
+                    '-P', 'export', '-o', str(work / 'exported.p12'), check=False)
+    assert exported.returncode != 0 and not (work / 'exported.p12').exists(), exported
+    tool('/usr/bin/security', 'lock-keychain', str(keychain))
+    print('PASS signing key is non-extractable: identity export fails while unlocked', flush=True)
+
+    requirement = f'identifier "dev.example.synthetic-host" and certificate leaf = H"{leaf}"'
+    config = dict(base_config, requirement=requirement, signer={'teamId': 'TEST', 'identity': identity})
+    config_file = work / 'config.json'
+    def write_config(**changes):
+        config_file.write_text(json.dumps(dict(config, **changes)))
+    write_config()
+
+    # The substitute models per-domain jobs and starts actual hosts directly, without launchd.
+    launchctl = bin_dir / 'launchctl'
+    launchctl.write_text(f'#!{sys.executable}\n' + r'''
 import json, os, signal, subprocess, sys, time, plistlib
 from pathlib import Path
 base = Path(os.environ['MACOS_APP_TEST_WORK'])
@@ -88,111 +166,164 @@ elif args[0] == 'bootstrap':
 else: raise RuntimeError('unexpected launchctl operation')
 jobs_file.write_text(json.dumps(jobs))
 ''')
-launchctl.chmod(0o755)
-# Real signing is always ad hoc; the shim provides an observable signer failure without keychain access.
-codesign = bin_dir / 'codesign'
-codesign.write_text(f'#!{sys.executable}\n' + r'''
-import os, subprocess, sys
+    launchctl.chmod(0o755)
+    # Pass-through codesign that records argv (to prove the password never appears) and can
+    # inject a signing failure without touching any keychain.
+    codesign = bin_dir / 'codesign'
+    codesign.write_text(f'#!{sys.executable}\n' + r'''
+import json, os, subprocess, sys
 from pathlib import Path
 base = Path(os.environ['MACOS_APP_TEST_WORK'])
 args = sys.argv[1:]
+with (base / 'codesign.log').open('a') as log: log.write(json.dumps({'argv': args, 'env': sorted(os.environ.items())}) + '\n')
 if '--sign' in args:
-    assert args[args.index('--sign') + 1] == '-'
     with (base / 'sign.log').open('a') as log: log.write('sign\n')
     if (base / 'sign-fail').exists():
-        print('errSecInternalComponent (test-injected locked signer)', file=sys.stderr)
+        print('test-injected signing failure', file=sys.stderr)
         sys.exit(1)
-if '-r-' in args and (base / 'dr-mismatch').exists():
-    print('designated => identifier "another.product"', file=sys.stderr)
-    sys.exit(0)
 sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
 ''')
-codesign.chmod(0o755)
-env = dict(os.environ, PATH=f'{bin_dir}:/usr/bin:/bin', MACOS_APP_TEST_WORK=str(work))
+    codesign.chmod(0o755)
+    env = dict(os.environ, PATH=f'{bin_dir}:/usr/bin:/bin', MACOS_APP_TEST_WORK=str(work))
 
-common = ['--config', str(config_file), '--test-ad-hoc', '--app-dir', str(app),
-          '--state', str(state), '--socket', sock, '--plist-dir', str(plists)]
-def call(action, *args, code=0, extra_env=None):
-    process = subprocess.run([str(ctl), action, *common, *map(str, args)], env=extra_env or env,
-                             capture_output=True, text=True)
-    assert process.returncode == code, (action, process.returncode, process.stdout, process.stderr)
-    lines = process.stdout.splitlines()
-    assert len(lines) == 1, process.stdout
-    return json.loads(lines[0])
+    common = ['--config', str(config_file), '--app-dir', str(app), '--state', str(state),
+              '--socket', sock, '--plist-dir', str(plists)]
+    def call(action, *args, code=0, secret=None):
+        fds = ()
+        if secret is not None:
+            read, write = os.pipe()
+            os.write(write, secret.encode() + b'\n')
+            os.close(write)
+            fds = (read,)
+            args = (*args, '--keychain-password-fd', str(read))
+        try:
+            process = subprocess.run([str(ctl), action, *common, *map(str, args)], env=env,
+                                     capture_output=True, text=True, pass_fds=fds, timeout=60)
+        except subprocess.TimeoutExpired:
+            sys.exit(f'ABORT: {action} hung; a keychain UI prompt may be pending. Stopping.')
+        finally:
+            for fd in fds: os.close(fd)
+        assert process.returncode == code, (action, process.returncode, process.stdout, process.stderr)
+        lines = process.stdout.splitlines()
+        assert len(lines) == 1, process.stdout
+        return json.loads(lines[0])
+    def install(desired_app, secret=password, *extra, code=0):
+        return call('install-host', '--desired', desired_app, '--keychain', keychain, *extra, code=code, secret=secret)
 
-def contents(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    def contents(path):
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    # The keychain database belongs to securityd, whose lock bookkeeping is not a ctl write.
+    def snapshots():
+        return {str(p.relative_to(work)): (p.lstat().st_mtime_ns, p.lstat().st_size)
+                for p in work.rglob('*') if p.name not in ['host.log', 'codesign.log', keychain.name]}
+    def log(path):
+        return path.read_text() if path.exists() else ''
 
-def snapshots():
-    return {str(p.relative_to(work)): (p.lstat().st_mtime_ns, p.lstat().st_size)
-            for p in work.rglob('*') if p.name not in ['host.log']}
-
-def log(path):
-    return path.read_text() if path.exists() else ''
-
-try:
-    result = call('install-host', '--desired', desired)
-    assert result['result']['changed']
+    assert install(desired)['result']['changed']
+    assert not unlocked(), 'keychain left unlocked after signing'
     assert call('select-generation', '--generation', first)['result']['consumerRootRequired']
     assert call('converge-launchd')['result']['changed']
     call('verify', '--desired', desired, '--generation', first)
+    print('PASS headless install: fd password, dedicated keychain, relocked afterwards', flush=True)
+
     before = snapshots()
     mutation_log = log(work / 'launchctl.log')
     signing_log = log(work / 'sign.log')
-    assert not call('install-host', '--desired', desired)['result']['changed']
+    # A previous run killed mid-window could leave the keychain unlocked; every run relocks first.
+    unlock_for_test()
+    assert not install(desired)['result']['changed']
+    assert not unlocked(), 'install-host did not relock at start'
     assert not call('select-generation', '--generation', first)['result']['changed']
     assert not call('converge-launchd')['result']['changed']
     call('verify', '--desired', desired, '--generation', first)
     assert snapshots() == before, 'no-op wrote files or changed mtimes'
     assert log(work / 'launchctl.log') == mutation_log
     assert log(work / 'sign.log') == signing_log
-    print('PASS no-op: no writes, signing or launchctl mutations (read-only print probes permitted)')
+    print('PASS no-op: no writes, signing or launchctl mutations; keychain relocked unconditionally', flush=True)
+
     call('select-generation', '--generation', second)
     assert not call('converge-launchd')['result']['changed']
     call('verify', '--desired', desired, '--generation', second)
     assert log(work / 'launchctl.log') == mutation_log
-    print('PASS generation-only swap: running host rereads pointer, no restart')
+    print('PASS generation-only swap: running host rereads pointer, no restart', flush=True)
 
     changed = work / 'changed.app'
     shutil.copytree(desired, changed)
     for path in changed.rglob('*'):
         if not path.is_symlink(): path.chmod(path.stat().st_mode | 0o200)
-    (changed / 'Contents/Resources/host-source-hash').write_text('test-changed-host-source')
-    with (changed / 'Contents/MacOS/macos-app-host').open('ab') as output: output.write(b'\0test changed host bytes\0')
+    changed_executable = changed / 'Contents/MacOS/macos-app-host'
+    subprocess.run(['/usr/bin/codesign', '--remove-signature', str(changed_executable)], check=True)
+    original_hash = (changed / 'Contents/Resources/host-source-hash').read_text().strip()
+    changed_hash = 'f' * 64
+    host_bytes = changed_executable.read_bytes()
+    assert original_hash.encode() in host_bytes
+    changed_executable.write_bytes(host_bytes.replace(original_hash.encode(), changed_hash.encode()))
+    (changed / 'Contents/Resources/host-source-hash').write_text(changed_hash)
     incumbent = contents(app / 'Contents/MacOS/macos-app-host')
+
+    def expect_signing_failure(category, *args, secret=password, keychain_path=keychain, auth_pending=False):
+        extra = ['--signing-auth-pending'] if auth_pending else ['--keychain', keychain_path]
+        result = call('install-host', '--desired', changed, *extra, *args, code=20,
+                      secret=None if auth_pending else secret)
+        assert result['error']['kind'] == 'signing-failed' and result['error']['category'] == category, result
+        assert contents(app / 'Contents/MacOS/macos-app-host') == incumbent
+        assert call('status')['result']['signingFailure']['category'] == category
+        assert not list(app.parent.glob('.*stage*')), 'failed stage left behind'
+    unlock_for_test()
+    expect_signing_failure('signing-auth-pending', auth_pending=True)
+    assert unlocked(), 'signing-auth-pending touched the keychain'
+    tool('/usr/bin/security', 'lock-keychain', str(keychain))
+    expect_signing_failure('keychain-missing', keychain_path=work / 'absent.keychain-db')
+    expect_signing_failure('unlock-failed', secret='wrong-password')
+    write_config(signer={'teamId': 'TEST', 'identity': 'identity absent from keychain'})
+    expect_signing_failure('identity-missing')
+    write_config(requirement=f'identifier "dev.example.synthetic-host" and certificate leaf = H"{"0" * 40}"')
+    expect_signing_failure('dr-mismatch')
+    write_config()
     (work / 'sign-fail').touch()
-    pending = call('install-host', '--desired', changed, code=20)
-    assert pending['error']['kind'] == 'pending-signing'
-    assert contents(app / 'Contents/MacOS/macos-app-host') == incumbent
-    assert call('status')['result']['pendingSigning'] is not None
+    expect_signing_failure('sign-failed')
     (work / 'sign-fail').unlink()
-    print('PASS signing failure: incumbent untouched, pending-signing exit 20')
-    (work / 'dr-mismatch').touch()
-    call('install-host', '--desired', changed, code=22)
-    assert contents(app / 'Contents/MacOS/macos-app-host') == incumbent
+    assert not unlocked()
+    login = Path.home() / 'Library/Keychains/login.keychain-db'
+    refused = call('install-host', '--desired', changed, '--keychain', login, code=64, secret='unused')
+    assert 'login keychain' in refused['error']['reason']
+    write_config(signer={'teamId': 'TEST', 'identity': '-'})
+    assert call('install-host', '--desired', changed, '--keychain', keychain, code=64, secret=password)['error']['kind'] == 'invalid-input'
+    write_config()
+    print('PASS signing failures keep the incumbent: signing-auth-pending (keychain untouched), '
+          'keychain-missing, unlock-failed, identity-missing, dr-mismatch, sign-failed; '
+          'login keychain and ad-hoc refused', flush=True)
+
+    write_config(requirement=f'identifier "dev.example.synthetic-host" and certificate leaf = H"{"0" * 40}"')
     call('verify', '--desired', desired, '--generation', second, code=22)
-    (work / 'dr-mismatch').unlink()
-    print('PASS exact designated requirement mismatch rejected')
-    installed = call('install-host', '--desired', changed)['result']
+    write_config()
+    print('PASS verify rejects an installed host whose DR differs from the declared requirement', flush=True)
+
+    installed = install(changed)['result']
     assert installed['changed'] and Path(installed['archive']).is_dir()
     assert contents(app / 'Contents/MacOS/macos-app-host') != incumbent
+    assert call('status')['result']['signingFailure'] is None
+    assert call('converge-launchd')['result']['changed']
+    call('verify', '--desired', changed, '--generation', second)
     call('rollback', '--restore-host')
     assert contents(app / 'Contents/MacOS/macos-app-host') == incumbent
     assert state.joinpath('current').readlink() == first
     call('verify', '--desired', desired, '--generation', first)
-    print('PASS changed host signed and atomically exchanged; rollback restored pointer and signed incumbent')
+    print('PASS changed host signed and atomically exchanged; rollback restored pointer and signed incumbent', flush=True)
+
+    calls = [json.loads(line) for line in log(work / 'codesign.log').splitlines()]
+    assert calls and all(password not in json.dumps(entry) for entry in calls)
+    print('PASS keychain password never appears in codesign argv or environment', flush=True)
 
     (work / 'gui-absent').touch()
-    config['session'] = 'gui-agent'
-    config_file.write_text(json.dumps(config))
+    write_config(session='gui-agent')
     before_log = log(work / 'launchctl.log')
     assert call('converge-launchd', code=21)['error']['kind'] == 'gui-absent'
     assert log(work / 'launchctl.log') == before_log
     assert call('status')['result']['session'] == 'background-only'
-    config['session'] = 'background-agent'
-    config_file.write_text(json.dumps(config))
+    write_config()
     assert call('status')['result']['launchd']['domain'] == f'user/{uid}'
-    print('PASS GUI-absent is explicit; background agent resolves user domain')
+    print('PASS GUI-absent is explicit; background agent resolves user domain', flush=True)
     (work / 'gui-absent').unlink()
 
     other = work / 'Other.app'
@@ -202,34 +333,27 @@ try:
     with (other / 'Contents/Info.plist').open('rb') as f: info = plistlib.load(f)
     info['CFBundleIdentifier'] = 'dev.example.other-host'
     with (other / 'Contents/Info.plist').open('wb') as f: plistlib.dump(info, f)
-    config['bundleId'] = 'dev.example.other-host'
-    config['launchd']['label'] = 'dev.example.other-host'
-    config_file.write_text(json.dumps(config))
+    config = dict(config, bundleId='dev.example.other-host',
+                  requirement=f'identifier "dev.example.other-host" and certificate leaf = H"{leaf}"',
+                  launchd=dict(config['launchd'], label='dev.example.other-host'))
+    write_config()
     other_app = work / 'apps/Other.app'
     common[common.index('--app-dir') + 1] = str(other_app)
     common[common.index('--state') + 1] = str(work / 'other-state')
     common[common.index('--socket') + 1] = str(work.relative_to(root) / 'other.sock')
-    call('install-host', '--desired', other)
+    install(other)
     call('select-generation', '--generation', first)
     call('converge-launchd')
     call('verify', '--desired', other, '--generation', first)
-    dr_a = subprocess.run(['/usr/bin/codesign', '-d', '-r-', str(app)], capture_output=True, text=True).stderr
-    dr_b = subprocess.run(['/usr/bin/codesign', '-d', '-r-', str(other_app)], capture_output=True, text=True).stderr
-    assert 'identifier "dev.example.synthetic-host"' in dr_a
-    assert 'identifier "dev.example.other-host"' in dr_b
-    assert app != other_app
+    dr_a = subprocess.run(['/usr/bin/codesign', '-d', '-r-', str(app)], capture_output=True, text=True).stdout
+    dr_b = subprocess.run(['/usr/bin/codesign', '-d', '-r-', str(other_app)], capture_output=True, text=True).stdout
+    assert 'identifier "dev.example.synthetic-host"' in dr_a and 'identifier "dev.example.other-host"' in dr_b
     jobs = json.loads((work / 'jobs.json').read_text())
     assert len({job['socket'] for job in jobs.values()}) == 2
     assert plists.joinpath('dev.example.synthetic-host.plist').is_file()
     assert plists.joinpath('dev.example.other-host.plist').is_file()
-    print('PASS two products: distinct DR, app directory, label and socket')
-
-    production = subprocess.run([str(example / 'ctl/bin/macos-app-ctl'), 'status', '--test-ad-hoc'], capture_output=True, text=True, env=env)
-    assert production.returncode == 64 and json.loads(production.stdout)['error']['kind'] == 'invalid-input'
-    print('PASS production wrapper refuses explicit test-only ad-hoc mode')
+    print('PASS two products: distinct DR, app directory, label and socket', flush=True)
 finally:
-    if (work / 'jobs.json').exists():
-        for job in json.loads((work / 'jobs.json').read_text()).values():
-            try: os.kill(job['pid'], signal.SIGTERM)
-            except ProcessLookupError: pass
+    cleanup()
+print('PASS throwaway keychain removed; user search list unchanged')
 print(f'PASS primitive integration; scratch: {work.relative_to(root)}')
