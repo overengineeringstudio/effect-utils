@@ -426,6 +426,8 @@ If CGWindowList is unavailable, it accepts only an audit session whose graphics
 and console-access flags are both absent, rechecked before and throughout every
 keychain child. It reports that evidence as a no-UI session, never as zero windows;
 an unavailable observer in a UI-capable session aborts before keychain operations.
+Observer and audit failures during a child run kill the entire child process
+group and reap its leader before aborting or deleting any throwaway keychain.
 The transient ctl anchor does not make the test identity trusted by the codesign
 child. In no-UI mode the harness proves that the fixture identity exists but is
 `CSSMERR_TP_NOT_TRUSTED`, runs refusal and non-signing cases, and explicitly
@@ -445,6 +447,9 @@ It reads back non-extractability, performs the password-authorized partition
 pin preparation, and runs the exact ACL guard and trust-chain preflight before
 spawning codesign. A missing or foreign ACL record refuses before preparation;
 other unsafe ACLs refuse before codesign. The password never reaches a child.
+Once the dedicated keychain path is validated, ctl opens and locks it before
+validating the remaining fixture inputs. Input failures therefore relock a
+previously interrupted signing window and pass through the checked final lock.
 The optional inventory is a JSON array of relative nested-code paths beneath
 the target. Entries are canonicalized and checked for containment, deduplicated,
 then signed deepest-first before the outer target, without `--deep`. Each

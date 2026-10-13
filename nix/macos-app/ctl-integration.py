@@ -90,10 +90,10 @@ libc.getaudit_addr.restype = ctypes.c_int
 def no_ui_session():
     audit = AuditSession()
     if libc.getaudit_addr(ctypes.byref(audit), ctypes.sizeof(audit)) != 0:
-        sys.exit('ABORT: unavailable window list and unreadable audit session')
+        raise RuntimeError('ABORT: unavailable window list and unreadable audit session')
     # SDK AU_SESSION_FLAG_HAS_GRAPHIC_ACCESS / HAS_CONSOLE_ACCESS.
     if audit.flags & (0x0010 | 0x2000):
-        sys.exit('ABORT: unavailable window list in a graphics/console-capable session')
+        raise RuntimeError('ABORT: unavailable window list in a graphics/console-capable session')
     return audit.flags
 def security_agent_windows():
     windows = core_graphics.CGWindowListCopyWindowInfo(1, 0)  # on-screen only
@@ -114,30 +114,71 @@ if agent_baseline not in (0, None):
     sys.exit('ABORT before keychain tests: SecurityAgent window baseline must be zero')
 print(f'SecurityAgent before: {agent_baseline}' if agent_baseline is not None else
       f'SecurityAgent before: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
-def watched(argv, terminate_when=None, timeout=60, **kwargs):
-    """Runs argv, killing its process group and aborting if a SecurityAgent window appears."""
-    if security_agent_windows() != agent_baseline:
-        sys.exit(f'ABORT before {argv[1]}: SecurityAgent window present')
+def watched(argv, terminate_when=None, timeout=60, observer=None, **kwargs):
+    """Every monitor failure tears down the reserved process group before unwinding."""
+    observe = observer or security_agent_windows
+    if observe() != agent_baseline:
+        raise RuntimeError(f'ABORT before {argv[1]}: SecurityAgent window present')
     process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                start_new_session=True, **kwargs)
     deadline = time.monotonic() + timeout
     terminated = False
-    while process.poll() is None:
-        if security_agent_windows() != agent_baseline or time.monotonic() > deadline:
-            process.send_signal(signal.SIGTERM)
-            try:
-                process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-            sys.exit(f'ABORT: {argv[1]} raised a SecurityAgent window or hung; a keychain prompt was requested. Stopping.')
-        if terminate_when is not None and terminate_when.exists() and not terminated:
-            process.send_signal(signal.SIGTERM)
-            terminated = True
-        time.sleep(0.1)
+    try:
+        # WNOWAIT reserves the leader PID/PGID until group teardown has completed.
+        while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+            if observe() != agent_baseline or time.monotonic() > deadline:
+                raise RuntimeError(f'ABORT: {argv[1]} changed the window observation or hung')
+            if terminate_when is not None and terminate_when.exists() and not terminated:
+                os.killpg(process.pid, signal.SIGTERM)
+                terminated = True
+            time.sleep(0.1)
+        if observe() != agent_baseline:
+            raise RuntimeError(f'ABORT: {argv[1]} changed the window observation')
+    except BaseException:
+        # Observer exceptions, audit failures and cancellation take the same path.
+        # Kill all descendants before reaping the leader or draining inherited pipes.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.communicate()
+        raise
+    # A successful leader must not leave descendants holding our pipes open either.
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
     stdout, stderr = process.communicate()
-    assert security_agent_windows() == agent_baseline, f'{argv[1]} changed SecurityAgent window observation'
     return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+
+def observer_failure_test():
+    """Real child, deterministic observer exception: it must be killed and reaped."""
+    pid_file = work / 'observer-child.pid'
+    def observe():
+        baseline = security_agent_windows()
+        if pid_file.exists():
+            raise RuntimeError('observer self-test failure')
+        return baseline
+    try:
+        watched([sys.executable, '-c',
+                 'import os,time; from pathlib import Path; '
+                 f'Path({str(pid_file)!r}).write_text(str(os.getpid())); time.sleep(60)'],
+                observer=observe)
+    except RuntimeError as error:
+        assert str(error) == 'observer self-test failure', error
+    else:
+        raise AssertionError('Observer failure did not abort the child')
+    pid = int(pid_file.read_text())
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        pass
+    else:
+        raise AssertionError('Observer failure left a child running or unreaped')
+    pid_file.unlink()
+    print('PASS observer exception kills and reaps the watched child before unwinding', flush=True)
+
+observer_failure_test()
 
 # Throwaway signing keychains; the password is test-only and may appear in test argv.
 search_list = tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout
@@ -353,6 +394,35 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     finally:
         record_path.write_text(json.dumps(record))
     print('PASS unpinned fixture key with foreign ACL record refuses before sentinel codesign starts', flush=True)
+    bad_inventory = work / 'bad-inventory.json'
+    bad_inventory.write_text('{}')
+    escaping_inventory = work / 'escaping-inventory.json'
+    (fixture / 'Contents/escaped').symlink_to(work, target_is_directory=True)
+    escaping_inventory.write_text(json.dumps(['Contents/escaped']))
+    fixture_inputs = [
+        ([], 64),
+        (['--certificate-sha1', 'bad'], 64),
+        (['--certificate-sha1', leaf], 64),
+        (['--certificate-sha1', leaf, '--target', work / 'absent.app'], 23),
+        (['--certificate-sha1', leaf, '--target', fixture], 64),
+        (['--certificate-sha1', leaf, '--target', fixture, '--requirement', 'not-a-requirement'], 23),
+        (['--certificate-sha1', leaf, '--target', fixture, '--requirement', fixture_requirement,
+          '--inventory', bad_inventory], 64),
+        (['--certificate-sha1', leaf, '--target', fixture, '--requirement', fixture_requirement,
+          '--inventory', escaping_inventory], 64),
+    ]
+    try:
+        for args, code in fixture_inputs:
+            unlock_for_test()
+            key_call('sign-fixture', keychain, *args, code=code)
+            assert not unlocked(), f'Fixture input refusal left the interrupted keychain unlocked: {args}'
+        unlock_for_test()
+        refused = key_call('sign-fixture', keychain, '--certificate-sha1', 'bad', code=20, failpoint='relock')
+        assert refused['error']['category'] == 'relock-failed', refused
+        assert not unlocked()
+    finally:
+        (fixture / 'Contents/escaped').unlink()
+    print('PASS fixture input failures relock interrupted K and report a checked final-lock failure', flush=True)
     # A CA-issued test leaf with no system anchor must fail before codesign; no K search-list
     # membership or system trust change is permitted. Self-signed test leaves use a per-evaluation
     # anchor in the feature build only.

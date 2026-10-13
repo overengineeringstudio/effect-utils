@@ -912,6 +912,8 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
 /// sorting by depth seals leaves before containers, never using codesign's `--deep`.
 pub(super) fn sign_fixture(ctl: &Ctl) -> Result<Value> {
     let path = dedicated_keychain(ctl)?;
+    let keychain = Keychain::open_locked(&path)?;
+    let result = (|| {
     let sha1 = ctl.arg("certificate-sha1")?;
     if sha1.len() != 40 || !sha1.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(fail(64, "invalid-input", "A certificate SHA1 is required"));
@@ -936,8 +938,6 @@ pub(super) fn sign_fixture(ctl: &Ctl) -> Result<Value> {
     inventory.sort_unstable_by(|a, b| b.components().count().cmp(&a.components().count()).then_with(|| a.cmp(b)));
     inventory.dedup();
     inventory.push(target.clone());
-    let keychain = Keychain::open_locked(&path)?;
-    let result = (|| {
         let password = Password::read(ctl.password_fd()?)?;
         let window = keychain.unlock(&password)?;
         let (key, _) = named_identity(&keychain, sha1)?;
