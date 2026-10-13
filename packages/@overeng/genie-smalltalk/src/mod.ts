@@ -599,15 +599,17 @@ export const DependsOnSchema = Schema.Struct({
 })
 const DependencyItem = Schema.Union([LocalId, DependsOnSchema])
 const DependencyInput = Schema.Union([DependencyItem, Schema.NonEmptyArray(DependencyItem)])
+const normalizeDependency = (
+  dependency: typeof DependencyItem.Type,
+): typeof DependsOnSchema.Type =>
+  typeof dependency === 'string' ? { step: dependency, state: 'completed' } : dependency
 const Dependencies = DependencyInput.pipe(
   Schema.decodeTo(Schema.NonEmptyArray(Schema.toType(DependsOnSchema)), {
     decode: SchemaGetter.transform((value) => {
       const values: readonly [typeof DependencyItem.Type, ...(typeof DependencyItem.Type)[]] =
         typeof value === 'string' || 'step' in value ? [value] : value
-      const normalize = (dependency: typeof DependencyItem.Type): typeof DependsOnSchema.Type =>
-        typeof dependency === 'string' ? { step: dependency, state: 'completed' } : dependency
       const [first, ...rest] = values
-      return [normalize(first), ...rest.map(normalize)] as const
+      return [normalizeDependency(first), ...rest.map(normalizeDependency)] as const
     }),
     encode: SchemaGetter.transform((value): typeof DependencyInput.Type => value),
   }),
@@ -1844,18 +1846,18 @@ const authoredStepReferences = (
       ]),
 ]
 const authoredStepWire = (value: AuthoredStep): typeof StepSchema.Encoded => {
-  const { goal, exec, ...rest } = value
+  const { goal, exec: stepExec, ...rest } = value
   let wireGoal: typeof Goal.Encoded | undefined
   if (goal !== undefined) {
     const values: readonly [AuthoredText, ...AuthoredText[]] =
       typeof goal === 'string' || 'kind' in goal ? [goal] : goal
-    const [first, ...rest] = values
-    wireGoal = [templateText(first), ...rest.map(templateText)]
+    const [first, ...remainingGoals] = values
+    wireGoal = [templateText(first), ...remainingGoals.map(templateText)]
   }
   return {
     ...rest,
     ...(wireGoal === undefined ? {} : { goal: wireGoal }),
-    ...(exec === undefined ? {} : { exec: authoredExecWire(exec) }),
+    ...(stepExec === undefined ? {} : { exec: authoredExecWire(stepExec) }),
   }
 }
 const authoredExhaustionWire = (value: NonNullable<LoopInput['onExhausted']>): Exhaustion => {
