@@ -220,6 +220,20 @@ Domain resolution, for `auto` and for explicit `--domain` alike:
 Any other combination is `invalid-input` before any `launchctl` call. There is
 no fallback to broader `launchctl` operations.
 
+`converge-launchd` derives `LimitLoadToSessionType` from the kind and resolved
+domain, never from consumer extras: `gui-agent` in `gui/<uid>` gets `Aqua`;
+`background-agent` in `user/<uid>` gets `Background`, and in `gui/<uid>` gets
+`Aqua`; `system-daemon` has no session-type key. Any consumer-provided value
+is replaced (or removed for a system daemon), so it cannot override this
+contract. Without this key, launchd defaults an agent to the Aqua session and
+cannot bootstrap it into a Background user domain.
+
+A restart (`bootout` then `bootstrap`) waits up to 10 seconds until
+`launchctl print` stops reporting the label after `bootout`. launchd can still
+be tearing the job down when `bootout` returns, and an immediate `bootstrap` of
+the same label then fails with `5: Input/output error`. If the label is still
+loaded at the deadline, the step fails with exit 23 (`operation-failed`).
+
 Each run prints exactly one JSON object on stdout: `{"ok":true,"primitive",
 "result"}` or `{"ok":false,"error":{"kind","category","reason"}}`.
 
@@ -407,3 +421,40 @@ self-issued leaf as an anchor only for its ephemeral `SecTrust` evaluation,
 never adding system trust or changing a keychain search list. A CA-issued
 test leaf without a system anchor is a negative case (`chain-incomplete`,
 no codesign).
+
+### Opt-in real-launchd smoke
+
+From a Darwin checkout, `nix run .#macos-app-launchd-smoke --option builders
+'' --option max-jobs 2` runs a feature-gated Rust acceptance runner against
+the real system `launchctl`. This is a live, user-level smoke, not the fake
+launchctl integration suite: macOS may show a background-item notification.
+It never uses sudo or launches an application window.
+
+The runner refuses an existing `dev.overeng.macos-app.smoke` job. All bundles,
+plists, generation pointers, GC roots and the partition-capable test keychain
+live beneath its private `tmp/` directory; the password travels through an
+inherited pipe, not argv, environment or a file. The test-only self-signed
+certificate does not change system trust, the login keychain or the search
+list. A zero-SecurityAgent-window pre-call guard and live tripwire abort the
+run on any signing prompt.
+Only public UID-adjusted generation manifests are imported with `nix-store
+--add`; selection roots their immutable store paths. No signing material
+enters the store.
+
+It installs/selects/converges/verifies a background agent in `user/<uid>`,
+then checks wire status against both the selected generation and the domain's
+real audit-session API result. It proves generation-only switching preserves
+PID, signed host bytes and cdhash; no-op convergence preserves filesystem
+contents/inodes/mtimes; generation rollback works; a host metadata change
+re-signs; and host rollback restores the original signed bytes and generation.
+When a graphic-access GUI domain exists it repeats with `gui-agent` in
+`gui/<uid>`, using the same windowless `LSBackgroundOnly` generic host;
+otherwise GUI coverage is explicitly skipped.
+The runner passes an explicit `--domain user` or `--domain gui`; it does not
+use background-agent's auto resolution, which prefers GUI on interactive hosts.
+
+After the initial absent-label guards, success and failure cleanup boot out
+the smoke label in both existing user and GUI domains, independent of the
+run's returned domain. Both `launchctl print` checks must report exit 113.
+Cleanup removes the plist, bundle, state, socket and keychain. Scratch
+ownership is logged in `tmp/TEMPORARY_FILES.md`.

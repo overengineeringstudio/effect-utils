@@ -78,6 +78,20 @@ fn resolve_domain(kind: &str, requested: &str, session: &str, uid: u32) -> Resul
     }
 }
 
+/// Session loading is contract-owned, not a consumer extra: user domains are Background,
+/// GUI domains are Aqua, and system daemons have no agent session restriction.
+fn apply_launchd_session_type(object: &mut serde_json::Map<String, Value>, kind: &str, domain: &str) -> Result<()> {
+    let session = match (kind, domain) {
+        ("gui-agent" | "background-agent", domain) if domain.starts_with("gui/") => Some("Aqua"),
+        ("background-agent", domain) if domain.starts_with("user/") => Some("Background"),
+        ("system-daemon", "system") => None,
+        _ => return Err(fail(64, "invalid-input", format!("Domain {domain} is not allowed for {kind}"))),
+    };
+    object.remove("LimitLoadToSessionType");
+    if let Some(session) = session { object.insert("LimitLoadToSessionType".into(), json!(session)); }
+    Ok(())
+}
+
 // A crate root's `mod` resolves beside it, where Cargo would also treat a file as a binary.
 #[path = "macos-app-ctl/keys.rs"]
 mod keys;
@@ -478,6 +492,7 @@ impl Ctl {
         let mut data = self.config["launchd"].clone();
         let object = data.as_object_mut().ok_or_else(|| fail(64, "invalid-input", "launchd must be object"))?;
         object.remove("label"); object.remove("keepAlive"); object.remove("runAtLoad");
+        apply_launchd_session_type(object, self.field("session")?, &domain)?;
         object.insert("Label".into(), json!(self.label()?)); object.insert("Program".into(), json!(program));
         object.insert("ProgramArguments".into(), json!([program, "serve", "--socket", socket, "--generation-pointer", state.join("current")]));
         object.insert("KeepAlive".into(), self.config["launchd"]["keepAlive"].clone()); object.insert("RunAtLoad".into(), self.config["launchd"]["runAtLoad"].clone());
@@ -498,7 +513,16 @@ impl Ctl {
             checked("launchctl", &["kickstart", "-k", &target])?;
             return Ok(json!({"changed": true, "domain": domain, "restart": "socket-mode"}));
         }
-        if loaded { checked("launchctl", &["bootout", &target])?; }
+        if loaded {
+            checked("launchctl", &["bootout", &target])?;
+            // launchd can still be tearing the job down when bootout returns; bootstrapping the
+            // same label then fails with EIO (5). Wait, bounded, until print reports it gone.
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while self.job(&domain)?.0 {
+                if Instant::now() >= deadline { return Err(fail(23, "operation-failed", format!("{target} still loaded 10s after bootout"))); }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
         if !same { fs::create_dir_all(&dir)?; atomic_write(&path, &bytes)?; }
         checked("launchctl", &["bootstrap", &domain, text(&path)?])?;
         fs::create_dir_all(&state)?;
@@ -677,6 +701,26 @@ mod tests {
         assert_eq!(code("background-agent", "system", "gui"), Some(64));
         assert_eq!(ok("system-daemon", "auto", "no-session").as_deref(), Some("system"));
         assert_eq!(code("system-daemon", "user", "gui"), Some(64));
+    }
+    #[test]
+    fn launchd_session_type_is_derived_and_cannot_be_overridden() {
+        for (kind, domain, expected) in [
+            ("gui-agent", "gui/501", Some("Aqua")),
+            ("background-agent", "user/501", Some("Background")),
+            ("background-agent", "gui/501", Some("Aqua")),
+            ("system-daemon", "system", None),
+        ] {
+            let mut data = json!({"LimitLoadToSessionType": ["Wrong"], "ProcessType": "Background"});
+            let object = data.as_object_mut().unwrap();
+            apply_launchd_session_type(object, kind, domain).unwrap_or_else(|_| panic!("valid session domain"));
+            assert_eq!(object.get("LimitLoadToSessionType"), expected.map(|value| json!(value)).as_ref());
+            assert_eq!(object["ProcessType"], "Background");
+            let rendered = plist(&data).unwrap_or_else(|_| panic!("valid plist"));
+            assert_eq!(rendered.contains("<key>LimitLoadToSessionType</key>"), expected.is_some());
+        }
+        let mut object = serde_json::Map::new();
+        assert!(apply_launchd_session_type(&mut object, "gui-agent", "user/501").is_err());
+        assert!(apply_launchd_session_type(&mut object, "background-agent", "system").is_err());
     }
     #[test]
     fn plist_encodes_data_not_markup() {

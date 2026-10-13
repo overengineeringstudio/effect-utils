@@ -137,6 +137,55 @@ let
   ctlIntegration = pkgs.writeShellScriptBin "macos-app-ctl-integration" ''
     exec ${pkgs.python3}/bin/python3 "$PWD/nix/macos-app/ctl-integration.py" "$@"
   '';
+  smokeProduct =
+    text: displayName:
+    mkMacosApp {
+      name = "SmokeHost";
+      bundleId = "dev.overeng.macos-app.smoke";
+      inherit displayName;
+      signer = {
+        teamId = "TEST";
+        identity = "Test-only smoke identity";
+      };
+      session = "background-agent";
+      launchd.label = "dev.overeng.macos-app.smoke";
+      statusAllowedUids = [ 501 ];
+      actions.echo = {
+        executable = pkgs.writeShellScript "smoke-payload" "printf '%s\\n' '${text}'";
+        allowedUids = [ 501 ];
+        timeoutMs = 1000;
+      };
+    };
+  smokeFirst = smokeProduct "first" "Launchd Smoke";
+  smokeSecond = smokeProduct "second" "Launchd Smoke";
+  smokeChanged = smokeProduct "first" "Launchd Smoke Changed Host";
+  smokeAssets = pkgs.linkFarm "macos-app-launchd-smoke-assets" [
+    {
+      name = "primitives";
+      path = testPrimitives;
+    }
+    {
+      name = "hostApp";
+      path = smokeFirst.hostApp;
+    }
+    {
+      name = "changedHostApp";
+      path = smokeChanged.hostApp;
+    }
+    {
+      name = "generation";
+      path = smokeFirst.generation;
+    }
+    {
+      name = "secondGeneration";
+      path = smokeSecond.generation;
+    }
+  ];
+  launchdSmoke = pkgs.writeShellScriptBin "macos-app-launchd-smoke" ''
+    # Deliberately real system launchctl/codesign, never integration PATH shims.
+    export PATH="/usr/bin:/bin:${pkgs.nix}/bin"
+    exec ${testPrimitives}/bin/macos-app-launchd-smoke ${smokeAssets}
+  '';
 in
 {
   inherit
@@ -144,6 +193,7 @@ in
     check
     integration
     ctlIntegration
+    launchdSmoke
     ;
   inherit (first) primitives;
 }
