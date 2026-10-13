@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
-import { Effect, FileSystem, Option, Schema } from 'effect'
+import { Cause, Effect, Exit, FileSystem, Option, Schema } from 'effect'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -694,6 +694,51 @@ export default packageJson({
             'external.ts',
           ),
         )
+      }, Effect.provide(TestLayer)),
+    )
+
+    Vitest.it.effect(
+      'fails actionably for an unavailable locked commit instead of using mutable host state',
+      Effect.fnUntraced(function* () {
+        const lockedCommit = '0123456789abcdef0123456789abcdef01234567'
+        const store = path.join(tempDir, 'store')
+        process.env[MEGAREPO_STORE_ENV] = store
+        yield* writeFile(
+          path.join(tempDir, 'megarepo.lock'),
+          toJson({
+            members: {
+              library: {
+                url: 'https://github.com/fixture/library',
+                ref: 'main',
+                commit: lockedCommit,
+              },
+            },
+          }),
+        )
+        yield* writeFile(path.join(store, 'github.com/fixture/library/refs/heads/main/mod.ts'), '')
+        yield* writeFile(path.join(tempDir, 'repos/library/mod.ts'), '')
+        const importerPath = path.join(tempDir, 'config.genie.ts')
+        const message = `Lock source not materialized: member library, commit ${lockedCommit}`
+        expect(() =>
+          resolveImportMapSpecifierForImporterSync({
+            specifier: '#mr/library/mod.ts',
+            importerPath,
+          }),
+        ).toThrow(message)
+        expect(() =>
+          resolveImportMapSpecifierForImporterSync({
+            specifier: '#mr/library/mod.ts',
+            importerPath,
+          }),
+        ).toThrow('mr apply --worktree-mode commit --lock-sync off')
+        const result = yield* Effect.exit(
+          resolveImportMapSpecifierForImporter({
+            specifier: '#mr/library/mod.ts',
+            importerPath,
+          }),
+        )
+        expect(Exit.isFailure(result)).toBe(true)
+        if (Exit.isFailure(result) === true) expect(Cause.pretty(result.cause)).toContain(message)
       }, Effect.provide(TestLayer)),
     )
   })

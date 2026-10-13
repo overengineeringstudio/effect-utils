@@ -10,6 +10,9 @@
  * @module
  */
 
+import { mkdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import type { PlaywrightTestConfig } from '@playwright/test'
 export type { PlaywrightTestConfig }
 
@@ -119,11 +122,18 @@ export const createPlaywrightConfig = async (
 
   const url = `http://127.0.0.1:${port}`
   const resolvedCommand = command.replace(/\{\{port\}\}/g, String(port))
+  const isCI = process.env.CI !== undefined
+  const networkEvidenceDir = resolve('test-results/network')
+  if (isCI === true) {
+    mkdirSync(networkEvidenceDir, { recursive: true })
+  }
 
   return {
     testDir,
     testMatch,
     testIgnore,
+    // Playwright clears outputDir before running; preserve suite-wide network logs beside it.
+    ...(isCI === true ? { outputDir: resolve('test-results/tests') } : {}),
     reporter: process.env.CI !== undefined ? 'line' : 'list',
 
     timeout,
@@ -137,9 +147,19 @@ export const createPlaywrightConfig = async (
       baseURL: url,
       headless: !process.env.PW_HEADFUL,
       viewport: { width: 1280, height: 800 },
-      trace: process.env.CI !== undefined ? 'on-first-retry' : 'retain-on-failure',
-      screenshot: 'off',
+      trace: 'retain-on-failure',
+      screenshot: 'only-on-failure',
       video: 'off',
+      ...(isCI === true
+        ? {
+            launchOptions: {
+              args: [
+                `--log-net-log=${networkEvidenceDir}/chromium-netlog.json`,
+                '--net-log-capture-mode=Default',
+              ],
+            },
+          }
+        : {}),
     },
 
     webServer: {

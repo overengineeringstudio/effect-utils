@@ -49,6 +49,27 @@ Canonical JSON descriptors hash the canonical UTF-8 JSON bytes and stamp `codec:
 
 Descriptor APIs are the base layer. They may be used independently when a caller only needs stable identity or verification.
 
+### Byte engine selection
+
+The synchronous descriptor/hash helper signatures remain unchanged. Pure top-level helpers use the JavaScript implementation. Effect store writes and verification honor an optional `ContentAddressEngine` service; absent a layer, they retain the existing JavaScript behavior.
+
+`ContentAddressEngine.layerJs` selects JavaScript. For a generated `ContentAddressCore` service package built by `//rust/content-address-service:service`, select Rust with:
+
+```ts
+const engine = ContentAddressEngine.layerRust(ContentAddressCore).pipe(
+  Layer.provide(ContentAddressCore.layerWasm.node()),
+)
+// Replace layerWasm.node() with layerNative.node() or the corresponding Bun static.
+```
+
+The public TypeScript package does not depend on a generated Rust product. Applications supply the generated service tag and its selected runtime layer; the parity harness stages that service beside the admitted TypeScript output at the Rust service boundary.
+
+The service exposes the same synchronous hashing/descriptor functions, an incremental byte `Sink` (`hasher()`), and filesystem `hashTree(root)`. Canonical JSON and manifests remain Effect-owned. `hashTree` uses the existing action-runner protocol in `rust/buck2-tools/core/src/fingerprint.rs`: preorder, UTF-16 sibling ordering, root path `.`, permission bits `0o7777`, u32 big-endian UTF-8 text frames for path/mode/kind and symlink target, and unframed file bytes. This is distinct from the editor-view `effect-utils/tree-digest/v1` protocol.
+
+`ContentDescriptor` in `src/schema.ts` is the contract authority. `src/generate-contract.ts` compiles that ordinary Effect Schema directly into `rust/content-address-contract`, preserving numeric safe-integer bounds, named string constraints and optional-key semantics. The compiler emits Rust validation and schemars metadata from one IR, using explicit Cargo workspace mode; there is no separately authored decimal projection or schema implementation. The Effect engine constructs public descriptors from the Rust-computed digest and validates metadata with the original Effect schema, preserving existing JavaScript-string semantics. Regenerate with `bun packages/@overeng/content-address/src/generate-contract.ts`, then run the ordinary Genie projections.
+
+The Rust async tree export receives an abortable host Source for bounded byte reads; filesystem traversal and symlink discovery remain in Effect. It requests at most 256 KiB at an explicit offset, accepts short reads until an empty EOF response, and cooperatively yields after each chunk so the host can deliver cancellation. Shared deterministic vectors and real-tree/store/manifest checks run through `//rust/content-address-service:engine-parity-node` and `:engine-parity-bun`, using the actual typed generated service staged by the Buck parity rule. The runner exercises wasm/native products against JS, including public metadata semantics and mode/symlink identity, and records directional 1 KiB/1 MiB/100 MiB and tree benchmarks with runtime version and host load.
+
 ## Object Paths
 
 Object paths are derived mechanically from the digest:
@@ -165,4 +186,10 @@ An `otel-scrape` run should write one content-addressed manifest for the run's r
 
 ## Open Design Questions
 
-None.
+### DQ1: Effect contract and Rust byte engine
+
+The planned split keeps Effect Schema as the sole owner of the descriptor contract and moves byte operations into a shared Rust core. Rust types are generated from Effect Schema via JSON Schema, not hand-written mirrors; shared accept/reject vectors run on both sides to establish parity.
+
+The Rust byte engine is exposed through a reusable Effect/Rust interop foundation, with wasm as the default delivery mechanism. The foundation remains a draft under experimentation, not a settled API.
+
+Resolve this question with an interop experiment that demonstrates generated descriptor types and shared-vector parity, byte-engine access through Effect Layers on the supported runtimes, and resource/lifecycle composition when multiple Rust cores are loaded in one application. Runtime constructors, streaming/error semantics, and any measured need for native delivery remain open.

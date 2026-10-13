@@ -1,0 +1,19 @@
+[cells]
+  root = .
+  prelude = prelude
+
+[buildfile]
+  name = BUCK
+
+[parser]
+  target_platform_detector_spec = target:root//...->root//:target
+
+[build]
+  execution_platforms = root//:platforms
+
+[buck2]
+  digest_algorithms = SHA256
+
+[buck2_re_client]
+  tls = true
+  http_headers = x-nsc-ingress-auth:Bearer $NS_RE_TOKEN

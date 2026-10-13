@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Cause, Effect, Exit, Option, Schema } from 'effect'
+import { Cause, Deferred, Effect, Exit, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
@@ -22,8 +22,13 @@ import {
   updateLockedMember,
   writeLockFile,
 } from '../core/lock.ts'
+import { generateSchema, generateVscode } from '../generators/mod.ts'
+import { StoreLock } from '../store/store-lock.ts'
+import { makeStoreLayer } from '../store/store.ts'
+import { collectSyncErrors } from '../sync/mod.ts'
 import { MegarepoSyncTree, SyncErrorItem } from '../sync/schema.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
+import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import {
   addCommit,
   createRepo,
@@ -37,6 +42,7 @@ import {
   type StoreFixtureResult,
 } from '../test-utils/store-setup.ts'
 import { makeCanonicalTempDirectoryScoped } from '../test-utils/temp-root.ts'
+import { syncMegarepo } from './commands/engine.ts'
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 
@@ -210,6 +216,45 @@ const runFetchApplyCommand = ({
   args?: ReadonlyArray<string>
   env?: Record<string, string>
 }) => runMrCommand({ cwd, command: ['fetch', '--apply'], args, env })
+
+/**
+ * A store repo at `<repoDir>` whose `.bare` HEAD (default branch) is `main`, with a real
+ * worktree at `refs/<kind>/<ref>/`: `heads` checks out branch `<ref>`, other kinds detach.
+ * The canonical-mutation guard proves author ownership from this Git metadata.
+ */
+const makeStoreWorktree = ({
+  repoDir,
+  kind,
+  ref,
+}: {
+  repoDir: string
+  kind: 'heads' | 'tags' | 'commits'
+  ref?: string
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const source = EffectPath.unsafe.absoluteDir(`${repoDir}.source/`)
+    yield* fs.makeDirectory(source, { recursive: true })
+    yield* initGitRepo(source)
+    yield* fs.writeFileString(`${source}README.md`, '# store repo\n')
+    yield* addCommit({ repoPath: source, message: 'Initial commit' })
+    yield* runGitCommand(source, 'branch', '-M', 'main')
+    const bare = EffectPath.unsafe.absoluteDir(`${repoDir}/.bare/`)
+    yield* runGitCommand(source, 'clone', '--bare', source, bare)
+    yield* runGitCommand(bare, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+    const worktreeRef = ref ?? (yield* runGitCommand(bare, 'rev-parse', 'HEAD')).trim()
+    const worktree = `${repoDir}/refs/${kind}/${worktreeRef}`
+    yield* fs.makeDirectory(path.dirname(worktree), { recursive: true })
+    yield* runGitCommand(
+      bare,
+      ...(kind !== 'heads'
+        ? ['worktree', 'add', '--detach', worktree, 'HEAD']
+        : worktreeRef === 'main'
+          ? ['worktree', 'add', worktree, 'main']
+          : ['worktree', 'add', '-b', worktreeRef, worktree, 'HEAD']),
+    )
+    return EffectPath.unsafe.absoluteDir(`${worktree}/`)
+  })
 
 const createCommitRemnantFixture = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
@@ -1059,6 +1104,723 @@ describe('--all sync mode', () => {
   })
 })
 
+/** Bare objects are warm, but every canonical commit worktree and member mount is cold. */
+const createColdCanonicalRecursionFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const store = yield* createStoreFixture([
+      { host: 'example.com', owner: 'acme', repo: 'child' },
+      { host: 'example.com', owner: 'acme', repo: 'grandchild' },
+      { host: 'example.com', owner: 'acme', repo: 'leaf' },
+    ])
+    const bare = (name: string) => {
+      const barePath = store.bareRepoPaths[`example.com/acme/${name}`]
+      if (barePath === undefined) throw new Error(`Missing bare repo for ${name}`)
+      return barePath
+    }
+    const leafCommit = yield* runGitCommand(bare('leaf'), 'rev-parse', 'main')
+    const makeParent = (memberName: string, commit: string) =>
+      createWorkspaceWithLock({
+        members: { [memberName]: `https://example.com/acme/${memberName}#main` },
+        lockEntries: {
+          [memberName]: {
+            url: `https://example.com/acme/${memberName}`,
+            ref: 'main',
+            commit,
+          },
+        },
+      })
+    const { workspacePath: grandchildSource } = yield* makeParent('leaf', leafCommit)
+    const grandchildCommit = yield* runGitCommand(grandchildSource, 'rev-parse', 'HEAD')
+    yield* runGitCommand(
+      grandchildSource,
+      'push',
+      '--force',
+      bare('grandchild'),
+      'HEAD:refs/heads/main',
+    )
+    const { workspacePath: childSource } = yield* makeParent('grandchild', grandchildCommit)
+    const childCommit = yield* runGitCommand(childSource, 'rev-parse', 'HEAD')
+    yield* runGitCommand(childSource, 'push', '--force', bare('child'), 'HEAD:refs/heads/main')
+    const { workspacePath } = yield* makeParent('child', childCommit)
+    const canonicalPath = (name: string, commit: string) =>
+      EffectPath.ops.join(
+        store.storePath,
+        EffectPath.unsafe.relativeDir(`example.com/acme/${name}/refs/commits/${commit}/`),
+      )
+    const childPath = canonicalPath('child', childCommit)
+    const grandchildPath = canonicalPath('grandchild', grandchildCommit)
+    const leafPath = canonicalPath('leaf', leafCommit)
+    for (const target of [childPath, grandchildPath, leafPath]) {
+      expect(yield* fs.exists(target)).toBe(false)
+    }
+    return {
+      store,
+      workspacePath,
+      childPath,
+      grandchildPath,
+      leafPath,
+      childCommit,
+      grandchildCommit,
+      leafCommit,
+      childSource,
+      grandchildSource,
+    }
+  })
+
+describe('apply --all canonical recursion', () => {
+  it.effect(
+    'diamond apply waits for shared commit freshness publication before a second branch recurses',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createColdCanonicalRecursionFixture()
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: {
+            left: 'https://example.com/acme/child#main',
+            right: fixture.childSource,
+          },
+          lockEntries: {
+            left: {
+              url: 'https://example.com/acme/child',
+              ref: 'main',
+              commit: fixture.childCommit,
+            },
+          },
+        })
+        const publishing = yield* Deferred.make<void>()
+        const observerArrived = yield* Deferred.make<void>()
+        let publicationBlocked = false
+        let sharedLockVisits = 0
+        let observedBeforePublication = false
+        // The old fast path reaches authorization before the creator publishes.
+        // The fixed path instead joins the creator's worktree lock.
+        const createdWorktrees = new (class extends Set<string> {
+          override has(key: string) {
+            const present = super.has(key)
+            if (key === fixture.grandchildPath.slice(0, -1) && present === false) {
+              observedBeforePublication = true
+              Deferred.doneUnsafe(observerArrived, Effect.void)
+            }
+            return present
+          }
+        })()
+        const controlledFs: FileSystem.FileSystem = {
+          ...fs,
+          realPath: (target) =>
+            Effect.gen(function* () {
+              if (target === `${workspacePath}repos/right/`) yield* Deferred.await(publishing)
+              const physical = yield* fs.realPath(target)
+              if (target === fixture.grandchildPath && publicationBlocked === false) {
+                publicationBlocked = true
+                yield* Deferred.succeed(publishing, undefined)
+                yield* Deferred.await(observerArrived)
+              }
+              return physical
+            }),
+        }
+        const result = yield* Effect.gen(function* () {
+          const storeLock = yield* StoreLock
+          return yield* syncMegarepo({
+            megarepoRoot: workspacePath,
+            createdWorktrees,
+            options: {
+              mode: 'apply',
+              dryRun: false,
+              force: false,
+              all: true,
+              only: undefined,
+              skip: undefined,
+              gitProtocol: 'https',
+              createBranches: false,
+              commitMode: true,
+              lockSyncMode: 'off',
+            },
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, controlledFs),
+            Effect.provideService(StoreLock, {
+              ...storeLock,
+              withWorktreeLock: (key) => (effect) =>
+                Effect.gen(function* () {
+                  if (key.replace(/\/$/, '') === fixture.grandchildPath.slice(0, -1)) {
+                    sharedLockVisits++
+                    if (sharedLockVisits === 2) yield* Deferred.succeed(observerArrived, undefined)
+                  }
+                  return yield* storeLock.withWorktreeLock(key)(effect)
+                }),
+            }),
+          )
+        }).pipe(Effect.provide(makeStoreLayer({ basePath: fixture.store.storePath })))
+        expect(publicationBlocked).toBe(true)
+        expect(collectSyncErrors(result)).toEqual([])
+        expect(observedBeforePublication).toBe(false)
+        expect(sharedLockVisits).toBe(2)
+        const left = `${workspacePath}repos/left/repos/grandchild`
+        const right = `${workspacePath}repos/right/repos/grandchild`
+        expect(yield* fs.realPath(left)).toBe(fixture.grandchildPath.slice(0, -1))
+        expect(yield* fs.realPath(right)).toBe(fixture.grandchildPath.slice(0, -1))
+        expect(yield* fs.realPath(`${left}/repos/leaf`)).toBe(fixture.leafPath.slice(0, -1))
+        expect(createdWorktrees.has(fixture.grandchildPath.slice(0, -1))).toBe(true)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  it.effect(
+    'cold apply --all --lock-sync off materializes nested canonical commit worktrees with zero errors',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createColdCanonicalRecursionFixture()
+        const result = yield* runApplyCommand({
+          cwd: fixture.workspacePath,
+          args: ['--output', 'json', '--all', '--lock-sync', 'off'],
+          env: {
+            CI: 'true',
+            MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+          },
+        })
+        expect(result.stdout).not.toContain('PermissionDenied')
+        const Output = Schema.TaggedStruct('Success', {
+          syncErrorCount: Schema.Finite,
+          syncErrors: Schema.Array(SyncErrorItem),
+          syncTree: MegarepoSyncTree,
+        })
+        const out = yield* Schema.decodeEffect(Schema.fromJsonString(Output))(result.stdout.trim())
+        expect(Exit.isSuccess(result.exit)).toBe(true)
+        expect(result.exitCode).toBe(0)
+        expect(out.syncErrorCount).toBe(0)
+        expect(out.syncErrors).toEqual([])
+        expect(out.syncTree.results).toEqual([
+          expect.objectContaining({
+            name: 'child',
+            status: 'applied',
+            commit: fixture.childCommit,
+          }),
+        ])
+        expect(out.syncTree.nestedResults).toHaveLength(1)
+        const childTree = out.syncTree.nestedResults[0]
+        expect(childTree?.results).toEqual([
+          expect.objectContaining({
+            name: 'grandchild',
+            status: 'applied',
+            commit: fixture.grandchildCommit,
+          }),
+        ])
+        expect(childTree?.nestedResults).toHaveLength(1)
+        expect(childTree?.nestedResults[0]?.results).toEqual([
+          expect.objectContaining({ name: 'leaf', status: 'applied', commit: fixture.leafCommit }),
+        ])
+        const mounts = [
+          [fixture.workspacePath, 'child', fixture.childPath, fixture.childCommit],
+          [fixture.childPath, 'grandchild', fixture.grandchildPath, fixture.grandchildCommit],
+          [fixture.grandchildPath, 'leaf', fixture.leafPath, fixture.leafCommit],
+        ] as const
+        for (const [root, name, target, commit] of mounts) {
+          const mount = EffectPath.ops.join(root, EffectPath.unsafe.relativeDir(`repos/${name}/`))
+          expect(yield* fs.realPath(mount)).toBe(target.slice(0, -1))
+          expect(yield* runGitCommand(mount, 'rev-parse', 'HEAD')).toBe(commit)
+        }
+        for (const [source, target] of [
+          [fixture.childSource, fixture.childPath],
+          [fixture.grandchildSource, fixture.grandchildPath],
+        ] as const) {
+          for (const filename of [CONFIG_FILE_NAME_JSON, LOCK_FILE_NAME]) {
+            expect(
+              yield* fs.readFileString(
+                EffectPath.ops.join(target, EffectPath.unsafe.relativeFile(filename)),
+              ),
+            ).toBe(
+              yield* fs.readFileString(
+                EffectPath.ops.join(source, EffectPath.unsafe.relativeFile(filename)),
+              ),
+            )
+          }
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  it.effect(
+    'apply --all --lock-sync off denies recursion into a preexisting shared canonical commit worktree without mutation',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createColdCanonicalRecursionFixture()
+        const childBare = fixture.store.bareRepoPaths['example.com/acme/child']
+        if (childBare === undefined) throw new Error('Missing child bare repo')
+        yield* fs.makeDirectory(path.dirname(fixture.childPath.slice(0, -1)), { recursive: true })
+        yield* runGitCommand(
+          childBare,
+          'worktree',
+          'add',
+          '--detach',
+          fixture.childPath,
+          fixture.childCommit,
+        )
+        const sentinelPath = EffectPath.ops.join(
+          fixture.childPath,
+          EffectPath.unsafe.relativeFile('shared-sentinel.bin'),
+        )
+        const sentinel = new Uint8Array([0, 255, 17, 10, 99])
+        yield* fs.writeFile(sentinelPath, sentinel)
+        const beforeFiles = yield* Effect.forEach(
+          [CONFIG_FILE_NAME_JSON, LOCK_FILE_NAME],
+          (filename) =>
+            fs.readFileString(
+              EffectPath.ops.join(fixture.childPath, EffectPath.unsafe.relativeFile(filename)),
+            ),
+        )
+        const beforeEntries = yield* fs.readDirectory(fixture.childPath)
+        const beforeWorktrees = yield* runGitCommand(childBare, 'worktree', 'list', '--porcelain')
+        const sharedWorkspace = yield* createWorkspaceWithLock({
+          members: { child: 'https://example.com/acme/child#main' },
+          lockEntries: {
+            child: {
+              url: 'https://example.com/acme/child',
+              ref: 'main',
+              commit: fixture.childCommit,
+            },
+          },
+        })
+        const sharedRepos = EffectPath.ops.join(
+          sharedWorkspace.workspacePath,
+          EffectPath.unsafe.relativeDir('repos/'),
+        )
+        const sharedMount = EffectPath.ops.join(
+          sharedRepos,
+          EffectPath.unsafe.relativeDir('child/'),
+        )
+        yield* fs.makeDirectory(sharedRepos)
+        yield* fs.symlink(fixture.childPath.slice(0, -1), sharedMount.slice(0, -1))
+        const result = yield* runApplyCommand({
+          cwd: fixture.workspacePath,
+          args: ['--output', 'json', '--all', '--lock-sync', 'off'],
+          env: {
+            CI: 'true',
+            MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+          },
+        })
+        const Output = Schema.TaggedStruct('Error', {
+          syncErrorCount: Schema.Finite,
+          syncErrors: Schema.Array(SyncErrorItem),
+          syncTree: MegarepoSyncTree,
+        })
+        const out = yield* Schema.decodeEffect(Schema.fromJsonString(Output))(result.stdout.trim())
+        expect(result.exitCode).toBe(1)
+        expect(out.syncErrorCount).toBe(1)
+        expect(out.syncErrors).toHaveLength(1)
+        expect(out.syncErrors[0]?.message).toContain('PermissionDenied')
+        expect(out.syncErrors[0]?.message).toContain('Refusing to mutate canonical worktree')
+        expect(out.syncTree.nestedResults).toHaveLength(1)
+        expect(out.syncTree.nestedResults[0]?.results).toEqual([
+          expect.objectContaining({ name: 'child', status: 'error' }),
+        ])
+        expect(out.syncTree.nestedResults[0]?.nestedResults).toHaveLength(0)
+        expect(yield* fs.realPath(sharedMount)).toBe(fixture.childPath.slice(0, -1))
+        expect(yield* fs.readDirectory(fixture.childPath)).toEqual(beforeEntries)
+        expect(Array.from(yield* fs.readFile(sentinelPath))).toEqual(Array.from(sentinel))
+        expect(
+          yield* Effect.forEach([CONFIG_FILE_NAME_JSON, LOCK_FILE_NAME], (filename) =>
+            fs.readFileString(
+              EffectPath.ops.join(fixture.childPath, EffectPath.unsafe.relativeFile(filename)),
+            ),
+          ),
+        ).toEqual(beforeFiles)
+        expect(yield* runGitCommand(fixture.childPath, 'rev-parse', 'HEAD')).toBe(
+          fixture.childCommit,
+        )
+        expect(yield* runGitCommand(childBare, 'worktree', 'list', '--porcelain')).toBe(
+          beforeWorktrees,
+        )
+        expect(yield* fs.exists(fixture.grandchildPath)).toBe(false)
+        expect(yield* fs.exists(fixture.leafPath)).toBe(false)
+        expect(
+          yield* fs.exists(
+            EffectPath.ops.join(fixture.childPath, EffectPath.unsafe.relativeDir('repos/')),
+          ),
+        ).toBe(false)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+})
+
+/**
+ * The consumer shape behind `mr:setup` with `setupCommitMembers`: a nested megarepo member
+ * (`child` → `grandchild` → `leaf`) next to an ordinary member (`plain`, the leaf repo).
+ * Local runs (`CI=false`) with the canonical-mutation bypass explicitly disabled.
+ */
+const createSetupConsumerFixture = () =>
+  Effect.gen(function* () {
+    const fixture = yield* createColdCanonicalRecursionFixture()
+    const consumer = yield* createWorkspaceWithLock({
+      members: {
+        child: 'https://example.com/acme/child#main',
+        plain: 'https://example.com/acme/leaf#main',
+      },
+      lockEntries: {
+        child: { url: 'https://example.com/acme/child', ref: 'main', commit: fixture.childCommit },
+        plain: { url: 'https://example.com/acme/leaf', ref: 'main', commit: fixture.leafCommit },
+      },
+    })
+    const headsMain = (repo: string) =>
+      `${fixture.store.storePath}example.com/acme/${repo}/refs/heads/main`
+    const env = {
+      CI: 'false',
+      MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
+      MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+    }
+    const mount = (root: string, name: string) =>
+      EffectPath.ops.join(
+        EffectPath.unsafe.absoluteDir(root.endsWith('/') === true ? root : `${root}/`),
+        EffectPath.unsafe.relativeDir(`repos/${name}/`),
+      )
+    const applyNeeded = Effect.fnUntraced(function* () {
+      const status = yield* runMrCommand({
+        cwd: consumer.workspacePath,
+        command: ['status'],
+        args: ['--all', '--output', 'json'],
+        env,
+      })
+      const out = yield* Schema.decodeEffect(
+        Schema.fromJsonString(Schema.Struct({ applyNeeded: Schema.Boolean })),
+      )(status.stdout.trim())
+      return out.applyNeeded
+    })
+    return { ...fixture, consumer, headsMain, env, mount, applyNeeded }
+  })
+
+const setupApplyArgs = [
+  '--output',
+  'json',
+  '--worktree-mode',
+  'tracking',
+  '--commit-members',
+  'child',
+  '--lock-sync',
+  'off',
+]
+
+describe('apply --commit-members (mr:setup nested trees)', () => {
+  it.effect(
+    'prepares listed nested trees in fresh commit worktrees and keeps other members on tracking heads',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createSetupConsumerFixture()
+        const { consumer, env, mount } = fixture
+        const lockPath = `${consumer.workspacePath}${LOCK_FILE_NAME}`
+        const lockBefore = yield* fs.readFileString(lockPath)
+
+        // Without the option, setup is the plain tracking apply: the nested member shares
+        // refs/heads/main, its repos/ never exists, and recursive readiness reports it.
+        const plainSetup = yield* runApplyCommand({
+          cwd: consumer.workspacePath,
+          args: ['--output', 'json', '--worktree-mode', 'tracking', '--lock-sync', 'off'],
+          env,
+        })
+        expect(plainSetup.exitCode).toBe(0)
+        expect(yield* fs.realPath(mount(consumer.workspacePath, 'child'))).toBe(
+          fixture.headsMain('child'),
+        )
+        expect(yield* fs.exists(`${fixture.headsMain('child')}/repos`)).toBe(false)
+        expect(yield* fixture.applyNeeded()).toBe(true)
+        const headsEntries = yield* fs.readDirectory(fixture.headsMain('child'))
+
+        const result = yield* runApplyCommand({
+          cwd: consumer.workspacePath,
+          args: setupApplyArgs,
+          env,
+        })
+        expect(result.stdout).not.toContain('PermissionDenied')
+        const out = yield* Schema.decodeEffect(
+          Schema.fromJsonString(
+            Schema.Struct({
+              syncErrorCount: Schema.Finite,
+              syncErrors: Schema.Array(SyncErrorItem),
+            }),
+          ),
+        )(result.stdout.trim())
+        expect(result.exitCode).toBe(0)
+        expect(out.syncErrors).toEqual([])
+
+        // Only the listed member switches; the ordinary member stays on its tracking worktree.
+        expect(yield* fs.realPath(mount(consumer.workspacePath, 'plain'))).toBe(
+          fixture.headsMain('leaf'),
+        )
+        const mounts = [
+          [consumer.workspacePath, 'child', fixture.childPath, fixture.childCommit],
+          [fixture.childPath, 'grandchild', fixture.grandchildPath, fixture.grandchildCommit],
+          [fixture.grandchildPath, 'leaf', fixture.leafPath, fixture.leafCommit],
+        ] as const
+        for (const [root, name, target, commit] of mounts) {
+          expect(yield* fs.realPath(mount(root, name))).toBe(target.slice(0, -1))
+          expect(yield* runGitCommand(mount(root, name), 'rev-parse', 'HEAD')).toBe(commit)
+        }
+
+        // The shared tracking worktree was not mutated and the lock was not rewritten.
+        expect(yield* fs.readDirectory(fixture.headsMain('child'))).toEqual(headsEntries)
+        expect(yield* fs.exists(`${fixture.headsMain('child')}/repos`)).toBe(false)
+        expect(yield* fs.readFileString(lockPath)).toBe(lockBefore)
+        expect(yield* fixture.applyNeeded()).toBe(false)
+
+        // A warm rerun accepts the already prepared, now preexisting commit worktrees.
+        const warm = yield* runApplyCommand({
+          cwd: consumer.workspacePath,
+          args: setupApplyArgs,
+          env,
+        })
+        expect(warm.stdout).not.toContain('PermissionDenied')
+        expect(warm.exitCode).toBe(0)
+        expect(yield* fixture.applyNeeded()).toBe(false)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  for (const filter of [
+    ['--only', 'child'],
+    ['--skip', 'grandchild'],
+  ] as const) {
+    it.effect(
+      `keeps root ${filter.join(' ')} out of the listed member's complete commit subtree`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const fixture = yield* createSetupConsumerFixture()
+          const { consumer, env, mount } = fixture
+
+          const result = yield* runApplyCommand({
+            cwd: consumer.workspacePath,
+            args: [...setupApplyArgs, ...filter],
+            env,
+          })
+          expect(result.stdout).not.toContain('PermissionDenied')
+          expect(result.exitCode).toBe(0)
+
+          // Root filters select root members only; the fresh subtree below `child` is complete.
+          const mounts = [
+            [consumer.workspacePath, 'child', fixture.childPath, fixture.childCommit],
+            [fixture.childPath, 'grandchild', fixture.grandchildPath, fixture.grandchildCommit],
+            [fixture.grandchildPath, 'leaf', fixture.leafPath, fixture.leafCommit],
+          ] as const
+          for (const [root, name, target, commit] of mounts) {
+            expect(yield* fs.realPath(mount(root, name))).toBe(target.slice(0, -1))
+            expect(yield* runGitCommand(mount(root, name), 'rev-parse', 'HEAD')).toBe(commit)
+          }
+
+          // A later unfiltered setup sees a prepared tree, not an unrepairable partial one.
+          const unfiltered = yield* runApplyCommand({
+            cwd: consumer.workspacePath,
+            args: setupApplyArgs,
+            env,
+          })
+          expect(unfiltered.stdout).not.toContain('PermissionDenied')
+          expect(unfiltered.exitCode).toBe(0)
+          expect(yield* fixture.applyNeeded()).toBe(false)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+      { timeout: 30000 },
+    )
+  }
+
+  it.effect(
+    '--commit-all-members prepares every root tree, including comma-containing member names',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createColdCanonicalRecursionFixture()
+        // A comma is a valid member name character, so a comma-joined --commit-members list
+        // cannot name this member.
+        const nestedName = 'child,core'
+        const consumer = yield* createWorkspaceWithLock({
+          members: {
+            [nestedName]: 'https://example.com/acme/child#main',
+            plain: 'https://example.com/acme/leaf#main',
+          },
+          lockEntries: {
+            [nestedName]: {
+              url: 'https://example.com/acme/child',
+              ref: 'main',
+              commit: fixture.childCommit,
+            },
+            plain: {
+              url: 'https://example.com/acme/leaf',
+              ref: 'main',
+              commit: fixture.leafCommit,
+            },
+          },
+        })
+        const env = {
+          CI: 'true',
+          MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
+          MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+        }
+        const mount = (root: string, name: string) =>
+          EffectPath.ops.join(
+            EffectPath.unsafe.absoluteDir(root.endsWith('/') === true ? root : `${root}/`),
+            EffectPath.unsafe.relativeDir(`repos/${name}/`),
+          )
+        const applyArgs = [
+          '--output',
+          'json',
+          '--worktree-mode',
+          'commit',
+          '--commit-all-members',
+          '--lock-sync',
+          'off',
+        ]
+
+        const listed = yield* runApplyCommand({
+          cwd: consumer.workspacePath,
+          args: ['--output', 'json', '--commit-members', nestedName, '--lock-sync', 'off'],
+          env,
+        })
+        expect(listed.exitCode).toBe(1)
+        expect(yield* fs.exists(mount(consumer.workspacePath, nestedName))).toBe(false)
+
+        for (const run of ['cold', 'warm'] as const) {
+          const result = yield* runApplyCommand({
+            cwd: consumer.workspacePath,
+            args: applyArgs,
+            env,
+          })
+          expect(result.stdout, run).not.toContain('PermissionDenied')
+          expect(result.exitCode, run).toBe(0)
+        }
+        const mounts = [
+          [consumer.workspacePath, nestedName, fixture.childPath, fixture.childCommit],
+          [fixture.childPath, 'grandchild', fixture.grandchildPath, fixture.grandchildCommit],
+          [fixture.grandchildPath, 'leaf', fixture.leafPath, fixture.leafCommit],
+        ] as const
+        for (const [root, name, target, commit] of mounts) {
+          expect(yield* fs.realPath(mount(root, name))).toBe(target.slice(0, -1))
+          expect(yield* runGitCommand(mount(root, name), 'rev-parse', 'HEAD')).toBe(commit)
+        }
+
+        const status = yield* runMrCommand({
+          cwd: consumer.workspacePath,
+          command: ['status'],
+          args: ['--all', '--output', 'json'],
+          env,
+        })
+        const out = yield* Schema.decodeEffect(
+          Schema.fromJsonString(Schema.Struct({ applyNeeded: Schema.Boolean })),
+        )(status.stdout.trim())
+        expect(out.applyNeeded).toBe(false)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  it.effect(
+    'rejects --commit-all-members combined with --commit-members, --all or lock sync',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createSetupConsumerFixture()
+        for (const args of [
+          ['--commit-all-members', '--commit-members', 'child', '--lock-sync', 'off'],
+          ['--commit-all-members', '--all', '--lock-sync', 'off'],
+          ['--commit-all-members', '--lock-sync', 'direct'],
+        ]) {
+          const result = yield* runApplyCommand({
+            cwd: fixture.consumer.workspacePath,
+            args: ['--output', 'json', '--worktree-mode', 'commit', ...args],
+            env: fixture.env,
+          })
+          expect(result.exitCode).toBe(1)
+          expect(yield* fixture.applyNeeded()).toBe(true)
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  it.effect(
+    'refuses a preexisting incomplete shared commit worktree instead of granting freshness',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createSetupConsumerFixture()
+        const childBare = fixture.store.bareRepoPaths['example.com/acme/child']
+        if (childBare === undefined) throw new Error('Missing child bare repo')
+        yield* fs.makeDirectory(path.dirname(fixture.childPath.slice(0, -1)), { recursive: true })
+        yield* runGitCommand(
+          childBare,
+          'worktree',
+          'add',
+          '--detach',
+          fixture.childPath,
+          fixture.childCommit,
+        )
+
+        const result = yield* runApplyCommand({
+          cwd: fixture.consumer.workspacePath,
+          args: setupApplyArgs,
+          env: fixture.env,
+        })
+        expect(result.exitCode).toBe(1)
+        expect(result.stdout).toContain('Refusing to mutate canonical worktree')
+        expect(
+          yield* fs.exists(
+            EffectPath.ops.join(fixture.childPath, EffectPath.unsafe.relativeDir('repos/')),
+          ),
+        ).toBe(false)
+        expect(yield* fs.exists(fixture.grandchildPath)).toBe(false)
+        expect(yield* fs.realPath(fixture.mount(fixture.consumer.workspacePath, 'plain'))).toBe(
+          fixture.headsMain('leaf'),
+        )
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  it.effect(
+    'rejects unknown members and lock sync',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createSetupConsumerFixture()
+        for (const args of [
+          ['--commit-members', 'missing', '--lock-sync', 'off'],
+          ['--commit-members', 'child', '--lock-sync', 'direct'],
+          ['--commit-members', 'child', '--all'],
+        ]) {
+          const result = yield* runApplyCommand({
+            cwd: fixture.consumer.workspacePath,
+            args: ['--output', 'json', '--worktree-mode', 'tracking', ...args],
+            env: fixture.env,
+          })
+          expect(result.exitCode).toBe(1)
+          expect(yield* fixture.applyNeeded()).toBe(true)
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+})
+
 describe('--all nested error reporting', () => {
   it.effect(
     'should include nested member errors in JSON output',
@@ -1769,6 +2531,335 @@ const createNestedMegarepoLockRefMatchFixture = () =>
     }
   })
 
+describe('canonical member mutation guard', () => {
+  for (const [refKind, ref, lockSync, granted] of [
+    ['heads', 'team/feature', 'off', true],
+    ['heads', 'main', 'off', false],
+    ['tags', 'team/feature', 'off', false],
+    ['commits', 'team/feature', 'off', false],
+    ['commits', undefined, 'off', true],
+    ['commits', 'a'.repeat(40), 'off', false],
+    ['commits', undefined, 'direct', false],
+    ['commits', undefined, 'recursive', false],
+  ] as const) {
+    it.effect(
+      `materializes invoking ${refKind}/${ref ?? 'HEAD'} workspace with lock-sync ${lockSync} (granted: ${granted})`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const workspacePath = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
+          const canonicalRoot = yield* makeStoreWorktree({
+            repoDir: `${workspacePath}store/github.com/acme/workspace`,
+            kind: refKind,
+            ...(ref !== undefined ? { ref } : {}),
+          })
+          const memberPath = `${workspacePath}owned`
+          yield* fs.makeDirectory(memberPath)
+          yield* fs.writeFileString(
+            `${canonicalRoot}megarepo.json`,
+            encodeJson({ members: { victim: memberPath } }),
+          )
+          const originalLock = encodeJson({ version: 1, members: {} })
+          yield* fs.writeFileString(`${canonicalRoot}megarepo.lock`, originalLock)
+          const result = yield* runApplyCommand({
+            cwd: canonicalRoot,
+            args: ['--output', 'json', '--worktree-mode', 'commit', '--lock-sync', lockSync],
+            env: {
+              MEGAREPO_STORE: `${workspacePath}store`,
+              MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+            },
+          })
+          expect(result.exitCode).toBe(granted === true ? 0 : 1)
+          if (granted === true) {
+            expect(yield* fs.realPath(`${canonicalRoot}repos/victim`)).toBe(memberPath)
+          } else {
+            expect(yield* fs.exists(`${canonicalRoot}repos`)).toBe(false)
+          }
+          expect(yield* fs.readFileString(`${canonicalRoot}megarepo.lock`)).toBe(originalLock)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
+  for (const operation of [
+    'lock',
+    'generator',
+    'generator-directory-alias',
+    'generator-output-alias',
+    'foreign-mount',
+  ] as const) {
+    it.effect(
+      `refuses ${operation} writes from an exact-commit apply workspace`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const workspacePath = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
+          let canonicalRoot = yield* makeStoreWorktree({
+            repoDir: `${workspacePath}store/github.com/acme/workspace`,
+            kind: 'commits',
+          })
+          const isGenerator = operation.startsWith('generator')
+          const memberPath = `${workspacePath}owned`
+          yield* fs.makeDirectory(memberPath)
+          yield* fs.writeFileString(
+            `${canonicalRoot}megarepo.json`,
+            encodeJson({
+              members: { victim: memberPath },
+              ...(isGenerator === true ? { generators: { vscode: { enabled: true } } } : {}),
+            }),
+          )
+          const originalLock = encodeJson({ version: 1, members: {} })
+          yield* fs.writeFileString(`${canonicalRoot}megarepo.lock`, originalLock)
+          const foreignRepos = `${workspacePath}store/github.com/acme/shared/refs/commits/${'b'.repeat(40)}/repos`
+          if (operation === 'foreign-mount') {
+            yield* fs.makeDirectory(foreignRepos, { recursive: true })
+            yield* fs.symlink(foreignRepos, `${canonicalRoot}repos`)
+          }
+          const externalDir = `${workspacePath}external`
+          const externalOutput = `${externalDir}/megarepo.code-workspace`
+          const originalOutput = 'external file must remain unchanged\n'
+          if (isGenerator === true) {
+            yield* fs.makeDirectory(externalDir)
+            yield* fs.writeFileString(externalOutput, originalOutput)
+            if (operation === 'generator-directory-alias') {
+              yield* fs.symlink(externalDir, `${canonicalRoot}.vscode`)
+            } else if (operation === 'generator-output-alias') {
+              yield* fs.makeDirectory(`${canonicalRoot}.vscode`)
+              yield* fs.symlink(externalOutput, `${canonicalRoot}.vscode/megarepo.code-workspace`)
+            }
+            // Commit the generator config and aliases, then encode that HEAD in the store path.
+            yield* addCommit({ repoPath: canonicalRoot, message: 'Add generator fixture' })
+            const head = (yield* runGitCommand(canonicalRoot, 'rev-parse', 'HEAD')).trim()
+            const exactRoot = EffectPath.unsafe.absoluteDir(
+              `${path.dirname(canonicalRoot.slice(0, -1))}/${head}/`,
+            )
+            yield* runGitCommand(canonicalRoot, 'worktree', 'move', canonicalRoot, exactRoot)
+            canonicalRoot = exactRoot
+          }
+          const env = {
+            MEGAREPO_STORE: `${workspacePath}store`,
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+          }
+          const result =
+            operation === 'lock'
+              ? yield* runLockRecordCommand({ cwd: canonicalRoot, args: ['--output', 'json'], env })
+              : yield* runApplyCommand({
+                  cwd: canonicalRoot,
+                  args: ['--output', 'json', '--worktree-mode', 'commit', '--lock-sync', 'off'],
+                  env,
+                })
+          expect(result.exitCode).toBe(1)
+          const diagnostic =
+            Exit.isFailure(result.exit) === true
+              ? Cause.pretty(result.exit.cause)
+              : `${result.stdout}\n${result.stderr}`
+          expect(diagnostic).toContain('Refusing to mutate canonical worktree')
+          expect(yield* fs.readFileString(`${canonicalRoot}megarepo.lock`)).toBe(originalLock)
+          if (isGenerator === true) {
+            expect(yield* fs.exists(`${canonicalRoot}repos`)).toBe(false)
+            expect(yield* fs.readFileString(externalOutput)).toBe(originalOutput)
+            if (operation !== 'generator') {
+              const config = new MegarepoConfig({ members: { victim: memberPath } })
+              const vscodeError = yield* generateVscode({
+                megarepoRoot: canonicalRoot,
+                config,
+              }).pipe(Effect.flip)
+              expect(vscodeError.reason._tag).toBe('PermissionDenied')
+              const schemaError = yield* generateSchema({
+                megarepoRoot: canonicalRoot,
+                config,
+                outputPath: '.vscode/megarepo.code-workspace',
+              }).pipe(Effect.flip)
+              expect(schemaError.reason._tag).toBe('PermissionDenied')
+              expect(yield* fs.readFileString(externalOutput)).toBe(originalOutput)
+            }
+            if (operation === 'generator') {
+              expect(yield* fs.exists(`${canonicalRoot}.vscode`)).toBe(false)
+            }
+          }
+          if (operation === 'foreign-mount') {
+            expect(yield* fs.readDirectory(foreignRepos)).toEqual([])
+          }
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
+  for (const worktreeMode of ['tracking', 'commit'] as const) {
+    it.effect(
+      `refuses direct lock sync in canonical ${worktreeMode} worktrees unless explicitly authorized`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const store = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'victim', branches: ['main'] },
+          ])
+          const branchPath = store.worktreePaths['github.com/acme/victim#main']!
+          yield* runGitCommand(branchPath, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+          const depCommit = 'a'.repeat(40)
+          const nixLock = encodeJson({
+            version: 7,
+            root: 'root',
+            nodes: {
+              root: { inputs: { dep: 'dep' } },
+              dep: {
+                locked: { type: 'github', owner: 'acme', repo: 'dep', rev: depCommit },
+                original: { type: 'github', owner: 'acme', repo: 'dep', ref: 'main' },
+              },
+            },
+          })
+          const originals = {
+            'flake.nix': `{ inputs.dep.url = "github:acme/dep/main?rev=${depCommit}"; }\n`,
+            'devenv.yaml': `inputs:\n  dep:\n    url: github:acme/dep/main?rev=${depCommit}\n`,
+            'flake.lock': nixLock,
+            'devenv.lock': nixLock,
+          }
+          for (const [name, content] of Object.entries(originals)) {
+            yield* fs.writeFileString(`${branchPath}${name}`, content)
+          }
+          yield* addCommit({ repoPath: branchPath, message: 'Add stale Nix input refs' })
+          const victimCommit = (yield* runGitCommand(branchPath, 'rev-parse', 'HEAD')).trim()
+          const { workspacePath } = yield* createWorkspace({
+            members: { victim: 'acme/victim#main', dep: 'acme/dep#feature' },
+          })
+          yield* fs.writeFileString(
+            `${workspacePath}megarepo.json`,
+            encodeJson({
+              members: { victim: 'acme/victim#main', dep: 'acme/dep#feature' },
+              lockSync: { enabled: true },
+            }),
+          )
+          yield* fs.writeFileString(
+            `${workspacePath}megarepo.lock`,
+            encodeJson({
+              version: 1,
+              members: {
+                victim: {
+                  url: 'https://github.com/acme/victim',
+                  ref: 'main',
+                  commit: victimCommit,
+                  pinned: false,
+                  lockedAt: '2026-01-01T00:00:00.000Z',
+                },
+                dep: {
+                  url: 'https://github.com/acme/dep',
+                  ref: 'feature',
+                  commit: depCommit,
+                  pinned: false,
+                  lockedAt: '2026-01-01T00:00:00.000Z',
+                },
+              },
+            }),
+          )
+          const args = ['--output', 'json', '--only', 'victim', '--worktree-mode', worktreeMode]
+          const env = {
+            MEGAREPO_STORE: store.storePath.slice(0, -1),
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+          }
+          const off = yield* runApplyCommand({
+            cwd: workspacePath,
+            args: [...args, '--lock-sync', 'off'],
+            env,
+          })
+          expect(off.exitCode).toBe(0)
+          const physicalMember = yield* fs.realPath(`${workspacePath}repos/victim`)
+          expect(physicalMember).toContain(
+            worktreeMode === 'commit' ? `/refs/commits/${victimCommit}` : '/refs/heads/main',
+          )
+          const refused = yield* runApplyCommand({
+            cwd: workspacePath,
+            args: [...args, '--lock-sync', 'direct'],
+            env,
+          })
+          expect(refused.exitCode).toBe(1)
+          const diagnostic =
+            Exit.isFailure(refused.exit) === true
+              ? Cause.pretty(refused.exit.cause)
+              : `${refused.stdout}\n${refused.stderr}`
+          expect(diagnostic).toContain(physicalMember)
+          expect(diagnostic).toContain('--lock-sync=off')
+          expect(diagnostic).toContain('owned worktree')
+          for (const [name, content] of Object.entries(originals)) {
+            expect(yield* fs.readFileString(`${physicalMember}/${name}`)).toBe(content)
+          }
+          const authorized = yield* runApplyCommand({
+            cwd: workspacePath,
+            args: [...args, '--lock-sync', 'direct'],
+            env: { ...env, MEGAREPO_ALLOW_CANONICAL_MUTATION: '1' },
+          })
+          expect(authorized.exitCode).toBe(0)
+          expect(yield* fs.readFileString(`${physicalMember}/flake.nix`)).toBe(
+            `{ inputs.dep.url = "github:acme/dep/feature?rev=${depCommit}"; }\n`,
+          )
+          expect(
+            decodeJson(yield* fs.readFileString(`${physicalMember}/flake.lock`)),
+          ).toMatchObject({ nodes: { dep: { original: { ref: 'feature' } } } })
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+      { timeout: 30_000 },
+    )
+  }
+
+  for (const canonicalWorkspace of [false, true]) {
+    it.effect(
+      `refuses mount writes through a foreign repos alias (canonical: ${canonicalWorkspace})`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const tempRoot = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
+          const workspacePath =
+            canonicalWorkspace === true
+              ? yield* makeStoreWorktree({
+                  repoDir: `${tempRoot}store/github.com/acme/owned`,
+                  kind: 'heads',
+                  ref: 'team/feature',
+                })
+              : tempRoot
+          yield* fs.writeFileString(
+            `${workspacePath}megarepo.json`,
+            encodeJson({ members: { victim: './owned' } }),
+          )
+          const canonicalRepos = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeDir('store/github.com/acme/shared/refs/heads/main/repos/'),
+          )
+          yield* fs.makeDirectory(canonicalRepos, { recursive: true })
+          yield* fs.symlink(canonicalRepos.slice(0, -1), `${workspacePath}repos`)
+          yield* fs.writeFileString(`${workspacePath}megarepo.lock`, '{"version":1,"members":{}}')
+          const result = yield* runApplyCommand({
+            cwd: workspacePath,
+            args: ['--output', 'json', '--lock-sync', 'off'],
+            env: {
+              MEGAREPO_STORE: `${workspacePath}store`,
+              MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+            },
+          })
+          expect(result.exitCode).toBe(1)
+          expect(Exit.isFailure(result.exit)).toBe(true)
+          if (Exit.isFailure(result.exit) === true) {
+            expect(Cause.pretty(result.exit.cause)).toContain(canonicalRepos.slice(0, -1))
+          }
+          expect(yield* fs.readDirectory(canonicalRepos)).toEqual([])
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+})
+
 describe('nested megarepo.lock sync scope', () => {
   it.effect(
     'should leave member flake.nix and nested megarepo.lock untouched by default on apply',
@@ -1885,6 +2976,7 @@ describe('nested megarepo.lock sync scope', () => {
           args: ['--output', 'json', '--all', '--lock-sync', 'recursive'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '1',
           },
         })
         expect(result.exitCode).toBe(0)
@@ -1964,6 +3056,7 @@ describe('nested megarepo.lock sync scope', () => {
           args: ['--output', 'json', '--all', '--lock-sync', 'recursive', '--only', 'shared'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '1',
           },
         })
         expect(result.exitCode).toBe(0)
@@ -2000,6 +3093,7 @@ describe('nested megarepo.lock sync scope', () => {
           args: ['--output', 'json', '--all', '--lock-sync', 'recursive'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '1',
           },
         })
         expect(result.exitCode).toBe(0)
@@ -2036,6 +3130,7 @@ describe('nested megarepo.lock sync scope', () => {
           args: ['--output', 'json', '--all', '--lock-sync', 'recursive'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '1',
           },
         })
         expect(result.exitCode).toBe(0)
@@ -2080,6 +3175,7 @@ describe('nested megarepo.lock sync scope', () => {
           ],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '1',
           },
         })
         expect(result.exitCode).toBe(0)
@@ -3040,11 +4136,22 @@ describe('mr fetch', () => {
           const newCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
           expect(newCommit).not.toBe(initialCommit)
 
+          const refused = yield* runFetchApplyCommand({
+            cwd: workspacePath,
+            args: ['--output', 'json', '--worktree-mode', 'tracking'],
+            env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+          })
+          expect(refused.exitCode).toBe(1)
+          expect(decodeSyncJsonOutput(refused.stdout.trim()).results[0]?.message).toContain(
+            'Refusing to mutate canonical worktree',
+          )
+          expect(yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')).toBe(initialCommit)
+
           // 6. Run mr fetch --apply with tracking mode (to test branch worktree ff-merge)
           const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
             args: ['--output', 'json', '--worktree-mode', 'tracking'],
-            env: { MEGAREPO_STORE: storePath },
+            env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '1' },
           })
           const json = decodeSyncJsonOutput(result.stdout.trim())
 
@@ -3058,6 +4165,250 @@ describe('mr fetch', () => {
           // 8. Verify worktree HEAD is actually updated
           const worktreeHeadAfter = yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')
           expect(worktreeHeadAfter).toBe(newCommit)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+      { timeout: 30_000 },
+    )
+  })
+
+  describe('author-owned branch workspace', () => {
+    /** Store remote `test-owner/test-repo` whose `main` advanced past the locked commit. */
+    const createAdvancedRemoteFixture = Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* makeCanonicalTempDirectoryScoped()}/`)
+      const sourceRepoPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('source/'))
+      yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
+      yield* initGitRepo(sourceRepoPath)
+      yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
+        Effect.catch(() => Effect.void),
+      )
+      yield* fs.writeFileString(`${sourceRepoPath}README.md`, '# Test Repo\n')
+      yield* runGitCommand(sourceRepoPath, 'add', '-A')
+      yield* runGitCommand(sourceRepoPath, 'commit', '--no-verify', '-m', 'Initial commit')
+      const initialCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+      const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+      const bareRepoPath = `${storePath}github.com/test-owner/test-repo/.bare`
+      yield* fs.makeDirectory(`${storePath}github.com/test-owner/test-repo`, { recursive: true })
+      yield* runGitCommand(tmpDir, 'clone', '--bare', sourceRepoPath, bareRepoPath)
+      yield* runGitCommand(
+        EffectPath.unsafe.absoluteDir(`${bareRepoPath}/`),
+        'config',
+        'remote.origin.fetch',
+        '+refs/heads/*:refs/remotes/origin/*',
+      )
+      yield* fs.writeFileString(`${sourceRepoPath}new-file.txt`, 'new content\n')
+      yield* runGitCommand(sourceRepoPath, 'add', '-A')
+      yield* runGitCommand(sourceRepoPath, 'commit', '--no-verify', '-m', 'Second commit')
+      const newCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+      const lockAt = (commit: string) =>
+        encodeJson({
+          version: 1,
+          members: {
+            'test-repo': {
+              url: 'https://github.com/test-owner/test-repo',
+              ref: 'main',
+              commit,
+              pinned: false,
+              lockedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        })
+      /** Store bare cloned from the source; its HEAD (default branch) is `main`. */
+      const makeStoreBare = (repo: string) =>
+        Effect.gen(function* () {
+          const bare = `${storePath}github.com/test-owner/${repo}/.bare`
+          yield* fs.makeDirectory(path.dirname(bare), { recursive: true })
+          yield* runGitCommand(tmpDir, 'clone', '--bare', sourceRepoPath, bare)
+        })
+      /**
+       * Megarepo root at `refs/<kind>/<name>/` (plus an optional subdirectory). With a store
+       * bare, that path is a real worktree: `heads/<B>` checks out branch `<B>`, other kinds
+       * are detached.
+       */
+      const makeStoreRoot = (
+        repo: string,
+        ref: string,
+        members: Record<string, string>,
+        subdir?: string,
+      ) =>
+        Effect.gen(function* () {
+          const worktree = `${storePath}github.com/test-owner/${repo}/refs/${ref}`
+          const bare = `${storePath}github.com/test-owner/${repo}/.bare`
+          if ((yield* fs.exists(bare)) === true) {
+            yield* fs.makeDirectory(path.dirname(worktree), { recursive: true })
+            const branch =
+              ref.startsWith('heads/') === true ? ref.slice('heads/'.length) : undefined
+            yield* runGitCommand(
+              EffectPath.unsafe.absoluteDir(`${bare}/`),
+              ...(branch === undefined
+                ? ['worktree', 'add', '--detach', worktree, 'main']
+                : branch === 'main'
+                  ? ['worktree', 'add', worktree, 'main']
+                  : ['worktree', 'add', '-b', branch, worktree, 'main']),
+            )
+          }
+          const root = EffectPath.unsafe.absoluteDir(
+            subdir === undefined ? `${worktree}/` : `${worktree}/${subdir}/`,
+          )
+          yield* fs.makeDirectory(root, { recursive: true })
+          yield* fs.writeFileString(`${root}megarepo.json`, encodeJson({ members }))
+          return root
+        })
+      return { storePath, initialCommit, newCommit, lockAt, makeStoreBare, makeStoreRoot }
+    })
+
+    const fetchApplyArgs = [
+      '--output',
+      'json',
+      '--only',
+      'test-repo',
+      '--worktree-mode',
+      'commit',
+      '--lock-sync',
+      'off',
+    ]
+
+    const authorRootCases = [
+      { name: 'a feature branch', ref: 'heads/feat/x', bare: true, granted: true },
+      { name: 'the default branch', ref: 'heads/main', bare: true, granted: false },
+      {
+        name: 'a default-branch subdirectory',
+        ref: 'heads/main',
+        subdir: 'workspace',
+        bare: true,
+        granted: false,
+      },
+      {
+        name: 'a feature-branch subdirectory',
+        ref: 'heads/feat/x',
+        subdir: 'workspace',
+        bare: true,
+        granted: false,
+      },
+      { name: 'an unresolvable default branch', ref: 'heads/feat/x', bare: false, granted: false },
+      { name: 'a tag', ref: 'tags/team/feature', bare: true, granted: false },
+      { name: 'a commit', ref: 'commits/team/feature', bare: true, granted: false },
+    ] as const
+
+    for (const authorRoot of authorRootCases) {
+      it.effect(
+        `updates the invoking workspace's own lock and mounts only for ${authorRoot.name} root when granted`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const { storePath, initialCommit, newCommit, lockAt, makeStoreBare, makeStoreRoot } =
+              yield* createAdvancedRemoteFixture
+            if (authorRoot.bare === true) yield* makeStoreBare('workspace')
+            const root = yield* makeStoreRoot(
+              'workspace',
+              authorRoot.ref,
+              { 'test-repo': 'test-owner/test-repo' },
+              'subdir' in authorRoot ? authorRoot.subdir : undefined,
+            )
+            yield* fs.writeFileString(`${root}megarepo.lock`, lockAt(initialCommit))
+
+            const result = yield* runFetchApplyCommand({
+              cwd: root,
+              args: fetchApplyArgs,
+              env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+            })
+
+            if (authorRoot.granted === true) {
+              expect(result.exitCode).toBe(0)
+              expect(yield* fs.readFileString(`${root}megarepo.lock`)).toContain(
+                `"commit": "${newCommit}"`,
+              )
+              expect(yield* fs.realPath(`${root}repos/test-repo`)).toContain(
+                `/refs/commits/${newCommit}`,
+              )
+            } else {
+              expect(result.exitCode).toBe(1)
+              expect(Exit.isFailure(result.exit)).toBe(true)
+              if (Exit.isFailure(result.exit) === true) {
+                expect(Cause.pretty(result.exit.cause)).toContain(
+                  'Refusing to mutate canonical worktree',
+                )
+              }
+              expect(yield* fs.readFileString(`${root}megarepo.lock`)).toBe(lockAt(initialCommit))
+              expect(yield* fs.exists(`${root}repos`)).toBe(false)
+            }
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+        { timeout: 30_000 },
+      )
+    }
+
+    it.effect(
+      'still refuses fetching into a nested canonical member from an author workspace',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath, initialCommit, lockAt, makeStoreBare, makeStoreRoot } =
+            yield* createAdvancedRemoteFixture
+          yield* makeStoreBare('workspace')
+          yield* makeStoreBare('child')
+          const child = yield* makeStoreRoot('child', 'heads/main', {
+            'test-repo': 'test-owner/test-repo',
+          })
+          yield* fs.writeFileString(`${child}megarepo.lock`, lockAt(initialCommit))
+          const root = yield* makeStoreRoot('workspace', 'heads/team/feature', {
+            child: child.slice(0, -1),
+          })
+          yield* fs.writeFileString(`${root}megarepo.lock`, encodeJson({ version: 1, members: {} }))
+
+          const result = yield* runFetchApplyCommand({
+            cwd: root,
+            args: ['--output', 'json', '--all', '--worktree-mode', 'commit', '--lock-sync', 'off'],
+            env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+          })
+
+          expect(result.exitCode).toBe(1)
+          expect(`${result.stdout}\n${result.stderr}`).toContain(
+            'Refusing to mutate canonical worktree',
+          )
+          expect(yield* fs.readFileString(`${child}megarepo.lock`)).toBe(lockAt(initialCommit))
+          expect(yield* fs.exists(`${child}repos`)).toBe(false)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+      { timeout: 30_000 },
+    )
+
+    it.effect(
+      'refuses a feature-branch lock file that aliases another canonical root',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath, initialCommit, lockAt, makeStoreBare, makeStoreRoot } =
+            yield* createAdvancedRemoteFixture
+          yield* makeStoreBare('workspace')
+          yield* makeStoreBare('shared')
+          const shared = yield* makeStoreRoot('shared', 'heads/main', {})
+          yield* fs.writeFileString(`${shared}megarepo.lock`, lockAt(initialCommit))
+          const root = yield* makeStoreRoot('workspace', 'heads/team/feature', {
+            'test-repo': 'test-owner/test-repo',
+          })
+          yield* fs.symlink(`${shared}megarepo.lock`, `${root}megarepo.lock`)
+
+          const result = yield* runFetchApplyCommand({
+            cwd: root,
+            args: fetchApplyArgs,
+            env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+          })
+
+          expect(result.exitCode).toBe(1)
+          expect(Exit.isFailure(result.exit)).toBe(true)
+          if (Exit.isFailure(result.exit) === true) {
+            expect(Cause.pretty(result.exit.cause)).toContain(
+              'Refusing to mutate canonical worktree',
+            )
+          }
+          expect(yield* fs.readFileString(`${shared}megarepo.lock`)).toBe(lockAt(initialCommit))
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,

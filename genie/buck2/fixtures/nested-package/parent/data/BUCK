@@ -1,0 +1,5 @@
+load("//buck2:materialization.bzl", "export_materialization_inputs")
+
+export_materialization_inputs([
+    "fixture.json",
+])

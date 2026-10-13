@@ -12,21 +12,40 @@ ensure_local_pnpm_home_default() {
   fi
 }
 
+pnpm_use_job_local_store() {
+  [ "${GITHUB_ACTIONS:-}" = true ] || [ "${PNPM_JOB_LOCAL_STORE:-}" = 1 ]
+}
+
 configure_pnpm_storage() {
   local node_bin="$1"
   local materialization_root="$2"
   local job_local_store="$3"
   local host_is_linux="$4"
+  local global_virtual_store="$5"
   local store_dir
   local package_import_method="auto"
 
-  if [ -n "${CI:-}" ]; then
+  export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=false
+  export npm_config_enable_global_virtual_store=false
+  export PNPM_CONFIG_VIRTUAL_STORE_DIR=node_modules/.pnpm
+  export npm_config_virtual_store_dir=node_modules/.pnpm
+
+  if pnpm_use_job_local_store; then
     store_dir="$job_local_store"
   else
+    if [ "$global_virtual_store" = true ]; then
+      export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
+      export npm_config_enable_global_virtual_store=true
+      unset PNPM_CONFIG_VIRTUAL_STORE_DIR npm_config_virtual_store_dir
+    fi
     if [ -n "${PNPM_SHARED_STORE_DIR:-}" ]; then
       store_dir="$PNPM_SHARED_STORE_DIR"
     else
-      store_dir="$HOME/.local/share/pnpm/store-shared-v1"
+      if [ "$global_virtual_store" = true ]; then
+        store_dir="$HOME/.local/share/pnpm/store"
+      else
+        store_dir="$HOME/.local/share/pnpm/store-shared-v1"
+      fi
     fi
 
     local store_version_dir="$store_dir/v11"
@@ -155,7 +174,7 @@ assert_pnpm_storage_capacity() {
   local store_dir="$2"
   local materialization_root="$3"
 
-  if [ -n "${CI:-}" ]; then
+  if pnpm_use_job_local_store; then
     return 0
   fi
 

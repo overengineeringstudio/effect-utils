@@ -49,7 +49,6 @@ rec {
         pkgs = import nixpkgs { inherit system; };
         weaverPackages =
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
-        rootPath = self.outPath;
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         pnpm = import ./nix/pnpm.nix { inherit pkgs; };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
@@ -67,7 +66,6 @@ rec {
             pnpmArchives
             ;
           capabilities = buck2Capabilities;
-          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           repositoryRoot = ./.;
         };
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
@@ -202,11 +200,20 @@ rec {
         };
         buck2Rules = import ./nix/buck2-rules {
           inherit pkgs buck2 pnpmArchives;
-          src = rootPath;
+          src = ./.;
         };
+        buck2Bubblewrap = import ./nix/bubblewrap.nix { inherit pkgs; };
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;
-          src = rootPath;
+          src = ./.;
+          extraCapabilities = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            bubblewrap = {
+              kind = "executable";
+              package = buck2Bubblewrap;
+              executable = "bin/bwrap";
+              protocol = "containers/bubblewrap/v1";
+            };
+          };
         };
         # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products {
@@ -240,6 +247,84 @@ rec {
           nativeProducts = nativeProductPackages;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
         };
+        # Exact retained repository products used by required shell activation,
+        # task exec strings and capabilities. Publishing this closure also
+        # publishes the source bridge and validator outputs behind each import.
+        ciTestShellProducts = {
+          buck2-capabilities = buck2Capabilities;
+          inherit (providerCliPackages) netlify-cli vercel-cli;
+          inherit (capabilityPackages)
+            buck2
+            buck2-archive-tool
+            buck2-events
+            buck2-fingerprint
+            buck2-product
+            pnpm
+            oxlint-with-plugins
+            ;
+          inherit (nativeProductPackages) otelite otel-scrape typescript-api-server;
+          inherit (cliPackages)
+            genie
+            megarepo
+            ci-tools
+            gh-ci-utils
+            notion-cli
+            tui-stories
+            ;
+          cli-build-stamp = cliBuildStamp.package;
+          otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+        };
+        # Keep the admitted Genie's runtime closure and capabilities, adding gh
+        # for settings reconciliation and running the current source module.
+        githubRepoSettingsGenie =
+          pkgs.runCommand "github-repo-settings-genie"
+            {
+              nativeBuildInputs = [
+                pkgs.makeWrapper
+                pkgs.jq
+              ];
+            }
+            ''
+              jq -e --argjson expected ${
+                pkgs.lib.escapeShellArg (
+                  builtins.toJSON (
+                    cliPackages.genie.checkedDescriptor
+                    // {
+                      externalCapabilities = pkgs.lib.unique (
+                        cliPackages.genie.checkedDescriptor.externalCapabilities ++ [ "gh" ]
+                      );
+                    }
+                  )
+                )
+              } '
+                def contract: {
+                  externalCapabilities: (.externalCapabilities | sort),
+                  externalModules, modulePath, productKind, productName,
+                  runtimeContract, runtimeContractVersion, runtimeKind
+                };
+                contract == ($expected | contract)
+              ' ${buckProductsFromSource.genie}/descriptor.json >/dev/null
+              mkdir -p "$out/bin" "$out/libexec"
+              cp ${cliPackages.genie}/bin/genie "$out/bin/genie"
+              cp ${buckProductsFromSource.genie}/${buckProductsFromSource.genie.artifactName} "$out/libexec/${cliPackages.genie.checkedDescriptor.modulePath}"
+              ln -s ${cliPackages.genie}/libexec/node_modules "$out/libexec/node_modules"
+              substituteInPlace "$out/bin/genie" \
+                --replace-fail "${cliPackages.genie}/libexec/${cliPackages.genie.checkedDescriptor.modulePath}" \
+                  "$out/libexec/${cliPackages.genie.checkedDescriptor.modulePath}"
+              wrapProgram "$out/bin/genie" \
+                --prefix PATH : ${pkgs.lib.escapeShellArg (pkgs.lib.makeBinPath [ pkgs.gh ])}
+            '';
+        mkGithubRepoSettingsLauncher = import ./nix/github-repo-settings.nix {
+          inherit pkgs;
+          genieBin = "${githubRepoSettingsGenie}/bin/genie";
+        };
+        githubRepoSettingsApps = pkgs.lib.genAttrs [ "gh-apply-settings" "gh-check-settings" ] (
+          name:
+          flake-utils.lib.mkApp {
+            drv = mkGithubRepoSettingsLauncher (if name == "gh-apply-settings" then "apply" else "check");
+            exePath = "/bin/${name}";
+          }
+        );
 
       in
       {
@@ -253,6 +338,9 @@ rec {
           // {
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
+            ci-test-shell-products = pkgs.linkFarm "ci-test-shell-products" (
+              pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) ciTestShellProducts
+            );
             buck2-pnpm-archives = pnpmArchives;
             cli-build-stamp = cliBuildStamp.package;
             otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
@@ -264,6 +352,7 @@ rec {
                 --use-fonts-dir ${pkgs.dejavu_fonts}/share/fonts/truetype \
                 "$@"
             '';
+            gh-settings-genie = githubRepoSettingsGenie;
             buck-products-from-source = pkgs.linkFarm "effect-utils-buck-products-from-source" (
               pkgs.lib.mapAttrsToList (name: path: {
                 name = pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name;
@@ -272,6 +361,9 @@ rec {
             );
             oxlint-npm = oxlintNpm;
             node-pty-native = nodePtyNative;
+          }
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            buck2-bubblewrap = buck2Bubblewrap;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             buck2-vite-runtime-closure-fixture = viteRuntimeFixture;
@@ -291,16 +383,18 @@ rec {
           notion-md = cliPackages.notion-md.outPath;
         };
 
-        apps = pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
-          otelite = flake-utils.lib.mkApp {
-            drv = nativeProductPackages.otelite;
-            exePath = "/bin/otelite";
+        apps =
+          githubRepoSettingsApps
+          // pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
+            otelite = flake-utils.lib.mkApp {
+              drv = nativeProductPackages.otelite;
+              exePath = "/bin/otelite";
+            };
+            otel-scrape = flake-utils.lib.mkApp {
+              drv = nativeProductPackages.otel-scrape;
+              exePath = "/bin/otel-scrape";
+            };
           };
-          otel-scrape = flake-utils.lib.mkApp {
-            drv = nativeProductPackages.otel-scrape;
-            exePath = "/bin/otel-scrape";
-          };
-        };
       }
     )
     // {
@@ -349,7 +443,16 @@ rec {
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
           buck2-rust-deps = import ./nix/devenv-modules/tasks/shared/buck2-rust-deps.nix;
           changesets = import ./nix/devenv-modules/tasks/shared/changesets.nix;
-          github-ruleset = import ./nix/devenv-modules/tasks/shared/github-ruleset.nix;
+          github-ruleset =
+            args:
+            { pkgs, ... }@moduleArgs:
+            (import ./nix/devenv-modules/tasks/shared/github-ruleset.nix (
+              {
+                genieBin = "${self.packages.${pkgs.stdenv.hostPlatform.system}.gh-settings-genie}/bin/genie";
+              }
+              // args
+            ))
+              moduleArgs;
           # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels.
           # Parameterized by `{ repo = "owner/name"; }`; consumed like the other task modules.
           gh-labels = import ./nix/devenv-modules/gh-labels.nix;
@@ -359,6 +462,8 @@ rec {
           secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
           # Prevent commits on default branch and optionally enforce worktree-only workflow
           worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
+          # Explicit root-scoped teardown before an operator removes a worktree
+          worktree-teardown = ./nix/devenv-modules/tasks/shared/worktree-teardown.nix;
           # Note: local/ directory contains effect-utils specific tasks (not exported)
         };
       };
@@ -379,7 +484,8 @@ rec {
           base = self.packages.${pkgs.stdenv.hostPlatform.system}.buck2-capabilities;
         in
         import ./nix/buck2-capabilities.nix {
-          inherit pkgs extraCapabilities;
+          inherit pkgs;
+          extraCapabilities = base.passthru.extraCapabilities // extraCapabilities;
           inherit (base.passthru) capabilityPackages src;
         };
 

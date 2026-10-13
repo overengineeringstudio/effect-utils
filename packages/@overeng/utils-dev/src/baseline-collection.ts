@@ -5,8 +5,8 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
  * Pure decoders and ownership resolution for the Effect 4 baseline-collection gate.
  *
  * The gate itself (`check-baseline-test-collection.ts`) owns the filesystem, Buck, and
- * reporting; everything that can be decided from bytes alone lives here so it is directly
- * testable and cannot drift between the CLI and its proof.
+ * reporting; its early prebuild and final aggregation share the same collection build plan.
+ * Everything decidable from bytes alone lives here so it is directly testable.
  */
 
 /** Runner of one declared Buck test lane. */
@@ -69,6 +69,55 @@ const isStringRecord = (value: unknown): value is Readonly<Record<string, string
 
 const isTestRunner = (value: unknown): value is TestRunner =>
   value === 'bun' || value === 'shell' || value === 'vitest'
+
+/** Decode the declared source scope; bounded and unowned files always remain enforced. */
+export const decodeSourceTaskScope = (decoded: unknown): ReadonlySet<string> => {
+  if (
+    isStringArray(decoded) === false ||
+    decoded.length === 0 ||
+    decoded.some(
+      (task) => /^(?:test|devenv-modules|genie):[A-Za-z0-9:_-]+$/.test(task) === false,
+    ) === true ||
+    new Set(decoded).size !== decoded.length
+  ) {
+    throw new Error('Source test scope must be a nonempty, unique array of safe task names')
+  }
+  return new Set(decoded)
+}
+
+/** Keep census errors enforced while selecting source and bounded platform evidence. */
+export const ownershipInSourceScope = ({
+  ownership,
+  scope,
+  collectionTargets,
+}: {
+  readonly ownership: FileOwnership
+  readonly scope: ReadonlySet<string> | undefined
+  readonly collectionTargets?: ReadonlySet<string> | undefined
+}): boolean =>
+  ownership.kind === 'source'
+    ? scope === undefined || scope.has(ownership.taskName)
+    : ownership.kind === 'buck'
+      ? collectionTargets === undefined || collectionTargets.has(ownership.collectionTarget)
+      : true
+
+/** Select declared bounded tasks without replacing the complete ownership authority. */
+export const selectTestLanes = ({
+  lanes,
+  scope,
+}: {
+  readonly lanes: readonly TestAuthorityLane[]
+  readonly scope: ReadonlySet<string> | undefined
+}): readonly TestAuthorityLane[] => {
+  if (scope === undefined) return lanes
+  const declared = new Set(lanes.map(({ taskName }) => taskName))
+  for (const task of scope) {
+    if (declared.has(task) === false) {
+      throw new Error(`Bounded test scope contains undeclared task ${task}`)
+    }
+  }
+  return lanes.filter(({ taskName }) => scope.has(taskName))
+}
 
 /**
  * Lower bound on the registry size.
@@ -420,6 +469,32 @@ export const ownershipForFile = ({
       sourceTasks.size === 0
         ? `package lanes declare no owner for ${packageRelative}`
         : `package lanes disagree on the source owner for ${packageRelative}`,
+  }
+}
+
+/** Every declared collection product, independent of baseline files or source-task scope. */
+export const collectionBuildPlan = ({
+  lanes,
+}: {
+  readonly lanes: readonly TestAuthorityLane[]
+}): { readonly targets: readonly string[]; readonly args: readonly string[] } => {
+  const targets = [
+    ...new Set(
+      lanes.flatMap(({ collectionTarget }) =>
+        collectionTarget === undefined ? [] : [collectionTarget],
+      ),
+    ),
+  ].toSorted(compareAuthorityStrings)
+  return {
+    targets,
+    args: [
+      'build',
+      '--show-output',
+      '--target-platforms',
+      'effect_utils//buck2/platforms:host_platform',
+      '--local-only',
+      ...targets,
+    ],
   }
 }
 

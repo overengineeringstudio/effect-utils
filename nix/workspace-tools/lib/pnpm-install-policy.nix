@@ -5,16 +5,21 @@ rec {
   # on the resource-sensitive pnpm knobs. Keep this list small: these flags
   # define install purity and Darwin pressure limits, while callers still own
   # their lockfile mode and store path.
-  liveInstallPolicyFlags = [
+  commonInstallPolicyFlags = [
     "--ignore-scripts"
     "--config.side-effects-cache=false"
     "--config.verify-store-integrity=true"
     "--config.strict-store-pkg-content-check=true"
     "--config.child-concurrency=1"
     "--config.network-concurrency=4"
+    "--pm-on-fail=ignore"
+  ];
+
+  # Local projections remain the default; live GVS callers use the common
+  # safety policy and select GVS through pnpm's honoured environment setting.
+  liveInstallPolicyFlags = commonInstallPolicyFlags ++ [
     "--config.enable-global-virtual-store=false"
     "--config.virtual-store-dir=node_modules/.pnpm"
-    "--pm-on-fail=ignore"
   ];
 
   # An install root is only isolated from an enclosing workspace when it is a
@@ -62,8 +67,8 @@ rec {
 
   # The fixed-output builder writes policy through .npmrc because pnpm
   # rejects some workspace-scoped keys via `pnpm config set --global`. The
-  # prepared tree is restored directly by downstream builds. Live and prepared
-  # installs therefore use the same root-local virtual topology.
+  # prepared tree is restored directly by downstream builds and always retains
+  # root-local topology, independently of live callers' GVS opt-in.
   workspacePrepNpmrcLines = packageImportMethod: [
     "virtual-store-dir=node_modules/.pnpm"
     "package-import-method=${packageImportMethod}"

@@ -73,9 +73,30 @@ not a remotely retained forensic archive.
 ## Command Summary Attributes
 
 Every view's command span carries `buck2.action_count`,
-`buck2.cache_hit_count`, `buck2.critical_path_action_count` (plus
+`buck2.cache_hit_count`, `buck2.remote_cache_hit_count`,
+`buck2.local_cache_hit_count`, `buck2.critical_path_action_count` (plus
 subcommand), so "what was the cache-hit ratio" never depends on child
 retention.
+
+All three hit counts come from one execution-kind classification over the
+decoded action model, before view selection or the span cap:
+
+| Attribute                      | Execution kinds                         |
+| ------------------------------ | --------------------------------------- |
+| `buck2.remote_cache_hit_count` | `action_cache`, `remote_dep_file_cache` |
+| `buck2.local_cache_hit_count`  | `local_action_cache`                    |
+| `buck2.cache_hit_count`        | sum of the two rows above               |
+
+Remote execution is not a hit. Only an action's first end is classified;
+an action without an end counts toward `buck2.action_count` but not as a hit.
+The counts are exact for the decoded log; a truncated or corrupt log keeps the
+adapter's coverage limits. `buck2.remote_cache_hit_count` reports hits from any
+remote action or dependency-file cache: the command span does not identify the
+cache server or trust tier.
+
+Both views carry the summary, so a per-host or per-command aggregate selects one
+view (`span.buck2.trace.view = "critical"`) and divides summed hit counts by
+summed action counts rather than averaging per-command ratios.
 
 ## Trace Lookup
 

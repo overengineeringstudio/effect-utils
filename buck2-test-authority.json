@@ -40,6 +40,20 @@
       "unboundedTaskName": "test:agent-session-ingest:unbounded"
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/ai-gateway-edge:test_collect",
+      "excludes": [],
+      "packageName": "ai-gateway-edge",
+      "packagePath": "packages/@overeng/ai-gateway-edge",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/Proxy.integration.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/ai-gateway-edge:test",
+      "taskName": "test:ai-gateway-edge",
+      "testFiles": ["src/Proxy.integration.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/ci-tools:test_collect",
       "excludes": [
         "src/deploy-netlify.e2e.test.ts",
@@ -213,6 +227,20 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-iroh:test_collect",
+      "excludes": [],
+      "packageName": "effect-iroh",
+      "packagePath": "packages/@overeng/effect-iroh",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/endpoint.integration.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-iroh:test",
+      "taskName": "test:effect-iroh",
+      "testFiles": ["src/endpoint.integration.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/effect-path:test_collect",
       "excludes": [],
       "packageName": "effect-path",
@@ -319,6 +347,38 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-rust:test_collect",
+      "excludes": [],
+      "packageName": "effect-rust",
+      "packagePath": "packages/@overeng/effect-rust",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/compiler/compiler.unit.test.ts",
+        "src/compiler/import-rust.unit.test.ts",
+        "src/compiler/optional-omission.unit.test.ts",
+        "src/compiler/rough-edges.unit.test.ts",
+        "src/runtime/host.unit.test.ts",
+        "src/runtime/instance.unit.test.ts",
+        "src/runtime/worker.unit.test.ts",
+        "src/schema/contract-json.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-rust:test",
+      "taskName": "test:effect-rust",
+      "testFiles": [
+        "src/compiler/compiler.unit.test.ts",
+        "src/compiler/import-rust.unit.test.ts",
+        "src/compiler/optional-omission.unit.test.ts",
+        "src/compiler/rough-edges.unit.test.ts",
+        "src/runtime/host.unit.test.ts",
+        "src/runtime/instance.unit.test.ts",
+        "src/runtime/worker.unit.test.ts",
+        "src/schema/contract-json.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/effect-schema-form-aria:test_collect",
       "excludes": [],
       "packageName": "effect-schema-form-aria",
@@ -352,11 +412,23 @@
       "packageName": "genie-smalltalk",
       "packagePath": "packages/@overeng/genie-smalltalk",
       "runner": "vitest",
-      "selectedTestFiles": ["src/mod.unit.test.ts", "src/tree.unit.test.ts"],
+      "selectedTestFiles": [
+        "src/authoring-boundaries.unit.test.ts",
+        "src/child-missions.unit.test.ts",
+        "src/gate-constructors.unit.test.ts",
+        "src/mod.unit.test.ts",
+        "src/run-values.unit.test.ts"
+      ],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/genie-smalltalk:test",
       "taskName": "test:genie-smalltalk",
-      "testFiles": ["src/mod.unit.test.ts", "src/tree.unit.test.ts"],
+      "testFiles": [
+        "src/authoring-boundaries.unit.test.ts",
+        "src/child-missions.unit.test.ts",
+        "src/gate-constructors.unit.test.ts",
+        "src/mod.unit.test.ts",
+        "src/run-values.unit.test.ts"
+      ],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -368,6 +440,7 @@
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
+        "src/runtime/peer-facade-imports.unit.test.ts",
         "src/runtime/weaver/rust-constants.unit.test.ts"
       ],
       "packageName": "genie",
@@ -380,6 +453,7 @@
         "src/cli.contract.test.ts",
         "src/core/discovery.unit.test.ts",
         "src/core/error-detection.unit.test.ts",
+        "src/core/generation-locks.integration.test.ts",
         "src/core/generation.unit.test.ts",
         "src/core/import-map/import-map.unit.test.ts",
         "src/core/observability.unit.test.ts",
@@ -390,6 +464,8 @@
         "src/runtime/composition/composition.unit.test.ts",
         "src/runtime/composition/weaver-composition.unit.test.ts",
         "src/runtime/cross-install-root/cross-install-root.unit.test.ts",
+        "src/runtime/github-repo-settings/comparison.unit.test.ts",
+        "src/runtime/github-repo-settings/reconcile.unit.test.ts",
         "src/runtime/github-ruleset/reconcile.unit.test.ts",
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
@@ -400,6 +476,7 @@
         "src/runtime/package-json/catalog.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
         "src/runtime/package-json/validators/recompose.unit.test.ts",
+        "src/runtime/peer-facade-imports.unit.test.ts",
         "src/runtime/pnpm-workspace/pnpm-workspace.unit.test.ts",
         "src/runtime/projection-artifact/projection-artifact.unit.test.ts",
         "src/runtime/repo-context/repo-context.unit.test.ts",
@@ -418,6 +495,7 @@
         "src/cli.contract.test.ts",
         "src/core/discovery.unit.test.ts",
         "src/core/error-detection.unit.test.ts",
+        "src/core/generation-locks.integration.test.ts",
         "src/core/generation.unit.test.ts",
         "src/core/import-map/import-map.unit.test.ts",
         "src/core/observability.unit.test.ts",
@@ -428,6 +506,8 @@
         "src/runtime/composition/composition.unit.test.ts",
         "src/runtime/composition/weaver-composition.unit.test.ts",
         "src/runtime/cross-install-root/cross-install-root.unit.test.ts",
+        "src/runtime/github-repo-settings/comparison.unit.test.ts",
+        "src/runtime/github-repo-settings/reconcile.unit.test.ts",
         "src/runtime/github-ruleset/reconcile.unit.test.ts",
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
@@ -438,6 +518,7 @@
         "src/runtime/package-json/catalog.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
         "src/runtime/package-json/validators/recompose.unit.test.ts",
+        "src/runtime/peer-facade-imports.unit.test.ts",
         "src/runtime/pnpm-workspace/pnpm-workspace.unit.test.ts",
         "src/runtime/projection-artifact/projection-artifact.unit.test.ts",
         "src/runtime/repo-context/repo-context.unit.test.ts",
@@ -453,6 +534,7 @@
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
+        "src/runtime/peer-facade-imports.unit.test.ts",
         "src/runtime/weaver/rust-constants.unit.test.ts"
       ],
       "unboundedTaskName": "test:genie:unbounded"
@@ -558,9 +640,11 @@
         "src/cli/pin.integration.test.ts",
         "src/cli/prompt-select-pty.test.ts",
         "src/cli/status.integration.test.ts",
+        "src/cli/store-gc-budgets.integration.test.ts",
         "src/cli/store-gc-cold.integration.test.ts",
         "src/cli/store-gc-generated.integration.test.ts",
         "src/cli/store-gc-otel.integration.test.ts",
+        "src/cli/store-gc-partial-deletion.integration.test.ts",
         "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts",
         "src/core/git-memory.integration.test.ts",
@@ -573,6 +657,7 @@
         "src/store/store-inuse.integration.test.ts",
         "src/store/store-liveness.integration.test.ts",
         "src/store/store-lossless.integration.test.ts",
+        "src/store/store-workspace-activity.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts"
       ],
       "packageName": "megarepo",
@@ -586,9 +671,11 @@
         "src/cli/prompt-select-pty.test.ts",
         "src/cli/renderers/StoreOutput/view.unit.test.tsx",
         "src/cli/status.integration.test.ts",
+        "src/cli/store-gc-budgets.integration.test.ts",
         "src/cli/store-gc-cold.integration.test.ts",
         "src/cli/store-gc-generated.integration.test.ts",
         "src/cli/store-gc-otel.integration.test.ts",
+        "src/cli/store-gc-partial-deletion.integration.test.ts",
         "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts",
         "src/core/config.unit.test.ts",
@@ -620,8 +707,10 @@
         "src/store/store-lock.unit.test.ts",
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-path.unit.test.ts",
+        "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-pr-state.unit.test.ts",
         "src/store/store-symlink.unit.test.ts",
+        "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
         "src/sync/member.unit.test.ts",
         "src/test-utils/setup.unit.test.ts",
@@ -640,9 +729,11 @@
         "src/cli/prompt-select-pty.test.ts",
         "src/cli/renderers/StoreOutput/view.unit.test.tsx",
         "src/cli/status.integration.test.ts",
+        "src/cli/store-gc-budgets.integration.test.ts",
         "src/cli/store-gc-cold.integration.test.ts",
         "src/cli/store-gc-generated.integration.test.ts",
         "src/cli/store-gc-otel.integration.test.ts",
+        "src/cli/store-gc-partial-deletion.integration.test.ts",
         "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts",
         "src/core/config.unit.test.ts",
@@ -674,8 +765,10 @@
         "src/store/store-lock.unit.test.ts",
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-path.unit.test.ts",
+        "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-pr-state.unit.test.ts",
         "src/store/store-symlink.unit.test.ts",
+        "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
         "src/sync/member.unit.test.ts",
         "src/test-utils/setup.unit.test.ts",
@@ -687,8 +780,10 @@
         "src/cli/pin.integration.test.ts",
         "src/cli/prompt-select-pty.test.ts",
         "src/cli/status.integration.test.ts",
+        "src/cli/store-gc-budgets.integration.test.ts",
         "src/cli/store-gc-generated.integration.test.ts",
         "src/cli/store-gc-otel.integration.test.ts",
+        "src/cli/store-gc-partial-deletion.integration.test.ts",
         "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts",
         "src/core/git-memory.integration.test.ts",
@@ -701,6 +796,7 @@
         "src/store/store-inuse.integration.test.ts",
         "src/store/store-liveness.integration.test.ts",
         "src/store/store-lossless.integration.test.ts",
+        "src/store/store-workspace-activity.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts"
       ],
       "unboundedTaskName": "test:megarepo:unbounded"
@@ -1329,6 +1425,20 @@
       "unboundedTaskName": "test:otel-contract:unbounded"
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/outline:test_collect",
+      "excludes": [],
+      "packageName": "outline",
+      "packagePath": "packages/@overeng/outline",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/model.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/outline:test",
+      "taskName": "test:outline",
+      "testFiles": ["src/model.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/oxc-config:test_collect",
       "excludes": [],
       "packageName": "oxc-config",
@@ -1718,6 +1828,7 @@
     {
       "collectionTarget": "effect_utils//packages/@overeng/utils-dev:test_collect",
       "excludes": [
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1731,6 +1842,7 @@
       "selectedTestFiles": [
         "src/baseline-collection.test.ts",
         "src/cli-contract.test.ts",
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1744,6 +1856,7 @@
       "testFiles": [
         "src/baseline-collection.test.ts",
         "src/cli-contract.test.ts",
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1753,6 +1866,7 @@
       ],
       "unboundedAfter": [],
       "unboundedFiles": [
+        "src/node-vitest/git-environment.integration.test.ts",
         "src/node-vitest/otel-vitest-flush.test.ts",
         "src/otelite/Otelite.test.ts",
         "src/otelite/signal-expect.test.ts",
@@ -1774,6 +1888,7 @@
         "src/gate/portable-stories.unit.test.ts",
         "src/gate/project-annotations.unit.test.ts",
         "src/gate/project.unit.test.ts",
+        "src/gate/run.integration.test.ts",
         "src/gate/run.unit.test.ts",
         "src/gate/settle.unit.test.ts"
       ],
@@ -1786,6 +1901,7 @@
         "src/gate/portable-stories.unit.test.ts",
         "src/gate/project-annotations.unit.test.ts",
         "src/gate/project.unit.test.ts",
+        "src/gate/run.integration.test.ts",
         "src/gate/run.unit.test.ts",
         "src/gate/settle.unit.test.ts"
       ],

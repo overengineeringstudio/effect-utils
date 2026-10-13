@@ -1,0 +1,2 @@
+# Generate MIME reverse mappings and the generated-source environment path.
+buildscript.run = true

@@ -1,6 +1,7 @@
 export {
   CachePublisherJobError,
   jobCacheDescriptors,
+  trustedCacheWriterGuardedSecret,
   publisherWriteSecret,
   workflowCacheDescriptors,
   validateWorkflowCachePolicy,

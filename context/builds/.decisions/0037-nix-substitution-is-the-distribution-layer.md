@@ -146,3 +146,19 @@ evaluate the producer recipe (06-nix-bridge "Private pnpm Consumption").
 The consequence "Open: private pnpm `file:` variant (unproven)" is closed:
 PR #1472 implements it (`mkPrivateProductTarballs`, the `productTarball`
 sidecar row, and the consumer fixture).
+
+## Changed-closure Action Reuse
+
+Pure sandboxed Nix product builds remain the publication recipe. The
+[InNixReuse experiment](../05-product-distribution/02-nix-bridge/.experiments/2026-10-05-action-level-innix-reuse.md)
+records measured Linux action reuse via an offline REAPI capsule, failed
+`buck-out` restoration and a direct-Buck/local-CA-import smoke.
+
+Johannes chose to retain pure builds and record the evidence, revisiting only
+if the daily cache-health mission shows changed-product rebuild cost
+dominating. This is not an amendment to clauses 1 or 3 and does not authorize
+an outside-Nix publisher. The Nix bridge's
+[DQ1](../05-product-distribution/02-nix-bridge/open-questions.md#dq1-action-level-reuse-across-changed-closure-product-builds)
+owns the revisit trigger and non-chosen alternatives: slim dependency-only
+capsules (E), or an explicit 0037 amendment for protected direct-Buck publication
+with verified content-addressed import (D).

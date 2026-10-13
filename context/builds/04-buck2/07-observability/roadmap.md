@@ -38,6 +38,8 @@ successful main runs and safe read isolation have been measured
 
 ## Tool implementation
 
-- Complete the remaining full-Rust `buck2-tools` rewrite slices in
-  [effect-utils#1394](https://github.com/overengineeringstudio/effect-utils/issues/1394);
-  the genie Buck2 generators remain outside that rewrite.
+- Further `buck2-tools` Rust ports are parked after slice 1 (#1401), not
+  scheduled as a full rewrite. Reopen only when a module needs a substantial
+  rewrite or the Bun closure becomes a measured transfer/cache cost, as
+  recorded in [effect-utils#1522](https://github.com/overengineeringstudio/effect-utils/issues/1522)
+  and the [rebaseline experiment](../../.experiments/2026-09-30-buck2-tools-rust-rebaseline.md).

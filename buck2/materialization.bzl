@@ -1,13 +1,20 @@
 """Generic TypeScript package-tree assembly from declared Buck artifacts."""
 
-load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
+load("//buck2:hermetic.bzl", "hermetic_bun_command", "ts_action", "ts_action_attrs")
 load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
-load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints", "ts_action_admission_status")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
 PackageTreeInfo = provider(fields = {
+    "admission_status": str,
     "read_roots": provider_field(list[Artifact]),
     "tree": Artifact,
+})
+
+GeneratedPackageInfo = provider(fields = {
+    "package_name": str,
+    "package": Artifact,
+    "read_roots": provider_field(list[Artifact]),
 })
 
 def _unique_artifacts(artifacts):
@@ -44,11 +51,12 @@ def _package_tree_impl(ctx):
     # closure, so a sibling `./module.ts` import resolves inside the action.
     # Only the declared modules are present: an undeclared one fails closed.
     runtime_tree = ctx.attrs.runtime[DefaultInfo].default_outputs[0]
+    inputs = [runtime_tree] + ctx.attrs.files.values() + ctx.attrs.workspace_files.values()
     args = cmd_args([
-        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable, sandbox_inputs = inputs),
         cmd_args(runtime_tree, format = "{}/" + ctx.attrs.runtime_entry),
         "--output",
-        out.as_output(),
+        out,
     ])
 
     # A dependency view owns no dependency bytes: the package view links it as
@@ -61,8 +69,10 @@ def _package_tree_impl(ctx):
         args.add("--dependency-view", dependency_view.node_modules)
         args.add(cmd_args(hidden = dependency_view.read_roots))
         read_roots = _unique_artifacts([out] + dependency_view.read_roots)
+        inputs.extend(dependency_view.read_roots)
     else:
         args.add("--node-modules", ctx.attrs.node_modules)
+        inputs.append(ctx.attrs.node_modules)
     if ctx.attrs.strip_project_references:
         args.add("--strip-project-references", "true")
     _add_mapped_sources(args, "--file", ctx.attrs.files)
@@ -73,22 +83,37 @@ def _package_tree_impl(ctx):
         args.add("--workspace-dependency-view", destination, package_tree.tree)
         args.add(cmd_args(hidden = package_tree.read_roots))
         read_roots = _unique_artifacts(read_roots + package_tree.read_roots)
+        inputs.extend(package_tree.read_roots)
+    for package_name in sorted(ctx.attrs.generated_dependencies.keys()):
+        _require_relative_path(package_name, "generated package name")
+        product = ctx.attrs.generated_dependencies[package_name][GeneratedPackageInfo]
+        if product.package_name != package_name:
+            fail("generated dependency name does not match product: {}".format(package_name))
+        args.add("--workspace-file", "node_modules/" + package_name, product.package)
+        args.add(cmd_args(hidden = product.read_roots))
+        read_roots = _unique_artifacts(read_roots + product.read_roots)
+        inputs.extend(product.read_roots)
     for link_path in sorted(ctx.attrs.workspace_links.keys()):
         target_path = ctx.attrs.workspace_links[link_path]
         _require_relative_path(link_path, "workspace link")
         _require_relative_path(target_path, "workspace link target")
         args.add("--workspace-link", link_path, target_path)
-    hermetic_action(
+    # local-materialization-policy: cheap tree assembly stays on the nonremote
+    # platform; local_only alone would still permit remote-cache downloads.
+    ts_action(
         ctx,
         args,
+        inputs = _unique_artifacts(inputs),
+        outputs = [out],
         category = "package_tree",
         identifier = ctx.attrs.name,
         local_only = True,
+        cacheable = False,
     )
     providers = [
         # Export every root that links beneath the tree may resolve into.
         DefaultInfo(default_output = out, other_outputs = read_roots[1:]),
-        PackageTreeInfo(read_roots = read_roots, tree = out),
+        PackageTreeInfo(admission_status = ts_action_admission_status(ctx), read_roots = read_roots, tree = out),
     ]
     if ctx.attrs.dependency_view != None:
         providers.append(PnpmDeclaredClosureInfo(
@@ -100,9 +125,8 @@ def _package_tree_impl(ctx):
     return providers
 
 _package_tree = cache_guarded_rule(
-    cache_eligible = lambda ctx: True,
     impl = _package_tree_impl,
-    attrs = dict(hermetic_attrs(), **{
+    attrs = dict(ts_action_attrs(), **{
         "node_modules": attrs.option(attrs.source(), default = None),
         "empty_dependencies": attrs.bool(default = False),
         "dependency_view": attrs.option(
@@ -118,6 +142,11 @@ _package_tree = cache_guarded_rule(
         "workspace_dependency_views": attrs.dict(
             key = attrs.string(),
             value = attrs.dep(providers = [PackageTreeInfo]),
+            default = {},
+        ),
+        "generated_dependencies": attrs.dict(
+            key = attrs.string(),
+            value = attrs.dep(providers = [GeneratedPackageInfo]),
             default = {},
         ),
         "strip_project_references": attrs.bool(default = False),
@@ -163,7 +192,7 @@ def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_si
         workspace_files = workspace_files,
         workspace_dependency_views = workspace_dependency_views,
         workspace_links = workspace_links,
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = host_execution_constraints() + kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
@@ -182,7 +211,7 @@ def package_view(name, dependency_view, files, runtime, runtime_entry, workspace
         workspace_dependency_views = workspace_dependency_views,
         workspace_files = workspace_files,
         workspace_links = {},
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = host_execution_constraints() + kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
@@ -197,7 +226,7 @@ def empty_package_view(name, files, runtime, runtime_entry, **kwargs):
         workspace_files = {},
         workspace_dependency_views = {},
         workspace_links = {},
-        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = host_execution_constraints() + kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 

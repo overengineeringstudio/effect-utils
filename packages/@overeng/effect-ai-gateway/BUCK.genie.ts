@@ -10,6 +10,11 @@ export const buck2TypeScriptAdmission = {
   sourceRoots: ['src'],
   workspaceSiblings: [
     {
+      packageName: '@overeng/ai-gateway-conformance',
+      packagePath: 'packages/@overeng/ai-gateway-conformance',
+      distTarget: '//packages/@overeng/ai-gateway-conformance:dist',
+    },
+    {
       packageName: '@overeng/utils-dev',
       packagePath: 'packages/@overeng/utils-dev',
       distTarget: '//packages/@overeng/utils-dev:dist',

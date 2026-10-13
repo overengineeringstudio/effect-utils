@@ -67,6 +67,7 @@ let
   '';
 in
 {
+  imports = [ ./worktree-teardown.nix ];
   git-hooks.enable = lib.mkDefault true;
 
   # ── Pre-commit: prevent commits on wrong branch/worktree ──────────────

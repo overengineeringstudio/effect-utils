@@ -25,6 +25,10 @@ the runtime supports it:
 The SQLite runtime boundary is intentional: datasource-sync imports
 `node:sqlite`, which is unavailable to the Bun-compiled root CLI.
 
+The native database-info and schema commands initialize their TUI renderer apps
+eagerly. Each command uses the same exported app for execution and the view's
+state atom; the former lazy getter workaround for Bun #30634 is no longer used.
+
 For markdown/SQLite workflows, use the packaged Nix/devenv binary:
 
 ```bash

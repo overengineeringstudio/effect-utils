@@ -1,9 +1,9 @@
-import { Redacted } from 'effect'
+import { ConfigProvider, Effect, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { sha256Hex } from '@overeng/utils'
 
-import { notionTokenFingerprint } from './config.ts'
+import { notionTokenFingerprint, resolveNotionToken } from './config.ts'
 
 describe('notionTokenFingerprint', () => {
   it('formats as `<scheme>…#<8hex>` for a scheme-prefixed token', () => {
@@ -40,5 +40,20 @@ describe('notionTokenFingerprint', () => {
     expect(fp).not.toContain('nounderscore')
     expect(fp).not.toContain('SECRET')
     expect(fp).toBe(`…#${sha256Hex('nounderscoreSECRET').slice(0, 8)}`)
+  })
+})
+
+describe('resolveNotionToken', () => {
+  it('explains environment and SecretSpec provisioning when the token is absent', async () => {
+    const error = await Effect.runPromise(
+      resolveNotionToken().pipe(
+        Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({}))),
+        Effect.flip,
+      ),
+    )
+    expect(error._tag).toBe('NotionTokenMissing')
+    expect(error.message).toContain('NOTION_API_TOKEN, NOTION_TOKEN')
+    expect(error.message).toContain('secrets-run --reason "access Notion" -- <command>')
+    expect(error.message).toContain('secretspec.toml')
   })
 })

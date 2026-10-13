@@ -1,0 +1,19 @@
+[package]
+name = "effect-rust-wasm-only-regression"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Deliberately independent: only default and wasm exist in the caller's namespace.
+[workspace]
+
+[features]
+default = ["wasm"]
+wasm = ["effect-rust/wasm"]
+
+[dependencies]
+effect-rust = { path = "../../../effect-rust" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.127"
+js-sys = "=0.3.104"

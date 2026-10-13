@@ -31,14 +31,14 @@
 
 let
   lib = pkgs.lib;
+  watcherPolicies = import ./watcher-policies.nix;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
   # Cargo manifests in consumer roots live in repositorySource, which can be a
   # derivation. Read the staged workspace at build time, not repositoryRoot at
   # evaluation time: the latter belongs to this rules package.
-  releaseProfileScript = ../workspace-tools/lib/cargo-release-profile.py;
-  # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
-  # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
-  cliBuildStamp = product.cliBuildStamp or null;
+  releaseProfileScript = pkgs.writeText "cargo-release-profile.py" (
+    builtins.readFile ../workspace-tools/lib/cargo-release-profile.py
+  );
   source =
     if sourcePaths != null then
       lib.fileset.toSource {
@@ -54,6 +54,7 @@ let
           [
             (repositoryRoot + "/.buckconfig")
             (repositoryRoot + "/.buckroot")
+            (repositoryRoot + "/.watchmanconfig")
             (repositoryRoot + "/BUCK")
             (repositoryRoot + "/package.json")
             (repositoryRoot + "/pnpm-workspace.yaml")
@@ -81,6 +82,23 @@ let
         );
       };
   sourceDigest = builtins.hashString "sha256" (toString source);
+  # Rust projections rendered with `cliBuildStamp` read this JSON through
+  # `build_identity.cli_build_stamp`. Scoped native recipes have no Git
+  # provenance: default to their existing source identity, never repository HEAD.
+  # Explicit stamps still belong to the caller's selected identity policy.
+  cliBuildStamp =
+    product.cliBuildStamp or (
+      if sourcePaths != null && product.kind == "native" && cargoWorkspaceRoot != null then
+        builtins.toJSON {
+          type = "nix";
+          version = product.version;
+          rev = builtins.substring 0 7 sourceDigest;
+          # This is an immutable source projection, not a Git cleanliness claim.
+          dirty = false;
+        }
+      else
+        null
+    );
 
   target = product.target;
   productName = product.name;
@@ -97,7 +115,7 @@ let
   # Descriptor-bearing products: JavaScript product-v2 and build_product.
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
-  buckBuildArgs = "--config nix_store.root=${pnpmArchives}${
+  buckBuildArgs = "-j \"$NIX_BUILD_CORES\" --config build.num_tokio_workers=\"$NIX_BUILD_CORES\" --config nix_store.root=${pnpmArchives}${
     lib.optionalString (product.kind == "native") " --config rust_profile.mode=release"
   }${
     lib.concatMapStringsSep "" (
@@ -114,9 +132,8 @@ in
 assert lib.assertMsg (
   producerCommit == null || builtins.match "[0-9a-f]{40}" producerCommit != null
 ) "buck2-products: producerCommit must be a full lowercase Git commit";
-assert lib.assertMsg (
-  (producerCommit == null) == (sourcePaths != null)
-) "buck2-products: published recipes require producerCommit; scoped consumer recipes must omit it";
+assert lib.assertMsg ((producerCommit == null) == (sourcePaths != null))
+  "buck2-products: revision-bound recipes require producerCommit; scoped source recipes must omit it";
 assert lib.assertMsg
   (
     sourcePaths == null
@@ -175,16 +192,32 @@ let
 
     buildPhase = ''
       runHook preBuild
+      # Nix's zero/unset budget must not expand to the host's CPU count.
+      export NIX_BUILD_CORES="''${NIX_BUILD_CORES:-1}"
+      if [ "$NIX_BUILD_CORES" = 0 ]; then
+        export NIX_BUILD_CORES=1
+      fi
+      # Bound daemon blocking work as well as execution and Tokio workers.
+      export BUCK2_MAX_BLOCKING_THREADS="$NIX_BUILD_CORES"
       export HOME="$TMPDIR/home"
       export XDG_CACHE_HOME="$TMPDIR/cache"
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      mkdir -p .buck2
       ${lib.optionalString (rootProjection != null) ''
         cp -R ${rootProjection}/. .
         chmod -R u+w .buck2 buck2 BUCK .buckconfig .buckroot
       ''}
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
       cp -R ${capabilities}/. .buck2/capabilities
+      # Nix inputs are immutable and Watchman's state-directory chmod is not
+      # permitted in the sandbox. Hash only this declared source tree instead
+      # of requiring a native notification daemon; mutable edit loops use the
+      # shipped Watchman policy. Startup reads the file, not CLI -c overrides.
+      cat >> .buckconfig.local <<'BUCKLOCAL'
+      [buck2]
+        file_watcher = ${watcherPolicies.immutable-input}
+      BUCKLOCAL
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
         # Consumer roots carry the already-patched local prelude from
         # buck2-rules. Only the producer's bundled external prelude needs
@@ -209,17 +242,31 @@ let
           rust_profile_args+=(--config "$setting")
         done <<< "$release_settings"
       ''}
+      # Linux TS actions run Bubblewrap nested in this sandbox. Its EPERM at
+      # namespace setup is a host restriction; name it without changing the
+      # failure. Stderr is streamed unchanged and also scanned after failure.
+      buck_build() {
+        local status
+        set +e
+        { ${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" "$@" 2>&1 1>&3 3>&- | tee -a "$TMPDIR/buck-build-stderr.log" >&2; } 3>&1
+        status="''${PIPESTATUS[0]}"
+        set -e
+        if [ "$status" != 0 ] && grep -qE 'bwrap: .*(pivot_root|RTM_NEWADDR).*Operation not permitted' "$TMPDIR/buck-build-stderr.log"; then
+          echo 'buck2-products: nested user namespaces are restricted on this host (e.g. Ubuntu 24.04 AppArmor `kernel.apparmor_restrict_unprivileged_userns=1` or an unprivileged container); enable them or substitute this package from the binary cache' >&2
+        fi
+        return "$status"
+      }
 
-      artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg target})"
+      artifact="$(buck_build ${lib.escapeShellArg target})"
       test -f "$artifact"
       cp "$artifact" ${lib.escapeShellArg outputName}
       ${lib.optionalString hasDescriptor ''
-        descriptor="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg "${target}[descriptor]"})"
+        descriptor="$(buck_build ${lib.escapeShellArg "${target}[descriptor]"})"
         test -f "$descriptor"
         jq -cS . "$descriptor" > descriptor.json
       ''}
       ${lib.optionalString (runtimeClosureTarget != null) ''
-        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg runtimeClosureTarget})"
+        runtime_closure="$(buck_build ${lib.escapeShellArg runtimeClosureTarget})"
         test -f "$runtime_closure/descriptor.json"
         cp -R "$runtime_closure" runtime-closure
       ''}

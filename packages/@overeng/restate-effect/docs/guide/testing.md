@@ -113,6 +113,13 @@ On release it shuts the server down and removes the temp dir. The full file is
 [`examples/11-testing.ts`](../../examples/11-testing.ts); the `it.effect` assertions
 live in [`src/endpoint/examples.integration.test.ts`](../../src/endpoint/examples.integration.test.ts).
 
+The package's Vitest configuration runs at most two files concurrently, with file
+isolation enabled. Tests within a file retain their existing ordering; each harness
+owns its temp directory and ephemeral ingress, admin, and node-to-node ports.
+Scoped teardown still shuts down each native server and removes its state. This
+bounds concurrent native-server lifecycles without replacing real durability or
+replay coverage with the mock backend.
+
 ```ts
 import { it } from '@effect/vitest'
 import { Effect } from 'effect'

@@ -29,12 +29,35 @@ let
     '';
     builtins.getFlake "git+file://${toString ./.}";
   currentSystem = pkgs.stdenv.hostPlatform.system;
+  # Required CI tests do not run the interactive trace-capture verifier.
+  ciUnitTest = builtins.getEnv "EFFECT_UTILS_CI_TEST" == "1";
+  testPlatform = builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM";
+  testPlatforms = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-platforms.json);
+  testScheduling = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-scheduling.json);
+  darwinTestTasks = map (suite: suite.task) testPlatforms.darwin;
+  classifiedTestTasks = darwinTestTasks ++ map (suite: suite.task) testPlatforms.neutral;
+  extraSourceTestTasks = [
+    "devenv-modules:test"
+    "buck2:rust:generators:test"
+    "genie:buck2:test"
+    "genie:ci-workflow:test"
+  ];
+  selectedTestTask = task: testPlatform != "darwin" || builtins.elem task darwinTestTasks;
   buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
-  # The flake wires the source recipes that cache-native manifest rows require;
-  # re-importing the loader here without them fails on every cache-native product.
-  trackedBuck2Products = repoFlake.buckProducts.${currentSystem};
-  pnpmArchives = import ./nix/buck2-products/pnpm-archives.nix { pkgs = flakePkgs; };
+  tsSandboxTestEnvironment = lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
+    ${publishBuckCapabilities}
+    cd "$root"
+    export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
+    export BUN_BIN=${flakePkgs.bun}/bin/bun
+    export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
+    probe_outputs="$("$BUCK2_BIN" build \
+      --target-platforms effect_utils//buck2/platforms:host_platform \
+      --show-full-json-output effect_utils//buck2/tests/ts_sandbox:probe)"
+    export TS_SANDBOX_PROBE_OUTPUT="$(printf '%s' "$probe_outputs" | \
+      ${pkgs.jq}/bin/jq -er '."effect_utils//buck2/tests/ts_sandbox:probe"')"
+    export TS_SANDBOX_LAUNCHER="''${TS_SANDBOX_PROBE_OUTPUT%/receipt/summary.json}/ts-sandbox.sh"
+  '';
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
   restatePkgs = import repoFlake.inputs.nixpkgs {
@@ -43,16 +66,8 @@ let
   };
   restate = import ./nix/restate.nix { pkgs = restatePkgs; };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
-  # Use npm oxlint with NAPI bindings and the two tracked Buck plugin modules.
-  oxlintNpm = import ./nix/oxlint-npm.nix {
-    pkgs = flakePkgs;
-    bun = flakePkgs.bun;
-    inherit pnpmArchives;
-    products = trackedBuck2Products.products;
-  };
-  oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
-    inherit pkgs oxlintNpm;
-  };
+  # Share the publisher's pinned tools and immutable Buck plugin modules.
+  oxlintWithPlugins = repoPackages.oxlint-with-plugins;
   nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
@@ -93,7 +108,12 @@ let
     weaver-diff = import ./nix/devenv-modules/tasks/shared/weaver-diff.nix;
     weaver-live-check = import ./nix/devenv-modules/tasks/shared/weaver-live-check.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
-    devenv-module-tests = ./nix/devenv-modules/tasks/local/devenv-module-tests.nix;
+    devenv-module-tests = import ./nix/devenv-modules/tasks/local/devenv-module-tests.nix {
+      workerCount = testScheduling.workers;
+      scriptWeights = testScheduling.moduleScriptSeconds;
+      inherit testPlatform;
+      moduleScriptPlatforms = testPlatforms.moduleScripts;
+    };
   };
   # Repository CLIs come from the reviewed Buck product boundary, not from a
   # source entrypoint that exists only here. The activated shell, the flake
@@ -101,18 +121,32 @@ let
   # cannot pass locally against a source tree and fail against the product.
   repoPackages = repoFlake.packages.${currentSystem};
 
+  # Keep library configuration environment-driven; resolve local credentials at
+  # the devenv executable boundary, without changing packaged/CI entrypoints.
+  notionWithSecrets =
+    name: package:
+    pkgs.writeShellApplication {
+      inherit name;
+      text = ''
+        if [ -n "''${NOTION_API_TOKEN:-}" ] || [ -n "''${NOTION_TOKEN:-}" ]; then
+          exec ${package}/bin/${name} "$@"
+        fi
+        export SECRETSPEC_FILE="''${SECRETSPEC_FILE:-${config.devenv.root}/secretspec.toml}"
+        exec secrets-run --reason "run ${name}" -- ${package}/bin/${name} "$@"
+      '';
+    };
+
   # Real packages backing guarded command names. The cli-guards own bin/<name>
   # and exec these via absolute store path under passthrough, so they are passed
   # as `*Pkg` reals to the task modules instead of also being top-level profile
   # providers (which would collide with the guards in buildEnv). See cli-guard.nix.
-  pnpmPkg = import ./nix/pnpm.nix { inherit pkgs; };
+  pnpmPkg = repoPackages.pnpm;
   genieCli = repoPackages.genie;
   mrCli = repoPackages.megarepo;
   ciToolsCli = repoPackages.ci-tools;
   tuiStoriesCli = repoPackages.tui-stories;
   ghCiUtilsCli = repoPackages.gh-ci-utils;
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
-  buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
 
   # The generated root package manifest is the workspace package authority.
   # Consuming it here removes the former hand-maintained Nix package list and
@@ -338,6 +372,21 @@ let
       ${lib.concatMapStringsSep ", " (lane: lane.packagePath) buck2TestLanesWithoutSources}
     '';
     buck2TestAuthorityLanes;
+  classifiedBuck2TestTasks = map (suite: suite.task) (
+    testPlatforms.bounded.darwin ++ testPlatforms.bounded.neutral
+  );
+  darwinBuck2TestTasks = map (suite: suite.task) testPlatforms.bounded.darwin;
+  selectedBuck2TestLanes =
+    assert lib.assertMsg (
+      builtins.sort builtins.lessThan classifiedBuck2TestTasks
+      == builtins.sort builtins.lessThan (map (lane: lane.taskName) buck2TestLanes)
+    ) "test-platforms.json must classify every bounded test lane exactly once";
+    builtins.filter (
+      lane: testPlatform != "darwin" || builtins.elem lane.taskName darwinBuck2TestTasks
+    ) buck2TestLanes;
+  boundedTestScope = pkgs.writeText "test-bounded-scope.json" (
+    builtins.toJSON (map (lane: lane.taskName) selectedBuck2TestLanes)
+  );
   buck2TestLanePackagePaths = map (lane: lane.packagePath) buck2TestLanes;
   # Buck executes every admitted bounded lane. Source Vitest keeps packages absent from the
   # authority and each lane's exact generic complement; explicit live/e2e owners run separately.
@@ -351,7 +400,57 @@ let
     vitestArgs = lib.concatStringsSep " " (map lib.escapeShellArg lane.unboundedFiles);
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
-  sourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  allSourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
+  aggregateTestTasks = [
+    "test:buck2:unit"
+    "test:run"
+  ]
+  ++ extraSourceTestTasks
+  ++ map (pkg: "test:${pkg.name}") allSourceTestPackages;
+  sourceTestPackages =
+    assert lib.assertMsg (builtins.elem testPlatform [
+      ""
+      "linux"
+      "darwin"
+    ]) "EFFECT_UTILS_TEST_PLATFORM must be linux or darwin";
+    assert lib.assertMsg (
+      lib.unique classifiedTestTasks == classifiedTestTasks
+    ) "test-platforms.json classifies a task more than once";
+    assert lib.assertMsg (
+      builtins.sort builtins.lessThan aggregateTestTasks
+      == builtins.sort builtins.lessThan classifiedTestTasks
+    ) "test-platforms.json must classify every aggregate test task exactly once";
+    builtins.filter (pkg: selectedTestTask "test:${pkg.name}") allSourceTestPackages;
+  sourceTestScope = pkgs.writeText "test-source-scope.json" (
+    builtins.toJSON (
+      map (pkg: "test:${pkg.name}") sourceTestPackages
+      ++ builtins.filter selectedTestTask extraSourceTestTasks
+    )
+  );
+  testPackagePublisherName = name: "buck2:editor:publish:test:${name}";
+  standaloneTestPublicationPackages =
+    allSourceTestPackages
+    ++ map (lane: {
+      path = lane.packagePath;
+      name = lib.removePrefix "test:" lane.taskName;
+    }) (builtins.filter (lane: !(lane ? unboundedTaskName)) buck2TestLanes);
+  # Publish selected source packages plus the views the selected module scripts execute
+  # through. Neutral module scripts must not keep an unrelated view on Darwin's prerequisite.
+  testPublicationPackagePaths = lib.unique (
+    lib.optional (selectedTestTask "genie:buck2:test") "."
+    ++ lib.optional (selectedTestTask "devenv-modules:test") "packages/@overeng/genie"
+    ++ lib.optional (
+      testPlatform != "darwin"
+      || builtins.any (
+        suite:
+        builtins.elem suite.script [
+          "deploy-task-e2e.test.sh"
+          "workflow-report-task-e2e.test.sh"
+        ]
+      ) testPlatforms.moduleScripts.darwin
+    ) "packages/@overeng/ci-tools"
+    ++ map (pkg: pkg.path) sourceTestPackages
+  );
   typescriptPublicationRootPredicate = ''
     typescript_publication_root() {
       local member_root repository_root
@@ -369,18 +468,10 @@ let
       printf "%s\n" "$member_root"
     }
   '';
-  standaloneBuckCachePosture = ''
-    if [ -n "''${BUCK2_PRIVATE_CACHE_WRITE_AUTH:-}" ] \
-      && [ "''${BUCK2_PUBLIC_CACHE_READ_ONLY:-}" != 1 ] \
-      && [ "''${BUCK2_NO_REMOTE_CACHE:-}" != 1 ]; then
-      auth="$BUCK2_PRIVATE_CACHE_WRITE_AUTH"
-      case "$auth" in
-        publisher:*|:*|*:|"''${auth%%:*}") echo "private cache writer requires a per-host username:password credential" >&2; exit 1 ;;
-      esac
-      export BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$auth" | ${pkgs.coreutils}/bin/base64 -w0)"
-      unset auth BUCK2_PRIVATE_CACHE_WRITE_AUTH
-    fi
-    ${pkgs.bun}/bin/bun "$root/scripts/buck2-cache-posture.ts" "$root" --probe
+  publishBuckCapabilities = ''
+    ${pkgs.bun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
+      --root "$root" --profile ${buck2Capabilities} \
+      --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" >&2
   '';
 
   buck2BuildExec =
@@ -394,7 +485,7 @@ let
           pkgs.watchman
         ]
       }
-      ${standaloneBuckCachePosture}
+      ${publishBuckCapabilities}
       cd "$root"
       exec "$BUCK2_BIN" build \
         --target-platforms effect_utils//buck2/platforms:host_platform \
@@ -404,7 +495,11 @@ let
   # Every Buck-invoking task uses the checkout's pinned binary and standalone
   # project root.
   buck2UnitTestExec =
-    { name, targets }:
+    {
+      name,
+      targets,
+      prebuildCollection ? false,
+    }:
     trace.exec name ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
@@ -414,7 +509,15 @@ let
           pkgs.watchman
         ]
       }
-      ${standaloneBuckCachePosture}
+      ${publishBuckCapabilities}
+      ${lib.optionalString prebuildCollection ''
+        ${pkgs.bun}/bin/bun "$root/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts" \
+          --root "$root" \
+          --buck2 "$BUCK2_BIN" \
+          --buck2-cwd "$root" \
+          ${lib.optionalString (testPlatform == "darwin") "--bounded-tasks-file ${boundedTestScope}"} \
+          --prebuild-only
+      ''}
       cd "$root"
       exec "$BUCK2_BIN" test \
         --target-platforms effect_utils//buck2/platforms:host_platform \
@@ -428,7 +531,15 @@ let
       lane:
       lib.nameValuePair lane.taskName {
         description = "Execute the bounded ${lane.packageName} unit-test lane under Buck";
-        after = [ "genie:check" ] ++ lib.optional (lane ? unboundedTaskName) lane.unboundedTaskName;
+        after = [
+          "genie:check"
+          (
+            if lane ? unboundedTaskName then
+              lane.unboundedTaskName
+            else
+              testPackagePublisherName (lib.removePrefix "test:" lane.taskName)
+          )
+        ];
         # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
         exec = buck2UnitTestExec {
           name = lane.taskName;
@@ -516,6 +627,9 @@ let
   genieExtraInputGlobs = [
     "context/otel-scrape/telemetry-registry.json"
     "genie/buck2/*.ts"
+    "genie/ci-workflow/test-platforms.json"
+    # Storybook workflow admission discovers consumers from these directories.
+    "packages/**/.storybook/**"
     "packages/@overeng/buck2-tools/src/**/*.ts"
     "packages/@overeng/megarepo/src/buck2-manifest.ts"
     "packages/@overeng/tui-core/src/**/*.ts"
@@ -564,7 +678,7 @@ let
       root="''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}
       cd "$root"
-      ${standaloneBuckCachePosture}
+      ${publishBuckCapabilities}
 
       # Pipeline logs join their job trace after the task graph. Standalone
       # Buck commands convert locally, retaining unacknowledged OTLP chunks.
@@ -635,7 +749,7 @@ let
     trace.exec traceName ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      ${standaloneBuckCachePosture}
+      ${publishBuckCapabilities}
       exec ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
         --workspace-root "$root" \
@@ -649,7 +763,7 @@ let
         --fingerprint-tool ${
           repoFlake.packages.${currentSystem}.buck2-fingerprint
         }/bin/buck2-fingerprint \
-        --snapshot-retention 3${packageArgument}
+        --snapshot-retention 2${packageArgument}
     '';
   scopedEditorViewPublisher =
     {
@@ -671,37 +785,8 @@ in
   imports = [
     # Git hook: prevent commits on default branch + enforce linked worktrees
     (taskModules.worktree-guard { })
-    # OpenTelemetry observability stack (Collector + Tempo + Grafana)
-    (import ./nix/devenv-modules/otel.nix { traceShellEntry = false; })
-    # Hermetic native-devenv + effect-utils task-tree capture. Ambient mode
-    # composes with the full stack above without importing it a second time.
-    (import ./nix/devenv-modules/observability.nix {
-      project = "effect-utils";
-      otelite = repoFlake.packages.${currentSystem}.otelite;
-      # Shell-entry setup is intentionally absent. Profile an instantiated,
-      # non-mutating task so check:all retains its trace integrity gate.
-      profile = {
-        name = "genie-check";
-        task = "genie:check";
-        mode = "single";
-        smokeTask = "genie:check";
-        smokeMode = "single";
-        bridgeTask = "genie:check";
-        # The verifier launches a nested, cache-refreshed task run. Keep it last
-        # so its task-cache refresh cannot race sibling check:all work.
-        prerequisiteTasks = [
-          "buck2:providers:check"
-          "cargo:check"
-          "dependency-materialization:evidence:check"
-          "check:devenv-eval-inputs"
-          "lint:check"
-          "nix:check:quick"
-          "buck2:editor:publish"
-          "test:run"
-          "weaver:diff"
-        ];
-      };
-      wireInto = [ "check:all" ];
+    (repoFlake.devenvModules.tasks.github-ruleset {
+      repo = "overengineeringstudio/effect-utils";
     })
     # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels
     (import ./nix/devenv-modules/gh-labels.nix { repo = "overengineeringstudio/effect-utils"; })
@@ -775,17 +860,30 @@ in
       ];
     })
     (taskModules.test {
-      installTask = "buck2:editor:publish";
-      packages = sourceTestPackages;
-      extraTests = [
-        "devenv-modules:test"
-        "genie:buck2:test"
-      ];
-      packageConcurrency = 4;
+      installTask = "buck2:editor:publish:test";
+      packages = map (
+        pkg: pkg // { installTask = testPackagePublisherName pkg.name; }
+      ) allSourceTestPackages;
+      aggregatePackages = sourceTestPackages;
+      extraTests = builtins.filter selectedTestTask extraSourceTestTasks;
+      packageConcurrency = testScheduling.workers;
+      packageWeights = testScheduling.sourceTaskSeconds;
       retainVitestJson = true;
     })
     # Per-lane Buck `test:<package>` tasks, each pulling in its unbounded complement.
     { tasks = buck2TestLaneTasks; }
+    {
+      tasks = lib.listToAttrs (
+        map (
+          pkg:
+          lib.nameValuePair (testPackagePublisherName pkg.name) (scopedEditorViewPublisher {
+            description = "Publish only bootstrap and ${pkg.name} test dependency views";
+            packagePaths = lib.unique (editorBootstrapPackagePaths ++ [ pkg.path ]);
+            traceScope = "test:${pkg.name}";
+          })
+        ) standaloneTestPublicationPackages
+      );
+    }
     (taskModules.storybook {
       installTask = "buck2:editor:publish";
       packages = packagesWithStorybook;
@@ -794,6 +892,7 @@ in
       siteName = "overeng-utils";
       siteId = "462d2440-fb38-4e69-8023-9c425d1e2132";
       ciToolsBin = "${ciToolsCli}/bin/ci-tools";
+      netlifyCliPkg = repoPackages.netlify-cli;
       deployments = map (pkg: {
         name = pkg.name;
         staticDir = "${pkg.path}/storybook-static";
@@ -853,6 +952,40 @@ in
     ./nix/devenv-modules/tasks/local/notion-integration-test.nix
     # Restate integration tests (native restate-server via RESTATE_SERVER_BIN)
     ./nix/devenv-modules/tasks/local/restate-integration-test.nix
+  ]
+  ++ lib.optionals (!ciUnitTest) [
+    # OpenTelemetry observability stack (Collector + Tempo + Grafana)
+    (import ./nix/devenv-modules/otel.nix { traceShellEntry = false; })
+    # Hermetic native-devenv + effect-utils task-tree capture. Ambient mode
+    # composes with the full stack above without importing it a second time.
+    (import ./nix/devenv-modules/observability.nix {
+      project = "effect-utils";
+      otelite = repoFlake.packages.${currentSystem}.otelite;
+      # Shell-entry setup is intentionally absent. Profile an instantiated,
+      # non-mutating task so check:all retains its trace integrity gate.
+      profile = {
+        name = "genie-check";
+        task = "genie:check";
+        mode = "single";
+        smokeTask = "genie:check";
+        smokeMode = "single";
+        bridgeTask = "genie:check";
+        # The verifier launches a nested, cache-refreshed task run. Keep it last
+        # so its task-cache refresh cannot race sibling check:all work.
+        prerequisiteTasks = [
+          "buck2:providers:check"
+          "cargo:check"
+          "dependency-materialization:evidence:check"
+          "check:devenv-eval-inputs"
+          "lint:check"
+          "nix:check:quick"
+          "buck2:editor:publish:test"
+          "test:run"
+          "weaver:diff"
+        ];
+      };
+      wireInto = [ "check:all" ];
+    })
   ];
 
   # The guarded `genie` command dispatches to this repository's own packaged
@@ -879,8 +1012,14 @@ in
     trace.exec "lint:check:lockfile" "exec genie --check"
   );
   tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];
-  tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."devenv-modules:test".env.OTEL_SPAN_BIN = "${otelSpan}/bin/otel-span";
+  tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish:test" ];
+  tasks."devenv-modules:test".env = {
+    OTEL_SPAN_BIN = "${otelSpan}/bin/otel-span";
+    CP_BIN = "${pkgs.coreutils}/bin/cp";
+    MV_BIN = "${pkgs.coreutils}/bin/mv";
+    JQ_BIN = "${pkgs.jq}/bin/jq";
+    FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
+  };
   tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
   tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish" ];
   tasks."test:notion-integration:notion-cli".after = lib.mkForce [ "buck2:editor:publish" ];
@@ -916,6 +1055,7 @@ in
   tasks."lint:check".after = lib.mkForce [
     "genie:check"
     "lint:check:no-tailwind"
+    "lint:check:getflake"
   ];
   tasks."lint:check".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check";
@@ -926,7 +1066,7 @@ in
   effectUtils.genie.extraInputGlobs = genieExtraInputGlobs;
 
   packages = [
-    buck2Stage0Definition.archive-tool
+    repoPackages.buck2-archive-tool
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript
@@ -937,14 +1077,18 @@ in
     # restate-server (+ restate CLI) on $PATH for restate-effect integration tests.
     restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
-    repoPackages.notion-cli
+    (notionWithSecrets "notion" repoPackages.notion-cli)
+    (notionWithSecrets "notion-md" repoPackages.notion-md)
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
+    # Retained source suites execute this native capture binary on both platforms.
+    # The protected-main publisher retains this exact import (and the other
+    # repository shell tools) through .#ci-test-shell-products on each platform.
     repoPackages.otelite
     repoPackages.otel-scrape
     repoPackages.buck2-events
     # Nix-distributed Buck binary used by direct repository tasks.
     buck2Machine
-    buck2Stage0Definition.product
+    repoPackages.buck2-product
     cliBuildStamp.package
     ciToolsCli
     ghCiUtilsCli
@@ -958,12 +1102,18 @@ in
     pkgs.reindeer
     pkgs.rustfmt
     pkgs.rust-analyzer
-  ];
+  ]
+  ++ lib.optional ciUnitTest otelSpan;
 
+  # Preserve the pinned task bridge without realizing the local capture stack.
+  env.OTEL_SPAN_BIN = lib.mkIf ciUnitTest "${otelSpan}/bin/otel-span";
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;
+  # Explicit digest-tool input for the JavaScript product contract test, including
+  # its direct `devenv shell -- bash ...` CI invocation.
+  env.JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN = "${pkgs.openssl}/bin/openssl";
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
   env.RESTATE_SERVER_BIN = "${restate}/bin/restate-server";
@@ -982,14 +1132,90 @@ in
       export CP_BIN=${pkgs.coreutils}/bin/cp
       export MV_BIN=${pkgs.coreutils}/bin/mv
       export FALSE_BIN=${pkgs.coreutils}/bin/false
+      export BUN_BIN=${pkgs.bun}/bin/bun
+      export PS_BIN=${if pkgs.stdenv.isDarwin then "/bin/ps" else "${pkgs.procps}/bin/ps"}
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
+      ${tsSandboxTestEnvironment}
       cd "$root/packages/@overeng/buck2-tools"
-      exec ${pkgs.bun}/bin/bun test src/*.test.ts
+      exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
     ''
   );
 
+  tasks."genie:ci-workflow:test" = {
+    description = "Run bootstrap-safe genie CI workflow helper tests (runner labels, plain-flake Rust jobs)";
+    exec = trace.exec "genie:ci-workflow:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      # `./` makes these exact paths; bare arguments are suffix filters that
+      # also match the copies Buck stages under buck-out.
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts
+    '';
+    execIfModified = [
+      "genie/ci-workflow/**/*.ts"
+      "genie/ci.ts"
+      "packages/@overeng/genie/src/runtime/**/*.ts"
+    ];
+  };
+
+  tasks."buck2:cache-posture:test" = {
+    description = "Exercise direct Buck cache/watcher admission, outages, trust precedence and scoped daemon migration";
+    exec = trace.exec "buck2:cache-posture:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
+        ./scripts/buck2-entrypoint.integration.test.ts \
+        ./scripts/buck2-cache-posture.integration.test.ts
+    '';
+    execIfModified = [
+      "nix/buck2.nix"
+      "scripts/buck2-entrypoint.*"
+      "scripts/buck2-cache-posture.*"
+      "scripts/buck2-remote-cache-proof.sh"
+      "genie/ci-scripts/buck2-action-evidence.ts"
+      "scripts/buck2-file-watcher.*"
+    ];
+  };
+
+  tasks."buck2:capabilities:test" = {
+    description = "Check capability migration and same-daemon generation publication with notify and Watchman";
+    exec = trace.exec "buck2:capabilities:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      export BUN_BIN=${pkgs.bun}/bin/bun
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      export NIX_FLAKE_REF="git+file://$PWD?shallow=1"
+      export PATH=${lib.makeBinPath [ pkgs.watchman ]}:$PATH
+      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.unit.test.ts
+      ${pkgs.bash}/bin/bash \
+        nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh
+      exec ${pkgs.bash}/bin/bash \
+        nix/devenv-modules/tasks/shared/tests/buck2-capability-daemon.test.sh
+    '';
+  };
+
+  tasks."worktree:teardown:test" = {
+    description = "Prove offline teardown with live Buck daemons, Watchman, and an editor view";
+    exec = trace.exec "worktree:teardown:test" ''
+      set -euo pipefail
+      export BUN_BIN=${pkgs.bun}/bin/bun
+      export CP_BIN=${pkgs.coreutils}/bin/cp MV_BIN=${pkgs.coreutils}/bin/mv
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export FINGERPRINT_BIN=${
+        repoFlake.packages.${currentSystem}.buck2-fingerprint
+      }/bin/buck2-fingerprint
+      export PATH=${
+        lib.makeBinPath [
+          pkgs.watchman
+          pkgs.jq
+        ]
+      }:$PATH
+      exec ${pkgs.bash}/bin/bash \
+        "''${DEVENV_ROOT:-$PWD}/nix/devenv-modules/tasks/shared/tests/worktree-teardown.test.sh"
+    '';
+  };
   # The Buck2 genie projection suite lives outside packages/@overeng, so the
   # per-package `test:<pkg>` tasks and the root Vitest projects list both miss
   # it. Give it its own task and hang it off `test:run`, or the projection and
@@ -997,20 +1223,42 @@ in
   # Bun: the pnpm-lock projection it imports reads Bun.YAML.
   tasks."genie:buck2:test" = {
     description = "Run the Buck2 genie projection and staged-runtime guards under pinned Bun";
-    after = [ "buck2:editor:publish" ];
+    after = [ "buck2:editor:publish:test" ];
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
-      # Directory, not a flat glob: genie/buck2/vitest.config.ts includes
-      # `**/*.unit.test.ts`, and Bun discovers recursively the same way.
-      exec ${pkgs.bun}/bin/bun test genie/buck2/
+      # An explicit directory preserves recursive discovery without matching
+      # the copies Buck stages under buck-out, like genie:ci-workflow:test.
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts
     '';
     execIfModified = [
       "BUCK"
       "genie/buck2/**/*.ts"
       "genie/buck2/fixtures/**/*"
+      "genie/ci-workflow/test-scheduling.json"
+      "scripts/editor-view-authority.ts"
+      "scripts/editor-view-authority.unit.test.ts"
       "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
       "packages/@overeng/buck2-tools/src/**/*.ts"
+    ];
+  };
+
+  # Like genie:buck2:test, these Bun suites live outside the package test census.
+  # Keep them beside the generators and include their source task in test:run.
+  tasks."buck2:rust:generators:test" = {
+    description = "Run the Rust interop service and wasm guest generator integration tests";
+    after = [ "buck2:editor:publish:test" ];
+    exec = trace.exec "buck2:rust:generators:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      export PATH=${lib.makeBinPath [ pkgs.gnutar ]}:$PATH
+      exec ${pkgs.bun}/bin/bun test ./buck2/rust/
+    '';
+    execIfModified = [
+      "buck2/rust/**/*.ts"
+      "packages/@overeng/effect-rust/src/**/*.ts"
+      "package.json"
+      "pnpm-lock.yaml"
     ];
   };
 
@@ -1052,17 +1300,6 @@ in
     };
   };
 
-  tasks."gh:apply-settings" = {
-    after = [ "genie:run" ];
-    exec = trace.exec "gh:apply-settings" ''
-      set -euo pipefail
-      ruleset_id=$(gh api repos/overengineeringstudio/effect-utils/rulesets --jq '.[0].id')
-      gh api "repos/overengineeringstudio/effect-utils/rulesets/$ruleset_id" --method PUT --input .github/repo-settings.json
-      echo "Applied repo-settings.json to ruleset $ruleset_id"
-    '';
-    description = "Apply .github/repo-settings.json to GitHub ruleset";
-  };
-
   tasks."cargo:test:buck2-foundation" = {
     description = "Run the Buck2 foundation tools and Swift action contract tests";
     exec = trace.exec "cargo:test:buck2-foundation" ''
@@ -1071,7 +1308,7 @@ in
         cd rust
         cargo test --locked --package 'buck2-*'
       )
-      ${pkgs.bun}/bin/bun test buck2/swift/compile.unit.test.ts
+      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test buck2/swift/compile.unit.test.ts
     '';
   };
 
@@ -1089,6 +1326,10 @@ in
         cargo clippy --locked --workspace --all-targets -- -D warnings
         cargo fmt --all --check
       )
+      cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+        --target-dir rust/target
+      cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+        --target-dir rust/target --target wasm32-unknown-unknown
     '';
   };
 
@@ -1146,9 +1387,20 @@ in
     '';
   };
 
+  tasks."lint:check:getflake" = {
+    description = "Reject bare-path getFlake inputs that copy ignored worktree state into the Nix store";
+    exec = trace.exec "lint:check:getflake" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      ${pkgs.nodejs_24}/bin/node --test scripts/lint-getflake.unit.test.mjs
+      exec ${pkgs.nodejs_24}/bin/node scripts/lint-getflake.mjs
+    '';
+  };
+
   tasks."nix:check:quick" = {
     description = "Check Nix artifact-import contracts without realizing repository products";
     after = [
+      "lint:check:getflake"
       "nix:buck2-artifact-import:check"
       "nix:buck2-cargo-archives:check"
       "nix:javascript-product-import:check"
@@ -1264,6 +1516,12 @@ in
     traceScope = "playwright";
   };
 
+  tasks."buck2:editor:publish:test" = scopedEditorViewPublisher {
+    description = "Atomically publish the editor dependency views the source-side tests execute through";
+    packagePaths = testPublicationPackagePaths;
+    traceScope = "test";
+  };
+
   tasks."buck2:editor:check" = {
     description = "Fail when any published workspace editor dependency view is stale";
     after = [ "genie:check" ];
@@ -1282,6 +1540,18 @@ in
         --repo-root "$root" \
         --package "$package" \
         --token "$token"
+    '';
+  };
+
+  tasks."buck2:editor:release" = {
+    description = "Release read-only editor roots before removing a retired worktree";
+    exec = trace.exec "buck2:editor:release" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      for package in ${lib.concatStringsSep " " (map lib.escapeShellArg ([ "." ] ++ allPackages))}; do
+        ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" release \
+          --repo-root "$root" --package "$package"
+      done
     '';
   };
 
@@ -1333,11 +1603,30 @@ in
   };
 
   tasks."buck2:cache-admission:check" = {
-    description = "Reject unadmitted cache execution constraints using real Buck analysis";
+    description = "Reject unadmitted cache execution constraints and prove fresh Darwin TS output ownership";
     exec = trace.exec "buck2:cache-admission:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
+      export CP_BIN=${pkgs.coreutils}/bin/cp JQ_BIN=${pkgs.jq}/bin/jq
       exec ${pkgs.bash}/bin/bash "$root/scripts/buck2-cache-admission-check.sh" "$root"
+    '';
+  };
+
+  tasks."buck2:ts-sandbox:test" = {
+    description = "Prove Linux TS action containment and missing/unusable Bubblewrap fail-closed behavior";
+    after = [ "buck2:providers:check" ];
+    exec = trace.exec "buck2:ts-sandbox:test" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      ${lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
+        ${tsSandboxTestEnvironment}
+        exec ${pkgs.bun}/bin/bun test \
+          ./packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts
+      ''}
+      ${lib.optionalString flakePkgs.stdenv.hostPlatform.isDarwin ''
+        printf '%s\n' 'TS sandbox admission excluded: darwin-unsandboxed (jd5hbf, 2026-10-11)'
+      ''}
     '';
   };
 
@@ -1368,7 +1657,10 @@ in
 
   tasks."buck2:quick" = {
     description = "Build the admitted quick Buck aggregate";
-    after = [ "buck2:providers:check" ];
+    after = [
+      "buck2:providers:check"
+      "buck2:ts-sandbox:test"
+    ];
     # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
     exec = buck2AggregateExec "buck2:quick" "//:quick";
   };
@@ -1399,21 +1691,25 @@ in
 
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
+    "buck2:cache-posture:test"
+    "buck2:capabilities:test"
+    "worktree:teardown:test"
     "cargo:proto-bindings:check"
     "check:buck2-producer-overlap"
     "nix:check:quick"
     "otel:pipeline-run:test"
   ];
-  # One Buck invocation executes every admitted bounded lane. This is what `test:run` waits on;
-  # the per-lane `test:<package>` tasks (imported above) exist for standalone use and are not
-  # part of that graph, so no suite is scheduled twice.
+  # Prebuild selected collection products after genie freshness alongside editor publication,
+  # then execute the platform's bounded lanes in one Buck test invocation. The per-lane tasks
+  # remain standalone-only, so neither bounded nor source verdicts are scheduled twice.
   tasks."test:buck2:unit" = {
-    description = "Execute every admitted bounded unit-test lane under Buck";
+    description = "Prebuild collection products and execute the selected bounded unit-test lanes";
     after = [ "genie:check" ];
     # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
       name = "test:buck2:unit";
-      targets = map (lane: lane.target) buck2TestLanes;
+      targets = map (lane: lane.target) selectedBuck2TestLanes;
+      prebuildCollection = true;
     };
   };
   tasks."check:all".after = [
@@ -1422,9 +1718,10 @@ in
     "dependency-materialization:evidence:check"
   ];
 
-  # `test:run` is the aggregate: the single Buck invocation for every bounded lane, plus the
+  # `test:run` is the aggregate: one Buck invocation for the selected bounded lanes, plus the
   # source-only and unbounded-complement Vitest tasks the shared module wired into its `after`.
-  # The baseline-collection gate then runs last and reads both kinds of evidence.
+  # The baseline-collection gate runs last, resolves the same (now warm) Buck products against
+  # current inputs, and validates both bounded inventory and completed source evidence.
   tasks."test:run".after = [ "test:buck2:unit" ];
   tasks."test:run".exec = lib.mkForce (
     trace.exec "test:run" ''
@@ -1439,7 +1736,10 @@ in
       exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts" \
         --root "$root" \
         --buck2 "$BUCK2_BIN" \
-        --buck2-cwd "$root"
+        --buck2-cwd "$root" \
+        ${lib.optionalString (
+          testPlatform == "darwin"
+        ) "--source-tasks-file ${sourceTestScope} --bounded-tasks-file ${boundedTestScope}"}
     ''
   );
 
@@ -1458,13 +1758,8 @@ in
     # Buck2 expands the cache header in the daemon; keep the optional credential
     # defined so unauthenticated cache reads work when SecretSpec is not active.
     export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
-    capability_parent="$WORKSPACE_ROOT/.buck2"
-    capability_link="$capability_parent/capabilities"
-    ${pkgs.coreutils}/bin/mkdir -p "$capability_parent"
-    if [ -e "$capability_link" ] && [ ! -L "$capability_link" ]; then
-      ${pkgs.coreutils}/bin/rm -rf -- "$capability_link"
-    fi
-    ${pkgs.coreutils}/bin/ln -sfnT ${buck2Capabilities} "$capability_link"
+    root="$WORKSPACE_ROOT"
+    ${publishBuckCapabilities}
     ${cliBuildStamp.shellHook}
   '';
 

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$vocabulary": {
+    "https://effect-rust.dev/schema/v1": true
+  },
+  "title": "NonNegativeInt",
+  "$ref": "#/$defs/NonNegativeInt",
+  "$defs": {
+    "Codec": {
+      "title": "Codec",
+      "type": "string",
+      "pattern": "^([^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?)?$",
+      "x-effect-rust-pattern": "^([^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?)?$",
+      "x-effect-rust-pattern-flags": "u",
+      "minLength": 1
+    },
+    "content_address_contract_1": {
+      "title": "content_address_contract_1",
+      "type": "string",
+      "enum": [
+        "ContentDescriptor"
+      ]
+    },
+    "ContentDescriptor": {
+      "title": "ContentDescriptor",
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "$ref": "#/$defs/content_address_contract_1"
+        },
+        "digest": {
+          "$ref": "#/$defs/ContentDigest"
+        },
+        "byteLength": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "x-effect-rust-width": "u64"
+        },
+        "mediaType": {
+          "$ref": "#/$defs/MediaType"
+        },
+        "codec": {
+          "$ref": "#/$defs/Codec"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "x-effect-rust-width": "u64"
+        }
+      },
+      "required": [
+        "_tag",
+        "digest",
+        "byteLength",
+        "mediaType"
+      ],
+      "additionalProperties": false,
+      "x-effect-rust-excess": "error"
+    },
+    "ContentDigest": {
+      "title": "ContentDigest",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "x-effect-rust-pattern": "^sha256:[a-f0-9]{64}$",
+      "x-effect-rust-pattern-flags": "u"
+    },
+    "MediaType": {
+      "title": "MediaType",
+      "type": "string",
+      "pattern": "^([^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?)?$",
+      "x-effect-rust-pattern": "^([^\t-\r    -     　﻿]([\u0000-􏿿]*[^\t-\r    -     　﻿])?)?$",
+      "x-effect-rust-pattern-flags": "u",
+      "minLength": 1
+    },
+    "NonNegativeInt": {
+      "title": "NonNegativeInt",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "x-effect-rust-width": "u64"
+    }
+  }
+}

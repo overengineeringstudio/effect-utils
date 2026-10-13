@@ -91,6 +91,14 @@ genie --writeable  # Generate writable files (default is read-only)
 genie --dry-run    # Preview changes without writing
 ```
 
+Generation stores output locks under `$XDG_STATE_HOME/genie/locks`, defaulting to
+`~/.local/state/genie/locks` when the variable is unset, empty, or not absolute.
+The target path, not discovery cwd, identifies each lock, so running inside a
+source root does not add package inputs or split the output-lock namespace.
+Buck package source and test censuses also exclude existing `tmp/genie-locks`
+state directories. Ordinary files under `tmp` remain inputs, and unsafe paths
+or symlinks outside the state are still rejected.
+
 ### Creating a Generator
 
 Create a `.genie.ts` file next to the config file you want to generate:
@@ -113,6 +121,78 @@ export default packageJSON({
 ```
 
 Run `devenv tasks run genie:run` to generate `package.json` from the source file.
+
+### GitHub repository settings
+
+Generate `.github/repo-settings.json` from one typed source:
+
+```ts
+import { githubRepoSettings, githubRuleset } from '@overeng/genie'
+
+export default githubRepoSettings({
+  repository: {
+    allow_auto_merge: true,
+    delete_branch_on_merge: true,
+    allow_update_branch: true,
+    allow_squash_merge: true,
+    allow_merge_commit: false,
+    allow_rebase_merge: false,
+    squash_merge_commit_title: 'PR_TITLE',
+  },
+  rulesets: [
+    githubRuleset({
+      name: 'protect-main',
+      enforcement: 'active',
+      rules: [{ type: 'non_fast_forward' }, { type: 'deletion' }],
+    }),
+  ],
+})
+```
+
+Plain-flake consumers do not need devenv:
+
+```bash
+# Read-only diff; exits non-zero when repository fields or rulesets drift.
+nix run github:overengineeringstudio/effect-utils#gh-check-settings -- \
+  --repo owner/name --file .github/repo-settings.json
+
+# PATCH explicitly declared repository fields; create/update rulesets by name.
+nix run github:overengineeringstudio/effect-utils#gh-apply-settings -- \
+  --repo owner/name --file .github/repo-settings.json
+```
+
+The apps package `gh` and use its existing authentication (`gh auth login` or
+`GH_TOKEN`). Omitted repository fields and unrelated rulesets are unmanaged.
+Rulesets inherited from an organization are not modified. Duplicate desired
+ruleset names are rejected before any write. Applying several GitHub API
+updates is not transactional: an API failure may leave earlier updates applied;
+rerunning apply reconciles the remaining drift.
+
+Within each managed ruleset, rule presence is exact and rule order is ignored.
+Rules are matched by `type`; only declared parameter keys are compared, recursively
+for nested objects. Parameter arrays (including required status-check entries) remain
+exact. Live-only parameters do not cause drift. Updates preserve those unmanaged
+parameters on retained rule types before sending the rules array to GitHub's
+[ruleset PUT endpoint](https://docs.github.com/en/rest/repos/rules#update-a-repository-ruleset),
+while declared values, arrays and rule presence remain authoritative.
+
+The `devenvModules.tasks.github-ruleset` module exposes the same
+`gh:apply-settings` / `gh:check-settings` operations as thin wrappers,
+configured with `{ repo = "owner/name"; }`. Its legacy `ruleset` parameter
+remains optional and asserts the expected name. Historical JSON files containing
+one raw `githubRuleset` payload remain supported; those files control only that
+ruleset and do not change repository settings.
+
+Existing raw-ruleset consumers can adopt the envelope to manage repository merge
+settings. Their current payloads do not require an immediate migration.
+Effect-utils itself retains its raw ruleset payload, including its merge queue
+and required CI checks; enabling repository-field management is a separate policy change.
+
+The authoring builder and comparison utilities in `src/runtime/github-repo-settings`
+are dependency-free. The Effect CLI, schemas and reconciliation engine live in
+`src/build/github-repo-settings`; reconciliation remains exported through
+`@overeng/genie/node`. Authoring exports stay available from `@overeng/genie` and
+the peer `genie/external.ts` facade without importing the engine.
 
 ## Generators
 
@@ -147,7 +227,7 @@ export default tsconfigJson({
 ## Features
 
 - **Read-only output** - Generated files are marked read-only by default to prevent accidental edits
-- **Header comments** - Adds source file reference to generated files (where supported)
+- **Header comments** - Adds source file references where supported; strict JSON files, including `.watchmanconfig`, remain comment-free
 - **Formatting** - Automatically formats JSON/YAML output via oxfmt
 - **Check mode** - Verify files are up to date in CI without regenerating
 - **Watch mode** - Auto-regenerate on source file changes

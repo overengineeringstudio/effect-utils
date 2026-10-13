@@ -204,6 +204,29 @@ describe('metadata-based workspace projections', () => {
     expect(workspaceFile.stringify(mockGenieContext)).toContain('storeDir: .pnpm-store')
   })
 
+  it.each([true, false])('serializes enableGlobalVirtualStore: %s', (enableGlobalVirtualStore) => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+      nodeLinker: 'isolated',
+      enableGlobalVirtualStore,
+    })
+
+    expect(workspaceFile.stringify(mockGenieContext)).toContain(
+      `enableGlobalVirtualStore: ${enableGlobalVirtualStore}`,
+    )
+  })
+
+  it('omits enableGlobalVirtualStore when not configured', () => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+      nodeLinker: 'isolated',
+    })
+
+    expect(workspaceFile.stringify(mockGenieContext)).not.toContain('enableGlobalVirtualStore:')
+  })
+
   it('serializes hoistingLimits for hoisted pnpm workspaces', () => {
     const workspaceFile = pnpmWorkspaceYaml.root({
       packages: [app],

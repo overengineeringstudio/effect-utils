@@ -65,3 +65,17 @@ members are intentionally not genie-managed (e.g. standalone, copyable examples
 in livestore). Prefer creating a real package generator for each member over
 using `extraMembers`. Do not use `extraMembers` as a shortcut to avoid writing
 a genie generator.
+
+## Reconciling GitHub rulesets
+
+Generate the ruleset JSON with `githubRuleset`, then use `reconcileGithubRuleset`
+from `@overeng/genie/node`. Its `check` mode is read-only: a missing named ruleset
+returns `changed: true`, `applied: false`, and `rulesetId: null`; the formatted
+report labels it `absent`. An existing ruleset is compared only on generated,
+controlled fields.
+
+`apply` creates a missing named ruleset from the generated JSON, or updates a
+drifting existing ruleset in place. A matching ruleset causes no write.
+The effect-utils task wrappers are `devenv tasks run gh:check-settings` and
+`devenv tasks run gh:apply-settings`. Reading uses `gh` authentication with
+repository access; applying requires repository Administration write permission.

@@ -56,6 +56,9 @@ export const buck2StagedRuntimes = [
     entry: runnerSource('javascript-runner.ts'),
     modules: [
       runnerSource('javascript-runner.ts'),
+      runnerSource('bun-test-runner.ts'),
+      runnerSource('bun-test-timeout.ts'),
+      runnerSource('bun-test-preload.ts'),
       runnerSource('test-verdict.ts'),
       runnerSource('typescript-runner.ts'),
     ],

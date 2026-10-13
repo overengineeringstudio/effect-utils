@@ -101,6 +101,20 @@ capabilities, fixed-output lock archives, and Cargo archives remain declared
 Nix inputs; neither a checkout copy nor Buck evaluation at Nix evaluation time
 determines the fileset.
 
+`mkConsumerBuckRoot` selects the watcher through the named `watcherPolicy`
+argument, not a free-form provider string:
+
+| Policy                       | Generated `[buck2] file_watcher` | Input contract                                                                                          |
+| ---------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `mutable-checkout` (default) | `watchman`                       | Interactive edits require fail-closed Watchman admission.                                               |
+| `immutable-input`            | `fs_hash_crawler`                | Declared inputs do not change during a build or filtered source check; no Watchman service is required. |
+
+Consumers copying a root into a Nix build or immutable source-check sandbox
+pass `watcherPolicy = "immutable-input";`. Unknown values fail evaluation with
+an error listing the allowed policies. `consumer-root.nix` and `from-source.nix`
+share `watcher-policies.nix`; the latter always selects `immutable-input` for
+its sandboxed build.
+
 The source-backed product's `effect-utils/buck-product-source-provenance/v1`
 contains `sourceDigest` (SHA-256 of the scoped source store path), `target`,
 and `productDigest`; it contains no Git revision. Source changes inside the
@@ -117,13 +131,12 @@ as `--config build_identity.cli_build_stamp=...` before the Buck build
 input: unrelated commits preserve it; relevant closure changes require an
 in-PR generated refresh and freshness proof. This describes the required
 injection contract, not a claim that every consumer already implements C.
-Published effect-utils products keep their manifest-bound
-`producerCommit` and `effect-utils/buck-product-provenance/v1` unchanged
-(decision 0037).
+Manifest-bound effect-utils JavaScript products keep their `producerCommit`
+and `effect-utils/buck-product-provenance/v1` unchanged (decision 0037).
 
 ### Native products
 
-`otelite`, `otel-scrape`, and `typescript-api-server` use the same
+`otelite`, `otel-scrape`, `pingping`, and `typescript-api-server` use the same
 source-backed, cache-substituted Nix import as compiled executables. The
 generated `nix/buck2-products/native-targets.json` inventory binds each name
 to its Buck `build_product` target and `artifact.tar` output; the Rust rows
@@ -137,13 +150,55 @@ products have dynamic runtimes. Genie wrappers bind
 `GENIE_TYPESCRIPT_API_SERVER` to that same imported package; the reusable
 observability module uses the imported `otelite` for capture.
 
-Protected main publishes the three native imports alongside the compiled
+Native shell imports instead use the source-addressed provenance contract
+above. Their generated `sourcePaths` declare the Rust crate, workspace profile
+and lock, and Reindeer graph; the TypeScript server derives its recursive pnpm
+workspace package closure. The ordinary Buck root configuration and shared
+rules/runtime files form a separate `rootProjection` input. Rule tests and
+generators are excluded from that input. Neither the checkout's store root nor
+its Git revision is part of these recipes' identity. Unrelated commits retain
+the same per-platform derivation; edits to declared sources, pinned toolchains,
+archives or validation contracts invalidate it.
+
+Scoped Rust native products default to an embedded JSON stamp with the shared
+`type: "nix"`, `version`, `rev`, and `dirty` fields. `rev` is the first seven
+hexadecimal characters of the existing `sourceDigest`, not a Git revision;
+`dirty: false` describes the immutable source projection, not checkout
+cleanliness. No commit timestamp is invented for this source-addressed policy.
+An explicit `product.cliBuildStamp` overrides the default for callers selecting
+another identity policy. Buck rules opting into `cliBuildStamp` receive the
+stamp through `build_identity.cli_build_stamp`, so unrelated commits cannot
+change the embedded native version.
+
+Files passed to build-time helpers must be content-scoped too. The stage-zero
+root metadata, Cargo profile reader and descriptor contract are materialized
+from their bytes; the Buck launcher has its own scripts fileset. Interpolating
+an unchanged file directly below a flake store root would retain the whole
+root context and defeat substitution across unrelated commits.
+
+Protected main publishes `ci-test-shell-products` alongside the compiled
 imports from native Linux x86_64 and Darwin arm64 runners to the public
-`overeng-effect-utils` Cachix cache. PR CI builds and `--help`-smokes them
-without a write credential. Linux arm64 is admitted but has no publisher:
-consumers build its import from source on a cache miss. Neither native
-product lookup nor publication uses GitHub release assets or a release
-manifest; the derivation itself is the substitution identity.
+`overeng-effect-utils` Cachix cache. This aggregate references the exact retained
+shell products, capabilities, Rust support tools, native imports, provider CLIs
+(`netlify-cli` and `vercel-cli`), pinned pnpm, and the oxlint plugin wrapper.
+The repository shell selects Netlify, pnpm and oxlint from these same flake
+packages rather than rebuilding them against devenv's independently locked
+nixpkgs. Cachix publishes their transitive store closures, including source
+bridge and validator outputs. Source recipes and license policy remain
+unchanged; a missing substitute builds the same derivation from source.
+The publisher and PR
+smoke lanes share `genie/ci-scripts/compiled-products.sh`; only the protected
+publisher invokes `--push` with a cache write credential. Linux arm64 is
+admitted but has no publisher: consumers build its import from source on a
+cache miss. Neither native product lookup nor publication uses GitHub release
+assets or a release manifest; the derivation itself is the substitution identity.
+
+The script realizes all inventoried native and compiled imports plus the shell
+aggregate in one `nix build --json` invocation. JSON outputs are matched to each
+inventory row by its executable, not by result order. Exactly one matching
+output is required per product before its `--help` smoke runs; missing or
+ambiguous outputs fail the lane. Publication follows successful smoke of every
+row and pushes every returned direct output's closure.
 
 ### Rust/Cargo archives
 
@@ -427,3 +482,21 @@ Platform-independent Nix Git-source archives preserve executable bits, normalize
 symlink modes to `0555`, ignore physical hardlink topology and fix timestamps,
 ownership and gzip metadata; identical NAR sources produce identical archives
 on Linux and Darwin ([#1589](https://github.com/overengineeringstudio/effect-utils/pull/1589)).
+
+## Open Design Questions
+
+**DQ1 — Action-level reuse across changed-closure product builds**
+(BUILD.DIST.NIX-R08): product source builds remain pure sandboxed invocations
+of the pinned Buck graph with shared remote caching disabled. Nix substitution
+reuses unchanged complete products; a changed closure still pays local product
+compilation. The current answer is to retain that boundary rather than adopt
+offline capsules or outside-Nix publication.
+
+Revisit if the daily cache-health mission shows changed-product rebuild cost
+dominating. End-to-end changed-product timing, including cache transport and
+materialization, must justify a design change; shared AC hit rates alone do not
+resolve this question. [Open question](./open-questions.md#dq1-action-level-reuse-across-changed-closure-product-builds)
+owns the current answer and non-chosen E/D alternatives;
+[experiment](./.experiments/2026-10-05-action-level-innix-reuse.md) owns the
+measurement and limits. This question does not amend
+[0037](../../.decisions/0037-nix-substitution-is-the-distribution-layer.md).

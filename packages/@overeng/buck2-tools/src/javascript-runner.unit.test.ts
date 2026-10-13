@@ -10,8 +10,6 @@ import {
   normalizeVitestCollection,
   parseJavaScriptRunOptions as parseJavaScript,
   planScratch,
-  vitestArgv,
-  vitestCollectArgv,
 } from './javascript-runner.ts'
 
 const bun = '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bun/bin/bun'
@@ -164,82 +162,6 @@ describe('parseJavaScriptRunOptions', () => {
         'false',
       ]),
     ).toThrow('only admissible for vitest-collect')
-  })
-})
-
-describe('Vitest argv', () => {
-  it('runs once with deterministic config, timeouts, reports, tests, and excludes', () => {
-    expect(
-      vitestArgv({
-        runtime: bun,
-        packageTree: '/tree',
-        config: 'vitest.config.ts',
-        timeoutMs: 30_000,
-        hookTimeoutMs: 45_000,
-        report: '/results/vitest.json',
-        tests: ['src/a.unit.test.ts'],
-        excludes: ['src/live.integration.test.ts'],
-      }),
-    ).toEqual([
-      bun,
-      '/tree/node_modules/vitest/vitest.mjs',
-      'run',
-      '--config',
-      '/tree/vitest.config.ts',
-      '--configLoader=runner',
-      '--no-cache',
-      '--testTimeout',
-      '30000',
-      '--hookTimeout',
-      '45000',
-      '--reporter=default',
-      '--reporter=json',
-      '--outputFile.json=/results/vitest.json',
-      'src/a.unit.test.ts',
-      '--exclude',
-      'src/live.integration.test.ts',
-    ])
-  })
-
-  it('lists the declared selection with the pinned Vitest CLI', () => {
-    expect(
-      vitestCollectArgv({
-        runtime: bun,
-        packageTree: '/tree',
-        config: 'vitest.config.ts',
-        report: '/results/vitest-collection.json',
-        tests: ['src/a.unit.test.ts'],
-        excludes: ['src/live.integration.test.ts'],
-        staticParse: true,
-      }),
-    ).toEqual([
-      bun,
-      '/tree/node_modules/vitest/vitest.mjs',
-      'list',
-      '--config',
-      '/tree/vitest.config.ts',
-      '--configLoader=runner',
-      '--no-cache',
-      '--staticParse',
-      '--json=/results/vitest-collection.json',
-      'src/a.unit.test.ts',
-      '--exclude',
-      'src/live.integration.test.ts',
-    ])
-  })
-
-  it('loads test modules during collection unless static parsing is explicitly admitted', () => {
-    expect(
-      vitestCollectArgv({
-        runtime: bun,
-        packageTree: '/tree',
-        config: 'vitest.config.ts',
-        report: '/results/vitest-collection.json',
-        tests: [],
-        excludes: [],
-        staticParse: false,
-      }),
-    ).not.toContain('--staticParse')
   })
 })
 

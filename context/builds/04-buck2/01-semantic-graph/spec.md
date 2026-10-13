@@ -102,6 +102,25 @@ and registry dependencies resolve in the consumer's Reindeer universe. Thus a
 third-party type crossing a foreign public API has the same crate identity as
 the consumer's corresponding resolved dependency.
 
+A package declares the files its build script reads beyond Cargo.toml, the
+build script, and its Rust sources in its own manifest, so every projection of
+it, provider or foreign instance, stages the same inputs:
+
+```toml
+[package.metadata.buck2]
+buildScriptInputs = [
+  { path = "schema/local.json" },
+  { path = "../generated/events.schema.json", label = "//x/generated:events.schema.json" },
+]
+```
+
+Paths are package-relative and may use `..`; after normalization and symlink
+resolution they must stay inside the repository. Files inside the package need
+no label and reach foreign instances through `cargo-source/`; files outside
+the package name the Buck label exporting them. The projection option
+`buildScriptInputs` (repository-relative paths) remains for provider shards;
+when both are declared they must agree exactly.
+
 The supply manifest preserves the consumer Cargo resolution and selected
 features. Canonical dependency aliases follow resolved manifest edges, not
 package-ID sorting. `<third-party>/cargo-resolution.json` records each local

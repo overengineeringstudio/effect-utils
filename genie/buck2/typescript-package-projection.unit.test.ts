@@ -20,6 +20,80 @@ import {
 const genieContext: GenieContext = { cwd: process.cwd(), location: '' }
 const buck2ToolsBuck = readFileSync('packages/@overeng/buck2-tools/BUCK', 'utf8')
 
+describe('nested Buck package ownership', () => {
+  const packagePath = 'genie/buck2/fixtures/nested-package/parent'
+  const output = (): string =>
+    buck2TypeScriptPackageProjection({
+      packageName: 'nested-fixture',
+      packagePath,
+      projectionSource: `${packagePath}/BUCK.genie.ts`,
+      dependencyImporter: '//buck2/dependencies:importer_fixture',
+      sourceRoots: ['src', 'bin'],
+      workspacePackages: [
+        { meta: { workspace: { memberPath: packagePath } }, data: { name: 'nested-fixture' } },
+      ],
+      authorities: [
+        {
+          projectFile: 'tsconfig.json',
+          projectInputs: ['src/deeper/input.json', 'src/deeper/tsconfig.json'],
+        },
+      ],
+      tests: [
+        {
+          name: 'test',
+          runner: 'vitest',
+          config: 'vitest.config.ts',
+          configInputs: ['config.json'],
+        },
+      ],
+      testDataRoots: [{ root: 'data', extensions: ['.json'] }],
+      runtimeFiles: ['config.json'],
+    }).stringify(genieContext)
+
+  it('keeps parent and child destinations while depending on the nearest owner', () => {
+    const rendered = output()
+    expect(rendered).toContain('"bin/main.ts": "bin/main.ts",')
+    expect(rendered).toContain(`"src/main.ts": "//${packagePath}/src:main.ts",`)
+    expect(rendered).toContain(`"src/deeper/main.ts": "//${packagePath}/src/deeper:main.ts",`)
+    expect(rendered).toContain(
+      `"src/deeper/value$input.ts": "//${packagePath}/src/deeper:value__dollar__input.ts",`,
+    )
+    const exports = rendered.split('export_materialization_inputs([\n')[1]?.split('])')[0]
+    expect(exports).toContain('"bin/main.ts",')
+    expect(exports).not.toContain('"src/')
+  })
+
+  it('resolves test, snapshot, config, project, declaration and data inputs too', () => {
+    const rendered = output()
+    for (const file of [
+      'main.test.jsx',
+      '__snapshots__/main.test.jsx.snap',
+      'vitest.config.ts',
+      'tsconfig.json',
+      'input.json',
+      'types.d.ts',
+    ]) {
+      expect(rendered).toContain(`"src/deeper/${file}": "//${packagePath}/src/deeper:${file}",`)
+    }
+    expect(rendered).toContain(`"data/fixture.json": "//${packagePath}/data:fixture.json",`)
+    for (const file of ['vitest.config.ts', 'config.json', 'package.json', 'tsconfig.json']) {
+      expect(rendered).toContain(`"${file}": "${file}",`)
+    }
+  })
+
+  it('carries declared runtime data in both package trees and rejects missing inputs', () => {
+    const rendered = output()
+    expect(stagedFilesOf({ output: rendered, tree: 'package_tree' })).toContain('config.json')
+    expect(stagedFilesOf({ output: rendered, tree: 'test_package_tree' })).toContain('config.json')
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.aiGatewayConformance,
+        runtimeFiles: ['missing.json'],
+      }),
+    ).toThrow('Runtime package file does not exist')
+  })
+})
+
 const outputsByAdmission = Object.fromEntries(
   Object.entries(buck2TypeScriptAdmissions).map(([name, admission]) => [
     name,
@@ -110,6 +184,71 @@ const retiredProviderTerms = [
   'pnpm-install-descriptor',
   'store_dir',
 ] as const
+
+describe('generated dependency admission', () => {
+  it('rejects package destinations that escape or alias the dependency tree', () => {
+    for (const name of [
+      '../escape',
+      '@scope/../escape',
+      '@scope',
+      '@scope/',
+      '@scope/@alias',
+      '.pnpm',
+      '.bin',
+      'pkg/child',
+      'pkg\\child',
+    ]) {
+      expect(() =>
+        buck2TypeScriptPackageProjection({
+          ...buck2TypeScriptAdmissions.kdl,
+          generatedDependencies: { [name]: '//generated:package' },
+        }),
+      ).toThrow('unsafe generated dependency package name')
+    }
+  })
+
+  it('rejects malformed and traversing absolute product labels', () => {
+    for (const target of [
+      '//generated:',
+      '//../generated:package',
+      '//generated//child:package',
+      '//generated:../package',
+      '//generated:bad\nlabel',
+    ] as const) {
+      expect(() =>
+        buck2TypeScriptPackageProjection({
+          ...buck2TypeScriptAdmissions.kdl,
+          generatedDependencies: { 'generated-package': target },
+        }),
+      ).toThrow('normalized absolute Buck target')
+    }
+  })
+
+  it('rejects competing generated and workspace package authorities', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.kdl,
+        generatedDependencies: { 'generated-package': '//generated:package' },
+        workspaceSiblings: [
+          {
+            packageName: 'generated-package',
+            packagePath: 'packages/@overeng/kdl',
+            distTarget: '//packages/@overeng/kdl:dist',
+          },
+        ],
+      }),
+    ).toThrow('both generated and a workspace sibling')
+  })
+
+  it('rejects generated packages shadowing manifest-declared dependencies', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.kdl,
+        generatedDependencies: { effect: '//generated:package' },
+      }),
+    ).toThrow('both generated and manifest-declared')
+  })
+})
 
 describe('declared-closure package projection', () => {
   it('publishes editor views for the complete workspace package registry', () => {
@@ -228,14 +367,6 @@ describe('declared-closure package projection', () => {
     expect(workflow).not.toContain('Save pnpm state')
     expect(workflow).not.toContain('pnpm-state-v3-')
     expect(workflow).not.toContain('composition-state/pnpm-store-pure-v1')
-  })
-
-  it('runs the Buck quick aggregate as the CI typecheck authority', () => {
-    const workflow = ciWorkflow.stringify(genieContext)
-    const typecheckJob = workflow.split('\n  typecheck:\n')[1]?.split('\n  lint:\n')[0] ?? ''
-    expect(typecheckJob).toContain('devenv tasks run buck2:quick')
-    expect(typecheckJob).not.toContain('ts:check')
-    expect(typecheckJob).not.toContain('tsconfig.lint.json')
   })
 
   it('projects package-specific declaration entrypoints for authoritative emits', () => {
@@ -564,7 +695,7 @@ describe('declared test lanes', () => {
     ).toThrow('must be named test')
   })
 
-  it('carries the declared lane into the schema version and semantic fingerprint', () => {
+  it('carries the declared lane into the semantic fingerprint', () => {
     const fingerprintOf = (output: string): string =>
       output.split('# Semantic fingerprint: ')[1]?.split('\n')[0] ?? ''
     const withoutTests =
@@ -578,7 +709,6 @@ describe('declared test lanes', () => {
       tests: [{ name: 'test', runner: 'vitest', staticCollection: true }],
     }).stringify(genieContext)
 
-    expect(outputsByAdmission.kdl).toContain('# Projection schema version: 12')
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withoutTests))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withLongerTimeout))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withStaticCollection))

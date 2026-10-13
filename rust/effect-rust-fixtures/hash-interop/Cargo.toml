@@ -1,0 +1,29 @@
+[package]
+name = "hash-interop"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "hash_interop"
+
+[features]
+default = ["wasm", "napi"]
+wasm = ["effect-rust/wasm"]
+napi = ["effect-rust/napi"]
+
+[dependencies]
+effect-rust = { path = "../../effect-rust", features = ["contract"] }
+hash-core = { path = "../hash-core" }
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+js-sys.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+napi = { workspace = true, features = ["napi6", "tokio_rt"] }
+napi-derive.workspace = true

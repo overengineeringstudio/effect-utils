@@ -40,6 +40,7 @@ fixes are owned here, not there:
 - **Publish tail cost structure:** at capture time the largest CI task was
   mostly outside Buck (645.9 s task vs 152.4 s Buck part; ≈77% of each
   per-package publication was hashing). The merged #1382 spans and the
-  redundant-walk removal address part of this; the remaining tail is
-  tracked with the buck2-tools Rust rewrite
-  ([issue #1394](https://github.com/overengineeringstudio/effect-utils/issues/1394)).
+  redundant-walk removal address part of this; the remaining tail is no
+  longer tracked by a Rust rewrite. Further ports are parked and
+  trigger-based in [issue #1522](https://github.com/overengineeringstudio/effect-utils/issues/1522);
+  see the [rebaseline experiment](../../.experiments/2026-09-30-buck2-tools-rust-rebaseline.md).

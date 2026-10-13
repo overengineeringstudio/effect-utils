@@ -12,6 +12,10 @@ import {
   definePatchedDependencies,
   definePackageJson,
   githubLabels,
+  githubRepoSettings,
+  type GithubRepositorySettings,
+  type GithubRepoSettings,
+  type GithubRulesetPayload,
   githubRuleset,
   githubWorkflow,
   githubWorkflowEvent,
@@ -33,6 +37,7 @@ import {
   type GenieOutput,
   type GithubLabelsArgs,
   type GithubRulesetArgs,
+  type GithubRepoSettingsArgs,
   type GitHubWorkflowArgs,
   type LabelDef,
   type LegacyMigration,
@@ -91,6 +96,7 @@ export {
   definePackageJson,
   defineRepoContext,
   githubLabels,
+  githubRepoSettings,
   githubRuleset,
   githubWorkflow,
   githubWorkflowEvent,
@@ -118,6 +124,10 @@ export type {
   GenieOutput,
   GithubLabelsArgs,
   GithubRulesetArgs,
+  GithubRepoSettingsArgs,
+  GithubRepositorySettings,
+  GithubRepoSettings,
+  GithubRulesetPayload,
   GitHubWorkflowArgs,
   LabelDef,
   LegacyMigration,
@@ -290,17 +300,18 @@ export const catalog = defineCatalog({
   '@standard-schema/spec': '1.1.0',
 
   // Effect ecosystem
-  // Effect 4 RC cohort (see `effectV4Cohort`): platform/cli/rpc/schema/http/
+  // Effect 4 cohort (see `effectV4Cohort`): platform/cli/rpc/schema/http/
   // socket/process/ai/cluster/workflow/sql and Atom reactivity are merged into
   // the `effect` core package (mostly under `effect/*`); only these
   // packages remain separate.
-  effect: '4.0.0-rc.118',
-  '@effect/ai-openai-compat': '4.0.0-rc.118',
-  '@effect/ai-typesafe': '4.0.0-rc.118',
-  '@effect/platform-node': '4.0.0-rc.118',
-  '@effect/vitest': '4.0.0-rc.118',
-  '@effect/opentelemetry': '4.0.0-rc.118',
-  '@effect/atom-react': '4.0.0-rc.118',
+  effect: '4.0.0',
+  '@number0/iroh': '1.1.0',
+  '@effect/ai-openai-compat': '4.0.0',
+  '@effect/ai-typesafe': '4.0.0',
+  '@effect/platform-node': '4.0.0',
+  '@effect/vitest': '4.0.0',
+  '@effect/opentelemetry': '4.0.0',
+  '@effect/atom-react': '4.0.0',
 
   // React ecosystem
   react: '19.2.8',
@@ -349,8 +360,10 @@ export const catalog = defineCatalog({
   'jsonc-parser': '3.3.1',
   '@playwright/test': '1.63.0',
   vite: '8.2.2',
-  vitest: '4.1.9',
-  '@blazediff/core': '1.9.1',
+  vitest: '5.0.3',
+  // Same version `@vitest/browser` pins exactly, so the story gate and the
+  // browser runner share one copy.
+  '@blazediff/core': '1.10.0',
   pngjs: '7.0.0',
   '@vitejs/plugin-react': '6.1.1',
   unplugin: '3.3.0',
@@ -446,8 +459,8 @@ export const catalog = defineCatalog({
    * pass real regressions silently, so the gate overrides threshold, anti-alias
    * handling, and mismatched-pixel budget explicitly.
    */
-  '@vitest/browser': '4.1.9',
-  '@vitest/browser-playwright': '4.1.9',
+  '@vitest/browser': '5.0.3',
+  '@vitest/browser-playwright': '5.0.3',
   playwright: '1.63.0',
 
   // xterm (terminal emulator for browser/testing)
@@ -558,10 +571,9 @@ export const commonPnpmPolicySettings = {
   verifyStoreIntegrity: true as const,
   strictStorePkgContentCheck: true as const,
   ignoreScripts: true as const,
-  // The Effect 4 RC cohort moves fast; keep minimum-release-age strict
-  // globally but let these advance immediately during the coordinated
-  // migration window.
-  minimumReleaseAgeExclude: ['@types/node', ...effectV4Cohort, '@effect/platform-node-shared'],
+  // Keep minimum-release-age strict globally; @types/node alone is exempt so
+  // coordinated Node type refreshes can advance immediately.
+  minimumReleaseAgeExclude: ['@types/node'],
   pmOnFail: 'ignore' as const,
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,
@@ -868,6 +880,8 @@ export const baseTsconfigCompilerOptions = {
   noFallthroughCasesInSwitch: true,
   noImplicitOverride: true,
   isolatedModules: true,
+  // Source exports must not need TypeScript runtime lowering in Node strip-only mode.
+  erasableSyntaxOnly: true,
   verbatimModuleSyntax: true,
   skipLibCheck: true,
   forceConsistentCasingInFileNames: true,
@@ -974,6 +988,22 @@ export {
   prReviewsResolvedJobId,
   prReviewsResolvedStep,
   bashShellDefaults,
+  cargoClippyJob,
+  cargoClippyStep,
+  cargoFmtJob,
+  cargoFmtStep,
+  cargoNextestJob,
+  cargoNextestStep,
+  defaultActionlintConfig,
+  nixDevelopStep,
+  plainFlakeGenieCheckJob,
+  plainFlakeJob,
+  plainFlakeSetupSteps,
+  type CargoClippyOptions,
+  type CargoNextestOptions,
+  type NixDevelopStepOptions,
+  type PlainFlakeJobOptions,
+  type PlainFlakeSetupOptions,
   checkoutStep,
   cachixCliBuildStep,
   cachixStep,

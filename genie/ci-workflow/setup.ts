@@ -5,6 +5,7 @@ import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 import {
   jobCacheDescriptors,
+  trustedCacheWriterGuardedSecret,
   publisherWriteSecret,
   CachePublisherJobError,
 } from './cache-policy.ts'
@@ -51,9 +52,15 @@ export const evictCachedPnpmDepsStep = ({
 })
 
 /**
- * Namespace runner with run ID-based affinity to prevent queue jumping.
- * Adds a run ID label so runners spawned for one workflow run
- * don't steal jobs from other runs.
+ * Namespace runner with run ID-based affinity to prevent queue jumping, so
+ * runners spawned for one workflow run don't steal jobs from other runs.
+ *
+ * Namespace accepts the `namespace-features:` label only next to a
+ * `-with-features` machine label; runner profiles take features appended as
+ * `;key=value` to the profile label itself.
+ * Linux containers need privilege for Nix and nested Bubblewrap namespaces.
+ * Namespace isolates this privilege inside each ephemeral per-job VM.
+ * @see https://namespace.so/docs/solutions/github-actions/runner-controls
  */
 export const namespaceRunner = ({
   profile,
@@ -61,7 +68,17 @@ export const namespaceRunner = ({
 }: {
   profile: RunnerProfile | (string & {})
   runId: string
-}) => [profile, `namespace-features:github.run-id=${runId}`] as const
+}): readonly [string] | readonly [string, string] => {
+  const features = [
+    `github.run-id=${runId}`,
+    ...(profile.includes('linux') === true || profile.startsWith('nscloud-ubuntu-') === true
+      ? ['container.privileged=true']
+      : []),
+  ].join(';')
+  return profile.endsWith('-with-features') === true
+    ? [profile, `namespace-features:${features}`]
+    : [`${profile};${features}`]
+}
 
 // =============================================================================
 // Step Atoms
@@ -208,6 +225,26 @@ export const installNixStep = (opts?: {
 })
 
 /**
+ * Read-only Linux record of the namespace prerequisites behind Nix's build
+ * sandbox and nested TS Bubblewrap; the namespace check fails fast if the
+ * privileged runner feature is lost.
+ */
+export const linuxSandboxPrerequisitesStep = {
+  name: 'Log Linux sandbox prerequisites',
+  if: "${{ runner.os == 'Linux' }}",
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    "nix config show | grep -E '^sandbox'",
+    'for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do',
+    '  if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\\n" "$key"; fi',
+    'done',
+    'unshare -Ur true',
+    'echo "unshare -Ur true: passed"',
+  ].join('\n'),
+} as const
+
+/**
  * Provide the cachix CLI to subsequent steps from a /nix/store output.
  *
  * Must run before `cachixStep` in the same job. cachix-action's
@@ -266,6 +303,36 @@ export const cachixPushStep = <TStep extends { if?: string; env?: Record<string,
     env: { ...opts.step.env, CACHIX_AUTH_TOKEN: opts.authToken },
   }
 }
+
+/** Public Buck2 writer credential, supplied only to protected publisher steps. */
+export const buck2PublicCacheWriteSecret = 'BUCK2_PUBLIC_CACHE_WRITE_AUTH'
+
+/**
+ * Publish gating results on protected main pushes and merge groups, never PRs.
+ * The trusted-writer posture makes opportunistic uploads fail open (q10/q11/q14),
+ * unlike the dedicated trusted proof. Only the masked Base64 header reaches Buck.
+ */
+export const buck2TrustedCacheWriterStep = <
+  TStep extends { env?: Record<string, string>; run: string },
+>(
+  step: TStep,
+) => ({
+  ...step,
+  [publisherWriteSecret]: buck2PublicCacheWriteSecret,
+  env: {
+    ...step.env,
+    BUCK2_PUBLIC_CACHE_WRITE_AUTH: trustedCacheWriterGuardedSecret(buck2PublicCacheWriteSecret),
+  },
+  run: [
+    'if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then',
+    '  BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf \'%s\' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d \'\\n\')"',
+    '  echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"',
+    '  export BUCK2_CACHE_WRITE_BASIC_AUTH',
+    'fi',
+    'unset BUCK2_PUBLIC_CACHE_WRITE_AUTH',
+    step.run,
+  ].join('\n'),
+})
 
 export const cachixPublisherStep = (
   opts: CachePublisherScope & {
