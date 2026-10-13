@@ -15,6 +15,7 @@ import {
   readWorktreeReferencesInUse,
   type InUseResult,
   type ProcessIdentity,
+  type ProcessReference,
   type ProcessScanScope,
 } from './store-inuse.ts'
 
@@ -670,6 +671,25 @@ const readBootId = (fs: FileSystem.FileSystem) =>
     ),
   )
 
+/** Omit only an exact observed process lifetime, never another holder of the same path. */
+export const excludeActivityProcessLifetimes = ({
+  references,
+  observed,
+  ignored,
+}: {
+  references: ReadonlyArray<ProcessReference>
+  observed: ReadonlyArray<ProcessIdentity>
+  ignored?: ReadonlyArray<ProcessIdentity> | undefined
+}): ReadonlyArray<ProcessReference> => {
+  if (ignored === undefined || ignored.length === 0) return references
+  const ignoredByPid = new Map(ignored.map((identity) => [identity.pid, identity.startTime]))
+  const matched = new Set<number>()
+  for (const identity of observed) {
+    if (ignoredByPid.get(identity.pid) === identity.startTime) matched.add(identity.pid)
+  }
+  return references.filter((reference) => matched.has(reference.pid) === false)
+}
+
 /**
  * Megarepo's own capture as the reading owner: every PTY record (running,
  * exited, vanished) owns its cwd until the record is removed, and every
@@ -681,10 +701,12 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
   fs,
   scope,
   coveredProcesses,
+  ignoredOwnProcesses,
 }: {
   fs: FileSystem.FileSystem
   scope: ProcessScanScope
   coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+  ignoredOwnProcesses?: ReadonlyArray<ProcessIdentity> | undefined
 }) {
   const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
   if (ptyBinary.length === 0) return yield* unavailable('PTY activity source is disabled')
@@ -715,9 +737,16 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
   }
   const scan = yield* readProcessReferences({ fs, selfPid: process.pid, scope, coveredProcesses })
   if (scan._tag === 'unknown') return yield* unavailable(`Process scan is ${scan.reason}`)
+  // Whole-worktree retirement postpones only recognized Buck lifetimes to its
+  // status/kill + strict-probe phase. Every other process and manifest claim keeps.
+  const references = excludeActivityProcessLifetimes({
+    references: scan.references,
+    observed: scan.processIdentities,
+    ignored: ignoredOwnProcesses,
+  })
   return {
     activePaths,
-    processPaths: new Set(scan.references.map((reference) => reference.path)),
+    processPaths: new Set(references.map((reference) => reference.path)),
     epoch: {
       host: hostname(),
       producer: BUILTIN_ACTIVITY_PRODUCER,
@@ -742,9 +771,11 @@ export const readBudgetWorkspaceActivity: (options: {
   readonly fs: FileSystem.FileSystem
   readonly config: BudgetActivityConfig
   readonly admittedEpoch?: BudgetWorkspaceActivityEpoch | undefined
+  /** Only the matched own-UID process lifetime is omitted from the local scan, never manifest claims. */
+  readonly ignoredOwnProcesses?: ReadonlyArray<ProcessIdentity> | undefined
 }) => Effect.Effect<BudgetWorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
   'store.readBudgetWorkspaceActivity',
-)(function* ({ fs, config, admittedEpoch }) {
+)(function* ({ fs, config, admittedEpoch, ignoredOwnProcesses }) {
   const builtin = config.builtin ?? true
   if (config.manifestPath === undefined && builtin === false) return undefined
   const read = Effect.gen(function* () {
@@ -762,9 +793,10 @@ export const readBudgetWorkspaceActivity: (options: {
             fs,
             scope: 'own-uid',
             coveredProcesses: manifest.processCoverage.processIdentities,
+            ignoredOwnProcesses,
           })
         : builtin === true
-          ? yield* readOwnerActivity({ fs, scope: 'all-uids' })
+          ? yield* readOwnerActivity({ fs, scope: 'all-uids', ignoredOwnProcesses })
           : undefined
     const activity: BudgetWorkspaceActivity | undefined =
       manifest === undefined
