@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Real codesign/keychain/rename/socket tests for macos-app-ctl.
 
-Signing uses a throwaway keychain in tmp/ holding a self-signed, non-extractable
-code-signing identity. The keychain is never added to the search list, the login
-keychain is never touched, and the keychain file is removed afterwards. A fake
-launchctl on PATH starts real hosts directly, so no background item is registered.
-Every keychain operation has a timeout: a hang means a UI prompt and aborts the run.
+Signing uses throwaway keychains under tmp/<work>/Library/Keychains/ (a partition-capable location,
+so securityd's partition checks are real) provisioned by the ctl primitives: a non-extractable key,
+a CSR signed by a test CA, the imported certificate and the codesign pin. The keychains are never
+on the search list, the login keychain is never touched, and only the keychain files are removed.
+A fake launchctl on PATH starts real hosts directly, so no background item is registered.
+Every keychain operation has a timeout, and every ctl call is watched for a new on-screen
+SecurityAgent window: a hang or a window means a UI prompt and aborts the run loudly.
 
 From the Darwin checkout root:
   nix run .#macos-app-ctl-integration --option builders '' --option max-jobs 2
@@ -20,6 +22,7 @@ import plistlib
 import shutil
 import signal
 import subprocess
+import time
 import sys
 import tempfile
 
@@ -61,21 +64,64 @@ def tool(*args, check=True):
         raise RuntimeError(f'{args}: {result.stderr}')
     return result
 
-# Throwaway signing keychain; the password is test-only and may appear in test argv.
+# Tripwire: on-screen windows owned by SecurityAgent (owner names need no TCC grant).
+core_foundation = ctypes.CDLL('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
+core_graphics = ctypes.CDLL('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
+core_graphics.CGWindowListCopyWindowInfo.restype = ctypes.c_void_p
+core_graphics.CGWindowListCopyWindowInfo.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+core_foundation.CFArrayGetCount.restype = ctypes.c_long
+core_foundation.CFArrayGetCount.argtypes = [ctypes.c_void_p]
+core_foundation.CFArrayGetValueAtIndex.restype = ctypes.c_void_p
+core_foundation.CFArrayGetValueAtIndex.argtypes = [ctypes.c_void_p, ctypes.c_long]
+core_foundation.CFDictionaryGetValue.restype = ctypes.c_void_p
+core_foundation.CFDictionaryGetValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+core_foundation.CFStringGetCString.restype = ctypes.c_bool
+core_foundation.CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32]
+core_foundation.CFRelease.argtypes = [ctypes.c_void_p]
+owner_key = ctypes.c_void_p.in_dll(core_graphics, 'kCGWindowOwnerName').value
+def security_agent_windows():
+    windows = core_graphics.CGWindowListCopyWindowInfo(1, 0)  # on-screen only
+    try:
+        names = []
+        for i in range(core_foundation.CFArrayGetCount(windows)):
+            name = core_foundation.CFDictionaryGetValue(core_foundation.CFArrayGetValueAtIndex(windows, i), owner_key)
+            buffer = ctypes.create_string_buffer(256)
+            if name and core_foundation.CFStringGetCString(name, buffer, 256, 0x08000100): names.append(buffer.value)
+        return names.count(b'SecurityAgent')
+    finally:
+        core_foundation.CFRelease(windows)
+agent_baseline = security_agent_windows()
+def watched(argv, **kwargs):
+    """Runs argv, killing its process group and aborting if a SecurityAgent window appears."""
+    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               start_new_session=True, **kwargs)
+    deadline = time.monotonic() + 60
+    while process.poll() is None:
+        if security_agent_windows() > agent_baseline or time.monotonic() > deadline:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            sys.exit(f'ABORT: {argv[1]} raised a SecurityAgent window or hung; a keychain prompt was requested. Stopping.')
+        time.sleep(0.1)
+    stdout, stderr = process.communicate()
+    assert security_agent_windows() <= agent_baseline, f'{argv[1]} left a SecurityAgent window'
+    return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+
+# Throwaway signing keychains; the password is test-only and may appear in test argv.
 search_list = tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout
-keychain = work / 'signing.keychain-db'
+keychains = work / 'Library/Keychains'
+keychains.mkdir(parents=True)
+keychain = keychains / 'signing.keychain-db'
+unpinned = keychains / 'unpinned.keychain-db'
 password = 'macos-app-ctl-test-' + os.urandom(8).hex()
 identity = 'macos-app-ctl test signer'
-(work / 'cs.cnf').write_text('[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n'
-    f'[dn]\nCN={identity}\n[ext]\nbasicConstraints=critical,CA:false\n'
-    'keyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\n')
-tool('/usr/bin/openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(work / 'key.pem'),
-     '-out', str(work / 'cert.pem'), '-days', '2', '-config', str(work / 'cs.cnf'))
-tool('/usr/bin/openssl', 'pkcs12', '-export', '-inkey', str(work / 'key.pem'), '-in', str(work / 'cert.pem'),
-     '-out', str(work / 'id.p12'), '-passout', 'pass:p12', '-name', identity)
-(work / 'key.pem').unlink()
-leaf = tool('/usr/bin/openssl', 'x509', '-in', str(work / 'cert.pem'), '-noout', '-fingerprint', '-sha1').stdout
-leaf = leaf.split('=', 1)[1].strip().replace(':', '').lower()
+# A test CA issues the code-signing certificates from the CSRs the ctl primitives write.
+tool('/usr/bin/openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(work / 'ca.key'),
+     '-out', str(work / 'ca.pem'), '-days', '2', '-subj', '/CN=macos-app-ctl test CA')
+(work / 'leaf.cnf').write_text('basicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature\n'
+                               'extendedKeyUsage=critical,codeSigning\n')
+def issue(csr, cert):
+    tool('/usr/bin/openssl', 'x509', '-req', '-in', str(csr), '-CA', str(work / 'ca.pem'), '-CAkey', str(work / 'ca.key'),
+         '-CAcreateserial', '-out', str(cert), '-days', '2', '-extfile', str(work / 'leaf.cnf'))
 
 hosts = []
 def cleanup():
@@ -83,26 +129,19 @@ def cleanup():
         for job in json.loads((work / 'jobs.json').read_text()).values():
             try: os.kill(job['pid'], signal.SIGTERM)
             except ProcessLookupError: pass
-    # File removal only: the keychain was never on the search list.
+    # File removal only: the keychains were never on the search list.
     keychain.unlink(missing_ok=True)
+    unpinned.unlink(missing_ok=True)
+    for path in (keychain, unpinned):
+        Path(f'{path}.acl.json').unlink(missing_ok=True)
+    (work / 'ca.key').unlink(missing_ok=True)
     assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
 
 try:
-    tool('/usr/bin/security', 'create-keychain', '-p', password, str(keychain))
-    # -x: the imported private key is non-extractable; the PEM/P12 copies are deleted at once.
-    tool('/usr/bin/security', 'import', str(work / 'id.p12'), '-k', str(keychain), '-P', 'p12', '-x',
-         '-T', '/usr/bin/codesign')
-    (work / 'id.p12').unlink()
-    # Minimal partition list: codesign: alone lets codesign use the key without a prompt.
-    tool('/usr/bin/security', 'set-key-partition-list', '-S', 'codesign:', '-s', '-k', password, str(keychain))
-    assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
-    tool('/usr/bin/security', 'lock-keychain', str(keychain))
-    print('PASS throwaway keychain: not on search list, partition list codesign: only', flush=True)
-
     security = ctypes.CDLL('/System/Library/Frameworks/Security.framework/Security')
-    def unlocked():
+    def unlocked(path=keychain):
         reference = ctypes.c_void_p()
-        assert security.SecKeychainOpen(str(keychain).encode(), ctypes.byref(reference)) == 0
+        assert security.SecKeychainOpen(str(path).encode(), ctypes.byref(reference)) == 0
         status = ctypes.c_uint32()
         # SecKeychainGetStatus reads state only; it never shows UI.
         assert security.SecKeychainGetStatus(reference, ctypes.byref(status)) == 0
@@ -111,15 +150,7 @@ try:
         tool('/usr/bin/security', 'unlock-keychain', '-p', password, str(keychain))
         assert unlocked()
 
-    unlock_for_test()
-    exported = tool('/usr/bin/security', 'export', '-k', str(keychain), '-t', 'identities', '-f', 'pkcs12',
-                    '-P', 'export', '-o', str(work / 'exported.p12'), check=False)
-    assert exported.returncode != 0 and not (work / 'exported.p12').exists(), exported
-    tool('/usr/bin/security', 'lock-keychain', str(keychain))
-    print('PASS signing key is non-extractable: identity export fails while unlocked', flush=True)
-
-    requirement = f'identifier "dev.example.synthetic-host" and certificate leaf = H"{leaf}"'
-    config = dict(base_config, requirement=requirement, signer={'teamId': 'TEST', 'identity': identity})
+    config = dict(base_config, signer={'teamId': 'TEST', 'identity': identity})
     config_file = work / 'config.json'
     def write_config(**changes):
         config_file.write_text(json.dumps(dict(config, **changes)))
@@ -191,7 +222,8 @@ if '--sign' in args:
     if (base / 'sign-fail').exists():
         print('test-injected signing failure', file=sys.stderr)
         sys.exit(1)
-sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
+# exec keeps the pid, so ctl's signing deadline kills the real codesign, not just this shim.
+os.execv('/usr/bin/codesign', ['codesign'] + args)
 ''')
     codesign.chmod(0o755)
     env = dict(os.environ, PATH=f'{bin_dir}:/usr/bin:/bin', MACOS_APP_TEST_WORK=str(work))
@@ -213,10 +245,7 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
             args = (*args, '--keychain-password-fd', str(read))
         run_env = dict(env, MACOS_APP_CTL_TEST_FAILPOINT=failpoint) if failpoint else env
         try:
-            process = subprocess.run([str(ctl), action, *common, *map(str, args)], env=run_env,
-                                     capture_output=True, text=True, pass_fds=fds, timeout=60)
-        except subprocess.TimeoutExpired:
-            sys.exit(f'ABORT: {action} hung; a keychain UI prompt may be pending. Stopping.')
+            process = watched([str(ctl), action, *common, *map(str, args)], env=run_env, pass_fds=fds)
         finally:
             for fd in fds: os.close(fd)
             if write is not None: os.close(write)
@@ -228,6 +257,93 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     def install(desired_app, secret=password, *extra, code=0, failpoint=None):
         return call('install-host', '--desired', desired_app, '--keychain', keychain, *extra, code=code,
                     secret=secret, failpoint=failpoint)
+
+    # Provisioning: key and CSR by ctl, certificate by the test CA, then the codesign pin.
+    def key_call(action, path, *args, code=0, secret=password):
+        return call(action, '--keychain', path, *args, code=code, secret=secret)
+    provisioned = key_call('provision-signing-key', keychain, '--common-name-hint', identity, '--csr-out', work / 'signing.csr')['result']
+    assert provisioned['createdKeychain'] and provisioned['mode'] == '0600' and provisioned['retainedPrivateKeys'] == []
+    assert provisioned['lockOnSleep'] and provisioned['lockIntervalSeconds'] == 300
+    assert oct(keychain.stat().st_mode & 0o777) == '0o600' and not unlocked()
+    record_path = Path(f'{keychain}.acl.json')
+    record = json.loads(record_path.read_text())
+    assert oct(record_path.stat().st_mode & 0o777) == '0o600' and record['keychain'] == str(keychain), record
+    ctl_path = provisioned['ctlPath']
+    assert record['keys'] == {provisioned['publicKeySha256']: {'ctlPath': ctl_path, 'ctlCdhash': provisioned['ctlCdhash']}}, record
+    assert Path(ctl_path).name == 'macos-app-ctl' and len(provisioned['ctlCdhash']) == 40, provisioned
+    assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
+    assert tool('/usr/bin/openssl', 'req', '-in', str(work / 'signing.csr'), '-noout', '-verify').returncode == 0
+    issue(work / 'signing.csr', work / 'signing.pem')
+    refused = key_call('provision-signing-key', keychain, '--common-name-hint', identity, '--csr-out', work / 'again.csr', code=64)
+    assert 'already holds 1 private key' in refused['error']['reason'] and not (work / 'again.csr').exists()
+    assert key_call('import-signing-cert', keychain, '--cert', work / 'ca.pem', code=22)['error']['kind'] == 'verification-failed'
+    imported = key_call('import-signing-cert', keychain, '--cert', work / 'signing.pem')['result']
+    assert imported['imported'] and imported['identity'] and imported['subject'] == identity
+    assert not key_call('import-signing-cert', keychain, '--cert', work / 'signing.pem')['result']['imported']
+    leaf = imported['certificateSha1']
+    # codesign embeds the chain up to a self-signed root; the test CA stands in for Apple's roots.
+    # A certificate add uses no key, so no key ACL is consulted; interaction stays disabled.
+    def add_ca(path):
+        tool('/usr/bin/openssl', 'x509', '-in', str(work / 'ca.pem'), '-outform', 'DER', '-out', str(work / 'ca.der'))
+        blob = (work / 'ca.der').read_bytes()
+        void = ctypes.c_void_p
+        core_foundation.CFDataCreate.restype = void
+        core_foundation.CFDataCreate.argtypes = [void, ctypes.c_char_p, ctypes.c_long]
+        core_foundation.CFDictionaryCreate.restype = void
+        core_foundation.CFDictionaryCreate.argtypes = [void, void, void, ctypes.c_long, void, void]
+        security.SecCertificateCreateWithData.restype = void
+        security.SecCertificateCreateWithData.argtypes = [void, void]
+        security.SecItemAdd.argtypes = [void, void]
+        security.SecKeychainUnlock.argtypes = [void, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_bool]
+        security.SecKeychainSetUserInteractionAllowed(False)
+        reference = void()
+        assert security.SecKeychainOpen(str(path).encode(), ctypes.byref(reference)) == 0
+        assert security.SecKeychainUnlock(reference, len(password), password.encode(), True) == 0
+        certificate = security.SecCertificateCreateWithData(None, core_foundation.CFDataCreate(None, blob, len(blob)))
+        symbol = lambda name: void.in_dll(security, name).value
+        keys = (void * 3)(symbol('kSecClass'), symbol('kSecValueRef'), symbol('kSecUseKeychain'))
+        values = (void * 3)(symbol('kSecClassCertificate'), certificate, reference.value)
+        callbacks = lambda name: ctypes.addressof(void.in_dll(core_foundation, name))
+        query = core_foundation.CFDictionaryCreate(None, keys, values, 3, callbacks('kCFTypeDictionaryKeyCallBacks'),
+                                                   callbacks('kCFTypeDictionaryValueCallBacks'))
+        assert security.SecItemAdd(query, None) in (0, -25299)  # added or already present
+        security.SecKeychainLock(reference)
+        assert not unlocked(path)
+    add_ca(keychain)
+    login = Path.home() / 'Library/Keychains/login.keychain-db'
+    assert 'login keychain' in key_call('provision-signing-key', login, '--common-name-hint', 'x', '--csr-out', work / 'x.csr', code=64, secret='unused')['error']['reason']
+    assert 'Library/Keychains' in key_call('provision-signing-key', work / 'elsewhere.keychain-db', '--common-name-hint', 'x', '--csr-out', work / 'x.csr', code=64)['error']['reason']
+    assert key_call('prove-signing-key', keychain, code=20, secret=b'')['error']['category'] == 'password-invalid'
+    assert not (work / 'elsewhere.keychain-db').exists() and not (work / 'x.csr').exists()
+    print('PASS provisioning: 0600 keychain off the search list, lock on sleep/300s, CSR verifies, '
+          'existing key refused, non-pairing cert refused, idempotent import, login/elsewhere/empty password refused', flush=True)
+
+    # Dry pass first: pin and guard without running codesign, then the full proof.
+    dry = key_call('prove-signing-key', keychain, '--no-sign')['result']
+    assert dry['guardReady'] and dry['signOk'] is None and dry['signSkipped'], dry
+    assert dry['exportAttempted'] and dry['exportRefused'] and dry['exportStatus'] != 0, dry
+    proof = key_call('prove-signing-key', keychain)['result']
+    assert proof['partitionCapable'] and proof['guardReady'] and proof['signOk'] is True, proof
+    assert proof['partitionList'] == ['apple:'] and proof['signAclExact'] and proof['recordedCtlPath'] == ctl_path, proof
+    assert proof['securityToolExcluded'], proof
+    assert proof['keyExtractable'] is False and proof['exportRefused'] and not proof['exportAttempted'], proof
+    assert proof['lockedAfterWindow'] and proof['lockOnSleep'] and proof['lockIntervalSeconds'] == 300, proof
+    assert not unlocked()
+    print(f'PASS signing-key proof: {json.dumps(proof, sort_keys=True)}', flush=True)
+
+    # --replace adds a key and never deletes; an unpinned identity is refused before codesign.
+    unpinned_identity = 'macos-app-ctl unpinned signer'
+    key_call('provision-signing-key', unpinned, '--common-name-hint', unpinned_identity, '--csr-out', work / 'unpinned.csr')
+    replaced = key_call('provision-signing-key', unpinned, '--common-name-hint', unpinned_identity, '--csr-out', work / 'unpinned2.csr', '--replace')['result']
+    assert replaced['retainedPrivateKeys'] == [unpinned_identity], replaced
+    assert len(json.loads(Path(f'{unpinned}.acl.json').read_text())['keys']) == 2
+    issue(work / 'unpinned2.csr', work / 'unpinned.pem')
+    key_call('import-signing-cert', unpinned, '--cert', work / 'unpinned.pem')
+    print('PASS --replace keeps the existing key, reports it and records the new key', flush=True)
+
+    requirement = f'identifier "dev.example.synthetic-host" and certificate leaf = H"{leaf}"'
+    config['requirement'] = requirement
+    write_config()
 
     def contents(path):
         return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -293,7 +409,7 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     expect_signing_failure('signing-auth-pending', auth_pending=True)
     assert unlocked(), 'signing-auth-pending touched the keychain'
     tool('/usr/bin/security', 'lock-keychain', str(keychain))
-    expect_signing_failure('keychain-missing', keychain_path=work / 'absent.keychain-db')
+    expect_signing_failure('keychain-missing', keychain_path=keychains / 'absent.keychain-db')
     expect_signing_failure('unlock-failed', secret='wrong-password')
     write_config(signer={'teamId': 'TEST', 'identity': 'identity absent from keychain'})
     expect_signing_failure('identity-missing')
@@ -319,10 +435,40 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     write_config(signer={'teamId': 'TEST', 'identity': '-'})
     assert call('install-host', '--desired', changed, '--keychain', keychain, code=64, secret=password)['error']['kind'] == 'invalid-input'
     write_config()
+    elsewhere = call('install-host', '--desired', changed, '--keychain', work / 'elsewhere.keychain-db', code=64, secret=password)
+    assert 'Library/Keychains' in elsewhere['error']['reason']
+    # A real identity whose key was never pinned: refused by the guard, codesign never runs.
+    signing_log = log(work / 'sign.log')
+    write_config(signer={'teamId': 'TEST', 'identity': unpinned_identity})
+    guarded = call('install-host', '--desired', changed, '--keychain', unpinned, code=22, secret=password)
+    assert 'Codesign guard refused' in guarded['error']['reason'], guarded
+    assert log(work / 'sign.log') == signing_log and not unlocked(unpinned), 'guard refusal reached codesign'
+    write_config()
+    # The ACL record decides which ctl the guard admits: missing refuses (64), a different
+    # recorded path refuses (22); neither reaches codesign. Renames keep the record's mtime.
+    def with_record(body, code, needle):
+        saved = record_path.with_name(record_path.name + '.saved')
+        record_path.rename(saved)
+        try:
+            if body is not None:
+                record_path.write_text(json.dumps(body))
+                record_path.chmod(0o600)
+            refused = call('install-host', '--desired', changed, '--keychain', keychain, code=code, secret=password)
+            assert needle in refused['error']['reason'], refused
+        finally:
+            record_path.unlink(missing_ok=True)
+            saved.rename(record_path)
+        assert log(work / 'sign.log') == signing_log and not unlocked(), 'ACL record refusal reached codesign'
+    with_record(None, 64, 'ACL record')
+    other = {key: {**entry, 'ctlPath': '/nix/store/0000-other/bin/macos-app-ctl'} for key, entry in record['keys'].items()}
+    with_record({**record, 'keys': other}, 22, 'Codesign guard refused')
+    assert contents(app / 'Contents/MacOS/macos-app-host') == incumbent
+    write_config()
     print('PASS signing failures keep the incumbent: signing-auth-pending (keychain untouched), '
           'keychain-missing, unlock-failed, identity-missing, dr-mismatch, sign-failed, '
           'password-invalid (empty, over-long, no EOF) before unlock, relock-failed; '
-          'login keychain and ad-hoc refused', flush=True)
+          'login keychain, keychain outside Library/Keychains, ad-hoc and unpinned key (guard, no codesign), '
+          'missing or mismatched ACL record refused', flush=True)
 
     write_config(requirement=f'identifier "dev.example.synthetic-host" and certificate leaf = H"{"0" * 40}"')
     call('verify', '--desired', desired, '--generation', second, code=22)
@@ -509,5 +655,5 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     print('PASS host-only rollback works without a previous generation', flush=True)
 finally:
     cleanup()
-print('PASS throwaway keychain removed; user search list unchanged')
+print('PASS throwaway keychains removed; user search list unchanged')
 print(f'PASS primitive integration; scratch: {work.relative_to(root)}')

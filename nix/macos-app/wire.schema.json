@@ -43,7 +43,7 @@
               "properties": {
                 "hostVersion": {"type": "string"}, "hostSourceHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
                 "generation": {"type": "string"}, "pid": {"type": "integer", "minimum": 1},
-                "session": {"enum": ["gui", "background-only", "no-session", "unknown"]}
+                "session": {"enum": ["gui", "background-only", "no-session"]}
               }
             }
           }

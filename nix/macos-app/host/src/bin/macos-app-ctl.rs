@@ -78,12 +78,17 @@ fn resolve_domain(kind: &str, requested: &str, session: &str, uid: u32) -> Resul
     }
 }
 
+// A crate root's `mod` resolves beside it, where Cargo would also treat a file as a binary.
+#[path = "macos-app-ctl/keys.rs"]
+mod keys;
+
 // Signing boundary: a dedicated keychain unlocked from an fd-supplied password.
 #[link(name = "Security", kind = "framework")]
 unsafe extern "C" {
     fn SecKeychainOpen(path: *const c_char, keychain: *mut *mut c_void) -> i32;
     fn SecKeychainUnlock(keychain: *mut c_void, length: u32, password: *const c_void, use_password: u8) -> i32;
     fn SecKeychainLock(keychain: *mut c_void) -> i32;
+    fn SecKeychainSetUserInteractionAllowed(state: u8) -> i32;
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" { fn CFRelease(value: *const c_void); }
@@ -143,12 +148,12 @@ impl Keychain {
         if status != 0 { return Err(signing("relock-failed", format!("Initial SecKeychainLock status {status}"))); }
         Ok(keychain)
     }
-    /// Unlocks for one signing window. `close` must succeed before the result is used.
-    fn unlock(&self, password: Password) -> Result<UnlockWindow<'_>> {
+    /// Unlocks for one window. `close` must succeed before the result is used. The caller
+    /// drops (and so zeroes) the password as soon as it has no further use for it.
+    fn unlock(&self, password: &Password) -> Result<UnlockWindow<'_>> {
         let length = u32::try_from(password.len).map_err(|_| signing("password-invalid", "Password too long"))?;
         // SAFETY: the password pointer is valid for length bytes; usePassword is true, so no UI is shown.
         let status = unsafe { SecKeychainUnlock(self.0, length, password.bytes.as_ptr().cast(), 1) };
-        drop(password);
         let window = UnlockWindow { keychain: self, open: true };
         if status != 0 { return Err(signing("unlock-failed", format!("SecKeychainUnlock status {status}"))); }
         Ok(window)
@@ -199,6 +204,7 @@ impl Ctl {
     fn field(&self, key: &str) -> Result<&str> { self.config[key].as_str().ok_or_else(|| fail(64, "invalid-input", format!("Invalid config {key}"))) }
     fn app(&self) -> Result<PathBuf> { Ok(PathBuf::from(self.arg("app-dir")?)) }
     fn state(&self) -> Result<PathBuf> { Ok(PathBuf::from(self.arg("state")?)) }
+    fn password_fd(&self) -> Result<i32> { self.arg("keychain-password-fd")?.parse::<i32>().map_err(|_| fail(64, "invalid-input", "Invalid password fd")) }
     fn signature(&self, app: &Path) -> Result<String> { self.signature_with(app, &canonical_requirement(self.field("requirement")?)?) }
     /// Runs only codesign, so it is admissible inside the unlocked signing window.
     fn signature_with(&self, app: &Path, requirement: &str) -> Result<String> {
@@ -233,16 +239,18 @@ impl Ctl {
         manifest["socketMode"].as_u64().and_then(|m| u32::try_from(m).ok()).ok_or_else(|| fail(64, "invalid-input", "Manifest lacks socketMode"))
     }
     /// Signs the staged bundle. The identity lookup, requirement canonicalization and password
-    /// read finish while the keychain is locked; only `codesign` runs inside the unlock window.
+    /// read finish while the keychain is locked; inside the unlock window only the in-process
+    /// codesign guard (ACL reads) and `codesign` itself run, the latter only if the guard holds.
     fn sign(&self, keychain_path: &Path, keychain: &Keychain, stage: &Path) -> Result<()> {
         let identity = self.config["signer"]["identity"].as_str().filter(|s| !s.is_empty() && *s != "-").ok_or_else(|| fail(64, "invalid-input", "A certificate identity is required; ad-hoc signing is refused"))?;
         if !identity_in_keychain(keychain_path, identity)? { return Err(signing("identity-missing", "Identity not present in the dedicated keychain")); }
         let declared = self.field("requirement")?;
         let requirement = canonical_requirement(declared)?;
-        let fd = self.arg("keychain-password-fd")?.parse::<i32>().map_err(|_| fail(64, "invalid-input", "Invalid password fd"))?;
-        let password = Password::read(fd)?;
-        let window = keychain.unlock(password)?;
-        let signed = command("codesign", &["--force", "--keychain", text(keychain_path)?, "--sign", identity, "--requirements", &format!("=designated => {declared}"), text(stage)?])?;
+        let password = Password::read(self.password_fd()?)?;
+        let window = keychain.unlock(&password)?;
+        drop(password);
+        keys::require_codesign_ready(keychain_path, keychain, identity)?;
+        let signed = keys::bounded_codesign(&["--force", "--keychain", text(keychain_path)?, "--sign", identity, "--requirements", &format!("=designated => {declared}"), text(stage)?])?;
         if !signed.status.success() { return Err(signing("sign-failed", String::from_utf8_lossy(&signed.stderr).trim().to_owned())); }
         let verified = self.signature_with(stage, &requirement);
         window.close()?;
@@ -334,6 +342,10 @@ impl Ctl {
         // The login keychain is refused even on the no-op path, so misconfiguration is never silent.
         let keychain_arg = PathBuf::from(self.arg("keychain")?);
         if is_login_keychain(&fs::canonicalize(&keychain_arg).unwrap_or_else(|_| keychain_arg.clone())) { return Err(fail(64, "invalid-input", "The login keychain is never used for signing")); }
+        // Elsewhere securityd creates no partition list, so codesign's exclusive access is unprovable.
+        if keychain_arg.parent().and_then(|dir| fs::canonicalize(dir).ok()).is_some_and(|dir| !keys::partition_capable(&dir)) {
+            return Err(fail(64, "invalid-input", "The signing keychain must live in a per-user Library/Keychains directory"));
+        }
         let keychain_path = match fs::canonicalize(&keychain_arg) {
             Ok(path) if path.is_file() => path,
             Ok(_) => return Err(record(signing("keychain-missing", "Keychain path is not a file"))),
@@ -510,13 +522,21 @@ fn run() -> Result<Value> {
     let mut args = BTreeMap::new();
     while let Some(flag) = argv.next() {
         let key = flag.strip_prefix("--").ok_or_else(|| fail(64, "invalid-input", "Expected --option"))?;
-        if matches!(key, "restore-host" | "signing-auth-pending") { args.insert(key.to_owned(), String::new()); continue; }
+        if matches!(key, "restore-host" | "signing-auth-pending" | "replace" | "no-sign") { args.insert(key.to_owned(), String::new()); continue; }
         let value = argv.next().ok_or_else(|| fail(64, "invalid-input", "Missing option value"))?;
         if args.insert(key.to_owned(), value).is_some() { return Err(fail(64, "invalid-input", "Duplicate option")); }
     }
     let config_path = args.get("config").ok_or_else(|| fail(64, "invalid-input", "Missing --config"))?;
     let config = serde_json::from_slice(&fs::read(config_path)?)?; let ctl = Ctl { config, args };
-    let result = match action.as_str() { "install-host" => ctl.install(), "select-generation" => ctl.generation(), "converge-launchd" => ctl.converge(), "verify" => ctl.verify(), "rollback" => ctl.rollback(), "status" => ctl.status(), _ => Err(fail(64, "invalid-input", "Unknown primitive")) }?;
+    // Keychain calls in this process fail instead of showing UI (errSecInteractionNotAllowed).
+    // SAFETY: a plain flag setter for this process's Security framework client state.
+    let status = unsafe { SecKeychainSetUserInteractionAllowed(0) };
+    if status != 0 { return Err(fail(23, "operation-failed", format!("SecKeychainSetUserInteractionAllowed status {status}"))); }
+    let result = match action.as_str() {
+        "install-host" => ctl.install(), "select-generation" => ctl.generation(), "converge-launchd" => ctl.converge(), "verify" => ctl.verify(), "rollback" => ctl.rollback(), "status" => ctl.status(),
+        "provision-signing-key" => keys::provision(&ctl), "import-signing-cert" => keys::import_certificate(&ctl), "prove-signing-key" => keys::prove(&ctl),
+        _ => Err(fail(64, "invalid-input", "Unknown primitive")),
+    }?;
     Ok(json!({"ok": true, "primitive": action, "result": result}))
 }
 fn main() {

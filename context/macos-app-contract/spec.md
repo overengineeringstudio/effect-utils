@@ -148,10 +148,11 @@ The versioned request, result, status and error shapes are defined in
 newline-delimited JSON request and response per Unix-socket connection.
 `serve --socket PATH --generation-pointer PATH` runs the host;
 `call --socket PATH ACTION [--arg k=v]` invokes it. Status requires its own
-UID allow-list and reports session `unknown` until a supported session API is
-integrated. Installation, activation and rollback are provided by the install
-primitives below; typed TypeScript clients and panel presentation are not
-implemented.
+UID allow-list and reports the host's own audit session (`SessionGetInfo` for
+the calling session): `no-session` for the root session or when the call
+fails, `gui` when the session has graphic access, otherwise `background-only`.
+Installation, activation and rollback are provided by the install primitives
+below; typed TypeScript clients and panel presentation are not implemented.
 
 The host uses Rust and the existing pure Darwin SDK capability:
 the pinned nixpkgs Swift 5.10.1 compiler cannot import apple-sdk_15.5's
@@ -222,22 +223,24 @@ no fallback to broader `launchctl` operations.
 Each run prints exactly one JSON object on stdout: `{"ok":true,"primitive",
 "result"}` or `{"ok":false,"error":{"kind","category","reason"}}`.
 
-| Exit | Kind                       | Meaning                                                                     |
-| ---- | -------------------------- | --------------------------------------------------------------------------- |
-| 0    | —                          | Converged; `result.changed` tells whether anything was mutated.             |
-| 20   | `signing-failed`           | Incumbent untouched; `category` and `D.signing-failed.json` name the cause. |
-| 21   | `gui-absent`, `no-session` | Required launchd domain absent; no job operation was attempted.             |
-| 22   | `verification-failed`      | DR, marker, metadata, pointer, socket mode, launchd or IPC state differs.   |
-| 23   | `operation-failed`         | Filesystem, `launchctl` or `nix-store` operation failed.                    |
-| 64   | `invalid-input`            | Bad arguments or config, login keychain, ad-hoc identity, domain override.  |
+| Exit | Kind                       | Meaning                                                                                                                                                                                      |
+| ---- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | —                          | Converged; `result.changed` tells whether anything was mutated.                                                                                                                              |
+| 20   | `signing-failed`           | Incumbent untouched; `category` and `D.signing-failed.json` name the cause.                                                                                                                  |
+| 21   | `gui-absent`, `no-session` | Required launchd domain absent; no job operation was attempted.                                                                                                                              |
+| 22   | `verification-failed`      | DR, marker, metadata, pointer, socket mode, launchd or IPC state differs; codesign guard refused; certificate does not pair; signing-key proof failed.                                       |
+| 23   | `operation-failed`         | Filesystem, `launchctl` or `nix-store` operation failed.                                                                                                                                     |
+| 64   | `invalid-input`            | Bad arguments or config, login keychain, keychain outside a per-user `Library/Keychains`, missing or invalid ACL record, ad-hoc identity, existing key without `--replace`, domain override. |
 
 Signing failure categories: `signing-auth-pending` (consumer could not obtain
 the password; the keychain is not touched), `password-invalid` (descriptor
 content rejected before unlock), `keychain-missing`, `unlock-failed`,
 `identity-missing` (identity absent from the dedicated keychain; the default
-search list is never consulted), `sign-failed`, `dr-mismatch`,
+search list is never consulted), `sign-failed`, `sign-timeout` (a signing
+`codesign` did not finish within 30 seconds and was killed), `dr-mismatch`,
 `relock-failed` (the keychain could not be locked again; the signed stage is
-discarded).
+discarded). A codesign-guard refusal (below) is `verification-failed` and
+runs no `codesign`.
 
 `MACOS_APP_CTL_TEST_FAILPOINT` (`relock`, `after-exchange`,
 `after-archive-pointer`, `cleanup`, `rollback-after-exchange`) is test-only. It
@@ -248,17 +251,50 @@ can only force a failure or a crash, never make a check pass.
 - **Dedicated keychain.** One keychain file holds only the signing identity.
   Its private key is non-extractable. It need not be on the user's search
   list; `codesign --keychain K` selects the identity from it alone.
-- **Partition list.** The key's partition list must allow `codesign:`; that
-  single entry is the minimum that lets `codesign` use the key without a
-  prompt (`security set-key-partition-list -S codesign: -s -k … K`).
+- **Partition-capable location.** `K` lives in a per-user `…/Library/Keychains/`
+  directory (production: `~/Library/Keychains/<name>.keychain-db`). securityd
+  creates partition-version keychains only there; anywhere else the key has no
+  partition list or integrity entry, partition settings are silently void and
+  codesign's exclusive access cannot be established. `install-host` and the
+  provisioning primitives refuse any other location (`invalid-input`).
+- **Partition list exactly `[apple:]`.** securityd gives every client a
+  partition ID derived from its code signature: Apple-signed binaries get
+  `apple:` (so `/usr/bin/codesign` is `apple:`), `security` alone gets
+  `apple-tool:`, Mac App Store and Developer ID code gets `teamid:<id>`, other
+  signed code `cdhash:<hash>` and unsigned code `unsigned:`. No client is ever
+  assigned `codesign:`, so a list containing only `codesign:` excludes codesign
+  itself and its first use asks for confirmation. The minimal list is
+  `[apple:]`. It excludes `security` (`apple-tool:`) and every non-Apple
+  process, including `ctl`.
+- **Signing ACL exactly `{/usr/bin/codesign, recorded ctl}`.** Every ACL
+  entry that authorizes signing trusts `/usr/bin/codesign` and the `ctl`
+  binary that provisioned the key, and nothing else. `ctl` must be in the
+  initial ACL to sign the CSR. securityd refuses (`errSecAuthFailed`) a
+  password-authorized edit that removes it, so it stays. It still cannot use
+  the key, because its partition (`cdhash:…`) is outside `[apple:]`.
+- **ACL record.** `provision-signing-key` records the exact `ctl` path that
+  securityd stored in the new key's signing ACL, together with its cdhash. The
+  record is `<K>.acl.json` (mode 0600, owned by the user), keyed by the
+  public-key SHA-256. The guard compares against this record, never against a
+  file name. A missing, loose (not 0600), foreign (naming another keychain) or
+  keyless record fails with `invalid-input`. The provisioning `ctl` store path
+  must stay live: the consumer roots it as a GC root. If it does not, the
+  check still works, but the ACL entry names a path that no longer exists.
+- **Codesign guard.** Before any signing `codesign` (in `install-host` and in
+  `prove-signing-key`), `ctl` reads the key's ACLs inside the unlock window.
+  It requires a partition-capable `K`, a partition list equal to `[apple:]` and
+  signing ACLs equal to `{/usr/bin/codesign, recorded ctl}`. Anything wider or
+  different fails with `verification-failed` and runs no `codesign`. Each
+  signing `codesign` also has a 30-second deadline, after which it is killed
+  (`sign-timeout`).
 - **Password by descriptor.** The consumer owns password retrieval (for
   example an op-proxy grant) and passes it on an inherited descriptor
   (`--keychain-password-fd N`). The password is the descriptor's bytes up to
   EOF with exactly one trailing `\n` removed; no other byte is trimmed, and
-  provisioning (`create-keychain`, `set-key-partition-list`) must use the same
-  bytes. Empty content, more than 1024 bytes, or no EOF within five seconds is
-  `password-invalid`, decided before `SecKeychainUnlock`. The password is never
-  accepted from argv or the environment and never passed to a child process.
+  provisioning must use the same bytes. Empty content, more than 1024 bytes,
+  or no EOF within five seconds is `password-invalid`, decided before
+  `SecKeychainUnlock`. The password is never accepted from argv or the
+  environment and never passed to a child process.
   `ctl` reads it into a fixed buffer and zeroes the buffer after unlocking.
 - **Auth pending is the consumer's decision.** The consumer decides from its
   password reader's exit status (with `pipefail` or equivalent), never from
@@ -267,10 +303,48 @@ can only force a failure or a crash, never make a check pass.
 - **Lock discipline.** Every `install-host` run that names `K` first calls
   `SecKeychainLock(K)`, because a SIGKILLed run skips cleanup. The identity
   lookup and requirement canonicalization happen while `K` is locked.
-  `SecKeychainUnlock` then opens a window for exactly one `codesign` of the
-  staged bundle and its `codesign` verification; no other child process,
-  network or op-proxy call runs inside it. A checked `SecKeychainLock` closes
-  it before any signing result is used; if that lock fails the run fails with
-  `relock-failed` and nothing is exchanged. Early returns relock best effort.
+  `SecKeychainUnlock` then opens a window for the codesign guard (in-process
+  ACL reads), exactly one `codesign` of the staged bundle and its `codesign`
+  verification; no other child process, network or op-proxy call runs inside
+  it. A checked `SecKeychainLock` closes it before any signing result is used;
+  if that lock fails the run fails with `relock-failed` and nothing is
+  exchanged. Early returns relock best effort.
 - **Never the login keychain.** A path that resolves to the login keychain,
   by name or by `security login-keychain`, is refused before it is opened.
+
+### Signing-key provisioning
+
+Three primitives establish the signer contract without `security(1)` and
+without a password in argv. They take `--keychain K --keychain-password-fd N`
+with the same descriptor rules and refuse the login keychain and
+non-partition-capable locations. `ctl` disables keychain user interaction
+process-wide (`SecKeychainSetUserInteractionAllowed(false)`), so any call of
+its own that would need UI fails with `errSecInteractionNotAllowed` instead of
+prompting.
+
+| Primitive               | Arguments                                          | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `provision-signing-key` | `--common-name-hint CN --csr-out PATH [--replace]` | Creates `K` if absent (mode 0600, not added to the search list, not made default), sets auto-lock after 300 seconds and lock on sleep (`SecKeychainSetSettings`), creates a permanent, non-extractable RSA-2048 key (`SecKeyCreateRandomKey`) whose initial ACL trusts `ctl` and `/usr/bin/codesign`, records the stored `ctl` path and cdhash in `<K>.acl.json`, and writes a PEM PKCS#10 CSR (subject `CN`) that `ctl` signs with the key (`SecKeyCreateSignature`). If `K` already holds a private key it refuses (`invalid-input`, listing them) unless `--replace` is passed. `--replace` adds a key, adds its record entry and reports `retainedPrivateKeys`; keys are never deleted. Reports `aclRecord`, `ctlPath` and `ctlCdhash`.                                                |
+| `import-signing-cert`   | `--cert PATH` (PEM or DER)                         | Imports the certificate only if it pairs with a private key in `K` (`SecIdentityCreateWithCertificate` before `SecItemAdd`; otherwise `verification-failed` and nothing is imported), then confirms that `find-identity` sees the identity. Idempotent (`imported: false` on repeat). Reports `certificateSha1`, `subject` and `publicKeySha256`.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `prove-signing-key`     | `[--no-sign]`                                      | Requires exactly one identity in `K` and its ACL record. While `ctl` can still use the key it attempts a PKCS#12 export of the identity (only if the key's attribute already says non-extractable) and expects refusal. It then sets the partition list to `[apple:]` in one ACL edit authorized in-process by the keychain password (`SecACLSetContents` + `SecKeychainItemSetAccessWithPassword`, the equivalent of `security set-key-partition-list` without argv). The signing ACL is not edited. Then it runs the codesign guard and, unless `--no-sign`, signs and verifies a throwaway file with `codesign` under the deadline. Finally it relocks `K`. A repeat run finds the guard already holds and skips the export attempt, because `ctl`'s partition is now outside the list. |
+
+The proof result has `partitionCapable`, `exportAttempted`, `exportStatus`,
+`exportRefused`, `signOk` (`null` with `--no-sign`), `guardReady`,
+`partitionList`, `signAclExact`, `recordedCtlPath`, `securityToolExcluded`,
+`keyExtractable`, `lockedAfterWindow`, `lockOnSleep` and
+`lockIntervalSeconds`. It fails with `verification-failed` unless `K` is
+partition-capable, the guard holds, export is refused, the key is
+non-extractable, `K` is locked after the window and (without `--no-sign`)
+codesign signed and verified. `securityToolExcluded` is structural: `security`
+runs as `apple-tool:`, which the exact `[apple:]` list excludes. No `security`
+export or lookup is run against the pinned key, because a partition miss would
+ask for confirmation. Refusal while locked is likewise recorded as
+`lockedAfterWindow` rather than by attempting a locked use, which would ask
+to unlock.
+
+The consumer runs these primitives once per signer: provision, have the CSR
+issued, import, prove. Its verify steps then rely on `install-host`'s guard.
+The proof for the production keychain in `~/Library/Keychains/` is recorded by
+running `prove-signing-key` during rollout. The integration suite proves the
+same properties on throwaway keychains under `tmp/<work>/Library/Keychains/`,
+with a test CA in place of Apple's.

@@ -143,6 +143,21 @@ fn tail(fd: OwnedFd, deadline: Instant) -> thread::JoinHandle<io::Result<String>
         Ok(String::from_utf8_lossy(bytes.make_contiguous()).into_owned())
     })
 }
+#[link(name = "Security", kind = "framework")]
+unsafe extern "C" { fn SessionGetInfo(session: u32, id: *mut u32, attributes: *mut u32) -> i32; }
+/// The host's own security (audit) session: GUI login sessions carry graphic access;
+/// the root session holds startup/system programs with no user session.
+fn session_kind(status: i32, attributes: u32) -> &'static str {
+    const IS_ROOT: u32 = 0x0001;
+    const HAS_GRAPHIC_ACCESS: u32 = 0x0010;
+    if status != 0 || attributes & IS_ROOT != 0 { "no-session" } else if attributes & HAS_GRAPHIC_ACCESS != 0 { "gui" } else { "background-only" }
+}
+fn session() -> &'static str {
+    let (mut id, mut attributes) = (0, 0);
+    // SAFETY: callerSecuritySession (u32::MAX) asks about this process; both outputs are valid.
+    let status = unsafe { SessionGetInfo(u32::MAX, &mut id, &mut attributes) };
+    session_kind(status, attributes)
+}
 fn native_result(code: i32) -> Result<()> { if code == 0 { Ok(()) } else { Err(failure("spawn", io::Error::from_raw_os_error(code).to_string())) } }
 fn spawn(path: &Path, args: Vec<String>, timeout_ms: u64) -> Result<Value> {
     use std::os::unix::ffi::OsStrExt;
@@ -214,7 +229,7 @@ impl Server {
         if request.action == "status" {
             if !manifest.status_allowed_uids.contains(&uid) { return Err(failure("unauthorized", "Caller UID not allowed")); }
             if !request.args.is_empty() { return Err(failure("invalidArgs", "Status accepts no arguments")); }
-            return Ok(json!({"wireVersion": 1, "ok": true, "status": {"hostVersion": VERSION, "hostSourceHash": SOURCE_HASH, "generation": manifest.generation, "pid": std::process::id(), "session": "unknown"}}));
+            return Ok(json!({"wireVersion": 1, "ok": true, "status": {"hostVersion": VERSION, "hostSourceHash": SOURCE_HASH, "generation": manifest.generation, "pid": std::process::id(), "session": session()}}));
         }
         let action = manifest.actions.get(&request.action).ok_or_else(|| failure("unknownAction", "Action not declared"))?;
         if !action.allowed_uids.contains(&uid) { return Err(failure("unauthorized", "Caller UID not allowed")); }
@@ -343,3 +358,15 @@ fn main_impl() -> Result<()> {
     Ok(())
 }
 fn main() { if let Err(e) = main_impl() { eprintln!("{}: {}", e.code, e.message); std::process::exit(1); } }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn session_kind_follows_audit_session_bits() {
+        assert_eq!(super::session_kind(0, 0x0010 | 0x0020), "gui");
+        assert_eq!(super::session_kind(0, 0x0020), "background-only");
+        assert_eq!(super::session_kind(0, 0x0001), "no-session");
+        assert_eq!(super::session_kind(0, 0x0001 | 0x0010), "no-session");
+        assert_eq!(super::session_kind(-1, 0x0010), "no-session");
+    }
+}

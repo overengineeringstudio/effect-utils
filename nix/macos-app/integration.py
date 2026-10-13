@@ -31,6 +31,16 @@ Draft202012Validator.check_schema(validator.schema)
 host = example / 'hostApp/SyntheticHost.app/Contents/MacOS/macos-app-host'
 second_host = example / 'secondHostApp/SyntheticHost.app/Contents/MacOS/macos-app-host'
 assert hashlib.sha256(host.read_bytes()).digest() == hashlib.sha256(second_host.read_bytes()).digest()
+
+def audit_session():
+    """The kind the host must report: it inherits this runner's audit session."""
+    import ctypes
+    security = ctypes.CDLL('/System/Library/Frameworks/Security.framework/Security')
+    session_id, attributes = ctypes.c_uint32(), ctypes.c_uint32()
+    status = security.SessionGetInfo(ctypes.c_uint32(0xFFFFFFFF), ctypes.byref(session_id), ctypes.byref(attributes))
+    if status != 0 or attributes.value & 0x0001: return 'no-session'
+    return 'gui' if attributes.value & 0x0010 else 'background-only'
+expected_session = audit_session()
 with (example / 'hostApp/SyntheticHost.app/Contents/Info.plist').open('rb') as file:
     plist = plistlib.load(file)
 assert plist['CFBundleIdentifier'] == 'dev.example.synthetic-host' and plist['LSBackgroundOnly'] is True
@@ -114,7 +124,7 @@ valid = {'choice': 'alpha', 'text': 'hello', 'count': 2}
 try:
     status = wait_ready()
     assert status['pid'] == server.pid and status['generation'] == first_manifest['generation']
-    assert status['hostVersion'] == '1' and status['session'] == 'unknown'
+    assert status['hostVersion'] == '1' and status['session'] == expected_session
     assert status['hostSourceHash'] == expected_source_hash
     assert first_manifest['socketMode'] == 0o666
     assert stat.S_IMODE(sock.stat().st_mode) == 0o666
