@@ -18,6 +18,7 @@ import {
   readBinaryCacheDescriptors,
   validateNixStoreStep,
 } from './ci-workflow.ts'
+import type { NamespacePrivilege } from './ci-workflow/setup.ts'
 
 /** Must match the build workflow `name:`; the deploy workflow triggers on it. */
 export const storybookPreviewBuildWorkflowName = 'Storybook Preview Build'
@@ -63,10 +64,13 @@ export const storybookPaths = [
   'nix/binary-caches.json',
 ].toSorted()
 
-export const storybookPreviewRunner = namespaceRunner({
-  profile: 'namespace-profile-linux-x86-64',
-  runId: '${{ github.run_id }}',
-})
+/** Each job must classify privilege from its own steps and event gate. */
+export const storybookPreviewRunner = (privileged: NamespacePrivilege): readonly string[] =>
+  namespaceRunner({
+    profile: 'namespace-profile-linux-x86-64',
+    runId: '${{ github.run_id }}',
+    privileged,
+  })
 
 const binaryCache = readBinaryCacheDescriptors(
   new URL('../nix/binary-caches.json', import.meta.url),

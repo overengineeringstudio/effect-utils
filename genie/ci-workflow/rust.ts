@@ -1,5 +1,6 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import {
+  type NamespacePrivilege,
   cachixCliBuildStep,
   cachixStep,
   checkoutStep,
@@ -93,6 +94,8 @@ export const cargoNextestStep = ({
 
 export type PlainFlakeJobOptions = PlainFlakeSetupOptions &
   Omit<WorkflowJob, 'runs-on' | 'steps'> & {
+    /** Required even when overriding runsOn; Nix devShell realization can build. */
+    readonly namespacePrivilege: NamespacePrivilege
     readonly runsOn?: WorkflowJob['runs-on']
     /** Run after checkout/Nix setup, before the command. */
     readonly preSteps?: readonly WorkflowStep[]
@@ -102,7 +105,14 @@ export type PlainFlakeJobOptions = PlainFlakeSetupOptions &
 /** Wrap one command; callers retain job gates, matrix, environment and timeout control. */
 export const plainFlakeJob = ({
   step,
-  runsOn = [...namespaceRunner({ profile: RUNNER_PROFILES[0], runId: '${{ github.run_id }}' })],
+  namespacePrivilege,
+  runsOn = [
+    ...namespaceRunner({
+      profile: RUNNER_PROFILES[0],
+      runId: '${{ github.run_id }}',
+      privileged: namespacePrivilege,
+    }),
+  ],
   nix,
   cachix,
   preSteps = [],
@@ -124,13 +134,13 @@ export const plainFlakeJob = ({
   ],
 })
 
-export const cargoFmtJob = (opts: PlainFlakeJobOptions = {}): WorkflowJob =>
+export const cargoFmtJob = (opts: PlainFlakeJobOptions): WorkflowJob =>
   plainFlakeJob({ ...opts, step: cargoFmtStep() })
 
 export const cargoClippyJob = ({
   extraArgs,
   ...opts
-}: PlainFlakeJobOptions & CargoClippyOptions = {}): WorkflowJob =>
+}: PlainFlakeJobOptions & CargoClippyOptions): WorkflowJob =>
   plainFlakeJob({ ...opts, step: cargoClippyStep({ extraArgs }) })
 
 export const cargoNextestJob = ({
@@ -138,11 +148,11 @@ export const cargoNextestJob = ({
   testThreads,
   extraArgs,
   ...opts
-}: PlainFlakeJobOptions & CargoNextestOptions = {}): WorkflowJob =>
+}: PlainFlakeJobOptions & CargoNextestOptions): WorkflowJob =>
   plainFlakeJob({ ...opts, step: cargoNextestStep({ retries, testThreads, extraArgs }) })
 
 /** The consumer devShell supplies genie and a repos/effect-utils input-store symlink. */
-export const plainFlakeGenieCheckJob = (opts: PlainFlakeJobOptions = {}): WorkflowJob =>
+export const plainFlakeGenieCheckJob = (opts: PlainFlakeJobOptions): WorkflowJob =>
   plainFlakeJob({
     ...opts,
     step: nixDevelopStep({ name: 'Check generated files', command: ['genie', '--check'] }),
