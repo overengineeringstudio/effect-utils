@@ -36,8 +36,17 @@ App JWT and resolves the bot ID through the public, unauthenticated
 `/users/{botLogin}` endpoint; no installation or permissions are required.
 Successful identity lookups are cached single-flight for the service lifetime.
 Failures are not cached and use `GitHubAppError` with operation `identity`.
-Identity requests do not follow redirects. JWTs remain in library custody:
-neither a JWT signer nor a general App-authenticated client is exposed.
+Identity's JWT-bearing request never follows redirects. JWTs remain in library
+custody: neither a JWT signer nor a general App-authenticated client is exposed.
+
+JWT-bearing `/app` and installation-token exchange requests use a library-owned
+Effect FetchHttpClient over the platform `fetch`, with redirects disabled.
+Injected HttpClient middleware (including `followRedirects`) cannot replay these
+requests. Transport customizations such as proxies, dispatchers, custom Fetch
+implementations and RequestInit settings do not apply to JWT requests.
+Installation-token clients and the public bot lookup keep using the injected
+HttpClient; the public lookup preserves Fetch RequestInit settings except for
+its `redirect: 'manual'` override.
 
 Repository names are nonempty, installation-relative names without `/`.
 `{ _tag: 'AllInstallation' }` explicitly requests installation-wide access and
@@ -68,6 +77,11 @@ The real loopback HTTP integration suites belong to the source-side
 `test:utils:unbounded` and `test:gh-ci-utils:unbounded` lanes, not the bounded
 Buck unit-test collection. `vitest.github-app.config.ts` runs the focused
 authentication and consumer regressions together.
+
+The `gh-ci-utils` consumer accepts an optional `GitHubClientOptions.apiBase` for
+the App, REST and GraphQL endpoints (default `https://api.github.com`).
+Its request counters cover its REST/GraphQL API calls, excluding token exchanges
+owned by this authentication library.
 
 ## Browser build identity (Vite)
 

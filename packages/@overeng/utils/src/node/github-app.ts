@@ -224,6 +224,17 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
     })
   }
   const raw = yield* HttpClient.HttpClient
+  // Middleware cannot opt JWT requests into redirect replay. Use the platform transport,
+  // not the injected client's closed-over middleware or Fetch/RequestInit customizations.
+  const jwtTransport = yield* HttpClient.HttpClient.pipe(Effect.provide(FetchHttpClient.layer))
+  const platformFetch = globalThis.fetch
+  const executeJwt = (request: HttpClientRequest.HttpClientRequest) =>
+    jwtTransport
+      .execute(request)
+      .pipe(
+        Effect.provideService(FetchHttpClient.Fetch, platformFetch),
+        Effect.provideService(FetchHttpClient.RequestInit, { redirect: 'manual' }),
+      )
   const apiBase = options.apiBase ?? new URL('https://api.github.com')
   const headers = {
     Accept: 'application/vnd.github+json',
@@ -309,27 +320,29 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         message: 'Refusing to send GitHub App JWT to another origin',
       })
     const request = HttpClientRequest.get(url).pipe(HttpClientRequest.setHeaders(headers))
-    const response = yield* raw
-      .execute(jwt === undefined ? request : request.pipe(HttpClientRequest.bearerToken(jwt)))
-      .pipe(
-        Effect.updateContext((context: Context.Context<never>) =>
-          Context.add(context, FetchHttpClient.RequestInit, {
-            ...Context.getOrUndefined(context, FetchHttpClient.RequestInit),
-            redirect: 'manual',
+    const response = yield* (
+      jwt === undefined
+        ? raw.execute(request)
+        : executeJwt(request.pipe(HttpClientRequest.bearerToken(jwt)))
+    ).pipe(
+      Effect.updateContext((context: Context.Context<never>) =>
+        Context.add(context, FetchHttpClient.RequestInit, {
+          ...Context.getOrUndefined(context, FetchHttpClient.RequestInit),
+          redirect: 'manual',
+        }),
+      ),
+      Effect.mapError(
+        (error) =>
+          new GitHubAppError({
+            operation: 'identity',
+            method: 'GET',
+            path: url.pathname,
+            reason: error.reason._tag,
+            ...(error.response === undefined ? {} : { status: error.response.status }),
+            message: 'GitHub App identity transport failed',
           }),
-        ),
-        Effect.mapError(
-          (error) =>
-            new GitHubAppError({
-              operation: 'identity',
-              method: 'GET',
-              path: url.pathname,
-              reason: error.reason._tag,
-              ...(error.response === undefined ? {} : { status: error.response.status }),
-              message: 'GitHub App identity transport failed',
-            }),
-        ),
-      )
+      ),
+    )
     // Do not follow redirects or retain the authenticated response in errors.
     if (response.status !== 200)
       return yield* new GitHubAppError({
@@ -482,7 +495,7 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
             HttpClientRequest.bearerToken(jwt),
             HttpClientRequest.bodyText(body, 'application/json'),
           )
-          const response = yield* raw.execute(request).pipe(
+          const response = yield* executeJwt(request).pipe(
             Effect.mapError(
               () =>
                 new GitHubAppError({

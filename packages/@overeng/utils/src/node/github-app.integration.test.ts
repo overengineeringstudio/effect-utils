@@ -58,6 +58,8 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
       appCalls: 0,
       botCalls: 0,
       identityStatus: 200,
+      botStatus: 200,
+      mintRedirect: '',
       identityRedirect: '',
       identityMalformed: false,
       identityAuthorization: [] as string[],
@@ -80,7 +82,9 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
           response.end()
           return
         }
-        response.writeHead(state.identityStatus, { 'content-type': 'application/json' })
+        response.writeHead(isApp === true ? state.identityStatus : state.botStatus, {
+          'content-type': 'application/json',
+        })
         response.end(
           state.identityMalformed === true
             ? '{"id":"invalid"}'
@@ -91,6 +95,11 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
         const chunks: Buffer[] = []
         for await (const chunk of request) chunks.push(Buffer.from(chunk))
         state.bodies.push(Schema.decodeSync(Json)(Buffer.concat(chunks).toString()))
+        if (state.mintRedirect !== '') {
+          response.writeHead(302, { location: state.mintRedirect })
+          response.end()
+          return
+        }
         if (state.delayMint === true) {
           await Effect.runPromiseWith(delay)(Deferred.succeed(started, undefined))
           await Effect.runPromiseWith(delay)(Deferred.await(release))
@@ -459,6 +468,90 @@ it.effect('does not cache failed identity lookups or schema decoding failures', 
     expect(yield* app.identity).toMatchObject({ botUserId: 789 })
     expect(state.appCalls).toBe(3)
     expect(state.botCalls).toBe(1)
+  }),
+)
+
+it.effect('clears an interrupted identity flight and retries on the next call', () =>
+  Effect.gen(function* () {
+    const { state, app, started, release } = yield* fixture()
+    state.delayResponse = true
+    const pending = yield* app.identity.pipe(Effect.forkChild)
+    yield* Deferred.await(started)
+    yield* Fiber.interrupt(pending)
+    state.delayResponse = false
+    yield* Deferred.succeed(release, undefined)
+    expect(yield* app.identity).toMatchObject({ botUserId: 789 })
+    expect(state.appCalls).toBe(2)
+    expect(state.botCalls).toBe(1)
+  }),
+)
+
+for (const status of [404, 403, 429]) {
+  it.effect(`does not cache a bot lookup ${status} failure`, () =>
+    Effect.gen(function* () {
+      const { state, app } = yield* fixture()
+      state.botStatus = status
+      const failure = yield* app.identity.pipe(Effect.flip)
+      expect(failure).toMatchObject({ operation: 'identity', status })
+      for (const secret of ['Bearer', ...state.jwtTokens]) expectCredentialFree(failure, secret)
+      state.botStatus = 200
+      expect(yield* app.identity).toMatchObject({ botUserId: 789 })
+      expect(state.appCalls).toBe(2)
+      expect(state.botCalls).toBe(2)
+    }),
+  )
+}
+
+it.effect('preserves public lookup RequestInit settings but isolates JWT transport settings', () =>
+  Effect.gen(function* () {
+    const { app, state } = yield* fixture()
+    const options: RequestInit[] = []
+    const customizedFetch: typeof fetch = (input, init) => {
+      options.push(init ?? {})
+      return globalThis.fetch(input, init)
+    }
+    yield* app.identity.pipe(
+      Effect.provideService(FetchHttpClient.Fetch, customizedFetch),
+      Effect.provideService(FetchHttpClient.RequestInit, {
+        redirect: 'follow',
+        cache: 'no-store',
+        credentials: 'omit',
+        headers: { 'x-public-customization': 'preserved' },
+      }),
+    )
+    expect(options).toHaveLength(1)
+    expect(options[0]).toMatchObject({
+      redirect: 'manual',
+      cache: 'no-store',
+      credentials: 'omit',
+      headers: expect.objectContaining({ 'x-public-customization': 'preserved' }),
+    })
+    expect(state.appCalls).toBe(1)
+    expect(state.botCalls).toBe(1)
+  }),
+)
+
+it.effect('never replays JWT identity or exchange through injected redirect middleware', () =>
+  Effect.gen(function* () {
+    const followed = Layer.effect(
+      HttpClient.HttpClient,
+      Effect.map(HttpClient.HttpClient, HttpClient.followRedirects()),
+    ).pipe(Layer.provide(FetchHttpClient.layer))
+    const { state, app } = yield* fixture(followed)
+    state.identityRedirect = '/probe'
+    expect(yield* app.identity.pipe(Effect.flip)).toMatchObject({
+      operation: 'identity',
+      status: 302,
+    })
+    state.mintRedirect = '/probe'
+    expect(yield* app.token(scope).pipe(Effect.flip)).toMatchObject({
+      operation: 'exchange',
+      status: 302,
+    })
+    expect(state.calls).toBe(0)
+    expect(state.authorization).toEqual([])
+    expect(state.appCalls).toBe(1)
+    expect(state.exchanges).toBe(1)
   }),
 )
 
