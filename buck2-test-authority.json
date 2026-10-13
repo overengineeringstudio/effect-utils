@@ -545,7 +545,7 @@
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/gh-ci-utils:test_collect",
-      "excludes": [],
+      "excludes": ["src/node/GitHubClient.integration.test.ts"],
       "packageName": "gh-ci-utils",
       "packagePath": "packages/@overeng/gh-ci-utils",
       "runner": "vitest",
@@ -609,7 +609,8 @@
         "test/watchPlan.test.ts"
       ],
       "unboundedAfter": [],
-      "unboundedFiles": []
+      "unboundedFiles": ["src/node/GitHubClient.integration.test.ts"],
+      "unboundedTaskName": "test:gh-ci-utils:unbounded"
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/kdl-effect:test_collect",
@@ -1921,6 +1922,7 @@
       "excludes": [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/node/cmd.unit.test.ts",
+        "src/node/github-app.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/vite-build-identity.build.test.ts",
@@ -2001,6 +2003,7 @@
       "unboundedAfter": [],
       "unboundedFiles": [
         "src/node/cmd.unit.test.ts",
+        "src/node/github-app.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/vite-build-identity.build.test.ts",

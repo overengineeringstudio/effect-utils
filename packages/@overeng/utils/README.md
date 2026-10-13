@@ -54,6 +54,11 @@ Schema-backed telemetry contracts cover construction, minting and authorization.
 to App client ID, installation ID and consumer. Provide a scoped lifetime for
 the App layer shared by the consuming service.
 
+The real loopback HTTP integration suites belong to the source-side
+`test:utils:unbounded` and `test:gh-ci-utils:unbounded` lanes, not the bounded
+Buck unit-test collection. `vitest.github-app.config.ts` runs the focused
+authentication and consumer regressions together.
+
 ## Browser build identity (Vite)
 
 ```ts
