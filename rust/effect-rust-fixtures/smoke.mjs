@@ -296,8 +296,12 @@ const checkMathModes = async (api) => {
   for (const value of [0.1, 1e-45, 3.4028235e38, -0, 1]) {
     assert.ok(Object.is(api.roundTripFloat({ value }).value, Math.fround(value)))
   }
+  assert.equal(api.roundTripNullableFloat({ value: null }).value, null)
+  assert.equal(api.roundTripNullableFloat({ value: 0.1 }).value, Math.fround(0.1))
+  assert.throws(() => api.roundTripNullableFloat({}), /RUST_INPUT:/)
   for (const value of [NaN, Infinity, -Infinity, 3.5e38]) {
     assert.throws(() => api.roundTripFloat({ value }), /RUST_INPUT:/)
+    assert.throws(() => api.roundTripNullableFloat({ value }), /RUST_INPUT:/)
   }
   for (const unsigned of [
     9007199254740991n,

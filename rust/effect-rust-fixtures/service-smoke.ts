@@ -57,11 +57,19 @@ const codecs = {
   Order: Contracts.Order,
   Quote: Contracts.Quote,
   FloatSample: Contracts.FloatSample,
+  NullableFloatSample: Contracts.NullableFloatSample,
   WideSample: Contracts.WideSample,
 }
 const Vectors = Schema.Array(
   Schema.Struct({
-    contract: Schema.Literals(['Discount', 'Order', 'Quote', 'FloatSample', 'WideSample']),
+    contract: Schema.Literals([
+      'Discount',
+      'Order',
+      'Quote',
+      'FloatSample',
+      'NullableFloatSample',
+      'WideSample',
+    ]),
     name: Schema.String,
     input: Schema.Unknown,
     accept: Schema.Boolean,
