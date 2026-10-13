@@ -273,11 +273,14 @@ const awaitBuckCondition = Effect.fn('test.awaitBuckCondition')(function* ({
 })
 
 const readBuckStatus = (root: string) =>
-  ChildProcessSpawner.use((spawner) =>
-    spawner.string(
-      Command.make(PINNED_BUCK2, ['--isolation-dir', BUCK_ISOLATION, 'status'], { cwd: root }),
-    ),
-  ).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(BuckDaemonStatus))))
+  Effect.gen(function* () {
+    const stdout = yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(
+        Command.make(PINNED_BUCK2, ['--isolation-dir', BUCK_ISOLATION, 'status'], { cwd: root }),
+      ),
+    )
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BuckDaemonStatus))(stdout)
+  })
 
 describe.skipIf(process.platform !== 'linux')('mr store gc — real pinned Buck2 daemons', () => {
   for (const attached of [false, true]) {

@@ -2003,7 +2003,8 @@ const coldReclaimRepo = ({
       }
     }
 
-    return results.map((result) => ({ ...result, ...buckReceipts.get(result.path) }))
+    for (const result of results) Object.assign(result, buckReceipts.get(result.path))
+    return results
   }).pipe(LibObservability.withColdReclaimRepoSpan({ repoRelativePath, bareRepoPath }))
 
 /** List repos in the store */
@@ -3439,11 +3440,11 @@ const storeGcCommand = Cli.Command.make(
                 if (stopped.length === 0) return error
                 return new StoreCommandError({
                   message: `${error instanceof Error === true ? error.message : String(error)}; stopped Buck2 daemons: ${JSON.stringify(
-                    stopped.map(({ pid, daemonId, root, freedKiB }) => ({
-                      pid,
-                      daemonId,
-                      root,
-                      freedKiB,
+                    stopped.map((daemon) => ({
+                      pid: daemon.pid,
+                      daemonId: daemon.daemonId,
+                      root: daemon.root,
+                      freedKiB: daemon.freedKiB,
                     })),
                   )}`,
                 })

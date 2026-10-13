@@ -26,6 +26,7 @@ export const BuckDaemonStopped = Schema.TaggedStruct('stopped', {
 })
 export type BuckDaemonStopped = typeof BuckDaemonStopped.Type
 
+/** A daemon that could not be stopped safely; `reason` says why (archived root, deleted cwd, status). */
 export const BuckDaemonUnreachable = Schema.TaggedStruct('unreachable', {
   ...daemonFields,
   memoryKiB: Schema.Int,
@@ -33,11 +34,13 @@ export const BuckDaemonUnreachable = Schema.TaggedStruct('unreachable', {
 })
 export type BuckDaemonUnreachable = typeof BuckDaemonUnreachable.Type
 
+/** Per-daemon outcome of a teardown shutdown attempt. */
 export type BuckDaemonResult =
   | BuckDaemonStopped
   | BuckDaemonUnreachable
   | ({ readonly _tag: 'kept-active' } & BuckDaemonIdentity)
 
+/** Identity of a daemon as seen in `/proc` (argv daemon id + isolation, cwd-derived root). */
 export interface BuckDaemonIdentity {
   readonly pid: number
   readonly daemonId: string
@@ -46,6 +49,7 @@ export interface BuckDaemonIdentity {
   readonly path: string
 }
 
+/** A recognized daemon process plus whether its cwd was unlinked. */
 export interface BuckDaemonProcess extends BuckDaemonIdentity {
   readonly cwdDeleted: boolean
 }
@@ -83,6 +87,7 @@ export const recognizeBuckDaemon = ({
   return { pid, daemonId, isolation, root, path, cwdDeleted }
 }
 
+/** The subset of pinned `buck2 status` output used to confirm identity and idleness. */
 export const BuckDaemonStatus = Schema.Struct({
   process_info: Schema.Struct({ pid: Schema.Int }),
   daemon_constraints: Schema.Struct({ daemon_id: Schema.String }),
@@ -160,6 +165,7 @@ const readBuckProcesses = Effect.fn('store.readBuckProcesses')(function* () {
   ).pipe(Effect.map((entries): ReadonlyArray<BuckProcess> => entries.flat()))
 })
 
+/** A daemon inside a worktree with its own process identities and pre-kill memory. */
 export interface WorktreeBuckDaemon {
   readonly daemon: BuckDaemonProcess
   readonly processes: ReadonlyArray<ProcessIdentity>

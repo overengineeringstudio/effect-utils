@@ -59,7 +59,7 @@ describe('Buck2 worktree shutdown policy', () => {
       argv.filter((arg) => arg !== 'daemon'),
       [argv[0]!, 'forkserver'],
       ['buck2', 'daemon'],
-      [...argv.slice(0, -1)],
+      argv.slice(0, -1),
       ['buck2', '--isolation-dir', '--daemon-id', 'x', 'daemon'],
     ]) {
       expect(recognizeBuckDaemon({ pid: 123, argv: args, cwd: daemon.path })).toBeUndefined()

@@ -37,6 +37,7 @@ export type DaemonStatus = {
   readonly activeCommandCount: number
 }
 
+/** What one root-scoped status read established about a daemon process. */
 export type DaemonObservation =
   | { readonly _tag: 'gone'; readonly daemon: DaemonProcess }
   | { readonly _tag: 'unreachable'; readonly daemon: DaemonProcess; readonly reason: string }
@@ -48,6 +49,7 @@ export type DaemonObservation =
       readonly lastLogWriteMs: number | undefined
     }
 
+/** The reaper's per-daemon verdict; only `kill-idle` leads to `buck2 kill`. */
 export type ReapDecision =
   | { readonly _tag: 'report-gone'; readonly daemon: DaemonProcess }
   | { readonly _tag: 'keep-unreachable'; readonly daemon: DaemonProcess; readonly reason: string }
@@ -111,7 +113,8 @@ export const parseDaemonProcess = ({
     pid,
     daemonId,
     isolationDir,
-    projectRoot: directory.endsWith(suffix) ? directory.slice(0, -suffix.length) : directory,
+    projectRoot:
+      directory.endsWith(suffix) === true ? directory.slice(0, -suffix.length) : directory,
     cwdDeleted,
   }
 }
@@ -150,20 +153,24 @@ const readOwnBuckProcesses = (): ProcEntry[] => {
   return entries
 }
 
+/** The current user's live Buck2 daemons from `/proc`, with their forkserver when present. */
 export const listDaemonProcesses = (): DaemonProcess[] => {
   const processes = readOwnBuckProcesses()
   return processes
     .filter((entry) => entry.argv.includes('daemon') && entry.argv.includes('--daemon-id'))
     .map((entry) => {
-      const { cwdDeleted, ...daemon } = parseDaemonProcess(entry)
+      const { cwdDeleted, pid, daemonId, isolationDir, projectRoot } = parseDaemonProcess(entry)
       let rootIsDirectory = false
       try {
-        rootIsDirectory = statSync(daemon.projectRoot).isDirectory()
+        rootIsDirectory = statSync(projectRoot).isDirectory()
       } catch {
         // Missing root.
       }
       return {
-        ...daemon,
+        pid,
+        daemonId,
+        isolationDir,
+        projectRoot,
         rootGone: cwdDeleted === true || rootIsDirectory === false,
         forkserverPid: processes.find(
           (child) => child.parentPid === entry.pid && child.argv[1] === 'forkserver',
@@ -172,7 +179,7 @@ export const listDaemonProcesses = (): DaemonProcess[] => {
     })
 }
 
-const requireString = (value: unknown, field: string): string => {
+const requireString = ({ value, field }: { value: unknown; field: string }): string => {
   if (typeof value !== 'string' || value.length === 0)
     throw new Error(`buck2 status: ${field} is not a non-empty string`)
   return value
@@ -204,12 +211,15 @@ export const decodeDaemonStatus = (value: unknown): DaemonStatus => {
   const { pid } = processInfo
   if (typeof pid !== 'number' || Number.isSafeInteger(pid) === false || pid <= 0)
     throw new Error('buck2 status: process_info.pid is not a positive pid')
-  const startTimeMs = Date.parse(requireString(value.start_time, 'start_time'))
+  const startTimeMs = Date.parse(requireString({ value: value.start_time, field: 'start_time' }))
   if (Number.isFinite(startTimeMs) === false) throw new Error('buck2 status: invalid start_time')
   return {
-    daemonId: requireString(constraints.daemon_id, 'daemon_constraints.daemon_id'),
+    daemonId: requireString({
+      value: constraints.daemon_id,
+      field: 'daemon_constraints.daemon_id',
+    }),
     pid,
-    projectRoot: requireString(value.project_root, 'project_root'),
+    projectRoot: requireString({ value: value.project_root, field: 'project_root' }),
     startTimeMs,
     activeCommandCount: value.active_commands.length,
   }
@@ -284,6 +294,7 @@ export const memoryKiB = (pids: readonly (number | undefined)[]): number => {
   return total
 }
 
+/** Result of the re-checked kill attempt for one `kill-idle` daemon. */
 export type KillOutcome =
   | { readonly _tag: 'killed'; readonly freedKiB: number }
   | { readonly _tag: 'skipped'; readonly reason: string }
@@ -320,6 +331,7 @@ export const killIfStillIdle = ({
   return { _tag: 'killed', freedKiB }
 }
 
+/** One JSON log line per daemon: decision, identity, idle evidence, memory and kill outcome. */
 export type ReapEntry = {
   readonly decision: ReapDecision['_tag']
   readonly daemonId: string
@@ -334,6 +346,7 @@ export type ReapEntry = {
   readonly outcome: KillOutcome | undefined
 }
 
+/** Classifies every live daemon of the current user and kills the idle ones unless `dryRun`. */
 export const reap = ({
   buck2,
   idleThresholdMs,
