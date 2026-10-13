@@ -6,7 +6,13 @@ import { NodeFileSystem } from '@effect/platform-node'
 import { describe, expect, expectTypeOf, it } from '@effect/vitest'
 import { Effect } from 'effect'
 
-import { defineMission, loadSubjectTree, type AgentRef, type MissionRef } from './tree.ts'
+import {
+  defineMission,
+  loadSubjectTree,
+  type AgentRef,
+  type MissionRef,
+  type ScheduleIntent,
+} from './tree.ts'
 
 const treeModule = new URL('./tree.ts', import.meta.url).href
 
@@ -293,6 +299,20 @@ describe('loadSubjectTree', () => {
       })
     }),
   )
+
+  it('preserves interval and calendar authoring fields with typed mission work', () => {
+    type Common = {
+      id: string
+      host: 'local'
+      catchUp: 'latest'
+      work: { mission: MissionRef; workspace: string }
+    }
+    expectTypeOf<Common & { every: string; anchor: string }>().toExtend<ScheduleIntent['schedule']>()
+    expectTypeOf<Common & { _tag: 'calendar'; at: string; timezone: string }>().toExtend<
+      ScheduleIntent['schedule']
+    >()
+    expectTypeOf<Common>().not.toExtend<ScheduleIntent['schedule']>()
+  })
 
   it('rejects references of the wrong kind at compile time', () => {
     expectTypeOf<MissionRef>().not.toExtend<AgentRef>()

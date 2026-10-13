@@ -75,13 +75,18 @@ export type MissionIntent = Omit<
   readonly finally?: ReadonlyArray<TreeStep<NonNullable<MissionInput<string>['finally']>[number]>>
 }
 
+// Replace work separately for each interval/calendar variant, retaining its required fields.
+type TreeSchedule<TSchedule> = TSchedule extends unknown
+  ? Omit<TSchedule, 'work'> & {
+      readonly work: Omit<WorkWire, 'mission'> & {
+        readonly mission: MissionRef | WorkWire['mission']
+      }
+    }
+  : never
+
 /** Mission fields for a schedule file; its work may name a typed mission reference. */
 export type ScheduleIntent = MissionIntent & {
-  readonly schedule: Omit<typeof ScheduleSchema.Encoded, 'work'> & {
-    readonly work: Omit<WorkWire, 'mission'> & {
-      readonly mission: MissionRef | WorkWire['mission']
-    }
-  }
+  readonly schedule: TreeSchedule<typeof ScheduleSchema.Encoded>
 }
 
 /** `meta` is the defining module's `import.meta`; `intent` is a value or a context factory. */
