@@ -8,6 +8,7 @@ import aiGatewayEdgePkg from './packages/@overeng/ai-gateway-edge/package.json.g
 import buck2ToolsPkg from './packages/@overeng/buck2-tools/package.json.genie.ts'
 import ciToolsPkg from './packages/@overeng/ci-tools/package.json.genie.ts'
 import contentAddressPkg from './packages/@overeng/content-address/package.json.genie.ts'
+import dataGraphPkg from './packages/@overeng/data-graph/package.json.genie.ts'
 import devbarPkg from './packages/@overeng/devbar/package.json.genie.ts'
 import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/package.json.genie.ts'
 import effectAiGatewayPkg from './packages/@overeng/effect-ai-gateway/package.json.genie.ts'
@@ -63,6 +64,7 @@ export const rootWorkspacePackages = [
   aiGatewayEdgePkg,
   buck2ToolsPkg,
   contentAddressPkg,
+  dataGraphPkg,
   devbarPkg,
   metersPkg,
   effectSocketPkg,

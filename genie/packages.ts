@@ -14,6 +14,7 @@ export const internalPackages = [
   'ai-gateway-edge',
   'buck2-tools',
   'content-address',
+  'data-graph',
   'devbar',
   'effect-ai-claude-cli',
   'effect-ai-gateway',
