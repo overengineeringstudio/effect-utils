@@ -69,7 +69,7 @@ export const classifyBunReport = ({
     }
     return compiled.test(actual)
   }
-  for (const test of xml.matchAll(/<testcase\b([^>]*)(?:\/>|>([\s\S]*?)<\/testcase>)/gu)) {
+  for (const test of xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/gu)) {
     const record = attributes(test[1]!)
     let deadlineIndex = remaining.findIndex(
       (entry) =>

@@ -4,8 +4,32 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { classifyBunReport } from './bun-test-runner.ts'
+
 const runner = fileURLToPath(new URL('./bun-test-runner.ts', import.meta.url))
 const fixture = fileURLToPath(new URL('./fixtures/bun-timeout.fixture.ts', import.meta.url))
+
+test('JUnit self-closing passing cases do not absorb a later failure', () => {
+  const lines = classifyBunReport({
+    xml: `<testsuite>
+      <testcase file="passing.test.ts" classname="suite" name="pass" time="0.002"/>
+      <testcase file="passing.test.ts" classname="suite" name="skip" time="0"><skipped/></testcase>
+      <testcase file="timed.test.ts" classname="suite" name="timeout" time="0.023"><failure type="TimeoutError"/></testcase>
+      <testcase file="assertion.test.ts" classname="suite" name="assertion" time="0.001"><failure type="AssertionError"/></testcase>
+    </testsuite>`,
+    deadlines: [
+      { file: 'passing.test.ts', classname: 'suite', name: 'pass', base: 5000, effective: 10000 },
+      { file: 'timed.test.ts', classname: 'suite', name: 'timeout', base: 20, effective: 40 },
+    ],
+    base: 5000,
+    factor: 2,
+    host: { load1: 40, cpus: 20, memPsiFullAvg10: 1 },
+  })
+  expect(lines).toEqual([
+    'test-timeout-under-load file="timed.test.ts" test="suite > timeout" base=20 factor=2 effective=40 deadlineMs=40 elapsedMs=23 load1=40 cpus=20 memPsiFullAvg10=1',
+    'test-failure-summary timeoutFailures=1 assertionFailures=1 otherFailures=0',
+  ])
+})
 
 test('JUnit distinguishes timed-out tests from assertions without changing the failing exit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'bun-timeout-fixture-'))

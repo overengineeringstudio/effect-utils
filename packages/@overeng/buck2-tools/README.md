@@ -140,6 +140,8 @@ After the child exits, it samples host load and Linux memory PSI and emits one
 identity, base, factor, effective deadline, measured JUnit elapsed milliseconds,
 load, CPU count and `memPsiFullAvg10` (`unavailable` outside Linux or without PSI).
 `test-failure-summary` counts timeout, assertion and other failures separately.
+Self-closing passing records and skipped cases are consumed individually, so a
+later failure keeps its own test identity, elapsed time and registered deadline.
 “Under load” is a diagnostic category, not proof that load caused the timeout.
 Reports live in executor results for Buck and disposable scratch for direct tasks.
 
