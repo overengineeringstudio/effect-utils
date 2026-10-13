@@ -244,7 +244,8 @@ const ensureBudgetDirectory = (): void => {
   }
 }
 
-const withHostBudgetLock = async <T>(run: () => Promise<T>): Promise<T> => {
+/** Serialize host metadata and abandoned root-lock recovery across independent CAS namespaces. */
+export const withHostBudgetLock = async <T>(run: () => Promise<T>): Promise<T> => {
   ensureBudgetDirectory()
   return withEditorViewContentStoreLock({
     contentStore: join(editorViewHostBudgetStateDirectory(), 'coordination'),

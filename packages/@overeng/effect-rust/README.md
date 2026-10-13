@@ -72,6 +72,52 @@ Keep `effect` deduplicated between your application, generated service, and
 `@overeng/effect-rust`. Import the generated tag instead of declaring a second
 service class.
 
+### Admitting @overeng/effect-rust itself
+
+A consumer outside effect-utils must admit `@overeng/effect-rust` through
+[root-owned source staging](../../../context/dependency-materialization/01-live-pnpm/.decisions/0001-root-scoped-source-input-staging.md),
+not a plain `link:` dependency. With `link:`, Node resolves `effect` from the
+member's own install rather than the consumer's root. That creates a second
+Effect instance, which `Interop.assertEffectCohort` rejects. Do not bypass this
+guard: the consumer, generated service, and runtime must share one instance.
+
+In the root's Genie projection, stage the runtime package and merge its overrides
+after the catalog's `effect` pin:
+
+```ts
+const rootPnpmSourceInputs = projectPnpmSourceInputs({
+  packages: [effectRustPkg],
+  repoName,
+})
+
+const overrides = {
+  effect: catalog.effect,
+  ...rootPnpmSourceInputs.overrides,
+}
+```
+
+Carry `rootPnpmSourceInputs.sourceInputPaths` and the stage path
+`pnpmSourceInputStagePath` into the root's install contract. Pass the same
+`sourceInputPaths` to the root pnpm task; its staging directory is fixed at
+`.devenv/pnpm-source-inputs`, with the current generation under `current`.
+`pnpmSourceInputStagePath` names that current generation, not a configurable
+pnpm task option.
+
+The package's runtime `exports` resolve to erasable TypeScript under `src/*.ts`;
+`publishConfig.exports` resolve to emitted JavaScript under `dist/src/*.js`.
+Source staging carries sources only, not a built runtime distribution. Choose
+one of these supported setups:
+
+- A bundler or TypeScript-aware runtime, such as Vite or Bun.
+- Vitest with `test.server.deps.inline: ['@overeng/effect-rust']`, so the runtime
+  sources are transformed rather than externalized.
+- Unbundled Node with a self-built runtime distribution (for example, a tsgo
+  emit). Pass that dist directory to the service package generator as
+  `--runtime-dist`, and admit the emitted runtime JavaScript into the consumer's
+  runtime package tree. Node refuses type stripping inside `node_modules`
+  (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`); source staging alone does not
+  make the TypeScript exports runnable there.
+
 ### 4. Choose a Layer and call the service
 
 For Node, choose wasm explicitly (or replace the Layer line with the native
@@ -562,6 +608,8 @@ backend variable, or an asynchronously initialized instance behind a module
 helper to imitate pure calls.
 
 ### Generated package admission
+
+For the runtime dependency itself, see [Admitting @overeng/effect-rust itself](#admitting-overengeffect-rust-itself).
 
 Declare generated service products in a consumer's TypeScript package
 projection, instead of copying them into the source tree or defining a second
