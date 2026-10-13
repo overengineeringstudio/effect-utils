@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:4995986e3fc0971a0c336c183cee4423f56c6d4fbecf836d5f01e95ea304218b",
-  "generatedAt": "2026-10-09T22:28:17.098Z",
+  "inputFingerprint": "sha256:c1ae8391152529c2e012d910004c1bf02a68cffd39a2780b3ffa179704ce894d",
+  "generatedAt": "2026-10-12T19:12:03.510Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.2"
@@ -45,7 +45,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/mod.ts",
-      "sha256": "ffa4840d34a4903d5054e3a2d32dd62f52152ec09d318c08f62ddf50e8c8a8ce"
+      "sha256": "1b9086dccbcc437a3e2c2d04df0315b25217ceb4fed7096fd337df3d0ab10721"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/rust-metadata.ts",
@@ -113,21 +113,21 @@
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "775ff17c5aacd567fe3f345b12cf3e64fad652dbee8f2263a13a3cba7bea1b2e"
+      "sha256": "58253621251a2e5d9711248807e8eff4c14aeb7d0005f671832f7b7319ca1b0d"
     },
     {
       "path": "rust/Cargo.lock",
-      "sha256": "7a112b15cf3251a466a93d162db7c5d2823dafb80ea939e55cf3ee2d11dd8faa"
+      "sha256": "5764fd41549b2641b049a26ddd761fdd0445fe685ce5afe5ab19e877967c9b01"
     },
     {
       "path": "rust/Cargo.toml",
-      "sha256": "c2a43de4814588705fd1426f17e09002643d96cbc115cf6acebf2f53e49d1931"
+      "sha256": "c44cc9f3b286e5ac8f3c57244ffcbfe1fba95de858f1a61a7cb3a68532b2e082"
     }
   ],
   "artifacts": [
     {
       "path": "Cargo.toml",
-      "sha256": "64bda646e656f2d4c6c9619bdd5fea0d13eebe6166f1e7b59fda8ed21a1f5ed0"
+      "sha256": "5ac76b75b54f47b04326a877a2b093781ba2967aaa0bcb724f0a2c01ab6b5891"
     },
     {
       "path": "schema/Codec.json",
@@ -151,7 +151,7 @@
     },
     {
       "path": "src/lib.rs",
-      "sha256": "990d7f53c98e6753cbd768c44942b392f0dbf9f26fa1b0feae9203e500baeec4"
+      "sha256": "a7b88f4285dea4fd90d21fa5001346d5c1cd05ba5cf0c171544862aeefaf6366"
     }
   ]
 }

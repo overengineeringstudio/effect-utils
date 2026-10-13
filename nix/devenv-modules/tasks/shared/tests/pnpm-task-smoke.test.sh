@@ -4,6 +4,8 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 
+unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+
 assert_exit_code() {
   local expected="$1"
   local actual="$2"
@@ -80,7 +82,7 @@ extract_task_script() {
   chmod +x "$output_path"
 }
 
-eval_pnpm_package_count() {
+eval_pnpm_package_names() {
   nix eval --impure --raw --expr "
     let
       flake = builtins.getFlake \"$NIX_FLAKE_REF\";
@@ -93,7 +95,7 @@ eval_pnpm_package_count() {
         lib = pkgs.lib;
         config = { devenv.root = \"$workspace\"; };
       };
-    in builtins.toString (builtins.length module.packages)
+    in builtins.concatStringsSep \"\\n\" (map pkgs.lib.getName module.packages)
   "
 }
 
@@ -223,8 +225,8 @@ trap 'if [ "${KEEP_PNPM_SMOKE_TMP:-0}" = "1" ]; then echo "pnpm smoke tmp: $tmpd
 workspace="$tmpdir/workspace"
 mkdir -p "$workspace/.devenv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
 
-echo "Preflight: pnpmPkg is exec-only guard backing, not a profile package"
-assert_eq 1 "$(eval_pnpm_package_count)" "pnpm module packages should contain the pnpm guard only"
+echo "Preflight: profile exposes the pnpm guard and opt-in historical-store collector, not pnpmPkg"
+assert_eq $'pnpm\npnpm-store-gc' "$(eval_pnpm_package_names)" "pnpm module packages should contain the guard and collector only"
 
 echo "Preflight: generated dependency graph contract classifies workspace overrides"
 assert_json_field \
@@ -698,7 +700,7 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   test ! -e "$workspace/node_modules/corrupt-edge"
   test -f "$workspace/node_modules/.install-ok"
   grep -qxF "PWD=$workspace" "$tmpdir/pnpm.log"
-  CI=1 bash "$tmpdir/pnpm-install.exec.sh"
+  CI=1 GITHUB_ACTIONS=true bash "$tmpdir/pnpm-install.exec.sh"
   set +e
   bash "$tmpdir/pnpm-install.status.sh"
   exit_code=$?

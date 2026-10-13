@@ -19,7 +19,7 @@
   taskNamePrefix ? "pnpm",
   taskSuffix ? null,
   globalCache ? true,
-  # Opt in only for local development; CI always uses its local projection.
+  # Opt in only for local development; job-local stores always use a local projection.
   globalVirtualStore ? false,
   frozenInCi ? true,
   materialize ? true,
@@ -115,8 +115,14 @@ let
   nodeModulesProjectionScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
+  memberSourceResolverScript = pkgs.writeText "sync-resolver.ts" (
+    builtins.readFile (../../../../packages + "/@overeng/genie/src/core/import-map/sync-resolver.ts")
+  );
   stageSourceInputsScript = pkgs.writeText "stage-pnpm-source-inputs.mjs" (
-    builtins.readFile ./stage-pnpm-source-inputs.mjs
+    builtins.replaceStrings
+      [ "../../../../packages/@overeng/genie/src/core/import-map/sync-resolver.ts" ]
+      [ "${memberSourceResolverScript}" ]
+      (builtins.readFile ./stage-pnpm-source-inputs.mjs)
   );
   sourceStagePath = ".devenv/pnpm-source-inputs";
   pnpmInstallPolicy = import ../../../workspace-tools/lib/pnpm-install-policy.nix { inherit lib; };
@@ -863,11 +869,11 @@ let
       description = "Replace the recognized legacy pnpm files bridge with a self-contained Store Cache";
       exec = trace.exec migrateLegacyStoreTaskName ''
         set -euo pipefail
-        if [ -n "''${CI:-}" ]; then
-          echo "[pnpm] Legacy host Store Cache migration is unavailable in CI" >&2
+        ${loadPnpmTaskHelpersFn}
+        if pnpm_use_job_local_store; then
+          echo "[pnpm] Legacy host Store Cache migration is unavailable with a job-local store" >&2
           exit 1
         fi
-        ${loadPnpmTaskHelpersFn}
         store_dir="''${PNPM_SHARED_STORE_DIR:-$HOME/.local/share/pnpm/store-shared-v1}"
         expected_legacy_files="$HOME/.local/share/pnpm/shared-files/v11"
         acquire_pnpm_store_cache_lease ${lib.escapeShellArg flock} exclusive "$store_dir" 600
@@ -905,10 +911,12 @@ assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
 '';
 assert lib.assertMsg (!sourceInputPathsOverlap) "sourceInputPaths entries must not overlap";
 {
-  packages = cliGuard.fromTasks {
-    tasks = selectedTasks;
-    reals = lib.optionalAttrs (pnpmPkg != null) { pnpm = pnpmPkg; };
-  };
+  packages =
+    cliGuard.fromTasks {
+      tasks = selectedTasks;
+      reals = lib.optionalAttrs (pnpmPkg != null) { pnpm = pnpmPkg; };
+    }
+    ++ [ (import ./pnpm-store-gc.nix { inherit pkgs; }) ];
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"

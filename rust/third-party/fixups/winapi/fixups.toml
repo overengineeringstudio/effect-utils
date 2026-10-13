@@ -1,0 +1,2 @@
+# Only used on unsupported Windows/Wasm/Haiku target builds.
+buildscript.run = false

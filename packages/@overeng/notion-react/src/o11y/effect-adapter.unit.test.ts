@@ -1,4 +1,4 @@
-import { Context, Effect, Exit, Fiber, Option, type Tracer } from 'effect'
+import { Context, Deferred, Effect, Exit, Fiber, Option, type Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import type { SyncEventHandler } from '../renderer/sync-events.ts'
@@ -162,12 +162,17 @@ describe('emitSyncEndOnInterrupt', () => {
     const events: SyncEvent[] = []
     const handler: SyncEventHandler = (e) => events.push(e)
 
-    const program = Effect.never.pipe(emitSyncEndOnInterrupt({ pageId: ROOT, onEvent: handler }))
-
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(program)
-        yield* Effect.sleep('10 millis')
+        const started = yield* Deferred.make<void>()
+        const program = Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Effect.never),
+          emitSyncEndOnInterrupt({ pageId: ROOT, onEvent: handler }),
+        )
+        // Delay startup to exercise the scheduling window without relying on elapsed time.
+        const fiber = yield* Effect.forkChild(Effect.yieldNow.pipe(Effect.andThen(program)))
+        // Readiness is signaled inside the wrapper, after its onExit finalizer is registered.
+        yield* Deferred.await(started)
         yield* Fiber.interrupt(fiber)
         return yield* Fiber.join(fiber)
       }),
@@ -182,6 +187,26 @@ describe('emitSyncEndOnInterrupt', () => {
       expect(ev.ok).toBe(false)
       expect(ev.pageId).toBe(ROOT)
     }
+  })
+
+  it('does not emit SyncEnd when interrupted before the wrapped Effect starts', async () => {
+    const events: SyncEvent[] = []
+    const handler: SyncEventHandler = (e) => events.push(e)
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const start = yield* Deferred.make<void>()
+        const program = Effect.never.pipe(
+          emitSyncEndOnInterrupt({ pageId: ROOT, onEvent: handler }),
+        )
+        const fiber = yield* Effect.forkChild(Deferred.await(start).pipe(Effect.andThen(program)))
+        yield* Fiber.interrupt(fiber)
+        return yield* Fiber.join(fiber)
+      }),
+    )
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(events).toEqual([])
   })
 
   it('does not emit SyncEnd on successful completion', async () => {

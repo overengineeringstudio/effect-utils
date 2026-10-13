@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import {
@@ -889,74 +888,50 @@ describe('prepareBaselineNodeModules', () => {
 
 describe('readBaselinePairIdentity', () => {
   it('ignores main-tree edits with an own install but observes them through borrowed dependencies', () => {
-    const root = mkdtempSync(join(tmpdir(), 'story-gate-identity-'))
-    const repoRoot = join(root, 'repo')
-    const worktreeDir = join(root, 'baseline')
-    const packageRoot = join(repoRoot, 'packages', 'widget')
-    const sourceFile = join(packageRoot, 'src', 'view.ts')
-    const git = (...args: string[]): void => {
-      execFileSync('git', ['-C', repoRoot, ...args])
+    const repoRoot = '/repo'
+    const packageRoot = '/repo/packages/widget'
+    const worktreeDir = '/baseline'
+    const sourceRoots = ['src']
+    const tree = (content: string) => ({
+      head: 'baseline-head',
+      digest: createHash('sha1').update(content).digest('hex'),
+      scope: 'widget source',
+      entries: { 'tracked:packages/widget/src/view.ts': content },
+    })
+    const baseline = tree('baseline')
+    let main = tree('original')
+    const reads: string[] = []
+    const readIdentity = (options: {
+      repoRoot: string
+      packageRoot: string
+      sourceRoots: readonly string[]
+    }) => {
+      reads.push(options.repoRoot)
+      expect(options.sourceRoots).toEqual(sourceRoots)
+      if (options.repoRoot === worktreeDir) {
+        expect(options.packageRoot).toBe('/baseline/packages/widget')
+        return baseline
+      }
+      expect(options.repoRoot).toBe(repoRoot)
+      expect(options.packageRoot).toBe(packageRoot)
+      return main
     }
-    try {
-      mkdirSync(join(packageRoot, 'src'), { recursive: true })
-      git('init', '-q')
-      writeFileSync(sourceFile, 'original')
-      writeFileSync(join(repoRoot, 'pnpm-lock.yaml'), 'same')
-      git('add', '.')
-      git(
-        '-c',
-        `core.hooksPath=${join(root, 'hooks')}`,
-        '-c',
-        'user.name=Story Gate',
-        '-c',
-        'user.email=gate@example.test',
-        'commit',
-        '-qm',
-        'initial',
-      )
-      git('worktree', 'add', '--detach', worktreeDir, 'HEAD')
-      mkdirSync(join(repoRoot, 'node_modules'))
+    const options = { repoRoot, packageRoot, worktreeDir, sourceRoots, readIdentity }
+    const independentBefore = readBaselinePairIdentity({ ...options, borrowedDependencies: false })
+    const borrowedBefore = readBaselinePairIdentity({ ...options, borrowedDependencies: true })
+    main = tree('edited during capture')
+    const independentAfter = readBaselinePairIdentity({ ...options, borrowedDependencies: false })
+    const borrowedAfter = readBaselinePairIdentity({ ...options, borrowedDependencies: true })
 
-      const options = { repoRoot, packageRoot, worktreeDir, sourceRoots: ['src'] }
-      const borrowedDependencies = prepareBaselineNodeModules({
-        repoRoot,
-        worktreeDir,
-        baselineRef: 'HEAD',
-      })
-      expect(borrowedDependencies).toBe(true)
-      const borrowedBefore = readBaselinePairIdentity({ ...options, borrowedDependencies })
-
-      rmSync(join(worktreeDir, 'node_modules'))
-      mkdirSync(join(worktreeDir, 'node_modules'))
-      writeFileSync(join(worktreeDir, 'pnpm-lock.yaml'), 'different')
-      const independentDependencies = prepareBaselineNodeModules({
-        repoRoot,
-        worktreeDir,
-        baselineRef: 'HEAD',
-      })
-      expect(independentDependencies).toBe(false)
-      const independentBefore = readBaselinePairIdentity({
-        ...options,
-        borrowedDependencies: independentDependencies,
-      })
-
-      writeFileSync(sourceFile, 'edited during capture')
-      const borrowedAfter = readBaselinePairIdentity({ ...options, borrowedDependencies })
-      const independentAfter = readBaselinePairIdentity({
-        ...options,
-        borrowedDependencies: independentDependencies,
-      })
-      expect(independentAfter).toEqual(independentBefore)
-      expect(borrowedAfter.digest).not.toBe(borrowedBefore.digest)
-      expect(Object.keys(independentAfter.entries)).not.toContain(
-        'linked/tracked:packages/widget/src/view.ts',
-      )
-      expect(Object.keys(borrowedAfter.entries)).toContain(
-        'linked/tracked:packages/widget/src/view.ts',
-      )
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-    }
+    expect(independentAfter).toEqual(independentBefore)
+    expect(independentAfter).toEqual(baseline)
+    expect(borrowedAfter.digest).not.toBe(borrowedBefore.digest)
+    expect(borrowedAfter.head).toBe(baseline.head)
+    expect(borrowedAfter.entries).toEqual({
+      'worktree/tracked:packages/widget/src/view.ts': 'baseline',
+      'linked/tracked:packages/widget/src/view.ts': 'edited during capture',
+    })
+    expect(reads).toEqual([worktreeDir, worktreeDir, repoRoot, worktreeDir, worktreeDir, repoRoot])
   })
 })
 

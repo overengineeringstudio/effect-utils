@@ -17,7 +17,7 @@
  * fired), not fixed sleeps. Gracefully skips without a native `restate-server`.
  */
 import { Effect, Layer, Schema } from 'effect'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
   installComposedSource,
@@ -25,8 +25,10 @@ import {
   resetComposedSources,
 } from '../../examples/12-self-reschedule.ts'
 import {
+  Awakeable,
   type AwakeableId,
   ingressResolveAwakeable,
+  Restate,
   RestateIngress,
   RestateObject,
   WakePayload,
@@ -37,6 +39,7 @@ import {
   serverAvailable,
   withRestateServer,
 } from '../testing/testing.ts'
+import * as Reschedule from './Reschedule.ts'
 
 /* ── the composed daemons (distinct names so they coexist on one deployment) ── */
 
@@ -295,7 +298,28 @@ describe.skipIf(!serverAvailable)(
     }, 60_000)
 
     it('wake: the id ROTATES per cycle and stays externally resolvable', async () => {
-      const key = 'wake-rotate'
+      const key = `wake-rotate-${crypto.randomUUID()}`
+      const betweenCycles = Promise.withResolvers<AwakeableId<WakePayload>>()
+      let gateId: AwakeableId<WakePayload> | undefined
+      let arms = 0
+      const reschedule = Reschedule.reschedule
+      /* Hold the exclusive invocation AFTER its re-arm is journaled but BEFORE
+       * the next cycle can acquire the lock and publish its awakeable. A durable
+       * awakeable wait flushes preceding state writes to the server; a plain JS
+       * Promise would leave them buffered and miss the externally visible gap. */
+      const rearm = vi.spyOn(Reschedule, 'reschedule').mockImplementation((opts) =>
+        reschedule(opts).pipe(
+          Effect.tap(() =>
+            Effect.gen(function* () {
+              if ((yield* Restate.key) === key && ++arms === 2) {
+                const gate = yield* Awakeable.make(WakePayload)
+                betweenCycles.resolve(gate.id)
+                yield* gate.promise
+              }
+            }),
+          ),
+        ),
+      )
       installComposedSource({
         key,
         behavior: (cursor) => ({
@@ -304,22 +328,43 @@ describe.skipIf(!serverAvailable)(
           done: false,
         }),
       })
-      await start(WakeFast, key)
-      const idA = await waitForWakeId(WakeFast, key)
-      await resolveWake(idA, 'wake-A')
-      let idB = idA
-      const deadline = Date.now() + 6_000
-      while (idB === idA && Date.now() < deadline) {
-        await liveSleep(30)
-        idB = await wakeIdOf(WakeFast, key)
+      try {
+        expect(await wakeIdOf(WakeFast, key)).toBe('')
+        await start(WakeFast, key)
+        const idA = await waitForWakeId(WakeFast, key)
+        expect(idA).not.toBe('')
+        await resolveWake(idA, 'wake-A')
+        gateId = await betweenCycles.promise
+        /* No empty publication gap: retain A until B atomically replaces it. */
+        expect(await wakeIdOf(WakeFast, key)).toBe(idA)
+        expect((await statusOf(WakeFast, key)).wakeId).toBe(idA)
+        await resolveWake(gateId, 'release-cycle')
+        gateId = undefined
+        const rotated = await waitUntil(
+          WakeFast,
+          key,
+          (s) => s.wakeId !== undefined && s.wakeId !== idA,
+          6_000,
+        )
+        const idB = rotated.wakeId ?? ''
+        expect(idB).not.toBe('')
+        expect(idB).not.toBe(idA)
+        await resolveWake(idB, 'wake-B')
+        /* The source callback runs before its durable state writes are visible.
+         * Wait for the published domain state, not the callback or a fixed sleep. */
+        const deadline = Date.now() + 6_000
+        let wakeCount = await wakeCountOf(WakeFastDomain, key)
+        while (wakeCount < 2 && Date.now() < deadline) {
+          await liveSleep(30)
+          wakeCount = await wakeCountOf(WakeFastDomain, key)
+        }
+        expect(wakeCount).toBeGreaterThanOrEqual(2)
+      } finally {
+        if (gateId !== undefined) await resolveWake(gateId, 'release-cycle')
+        rearm.mockRestore()
+        await stop(WakeFast, key)
       }
-      expect(idB).not.toBe('')
-      expect(idB).not.toBe(idA)
-      await resolveWake(idB, 'wake-B')
-      await liveSleep(400)
-      const wakeCount = await wakeCountOf(WakeFastDomain, key)
-      await stop(WakeFast, key)
-      expect(wakeCount).toBeGreaterThanOrEqual(2)
+      expect(await wakeIdOf(WakeFast, key)).toBe('')
     }, 60_000)
 
     it('wake: a STALE id (from a prior cycle) resolves harmlessly (loop stays healthy)', async () => {

@@ -2,7 +2,7 @@
   "darwin": [
     {
       "task": "test:buck2:unit",
-      "rationale": "Host-platform Buck daemon and native runners, including bounded filesystem, process, shell and native-binary suites."
+      "rationale": "Selected bounded host-filesystem, locking, native SQLite and native runner lanes; pingping exercises Unix sockets, Linux route parsing and the macOS netinfo boundary."
     },
     {
       "task": "devenv-modules:test",
@@ -29,14 +29,6 @@
       "rationale": "Recursive fs.watch uses FSEvents on Darwin rather than Linux inotify; process execution and signals."
     },
     {
-      "task": "test:ci-tools:unbounded",
-      "rationale": "Deployment CLI subprocesses, executable shell fixtures, symlink/realpath handling and loopback sockets."
-    },
-    {
-      "task": "test:ci-tools:test_pipeline_report_local_api:unbounded",
-      "rationale": "Native Bun subprocesses, temporary filesystem state and loopback HTTP server lifecycle."
-    },
-    {
       "task": "test:genie:unbounded",
       "rationale": "Git/submodule subprocesses, symlink and realpath discovery, executable shell fixtures, BSD/GNU commands and FIFO pipes."
     },
@@ -45,20 +37,8 @@
       "rationale": "Filesystem case-folding and Unicode normalization, symlink/rename behavior, SQLite locking and watch-daemon lifecycle."
     },
     {
-      "task": "test:notion-cli:unbounded",
-      "rationale": "Native Bun CLI subprocess exit/signal behavior and symlink-aware repository-root discovery."
-    },
-    {
       "task": "test:notion-md:unbounded",
       "rationale": "Recursive filesystem watchers, native Bun CLI subprocesses and temporary editor filesystem lifecycle."
-    },
-    {
-      "task": "test:otel-contract:unbounded",
-      "rationale": "Native otelite/otel-scrape and Weaver subprocesses, stdin/exit lifecycle and capture/CAS filesystem state."
-    },
-    {
-      "task": "test:tui-stories:unbounded",
-      "rationale": "Native Bun CLI subprocess exit/signal behavior, symlink-aware discovery and filesystem glob/loader behavior."
     },
     {
       "task": "test:restate-effect:unbounded",
@@ -66,7 +46,7 @@
     },
     {
       "task": "test:utils-dev:unbounded",
-      "rationale": "Native otelite capture subprocesses and pipes, Git subprocess environment isolation and index/filesystem state."
+      "rationale": "Otelite capture finalizers remove their output directory and verify no orphaned child via host ps -eo args, exercising Darwin process cleanup and BSD process enumeration."
     },
     {
       "task": "test:run",
@@ -82,10 +62,425 @@
       "task": "test:notion-effect-client:unbounded",
       "rationale": "Service rate-limiting contracts, not OS signals."
     },
-    { "task": "test:notion-react:unbounded", "rationale": "React synchronization regressions." },
+    {
+      "task": "test:notion-react:unbounded",
+      "rationale": "React synchronization regressions."
+    },
     {
       "task": "genie:ci-workflow:test",
       "rationale": "Pure workflow rendering and policy contracts."
+    },
+    {
+      "task": "test:ci-tools:test_pipeline_report_local_api:unbounded",
+      "rationale": "Generic deploy/report contracts duplicate the main ci-tools source complement; no additional Darwin-specific behavior."
+    },
+    {
+      "task": "test:otel-contract:unbounded",
+      "rationale": "Telemetry registry equivalence, profile links and Weaver contract validation; no Darwin-specific behavior."
+    },
+    {
+      "task": "test:tui-stories:unbounded",
+      "rationale": "Story discovery, capture/rendering and CLI help/error contracts; no native PTY, watcher or Darwin-specific branch."
+    },
+    {
+      "task": "test:ci-tools:unbounded",
+      "rationale": "Deployment and workflow-report API/CLI contracts over local fixture servers and shell stubs; no Darwin-specific filesystem, watcher or process-lifecycle assertions."
+    },
+    {
+      "task": "test:notion-cli:unbounded",
+      "rationale": "CLI help, usage, exit-code and output contract snapshots only; no symlink, watcher or Darwin-specific lifecycle fixture."
     }
-  ]
+  ],
+  "bounded": {
+    "darwin": [
+      {
+        "task": "test:effect-iroh",
+        "rationale": "Real platform-native Iroh N-API binding and QUIC sockets; cancellation and scoped endpoint/stream teardown exercise Darwin native I/O settlement."
+      },
+      {
+        "task": "test:genie",
+        "rationale": "Real generation-lock filesystem coordination and host subprocesses in generation-locks.integration.test.ts."
+      },
+      {
+        "task": "test:megarepo",
+        "rationale": "Real atomic write/rename failures and concurrent writers in store-fs-atomic.unit.test.ts exercise Darwin filesystem semantics."
+      },
+      {
+        "task": "test:notion-datasource-sync",
+        "rationale": "Store tests open real host-native SQLite databases on disk, exercising Darwin SQLite and filesystem behavior."
+      },
+      {
+        "task": "test:notion-md",
+        "rationale": "State-store and storage-policy tests exercise real on-disk object persistence, replacement and garbage collection on Darwin."
+      },
+      {
+        "task": "test:utils",
+        "rationale": "Host filesystem backing, FileLogger and native filesystem/process utilities execute against the Darwin runner."
+      },
+      {
+        "task": "test:tui-react",
+        "rationale": "Real subprocess stdout socketpairs and regular-file redirects in runResult-stdout-contract/stdout-drain cover Darwin versus Linux native fd draining and shutdown behavior."
+      }
+    ],
+    "neutral": [
+      {
+        "task": "test:agent-session-ingest",
+        "rationale": "agent-session-ingest bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:ai-gateway-edge",
+        "rationale": "ai-gateway-edge bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:ci-tools",
+        "rationale": "ci-tools bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:ci-tools:test_pipeline_report_local_api",
+        "rationale": "ci-tools:test_pipeline_report_local_api bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:content-address",
+        "rationale": "content-address bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:devbar",
+        "rationale": "devbar bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-ai-claude-cli",
+        "rationale": "effect-ai-claude-cli bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-ai-gateway",
+        "rationale": "effect-ai-gateway bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-distributed-lock",
+        "rationale": "effect-distributed-lock bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-path",
+        "rationale": "effect-path bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-react",
+        "rationale": "effect-react bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-rpc-explorer-react",
+        "rationale": "effect-rpc-explorer-react bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-rpc-explorer",
+        "rationale": "effect-rpc-explorer bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-rpc-tanstack",
+        "rationale": "effect-rpc-tanstack bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-rust",
+        "rationale": "effect-rust bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-schema-form-aria",
+        "rationale": "effect-schema-form-aria bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:effect-schema-form",
+        "rationale": "effect-schema-form bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:genie-smalltalk",
+        "rationale": "genie-smalltalk bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:gh-ci-utils",
+        "rationale": "gh-ci-utils bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:kdl-effect",
+        "rationale": "kdl-effect bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:kdl",
+        "rationale": "kdl bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:notion-cli",
+        "rationale": "notion-cli bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:notion-core",
+        "rationale": "notion-core bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:notion-effect-client",
+        "rationale": "notion-effect-client bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:notion-effect-schema",
+        "rationale": "notion-effect-schema bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:notion-property-write",
+        "rationale": "notion-property-write bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:notion-react",
+        "rationale": "notion-react bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:npm-release",
+        "rationale": "npm-release bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:otel-browser",
+        "rationale": "otel-browser bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:otel-contract",
+        "rationale": "otel-contract bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:outline",
+        "rationale": "outline bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:oxc-config",
+        "rationale": "oxc-config bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:pty-effect:bundle_smoke",
+        "rationale": "pty-effect:bundle_smoke bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:pty-effect",
+        "rationale": "pty-effect bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:react-inspector",
+        "rationale": "react-inspector bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:restate-effect",
+        "rationale": "restate-effect bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:tui-core",
+        "rationale": "tui-core bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:tui-stories",
+        "rationale": "tui-stories bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:utils-dev",
+        "rationale": "utils-dev bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:utils-storybook",
+        "rationale": "utils-storybook bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      }
+    ]
+  },
+  "moduleScripts": {
+    "darwin": [
+      {
+        "script": "buck2-capability-daemon.test.sh",
+        "rationale": "Real Buck notify/Watchman daemons, Darwin Unix-socket length limits, BSD ln replacement, native input symlinks and daemon invalidation."
+      },
+      {
+        "script": "buck2-capability-publish.test.sh",
+        "rationale": "Real Nix GC-root symlinks and filesystem publication; concurrent native Bun publishers and PID-based pruning/liveness."
+      },
+      {
+        "script": "buck2-rust-deps.test.sh",
+        "rationale": "Physical workspace/CARGO_HOME canonicalization explicitly covers macOS /var-to-/private/var aliases; symlink-escape rejection and real pinned Reindeer/Cargo subprocesses."
+      },
+      {
+        "script": "devenv-module-tests-runner.test.sh",
+        "rationale": "Native shell/xargs worker dispatch, FIFO coordination, supervisor SIGTERM, child reaping and platform-selection execution across serial/parallel queues."
+      },
+      {
+        "script": "genie-compiled-staging.test.sh",
+        "rationale": "Compiled native Genie and platform-specific TypeScript API-server binaries; explicitly canonicalizes Darwin temporary-directory aliases and asserts staging cleanup and module identity."
+      },
+      {
+        "script": "oxlint-plugin-injection.test.sh",
+        "rationale": "Uses the real native oxlint wrapper/binary and immutable plugin products; resolves executable symlinks and exercises plugin loading and persistent-cache filesystem behavior."
+      },
+      {
+        "script": "pipeline-run.test.sh",
+        "rationale": "Contains an explicit repeated Darwin UTF-8 locale-restoration-after-fork regression against native otel-span, plus subprocess/spool filesystem lifecycle."
+      },
+      {
+        "script": "pnpm-shared-store-reuse.test.sh",
+        "rationale": "Explicit Darwin heap/teardown-abort handling, actual clone/copy/hardlink import behavior, concurrent shared-store installs and inode-alias mutation probes."
+      },
+      {
+        "script": "pnpm-source-input-staging.test.sh",
+        "rationale": "Actual generation publication, executable-mode preservation, retained hardlink bytes during GC, and symlink/traversal/cycle refusal."
+      },
+      {
+        "script": "pnpm.test.sh",
+        "rationale": "Production helper execution checks canonicalized symlink roots, broken/foreign dependency links, executable shims and real storage-device/inode/lock behavior."
+      },
+      {
+        "script": "worktree-teardown.test.sh",
+        "rationale": "Real Git worktrees, Buck daemon processes, native editor publication/release, readonly filesystem cleanup and ancestor-symlink refusal."
+      }
+    ],
+    "neutral": [
+      {
+        "script": "buck2-capability-source.test.sh",
+        "rationale": "Declared-source derivation identity and undeclared-input rejection; assertions concern source-closure ownership rather than host lifecycle behavior."
+      },
+      {
+        "script": "buck2-no-python-actions.test.sh",
+        "rationale": "Static source scanning with admitted/refused Python-token fixtures; no Buck daemon or native Python action is executed."
+      },
+      {
+        "script": "buck2-rules-source.test.sh",
+        "rationale": "Source inventory and derivation-identity changes; platform-independent declaration ownership."
+      },
+      {
+        "script": "buck2-stage0-source-inputs.test.sh",
+        "rationale": "Nix-evaluated support-tool source lists and static package references; no platform-native support tool is executed."
+      },
+      {
+        "script": "changeset-check-bodies.test.sh",
+        "rationale": "Changeset frontmatter/body parsing and validation diagnostics over text fixtures."
+      },
+      {
+        "script": "check-module-options.test.sh",
+        "rationale": "Pure Nix module task-option/dependency composition."
+      },
+      {
+        "script": "deploy-task-e2e.test.sh",
+        "rationale": "Deployment HTTP/API task contracts against a fixture loopback server and shell executables; no Darwin-specific lifecycle or filesystem regression."
+      },
+      {
+        "script": "devenv-eval-input-budget.test.sh",
+        "rationale": "Synthetic SQLite eval-input relations and recursive census/budget policy, including newline-containing fixtures; no host-specific lifecycle branch."
+      },
+      {
+        "script": "devenv-eval-source-roots.test.sh",
+        "rationale": "Static source-root and workflow-report wiring assertions."
+      },
+      {
+        "script": "devenv-task-env-boundary.test.sh",
+        "rationale": "Static checks that derivation paths remain in exec rather than task env."
+      },
+      {
+        "script": "devenv-task-graph.test.sh",
+        "rationale": "Task dependency/name consistency and invalid synthetic graph diagnostics."
+      },
+      {
+        "script": "flake-lock-duplicates.test.sh",
+        "rationale": "Exact duplicate lock-object identity and policy exception matching over JSON fixtures."
+      },
+      {
+        "script": "genie-module-options.test.sh",
+        "rationale": "Nix option values and generated-output ownership/warm-state contracts with a fake Genie executable; no compiled native Genie boundary."
+      },
+      {
+        "script": "lint-no-tailwind.test.sh",
+        "rationale": "Tailwind policy and consumer-root discovery contract through ordinary symlinks; no Darwin-specific filesystem or watcher behavior."
+      },
+      {
+        "script": "lint-oxc-file-list.test.sh",
+        "rationale": "Generated Git path selection and child exit propagation through pinned GNU xargs; no Darwin-specific shell tool behavior."
+      },
+      {
+        "script": "megarepo-lock-sync.test.sh",
+        "rationale": "Pure jq matching of member names and revision identities."
+      },
+      {
+        "script": "megarepo-setup-commit-members.test.sh",
+        "rationale": "Nix setup option and recursive-readiness task contracts with a fake mr executable; no native Git, daemon or Darwin filesystem lifecycle."
+      },
+      {
+        "script": "megarepo-status.test.sh",
+        "rationale": "Status/cache/member-presence policy using a fake mr executable, plus static setup dependency wiring."
+      },
+      {
+        "script": "nix-cli-no-hash-refresh.test.sh",
+        "rationale": "Static checks for universal validation and absent obsolete hash-refresh surfaces."
+      },
+      {
+        "script": "notion-integration-ci.test.sh",
+        "rationale": "CI/token absence must skip all Notion tasks without provider access; no live integrations or platform-native lifecycle are exercised."
+      },
+      {
+        "script": "observability-capture.test.sh",
+        "rationale": "Static stderr/capture wiring and pure jq trace-parent lineage predicates; does not perform a live native capture."
+      },
+      {
+        "script": "otel-instr-gating.test.sh",
+        "rationale": "Hermetic instrumentation enable/disable environment gates with stub binaries and static generated-command wiring."
+      },
+      {
+        "script": "otel-run.test.sh",
+        "rationale": "Shell wrapper argument/environment/label/exit forwarding with stub otel-span and devenv; no real native trace process."
+      },
+      {
+        "script": "otel-scrape-oxfmt-wrap.test.sh",
+        "rationale": "Formatter argument/environment propagation through pinned GNU xargs and child shells; no Darwin-specific capture or process lifecycle."
+      },
+      {
+        "script": "oxlint-rule-policy.test.sh",
+        "rationale": "Rule-policy diagnostics, overrides and version-pin agreement; semantics are independent of the native executable platform."
+      },
+      {
+        "script": "pnpm-gvs.test.sh",
+        "rationale": "pnpm virtual-store graph identity and package projection contract over local archive fixtures; no Darwin-specific import or teardown regression."
+      },
+      {
+        "script": "pnpm-historical-store-safety.test.sh",
+        "rationale": "Platform-neutral two-worktree shared-store reuse, offline frozen installs, disabled lifecycle scripts and root-local virtual-store authority; does not invoke the Linux-only collector or exercise Darwin-specific host lifecycle."
+      },
+      {
+        "script": "pnpm-nested-roots-and-source-inputs.test.sh",
+        "rationale": "Nested install-root source-resolution and isolation contracts; no Darwin-specific filesystem behavior."
+      },
+      {
+        "script": "pnpm-source-input-refresh.integration.test.sh",
+        "rationale": "Generation refresh and installed-source freshness contract; no Darwin-specific mode, alias or hardlink regression."
+      },
+      {
+        "script": "pnpm-store-gc.test.sh",
+        "rationale": "Linux-only collector coverage for /proc process evidence, directory mount identities, bind/overlay mounts, maintenance leases and post-proof root replacement; non-Linux execution only refuses before filesystem access, so Linux is the authoritative lane."
+      },
+      {
+        "script": "pnpm-task-smoke.test.sh",
+        "rationale": "Generated task flags/cache/error-policy contracts with fake pnpm and no-op flock. Darwin teardown cases explicitly override isDarwin and synthesize exits 134/137, so Linux exercises the same Darwin policy."
+      },
+      {
+        "script": "secretspec-native-tasks.test.sh",
+        "rationale": "Nix task argv/environment and resolution-count contracts with a stub SecretSpec; no real provider/native authentication operation."
+      },
+      {
+        "script": "setup-cache.test.sh",
+        "rationale": "Simulated fingerprint/force-setup/tool-identity/context-seeding contracts rather than production shell-entry lifecycle."
+      },
+      {
+        "script": "setup-module-options.test.sh",
+        "rationale": "Nix module setup option/dependency composition and static observability smoke-task wiring."
+      },
+      {
+        "script": "test-task-smoke.test.sh",
+        "rationale": "Nix task graph weighting, chain assignment, aliases, closures and invalid configuration assertions; no real test workers."
+      },
+      {
+        "script": "workflow-report-module-source.test.sh",
+        "rationale": "Nix evaluation proves explicit ciToolsBin works from a minimal module source tree; source ownership rather than native report execution."
+      },
+      {
+        "script": "workflow-report-task-e2e.test.sh",
+        "rationale": "Report task argument/comment/summary semantics with a fake gh provider and fixture reports; no host-sensitive daemon, signal or watcher behavior."
+      }
+    ]
+  }
 }
