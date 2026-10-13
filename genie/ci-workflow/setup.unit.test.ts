@@ -65,6 +65,7 @@ describe('required platform test classification', () => {
     )
     expect(new Set(tasks).size).toBe(tasks.length)
     expect(suites.every(({ rationale }) => rationale.trim().length > 0)).toBe(true)
+    expect(testPlatforms.bounded.darwin.map(({ task }) => task)).toContain('test:effect-iroh')
     expect(testPlatforms.bounded.neutral.map(({ task }) => task)).toContain('test:pty-effect')
     expect(testPlatforms.darwin.map(({ task }) => task)).toContain('test:pty-effect:unbounded')
   })

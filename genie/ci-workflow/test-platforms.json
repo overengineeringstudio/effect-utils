@@ -94,6 +94,10 @@
   "bounded": {
     "darwin": [
       {
+        "task": "test:effect-iroh",
+        "rationale": "Real platform-native Iroh N-API binding and QUIC sockets; cancellation and scoped endpoint/stream teardown exercise Darwin native I/O settlement."
+      },
+      {
         "task": "test:genie",
         "rationale": "Real generation-lock filesystem coordination and host subprocesses in generation-locks.integration.test.ts."
       },
