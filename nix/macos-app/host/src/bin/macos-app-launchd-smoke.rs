@@ -1,7 +1,7 @@
 //! Explicit, user-level real-launchd acceptance test. Never built into production primitives.
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, error::Error, ffi::c_void, fs::{self, File, OpenOptions}, io::{BufRead, BufReader, Read, Write}, os::unix::{fs::{MetadataExt, PermissionsExt}, io::{AsRawFd, FromRawFd}, net::UnixStream, process::{CommandExt, ExitStatusExt}}, path::{Path, PathBuf}, process::{Command, ExitStatus, Output, Stdio}, sync::atomic::{AtomicI32, Ordering}, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
+use std::{collections::BTreeMap, error::Error, ffi::c_void, fs::{self, File, OpenOptions}, io::{BufRead, BufReader, Read, Write}, os::unix::{fs::{MetadataExt, OpenOptionsExt, PermissionsExt}, io::{AsRawFd, FromRawFd}, net::UnixStream, process::{CommandExt, ExitStatusExt}}, path::{Path, PathBuf}, process::{Command, ExitStatus, Output, Stdio}, sync::atomic::{AtomicI32, Ordering}, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 type Ref = *const c_void;
 const LABEL: &str = "dev.overeng.macos-app.smoke";
@@ -67,10 +67,21 @@ fn cleanup_all(targets: &[String], work: &Path, mut teardown: impl FnMut(&str) -
     if errors.is_empty() && left.is_empty() { return Ok(()); }
     Err(format!("cleanup incomplete: {}; left behind: {}", errors.join("; "), left.join(", ")).into())
 }
-/// Serializes runs on the scratch directory. Children inherit the lock, so an orphan of a
-/// SIGKILLed run keeps it until it exits and the next run's sweep never races it.
-fn acquire_lock(scratch: &Path) -> Result<File> {
-    let lock = File::open(scratch)?;
+/// The launchd label is per user, so every checkout serializes on one per-user lock keyed to it,
+/// in the Darwin per-user temp dir (resolved via confstr, independent of an overridden $TMPDIR).
+/// Children inherit the lock, so an orphan of a SIGKILLed run keeps it until it exits and no
+/// sweep, from any checkout, races a live run.
+fn lock_path() -> Result<PathBuf> {
+    let mut buffer = [0_u8; 1024];
+    // SAFETY: confstr writes at most buffer.len() bytes, NUL-terminated.
+    let length = unsafe { libc::confstr(libc::_CS_DARWIN_USER_TEMP_DIR, buffer.as_mut_ptr().cast(), buffer.len()) };
+    ensure(length > 1 && length <= buffer.len(), "Cannot resolve the per-user temp dir")?;
+    let dir = std::str::from_utf8(&buffer[..length - 1])?;
+    Ok(Path::new(dir).join(format!("{LABEL}.lock")))
+}
+fn acquire_lock() -> Result<File> {
+    let path = lock_path()?;
+    let lock = OpenOptions::new().read(true).write(true).create(true).truncate(false).mode(0o600).open(&path)?;
     // SAFETY: lock owns this descriptor; clearing FD_CLOEXEC only affects inheritance.
     ensure(unsafe { libc::fcntl(lock.as_raw_fd(), libc::F_SETFD, 0) } == 0, "Cannot make the run lock inheritable")?;
     let deadline = Instant::now() + Duration::from_secs(90);
@@ -78,7 +89,7 @@ fn acquire_lock(scratch: &Path) -> Result<File> {
         interrupted()?;
         // SAFETY: lock is a live descriptor.
         if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 { return Ok(lock); }
-        ensure(Instant::now() < deadline, "Another smoke run, or an orphaned child of one, held tmp/ for 90s")?;
+        ensure(Instant::now() < deadline, format!("Another smoke run (any checkout), or an orphaned child of one, held {} for 90s", path.display()))?;
         thread::sleep(Duration::from_millis(100));
     }
 }
@@ -465,7 +476,7 @@ fn main() {
         let assets = PathBuf::from(args.get(1).ok_or("Missing smoke assets argument")?);
         let scratch = root.join("tmp");
         fs::create_dir_all(&scratch)?;
-        let lock = acquire_lock(&scratch)?;
+        let lock = acquire_lock()?;
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let work = scratch.join(format!("macos-app-smoke-{}-{nonce}", std::process::id()));
         fs::create_dir(&work)?;

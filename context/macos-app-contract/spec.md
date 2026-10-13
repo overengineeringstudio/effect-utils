@@ -430,9 +430,12 @@ the real system `launchctl`. This is a live, user-level smoke, not the fake
 launchctl integration suite: macOS may show a background-item notification.
 It never uses sudo or launches an application window.
 
-The runner holds an exclusive lock on `tmp/` (inherited by its children, so an
-orphan of a killed run keeps it until it exits). Under that lock it first
-sweeps what a killed run left: a `dev.overeng.macos-app.smoke` job is booted
+The launchd label is per user, so every checkout serializes on one exclusive
+per-user lock, `dev.overeng.macos-app.smoke.lock` in the Darwin per-user temp
+directory (`confstr(_CS_DARWIN_USER_TEMP_DIR)`). Children inherit the lock, so
+an orphan of a killed run keeps it until it exits. Only under that lock does
+the runner sweep what a killed run left: a `dev.overeng.macos-app.smoke` job
+is booted
 out only when `launchctl print` shows it was loaded from a
 `tmp/macos-app-smoke-*` plist (any other job under the label is refused), and
 stale `tmp/macos-app-smoke-*` scratch directories are removed.
