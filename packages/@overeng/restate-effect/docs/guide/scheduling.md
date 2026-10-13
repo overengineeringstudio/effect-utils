@@ -120,8 +120,11 @@ awakeable each cycle, persists its id in State, and exposes it via a `wakeId` **
 handler (readable while the exclusive cycle holds the lock). An external webhook reads
 the id and resolves it via ingress `resolveAwakeable`; the race ends early and the next
 cycle fires with delay 0. The wake reason is threaded to the next cycle as
-`wokenBy`. The id is **rotated per cycle**; a stale id resolves harmlessly (its
-awakeable belongs to a completed invocation).
+`wokenBy`. The id is **rotated per cycle** with a single State write: the previous
+id remains published until the next cycle replaces it, so shared readers never see
+an empty id between running cycles. A stale id resolves harmlessly but does not
+wake a newer cycle. The id is empty before the first publication and after the
+loop stops, completes, or fails.
 
 > **Tradeoff — wake holds the lock.** In wake mode the per-key write lock is HELD
 > during the inter-cycle wait (the race is inside the invocation), so an exclusive
