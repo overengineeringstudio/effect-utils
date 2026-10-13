@@ -55,9 +55,38 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
       dropBody: false,
       contentType: 'application/json',
       jwtTokens: [] as string[],
+      appCalls: 0,
+      botCalls: 0,
+      identityStatus: 200,
+      identityRedirect: '',
+      identityMalformed: false,
+      identityAuthorization: [] as string[],
     }
     const server = createServer(async (request, response) => {
-      if (request.url === '/app/installations/123/access_tokens') {
+      if (request.url === '/app' || request.url === '/users/fixture%5Bbot%5D') {
+        const isApp = request.url === '/app'
+        if (isApp === true) state.appCalls++
+        else state.botCalls++
+        state.identityAuthorization.push(request.headers.authorization ?? '')
+        if (isApp === true) {
+          state.jwtTokens.push(request.headers.authorization?.slice('Bearer '.length) ?? '')
+          if (state.delayResponse === true) {
+            await Effect.runPromiseWith(delay)(Deferred.succeed(started, undefined))
+            await Effect.runPromiseWith(delay)(Deferred.await(release))
+          }
+        }
+        if (state.identityRedirect !== '') {
+          response.writeHead(302, { location: state.identityRedirect })
+          response.end()
+          return
+        }
+        response.writeHead(state.identityStatus, { 'content-type': 'application/json' })
+        response.end(
+          state.identityMalformed === true
+            ? '{"id":"invalid"}'
+            : Schema.encodeSync(Json)(isApp === true ? { id: 456, slug: 'fixture' } : { id: 789 }),
+        )
+      } else if (request.url === '/app/installations/123/access_tokens') {
         state.exchanges++
         const chunks: Buffer[] = []
         for await (const chunk of request) chunks.push(Buffer.from(chunk))
@@ -391,6 +420,78 @@ const expectCredentialFree = (value: unknown, credential: string) => {
   }
   walk(value)
   expect(Schema.encodeSync(Json)(value)).not.toContain(credential)
+}
+
+it.effect(
+  'caches App bot identity single-flight for the service lifetime without an installation',
+  () =>
+    Effect.gen(function* () {
+      const { state, app, started, release } = yield* fixture()
+      state.delayResponse = true
+      const fibers = yield* Effect.forEach([1, 2, 3, 4], () => app.identity.pipe(Effect.forkChild))
+      yield* Deferred.await(started)
+      yield* Deferred.succeed(release, undefined)
+      const values = yield* Effect.forEach(fibers, Fiber.join)
+      const expected = { appId: 456, slug: 'fixture', botLogin: 'fixture[bot]', botUserId: 789 }
+      expect(values).toEqual(Array.from({ length: 4 }, () => ({ ...expected })))
+      expect(yield* app.identity).toEqual(expected)
+      expect(state.appCalls).toBe(1)
+      expect(state.botCalls).toBe(1)
+      expect(state.exchanges).toBe(0)
+      expect(state.identityAuthorization[0]).toMatch(/^Bearer ey/)
+      expect(state.identityAuthorization[1]).toBe('')
+    }),
+)
+
+it.effect('does not cache failed identity lookups or schema decoding failures', () =>
+  Effect.gen(function* () {
+    const { state, app } = yield* fixture()
+    state.identityStatus = 503
+    expect(yield* app.identity.pipe(Effect.flip)).toMatchObject({
+      _tag: 'GitHubAppError',
+      operation: 'identity',
+      status: 503,
+    })
+    state.identityStatus = 200
+    state.identityMalformed = true
+    expect(yield* app.identity.pipe(Effect.flip)).toMatchObject({ operation: 'identity' })
+    state.identityMalformed = false
+    expect(yield* app.identity).toMatchObject({ botUserId: 789 })
+    expect(state.appCalls).toBe(3)
+    expect(state.botCalls).toBe(1)
+  }),
+)
+
+for (const [name, transport] of [
+  ['fetch', FetchHttpClient.layer],
+  ['node-http', NodeHttpClient.layerNodeHttp],
+  ['undici', NodeHttpClient.layerUndici],
+] as const) {
+  it.effect(`${name}: maps identity 401 to a credential-free GitHubAppError`, () =>
+    Effect.gen(function* () {
+      const { state, app } = yield* fixture(transport)
+      state.identityStatus = 401
+      const failure = yield* app.identity.pipe(Effect.flip)
+      expect(failure).toMatchObject({ _tag: 'GitHubAppError', operation: 'identity', status: 401 })
+      for (const secret of ['Bearer', ...state.jwtTokens]) expectCredentialFree(failure, secret)
+      expect(state.botCalls).toBe(0)
+    }),
+  )
+
+  it.effect(`${name}: never forwards an identity JWT to a foreign origin`, () =>
+    Effect.gen(function* () {
+      const source = yield* fixture(transport)
+      const foreign = yield* fixture(transport)
+      source.state.identityRedirect = new URL('/probe', foreign.apiBase).href
+      expect(yield* source.app.identity.pipe(Effect.flip)).toMatchObject({
+        operation: 'identity',
+        status: 302,
+      })
+      expect(source.state.appCalls).toBe(1)
+      expect(foreign.state.calls).toBe(0)
+      expect(foreign.state.authorization).toEqual([])
+    }),
+  )
 }
 
 for (const [name, transport] of [

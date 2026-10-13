@@ -1,7 +1,7 @@
 import { createPrivateKey, createSign } from 'node:crypto'
 
 import { Clock, Context, Effect, Layer, Redacted, Schema, Semaphore, Stream } from 'effect'
-import { HttpClient, HttpClientRequest, HttpClientResponse } from 'effect/http'
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from 'effect/http'
 import { HttpClientError, DecodeError } from 'effect/http/HttpClientError'
 
 import { OtelAttr, OtelMetric, OtelOperation } from '@overeng/otel-contract'
@@ -46,9 +46,21 @@ export const InstallationScope = Schema.Struct({
   .annotate({ identifier: 'GitHubApp.InstallationScope' })
 export type InstallationScope = typeof InstallationScope.Type
 
+/** Public App and bot identity; no installation or credential capability. */
+export const GitHubAppIdentity = Schema.Struct({
+  appId: PositiveID,
+  slug: Schema.NonEmptyString,
+  botLogin: Schema.NonEmptyString,
+  botUserId: PositiveID,
+}).annotate({ identifier: 'GitHubApp.BotIdentity' })
+export type GitHubAppIdentity = typeof GitHubAppIdentity.Type
+
+const AppResponse = Schema.Struct({ id: PositiveID, slug: Schema.NonEmptyString })
+const BotResponse = Schema.Struct({ id: PositiveID })
+
 /** Credential-free configuration, signing, exchange, or authorization failure. */
 export class GitHubAppError extends Schema.TaggedError<GitHubAppError>()('GitHubAppError', {
-  operation: Schema.Literals(['config', 'sign', 'exchange', 'authorize']),
+  operation: Schema.Literals(['config', 'sign', 'exchange', 'authorize', 'identity']),
   message: Schema.String,
   status: Schema.optional(Schema.Int),
   method: Schema.optional(Schema.String),
@@ -100,6 +112,11 @@ const MakeOperation = OtelOperation.define({
     clientID: AppLabels.fields.clientID,
     consumer: AppLabels.fields.consumer,
   }),
+  label: ({ consumer }) => consumer,
+})
+const IdentityOperation = OtelOperation.define({
+  name: 'github-app.identity',
+  attributes: MakeOperation.attributes,
   label: ({ consumer }) => consumer,
 })
 const InvalidateOperation = OtelOperation.define({
@@ -156,6 +173,8 @@ export class GitHubAppHttpClient extends Context.Service<
 
 /** Token minting and authenticated clients sharing a scoped token cache. */
 export interface GitHubAppService {
+  /** Single-flight, service-lifetime cache of successful App/bot identity lookups. */
+  readonly identity: Effect.Effect<GitHubAppIdentity, GitHubAppError>
   readonly token: (
     scope: InstallationScope,
   ) => Effect.Effect<Redacted.Redacted<string>, GitHubAppError>
@@ -259,6 +278,144 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
       })
     })
 
+  // JWT custody stays here: neither a signer nor an App-authenticated client is exposed.
+  const signJwt = Effect.gen(function* () {
+    const signedAt = yield* Clock.currentTimeMillis
+    return yield* Effect.try({
+      try: () => {
+        const unsigned = `${Buffer.from(encodeHeader({ alg: 'RS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from(
+          encodeClaims({
+            iat: Math.floor(signedAt / 1000) - 60,
+            exp: Math.floor(signedAt / 1000) + 540,
+            iss: config.identity.clientID,
+          }),
+        ).toString('base64url')}`
+        return `${unsigned}.${createSign('RSA-SHA256').update(unsigned).end().sign(key).toString('base64url')}`
+      },
+      catch: () =>
+        new GitHubAppError({ operation: 'sign', message: 'Failed to sign GitHub App JWT' }),
+    })
+  })
+  let cachedIdentity: GitHubAppIdentity | undefined
+  let identityFlight: Effect.Effect<GitHubAppIdentity, GitHubAppError> | undefined
+  const identityRequest = Effect.fn('github-app.identity-request')(function* (
+    path: string,
+    jwt?: string,
+  ) {
+    const url = new URL(path, apiBase)
+    if (url.origin !== apiBase.origin)
+      return yield* new GitHubAppError({
+        operation: 'identity',
+        message: 'Refusing to send GitHub App JWT to another origin',
+      })
+    const request = HttpClientRequest.get(url).pipe(HttpClientRequest.setHeaders(headers))
+    const response = yield* raw
+      .execute(jwt === undefined ? request : request.pipe(HttpClientRequest.bearerToken(jwt)))
+      .pipe(
+        Effect.updateContext((context: Context.Context<never>) =>
+          Context.add(context, FetchHttpClient.RequestInit, {
+            ...Context.getOrUndefined(context, FetchHttpClient.RequestInit),
+            redirect: 'manual',
+          }),
+        ),
+        Effect.mapError(
+          (error) =>
+            new GitHubAppError({
+              operation: 'identity',
+              method: 'GET',
+              path: url.pathname,
+              reason: error.reason._tag,
+              ...(error.response === undefined ? {} : { status: error.response.status }),
+              message: 'GitHub App identity transport failed',
+            }),
+        ),
+      )
+    // Do not follow redirects or retain the authenticated response in errors.
+    if (response.status !== 200)
+      return yield* new GitHubAppError({
+        operation: 'identity',
+        status: response.status,
+        method: 'GET',
+        path: url.pathname,
+        message: 'GitHub rejected App identity lookup',
+      })
+    return yield* response.json.pipe(
+      Effect.mapError(
+        () =>
+          new GitHubAppError({
+            operation: 'identity',
+            message: 'Invalid GitHub App identity response',
+          }),
+      ),
+    )
+  })
+  const identity = Effect.gen(function* () {
+    const flight = yield* lock.withPermits(1)(
+      Effect.gen(function* () {
+        if (cachedIdentity !== undefined) return { effect: Effect.succeed(cachedIdentity) }
+        if (identityFlight !== undefined) return { effect: identityFlight }
+        const lookup = Effect.gen(function* () {
+          const jwt = yield* signJwt.pipe(
+            Effect.mapError(
+              () =>
+                new GitHubAppError({
+                  operation: 'identity',
+                  message: 'Failed to sign GitHub App identity JWT',
+                }),
+            ),
+          )
+          const app = yield* identityRequest('/app', jwt).pipe(
+            Effect.flatMap((value) =>
+              Schema.decodeUnknownEffect(AppResponse)(value).pipe(
+                Effect.mapError(
+                  () =>
+                    new GitHubAppError({
+                      operation: 'identity',
+                      message: 'Invalid GitHub App response',
+                    }),
+                ),
+              ),
+            ),
+          )
+          const botLogin = `${app.slug}[bot]`
+          // Public user lookup needs no token and no installation permissions.
+          const bot = yield* identityRequest(`/users/${encodeURIComponent(botLogin)}`).pipe(
+            Effect.flatMap((value) =>
+              Schema.decodeUnknownEffect(BotResponse)(value).pipe(
+                Effect.mapError(
+                  () =>
+                    new GitHubAppError({
+                      operation: 'identity',
+                      message: 'Invalid GitHub bot response',
+                    }),
+                ),
+              ),
+            ),
+          )
+          cachedIdentity = { appId: app.id, slug: app.slug, botLogin, botUserId: bot.id }
+          return cachedIdentity
+        })
+        const shared: Effect.Effect<GitHubAppIdentity, GitHubAppError> = yield* Effect.cached(
+          lookup.pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (identityFlight === shared) identityFlight = undefined
+              }),
+            ),
+          ),
+        )
+        identityFlight = shared
+        return { effect: shared }
+      }),
+    )
+    return yield* flight.effect
+  }).pipe((effect) =>
+    IdentityOperation.with({
+      attributes: { clientID: config.identity.clientID, consumer },
+      effect,
+    }).pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error))),
+  )
+
   const token = Effect.fn('github-app.token')(function* (inputScope: InstallationScope) {
     const scope = yield* Schema.decodeEffect(InstallationScope)(inputScope).pipe(
       Effect.mapError(
@@ -292,22 +449,8 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         const existing = flights.get(cacheKey)
         if (existing !== undefined) return { effect: existing }
         const mint = Effect.gen(function* () {
-          const mintedAt = yield* Clock.currentTimeMillis
           yield* mintCount.trustedIncrement(attributes(scope.installationID))
-          const jwt = yield* Effect.try({
-            try: () => {
-              const unsigned = `${Buffer.from(encodeHeader({ alg: 'RS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from(
-                encodeClaims({
-                  iat: Math.floor(mintedAt / 1000) - 60,
-                  exp: Math.floor(mintedAt / 1000) + 540,
-                  iss: config.identity.clientID,
-                }),
-              ).toString('base64url')}`
-              return `${unsigned}.${createSign('RSA-SHA256').update(unsigned).end().sign(key).toString('base64url')}`
-            },
-            catch: () =>
-              new GitHubAppError({ operation: 'sign', message: 'Failed to sign GitHub App JWT' }),
-          })
+          const jwt = yield* signJwt
           const body = yield* Schema.encodeEffect(
             Schema.fromJsonString(
               Schema.Struct({
@@ -527,7 +670,7 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         ),
       Effect.succeed,
     )
-  return { token, client } as const
+  return { identity, token, client } as const
 })
 
 /** Context service for shared GitHub App authentication. */
