@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/gh-ci-utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:ef215ceb241241c1a600f532397daacb2594f1f32a96e4e301ecb8fcafae2315
+# Semantic fingerprint: sha256:06092116a68e37ec3c476e34874af411caf1223aebdd1f8d19d8a1dc7e806678
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -98,6 +98,7 @@ export_materialization_inputs([
     "src/isomorphic/renderers/RunnersOutput/view.tsx",
     "src/mod.ts",
     "src/node/Config.ts",
+    "src/node/GitHubClient.integration.test.ts",
     "src/node/GitHubClient.ts",
     "src/node/GitHubInternal.ts",
     "src/node/GitHubSession.ts",
@@ -255,6 +256,7 @@ package_view(
         "src/isomorphic/renderers/RunnersOutput/view.tsx": "src/isomorphic/renderers/RunnersOutput/view.tsx",
         "src/mod.ts": "src/mod.ts",
         "src/node/Config.ts": "src/node/Config.ts",
+        "src/node/GitHubClient.integration.test.ts": "src/node/GitHubClient.integration.test.ts",
         "src/node/GitHubClient.ts": "src/node/GitHubClient.ts",
         "src/node/GitHubInternal.ts": "src/node/GitHubInternal.ts",
         "src/node/GitHubSession.ts": "src/node/GitHubSession.ts",
@@ -399,6 +401,7 @@ package_view(
         "src/isomorphic/renderers/RunnersOutput/view.tsx": "src/isomorphic/renderers/RunnersOutput/view.tsx",
         "src/mod.ts": "src/mod.ts",
         "src/node/Config.ts": "src/node/Config.ts",
+        "src/node/GitHubClient.integration.test.ts": "src/node/GitHubClient.integration.test.ts",
         "src/node/GitHubClient.ts": "src/node/GitHubClient.ts",
         "src/node/GitHubInternal.ts": "src/node/GitHubInternal.ts",
         "src/node/GitHubSession.ts": "src/node/GitHubSession.ts",
@@ -507,12 +510,18 @@ npm_package_archive(
 vitest_test(
     name = "test",
     package_tree = ":test_package_tree",
+    excludes = [
+        "src/node/GitHubClient.integration.test.ts",
+    ],
     visibility = ["PUBLIC"],
 )
 
 vitest_collect(
     name = "test_collect",
     package_tree = ":test_package_tree",
+    excludes = [
+        "src/node/GitHubClient.integration.test.ts",
+    ],
     visibility = ["PUBLIC"],
 )
 

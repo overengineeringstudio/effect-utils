@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:81d5c58f4dc3de8b5ac715e83a7655bbf52952ad31de3e6f57b4f766ca0fa114
+# Semantic fingerprint: sha256:af95face3bc8f186d188e35c8c315ddcd3f6bdafaaf62f892203a387d595222e
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -82,6 +82,8 @@ export_materialization_inputs([
     "src/node/cmd.unit.test.ts",
     "src/node/file-system-backing.ts",
     "src/node/file-system-backing.unit.test.ts",
+    "src/node/github-app.integration.test.ts",
+    "src/node/github-app.ts",
     "src/node/mod.ts",
     "src/node/net.ts",
     "src/node/net.unit.test.ts",
@@ -221,6 +223,8 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
+        "src/node/github-app.ts": "src/node/github-app.ts",
         "src/node/mod.ts": "src/node/mod.ts",
         "src/node/net.ts": "src/node/net.ts",
         "src/node/net.unit.test.ts": "src/node/net.unit.test.ts",
@@ -348,6 +352,8 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
+        "src/node/github-app.ts": "src/node/github-app.ts",
         "src/node/mod.ts": "src/node/mod.ts",
         "src/node/net.ts": "src/node/net.ts",
         "src/node/net.unit.test.ts": "src/node/net.unit.test.ts",
@@ -460,6 +466,7 @@ vitest_test(
     excludes = [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/node/cmd.unit.test.ts",
+        "src/node/github-app.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",
@@ -479,6 +486,7 @@ vitest_collect(
     excludes = [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/node/cmd.unit.test.ts",
+        "src/node/github-app.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",
