@@ -178,7 +178,6 @@ describe('strict action boundary', () => {
     ).toThrow()
   })
 
-
   it('preserves unsupported raw enums only in explicitly incomplete artifacts', () => {
     const artifact = artifactFixture(false, [
       actionFixture({ executionKind: 99, cacheUploadResult: 99 }),
@@ -301,7 +300,6 @@ describe('warm99 identity acceptance', () => {
       })
     }
   })
-
 
   it('invalidates observations whose native invocations fall outside the job window', () => {
     for (const bound of ['start', 'finish'] as const) {
