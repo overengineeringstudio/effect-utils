@@ -132,10 +132,10 @@ creating declared outputs or executing the TS child. It requires:
 - Readable `/proc/net/dev` to list only `lo`, including `lo`.
 - Readable `/proc/self/mountinfo` to identify the mount at `/`, whose root field
   must differ from `/`; a network namespace alone is not a filesystem boundary.
-- `/tmp` to be absent with `lstat` returning `ENOENT`, have the same device and
-  inode as the verified `NIX_BUILD_TOP`, or be a plain nonsymlink directory on
-  the same root mount. The last case requires its actual device to match `/`
-  and no separate or bind mount at `/tmp` or any ancestor beyond `/`.
+- `/tmp` to be absent with `lstat` returning `ENOENT`, or be a plain nonsymlink
+  directory on the same subtree root mount. Its actual device must match `/`,
+  and `/proc/self/mountinfo` must contain no separate or bind mount at `/tmp`.
+  Equal device/inode with the build directory does not exempt a `/tmp` mount.
 - `/home`, `/root`, `/run/user`, and `/nix/var/nix` to be absent with `lstat`
   returning `ENOENT`. Real passwd homes outside the verified `NIX_BUILD_TOP`
   must likewise be absent: these are homes for UID 0 or
@@ -162,9 +162,9 @@ The empirical dev4 Nix builder probe (2026-10-13) ran as UID 1000 (`nixbld`).
 Its root mount's root field was the derivation's private chroot directory;
 passwd homes for both `root` and `nixbld` were `/build`, while `nobody` had `/`.
 `/tmp` was a private plain directory in that chroot on the root device, with
-an inode distinct from `/build` and no separate `/tmp` mount. This observed
-layout motivates the plain-directory alternative rather than requiring every
-builder to alias `/tmp` to the build top.
+an inode distinct from `/build` and no separate `/tmp` mount. The accepted
+plain-directory layout therefore does not require or admit a build-directory
+alias exemption.
 
 Runtime verification checks the outer derivation boundary, not per-action input
 isolation: other declared derivation inputs can be visible. Even with a verified

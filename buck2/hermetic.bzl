@@ -134,7 +134,7 @@ def _ts_action_launcher(ctx, sandbox, command, inputs, outputs, verify_nix_outer
             'if [[ "$outer_network_ok" != true || "$outer_devices" != 1 ]]; then outer_failures+=("/proc/net/dev must contain only lo, including lo"); fi',
             cmd_args(['if !', verifier_command, '"$outer_top"; then outer_failures+=("filesystem boundary verification failed"); fi'], delimiter = " "),
             'if [[ "${#outer_failures[@]}" != 0 ]]; then',
-            '  printf "%s\\n" "TS sandbox: outer sandbox declared but not verified; required: NIX_BUILD_TOP set with action cwd and Buck root (.buckroot) beneath it; HOME=/homeless-shelter or physically under NIX_BUILD_TOP; /proc/net/dev contains only lo; / root mount is a pivoted or chrooted subtree; /home, /root, /run/user, /nix/var/nix and real passwd homes outside the build are absent with ENOENT; /tmp is absent, aliases the build directory, or is a plain directory on the root mount with no separate or bind mount." >&2',
+            '  printf "%s\\n" "TS sandbox: outer sandbox declared but not verified; required: NIX_BUILD_TOP set with action cwd and Buck root (.buckroot) beneath it; HOME=/homeless-shelter or physically under NIX_BUILD_TOP; /proc/net/dev contains only lo; / root mount is a pivoted or chrooted subtree; /home, /root, /run/user, /nix/var/nix and real passwd homes outside the build are absent with ENOENT; /tmp is absent or is a plain directory on the root mount with no separate or bind mount." >&2',
             '  printf "Failed criterion: %s\\n" "${outer_failures[@]}" >&2',
             "  exit 1",
             "fi",

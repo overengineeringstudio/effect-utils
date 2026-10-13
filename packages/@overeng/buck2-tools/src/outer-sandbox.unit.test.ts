@@ -125,8 +125,11 @@ describe('outer Nix sandbox filesystem boundary', () => {
     expect(verify({ overrides: { '/tmp': enoent } })).toEqual([])
   })
 
-  it('accepts /tmp aliased to the build directory', () => {
-    expect(verify({ overrides: { '/tmp': recorded(top) } })).toEqual([])
+  it('rejects host /tmp bound at both the build directory and /tmp with equal device/inode', () => {
+    const mountinfo = `${actual.mountinfo.trimEnd()}\n4242 1938 8:2 /tmp /build rw,nosuid,nodev,relatime - ext4 /dev/sda2 rw\n4243 1938 8:2 /tmp /tmp rw,nosuid,nodev,relatime - ext4 /dev/sda2 rw`
+    expect(verify({ mountinfo, overrides: { '/tmp': recorded(top) } })).toEqual([
+      expect.stringMatching(/^filesystem: \/tmp must be absent/),
+    ])
   })
 
   it('rejects /tmp access denied instead of absent', () => {

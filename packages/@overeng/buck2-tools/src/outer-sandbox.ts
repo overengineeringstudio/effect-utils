@@ -56,18 +56,16 @@ export const verifyOuterFilesystem = ({
   if ('errno' in tmp) {
     if (tmp.errno !== 'ENOENT') failures.push('filesystem: /tmp absence must be ENOENT')
   } else {
-    const build = inspect(top)
     const root = inspect('/')
-    const buildAlias = !('errno' in build) && tmp.dev === build.dev && tmp.ino === build.ino
     const privateRootDirectory =
       tmp.directory === true &&
       tmp.symlink === false &&
       !('errno' in root) &&
       tmp.dev === root.dev &&
       !mounts.some((mount) => mount.point === '/tmp')
-    if (buildAlias === false && privateRootDirectory === false) {
+    if (privateRootDirectory === false) {
       failures.push(
-        'filesystem: /tmp must be absent, the build directory, or a plain directory on the root mount without a separate or bind mount',
+        'filesystem: /tmp must be absent or a plain directory on the root mount without a separate or bind mount',
       )
     }
   }
