@@ -10,7 +10,7 @@
     },
     {
       "task": "test:buck2-tools",
-      "rationale": "Editor publication, filesystem locks, snapshots and Darwin fsevents dependency projection."
+      "rationale": "Editor publication, filesystem locks, snapshots and Darwin fsevents dependency projection; snapshot link containment must name hardlinked CAS files through their link path because Darwin realpath (F_GETPATH) may report any hardlink name."
     },
     {
       "task": "genie:buck2:test",
@@ -54,6 +54,10 @@
     }
   ],
   "neutral": [
+    {
+      "task": "buck2:rust:generators:test",
+      "rationale": "Platform-neutral Bun/JS contract generation and USTAR round-trips through pinned GNU tar; no Darwin-specific behavior."
+    },
     {
       "task": "test:agent-session-ingest:unbounded",
       "rationale": "Session-file parsing contracts."

@@ -39,6 +39,7 @@ const files = [
   'buck2/toolchains/configured.bzl',
   'buck2/toolchains/defs.bzl',
   'buck2/toolchains/provider_identity_fixture.bzl',
+  'buck2/toolchains/ts_sandbox.bzl',
   'buck2/typescript.bzl',
   'packages/@overeng/buck2-tools/src/javascript-runner.ts',
   'packages/@overeng/buck2-tools/src/owned-files.ts',

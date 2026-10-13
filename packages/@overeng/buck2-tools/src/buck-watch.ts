@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { emitCompletedSpan } from './otel-span-cli.ts'
+import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 
 /** Versioned identity of the machine-readable watch status file. */
 export const buckWatchStatusSchema = 'effect-utils/buck-watch-status/v1' as const
@@ -564,8 +564,8 @@ export const reconcileBuckViews = async ({
   const buildStartedAt = performance.now()
   // Telemetry is best effort: the real Buck command runs unwrapped and its exit
   // status is preserved even when span delivery afterwards fails.
-  const emitBuildSpan = (exitCode: number): void =>
-    emitCompletedSpan({
+  const emitBuildSpan = (exitCode: number): void => {
+    emitCompletedSpanAsync({
       name: 'buck2.build',
       label: 'buck2 build editor view inputs',
       attributes: [['buck2.targets', request.buildTargets.length]],
@@ -573,6 +573,7 @@ export const reconcileBuckViews = async ({
       endedAtMs: performance.timeOrigin + performance.now(),
       exitCode,
     })
+  }
   let built: CommandResult
   try {
     built = await execute({
@@ -641,8 +642,8 @@ export const reconcileBuckViews = async ({
     const publicationStartedAt = performance.now()
     // Telemetry is best effort here too: a publication span that cannot be
     // delivered never changes the publisher's own exit status.
-    const emitPublicationSpan = (exitCode: number): void =>
-      emitCompletedSpan({
+    const emitPublicationSpan = (exitCode: number): void => {
+      emitCompletedSpanAsync({
         name: 'editor-view.publish',
         label: `publish ${entry.editor.viewName}`,
         attributes: [['package.path', entry.packagePath]],
@@ -650,6 +651,7 @@ export const reconcileBuckViews = async ({
         endedAtMs: performance.timeOrigin + performance.now(),
         exitCode,
       })
+    }
     try {
       await execute({
         command: options.editorViewCommand[0],

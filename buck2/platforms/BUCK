@@ -1,10 +1,32 @@
-load("//buck2/platforms:defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "portable_product_platform", "product_platform")
+load("//buck2/platforms:defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "portable_product_platform", "product_platform", "ts_action_execution_policy")
 
 constraint_setting(name = "cache_admission", visibility = ["PUBLIC"])
 
 constraint_value(
     name = "cache_hermetic",
     constraint_setting = ":cache_admission",
+    visibility = ["PUBLIC"],
+)
+
+config_setting(
+    name = "ts_cache_admitted",
+    constraint_values = [":cache_hermetic"],
+)
+
+# Configured in the selected execution platform via a default-only exec_dep.
+# Do not change Darwin's general cache platform: other action families own
+# their admission independently of the TypeScript sandbox policy.
+ts_action_execution_policy(
+    name = "ts_action_execution_policy",
+    cache_admitted = select({
+        ":ts_cache_admitted": True,
+        "DEFAULT": False,
+    }),
+    os = select({
+        "prelude//os/constraints:linux": "linux",
+        "prelude//os/constraints:macos": "darwin",
+        "DEFAULT": "unsupported",
+    }),
     visibility = ["PUBLIC"],
 )
 

@@ -53,7 +53,6 @@ stability signal. In particular, overlayfs without persistent inode mapping can
 reassign a directory inode on cache eviction without changing its contents or
 other metadata. Byte digests, link-target checks, and byte-ownership proofs are
 unchanged.
-
 Normal per-view retention keeps the current generation plus the configured
 number of previous generations, a **five-minute grace period from supersession**,
 and any **managed reader pins**. Repository tasks retain current plus one previous
@@ -102,8 +101,12 @@ and CAS flock, so a newly used view cannot be evicted from an older census.
 Vanished victims are skipped even if teardown removes a held eviction lock.
 Active eviction locks are explicitly marked with process-incarnation
 identity; a publisher waits for that live maintenance operation rather than
-failing as if a competing publisher or stale lock were present. Ordinary or
-dead-incarnation publication locks still require explicit recovery.
+failing as if a competing publisher were present. New publication-lock owners
+record host and process-start incarnation. An absent PID (`ESRCH`), or a reused
+PID with a different observed start incarnation, permits automatic exact-token
+recovery only on the recorded host; recovery is serialized by the host coordination flock and
+logged. Live publishers, foreign hosts, unknown identities, unreadable owners,
+and legacy records without host evidence still require explicit recovery.
 
 If protected usage prevents reaching the budget, publication **continues** and
 emits a structured `over-budget` event with budget, use, and top holders.
@@ -113,11 +116,13 @@ Budget discovery and maintenance failures are structured advisory diagnostics:
 uncertain discovery aborts that budget round without eviction, and maintenance
 failure never rejects an otherwise successful publication.
 The `editor-view.host-budget` OpenTelemetry span records over-budget publication
-and the protected-share early warning at 80%. Budget span delivery is deferred,
-fire-and-forget, and drop-on-full, with at most four queued/running exporters per
-publisher. Hung exporters are killed after one second and reaped; publication
-never awaits them. The shared host ledger permits one span per content store and
-event kind every 60 seconds, across publisher processes. Suppressed event counts
+and the protected-share early warning at 80%. Budget, publication, phase, and
+watch-build spans share deferred, fire-and-forget, drop-on-full delivery, with at
+most four queued/running exporters per process. Hung exporters are killed after
+one second and keep their slots until reaped; publication and watch cycles never
+await delivery, and telemetry never changes real command exit codes.
+The shared host ledger permits one budget span per content store and event kind
+every 60 seconds, across publisher processes. Suppressed event counts
 are durable and appear on the next admitted span as
 `editor_view.host_budget.suppressed_events`; synchronous structured logs remain
 unsuppressed and include `otelSuppressedEvents`. Existing ledgers without delivery
@@ -190,7 +195,9 @@ read-only mode: **0444 for data, 0555 when any source execute bit is set**.
 Executables remain executable; write and special permission bits are removed.
 Snapshot-root `editor-view.json` and `editor-view-sources-v1.json` remain private
 metadata; nested files of those names are ordinary shareable payloads. Snapshot directories and
-relocated symlinks remain private to each generation.
+relocated symlinks remain private to each generation. Link containment resolves
+a file through the link path, not the kernel's descriptor name: on Darwin,
+realpath of a shared inode may report its content-store or sibling-snapshot name.
 
 The default store is `.editor-view-content/v1` beside the common Git repository
 directory, so every worktree uses the same host-local data. Non-Git fixtures use
@@ -272,7 +279,8 @@ Its one-second resolution can conservatively retain an orphan after same-PID,
 same-second reuse; it never deletes a concretely protected staging copy.
 Unknown-owner staging files are removed only after five minutes. No exact-token
 content-store recovery command, owner record, watcher, or recovery guard remains.
-The separate per-view publication lock still requires explicit exact-token recovery.
+The separate per-view publication lock automatically recovers only proven dead
+or reused same-host owners; all uncertain ownership retains explicit exact-token recovery.
 The persistent control file records a dirty byte before repair/mutation and clears
 it only after successful restoration. Normal acquisitions inspect the bounded
 directory set and staging metadata; dirty acquisitions also scan shard metadata
@@ -316,8 +324,9 @@ check, clean, or worktree-guard module, or can explicitly import
 editor-only release, including every sibling view sharing those roots.
 
 The publisher CLI also supports `release --repo-root <root> --package <package>`
-for one shared editor root. Teardown holds the publication lock, refuses an
-existing lock (including a stale one until exact-token recovery), and makes only
+for one shared editor root. Teardown holds the publication lock, refuses a live
+or uncertain owner, automatically recovers proven abandoned same-host owners,
+and makes only
 owned directories writable before removal. It never follows snapshot symlinks
 or changes external dependency targets. Neither release nor teardown is ever a
 dependency of setup, tests, or checks; republishing recreates a released root.
