@@ -199,9 +199,7 @@ describe('emitSyncEndOnInterrupt', () => {
         const program = Effect.never.pipe(
           emitSyncEndOnInterrupt({ pageId: ROOT, onEvent: handler }),
         )
-        const fiber = yield* Effect.forkChild(
-          Deferred.await(start).pipe(Effect.andThen(program)),
-        )
+        const fiber = yield* Effect.forkChild(Deferred.await(start).pipe(Effect.andThen(program)))
         yield* Fiber.interrupt(fiber)
         return yield* Fiber.join(fiber)
       }),
