@@ -5,7 +5,8 @@
 # Tasks:
 # - mr:bootstrap - Materialize the minimal lock-based members needed for local tooling
 # - mr:setup - Materialize committed root members without fetching or rewriting locks.
-#   Members use tracking worktrees, except `setupCommitMembers` (see Options).
+#   Locally, members use tracking worktrees, except `setupCommitMembers` (see Options).
+#   With CI=true, every member uses commit worktrees (see Options).
 # - mr:fetch-apply - Fetch latest refs and apply to workspace (mr fetch --apply)
 # - mr:lock - Record the current workspace into megarepo.lock (mr lock)
 # - mr:apply - Apply megarepo.lock to the workspace (explicit apply operation)
@@ -27,7 +28,9 @@
 #   `mr status --all`, including on the outer setup cache-hit path. Use it for
 #   members whose own repos/ must exist locally (validation-only nested hooks).
 #   Other members stay on shared tracking worktrees. Default: [ ] (setup
-#   behaves as plain tracking apply).
+#   behaves as plain tracking apply). With CI=true, setup uses commit worktrees
+#   for every member; a non-empty list prepares every root member's nested tree,
+#   because `mr status --all` readiness inspects all of them.
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add dependencies in their devenv.nix:
@@ -222,7 +225,23 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off "''${MR_SKIP_ARGS[@]}"
+        if [ "''${CI:-}" = "true" ]; then
+          # CI materializes locked commits end to end (`--worktree-mode auto`
+          # semantics) and never advances shared branch worktrees.
+          ${
+            if setupNestedTrees then
+              ''
+                # Readiness is `mr status --all`, which inspects every root
+                # member's nested tree, so every root member is prepared.
+                commit_members="$(mr ls --output json | ${jq} -r '${mrLsMemberNamesJq}' | paste -sd, -)"
+                mr apply --worktree-mode commit --commit-members "$commit_members" --lock-sync off "''${MR_SKIP_ARGS[@]}"
+              ''
+            else
+              ''mr apply --worktree-mode commit --lock-sync off "''${MR_SKIP_ARGS[@]}"''
+          }
+        else
+          mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off "''${MR_SKIP_ARGS[@]}"
+        fi
         ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:setup" "binary" (mkMrStatusCheck setupNestedTrees);

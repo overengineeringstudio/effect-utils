@@ -207,6 +207,13 @@ and checks readiness with `mr status --all`, also on the outer setup cache-hit
 path. The option is empty by default, leaving `mr:setup` a plain tracking
 apply.
 
+CI setup (`CI=true`, the same predicate as `--worktree-mode auto`) never uses
+tracking worktrees: `mr:setup` applies `--worktree-mode commit`, and with a
+non-empty `setupCommitMembers` it passes every root member to
+`--commit-members`, because `mr status --all` readiness inspects every root
+member's nested tree. Readiness and apply then cover the same trees, and a
+warm rerun accepts the prepared commit worktrees instead of refusing them.
+
 `mr store worktree new` creates standalone worktrees only. The composed
 workspace shape — an owned worktree at `P/repos/<owned>`, read-only `cp -a`
 mounts, dist overlays, per-workspace capability projection, and a synthesized
