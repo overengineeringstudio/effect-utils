@@ -18,10 +18,10 @@ an Effect `HttpClient` transport, and a stable `consumer` name for telemetry.
 import { GitHubApp, installationHttpClientLayer } from '@overeng/utils/node/github-app'
 import { Layer, Redacted } from 'effect'
 
-const app = GitHubApp.layer(
-  { identity: { clientID }, privateKey: Redacted.make(privateKeyPem) },
-  { consumer: 'ci-reader' },
-)
+const app = GitHubApp.layer({
+  config: { identity: { clientID }, privateKey: Redacted.make(privateKeyPem) },
+  options: { consumer: 'ci-reader' },
+})
 const authenticated = installationHttpClientLayer({
   installationID,
   repositories: { _tag: 'Selected', names: ['my-repository'] },
@@ -44,7 +44,7 @@ Transport failures retain only safe method, path, reason and optional status.
 Response body access remains lazy/streaming; decoding failures carry a fresh,
 credential-free request and response metadata without the original cause.
 
-Spans cover construction, minting and authorization. Metrics are
+Schema-backed telemetry contracts cover construction, minting and authorization. Metrics are
 `github_app_mints_total`, `github_app_mint_failures_total`,
 `github_app_token_expiry_seconds` (Unix expiry time), and
 `github_app_rate_limit_remaining` (per GitHub rate-limit resource), attributed

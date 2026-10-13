@@ -185,6 +185,7 @@ export const selectRunForVerdict = ({
     : { run: fallback, expectedWorkflow: preferWorkflow, matchedExpectedWorkflow: false }
 }
 
+/** Stable consumer identity and explicit installation permissions for CI operations. */
 export interface GitHubClientOptions {
   readonly consumer: string
   readonly permissions: InstallationScope['permissions']
@@ -563,8 +564,8 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
     }).pipe(Effect.scoped)
 
   /** Make an authenticated POST request for a GitHub mutation with no response payload. */
-  const apiPost = (options: { repo: string; path: string; body?: unknown }) =>
-    apiPostResponse({ ...options, readJson: false }).pipe(Effect.asVoid)
+  const apiPost = (requestOptions: { repo: string; path: string; body?: unknown }) =>
+    apiPostResponse({ ...requestOptions, readJson: false }).pipe(Effect.asVoid)
 
   /** Make an authenticated POST request and decode its JSON response. */
   const apiPostJson = <TValue, TEncoded>({
@@ -1384,6 +1385,7 @@ const defaultGitHubClient = makeGitHubClient({
 
 /** Runtime shape of the GitHub CI client. */
 export type GitHubClientShape = Effect.Success<typeof defaultGitHubClient>
+/** Failures exposed by authenticated GitHub CI operations. */
 export type GitHubClientError = GitHubApiError | GitHubAuthError | LogsUnavailableError
 /** Context service providing authenticated GitHub CI operations. */
 export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShape>()(

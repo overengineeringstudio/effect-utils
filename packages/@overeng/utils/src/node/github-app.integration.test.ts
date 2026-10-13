@@ -62,7 +62,7 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
         const chunks: Buffer[] = []
         for await (const chunk of request) chunks.push(Buffer.from(chunk))
         state.bodies.push(Schema.decodeSync(Json)(Buffer.concat(chunks).toString()))
-        if (state.delayMint) {
+        if (state.delayMint === true) {
           await Effect.runPromiseWith(delay)(Deferred.succeed(started, undefined))
           await Effect.runPromiseWith(delay)(Deferred.await(release))
         }
@@ -92,7 +92,7 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
       } else {
         state.calls++
         state.authorization.push(request.headers.authorization ?? '')
-        if (state.disconnect) {
+        if (state.disconnect === true) {
           request.socket.destroy()
           return
         }
@@ -101,26 +101,26 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
           response.end()
           return
         }
-        if (state.delayResponse) {
+        if (state.delayResponse === true) {
           await Effect.runPromiseWith(delay)(Deferred.succeed(started, undefined))
           await Effect.runPromiseWith(delay)(Deferred.await(release))
         }
-        if (state.dropBody) {
+        if (state.dropBody === true) {
           response.writeHead(200, { 'content-type': state.contentType, 'content-length': '10000' })
           response.write(
-            state.contentType.startsWith('multipart/') ? '--fixture\r\n' : '{"partial":',
+            state.contentType.startsWith('multipart/') === true ? '--fixture\r\n' : '{"partial":',
           )
           response.flushHeaders()
           await Effect.runPromiseWith(delay)(Deferred.await(release))
           response.destroy()
           return
         }
-        response.writeHead(state.unauthorized ? 401 : 200, {
+        response.writeHead(state.unauthorized === true ? 401 : 200, {
           'content-type': 'application/json',
           'x-ratelimit-remaining': '4998',
           'x-ratelimit-resource': 'core',
         })
-        response.end(state.malformed ? '{invalid' : '{}')
+        response.end(state.malformed === true ? '{invalid' : '{}')
       }
     })
     yield* Effect.acquireRelease(
@@ -377,12 +377,16 @@ const expectCredentialFree = (value: unknown, credential: string) => {
   const seen = new Set<object>()
   const walk = (item: unknown): void => {
     if (typeof item === 'string') expect(item).not.toContain(credential)
-    if (item === null || (typeof item !== 'object' && typeof item !== 'function') || seen.has(item))
+    if (
+      item === null ||
+      (typeof item !== 'object' && typeof item !== 'function') ||
+      seen.has(item) === true
+    )
       return
     seen.add(item)
     for (const key of Reflect.ownKeys(item)) {
       const descriptor = Object.getOwnPropertyDescriptor(item, key)
-      if (descriptor && 'value' in descriptor) walk(descriptor.value)
+      if (descriptor !== undefined && 'value' in descriptor) walk(descriptor.value)
     }
   }
   walk(value)

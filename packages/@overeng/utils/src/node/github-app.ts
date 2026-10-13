@@ -1,13 +1,17 @@
 import { createPrivateKey, createSign } from 'node:crypto'
 
-import { Clock, Context, Effect, Layer, Metric, Redacted, Schema, Semaphore, Stream } from 'effect'
+import { Clock, Context, Effect, Layer, Redacted, Schema, Semaphore, Stream } from 'effect'
 import { HttpClient, HttpClientRequest, HttpClientResponse } from 'effect/http'
 import { HttpClientError, DecodeError } from 'effect/http/HttpClientError'
 
+import { OtelAttr, OtelMetric, OtelOperation } from '@overeng/otel-contract'
+
 const PositiveID = Schema.Int.check(Schema.isGreaterThan(0))
+/** GitHub App client identity used as the JWT issuer. */
 export const AppIdentity = Schema.Struct({
   clientID: Schema.NonEmptyString,
 }).annotate({ identifier: 'GitHubApp.Identity' })
+/** App identity and redacted RSA signing key. */
 export const AppConfig = Schema.Struct({
   identity: AppIdentity,
   privateKey: Schema.Redacted(Schema.NonEmptyString),
@@ -16,6 +20,7 @@ export const AppConfig = Schema.Struct({
 const RepositoryName = Schema.NonEmptyString.check(
   Schema.makeFilter((name) => name.trim().length > 0 && !name.includes('/')),
 )
+/** Explicit repository selection or read-only installation-wide access. */
 export const Repositories = Schema.Union([
   Schema.TaggedStruct('Selected', { names: Schema.NonEmptyArray(RepositoryName) }),
   Schema.TaggedStruct('AllInstallation', {}),
@@ -41,6 +46,7 @@ export const InstallationScope = Schema.Struct({
   .annotate({ identifier: 'GitHubApp.InstallationScope' })
 export type InstallationScope = typeof InstallationScope.Type
 
+/** Credential-free configuration, signing, exchange, or authorization failure. */
 export class GitHubAppError extends Schema.TaggedError<GitHubAppError>()('GitHubAppError', {
   operation: Schema.Literals(['config', 'sign', 'exchange', 'authorize']),
   message: Schema.String,
@@ -60,6 +66,7 @@ const encodeHeader = Schema.encodeSync(Schema.fromJsonString(JwtHeader))
 const encodeClaims = Schema.encodeSync(Schema.fromJsonString(JwtClaims))
 const encodeScope = Schema.encodeSync(Schema.fromJsonString(InstallationScope))
 
+/** Consumer identity and transport/token refresh settings. */
 export interface GitHubAppOptions {
   /** Stable process/consumer identity, never a repository, request ID, or credential. */
   readonly consumer: string
@@ -68,20 +75,78 @@ export interface GitHubAppOptions {
   readonly refreshMarginSeconds?: number
 }
 
-const mintCount = Metric.counter('github_app_mints_total', {
-  description: 'Installation token mint attempts',
+// These labels describe configured consumers/installations, never individual requests or tokens.
+const AppLabels = Schema.Struct({
+  clientID: OtelAttr.string({ key: 'github.app.client_id', metadata: { cardinality: 'bounded' } }),
+  installationID: OtelAttr.string({
+    key: 'github.installation.id',
+    metadata: { cardinality: 'bounded' },
+  }),
+  consumer: OtelAttr.string({ key: 'github.consumer', metadata: { cardinality: 'bounded' } }),
 })
-const mintFailures = Metric.counter('github_app_mint_failures_total', {
-  description: 'Failed installation token mint attempts',
+const MintOperation = OtelOperation.define({
+  name: 'github-app.mint',
+  schema: AppLabels,
+  label: ({ consumer, installationID }) => `${consumer} ${installationID}`,
 })
-const tokenExpiry = Metric.gauge('github_app_token_expiry_seconds', {
-  description: 'Earliest cached token expiry (Unix seconds); zero when invalidated',
-  bigint: false,
+const RequestOperation = OtelOperation.define({
+  name: 'github-app.request',
+  schema: AppLabels,
+  label: ({ consumer, installationID }) => `${consumer} ${installationID}`,
 })
-const rateRemaining = Metric.gauge('github_app_rate_limit_remaining', {
-  description: 'Last observed GitHub budget, separated by resource bucket',
-  bigint: false,
+const MakeOperation = OtelOperation.define({
+  name: 'github-app.make',
+  schema: Schema.Struct({
+    clientID: AppLabels.fields.clientID,
+    consumer: AppLabels.fields.consumer,
+  }),
+  label: ({ consumer }) => consumer,
 })
+const InvalidateOperation = OtelOperation.define({
+  name: 'github-app.invalidate',
+  schema: Schema.Struct({
+    clientID: AppLabels.fields.clientID,
+    consumer: AppLabels.fields.consumer,
+    installations: OtelAttr.string({ key: 'github.installation.ids' }),
+  }),
+  label: ({ consumer }) => consumer,
+})
+const mintCount = OtelMetric.effect.counter(
+  OtelMetric.counter({
+    name: 'github_app_mints_total',
+    description: 'Installation token mint attempts',
+    labels: AppLabels,
+  }),
+)
+const mintFailures = OtelMetric.effect.counter(
+  OtelMetric.counter({
+    name: 'github_app_mint_failures_total',
+    description: 'Failed installation token mint attempts',
+    labels: AppLabels,
+  }),
+)
+const tokenExpiry = OtelMetric.effect.gauge(
+  OtelMetric.gauge({
+    name: 'github_app_token_expiry_seconds',
+    description: 'Earliest cached token expiry (Unix seconds); zero when invalidated',
+    labels: AppLabels,
+  }),
+)
+const Resource = OtelAttr.literal(
+  'github.resource',
+  'core',
+  'search',
+  'graphql',
+  'integration_manifest',
+  'code_search',
+)
+const rateRemaining = OtelMetric.effect.gauge(
+  OtelMetric.gauge({
+    name: 'github_app_rate_limit_remaining',
+    description: 'Last observed GitHub budget, separated by resource bucket',
+    labels: Schema.Struct({ ...AppLabels.fields, resource: Resource }),
+  }),
+)
 
 /** Scoped typed HttpClient; deliberately distinct from the unauthenticated transport dependency. */
 export class GitHubAppHttpClient extends Context.Service<
@@ -89,6 +154,7 @@ export class GitHubAppHttpClient extends Context.Service<
   HttpClient.HttpClient.With<GitHubAppError | HttpClientError>
 >()('@overeng/utils/GitHubAppHttpClient') {}
 
+/** Token minting and authenticated clients sharing a scoped token cache. */
 export interface GitHubAppService {
   readonly token: (
     scope: InstallationScope,
@@ -98,6 +164,7 @@ export interface GitHubAppService {
   ) => HttpClient.HttpClient.With<GitHubAppError | HttpClientError>
 }
 
+/** Creates an App service using the provided unauthenticated HttpClient transport. */
 export const makeGitHubApp = Effect.fn('github-app.make')(function* (
   input: typeof AppConfig.Type,
   options: GitHubAppOptions,
@@ -124,11 +191,7 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         }),
     ),
   )
-  yield* Effect.annotateCurrentSpan({
-    'github.app.client_id': config.identity.clientID,
-    'github.consumer': consumer,
-    'span.label': consumer,
-  })
+  yield* MakeOperation.annotate({ clientID: config.identity.clientID, consumer }).pipe(Effect.orDie)
   // Parse once. Never attach the PEM or crypto exception to an error/log/span.
   const key = yield* Effect.try({
     try: () => createPrivateKey(Redacted.value(config.privateKey)),
@@ -159,35 +222,29 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
   >()
   const flights = new Map<string, Effect.Effect<Redacted.Redacted<string>, GitHubAppError>>()
   const attributes = (installationID: number) => ({
-    'github.app.client_id': config.identity.clientID,
-    'github.installation.id': String(installationID),
-    'github.consumer': consumer,
+    clientID: config.identity.clientID,
+    installationID: String(installationID),
+    consumer,
   })
   const observeResponse = Effect.fn('github-app.rate-limit')(function* (
     installationID: number,
     responseHeaders: Readonly<Record<string, string | undefined>>,
   ) {
-    yield* Effect.annotateCurrentSpan({
-      ...attributes(installationID),
-      'span.label': `${consumer} ${installationID}`,
-    })
+    yield* MintOperation.annotate(attributes(installationID)).pipe(Effect.orDie)
     const remaining = responseHeaders['x-ratelimit-remaining']
     const resource = responseHeaders['x-ratelimit-resource']
     // GitHub's resources are a finite vocabulary; never use arbitrary response strings as labels.
     if (
       remaining !== undefined &&
       resource !== undefined &&
-      ['core', 'search', 'graphql', 'integration_manifest', 'code_search'].includes(resource)
+      Schema.is(Resource)(resource) === true
     ) {
       const value = Number(remaining)
-      if (Number.isSafeInteger(value) && value >= 0) {
-        yield* Metric.update(
-          Metric.withAttributes(rateRemaining, {
-            ...attributes(installationID),
-            'github.resource': resource,
-          }),
+      if (Number.isSafeInteger(value) === true && value >= 0) {
+        yield* rateRemaining.trustedSet({
+          labels: { ...attributes(installationID), resource },
           value,
-        )
+        })
       }
     }
   })
@@ -196,10 +253,10 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
       const expiries = [...tokens.values()]
         .filter((entry) => entry.installationID === installationID)
         .map((entry) => entry.expiresAt)
-      return Metric.update(
-        Metric.withAttributes(tokenExpiry, attributes(installationID)),
-        expiries.length === 0 ? 0 : Math.min(...expiries) / 1000,
-      )
+      return tokenExpiry.trustedSet({
+        labels: attributes(installationID),
+        value: expiries.length === 0 ? 0 : Math.min(...expiries) / 1000,
+      })
     })
 
   const token = Effect.fn('github-app.token')(function* (inputScope: InstallationScope) {
@@ -212,10 +269,10 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
       ...scope,
       repositories:
         scope.repositories._tag === 'Selected'
-          ? { _tag: 'Selected' as const, names: [...new Set(scope.repositories.names)].sort() }
+          ? { _tag: 'Selected' as const, names: [...new Set(scope.repositories.names)].toSorted() }
           : scope.repositories,
       permissions: Object.fromEntries(
-        Object.entries(scope.permissions).sort(([a], [b]) => a.localeCompare(b)),
+        Object.entries(scope.permissions).toSorted(([a], [b]) => a.localeCompare(b)),
       ),
     }
     const normalized = yield* Schema.decodeUnknownEffect(InstallationScope)(canonical).pipe(
@@ -224,10 +281,7 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
       ),
     )
     const cacheKey = encodeScope(normalized)
-    yield* Effect.annotateCurrentSpan({
-      ...attributes(scope.installationID),
-      'span.label': `${consumer} ${scope.installationID}`,
-    })
+    yield* MintOperation.annotate(attributes(scope.installationID)).pipe(Effect.orDie)
     const flight = yield* lock.withPermits(1)(
       Effect.gen(function* () {
         // Sample time after acquiring the lock, never before waiting for another fiber.
@@ -238,17 +292,14 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
         const existing = flights.get(cacheKey)
         if (existing !== undefined) return { effect: existing }
         const mint = Effect.gen(function* () {
-          const now = yield* Clock.currentTimeMillis
-          yield* Metric.update(
-            Metric.withAttributes(mintCount, attributes(scope.installationID)),
-            1,
-          )
+          const mintedAt = yield* Clock.currentTimeMillis
+          yield* mintCount.trustedIncrement(attributes(scope.installationID))
           const jwt = yield* Effect.try({
             try: () => {
               const unsigned = `${Buffer.from(encodeHeader({ alg: 'RS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from(
                 encodeClaims({
-                  iat: Math.floor(now / 1000) - 60,
-                  exp: Math.floor(now / 1000) + 540,
+                  iat: Math.floor(mintedAt / 1000) - 60,
+                  exp: Math.floor(mintedAt / 1000) + 540,
                   iss: config.identity.clientID,
                 }),
               ).toString('base64url')}`
@@ -328,15 +379,12 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
           yield* observeExpiry(scope.installationID)
           return value.token
         }).pipe(
-          Effect.tapError(() =>
-            Metric.update(Metric.withAttributes(mintFailures, attributes(scope.installationID)), 1),
-          ),
-          Effect.withSpan('github-app.mint', {
-            attributes: {
-              ...attributes(scope.installationID),
-              'span.label': `${consumer} ${scope.installationID}`,
-            },
-          }),
+          Effect.tapError(() => mintFailures.trustedIncrement(attributes(scope.installationID))),
+          (effect) =>
+            MintOperation.with({
+              attributes: attributes(scope.installationID),
+              effect,
+            }).pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error))),
         )
         // A shared cached effect shares both success and failure among current waiters.
         // Removing only this flight prevents late cleanup from deleting a replacement.
@@ -364,18 +412,17 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
   ) {
     const installations = new Set<number>()
     // Compare token values: a late 401 must not evict a newer token minted by another fiber.
-    for (const [key, entry] of tokens) {
+    for (const [cacheKey, entry] of tokens) {
       if (Redacted.value(entry.token) === Redacted.value(rejected)) {
-        tokens.delete(key)
+        tokens.delete(cacheKey)
         installations.add(entry.installationID)
       }
     }
-    yield* Effect.annotateCurrentSpan({
-      'github.app.client_id': config.identity.clientID,
-      'github.consumer': consumer,
-      'github.installation.ids': [...installations].join(','),
-      'span.label': consumer,
-    })
+    yield* InvalidateOperation.annotate({
+      clientID: config.identity.clientID,
+      consumer,
+      installations: [...installations].join(','),
+    }).pipe(Effect.orDie)
     yield* Effect.forEach(installations, observeExpiry, { discard: true })
   })
 
@@ -469,26 +516,31 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
           })
           Object.defineProperty(safeResponse, 'url', { value: response.url })
           return safeResponse
-        }).pipe(
-          Effect.withSpan('github-app.request', {
-            attributes: {
-              ...attributes(scope.installationID),
-              'span.label': `${consumer} ${scope.installationID}`,
-            },
-          }),
+        }).pipe((effect) =>
+          RequestOperation.with({
+            attributes: attributes(scope.installationID),
+            effect,
+          }).pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error))),
         ),
       Effect.succeed,
     )
   return { token, client } as const
 })
 
+/** Context service for shared GitHub App authentication. */
 export class GitHubApp extends Context.Service<GitHubApp, GitHubAppService>()(
   '@overeng/utils/GitHubApp',
 ) {
-  static layer = (config: typeof AppConfig.Type, options: GitHubAppOptions) =>
-    Layer.effect(this, makeGitHubApp(config, options))
+  static layer = ({
+    config,
+    options,
+  }: {
+    config: typeof AppConfig.Type
+    options: GitHubAppOptions
+  }) => Layer.effect(this, makeGitHubApp(config, options))
 }
 
+/** Provides a dedicated authenticated HttpClient for an explicit installation scope. */
 export const installationHttpClientLayer = (scope: InstallationScope) =>
   Layer.effect(
     GitHubAppHttpClient,
