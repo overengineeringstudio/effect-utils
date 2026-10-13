@@ -187,7 +187,7 @@ const bundleWorkspaceSources = async ({
   )
   const workspaceSource = await source(
     'workspace/runtime/api.ts',
-    "export { value } from '@scope/leaf'\n",
+    "import { value as leafValue } from '@scope/leaf'\nexport const value = `workspace:${leafValue}`\n",
   )
   const helperSource = await source('workspace/runtime/helper.ts', 'export const helper = true\n')
   const packageManifest = await source(
@@ -328,12 +328,17 @@ describe('source-only workspace export bundling', () => {
       const right = await bundleWorkspaceSources({ root: second })
       expect(left.exitCode, left.stderr).toBe(0)
       expect(right.exitCode, right.stderr).toBe(0)
+      expect(left.bytes).toContain('workspace:')
       expect(left.bytes).toContain('source:')
       expect(left.bytes).toContain(
         '.closure/cell/workspace/package_tree/package_tree/runtime/api.ts',
       )
       expect(left.bytes).toContain('.closure/cell/leaf/package_tree/package_tree/lib/value.ts')
       expect(right.bytes).toBe(left.bytes)
+      // Live code at both workspace boundaries proves recursive source
+      // resolution; a bare re-export can disappear from Bun's module comments.
+      const moduleUrl = `data:text/javascript;base64,${Buffer.from(left.bytes ?? '').toString('base64')}`
+      expect((await import(moduleUrl)).result).toBe('workspace:source:external')
       expect(left.bytes).not.toContain(first)
       expect(right.bytes).not.toContain(second)
     } finally {

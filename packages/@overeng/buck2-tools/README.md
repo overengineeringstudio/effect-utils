@@ -348,9 +348,11 @@ process to reject source mutation. TypeScript emit and typecheck retain the same
 real fingerprint requirement. There is no ambient-tool lookup or no-op fallback.
 
 The generated native, compiled, and cache product inventories carry
-`buildCapabilities`, derived by `genie/buck2/product-capabilities.ts` from their
-rule kinds. Nix projects only those producer realizations and their transitive
-store closures. Tools absent from a scoped projection are absent Buck targets;
+`buildCapabilities` and `linuxBuildCapabilities`, derived by
+`genie/buck2/product-capabilities.ts` from their rule kinds. The cache publisher
+validates both lists as sorted, unique capability IDs before source access or
+credentials; Linux-only capabilities must not duplicate host-neutral ones.
+Nix projects only those producer realizations and their transitive store closures. Tools absent from a scoped projection are absent Buck targets;
 requesting one fails analysis rather than falling back to the development
 shell. `nix/buck2-products/capability-closure.test.sh` checks a real native
 product with its declared packager, then proves omission rejects that target.

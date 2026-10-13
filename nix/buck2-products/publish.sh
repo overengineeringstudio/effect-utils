@@ -42,11 +42,18 @@ done
 command -v jq >/dev/null || fail "jq is required"
 command -v realpath >/dev/null || fail "realpath is required"
 jq -e '
+  def capability_ids:
+    type == "array" and
+    all(.[]; type == "string" and test("^[a-z0-9]+(-[a-z0-9]+)*$")) and
+    . == (unique | sort);
   (keys | sort) == ["products", "schema", "schemaVersion"] and
   .schema == "effect-utils/buck-cache-targets/v1" and .schemaVersion == 1 and
   (.products | type == "array" and length > 0) and
   (all(.products[];
-    (keys | sort) == ["kind","name","outputName","packagePath","packageTreePath","target","version"] and
+    (keys | sort) == ["buildCapabilities","kind","linuxBuildCapabilities","name","outputName","packagePath","packageTreePath","target","version"] and
+    (.buildCapabilities | capability_ids and length > 0) and
+    (.linuxBuildCapabilities | capability_ids) and
+    ((.buildCapabilities + .linuxBuildCapabilities) | length == (unique | length)) and
     (.kind == "javascript" or .kind == "package") and
     (.name | type == "string" and length > 0) and
     (.outputName | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._+-]*$")) and

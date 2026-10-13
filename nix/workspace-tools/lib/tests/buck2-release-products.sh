@@ -21,6 +21,27 @@ jq -e '
 ' "$targets" >/dev/null
 expected_names="$(jq -c '[.products[].name]' "$targets")"
 
+# Product dependency declarations are part of the exact publication inventory
+# contract. Reject malformed, missing and overlapping IDs before source access,
+# credentials or any build; the repository inventory is the positive control.
+mkdir -p "$tmp/invalid-targets/nix/buck2-products"
+cp "$repo_root/nix/buck2-products/manifest.json" "$tmp/invalid-targets/nix/buck2-products/manifest.json"
+for mutation in \
+  'del(.products[0].buildCapabilities)' \
+  '.products[0].buildCapabilities = []' \
+  '.products[0].buildCapabilities = ["bun", "bun"]' \
+  '.products[0].buildCapabilities = ["Not-a-capability"]' \
+  '.products[0].linuxBuildCapabilities = "bubblewrap"' \
+  '.products[0].linuxBuildCapabilities = ["bun"]' \
+  '.products[0].unexpected = true'; do
+  jq "$mutation" "$targets" >"$tmp/invalid-targets/nix/buck2-products/cache-targets.json"
+  if BUCK2_CACHE_PRODUCTS_REPO="$tmp/invalid-targets" bash "$publisher" --dry-run >"$tmp/invalid-targets.log" 2>&1; then
+    echo "buck2-cache-products-test: accepted invalid capability inventory: $mutation" >&2
+    exit 1
+  fi
+  grep -F 'target inventory violates effect-utils/buck-cache-targets/v1' "$tmp/invalid-targets.log" >/dev/null
+done
+
 plan="$(bash "$publisher" --dry-run)"
 jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck-cache-publication-plan/v1" and
@@ -123,7 +144,9 @@ collision_store="$(nix store add-path "$tmp/collision-output")"
 cat >"$tmp/collision-repo/nix/buck2-products/cache-targets.json" <<'EOF'
 {
   "products": [{
+    "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
     "kind": "javascript",
+    "linuxBuildCapabilities": ["bubblewrap"],
     "name": "fixture",
     "outputName": "fixture.js",
     "packagePath": "packages/@overeng/fixture",
@@ -334,7 +357,9 @@ cat >"$tmp/products/cache-targets.json" <<'EOF'
 {
   "products": [
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "fixture",
       "outputName": "fixture.js",
       "packagePath": "packages/@overeng/fixture",
