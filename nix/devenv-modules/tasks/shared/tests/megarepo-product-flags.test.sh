@@ -21,7 +21,7 @@ MR_PRODUCT_CONTRACT_SCRIPTS="$(nix eval --impure --json --expr '
     }) { inherit pkgs; lib = pkgs.lib; };
   in pkgs.lib.mapAttrs (_: task: {
     inherit (task) exec status;
-  }) module.tasks
+  }) (pkgs.lib.filterAttrs (name: _: pkgs.lib.hasPrefix "mr:" name) module.tasks)
 ')"
 export MR_PRODUCT_CONTRACT_SCRIPTS
 
