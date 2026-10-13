@@ -358,8 +358,15 @@ export const AgentSchema = AgentSchemaFields.pipe(
 )
 
 const isAgentShape = Schema.is(AgentSchema)
-const isAgentDeclaration = (input: unknown): input is typeof AgentSchema.Type =>
-  isAgentShape(input) === true && 'kind' in input === false
+const agentDeclarationKeys = Object.keys(AgentSchemaFields.fields)
+const isAgentDeclaration = (input: unknown): input is typeof AgentSchema.Type => {
+  if (isAgentShape(input) === false) return false
+  if ('kind' in input === false) return true
+  for (const key of agentDeclarationKeys) {
+    if (key !== 'id' && key in input) return true
+  }
+  return false
+}
 
 const GateName = Text.pipe(Schema.refine((s): s is string => utf8ByteLength(s) <= 160))
 const validName = ({
