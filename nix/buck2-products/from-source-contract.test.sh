@@ -3,7 +3,13 @@ set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
-bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
+# Each probe records a new sandbox, not a cached or --rebuild-compared snapshot.
+if [[ "$(uname -s)" == Linux ]]; then
+  IFS= read -r BUCK2_OUTER_SANDBOX_PROBE_INVOCATION </proc/sys/kernel/random/uuid
+  export BUCK2_OUTER_SANDBOX_PROBE_INVOCATION
+else
+  bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
+fi
 contract="$(nix eval --impure --json --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
@@ -12,6 +18,11 @@ contract="$(nix eval --impure --json --expr '
     packages = flake.packages.${system};
     product = packages.buck-product-megarepo-from-source;
     typescriptProduct = packages.buck-product-overeng-content-address-from-source;
+    isLinux = flake.inputs.nixpkgs.lib.hasSuffix "-linux" system;
+    outerSandboxProbe = import (repo + "/nix/buck2-products/outer-sandbox-probe.nix") {
+      pkgs = import flake.inputs.nixpkgs { inherit system; };
+      invocation = builtins.getEnv "BUCK2_OUTER_SANDBOX_PROBE_INVOCATION";
+    };
   in {
     capabilities = toString product.capabilities;
     registeredCapabilities = toString packages.buck2-capabilities;
@@ -23,9 +34,27 @@ contract="$(nix eval --impure --json --expr '
     typescriptBuildPhase = typescriptProduct.buildPhase;
     typescriptIsFixedOutput = typescriptProduct ? outputHash;
     typescriptDisablesSandbox = typescriptProduct.__noChroot or false;
-    isLinux = flake.inputs.nixpkgs.lib.hasSuffix "-linux" system;
+    inherit isLinux;
+    outerSandboxProbe = if isLinux then toString outerSandboxProbe.drvPath else null;
   }
 ')"
+is_linux="$(jq -r .isLinux <<<"$contract")"
+if [[ "$is_linux" == true ]]; then
+  probe_drv="$(jq -r .outerSandboxProbe <<<"$contract")"
+  printf 'BUCK2_OUTER_SANDBOX_PROBE_BUILD %s invocation=%s\n' \
+    "$probe_drv" "$BUCK2_OUTER_SANDBOX_PROBE_INVOCATION"
+  # Strict, non-FOD, no-network Nix execution precedes any product/runtime checks.
+  # The UUID changes the derivation identity on every run, forcing fresh evidence
+  # without --rebuild's comparison of inherently different mount IDs/build paths.
+  probe_output="$(nix build "$probe_drv^*" --no-link --print-out-paths -L \
+    --option sandbox true --option sandbox-fallback false)"
+  # Keep a plain, searchable copy in the GitHub job log even if build logs are
+  # hidden by substitution or Nix's progress renderer.
+  printf 'BUCK2_OUTER_SANDBOX_PROBE_RETAINED_EVIDENCE_BEGIN %s\n' "$probe_output"
+  cat "$probe_output/evidence.json"
+  printf 'BUCK2_OUTER_SANDBOX_PROBE_RETAINED_EVIDENCE_END\n'
+  bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
+fi
 capabilities="$(jq -r .capabilities <<<"$contract")"
 registered_capabilities="$(jq -r .registeredCapabilities <<<"$contract")"
 pnpm_archives="$(jq -r .pnpmArchives <<<"$contract")"
@@ -53,7 +82,6 @@ source="$(jq -r .source <<<"$contract")"
 # Runtime verification, not the declaration, permits omitting nested Bubblewrap.
 # This outer boundary still does not admit actions to Buck's remote cache.
 typescript_build_phase="$(jq -r .typescriptBuildPhase <<<"$contract")"
-is_linux="$(jq -r .isLinux <<<"$contract")"
 [[ "$(jq -r .typescriptIsFixedOutput <<<"$contract")" == false ]]
 [[ "$(jq -r .typescriptDisablesSandbox <<<"$contract")" == false ]]
 [[ "$typescript_build_phase" == *'export HOME="$TMPDIR/home"'* ]]
@@ -77,7 +105,7 @@ done <<<"$typescript_build_phase"
 # these flags do not bypass verification. Preserve Darwin's sandbox policy.
 sandbox_args=()
 if [[ "$is_linux" == true ]]; then
-  sandbox_args+=(--option sandbox true)
+  sandbox_args+=(--option sandbox true --option sandbox-fallback false)
 fi
 nix build "$repo_root#buck-product-megarepo-from-source" --no-link "${sandbox_args[@]}"
 # Create the output, then rebuild even when cached so substitution cannot hide
