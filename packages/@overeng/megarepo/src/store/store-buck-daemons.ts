@@ -290,7 +290,7 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
     const statusRun = yield* runBuck2({ binary, daemon, subcommand: 'status' })
     const status =
       Option.isSome(statusRun) === true && statusRun.value.exitCode === 0
-        ? yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BuckDaemonStatus))(
+        ? yield* Schema.decodeEffect(Schema.fromJsonString(BuckDaemonStatus))(
             statusRun.value.stdout,
           ).pipe(Effect.option)
         : Option.none()

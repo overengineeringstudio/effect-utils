@@ -285,7 +285,7 @@ const readBuckStatus = (root: string) =>
         Command.make(PINNED_BUCK2, ['--isolation-dir', BUCK_ISOLATION, 'status'], { cwd: root }),
       ),
     )
-    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BuckDaemonStatus))(stdout)
+    return yield* Schema.decodeEffect(Schema.fromJsonString(BuckDaemonStatus))(stdout)
   })
 
 describe.skipIf(buckSkipReason !== undefined)('mr store gc — real pinned Buck2 daemons', () => {
