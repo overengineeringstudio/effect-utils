@@ -1,0 +1,146 @@
+{
+  "cwd": "/build",
+  "environment": {
+    "HOME": "/homeless-shelter",
+    "NIX_BUILD_TOP": "/build",
+    "TMPDIR": "/build"
+  },
+  "invocation": "remote-49703ca9-fbc8-4d45-817c-f93866cb282c",
+  "mountinfo": "1938 1870 8:2 /nix/store/x4vhxgydi2rrn51b4rh5f6j5lg88mb1a-buck2-outer-sandbox-probe.drv.chroot/root / rw,nosuid,nodev,relatime - ext4 /dev/sda2 rw\n1939 1938 8:2 /nix/store/x4vhxgydi2rrn51b4rh5f6j5lg88mb1a-buck2-outer-sandbox-probe.drv.chroot/root/nix/store /nix/store rw,nosuid,nodev,relatime shared:1564 - ext4 /dev/sda2 rw\n1940 1939 8:2 /nix/store/09ydmr9cnb1wil3qlsbw8wiyajhiirai-patch-2.8 /nix/store/09ydmr9cnb1wil3qlsbw8wiyajhiirai-patch-2.8 rw,nosuid,nodev,relatime shared:1565 - ext4 /dev/sda2 rw\n1941 1939 8:2 /nix/store/0cjr7klvikqcqv1w08gqpw513pnis6nr-isl-0.20 /nix/store/0cjr7klvikqcqv1w08gqpw513pnis6nr-isl-0.20 rw,nosuid,nodev,relatime shared:1566 - ext4 /dev/sda2 rw\n1942 1939 8:2 /nix/store/0knb7rblp09aaqlnv62cllh203kj6qyr-mpfr-4.2.2 /nix/store/0knb7rblp09aaqlnv62cllh203kj6qyr-mpfr-4.2.2 rw,nosuid,nodev,relatime shared:1567 - ext4 /dev/sda2 rw\n1943 1939 8:2 /nix/store/0s40b0an0cz4vypbji92cb7qbr65icl4-libidn2-2.3.8 /nix/store/0s40b0an0cz4vypbji92cb7qbr65icl4-libidn2-2.3.8 rw,nosuid,nodev,relatime shared:1568 - ext4 /dev/sda2 rw\n1944 1939 8:2 /nix/store/0y5xmdb7qfvimjwbq7ibg1xdgkgjwqng-no-broken-symlinks.sh /nix/store/0y5xmdb7qfvimjwbq7ibg1xdgkgjwqng-no-broken-symlinks.sh rw,nosuid,nodev,relatime shared:1569 - ext4 /dev/sda2 rw\n1945 1939 8:2 /nix/store/1nwgsy4c5862g44s9lkf50643p3nbwm5-gnused-4.10 /nix/store/1nwgsy4c5862g44s9lkf50643p3nbwm5-gnused-4.10 rw,nosuid,nodev,relatime shared:1570 - ext4 /dev/sda2 rw\n1946 1939 8:2 /nix/store/1z13nb8zh15n25d3ym19079kd3qb0yyl-sqlite-3.53.3 /nix/store/1z13nb8zh15n25d3ym19079kd3qb0yyl-sqlite-3.53.3 rw,nosuid,nodev,relatime shared:1571 - ext4 /dev/sda2 rw\n1947 1939 8:2 /nix/store/23y96z8njd6sbihwrnqibd4bkfgpmnf5-stdenv-linux /nix/store/23y96z8njd6sbihwrnqibd4bkfgpmnf5-stdenv-linux rw,nosuid,nodev,relatime shared:1572 - ext4 /dev/sda2 rw\n1948 1939 8:2 /nix/store/2dzq2m49jxnqs7qki5c0m0zfwyyj076i-binutils-2.46-lib /nix/store/2dzq2m49jxnqs7qki5c0m0zfwyyj076i-binutils-2.46-lib rw,nosuid,nodev,relatime shared:1573 - ext4 /dev/sda2 rw\n1949 1939 8:2 /nix/store/2idxnbd69vsh9dfg0zqx0q6pn4x5nsrn-gmp-with-cxx-6.3.0 /nix/store/2idxnbd69vsh9dfg0zqx0q6pn4x5nsrn-gmp-with-cxx-6.3.0 rw,nosuid,nodev,relatime shared:1574 - ext4 /dev/sda2 rw\n1950 1939 8:2 /nix/store/2yc5bc6r8jp84mjcjpzhp5rk65lwabqp-gmp-6.3.0 /nix/store/2yc5bc6r8jp84mjcjpzhp5rk65lwabqp-gmp-6.3.0 rw,nosuid,nodev,relatime shared:1575 - ext4 /dev/sda2 rw\n1951 1939 8:2 /nix/store/36isqyq3hq26n3q37dazzb60g3jqpi07-bzip2-1.0.8 /nix/store/36isqyq3hq26n3q37dazzb60g3jqpi07-bzip2-1.0.8 rw,nosuid,nodev,relatime shared:1576 - ext4 /dev/sda2 rw\n1952 1939 8:2 /nix/store/3b3k72bbr01bgff7bdkiz6r05gmlx5s9-gnugrep-3.12 /nix/store/3b3k72bbr01bgff7bdkiz6r05gmlx5s9-gnugrep-3.12 rw,nosuid,nodev,relatime shared:1577 - ext4 /dev/sda2 rw\n1953 1939 8:2 /nix/store/3fl7bdkdxk2k4nssy1d1161isbzn6bsr-python3-3.14.7 /nix/store/3fl7bdkdxk2k4nssy1d1161isbzn6bsr-python3-3.14.7 rw,nosuid,nodev,relatime shared:1578 - ext4 /dev/sda2 rw\n1954 1939 8:2 /nix/store/444w0vhw2s72zp3lzdzygdhakb0wf2ap-xz-5.8.3 /nix/store/444w0vhw2s72zp3lzdzygdhakb0wf2ap-xz-5.8.3 rw,nosuid,nodev,relatime shared:1579 - ext4 /dev/sda2 rw\n1955 1939 8:2 /nix/store/598c0vsqmkb0ry7agc9bv2xwn2vazzwk-busybox-1.37.0 /nix/store/598c0vsqmkb0ry7agc9bv2xwn2vazzwk-busybox-1.37.0 rw,nosuid,nodev,relatime shared:1580 - ext4 /dev/sda2 rw\n1956 1939 8:2 /nix/store/5yzw0vhkyszf2d179m0qfkgxmp5wjjx4-move-docs.sh /nix/store/5yzw0vhkyszf2d179m0qfkgxmp5wjjx4-move-docs.sh rw,nosuid,nodev,relatime shared:1581 - ext4 /dev/sda2 rw\n1957 1939 8:2 /nix/store/6rgkfqr5mcjr39irv7wlbhfih2r5s2nl-glibc-2.42-84-dev /nix/store/6rgkfqr5mcjr39irv7wlbhfih2r5s2nl-glibc-2.42-84-dev rw,nosuid,nodev,relatime shared:1582 - ext4 /dev/sda2 rw\n1958 1939 8:2 /nix/store/85clx3b0xkdf58jn161iy80y5223ilbi-compress-man-pages.sh /nix/store/85clx3b0xkdf58jn161iy80y5223ilbi-compress-man-pages.sh rw,nosuid,nodev,relatime shared:1583 - ext4 /dev/sda2 rw\n1959 1939 8:2 /nix/store/88indlfybaxi39ln8r02a35p4xj5m85d-binutils-wrapper-2.46 /nix/store/88indlfybaxi39ln8r02a35p4xj5m85d-binutils-wrapper-2.46 rw,nosuid,nodev,relatime shared:1584 - ext4 /dev/sda2 rw\n1960 1939 8:2 /nix/store/89igyzp72y4ky0qyj4x5r52z84w203ki-strip.sh /nix/store/89igyzp72y4ky0qyj4x5r52z84w203ki-strip.sh rw,nosuid,nodev,relatime shared:1585 - ext4 /dev/sda2 rw\n1961 1939 8:2 /nix/store/8m1ckjz4k9v5ly0dkbyqpaw02kaxrp33-zlib-1.3.2 /nix/store/8m1ckjz4k9v5ly0dkbyqpaw02kaxrp33-zlib-1.3.2 rw,nosuid,nodev,relatime shared:1586 - ext4 /dev/sda2 rw\n1962 1939 8:2 /nix/store/96dn85brqck88r0wwipymxddsdbdkk3y-ed-1.22.6 /nix/store/96dn85brqck88r0wwipymxddsdbdkk3y-ed-1.22.6 rw,nosuid,nodev,relatime shared:1587 - ext4 /dev/sda2 rw\n1963 1939 8:2 /nix/store/ahg79xbgc81hkhj3xl8524i8pjp3sxkx-gcc-15.3.0-libgcc /nix/store/ahg79xbgc81hkhj3xl8524i8pjp3sxkx-gcc-15.3.0-libgcc rw,nosuid,nodev,relatime shared:1588 - ext4 /dev/sda2 rw\n1964 1939 8:2 /nix/store/akxy5gsmirdjr7zyvzwwm1v009k42rhp-patchelf-0.15.2 /nix/store/akxy5gsmirdjr7zyvzwwm1v009k42rhp-patchelf-0.15.2 rw,nosuid,nodev,relatime shared:1589 - ext4 /dev/sda2 rw\n1965 1939 8:2 /nix/store/cc9ybj8h0b8aj85j6m8lh4nj24l1w4dq-gawk-5.4.1 /nix/store/cc9ybj8h0b8aj85j6m8lh4nj24l1w4dq-gawk-5.4.1 rw,nosuid,nodev,relatime shared:1590 - ext4 /dev/sda2 rw\n1966 1939 8:2 /nix/store/cickvswrvann041nqxb0rxilc46svw1n-prune-libtool-files.sh /nix/store/cickvswrvann041nqxb0rxilc46svw1n-prune-libtool-files.sh rw,nosuid,nodev,relatime shared:1591 - ext4 /dev/sda2 rw\n1967 1939 8:2 /nix/store/cmzya9irvxzlkh7lfy6i82gbp0saxqj3-multiple-outputs.sh /nix/store/cmzya9irvxzlkh7lfy6i82gbp0saxqj3-multiple-outputs.sh rw,nosuid,nodev,relatime shared:1592 - ext4 /dev/sda2 rw\n1968 1939 8:2 /nix/store/cq7xxligr7bnbbp22w9ix5119kb0kn7n-diffutils-3.12 /nix/store/cq7xxligr7bnbbp22w9ix5119kb0kn7n-diffutils-3.12 rw,nosuid,nodev,relatime shared:1593 - ext4 /dev/sda2 rw\n1977 1939 8:2 /nix/store/cv1d7p48379km6a85h4zp6kr86brh32q-audit-tmpdir.sh /nix/store/cv1d7p48379km6a85h4zp6kr86brh32q-audit-tmpdir.sh rw,nosuid,nodev,relatime shared:1594 - ext4 /dev/sda2 rw\n1978 1939 8:2 /nix/store/d0f6wmjqzaj51vwf03qlaa2lmjcvvf20-gzip-1.14 /nix/store/d0f6wmjqzaj51vwf03qlaa2lmjcvvf20-gzip-1.14 rw,nosuid,nodev,relatime shared:1595 - ext4 /dev/sda2 rw\n1979 1939 8:2 /nix/store/di4ry70rgrq1h0h3vjapn8wc464g5bgq-mpdecimal-4.0.1 /nix/store/di4ry70rgrq1h0h3vjapn8wc464g5bgq-mpdecimal-4.0.1 rw,nosuid,nodev,relatime shared:1596 - ext4 /dev/sda2 rw\n1980 1939 8:2 /nix/store/dpz6cy60syqw1jnrxzq5cl8zys46bm0q-gdbm-1.26-lib /nix/store/dpz6cy60syqw1jnrxzq5cl8zys46bm0q-gdbm-1.26-lib rw,nosuid,nodev,relatime shared:1597 - ext4 /dev/sda2 rw\n1981 1939 8:2 /nix/store/fkj1d0n3il4r85d52446sc5q0n3a5393-gnutar-1.35 /nix/store/fkj1d0n3il4r85d52446sc5q0n3a5393-gnutar-1.35 rw,nosuid,nodev,relatime shared:1598 - ext4 /dev/sda2 rw\n1982 1939 8:2 /nix/store/fyaryjvghbkpfnsyw97hb3lyb37s1pd6-move-lib64.sh /nix/store/fyaryjvghbkpfnsyw97hb3lyb37s1pd6-move-lib64.sh rw,nosuid,nodev,relatime shared:1599 - ext4 /dev/sda2 rw\n1983 1939 8:2 /nix/store/fz3swsp25dqnx89i17b73ipjp668nmlk-attr-2.6.0 /nix/store/fz3swsp25dqnx89i17b73ipjp668nmlk-attr-2.6.0 rw,nosuid,nodev,relatime shared:1600 - ext4 /dev/sda2 rw\n1984 1939 8:2 /nix/store/gcpbflb4hvi7fxrgcr102pkz4qlifnsl-expat-2.8.4 /nix/store/gcpbflb4hvi7fxrgcr102pkz4qlifnsl-expat-2.8.4 rw,nosuid,nodev,relatime shared:1601 - ext4 /dev/sda2 rw\n1985 1939 8:2 /nix/store/h0hd048jzxs7fx9a6g75jwrrhbg50bp8-libunistring-1.4.2 /nix/store/h0hd048jzxs7fx9a6g75jwrrhbg50bp8-libunistring-1.4.2 rw,nosuid,nodev,relatime shared:1602 - ext4 /dev/sda2 rw\n1986 1939 8:2 /nix/store/h1gj99bqwwhin6ykpm6aipszmx9qjmzz-readline-8.3p3 /nix/store/h1gj99bqwwhin6ykpm6aipszmx9qjmzz-readline-8.3p3 rw,nosuid,nodev,relatime shared:1603 - ext4 /dev/sda2 rw\n1987 1939 8:2 /nix/store/havg05vfa2g9ksbcsnk0hx9z1mlgfbhi-binutils-2.46 /nix/store/havg05vfa2g9ksbcsnk0hx9z1mlgfbhi-binutils-2.46 rw,nosuid,nodev,relatime shared:1604 - ext4 /dev/sda2 rw\n1988 1939 8:2 /nix/store/hrvsv5knsgy3kjqykgh75d0yfxm92j8g-xz-5.8.3-bin /nix/store/hrvsv5knsgy3kjqykgh75d0yfxm92j8g-xz-5.8.3-bin rw,nosuid,nodev,relatime shared:1605 - ext4 /dev/sda2 rw\n1989 1939 8:2 /nix/store/i8an849ir6g3f4n2wrsm88s2qgrzjayq-tzdata-2026c /nix/store/i8an849ir6g3f4n2wrsm88s2qgrzjayq-tzdata-2026c rw,nosuid,nodev,relatime shared:1606 - ext4 /dev/sda2 rw\n1990 1939 8:2 /nix/store/idnyqaaix26szkvhs1mjgi7990jajz9a-bash-5.3p15 /nix/store/idnyqaaix26szkvhs1mjgi7990jajz9a-bash-5.3p15 rw,nosuid,nodev,relatime shared:1607 - ext4 /dev/sda2 rw\n1991 1939 8:2 /nix/store/jmg3sklk0yw7cnbplczk7kidhn14dsia-gnu-config-2024-01-01 /nix/store/jmg3sklk0yw7cnbplczk7kidhn14dsia-gnu-config-2024-01-01 rw,nosuid,nodev,relatime shared:1608 - ext4 /dev/sda2 rw\n1992 1939 8:2 /nix/store/ka9y2y39cb6kj3sgji4sxr79lj20ydw7-update-autotools-gnu-config-scripts-hook /nix/store/ka9y2y39cb6kj3sgji4sxr79lj20ydw7-update-autotools-gnu-config-scripts-hook rw,nosuid,nodev,relatime shared:1609 - ext4 /dev/sda2 rw\n1993 1939 8:2 /nix/store/kd4xwxjpjxi71jkm6ka0np72if9rm3y0-move-sbin.sh /nix/store/kd4xwxjpjxi71jkm6ka0np72if9rm3y0-move-sbin.sh rw,nosuid,nodev,relatime shared:1610 - ext4 /dev/sda2 rw\n1994 1939 8:2 /nix/store/kwz7s3fi4d8qi6ypsw175k0wks0ff1wy-util-linux-minimal-2.42.3-lib /nix/store/kwz7s3fi4d8qi6ypsw175k0wks0ff1wy-util-linux-minimal-2.42.3-lib rw,nosuid,nodev,relatime shared:1611 - ext4 /dev/sda2 rw\n1995 1939 8:2 /nix/store/l622p70vy8k5sh7y5wizi5f2mic6ynpg-source-stdenv.sh /nix/store/l622p70vy8k5sh7y5wizi5f2mic6ynpg-source-stdenv.sh rw,nosuid,nodev,relatime shared:1612 - ext4 /dev/sda2 rw\n1996 1939 8:2 /nix/store/l69ryv2cf5jz9jmqd00z6qqm60xf5rhm-file-5.48 /nix/store/l69ryv2cf5jz9jmqd00z6qqm60xf5rhm-file-5.48 rw,nosuid,nodev,relatime shared:1613 - ext4 /dev/sda2 rw\n1997 1939 8:2 /nix/store/m54cs0m994hc3n9lax7sg98sgy729qsa-glibc-2.42-84 /nix/store/m54cs0m994hc3n9lax7sg98sgy729qsa-glibc-2.42-84 rw,nosuid,nodev,relatime shared:1614 - ext4 /dev/sda2 rw\n1998 1939 8:2 /nix/store/mfbl9c76sq0s6l23pcc9skxzqj24kx8s-expand-response-params /nix/store/mfbl9c76sq0s6l23pcc9skxzqj24kx8s-expand-response-params rw,nosuid,nodev,relatime shared:1615 - ext4 /dev/sda2 rw\n1999 1939 8:2 /nix/store/mhx6dmg6whr7c85krk9rjwjsxrp9iggs-gcc-15.3.0 /nix/store/mhx6dmg6whr7c85krk9rjwjsxrp9iggs-gcc-15.3.0 rw,nosuid,nodev,relatime shared:1616 - ext4 /dev/sda2 rw\n2000 1939 8:2 /nix/store/mmi5xn7d09niakcwn9ni5389p04rk944-acl-2.4.0 /nix/store/mmi5xn7d09niakcwn9ni5389p04rk944-acl-2.4.0 rw,nosuid,nodev,relatime shared:1617 - ext4 /dev/sda2 rw\n2001 1939 8:2 /nix/store/n31cgnpx6p79f3pbw56n85ckky2j3f0x-libffi-3.8.0 /nix/store/n31cgnpx6p79f3pbw56n85ckky2j3f0x-libffi-3.8.0 rw,nosuid,nodev,relatime shared:1618 - ext4 /dev/sda2 rw\n2002 1939 8:2 /nix/store/n65q2br81z7a9g3hcvskd2pvr8s6a7ms-gcc-15.3.0-lib /nix/store/n65q2br81z7a9g3hcvskd2pvr8s6a7ms-gcc-15.3.0-lib rw,nosuid,nodev,relatime shared:1619 - ext4 /dev/sda2 rw\n2003 1939 8:2 /nix/store/n7aaryickpnkwwmmkg7xgnlihmmsh55w-mailcap-2.1.54 /nix/store/n7aaryickpnkwwmmkg7xgnlihmmsh55w-mailcap-2.1.54 rw,nosuid,nodev,relatime shared:1620 - ext4 /dev/sda2 rw\n2004 1939 8:2 /nix/store/p3l1a5y7nllfyrjn2krlwgcc3z0cd3fq-make-symlinks-relative.sh /nix/store/p3l1a5y7nllfyrjn2krlwgcc3z0cd3fq-make-symlinks-relative.sh rw,nosuid,nodev,relatime shared:1626 - ext4 /dev/sda2 rw\n2005 1939 8:2 /nix/store/p7xdvcvl4aw7m229qzlq601aq0w0nb9n-coreutils-9.11 /nix/store/p7xdvcvl4aw7m229qzlq601aq0w0nb9n-coreutils-9.11 rw,nosuid,nodev,relatime shared:1673 - ext4 /dev/sda2 rw\n2006 1939 8:2 /nix/store/pag6l61paj1dc9sv15l7bm5c17xn5kyk-move-systemd-user-units.sh /nix/store/pag6l61paj1dc9sv15l7bm5c17xn5kyk-move-systemd-user-units.sh rw,nosuid,nodev,relatime shared:1674 - ext4 /dev/sda2 rw\n2007 1939 8:2 /nix/store/r68vac903zffq3aiihz3hzjqag7dl63f-glibc-2.42-84-bin /nix/store/r68vac903zffq3aiihz3hzjqag7dl63f-glibc-2.42-84-bin rw,nosuid,nodev,relatime shared:1675 - ext4 /dev/sda2 rw\n2008 1939 8:2 /nix/store/shkw4qm9qcw5sc5n1k5jznc83ny02r39-default-builder.sh /nix/store/shkw4qm9qcw5sc5n1k5jznc83ny02r39-default-builder.sh rw,nosuid,nodev,relatime shared:1676 - ext4 /dev/sda2 rw\n2009 1939 8:2 /nix/store/v89yca35zsb13k51ibz0mcz2rrzjwwrj-openssl-3.6.4 /nix/store/v89yca35zsb13k51ibz0mcz2rrzjwwrj-openssl-3.6.4 rw,nosuid,nodev,relatime shared:1677 - ext4 /dev/sda2 rw\n2010 1939 8:2 /nix/store/vazsdlk6qrrnkdhfis861dn4w4j5g5x5-linux-headers-7.2 /nix/store/vazsdlk6qrrnkdhfis861dn4w4j5g5x5-linux-headers-7.2 rw,nosuid,nodev,relatime shared:1678 - ext4 /dev/sda2 rw\n2011 1939 8:2 /nix/store/waax852balprvsvdziyaf1h7r3ldvakg-xgcc-15.3.0-libgcc /nix/store/waax852balprvsvdziyaf1h7r3ldvakg-xgcc-15.3.0-libgcc rw,nosuid,nodev,relatime shared:1679 - ext4 /dev/sda2 rw\n2012 1939 8:2 /nix/store/x8c40nfigps493a07sdr2pm5s9j1cdc0-patch-shebangs.sh /nix/store/x8c40nfigps493a07sdr2pm5s9j1cdc0-patch-shebangs.sh rw,nosuid,nodev,relatime shared:1680 - ext4 /dev/sda2 rw\n2013 1939 8:2 /nix/store/xg8r53g4y7n6d237a54yqrvwmy66ckid-pcre2-10.48 /nix/store/xg8r53g4y7n6d237a54yqrvwmy66ckid-pcre2-10.48 rw,nosuid,nodev,relatime shared:1681 - ext4 /dev/sda2 rw\n2014 1939 8:2 /nix/store/xplind4h97x3aq0xy1c9nm48rs7hm55z-ncurses-6.6 /nix/store/xplind4h97x3aq0xy1c9nm48rs7hm55z-ncurses-6.6 rw,nosuid,nodev,relatime shared:1682 - ext4 /dev/sda2 rw\n2015 1939 8:2 /nix/store/xqx65i7cwacw7rsnj3dlbqas27mwvpn2-findutils-4.11.0 /nix/store/xqx65i7cwacw7rsnj3dlbqas27mwvpn2-findutils-4.11.0 rw,nosuid,nodev,relatime shared:1683 - ext4 /dev/sda2 rw\n2016 1939 8:2 /nix/store/xyff06pkhki3qy1ls77w10s0v79c9il0-reproducible-builds.sh /nix/store/xyff06pkhki3qy1ls77w10s0v79c9il0-reproducible-builds.sh rw,nosuid,nodev,relatime shared:1684 - ext4 /dev/sda2 rw\n2017 1939 8:2 /nix/store/y3rz7f4q0l3wcy2jgbyhhhyqlswrgrvc-libmpc-1.4.1 /nix/store/y3rz7f4q0l3wcy2jgbyhhhyqlswrgrvc-libmpc-1.4.1 rw,nosuid,nodev,relatime shared:1685 - ext4 /dev/sda2 rw\n2018 1939 8:2 /nix/store/yqv95rqr8v79zv0nvrgx2557mhwigy9f-bzip2-1.0.8-bin /nix/store/yqv95rqr8v79zv0nvrgx2557mhwigy9f-bzip2-1.0.8-bin rw,nosuid,nodev,relatime shared:1686 - ext4 /dev/sda2 rw\n2020 1939 8:2 /nix/store/z2qkl46kv87zcs2sfwfjgc75nq0hbzhf-gcc-wrapper-15.3.0 /nix/store/z2qkl46kv87zcs2sfwfjgc75nq0hbzhf-gcc-wrapper-15.3.0 rw,nosuid,nodev,relatime shared:1687 - ext4 /dev/sda2 rw\n2021 1939 8:2 /nix/store/z7k98578dfzi6l3hsvbivzm7hfqlk0zc-set-source-date-epoch-to-latest.sh /nix/store/z7k98578dfzi6l3hsvbivzm7hfqlk0zc-set-source-date-epoch-to-latest.sh rw,nosuid,nodev,relatime shared:1688 - ext4 /dev/sda2 rw\n2022 1939 8:2 /nix/store/zb29r6g2h9pvsc2bl5vr4j4ad1q6dvx1-gnumake-4.4.1 /nix/store/zb29r6g2h9pvsc2bl5vr4j4ad1q6dvx1-gnumake-4.4.1 rw,nosuid,nodev,relatime shared:1689 - ext4 /dev/sda2 rw\n2023 1939 8:2 /nix/store/zf5kl4x0zjkf6zl5d84ac0xahpp0las8-zstd-1.5.7 /nix/store/zf5kl4x0zjkf6zl5d84ac0xahpp0las8-zstd-1.5.7 rw,nosuid,nodev,relatime shared:1690 - ext4 /dev/sda2 rw\n2024 1938 8:2 /nix/store/598c0vsqmkb0ry7agc9bv2xwn2vazzwk-busybox-1.37.0/bin/busybox /bin/sh rw,nosuid,nodev,relatime - ext4 /dev/sda2 rw\n2025 1938 8:2 /nix/var/nix/builds/nix-2810879-780337515/build /build rw,relatime - ext4 /dev/sda2 rw\n2026 1938 0:6 /full /dev/full rw,nosuid - devtmpfs devtmpfs rw,size=1600208k,nr_inodes=3992452,mode=755\n2027 1938 0:6 /null /dev/null rw,nosuid - devtmpfs devtmpfs rw,size=1600208k,nr_inodes=3992452,mode=755\n2028 1938 0:6 /random /dev/random rw,nosuid - devtmpfs devtmpfs rw,size=1600208k,nr_inodes=3992452,mode=755\n2029 1938 0:6 /tty /dev/tty rw,nosuid - devtmpfs devtmpfs rw,size=1600208k,nr_inodes=3992452,mode=755\n2030 1938 0:6 /urandom /dev/urandom rw,nosuid - devtmpfs devtmpfs rw,size=1600208k,nr_inodes=3992452,mode=755\n2031 1938 0:6 /zero /dev/zero rw,nosuid - devtmpfs devtmpfs rw,size=1600208k,nr_inodes=3992452,mode=755\n2032 1938 8:2 /nix/var/cache/ccache /nix/var/cache/ccache rw,relatime - ext4 /dev/sda2 rw\n2033 1938 0:120 / /proc rw,relatime - proc none rw\n2034 1938 0:122 / /dev/shm rw,relatime - tmpfs none rw,size=16002072k\n2035 1938 0:127 / /dev/pts rw,relatime - devpts none rw,mode=620,ptmxmode=000\n",
+  "passwd": [
+    {
+      "home": "/build",
+      "name": "root",
+      "uid": 0
+    },
+    {
+      "home": "/build",
+      "name": "nixbld",
+      "uid": 1000
+    },
+    {
+      "home": "/",
+      "name": "nobody",
+      "uid": 65534
+    }
+  ],
+  "paths": {
+    "/": {
+      "lstat": {
+        "dev": 2050,
+        "errno": 0,
+        "ino": 524290,
+        "mode": 488,
+        "realpath": "/",
+        "type": "directory"
+      },
+      "stat": {
+        "dev": 2050,
+        "errno": 0,
+        "ino": 524290,
+        "mode": 488,
+        "realpath": "/",
+        "type": "directory"
+      }
+    },
+    "/build": {
+      "lstat": {
+        "dev": 2050,
+        "errno": 0,
+        "ino": 15728642,
+        "mode": 448,
+        "realpath": "/build",
+        "type": "directory"
+      },
+      "stat": {
+        "dev": 2050,
+        "errno": 0,
+        "ino": 15728642,
+        "mode": 448,
+        "realpath": "/build",
+        "type": "directory"
+      }
+    },
+    "/build/tmp": {
+      "lstat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      },
+      "stat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      }
+    },
+    "/home": {
+      "lstat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      },
+      "stat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      }
+    },
+    "/homeless-shelter": {
+      "lstat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      },
+      "stat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      }
+    },
+    "/nix/var/nix": {
+      "lstat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      },
+      "stat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      }
+    },
+    "/root": {
+      "lstat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      },
+      "stat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      }
+    },
+    "/run/user": {
+      "lstat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      },
+      "stat": {
+        "errno": 2,
+        "errno_name": "ENOENT"
+      }
+    },
+    "/tmp": {
+      "lstat": {
+        "dev": 2050,
+        "errno": 0,
+        "ino": 524291,
+        "mode": 1023,
+        "realpath": "/tmp",
+        "type": "directory"
+      },
+      "stat": {
+        "dev": 2050,
+        "errno": 0,
+        "ino": 524291,
+        "mode": 1023,
+        "realpath": "/tmp",
+        "type": "directory"
+      }
+    }
+  },
+  "proc_net_dev": "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n    lo:       0       0    0    0    0     0          0         0        0       0    0    0    0     0       0          0\n",
+  "schema": "buck2-outer-sandbox-probe/v1",
+  "uid": 1000
+}

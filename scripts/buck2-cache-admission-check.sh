@@ -4,6 +4,11 @@ set -euo pipefail
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
 buck="${BUCK2_BIN:?Run in the repository devenv shell to use its pinned BUCK2_BIN}"
 native_shell="${BASH_BIN:-$BASH}"
+native_bun="${BUN_BIN:?Pinned BUN_BIN is required for the outer filesystem verifier}"
+case "$native_bun" in
+  /nix/store/*/bin/bun) ;;
+  *) printf 'Outer filesystem verifier requires Nix-pinned Bun\n' >&2; exit 1 ;;
+esac
 native_coreutils="${CP_BIN:?Pinned CP_BIN is required for the native TS launcher fixture}"
 native_coreutils="${native_coreutils%/cp}/coreutils"
 case "$native_shell:$native_coreutils" in
@@ -13,14 +18,37 @@ esac
 scratch_parent="${RUNNER_TEMP:-$repo_root/tmp}"
 mkdir -p "$scratch_parent"
 work="$(mktemp -d "$scratch_parent/buck2-cache-admission.XXXXXXXX")"
+host_home_sentinel=
+host_tmp_sentinel=
+netns_home_root=
+netns_pid=
 cleanup() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if [[ -n "$netns_pid" ]]; then
+    kill -TERM "$netns_pid" 2>/dev/null || true
+    wait "$netns_pid" 2>/dev/null || true
+  fi
   (cd "$work" && "$buck" --isolation-dir cache-admission-check kill >/dev/null 2>&1) || true
   (cd "$work" && "$buck" --isolation-dir cache-admission-unverified-outer kill >/dev/null 2>&1) || true
   (cd "$work" && HOME="$work/forged-home" NIX_BUILD_TOP="$work" \
     "$buck" --isolation-dir cache-admission-forged-outer kill >/dev/null 2>&1) || true
-  rm -rf "$work"
+  if [[ -n "$netns_home_root" && -d "$netns_home_root" ]]; then
+    chmod u+w -- "$netns_home_root" || status=1
+  fi
+  if [[ -n "$host_home_sentinel" ]]; then
+    rm -f -- "$host_home_sentinel" || status=1
+  fi
+  if [[ -n "$host_tmp_sentinel" ]]; then
+    rm -f -- "$host_tmp_sentinel" || status=1
+  fi
+  rm -rf -- "$work" || status=1
+  exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Exercise the shipped rule implementations, not a parallel guard or a source
 # inspection. Only their dependency providers are fixtures: audit providers
@@ -28,7 +56,8 @@ trap cleanup EXIT
 # One Darwin-branch launcher fixture additionally executes pinned host tools to
 # prove that a fresh declared directory exists before a nested verdict is written.
 cp -R "$repo_root/buck2" "$work/buck2"
-mkdir -p "$work/capabilities" "$work/packages/@overeng/buck2-tools"
+mkdir -p "$work/capabilities" "$work/packages/@overeng/buck2-tools/src"
+cp "$repo_root/packages/@overeng/buck2-tools/src/outer-sandbox.ts" "$work/packages/@overeng/buck2-tools/src/outer-sandbox.ts"
 touch "$work/.buckroot"
 printf 'CAPABILITIES = {}\nGENERATION = "analysis-only"\n' > "$work/capabilities/defs.bzl"
 printf 'analysis-only dependency\n' > "$work/fixture-dependency.txt"
@@ -54,8 +83,8 @@ cat > "$work/.buckconfig" <<'CONFIG'
   remote_cache_enabled = false
   allow_cache_uploads = false
 CONFIG
-printf '\n[fixture]\n  shell = %s\n  coreutils = %s\n' \
-  "$native_shell" "$native_coreutils" >> "$work/.buckconfig"
+printf '\n[fixture]\n  shell = %s\n  coreutils = %s\n  bun = %s\n' \
+  "$native_shell" "$native_coreutils" "$native_bun" >> "$work/.buckconfig"
 # The bundled prelude is supplied by the same pinned Buck binary as the repo's
 # normal .buckconfig. No ambient prelude checkout or remote cache is consulted.
 cat > "$work/fixture.bzl" <<'BZL'
@@ -134,7 +163,7 @@ def _dependency_impl(ctx):
         ),
         TsSandboxToolchainInfo(
             bubblewrap = "/analysis-only/bin/bwrap",
-            bun = "/analysis-only/bin/bun",
+            bun = read_root_config("fixture", "bun"),
             closure_paths = {
                 "bun": ["/analysis-only"],
                 "effect-tsgo": ["/analysis-only"],
@@ -259,6 +288,9 @@ fixture_dependency(name = "ts_sandbox", visibility = ["PUBLIC"])
 BUCK
 cat > "$work/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
 load("//:fixture.bzl", "fixture_dependency")
+load("@prelude//:prelude.bzl", "native")
+
+native.export_file(name = "src/outer-sandbox.ts", src = "src/outer-sandbox.ts", visibility = ["PUBLIC"])
 
 fixture_dependency(name = "javascript_action_runtime", visibility = ["PUBLIC"])
 fixture_dependency(name = "package_command_runtime", visibility = ["PUBLIC"])
@@ -283,6 +315,7 @@ fixture_ts_policy_with_helper(name = "ts_policy_helper")
 fixture_ts_output(name = "darwin_fresh_verdict", expected_status = "darwin-unsandboxed")
 fixture_ts_output(name = "nix_unverified_verdict", expected_status = "nix-outer-sandboxed")
 fixture_ts_output(name = "nix_forged_verdict", expected_status = "nix-outer-sandboxed")
+fixture_ts_output(name = "nix_netns_only_verdict", expected_status = "nix-outer-sandboxed")
 
 vitest_collect(
     name = "admitted_collect",
@@ -578,7 +611,7 @@ for context in unverified forged; do
     done
     if ! grep -Fq 'Failed criterion: /proc/net/dev must contain only lo, including lo' \
       "$work/nix-$context-verdict.log" &&
-      ! grep -Fq 'Failed criterion: host homes and /nix/var must not be writable' \
+      ! grep -Fq 'Failed criterion: filesystem:' \
         "$work/nix-$context-verdict.log"; then
       cat "$work/nix-$context-verdict.log" >&2
       printf 'Forged outer context failed without detecting networking or host exposure\n' >&2
@@ -597,6 +630,177 @@ for context in unverified forged; do
   fi
   printf 'PASS refused unverified Nix outer boundary: %s\n' "$context"
 done
+
+# A genuine user+network namespace can satisfy the network check while retaining
+# the host filesystem. Do not create a mount namespace or simulate this boundary.
+# Only an owned home-root copy becomes read-only; the real passwd home is never
+# chmodded, and its separate sentinel must remain readable inside the control.
+if [[ "$OSTYPE" == linux* ]]; then
+  unshare="${UNSHARE_BIN:?Linux netns-only control requires Nix-pinned util-linux UNSHARE_BIN}"
+  case "$unshare" in
+    /nix/store/*/bin/unshare) ;;
+    *) printf 'Linux netns-only control requires Nix-pinned util-linux unshare\n' >&2; exit 1 ;;
+  esac
+  if [[ ! -x "$unshare" ]]; then
+    printf 'Linux netns-only control requires executable UNSHARE_BIN: %s\n' "$unshare" >&2
+    exit 1
+  fi
+  ip="${IP_BIN:?Linux netns-only control requires Nix-pinned iproute2 IP_BIN}"
+  case "$ip" in
+    /nix/store/*/bin/ip) ;;
+    *) printf 'Linux netns-only control requires Nix-pinned iproute2 ip\n' >&2; exit 1 ;;
+  esac
+  host_home=
+  while IFS=: read -r _ _ passwd_uid _ _ passwd_home _; do
+    if [[ "$passwd_uid" == "$UID" ]]; then
+      host_home="$passwd_home"
+      break
+    fi
+  done < /etc/passwd
+  if [[ "$host_home" != /* || ! -d "$host_home" || ! -w "$host_home" ]]; then
+    printf 'Linux netns-only control requires a writable real passwd home for an owned sentinel\n' >&2
+    exit 1
+  fi
+  host_home_sentinel="$(mktemp "$host_home/.buck2-cache-admission-netns.XXXXXXXX")"
+  host_tmp_sentinel="$(mktemp /tmp/buck2-cache-admission-netns.XXXXXXXX)"
+  sentinel_token="netns-only:${host_home_sentinel##*/}:${host_tmp_sentinel##*/}"
+  printf '%s\n' "$sentinel_token" > "$host_home_sentinel"
+  printf '%s\n' "$sentinel_token" > "$host_tmp_sentinel"
+  netns_home_root="$work/netns-home-root"
+  mkdir -p "$netns_home_root/writable-home"
+  "$CP_BIN" "$host_home_sentinel" "$netns_home_root/host-home-copy"
+  chmod 0444 -- "$netns_home_root/host-home-copy"
+  chmod 0555 -- "$netns_home_root"
+  host_mnt_namespace="$("$native_coreutils" --coreutils-prog=readlink /proc/self/ns/mnt)"
+  host_net_namespace="$("$native_coreutils" --coreutils-prog=readlink /proc/self/ns/net)"
+  host_user_namespace="$("$native_coreutils" --coreutils-prog=readlink /proc/self/ns/user)"
+  cat > "$work/netns-only-control.sh" <<'CONTROL'
+set -euo pipefail
+buck="$1"
+coreutils="$2"
+work="$3"
+host_mnt_namespace="$4"
+host_net_namespace="$5"
+host_user_namespace="$6"
+host_home_sentinel="$7"
+host_tmp_sentinel="$8"
+sentinel_token="$9"
+home_root="${10}"
+ip="${11}"
+client_pid=
+daemon_owned=false
+cleanup_namespace() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if [[ -n "$client_pid" ]]; then
+    kill -TERM "$client_pid" 2>/dev/null || true
+    wait "$client_pid" 2>/dev/null || true
+  fi
+  if [[ "$daemon_owned" == true ]] &&
+    ! "$buck" --isolation-dir cache-admission-netns-only-outer kill; then
+    printf 'Failed to stop the owned netns-only Buck daemon inside its namespace\n' >&2
+    status=1
+  fi
+  exit "$status"
+}
+trap cleanup_namespace EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+cd "$work"
+mnt_namespace="$("$coreutils" --coreutils-prog=readlink /proc/self/ns/mnt)"
+net_namespace="$("$coreutils" --coreutils-prog=readlink /proc/self/ns/net)"
+user_namespace="$("$coreutils" --coreutils-prog=readlink /proc/self/ns/user)"
+if [[ "$mnt_namespace" != "$host_mnt_namespace" ||
+  "$net_namespace" == "$host_net_namespace" ||
+  "$user_namespace" == "$host_user_namespace" ]]; then
+  printf 'Netns-only control requires new user/network namespaces and the unchanged host mount namespace\n' >&2
+  exit 1
+fi
+# unshare creates lo DOWN. Buck's daemon transport needs local loopback; bringing
+# up only this namespace's lo does not expose the host or an external network.
+"$ip" link set lo up
+devices=0
+while IFS=: read -r interface counters; do
+  if [[ -z "$counters" ]]; then continue; fi
+  interface="${interface//[[:space:]]/}"
+  if [[ "$interface" != lo ]]; then
+    printf 'Netns-only control unexpectedly exposes network interface: %s\n' "$interface" >&2
+    exit 1
+  fi
+  devices=$((devices + 1))
+done < /proc/net/dev
+if [[ "$devices" != 1 ]]; then
+  printf 'Netns-only control requires exactly one network interface: lo\n' >&2
+  exit 1
+fi
+# Mapped UID 0 may report access() writable even for mode 0555; inspect the
+# owned directory's actual mode without changing the real passwd home.
+if [[ "$("$coreutils" --coreutils-prog=stat -c %a -- "$home_root")" != 555 || ! -w "$HOME" ]]; then
+  printf 'Netns-only control requires an owned mode-0555 home root with a writable build-local HOME\n' >&2
+  exit 1
+fi
+for sentinel in "$host_home_sentinel" "$host_tmp_sentinel" "$home_root/host-home-copy"; do
+  contents=
+  if [[ ! -r "$sentinel" ]] || ! IFS= read -r contents < "$sentinel" ||
+    [[ "$contents" != "$sentinel_token" ]]; then
+    printf 'Netns-only control lost its readable host sentinel: %s\n' "$sentinel" >&2
+    exit 1
+  fi
+done
+printf 'PASS genuine netns-only prerequisites: lo only; mount namespace unchanged (%s); host home and /tmp sentinels readable; owned home root read-only\n' "$mnt_namespace"
+daemon_owned=true
+"$buck" --isolation-dir cache-admission-netns-only-outer build \
+  -c ts_action.outer_sandbox=nix-build/v1 \
+  -c build.execution_platforms=effect_utils//buck2/platforms:exec_linux_x86_64 \
+  --local-only --show-full-json-output effect_utils//:nix_netns_only_verdict \
+  > "$work/nix-netns-only-verdict.json" 2> "$work/nix-netns-only-verdict.log" &
+client_pid=$!
+if wait "$client_pid"; then
+  client_pid=
+  printf 'Netns-only forged Nix outer boundary unexpectedly executed with readable host files\n' >&2
+  exit 1
+fi
+client_pid=
+if ! grep -Fq 'outer sandbox declared but not verified' "$work/nix-netns-only-verdict.log" ||
+  ! grep -Fq 'Failed criterion: filesystem: /home must be absent (ENOENT, not access denied)' "$work/nix-netns-only-verdict.log"; then
+  cat "$work/nix-netns-only-verdict.log" >&2
+  printf 'Netns-only forged boundary failed for a reason other than the runtime verifier refusal\n' >&2
+  exit 1
+fi
+for criterion in \
+  'Failed criterion: NIX_BUILD_TOP' \
+  'Failed criterion: action cwd' \
+  'Failed criterion: Buck root (.buckroot)' \
+  'Failed criterion: HOME' \
+  'Failed criterion: /proc/net/dev'; do
+  if grep -Fq "$criterion" "$work/nix-netns-only-verdict.log"; then
+    cat "$work/nix-netns-only-verdict.log" >&2
+    printf 'Netns-only control failed an already-satisfied build/home/network criterion: %s\n' "$criterion" >&2
+    exit 1
+  fi
+done
+if [[ -n "$(find "$work/buck-out" -type f -name typecheck.ok -path '*nix_netns_only_verdict*')" ]]; then
+  printf 'Netns-only unverified outer boundary produced a nested verdict\n' >&2
+  exit 1
+fi
+printf 'PASS refused genuine netns-only forged Nix outer boundary\n'
+CONTROL
+  NIX_BUILD_TOP="$work" HOME="$netns_home_root/writable-home" \
+    "$unshare" -rn "$native_shell" --noprofile --norc "$work/netns-only-control.sh" \
+    "$buck" "$native_coreutils" "$work" "$host_mnt_namespace" "$host_net_namespace" \
+    "$host_user_namespace" "$host_home_sentinel" "$host_tmp_sentinel" "$sentinel_token" \
+    "$netns_home_root" "$ip" > "$work/netns-only-control.log" 2>&1 &
+  netns_pid=$!
+  if ! wait "$netns_pid"; then
+    netns_pid=
+    cat "$work/netns-only-control.log" >&2
+    printf 'Linux netns-only negative control failed; working pinned util-linux unshare -rn and unprivileged user/network namespaces are required, with no skip permitted\n' >&2
+    exit 1
+  fi
+  netns_pid=
+  cat "$work/netns-only-control.log"
+fi
 
 for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
   for spelling in canonical relative alias alias_at; do

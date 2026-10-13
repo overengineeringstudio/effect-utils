@@ -17,6 +17,7 @@ pkgs.stdenv.mkDerivation {
 
   buildPhase = ''
     runHook preBuild
+    id
     printf 'BUCK2_OUTER_SANDBOX_PROBE_ROOT_BEGIN\n'
     ls -la /
     printf 'BUCK2_OUTER_SANDBOX_PROBE_ROOT_END\n'

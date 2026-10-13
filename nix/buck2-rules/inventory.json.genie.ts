@@ -43,6 +43,7 @@ const files = [
   'buck2/typescript.bzl',
   'packages/@overeng/buck2-tools/src/javascript-runner.ts',
   'packages/@overeng/buck2-tools/src/owned-files.ts',
+  'packages/@overeng/buck2-tools/src/outer-sandbox.ts',
   'packages/@overeng/buck2-tools/src/package-command-runner.ts',
   'packages/@overeng/buck2-tools/src/package-tree.ts',
   'packages/@overeng/buck2-tools/src/real-path.ts',
