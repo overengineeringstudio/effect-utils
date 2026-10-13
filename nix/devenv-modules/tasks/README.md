@@ -205,10 +205,15 @@ They assume the effect-utils repo structure and are not exported in flake.nix.
 
 ### Module shell-test scheduling
 
-`devenv-modules:test` discovers every `shared/tests/*.test.sh`; it does not
-filter the suite. `local/devenv-module-tests.sh` runs unaudited and shared-checkout
-state scripts serially before starting a bounded worker pool for explicitly
-admitted scripts. Only admitted scripts are ordered longest-first, with lexical
+`devenv-modules:test` discovers every `shared/tests/*.test.sh` and requires each
+script to appear exactly once in `genie/ci-workflow/test-platforms.json`'s
+`moduleScripts` classification. The Nix import and shell dispatcher both reject
+missing, stale, duplicate or overlapping entries before dispatch. Darwin runs
+only Darwin-sensitive scripts; Linux and an unset platform run the complete
+catalog. Platform classification is independent of parallel-safety admission.
+`local/devenv-module-tests.sh` runs selected unaudited and shared-checkout state
+scripts serially before starting a bounded worker pool for explicitly admitted
+scripts. Only admitted scripts are ordered longest-first, with lexical
 ties and weight one for scripts without a declared duration. Both phases keep
 running after failures. The aggregate fails if any script fails, and stderr
 records each script's UTC start/end timestamp, scheduling class, and original
@@ -221,8 +226,8 @@ for the complete pool on ordinary failures and on INT/TERM to the supervisor.
 
 #### Isolation admission audit
 
-The admission list is fail-closed: a new script still runs, but runs serially
-until its side effects have been reviewed. The audit at
+The parallel admission list is fail-closed: a newly platform-classified script
+runs serially until its side effects have been reviewed. The audit at
 [`1f4b2947`](https://github.com/overengineeringstudio/effect-utils/commit/1f4b2947b8cfe2617e34ade8e5fafb63fd2c5587)
 admitted 42 of the original 43 scripts. Every admitted script runs in a
 separate Bash process, preserving cwd/environment isolation. Their ownership

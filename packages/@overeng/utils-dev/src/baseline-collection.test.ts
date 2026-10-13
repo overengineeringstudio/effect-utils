@@ -12,6 +12,7 @@ import {
   parseShowOutput,
   repoPathFromReportName,
   taskFileStem,
+  selectTestLanes,
   type TestAuthorityLane,
 } from './baseline-collection.ts'
 
@@ -98,6 +99,40 @@ const registryWith = (overrides: Partial<TestAuthorityLane>) =>
   conformantLanes().map((entry, index) =>
     index === 0 ? Object.assign({}, entry, overrides) : entry,
   )
+
+describe('platform bounded collection scope', () => {
+  it('selects the same bounded lanes for prebuild and final collection without changing ownership', () => {
+    const lanes = conformantLanes()
+    const selected = selectTestLanes({
+      lanes,
+      scope: decodeSourceTaskScope([lanes[0]!.taskName]),
+    })
+    expect(selected).toEqual([lanes[0]])
+    expect(collectionBuildPlan({ lanes: selected }).targets).toEqual([lanes[0]!.collectionTarget])
+    expect(selectTestLanes({ lanes, scope: undefined })).toBe(lanes)
+    expect(() =>
+      selectTestLanes({ lanes, scope: decodeSourceTaskScope(['test:missing']) }),
+    ).toThrow(/undeclared task/)
+    const collectionTargets = new Set(collectionBuildPlan({ lanes: selected }).targets)
+    for (const [index, entry] of lanes.entries()) {
+      const ownership = ownershipForFile({
+        file: `${entry.packagePath}/src/a.test.ts`,
+        lanes,
+      })
+      expect(ownership.kind).toBe('buck')
+      expect(ownershipInSourceScope({ ownership, scope: undefined, collectionTargets })).toBe(
+        index === 0,
+      )
+    }
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'unowned', reason: 'authority drift' },
+        scope: undefined,
+        collectionTargets,
+      }),
+    ).toBe(true)
+  })
+})
 
 const decode = (lanes: readonly unknown[]) =>
   decodeTestAuthority({ decoded: { schemaVersion: 2, lanes }, sourceLabel: 'bridge.json' })

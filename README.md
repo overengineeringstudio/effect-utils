@@ -208,18 +208,29 @@ devenv tasks run test:watch
 ```
 
 The aggregate starts `test:buck2:unit` after `genie:check`, independently of
-editor dependency publication. It first prebuilds every declared Vitest collection
-product from `buck2-test-authority.json`, then executes the bounded lanes in the
-existing single Buck test invocation. The prebuild performs no source tests and
+editor dependency publication. It first prebuilds the selected Vitest collection
+products from `buck2-test-authority.json`, then executes the selected bounded lanes
+in the existing single Buck test invocation. The prebuild performs no source tests and
 does not cache source reports or coverage verdicts.
 
 After the source suites and bounded verdicts finish, `test:run` still invokes
 the baseline-collection gate. That gate resolves the identical collection targets
 with the same local-only host-platform Buck build, so current inputs are checked
 even when the products are warm. It then validates the complete filesystem census,
-each bounded selection's exact inventory, source-task ownership and baseline counts.
-Prebuilding changes scheduling only: missing or malformed products, coverage drift,
-failed bounded execution and missing source evidence still fail the aggregate.
+each selected bounded lane's exact inventory, source-task ownership and baseline counts.
+Missing or malformed products, coverage drift, failed bounded execution and missing
+selected source evidence still fail the aggregate.
+
+`genie/ci-workflow/test-platforms.json` classifies aggregate source tasks, individual
+bounded Buck lanes, and every shared module shell script as Darwin-sensitive or
+platform-neutral, with a rationale for each. The required macOS lane sets
+`EFFECT_UTILS_TEST_PLATFORM=darwin` and runs only the Darwin subsets; Linux and an
+unset platform run both subsets. Disjointness and completeness are enforced against
+the generated Buck authority and discovered module scripts. The complete ownership
+authority is retained even when collection products and baseline evidence are scoped.
+Editor publication follows the selected source suites and module fixtures rather
+than publishing neutral-only package views. macOS still builds and smokes the native
+and compiled products to cover Darwin artifacts.
 
 ### Type Checking
 

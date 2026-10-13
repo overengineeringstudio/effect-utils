@@ -97,6 +97,8 @@ let
     devenv-module-tests = import ./nix/devenv-modules/tasks/local/devenv-module-tests.nix {
       workerCount = testScheduling.workers;
       scriptWeights = testScheduling.moduleScriptSeconds;
+      inherit testPlatform;
+      moduleScriptPlatforms = testPlatforms.moduleScripts;
     };
   };
   # Repository CLIs come from the reviewed Buck product boundary, not from a
@@ -356,6 +358,21 @@ let
       ${lib.concatMapStringsSep ", " (lane: lane.packagePath) buck2TestLanesWithoutSources}
     '';
     buck2TestAuthorityLanes;
+  classifiedBuck2TestTasks = map (suite: suite.task) (
+    testPlatforms.bounded.darwin ++ testPlatforms.bounded.neutral
+  );
+  darwinBuck2TestTasks = map (suite: suite.task) testPlatforms.bounded.darwin;
+  selectedBuck2TestLanes =
+    assert lib.assertMsg (
+      builtins.sort builtins.lessThan classifiedBuck2TestTasks
+      == builtins.sort builtins.lessThan (map (lane: lane.taskName) buck2TestLanes)
+    ) "test-platforms.json must classify every bounded test lane exactly once";
+    builtins.filter (
+      lane: testPlatform != "darwin" || builtins.elem lane.taskName darwinBuck2TestTasks
+    ) buck2TestLanes;
+  boundedTestScope = pkgs.writeText "test-bounded-scope.json" (
+    builtins.toJSON (map (lane: lane.taskName) selectedBuck2TestLanes)
+  );
   buck2TestLanePackagePaths = map (lane: lane.packagePath) buck2TestLanes;
   # Buck executes every admitted bounded lane. Source Vitest keeps packages absent from the
   # authority and each lane's exact generic complement; explicit live/e2e owners run separately.
@@ -403,16 +420,21 @@ let
       path = lane.packagePath;
       name = lib.removePrefix "test:" lane.taskName;
     }) (builtins.filter (lane: !(lane ? unboundedTaskName)) buck2TestLanes);
-  # Editor views the source-side test partition executes through: every source test package,
-  # the repository root (`genie:buck2:test` runs `bun test genie/buck2/` from it), and the
-  # packages `devenv-modules:test` runs from source (Genie's compiled-staging proof and the
-  # ci-tools deploy/report task e2e fixtures).
+  # Publish selected source packages plus the views the selected module scripts execute
+  # through. Neutral module scripts must not keep an unrelated view on Darwin's prerequisite.
   testPublicationPackagePaths = lib.unique (
-    [
-      "."
-      "packages/@overeng/ci-tools"
-      "packages/@overeng/genie"
-    ]
+    lib.optional (selectedTestTask "genie:buck2:test") "."
+    ++ lib.optional (selectedTestTask "devenv-modules:test") "packages/@overeng/genie"
+    ++ lib.optional (
+      testPlatform != "darwin"
+      || builtins.any (
+        suite:
+        builtins.elem suite.script [
+          "deploy-task-e2e.test.sh"
+          "workflow-report-task-e2e.test.sh"
+        ]
+      ) testPlatforms.moduleScripts.darwin
+    ) "packages/@overeng/ci-tools"
     ++ map (pkg: pkg.path) sourceTestPackages
   );
   typescriptPublicationRootPredicate = ''
@@ -479,6 +501,7 @@ let
           --root "$root" \
           --buck2 "$BUCK2_BIN" \
           --buck2-cwd "$root" \
+          ${lib.optionalString (testPlatform == "darwin") "--bounded-tasks-file ${boundedTestScope}"} \
           --prebuild-only
       ''}
       cd "$root"
@@ -1614,16 +1637,16 @@ in
     "nix:check:quick"
     "otel:pipeline-run:test"
   ];
-  # Prebuild every collection product after genie freshness alongside editor publication,
-  # then execute every admitted bounded lane in one Buck test invocation. The per-lane tasks
+  # Prebuild selected collection products after genie freshness alongside editor publication,
+  # then execute the platform's bounded lanes in one Buck test invocation. The per-lane tasks
   # remain standalone-only, so neither bounded nor source verdicts are scheduled twice.
   tasks."test:buck2:unit" = {
-    description = "Prebuild collection products and execute every admitted bounded unit-test lane";
+    description = "Prebuild collection products and execute the selected bounded unit-test lanes";
     after = [ "genie:check" ];
     # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
       name = "test:buck2:unit";
-      targets = map (lane: lane.target) buck2TestLanes;
+      targets = map (lane: lane.target) selectedBuck2TestLanes;
       prebuildCollection = true;
     };
   };
@@ -1633,7 +1656,7 @@ in
     "dependency-materialization:evidence:check"
   ];
 
-  # `test:run` is the aggregate: the single Buck invocation for every bounded lane, plus the
+  # `test:run` is the aggregate: one Buck invocation for the selected bounded lanes, plus the
   # source-only and unbounded-complement Vitest tasks the shared module wired into its `after`.
   # The baseline-collection gate runs last, resolves the same (now warm) Buck products against
   # current inputs, and validates both bounded inventory and completed source evidence.
@@ -1652,7 +1675,9 @@ in
         --root "$root" \
         --buck2 "$BUCK2_BIN" \
         --buck2-cwd "$root" \
-        ${lib.optionalString (testPlatform == "darwin") "--source-tasks-file ${sourceTestScope}"}
+        ${lib.optionalString (
+          testPlatform == "darwin"
+        ) "--source-tasks-file ${sourceTestScope} --bounded-tasks-file ${boundedTestScope}"}
     ''
   );
 
