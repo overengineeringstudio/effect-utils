@@ -305,6 +305,19 @@ describe('realpathThroughName', () => {
     )
   })
 
+  it('resolves an intermediate symlink before applying a parent traversal', () => {
+    const root = scratch('real-path-traversal-')
+    mkdirSync(join(root, 'tree'))
+    mkdirSync(join(root, 'backing'))
+    writeFileSync(join(root, 'tree', 'secret'), 'decoy\n')
+    writeFileSync(join(root, 'secret'), 'secret\n')
+    symlinkSync(join(root, 'backing'), join(root, 'tree', 'dir'))
+    symlinkSync('dir/../secret', join(root, 'tree', 'leaf'))
+
+    expect(readFileSync(join(root, 'tree', 'leaf'), 'utf8')).toBe('secret\n')
+    expect(realpathThroughName(join(root, 'tree', 'leaf'))).toBe(join(root, 'secret'))
+  })
+
   it('fails on a dangling link and on a cycle', () => {
     const root = scratch('real-path-broken-')
     symlinkSync('missing.js', join(root, 'dangling'))

@@ -417,6 +417,32 @@ describe('editor view publisher', () => {
     }
   })
 
+  it('rejects a link whose parent traversal escapes through an intermediate symlink', async () => {
+    const fixture = makeFixture()
+    try {
+      const owned = join(fixture.root, 'owned')
+      const tree = join(owned, 'tree')
+      const backing = join(owned, 'backing')
+      mkdirSync(tree, { recursive: true })
+      mkdirSync(backing)
+      writeFileSync(join(tree, 'secret'), 'decoy\n')
+      writeFileSync(join(owned, 'secret'), 'secret\n')
+      symlinkSync(backing, join(tree, 'dir'))
+      // The kernel resolves `dir` before `..`, landing on `owned/secret`; a
+      // lexical collapse would name the in-tree decoy instead.
+      symlinkSync('dir/../secret', join(tree, 'leaf'))
+      expect(readFileSync(join(tree, 'leaf'), 'utf8')).toBe('secret\n')
+
+      await expect(
+        canonicalTreeFingerprint({ tree, dereference: true, backingRoots: [backing] }),
+      ).rejects.toThrow(
+        `tree symbolic link resolves outside declared backing roots: ${join(tree, 'leaf')} -> ${join(owned, 'secret')}`,
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
   it('publishes a dereferenced byte-owned snapshot with distinct inodes and stable hops', async () => {
     const fixture = makeFixture()
     try {
