@@ -31,6 +31,8 @@ mission reporting must not be used to check generated `report-to` declarations.
 
 Author `dependsOn` as a scalar step ID, `{ step, state }`, or a nonempty list of either. `state` is `completed`, `failed`, or `terminal`; step IDs default to `completed`. All entries must be satisfied (AND); every target must name a graph node in the same normal/final phase. Omit the field for independent work. Scalar and singleton declarations emit byte-identical KDL. Handle authoring additionally accepts a `StepHandle` directly or in the list; it defaults to completed and retains exact identity/scoping checks.
 
+Dependency lists are statically nonempty tuples. When extracting a declaration into a reusable fixture or variable, retain literal/tuple inference with `as const` or an explicit declaration type; a widened array cannot establish that at least one dependency exists.
+
 The renderer emits one `depends-on` block with a `step` child per entry, preserving authored order. Native support is confirmed in `compoundingtech/smalltalk`, `crates/st3/src/mission.rs:1290` (collects every `depends-on` block) and `:1929-1949` (collects every nested `step` entry). The optional isolated-daemon conformance fixture includes a two-parent join.
 
 ## Required mission reporting

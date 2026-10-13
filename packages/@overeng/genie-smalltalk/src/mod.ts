@@ -589,7 +589,8 @@ export const DependsOnSchema = Schema.Struct({
   identifier: 'St.DependsOn',
 })
 const DependencyItem = Schema.Union([LocalId, DependsOnSchema])
-const Dependencies = Schema.Union([DependencyItem, Schema.NonEmptyArray(DependencyItem)]).pipe(
+const DependencyInput = Schema.Union([DependencyItem, Schema.NonEmptyArray(DependencyItem)])
+const Dependencies = DependencyInput.pipe(
   Schema.decodeTo(Schema.NonEmptyArray(DependsOnSchema), {
     decode: SchemaGetter.transform((value) => {
       const values: readonly [typeof DependencyItem.Type, ...(typeof DependencyItem.Type)[]] =
@@ -599,7 +600,7 @@ const Dependencies = Schema.Union([DependencyItem, Schema.NonEmptyArray(Dependen
       const [first, ...rest] = values
       return [normalize(first), ...rest.map(normalize)] as const
     }),
-    encode: SchemaGetter.transform((value) => value),
+    encode: SchemaGetter.transform((value): typeof DependencyInput.Type => value),
   }),
 )
 
@@ -1772,13 +1773,16 @@ const authoredStepReferences = (
 ]
 const authoredStepWire = (value: AuthoredStep): typeof StepSchema.Encoded => {
   const { goal, exec, ...rest } = value
+  let wireGoal: typeof Goal.Encoded | undefined
+  if (goal !== undefined) {
+    const values: readonly [AuthoredText, ...AuthoredText[]] =
+      typeof goal === 'string' || 'kind' in goal ? [goal] : goal
+    const [first, ...rest] = values
+    wireGoal = [templateText(first), ...rest.map(templateText)]
+  }
   return {
     ...rest,
-    ...(goal === undefined
-      ? {}
-      : {
-          goal: (typeof goal === 'string' || 'kind' in goal ? [goal] : goal).map(templateText),
-        }),
+    ...(wireGoal === undefined ? {} : { goal: wireGoal }),
     ...(exec === undefined ? {} : { exec: authoredExecWire(exec) }),
   }
 }

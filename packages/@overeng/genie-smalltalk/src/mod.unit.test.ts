@@ -313,7 +313,7 @@ const fanInMission = () => ({
       dependsOn: [
         { step: 'first', state: 'completed' as const },
         { step: 'second', state: 'completed' as const },
-      ],
+      ] as const,
     },
   ],
 })
@@ -530,8 +530,10 @@ describe('Smalltalk declarations', () => {
   })
   it('preserves singleton dependency KDL with list authoring', () => {
     const input = fanInMission()
-    input.steps[2]!.dependsOn = [{ step: 'first', state: 'completed' }]
-    expect(emit([mission(input)])).toContain('depends-on {\n      step "first" "completed"\n    }')
+    const join = { ...input.steps[2]!, dependsOn: [{ step: 'first', state: 'completed' }] as const }
+    expect(
+      emit([mission({ ...input, steps: [...input.steps.slice(0, 2), join] })]),
+    ).toContain('depends-on {\n      step "first" "completed"\n    }')
   })
   it.each([
     { dependsOn: [] },
@@ -1061,11 +1063,14 @@ describe('native mission grammar', () => {
         report: product.resource({ kind: 'custom.garden.report', fields: { state: 'ready' } }),
       },
     })
-    for (const [subject, error] of [
-      [pr, 'not declared'],
-      [foreign.products.report, 'outside this mission'],
+    for (const [fieldGate, error] of [
+      [gate.fieldIs({ name: 'ready', subject: pr, path: 'state', value: 'ready' }), 'not declared'],
+      [
+        gate.fieldIs({ name: 'ready', subject: foreign.products.report, path: 'state', value: 'ready' }),
+        'outside this mission',
+      ],
     ] as const) {
-      const gates = [gate.fieldIs({ name: 'ready', subject, path: 'state', value: 'ready' })]
+      const gates = [fieldGate]
       const raw = { id: 'work', gates }
       expect(() =>
         mission({ id: 'raw', state: 'ready', reportTo: owner, goal: ['Review.'], steps: [raw] }),
