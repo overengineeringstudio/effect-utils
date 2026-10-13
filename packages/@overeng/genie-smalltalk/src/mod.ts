@@ -1145,7 +1145,7 @@ const derivedGateName = ({
 }: {
   readonly kind: string
   readonly identity: string
-  readonly name?: AuthoredText
+  readonly name: AuthoredText | undefined
 }): string => {
   if (name !== undefined) return templateText(name)
   const derived = `${kind}:${identity}`
