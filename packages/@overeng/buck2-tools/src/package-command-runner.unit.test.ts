@@ -318,6 +318,22 @@ describe('realpathThroughName', () => {
     expect(realpathThroughName(join(root, 'tree', 'leaf'))).toBe(join(root, 'secret'))
   })
 
+  it.each(['payload.js/.', 'payload.js/'])(
+    'requires a directory where a link target spells %s',
+    (target) => {
+      const root = scratch('real-path-notdir-')
+      writeFileSync(join(root, 'payload.js'), 'x\n')
+      symlinkSync(target, join(root, 'leaf'))
+
+      expect(() => readFileSync(join(root, 'leaf'))).toThrow(
+        expect.objectContaining({ code: 'ENOTDIR' }),
+      )
+      expect(() => realpathThroughName(join(root, 'leaf'))).toThrow(
+        expect.objectContaining({ code: 'ENOTDIR' }),
+      )
+    },
+  )
+
   it('fails on a dangling link and on a cycle', () => {
     const root = scratch('real-path-broken-')
     symlinkSync('missing.js', join(root, 'dangling'))

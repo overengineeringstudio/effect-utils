@@ -87,6 +87,8 @@ export const realpathThroughName = (path: string): string => {
       resolved = dirname(resolved)
       continue
     }
+    // `.` names the directory already reached; the invariant makes it a no-op.
+    if (component === '.') continue
     const candidate = join(resolved, component)
     const status = lstatSync(candidate)
     if (status.isSymbolicLink() === true) {
@@ -105,6 +107,14 @@ export const realpathThroughName = (path: string): string => {
   }
 }
 
-/** Splits a path into components, dropping empty and `.` components but keeping `..`. */
-const splitComponents = (path: string): string[] =>
-  path.split(sep).filter((component) => component.length > 0 && component !== '.')
+/**
+ * Splits a path into components, dropping empty components but keeping `.`
+ * and `..`. A `.` or a trailing separator demands that the preceding component
+ * be a directory, so a trailing separator is kept as `.`: `file/` and `file/.`
+ * must fail with `ENOTDIR` rather than name the file.
+ */
+const splitComponents = (path: string): string[] => {
+  const components = path.split(sep).filter((component) => component.length > 0)
+  if (path.endsWith(sep) === true && components.length > 0) components.push('.')
+  return components
+}

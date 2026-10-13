@@ -443,6 +443,25 @@ describe('editor view publisher', () => {
     }
   })
 
+  it.each(['payload.js/.', 'payload.js/'])(
+    'rejects a link whose target %s requires a regular file to be a directory',
+    async (target) => {
+      const fixture = makeFixture()
+      try {
+        const tree = join(fixture.root, 'notdir-tree')
+        mkdirSync(tree)
+        writeFileSync(join(tree, 'payload.js'), 'payload\n')
+        symlinkSync(target, join(tree, 'leaf'))
+
+        await expect(canonicalTreeFingerprint({ tree, dereference: true })).rejects.toThrow(
+          `tree contains an unresolvable symbolic link: ${join(tree, 'leaf')}`,
+        )
+      } finally {
+        cleanup(fixture)
+      }
+    },
+  )
+
   it('publishes a dereferenced byte-owned snapshot with distinct inodes and stable hops', async () => {
     const fixture = makeFixture()
     try {
