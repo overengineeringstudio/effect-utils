@@ -226,7 +226,7 @@ jobs_file.write_text(json.dumps(jobs))
     # inject a signing failure without touching any keychain.
     codesign = bin_dir / 'codesign'
     codesign.write_text(f'#!{sys.executable}\n' + r'''
-import json, os, subprocess, sys, time
+import json, os, signal, subprocess, sys, time
 from pathlib import Path
 base = Path(os.environ['MACOS_APP_TEST_WORK'])
 args = sys.argv[1:]
@@ -236,6 +236,25 @@ if '--sign' in args:
     if (base / 'sign-fail').exists():
         print('test-injected signing failure', file=sys.stderr)
         sys.exit(1)
+    if (base / 'sign-fork-mode').exists():
+        mode = (base / 'sign-fork-mode').read_text()
+        controller = os.getppid()
+        read_fd, write_fd = os.pipe()
+        descendant = os.fork()
+        if descendant == 0:
+            os.close(write_fd)
+            (base / 'fork-descendant-pid').write_text(str(os.getpid()))
+            os.read(read_fd, 1)  # EOF proves the leader has exited.
+            os.close(read_fd)
+            if mode == 'signal':
+                os.kill(controller, signal.SIGTERM)
+            time.sleep(60)  # Keep inherited stdout/stderr open.
+            os._exit(0)
+        os.close(read_fd)
+        (base / 'fork-leader-pid').write_text(str(os.getpid()))
+        if mode == 'deadline':
+            time.sleep(60)  # Deadline variant keeps the leader alive as well.
+        os._exit(0)  # Signal variant exits immediately, leaving the descendant's pipes open.
     if (base / 'sign-slow').exists():
         (base / 'slow-child-pid').write_text(str(os.getpid()))
         (base / 'slow-ready').touch()
@@ -381,6 +400,33 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         for name in ('sign-slow', 'slow-ready', 'slow-child-pid'):
             (work / name).unlink(missing_ok=True)
     print('PASS SIGTERM inside the signing window kills/reaps codesign and checks the final keychain lock', flush=True)
+
+    # Descendants must not outlive a reaped codesign leader or pin its inherited pipes open.
+    for mode, code in [('signal', 23), ('deadline', 20)]:
+        (work / 'sign-fork-mode').write_text(mode)
+        started = time.monotonic()
+        try:
+            stopped = call('prove-signing-key', '--keychain', keychain, secret=password, code=code)
+            if mode == 'signal':
+                assert 'Cancelled by signal' in stopped['error']['reason'], stopped
+            else:
+                assert stopped['error']['category'] == 'sign-timeout', stopped
+            assert time.monotonic() - started < 35, 'output drain escaped the codesign deadline'
+            assert not unlocked(), f'{mode} with inherited output pipes left K unlocked'
+            for name in ('fork-leader-pid', 'fork-descendant-pid'):
+                pid = int((work / name).read_text())
+                until = time.monotonic() + 3
+                while True:
+                    try:
+                        os.kill(pid, 0)
+                    except ProcessLookupError:
+                        break
+                    assert time.monotonic() < until, f'{mode} left group member {pid} alive or unreaped'
+                    time.sleep(0.01)
+        finally:
+            for name in ('sign-fork-mode', 'fork-leader-pid', 'fork-descendant-pid'):
+                (work / name).unlink(missing_ok=True)
+    print('PASS descendant-held stdout/stderr: SIGTERM and deadline tear down the group and relock K', flush=True)
 
     # --replace adds a key and never deletes; an unpinned identity is refused before codesign.
     unpinned_identity = 'macos-app-ctl unpinned signer'

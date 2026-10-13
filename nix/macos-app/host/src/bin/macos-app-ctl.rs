@@ -112,12 +112,6 @@ fn cancellation() -> Result<()> {
     let signal = STOP_SIGNAL.load(std::sync::atomic::Ordering::Relaxed);
     if signal == 0 { Ok(()) } else { Err(fail(23, "operation-failed", format!("Cancelled by signal {signal}"))) }
 }
-fn signal_pause(duration: Duration) {
-    let fd = SIGNAL_READ.load(std::sync::atomic::Ordering::Relaxed);
-    let mut poll = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
-    // SAFETY: poll points to one valid descriptor structure; a negative fd is ignored.
-    unsafe { libc::poll(&mut poll, 1, duration.as_millis() as i32); }
-}
 fn install_signal_handlers() -> Result<SignalPipe> {
     // SAFETY: pipe initializes both descriptors; ownership transfers immediately to File.
     let mut fds = [-1; 2];

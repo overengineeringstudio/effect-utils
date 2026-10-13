@@ -752,35 +752,79 @@ fn export_status(identity: Ref) -> Result<i32> {
     if !data.is_null() { drop(Cf(data)); }
     Ok(status)
 }
-/// Runs one signing `codesign` with `SIGN_DEADLINE`; a run that has not finished (for example
-/// because it waits on a confirmation) is killed and reported as `sign-timeout`.
+/// Bounds both process lifetime and pipe draining. A reaped leader does not imply EOF:
+/// descendants may still own stdout/stderr, so kill its whole group before finishing the drain.
 pub(super) fn bounded_codesign(args: &[&str]) -> Result<Output> {
     cancellation()?;
     use std::os::unix::process::CommandExt;
     let mut child = Command::new(codesign_program()).args(args).process_group(0).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
-    let drain = |pipe: Option<Box<dyn Read + Send>>| std::thread::spawn(move || { let mut buffer = Vec::new(); if let Some(mut pipe) = pipe { let _ = pipe.read_to_end(&mut buffer); } buffer });
-    let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let deadline = Instant::now() + SIGN_DEADLINE;
-    let status = loop {
-        if let Err(error) = cancellation() {
-            // SAFETY: child is the leader of its freshly created process group.
-            unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL); }
-            child.wait()?;
-            let _ = stdout.join();
-            let _ = stderr.join();
-            return Err(error);
-        }
-        if let Some(status) = child.try_wait()? { break status; }
-        if Instant::now() >= deadline {
-            // SAFETY: child is the leader of its freshly created process group.
-            unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL); }
-            let _ = child.wait();
-            return Err(signing("sign-timeout", format!("codesign did not finish within {}s and was killed; a keychain confirmation may have been requested", SIGN_DEADLINE.as_secs())));
-        }
-        signal_pause(Duration::from_millis(50));
+    let kill_group = |child: &std::process::Child| {
+        // SAFETY: child leads the process group created by this invocation.
+        unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL); }
     };
-    Ok(Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() })
+    let mut group_killed = false;
+    let result = (|| {
+        let mut stdout = child.stdout.take().expect("configured stdout pipe");
+        let mut stderr = child.stderr.take().expect("configured stderr pipe");
+        for fd in [stdout.as_raw_fd(), stderr.as_raw_fd()] {
+            // SAFETY: descriptors are live and owned by these pipes.
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+            if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+                return Err(io::Error::last_os_error().into());
+            }
+        }
+        let read_once = |pipe: &mut dyn Read, bytes: &mut Vec<u8>| -> Result<bool> {
+            let mut buffer = [0; 8192];
+            match pipe.read(&mut buffer) {
+                Ok(0) => Ok(true),
+                Ok(count) => { bytes.extend_from_slice(&buffer[..count]); Ok(false) }
+                Err(error) if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) => Ok(false),
+                Err(error) => Err(error.into()),
+            }
+        };
+        let deadline = Instant::now() + SIGN_DEADLINE;
+        let mut drain_deadline = deadline;
+        let (mut status, mut failure) = (None, None);
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let (mut out_closed, mut err_closed) = (false, false);
+        loop {
+            if failure.is_none() {
+                failure = cancellation().err();
+                if failure.is_none() && Instant::now() >= deadline {
+                    failure = Some(signing("sign-timeout", "codesign process or output exceeded its deadline"));
+                }
+            }
+            if !group_killed {
+                if failure.is_some() { kill_group(&child); group_killed = true; status = Some(child.wait()?); }
+                else { status = child.try_wait()?; }
+                if status.is_some() {
+                    if !group_killed { kill_group(&child); group_killed = true; }
+                    drain_deadline = deadline.min(Instant::now() + Duration::from_secs(1));
+                }
+            }
+            if !out_closed { out_closed = read_once(&mut stdout, &mut out)?; }
+            if !err_closed { err_closed = read_once(&mut stderr, &mut err)?; }
+            if let Some(status) = status {
+                if out_closed && err_closed {
+                    return match failure { Some(error) => Err(error), None => Ok(Output { status, stdout: out, stderr: err }) };
+                }
+                if Instant::now() >= drain_deadline {
+                    return Err(failure.unwrap_or_else(|| signing("sign-timeout", "codesign output pipes did not close within the bounded drain")));
+                }
+            }
+            let mut polls = [
+                libc::pollfd { fd: SIGNAL_READ.load(std::sync::atomic::Ordering::Relaxed), events: libc::POLLIN, revents: 0 },
+                libc::pollfd { fd: if out_closed { -1 } else { stdout.as_raw_fd() }, events: libc::POLLIN, revents: 0 },
+                libc::pollfd { fd: if err_closed { -1 } else { stderr.as_raw_fd() }, events: libc::POLLIN, revents: 0 },
+            ];
+            // SAFETY: all three pollfd values remain live; negative descriptors are ignored.
+            unsafe { libc::poll(polls.as_mut_ptr(), polls.len() as libc::nfds_t, 50); }
+        }
+    })();
+    // All error paths (including failed pipe setup/read) tear down and reap before K relocks.
+    if !group_killed { kill_group(&child); }
+    child.wait()?;
+    result
 }
 /// Signs and verifies a throwaway file with the identity through `/usr/bin/codesign`.
 fn codesign_probe(keychain: &Path, identity_sha1: &str) -> Result<bool> {
