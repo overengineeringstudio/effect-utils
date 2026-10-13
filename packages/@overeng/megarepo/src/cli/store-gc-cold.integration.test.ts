@@ -253,8 +253,14 @@ const outsideCwd = () =>
     return cwd
   })
 
-const PINNED_BUCK2 =
-  '/nix/store/q1gxc74vx63p8avn9dkamwdx3qin69p8-buck2-unstable-2026-09-01/libexec/buck2'
+/** The repository devenv provisions the pinned Buck2 as `BUCK2_BIN`. */
+const PINNED_BUCK2 = process.env['BUCK2_BIN'] ?? ''
+const buckSkipReason = (() => {
+  if (process.platform !== 'linux') return 'daemon discovery reads Linux /proc'
+  if (PINNED_BUCK2 === '') return 'BUCK2_BIN is unset; run inside the repository devenv shell'
+  return undefined
+})()
+if (buckSkipReason !== undefined) console.warn(`Skipping real Buck2 GC tests: ${buckSkipReason}`)
 const BUCK_ISOLATION = 'gc-acceptance'
 
 /** Poll real readiness/exit evidence until a wall-clock deadline, never a fixed settling sleep. */
@@ -282,7 +288,7 @@ const readBuckStatus = (root: string) =>
     return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BuckDaemonStatus))(stdout)
   })
 
-describe.skipIf(process.platform !== 'linux')('mr store gc — real pinned Buck2 daemons', () => {
+describe.skipIf(buckSkipReason !== undefined)('mr store gc — real pinned Buck2 daemons', () => {
   for (const attached of [false, true]) {
     it.effect(
       attached === true

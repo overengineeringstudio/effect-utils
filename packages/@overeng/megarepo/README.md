@@ -292,7 +292,10 @@ JSON worktree receipts include `buckDaemonsStopped` (root, daemon ID, PID, isola
 and `freedKiB`: pre-kill RSS + VmSwap of the daemon and its forkserver), even if a later probe or
 mutation keeps/fails. Targeted application retains its error contract and includes any stopped
 daemon's PID, daemon ID, root and `freedKiB` in the error message.
-`buckDaemonsUnreachable` records identity, cwd, memory and reason. Already
+`buckDaemonsUnreachable` records identity, cwd, memory and reason. `buck2 kill` has no
+conditional form: the final status and event-log read is immediately followed by the kill, and a
+stop that met another daemon pid or a command's new event log carries `raced` and logs a warning.
+A command starting in that sub-second window fails loudly and restarts the daemon. Already
 archived roots are report-only (`archived-root`): Buck's address is keyed to the original root,
 so GC never tries status or kill from the renamed archive path. Their in-use probe still keeps
 held archives. `--dry-run` never invokes the hook. `MEGAREPO_GC_BUCK2_BIN` selects the executable

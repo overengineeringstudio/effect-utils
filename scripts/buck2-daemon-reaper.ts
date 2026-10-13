@@ -5,8 +5,13 @@
  * running work, so it can stop a long build or an idle editor session. This
  * reaper only stops a daemon that reports no active command (an attached
  * `buck2 lsp` is an active command) and whose last command activity is older
- * than the idle threshold. Command activity is the newest event-log write
+ * than the idle threshold. Command activity is the newest event-log file write
  * under `<root>/buck-out/<isolation>/log`: every streamed command writes there.
+ *
+ * `buck2 kill` has no conditional form, so a command arriving between the
+ * final status read and the kill is interrupted. The reaper narrows that
+ * window (all sampling happens before the final read, which is immediately
+ * followed by the kill) and reports any detected race as `raced`.
  *
  * Daemons are found from the user's live processes, not `buck2 status --all`,
  * which probes every historical `~/.buck/buckd` entry and can hang on one
@@ -225,7 +230,10 @@ export const decodeDaemonStatus = (value: unknown): DaemonStatus => {
   }
 }
 
-/** Newest mtime among the isolation's event-log entries (`InvocationPaths::log_dir`). */
+/**
+ * Newest mtime among the isolation's event-log files (`InvocationPaths::log_dir`).
+ * Directories are ignored: `buck2 kill` itself creates a per-invocation directory there.
+ */
 export const lastLogWriteMs = (daemon: DaemonProcess): number | undefined => {
   const logDir = join(daemon.projectRoot, 'buck-out', daemon.isolationDir, 'log')
   let entries: string[]
@@ -237,8 +245,9 @@ export const lastLogWriteMs = (daemon: DaemonProcess): number | undefined => {
   let newest: number | undefined
   for (const entry of entries) {
     try {
-      const { mtimeMs } = statSync(join(logDir, entry))
-      newest = newest === undefined ? mtimeMs : Math.max(newest, mtimeMs)
+      const entryStat = statSync(join(logDir, entry))
+      if (entryStat.isFile() === false) continue
+      newest = newest === undefined ? entryStat.mtimeMs : Math.max(newest, entryStat.mtimeMs)
     } catch {
       // Buck rotates old logs concurrently; a vanished entry carries no activity.
     }
@@ -297,30 +306,37 @@ export const memoryKiB = (pids: readonly (number | undefined)[]): number => {
 /** Result of the re-checked kill attempt for one `kill-idle` daemon. */
 export type KillOutcome =
   | { readonly _tag: 'killed'; readonly freedKiB: number }
+  /** Stopped, but evidence shows a command or another daemon met the kill. */
+  | { readonly _tag: 'raced'; readonly freedKiB: number; readonly reason: string }
   | { readonly _tag: 'skipped'; readonly reason: string }
 
 /**
- * Re-observes the daemon immediately before `buck2 kill` and aborts on any
- * identity change, new command, or new log activity.
+ * Samples memory first, then re-observes the daemon and kills it with nothing
+ * in between. Aborts on any identity change, new command, or event-log write
+ * since the decision. After the kill, a different exited pid or a new event
+ * log means the kill met work it was not meant for: the outcome is `raced`.
  */
 export const killIfStillIdle = ({
   buck2,
   daemon,
+  decidedLastLogWriteMs,
   idleThresholdMs,
   now,
 }: {
   readonly buck2: string
   readonly daemon: DaemonProcess
+  /** Newest event-log write seen by the observation that decided `kill-idle`. */
+  readonly decidedLastLogWriteMs: number | undefined
   readonly idleThresholdMs: number
   readonly now: () => number
 }): KillOutcome => {
-  const decision = decideReap({
-    observation: observeDaemon({ buck2, daemon }),
-    nowMs: now(),
-    idleThresholdMs,
-  })
-  if (decision._tag !== 'kill-idle') return { _tag: 'skipped', reason: decision._tag }
   const freedKiB = memoryKiB([daemon.pid, daemon.forkserverPid])
+  const observation = observeDaemon({ buck2, daemon })
+  const decision = decideReap({ observation, nowMs: now(), idleThresholdMs })
+  if (decision._tag !== 'kill-idle' || observation._tag !== 'observed')
+    return { _tag: 'skipped', reason: decision._tag }
+  if (observation.lastLogWriteMs !== decidedLastLogWriteMs)
+    return { _tag: 'skipped', reason: 'log-activity-since-decision' }
   const kill = Bun.spawnSync([buck2, '--isolation-dir', daemon.isolationDir, 'kill'], {
     cwd: daemon.projectRoot,
     stdout: 'pipe',
@@ -328,6 +344,12 @@ export const killIfStillIdle = ({
     timeout: statusTimeoutMs,
   })
   if (kill.exitCode !== 0) return { _tag: 'skipped', reason: `kill-exit-${kill.exitCode}` }
+  const exitedPid = /Buck2 daemon pid (\d+) has exited/u.exec(kill.stderr.toString())?.[1]
+  if (exitedPid === undefined) return { _tag: 'skipped', reason: 'kill-found-no-daemon' }
+  if (Number(exitedPid) !== daemon.pid)
+    return { _tag: 'raced', freedKiB, reason: `kill-stopped-other-pid-${exitedPid}` }
+  if (lastLogWriteMs(daemon) !== observation.lastLogWriteMs)
+    return { _tag: 'raced', freedKiB, reason: 'command-log-written-during-kill' }
   return { _tag: 'killed', freedKiB }
 }
 
@@ -369,11 +391,8 @@ export const reap = ({
         rootPrefixes.some((prefix) => daemon.projectRoot.startsWith(prefix)),
     )
     .map((daemon) => {
-      const decision = decideReap({
-        observation: observeDaemon({ buck2, daemon }),
-        nowMs: now(),
-        idleThresholdMs,
-      })
+      const observation = observeDaemon({ buck2, daemon })
+      const decision = decideReap({ observation, nowMs: now(), idleThresholdMs })
       return {
         decision: decision._tag,
         daemonId: daemon.daemonId,
@@ -385,8 +404,14 @@ export const reap = ({
         reason: 'reason' in decision ? decision.reason : undefined,
         memoryKiB: memoryKiB([daemon.pid, daemon.forkserverPid]),
         outcome:
-          decision._tag === 'kill-idle' && dryRun === false
-            ? killIfStillIdle({ buck2, daemon, idleThresholdMs, now })
+          decision._tag === 'kill-idle' && dryRun === false && observation._tag === 'observed'
+            ? killIfStillIdle({
+                buck2,
+                daemon,
+                decidedLastLogWriteMs: observation.lastLogWriteMs,
+                idleThresholdMs,
+                now,
+              })
             : undefined,
       }
     })
@@ -411,5 +436,11 @@ if (import.meta.main === true) {
     rootPrefixes: values['root-prefix'],
     dryRun: values['dry-run'],
   })
+  for (const entry of entries) {
+    if (entry.outcome?._tag === 'raced')
+      console.error(
+        `buck2-daemon-reaper: RACED stopping pid ${entry.pid} (${entry.daemonId}) at ${entry.projectRoot}: ${entry.outcome.reason}`,
+      )
+  }
   console.log(JSON.stringify(entries, undefined, 2))
 }

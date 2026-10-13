@@ -19,10 +19,15 @@ const daemonFields = {
   path: Schema.String,
 }
 
-/** Memory is the pre-kill RSS + VmSwap of the daemon and its own forkserver. */
+/**
+ * Memory is the pre-kill RSS + VmSwap of the daemon and its own forkserver.
+ * `raced` is set when the kill met work it was not meant for: another daemon
+ * pid exited, or a command wrote an event log between the final read and the kill.
+ */
 export const BuckDaemonStopped = Schema.TaggedStruct('stopped', {
   ...daemonFields,
   freedKiB: Schema.Int,
+  raced: Schema.optional(Schema.String),
 })
 export type BuckDaemonStopped = typeof BuckDaemonStopped.Type
 
@@ -203,10 +208,61 @@ export const findWorktreeBuckDaemons = Effect.fn('store.findWorktreeBuckDaemons'
   return daemons
 })
 
+/** Newest event-log file write; `buck2 kill` itself only adds a directory there. */
+const newestBuckLogWriteMs = Effect.fn('store.newestBuckLogWriteMs')(function* (
+  daemon: BuckDaemonIdentity,
+) {
+  const fs = yield* FileSystem.FileSystem
+  const logDir = `${daemon.root}/buck-out/${daemon.isolation}/log`
+  const entries = yield* fs.readDirectory(logDir).pipe(Effect.orElseSucceed(() => []))
+  let newest: number | undefined
+  for (const entry of entries) {
+    // Buck rotates old logs concurrently; a vanished entry carries no activity.
+    const info = yield* fs.stat(`${logDir}/${entry}`).pipe(Effect.option)
+    if (Option.isNone(info) === true || info.value.type !== 'File') continue
+    const mtimeMs = Option.getOrUndefined(info.value.mtime)?.getTime()
+    if (mtimeMs !== undefined) newest = Math.max(newest ?? mtimeMs, mtimeMs)
+  }
+  return newest
+})
+
+const runBuck2 = Effect.fn('store.runBuck2')(function* ({
+  binary,
+  daemon,
+  subcommand,
+}: {
+  binary: string
+  daemon: BuckDaemonIdentity
+  subcommand: 'status' | 'kill'
+}) {
+  return yield* ChildProcessSpawner.use((spawner) =>
+    Effect.gen(function* () {
+      const handle = yield* spawner.spawn(
+        Command.make(binary, ['--isolation-dir', daemon.isolation, subcommand], {
+          cwd: daemon.root,
+        }),
+      )
+      const [stdout, stderr, exitCode] = yield* Effect.all(
+        [
+          Stream.mkString(Stream.decodeText(handle.stdout)),
+          Stream.mkString(Stream.decodeText(handle.stderr)),
+          handle.exitCode,
+        ],
+        { concurrency: 3 },
+      )
+      return { stdout, stderr, exitCode }
+    }).pipe(Effect.scoped),
+  ).pipe(Effect.timeout('30 seconds'), Effect.option)
+})
+
 /**
  * Never throws into GC. Archived roots are report-only: Buck's daemon address is
  * keyed to the original root, so status/kill from the renamed root is unsafe.
  * An empty binary override disables discovery as well as shutdown.
+ *
+ * `buck2 kill` has no conditional form. Memory is sampled at discovery, the
+ * final status and event-log read is immediately followed by the kill, and
+ * any race detected afterwards is logged and recorded as `raced`.
  */
 export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons')(function* ({
   worktreePath,
@@ -230,21 +286,14 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
       })
       continue
     }
-    const status = yield* ChildProcessSpawner.use((spawner) =>
-      Effect.gen(function* () {
-        const handle = yield* spawner.spawn(
-          Command.make(binary, ['--isolation-dir', daemon.isolation, 'status'], {
-            cwd: daemon.root,
-          }),
-        )
-        const [stdout, exitCode] = yield* Effect.all(
-          [Stream.mkString(Stream.decodeText(handle.stdout)), handle.exitCode],
-          { concurrency: 2 },
-        )
-        if (exitCode !== 0) return yield* Effect.fail({ _tag: 'StatusExitFailed', exitCode })
-        return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BuckDaemonStatus))(stdout)
-      }).pipe(Effect.scoped),
-    ).pipe(Effect.timeout('30 seconds'), Effect.option)
+    const decidedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
+    const statusRun = yield* runBuck2({ binary, daemon, subcommand: 'status' })
+    const status =
+      Option.isSome(statusRun) === true && statusRun.value.exitCode === 0
+        ? yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BuckDaemonStatus))(
+            statusRun.value.stdout,
+          ).pipe(Effect.option)
+        : Option.none()
     if (Option.isNone(status) === true) {
       results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'status-unreadable' })
       continue
@@ -263,16 +312,36 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
       })
       continue
     }
-    const killed = yield* ChildProcessSpawner.use((spawner) =>
-      spawner.exitCode(
-        Command.make(binary, ['--isolation-dir', daemon.isolation, 'kill'], { cwd: daemon.root }),
-      ),
-    ).pipe(Effect.timeout('30 seconds'), Effect.option)
-    results.push(
-      Option.isSome(killed) === true && killed.value === 0
-        ? { _tag: 'stopped', ...identity, freedKiB: memoryKiB }
-        : { _tag: 'unreachable', ...identity, memoryKiB, reason: 'kill-failed' },
-    )
+    const observedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
+    if (observedLogWriteMs !== decidedLogWriteMs) {
+      results.push({ _tag: 'kept-active', ...identity })
+      continue
+    }
+    const killRun = yield* runBuck2({ binary, daemon, subcommand: 'kill' })
+    if (Option.isNone(killRun) === true || killRun.value.exitCode !== 0) {
+      results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'kill-failed' })
+      continue
+    }
+    const exitedPid = /Buck2 daemon pid (\d+) has exited/u.exec(killRun.value.stderr)?.[1]
+    if (exitedPid === undefined) {
+      results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'kill-found-no-daemon' })
+      continue
+    }
+    const logWriteAfterKillMs = yield* newestBuckLogWriteMs(daemon)
+    let raced: string | undefined
+    if (Number(exitedPid) !== daemon.pid) raced = `kill-stopped-other-pid-${exitedPid}`
+    else if (logWriteAfterKillMs !== observedLogWriteMs) raced = 'command-log-written-during-kill'
+    if (raced !== undefined) {
+      yield* Effect.logWarning(
+        `RACED stopping Buck2 daemon pid ${daemon.pid} (${daemon.daemonId}) at ${daemon.root}: ${raced}`,
+      )
+    }
+    results.push({
+      _tag: 'stopped',
+      ...identity,
+      freedKiB: memoryKiB,
+      ...(raced === undefined ? {} : { raced }),
+    })
   }
   return results
 })

@@ -343,14 +343,27 @@ Daemons are found from `/proc` rather than `buck2 status --all`, which probes
 every historical `~/.buck/buckd` entry and stalled past a 180 s test timeout on a busy host.
 Each daemon's status is read from its own root with a 30 s timeout and must
 report the same pid and daemon id; anything else keeps the daemon.
-Idle time runs from the later of the daemon's `start_time` and the newest entry
-under `<root>/buck-out/<isolation>/log`, where every streamed command writes its
-event log. `buck2 status` itself writes no event log. A daemon reporting any
+Idle time runs from the later of the daemon's `start_time` and the newest event-log
+file under `<root>/buck-out/<isolation>/log`, where every streamed command writes its
+event log. `buck2 status` writes no event log, and `buck2 kill` only adds a
+directory there. A daemon reporting any
 `active_commands` entry, which includes an attached editor session, is kept
-regardless of age. Immediately before `buck2 kill`, the reaper re-reads status
-from the daemon's root and aborts on a changed daemon id or pid, a new command,
-or new log activity. `buck2 kill` has no conditional form, so a command arriving
-between that recheck and the kill is still interrupted.
+regardless of age. Memory is sampled first; the final status read from the
+daemon's root, together with the newest event-log write, is then immediately
+followed by `buck2 kill`. The kill is aborted on a changed daemon id or pid, a
+new command, or an event-log write since the deciding observation. After the
+kill, an exited pid other than the observed one, or an event log written during
+the kill, is reported loudly as `raced`.
+
+Accepted residual: `buck2 kill` has no conditional form and the daemon has no
+admission API, so a client cannot make the idle check and the shutdown atomic.
+A command that starts within the sub-second window between the final read and
+the kill, after at least three hours of idleness, fails loudly with the daemon
+killed; the next client invocation restarts the daemon. Buck2's state is
+crash-consistent, so the residual is a visible failed command, never silent
+corruption. `mr store gc`'s teardown stop uses the same order, the same residual
+and a `raced` receipt field; its window follows the retiring worktree's keep
+checks instead of the three-hour threshold.
 
 The reaper never signals a process. A daemon whose root no longer exists is
 report-only. The default threshold of three hours outlasts an agent's usual
