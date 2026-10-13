@@ -9,6 +9,8 @@ let
 in
 pkgs.runCommand "ts-sandbox-nested-probe-${nonce}" { } ''
   set -euo pipefail
+  echo 'TS sandbox probe: outer Nix /proc/net/dev' >&2
+  ${pkgs.coreutils}/bin/cat /proc/net/dev >&2
   mkdir -p "$out" "$PWD/scratch"
   printf 'declared input\n' > "$PWD/input.txt"
   binds=()
@@ -33,8 +35,10 @@ pkgs.runCommand "ts-sandbox-nested-probe-${nonce}" { } ''
     -- ${pkgs.bun}/bin/bun --no-env-file --no-install -e '
       const fs = require("node:fs");
       if (fs.readFileSync("input.txt", "utf8") !== "declared input\n") throw Error("input view");
-      const interfaces = fs.readFileSync("/proc/net/dev", "utf8").split("\n").filter(line => line.includes(":"));
-      if (interfaces.length !== 1 || interfaces[0].split(":")[0].trim() !== "lo") throw Error("network boundary");
+      const networkView = fs.readFileSync("/proc/net/dev", "utf8");
+      console.error("TS sandbox probe: /proc/net/dev=" + JSON.stringify(networkView));
+      const interfaces = networkView.split("\n").filter(line => line.includes(":"));
+      if (interfaces.length !== 1 || interfaces[0].split(":")[0].trim() !== "lo") throw Error("network boundary: " + JSON.stringify(interfaces));
       if (Object.keys(process.env).sort().join(",") !== "BUCK_SCRATCH_PATH,LC_ALL,PWD,TMPDIR,TZ") throw Error("environment boundary");
       for (const path of ["/home", "/root", "/nix/var/nix"]) {
         try { fs.lstatSync(path); throw Error("visible host path: " + path); }
