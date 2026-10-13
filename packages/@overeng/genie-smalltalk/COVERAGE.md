@@ -19,6 +19,8 @@ Schedule work accepts either a pinned `mission@revision` or an unpinned mission 
 Native conformance is opt-in: `ST_BIN` selects the production binary for the agent-attributed round-trip; `ST_FIXTURE_BIN` selects upstream's separately compiled, pinned `st3-fixture` test-support binary for synthetic-person gate semantics. Both use isolated private runtime directories. The fixture mode does not prove production person authentication; see [the acceptance boundary](./HUMAN_GATE_ACCEPTANCE.md).
 The unified conformance target is native `d5e2302`. Assertions derive run subjects from the native start response, including mission-scoped run IDs; they do not assume the legacy `mission-run/ID` shape.
 
+Both native modes use `scratchDaemonLayer` from the Node-only `@overeng/genie-smalltalk/testing` export. It scopes `st up`, HOME/XDG directories, private config, state, PTY root and sockets to one temporary directory, stops the daemon and its scratch processes, and removes the directory on scope close. `ScratchDaemon` exposes the directory, endpoint, isolated environment and an Effect-based `run` command with a timeout. Options select the binary, node, optional private-config person, readiness/command timeouts and directory retention. PATH defaults to `/nonexistent`; native conformance explicitly supplies the caller's PATH to exercise host shell commands.
+
 Daemonless native KDL parsing is an upstream prerequisite for a pinned-binary
 CI parse check. At native revision `14311260cf907e9b8dabf629588314e63dec3665`,
 `st apply --dry-run` still calls the daemon's `/v1/sets/preview`, and
