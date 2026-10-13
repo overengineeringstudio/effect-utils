@@ -130,9 +130,9 @@ Effect 4 bindings for authenticated peer-to-peer QUIC and schema-framed messages
 in Node and Bun desktop/server applications.
 See the [package README](./packages/@overeng/effect-iroh/README.md) for usage and limitations.
 
-| Package                                                       | Description                         |
-| ------------------------------------------------------------- | ----------------------------------- |
-| [@overeng/effect-iroh](./packages/@overeng/effect-iroh)           | Effect wrapper for the iroh binding |
+| Package                                                 | Description                         |
+| ------------------------------------------------------- | ----------------------------------- |
+| [@overeng/effect-iroh](./packages/@overeng/effect-iroh) | Effect wrapper for the iroh binding |
 
 ### Utilities
 
@@ -200,6 +200,9 @@ devenv tasks run test:run
 devenv tasks run test:utils
 devenv tasks run test:genie
 
+# Rust interop generator integration tests (Bun)
+devenv tasks run buck2:rust:generators:test
+
 # Integration tests (requires NOTION_API_TOKEN for Notion packages)
 NOTION_API_TOKEN=secret_xxx devenv tasks run test:integration
 
@@ -231,6 +234,12 @@ authority is retained even when collection products and baseline evidence are sc
 Editor publication follows the selected source suites and module fixtures rather
 than publishing neutral-only package views. macOS still builds and smokes the native
 and compiled products to cover Darwin artifacts.
+
+Infrastructure Bun suites outside package source roots run through source tasks
+rather than `buck2-test-authority.json`: `genie:buck2:test` covers the Buck projection
+suite, and `buck2:rust:generators:test` covers every test under `buck2/rust/`, including
+the interop service and wasm guest packager integration tests. Both tasks participate
+in `test:run` and its Linux/Darwin CI test partition.
 
 ### Type Checking
 
