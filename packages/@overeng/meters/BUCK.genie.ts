@@ -6,7 +6,7 @@ export const buck2TypeScriptAdmission = {
   packageName: '@overeng/meters',
   packagePath: 'packages/@overeng/meters',
   projectionSource: 'packages/@overeng/meters/BUCK.genie.ts',
-  sourceRoots: ['src'],
+  sourceRoots: ['src', 'e2e'],
   workspaceSiblings: [],
   authorities: [{ declarationEntrypoint: 'index.d.ts', projectFile: 'tsconfig.json' }],
   tests: [
