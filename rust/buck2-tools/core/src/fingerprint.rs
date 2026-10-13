@@ -25,6 +25,9 @@ pub struct Fingerprints {
     pub digest: String,
     pub resolved_links_digest: Option<String>,
     pub literal_links_digest: Option<String>,
+    /// Regular-file payload bytes read during this call, counted once even when
+    /// both tree digests consume them. Excludes path, size, and symlink framing.
+    pub hashed_bytes: u64,
 }
 
 fn fail(message: impl std::fmt::Display) -> io::Error {
@@ -226,6 +229,7 @@ struct Walker {
     links: Vec<(Vec<u8>, Vec<u8>)>,
     ancestors: HashSet<(u64, u64)>,
     buffer: Box<[u8; 131072]>,
+    hashed_bytes: u64,
 }
 
 impl Walker {
@@ -350,6 +354,7 @@ impl Walker {
                     break;
                 }
                 self.hash.update(&self.buffer[..size]);
+                self.hashed_bytes += size as u64;
                 if let Some(hash) = &mut self.resolved {
                     hash.update(&self.buffer[..size]);
                 }
@@ -419,6 +424,7 @@ pub fn fingerprint(
         links: Vec::new(),
         ancestors: HashSet::from([(before.dev(), before.ino())]),
         buffer: Box::new([0; 131072]),
+        hashed_bytes: 0,
     };
     for name in sorted_names(tree)? {
         walker.visit(&tree.join(&name), name.as_bytes())?;
@@ -441,6 +447,7 @@ pub fn fingerprint(
         digest: hex(walker.hash),
         resolved_links_digest: walker.resolved.map(hex),
         literal_links_digest,
+        hashed_bytes: walker.hashed_bytes,
     })
 }
 

@@ -251,6 +251,17 @@ ctime is also required except for read-only shared source inodes. The complete
 admitted-source versus candidate payload proof remains mandatory, so the manifest
 is an optimization hint, not a substitute for integrity validation.
 
+Batch publication emits `[editor-view-batch-metrics]` with actual source-root and
+snapshot fingerprint reads, cold copy counts/bytes, CAS candidate hash reads,
+content-sharing work, and reused content-file counts. `[editor-view-phases]`
+includes per-package phase work and absolute start/end timestamps. Byte counters
+come from the existing read/copy loops; they do not perform a second census.
+Concurrent root fingerprints and the four publication workers overlap, so summed
+work milliseconds are not lane wall time. Use the per-package phase timestamps
+and the enclosing `buck2:editor:publish:test` task duration for critical-path
+attribution. Source-root digests are never memoized: mutable Buck outputs continue
+to receive the full content proof on every publication.
+
 Collection runs after publications that create or unlink snapshot payloads, once
 per changed store after a batch, and after explicit release. A genuinely unchanged
 publication still evaluates retention, but skips a redundant CAS census when it

@@ -590,10 +590,15 @@ const fingerprint = async ({
   path,
   expected,
   mayDisappear = false,
+  onFingerprint,
 }: {
   readonly path: string
   readonly expected: BigIntStats
   readonly mayDisappear?: boolean
+  readonly onFingerprint?: (work: {
+    readonly hashedBytes: number
+    readonly durationMs: number
+  }) => void
 }): Promise<string | undefined> => {
   const cached = verified.get(verificationKey(expected))
   if (cached !== undefined && isImmutable(expected) === true) return cached
@@ -607,6 +612,7 @@ const fingerprint = async ({
   }
   try {
     const before = await file.stat({ bigint: true })
+    const startedAt = performance.now()
     if (before.isFile() === false || unchanged({ left: expected, right: before }) === false) {
       if (
         mayDisappear === true &&
@@ -635,6 +641,7 @@ const fingerprint = async ({
     if (unchanged({ left: before, right: named }) === false)
       fail(`payload changed while hashing: ${path}`)
     const digest = digestBytes?.toString('hex') ?? hash!.digest('hex')
+    onFingerprint?.({ hashedBytes: Number(before.size), durationMs: performance.now() - startedAt })
     if (isImmutable(before) === true) remember({ status: before, digest: digest })
     return digest
   } finally {
@@ -1129,6 +1136,7 @@ export const shareSnapshotFiles = async ({
   reusedFiles,
   candidateFiles,
   onSharedFile,
+  onFingerprint,
 }: {
   readonly candidate: string
   readonly contentStore: string
@@ -1146,6 +1154,10 @@ export const shareSnapshotFiles = async ({
     digest: string
     mode: number
     blobKey: string
+  }) => void
+  readonly onFingerprint?: (work: {
+    readonly hashedBytes: number
+    readonly durationMs: number
   }) => void
 }): Promise<EditorViewContentSharing> => {
   const root = resolve(candidate)
@@ -1192,8 +1204,11 @@ export const shareSnapshotFiles = async ({
   const prepare = async (path: string): Promise<PreparedFile> => {
     const status = await normalizeCandidate(path)
     const digest =
-      (await fingerprint({ path: path, expected: status })) ??
-      fail(`candidate disappeared while hashing: ${path}`)
+      (await fingerprint({
+        path: path,
+        expected: status,
+        ...(onFingerprint === undefined ? {} : { onFingerprint }),
+      })) ?? fail(`candidate disappeared while hashing: ${path}`)
     const mode = Number(permissions(status))
     return {
       path,

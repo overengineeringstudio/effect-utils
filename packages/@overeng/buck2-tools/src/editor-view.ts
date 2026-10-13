@@ -304,6 +304,44 @@ const streamFileIntoHash = async ({
   for await (const chunk of createReadStream(path)) for (const hash of hashes) hash.update(chunk)
 }
 
+/** Actual work performed by one native tree fingerprint, not a payload-size estimate. */
+type FingerprintWork = { readonly hashedBytes: number; readonly durationMs: number }
+
+/** Batch-scoped work counters; elapsed stage work overlaps across the bounded workers. */
+export type EditorViewBatchMetrics = {
+  sourceRootWalks: number
+  sourceHashedBytes: number
+  sourceHashWorkMs: number
+  snapshotRootWalks: number
+  snapshotHashedBytes: number
+  snapshotHashWorkMs: number
+  coldCopiedFiles: number
+  coldCopiedBytes: number
+  coldCopyWorkMs: number
+  contentHashedFiles: number
+  contentHashedBytes: number
+  contentHashWorkMs: number
+  contentShareWorkMs: number
+  reusedContentFiles: number
+}
+
+const emptyBatchMetrics = (): EditorViewBatchMetrics => ({
+  sourceRootWalks: 0,
+  sourceHashedBytes: 0,
+  sourceHashWorkMs: 0,
+  snapshotRootWalks: 0,
+  snapshotHashedBytes: 0,
+  snapshotHashWorkMs: 0,
+  coldCopiedFiles: 0,
+  coldCopiedBytes: 0,
+  coldCopyWorkMs: 0,
+  contentHashedFiles: 0,
+  contentHashedBytes: 0,
+  contentHashWorkMs: 0,
+  contentShareWorkMs: 0,
+  reusedContentFiles: 0,
+})
+
 /** Inputs of {@link canonicalTreeFingerprint}: the tree to hash and its dereferencing mode. */
 export type CanonicalTreeFingerprintOptions = {
   /** Tree whose byte-sorted contents are hashed. */
@@ -318,6 +356,7 @@ export type CanonicalTreeFingerprintOptions = {
   readonly backingRoots?: readonly string[]
   /** Immutable Nix executable used by the publisher; omitted only for TS parity checks. */
   readonly fingerprintTool?: string
+  readonly onFingerprint?: (work: FingerprintWork) => void
 }
 
 /** Stable per-root identities framing link targets in owner-resolved form. */
@@ -367,6 +406,7 @@ export const canonicalTreeFingerprint = async ({
   dereference = false,
   backingRoots = [],
   fingerprintTool,
+  onFingerprint,
 }: CanonicalTreeFingerprintOptions): Promise<string> =>
   (
     await canonicalTreeFingerprints({
@@ -374,6 +414,7 @@ export const canonicalTreeFingerprint = async ({
       ...(dereference === true ? { dereference } : {}),
       ...(backingRoots.length === 0 ? {} : { backingRoots }),
       ...(fingerprintTool === undefined ? {} : { fingerprintTool }),
+      ...(onFingerprint === undefined ? {} : { onFingerprint }),
     })
   ).digest
 
@@ -386,10 +427,12 @@ export const canonicalTreeFingerprintWithResolvedLinks = async ({
   tree,
   linkOwners,
   fingerprintTool,
+  onFingerprint,
 }: {
   readonly tree: string
   readonly linkOwners: TreeLinkOwners
   readonly fingerprintTool?: string
+  readonly onFingerprint?: (work: FingerprintWork) => void
 }): Promise<{
   readonly digest: string
   readonly resolvedLinksDigest: string
@@ -399,6 +442,7 @@ export const canonicalTreeFingerprintWithResolvedLinks = async ({
     tree,
     linkOwners,
     ...(fingerprintTool === undefined ? {} : { fingerprintTool }),
+    ...(onFingerprint === undefined ? {} : { onFingerprint }),
   })
   return {
     digest: fingerprints.digest,
@@ -415,6 +459,7 @@ const canonicalTreeFingerprints = async ({
   backingRoots = [],
   linkOwners = [],
   fingerprintTool,
+  onFingerprint,
 }: CanonicalTreeFingerprintOptions & {
   readonly linkOwners?: TreeLinkOwners
 }): Promise<CanonicalTreeFingerprints> => {
@@ -423,15 +468,19 @@ const canonicalTreeFingerprints = async ({
       fail(`fingerprint tool must be an immutable /nix/store executable: ${fingerprintTool}`)
     const args = [
       resolve(tree),
+      ...(onFingerprint === undefined ? [] : ['--metrics']),
       ...(dereference === true ? ['--dereference'] : []),
       ...backingRoots.flatMap((root) => ['--backing-root', root]),
       ...linkOwners.flatMap(({ source, identity }) => ['--link-owner', `${source}=${identity}`]),
     ]
+    const startedAt = performance.now()
     const stdout = await runFingerprintTool({ tool: fingerprintTool, args })
     const lines = stdout.trimEnd().split('\n')
     const values = new Map(lines.map((line) => line.split(' ', 2) as [string, string]))
     if (
-      lines.length !== (linkOwners.length > 0 && dereference !== true ? 3 : 1) ||
+      lines.length !==
+        (linkOwners.length > 0 && dereference !== true ? 3 : 1) +
+          (onFingerprint === undefined ? 0 : 1) ||
       values.size !== lines.length ||
       fingerprintPattern.test(values.get('digest') ?? '') === false ||
       (linkOwners.length > 0 &&
@@ -440,6 +489,17 @@ const canonicalTreeFingerprints = async ({
           fingerprintPattern.test(values.get('literal') ?? '') === false))
     )
       fail(`fingerprint tool returned invalid output: ${stdout}`)
+    if (onFingerprint !== undefined) {
+      const bytes = values.get('hashed-bytes')
+      const hashedBytes = Number(bytes)
+      if (
+        bytes === undefined ||
+        /^\d+$/u.test(bytes) === false ||
+        !Number.isSafeInteger(hashedBytes)
+      )
+        fail(`fingerprint tool returned invalid byte count: ${stdout}`)
+      onFingerprint({ hashedBytes, durationMs: performance.now() - startedAt })
+    }
     return {
       digest: values.get('digest') ?? fail('fingerprint tool omitted digest'),
       resolvedLinksDigest: values.get('resolved'),
@@ -1201,9 +1261,11 @@ const fingerprintDeclaredRoots = async ({
   roots,
   knownRoot,
   fingerprintTool,
+  onFingerprint,
 }: {
   readonly roots: readonly DeclaredSnapshotRoot[]
   readonly fingerprintTool: string
+  readonly onFingerprint?: (work: FingerprintWork) => void
   readonly knownRoot?: {
     readonly source: string
     readonly digest: string
@@ -1228,6 +1290,7 @@ const fingerprintDeclaredRoots = async ({
         tree: root.source,
         linkOwners,
         fingerprintTool,
+        ...(onFingerprint === undefined ? {} : { onFingerprint }),
       })
       return {
         identity: root.identity,
@@ -1268,12 +1331,15 @@ const fingerprintSnapshotPayload = async ({
   roots = [],
   fingerprintTool,
   onFailure,
+  onFingerprint,
 }: {
   readonly snapshotDir: string
   readonly fingerprintTool: string
   readonly roots?: readonly DeclaredSnapshotRoot[]
   readonly onFailure?: () => void
+  readonly onFingerprint?: (work: FingerprintWork) => void
 }): Promise<SnapshotPayloadFingerprints> => {
+  const fingerprintMetrics = onFingerprint === undefined ? {} : { onFingerprint }
   let firstFailure: { readonly error: unknown } | undefined
   const diagnose = <T>(operation: Promise<T>): Promise<T> =>
     operation.catch((error: unknown) => {
@@ -1287,7 +1353,9 @@ const fingerprintSnapshotPayload = async ({
   const nodeModules = join(snapshotDir, 'node_modules')
   if (pathExists(backing) === false)
     return {
-      digest: await diagnose(canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool })),
+      digest: await diagnose(
+        canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool, ...fingerprintMetrics }),
+      ),
       resolvedRootsDigest: undefined,
     }
   const extraRoots = roots.filter((root) => root.identity !== 'node_modules')
@@ -1303,7 +1371,7 @@ const fingerprintSnapshotPayload = async ({
   // Keep the candidate alive and unchanged until every fingerprint child has settled,
   // even after a failure: cleanup chmods directories before removing the payload.
   const [backingResult, extraResult, nodeModulesResult] = await Promise.allSettled([
-    diagnose(canonicalTreeFingerprint({ tree: backing, fingerprintTool })),
+    diagnose(canonicalTreeFingerprint({ tree: backing, fingerprintTool, ...fingerprintMetrics })),
     Promise.allSettled(
       extraRoots.map(async (root) => ({
         digest: (
@@ -1312,6 +1380,7 @@ const fingerprintSnapshotPayload = async ({
               tree: join(snapshotDir, root.destination),
               linkOwners: candidateOwners,
               fingerprintTool,
+              ...fingerprintMetrics,
             }),
           )
         ).resolvedLinksDigest,
@@ -1325,6 +1394,7 @@ const fingerprintSnapshotPayload = async ({
             tree: nodeModules,
             linkOwners: candidateOwners,
             fingerprintTool,
+            ...fingerprintMetrics,
           }),
         ),
   ])
@@ -1340,7 +1410,9 @@ const fingerprintSnapshotPayload = async ({
   const nodeModulesFingerprints = nodeModulesResult.value
   const nodeModulesDigest =
     nodeModulesFingerprints?.digest ??
-    (await diagnose(canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool })))
+    (await diagnose(
+      canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool, ...fingerprintMetrics }),
+    ))
   const entries = [
     ['.backing', backingDigest],
     ['node_modules', nodeModulesDigest],
@@ -1469,16 +1541,27 @@ const materializeDeclaredRoots = async ({
   roots,
   contentStore,
   previousManifest,
+  metrics,
 }: {
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
   contentStore: string
   previousManifest: ReadonlyMap<string, EditorViewSourceFile>
+  metrics?: EditorViewBatchMetrics
 }): Promise<MaterializedDeclaredRoots> => {
   mkdirSync(join(candidate, '.backing'))
   const sourceFiles = new Map<string, { source: string; sourceKey: string }>()
   const manifest = new Map<string, EditorViewSourceFile>()
   const reusable: { path: string; entry: EditorViewSourceFile }[] = []
+  const copyPayload = (source: string, destination: string, bytes: number): void => {
+    const startedAt = performance.now()
+    copyFileSync(source, destination, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+    if (metrics !== undefined) {
+      metrics.coldCopiedFiles += 1
+      metrics.coldCopiedBytes += bytes
+      metrics.coldCopyWorkMs += performance.now() - startedAt
+    }
+  }
   const visit = ({ source, destination }: { source: string; destination: string }): void => {
     mkdirSync(destination, { recursive: true })
     for (const name of readdirSync(source)) {
@@ -1497,11 +1580,7 @@ const materializeDeclaredRoots = async ({
           reusable.push({ path: destinationPath, entry: previous })
           manifest.set(relative(candidate, destinationPath), previous)
         } else {
-          copyFileSync(
-            sourcePath,
-            destinationPath,
-            constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE,
-          )
+          copyPayload(sourcePath, destinationPath, Number(status.size))
         }
       } else fail(`declared root contains unsupported special file: ${sourcePath}`)
     }
@@ -1513,7 +1592,7 @@ const materializeDeclaredRoots = async ({
     if (reusedFiles.has(file.path) === true) continue
     const source = sourceFiles.get(file.path) ?? fail(`source file mapping is absent: ${file.path}`)
     manifest.delete(relative(candidate, file.path))
-    copyFileSync(source.source, file.path, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+    copyPayload(source.source, file.path, statSync(source.source).size)
   }
   return { links: rewriteSnapshotLinks({ candidate, roots }), sourceFiles, manifest, reusedFiles }
 }
@@ -2316,16 +2395,24 @@ type SnapshotValidation =
 const validateSnapshotContents = async ({
   snapshotDir,
   fingerprintTool,
+  onFingerprint,
 }: {
   readonly snapshotDir: string
   readonly fingerprintTool: string
+  readonly onFingerprint?: (work: FingerprintWork) => void
 }): Promise<EditorViewRecord> => {
   requireDirectory({ path: snapshotDir, field: 'snapshot' })
   const record = readRecord(join(snapshotDir, 'editor-view.json'))
   const snapshotNodeModules = join(snapshotDir, 'node_modules')
   requireDirectory({ path: snapshotNodeModules, field: 'snapshot node_modules' })
   requireReadOnlySnapshot(snapshotDir)
-  const digest = (await fingerprintSnapshotPayload({ snapshotDir, fingerprintTool })).digest
+  const digest = (
+    await fingerprintSnapshotPayload({
+      snapshotDir,
+      fingerprintTool,
+      ...(onFingerprint === undefined ? {} : { onFingerprint }),
+    })
+  ).digest
   if (digest !== record.byteSnapshotDigest)
     fail(
       `existing snapshot byte digest mismatch: recorded=${record.byteSnapshotDigest} actual=${digest}`,
@@ -2466,6 +2553,7 @@ type PublicationCoordinator = {
   readonly lock: { readonly path: string; readonly token: string }
   readonly commit: <T>(operation: () => T | Promise<T>) => Promise<T>
   readonly workers: Map<string, PublicationWorkerState>
+  readonly metrics: EditorViewBatchMetrics
 }
 
 /** An uncertain sibling inventory disables this admission's eviction rather than guessing. */
@@ -2556,6 +2644,26 @@ const publishEditorViewCoordinated = async ({
   onContentChanged: () => void
 }): Promise<EditorViewRecord> => {
   const startedAtMs = performance.timeOrigin + performance.now()
+  const sourceFingerprintMetrics =
+    coordinator === undefined
+      ? {}
+      : {
+          onFingerprint: ({ hashedBytes, durationMs }: FingerprintWork): void => {
+            coordinator.metrics.sourceRootWalks += 1
+            coordinator.metrics.sourceHashedBytes += hashedBytes
+            coordinator.metrics.sourceHashWorkMs += durationMs
+          },
+        }
+  const snapshotFingerprintMetrics =
+    coordinator === undefined
+      ? {}
+      : {
+          onFingerprint: ({ hashedBytes, durationMs }: FingerprintWork): void => {
+            coordinator.metrics.snapshotRootWalks += 1
+            coordinator.metrics.snapshotHashedBytes += hashedBytes
+            coordinator.metrics.snapshotHashWorkMs += durationMs
+          },
+        }
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
   let phaseStartedAt = performance.now()
@@ -2565,6 +2673,16 @@ const publishEditorViewCoordinated = async ({
     phaseStartedAt = performance.now()
   }
   const emitPhaseSpan = ({ created }: { readonly created: boolean }): void => {
+    if (coordinator !== undefined)
+      process.stderr.write(
+        `[editor-view-phases] ${JSON.stringify({
+          packagePath: options.package,
+          created,
+          startedAtMs,
+          completedAtMs: performance.timeOrigin + performance.now(),
+          phases: Object.fromEntries(phaseTimings),
+        })}\n`,
+      )
     emitCompletedSpanAsync({
       name: 'editor-view.phases',
       label: `phases ${options.viewName}`,
@@ -2670,6 +2788,7 @@ const publishEditorViewCoordinated = async ({
             tree: selectedPath,
             linkOwners: roots,
             fingerprintTool: options.fingerprintTool,
+            ...sourceFingerprintMetrics,
           })
         : undefined
     const fingerprint =
@@ -2678,6 +2797,7 @@ const publishEditorViewCoordinated = async ({
         : await canonicalTreeFingerprint({
             tree: editorInputsPath,
             fingerprintTool: options.fingerprintTool,
+            ...sourceFingerprintMetrics,
           })
     const selectedViewDigest =
       selectedFingerprints?.resolvedLinksDigest ??
@@ -2686,6 +2806,7 @@ const publishEditorViewCoordinated = async ({
         : await canonicalTreeFingerprint({
             tree: selectedPath,
             fingerprintTool: options.fingerprintTool,
+            ...sourceFingerprintMetrics,
           }))
     // A warm publication must prove both the admitted roots and the immutable snapshot.
     // Begin validating the current snapshot before traversing the roots so those independent
@@ -2719,6 +2840,7 @@ const publishEditorViewCoordinated = async ({
         validation: validateSnapshotContents({
           snapshotDir,
           fingerprintTool: options.fingerprintTool,
+          ...snapshotFingerprintMetrics,
         }).then(
           (validated): SnapshotValidation => ({ record: validated }),
           (error): SnapshotValidation => ({ error }),
@@ -2741,6 +2863,7 @@ const publishEditorViewCoordinated = async ({
                 selectedFingerprints?.literalLinksDigest ??
                 fail('selected view link owners were not admitted for hashing'),
             },
+            ...sourceFingerprintMetrics,
           })
         : undefined
     const normalizedStoreDigest =
@@ -2749,6 +2872,7 @@ const publishEditorViewCoordinated = async ({
         tree: selectedPath,
         dereference: true,
         fingerprintTool: options.fingerprintTool,
+        ...sourceFingerprintMetrics,
       }))
     const identity = snapshotIdentity({
       editorInputsFingerprint: fingerprint,
@@ -2769,6 +2893,7 @@ const publishEditorViewCoordinated = async ({
         existing = await validateSnapshotContents({
           snapshotDir,
           fingerprintTool: options.fingerprintTool,
+          ...snapshotFingerprintMetrics,
         })
       }
       record = expectedRecord({
@@ -2843,6 +2968,7 @@ const publishEditorViewCoordinated = async ({
           roots,
           contentStore: paths.contentStore,
           previousManifest,
+          ...(coordinator === undefined ? {} : { metrics: coordinator.metrics }),
         })
         materializedLinks = materializedRoots.links
         assertByteOwnedFiniteSnapshot({
@@ -2876,6 +3002,7 @@ const publishEditorViewCoordinated = async ({
         snapshotDir: candidate,
         fingerprintTool: options.fingerprintTool,
         onFailure: captureFailure,
+        ...snapshotFingerprintMetrics,
         ...(finite === true ? { roots } : {}),
       })
       if (materialized === true && declaredRoots !== undefined) {
@@ -2915,9 +3042,20 @@ const publishEditorViewCoordinated = async ({
       created = true
       onContentChanged()
       const sharedCandidate = candidate
+      enterPhase('content-share')
+      const sharingStartedAt = performance.now()
       const sharing = await shareSnapshotFiles({
         candidate,
         contentStore: paths.contentStore,
+        ...(coordinator === undefined
+          ? {}
+          : {
+              onFingerprint: ({ hashedBytes, durationMs }: FingerprintWork): void => {
+                coordinator.metrics.contentHashedFiles += 1
+                coordinator.metrics.contentHashedBytes += hashedBytes
+                coordinator.metrics.contentHashWorkMs += durationMs
+              },
+            }),
         ...(materializedRoots === undefined
           ? {}
           : {
@@ -2936,6 +3074,10 @@ const publishEditorViewCoordinated = async ({
             })
         },
       })
+      if (coordinator !== undefined) {
+        coordinator.metrics.contentShareWorkMs += performance.now() - sharingStartedAt
+        coordinator.metrics.reusedContentFiles += materializedRoots?.reusedFiles.size ?? 0
+      }
       if (materializedRoots !== undefined)
         writeFileSync(
           join(candidate, editorViewSourceManifestName),
@@ -3045,6 +3187,7 @@ const publishEditorViewCoordinated = async ({
           if (pathExists(evictionMarker) === true) rmSync(evictionMarker)
         },
       })
+      phaseTimings.push([phaseName, performance.now() - phaseStartedAt])
       emitPhaseSpan({ created })
       return record
     }
@@ -3118,10 +3261,13 @@ export const editorViewPublicationWorkers = 4
 export const publishEditorViews = async ({
   options,
   onPublished,
+  onBatchMetrics,
 }: {
   options: readonly EditorViewOptions[]
   onPublished?: (record: EditorViewRecord, durationMs: number) => void
+  onBatchMetrics?: (metrics: Readonly<EditorViewBatchMetrics>) => void
 }): Promise<readonly EditorViewRecord[]> => {
+  const metrics = emptyBatchMetrics()
   const coordinators = new Map<string, PublicationCoordinator>()
   const workers = new Map<string, PublicationWorkerState>()
   const identities = new Set<string>()
@@ -3148,6 +3294,7 @@ export const publishEditorViews = async ({
       coordinators.set(paths.editorRoot, {
         lock,
         workers,
+        metrics,
         commit: (operation) => {
           const result = committed.then(operation)
           committed = result.then(
@@ -3219,6 +3366,7 @@ export const publishEditorViews = async ({
     })
   } finally {
     for (const { lock } of coordinators.values()) releaseLock(lock)
+    onBatchMetrics?.({ ...metrics })
   }
 }
 
@@ -3627,6 +3775,9 @@ const main = async (): Promise<void> => {
         process.stdout.write(
           `published ${record.package} editor view ${record.editorInputsFingerprint}\n`,
         )
+      },
+      onBatchMetrics: (metrics) => {
+        process.stderr.write(`[editor-view-batch-metrics] ${JSON.stringify(metrics)}\n`)
       },
     })
     return

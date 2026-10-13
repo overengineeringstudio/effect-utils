@@ -3,15 +3,17 @@ use std::path::PathBuf;
 
 fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
-    let tree = PathBuf::from(args.next().ok_or("usage: buck2-fingerprint TREE [--dereference] [--backing-root PATH] [--link-owner SOURCE=IDENTITY]" )?);
+    let tree = PathBuf::from(args.next().ok_or("usage: buck2-fingerprint TREE [--dereference] [--backing-root PATH] [--link-owner SOURCE=IDENTITY] [--metrics]" )?);
     let mut dereference = false;
     let mut input_roots = false;
+    let mut metrics = false;
     let mut backing = Vec::new();
     let mut owners = Vec::new();
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--dereference" => dereference = true,
             "--input-roots" => input_roots = true,
+            "--metrics" => metrics = true,
             "--backing-root" => backing.push(PathBuf::from(
                 args.next().ok_or("missing --backing-root value")?,
             )),
@@ -29,7 +31,7 @@ fn run() -> Result<(), String> {
         }
     }
     if input_roots {
-        if dereference || !backing.is_empty() || !owners.is_empty() {
+        if dereference || metrics || !backing.is_empty() || !owners.is_empty() {
             return Err("--input-roots cannot be combined with editor-view modes".into());
         }
         println!(
@@ -45,6 +47,9 @@ fn run() -> Result<(), String> {
     }
     if let Some(value) = result.literal_links_digest {
         println!("literal {value}");
+    }
+    if metrics {
+        println!("hashed-bytes {}", result.hashed_bytes);
     }
     Ok(())
 }
