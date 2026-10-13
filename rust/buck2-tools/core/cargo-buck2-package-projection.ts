@@ -996,7 +996,12 @@ const cargoBuck2PackageProjectionFor = ({
         (file) => [`${packagePath}/${file}`, sourceLabel({ file, foreignMember })] as const,
       ),
       ...buildScript.inputs.map(
-        (input) => [input.path, input.label ?? input.path.slice(packagePath.length + 1)] as const,
+        (input) =>
+          [
+            input.path,
+            input.label ??
+              sourceLabel({ file: input.path.slice(packagePath.length + 1), foreignMember }),
+          ] as const,
       ),
     ].toSorted(([left], [right]) => compareStrings({ left, right }))
     rules.push(
@@ -1406,6 +1411,7 @@ type CargoManifest = {
     readonly autobins?: boolean
     readonly autolib?: boolean
     readonly autotests?: boolean
+    readonly metadata?: { readonly buck2?: { readonly buildScriptInputs?: unknown } }
   }
   readonly lib?: {
     readonly name?: string
@@ -2304,9 +2310,63 @@ type ResolvedBuildScript = {
   readonly inputs: readonly { readonly path: string; readonly label?: string }[]
 }
 
+/**
+ * `[package.metadata.buck2] buildScriptInputs = [{ path, label? }]`: the package's own
+ * declaration, so consumers projecting it as a foreign package see the same inputs. Paths are
+ * package-relative and may use `..`; after normalization and symlink resolution they must stay
+ * inside the repository, the source root Buck mounts for every package.
+ */
+const resolveMetadataBuildScriptInputs = ({
+  member,
+  packagePath,
+  repo,
+}: {
+  readonly member: WorkspaceMember
+  readonly packagePath: string
+  readonly repo: RepoContext
+}): readonly CargoBuck2BuildScriptInput[] | undefined => {
+  const declared = member.manifest.package?.metadata?.buck2?.buildScriptInputs
+  if (declared === undefined) return undefined
+  if (Array.isArray(declared) === false) {
+    throw new Error(
+      `package.metadata.buck2.buildScriptInputs must be an array in ${member.manifestPath}`,
+    )
+  }
+  return declared.map((input: unknown, index) => {
+    const field = `package.metadata.buck2.buildScriptInputs[${index}]`
+    if (
+      typeof input !== 'object' ||
+      input === null ||
+      !('path' in input) ||
+      typeof input.path !== 'string' ||
+      ('label' in input && typeof input.label !== 'string')
+    ) {
+      throw new Error(`${field} needs a string path and optional string label`)
+    }
+    assertKnownKeys({ value: input, allowed: ['path', 'label'], field })
+    const relative = input.path
+    if (
+      relative === '' ||
+      path.posix.isAbsolute(relative) === true ||
+      relative.includes('\\') === true
+    ) {
+      throw new Error(`${field} must be a package-relative path: ${relative}`)
+    }
+    const repoPath = path.posix.normalize(path.posix.join(packagePath, relative))
+    if (repoPath === '..' || repoPath.startsWith('../') === true) {
+      throw new Error(`${field} resolves outside the repository: ${relative}`)
+    }
+    // Rejects control characters and symlinks resolving outside the repository.
+    validateRepoPath({ repo, value: repoPath, field })
+    return 'label' in input && typeof input.label === 'string'
+      ? { path: repoPath, label: input.label }
+      : { path: repoPath }
+  })
+}
+
 /** The package's build script (`build.rs` or `package.build`) and its declared inputs. */
 const resolveBuildScript = ({
-  buildScriptInputs,
+  buildScriptInputs: optionInputs,
   member,
   packagePath,
   repo,
@@ -2316,6 +2376,22 @@ const resolveBuildScript = ({
   readonly packagePath: string
   readonly repo: RepoContext
 }): ResolvedBuildScript | undefined => {
+  const metadataInputs = resolveMetadataBuildScriptInputs({ member, packagePath, repo })
+  if (optionInputs !== undefined && metadataInputs !== undefined) {
+    const [fromOptions, fromMetadata] = [optionInputs, metadataInputs].map((inputs) =>
+      JSON.stringify(
+        inputs
+          .map((input) => [input.path, input.label ?? ''] as const)
+          .toSorted(([left], [right]) => compareStrings({ left, right })),
+      ),
+    )
+    if (fromOptions !== fromMetadata) {
+      throw new Error(
+        `buildScriptInputs options disagree with package.metadata.buck2.buildScriptInputs in ${member.manifestPath}`,
+      )
+    }
+  }
+  const buildScriptInputs = metadataInputs ?? optionInputs
   const build = member.manifest.package?.build
   const scriptPath =
     typeof build === 'string'
