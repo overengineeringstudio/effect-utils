@@ -28,17 +28,17 @@ subject that TCC actually evaluates.
 
 ## Observations
 
-| ID  | Topology                                              | TCC subject            |
-| --- | ----------------------------------------------------- | ---------------------- |
-| T2  | launchd runs the app executable directly              | app bundle ID          |
-| T3  | launchd runs `/bin/sh -c 'exec <app executable>'`     | app bundle ID          |
-| T4  | launchd runs a wrapper that fork/execs the app        | wrapper                |
-| T4b | same wrapper, child spawned with responsibility disclaim | app bundle ID       |
-| T5  | app `posix_spawn`s a leaf binary                      | app bundle ID          |
-| T6  | app spawns a leaf with responsibility disclaim        | leaf                   |
-| T7  | shell client asks a launchd-started app over a socket | app bundle ID          |
-| T8  | SSH session runs the leaf directly                    | `com.apple.sshd-keygen-wrapper` |
-| T9  | SSH client asks the launchd-started app over a socket | app bundle ID          |
+| ID  | Topology                                                 | TCC subject                     |
+| --- | -------------------------------------------------------- | ------------------------------- |
+| T2  | launchd runs the app executable directly                 | app bundle ID                   |
+| T3  | launchd runs `/bin/sh -c 'exec <app executable>'`        | app bundle ID                   |
+| T4  | launchd runs a wrapper that fork/execs the app           | wrapper                         |
+| T4b | same wrapper, child spawned with responsibility disclaim | app bundle ID                   |
+| T5  | app `posix_spawn`s a leaf binary                         | app bundle ID                   |
+| T6  | app spawns a leaf with responsibility disclaim           | leaf                            |
+| T7  | shell client asks a launchd-started app over a socket    | app bundle ID                   |
+| T8  | SSH session runs the leaf directly                       | `com.apple.sshd-keygen-wrapper` |
+| T9  | SSH client asks the launchd-started app over a socket    | app bundle ID                   |
 
 Repeated requests for the same responsible process may be answered from the
 `tccd` cache and produce no new log line.

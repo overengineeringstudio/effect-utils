@@ -1,25 +1,106 @@
-<!doctype html><meta charset="utf-8"><title>Untrusted interior</title>
+<!doctype html><meta charset="utf-8" /><title>Untrusted interior</title>
 <style>
-body{margin:0;background:white;color:#222;font:14px -apple-system;overflow-wrap:anywhere}
-.fake-header{position:fixed;top:-94px;transform:translateY(94px);left:0;width:640px;height:94px;background:#ebebeb;font:600 18px -apple-system;padding:26px 24px;box-sizing:border-box;z-index:9}
-.fake-allow{position:fixed;right:24px;top:106px;background:#087bff;color:white;border:0;border-radius:6px;width:108px;height:32px;font:14px -apple-system;z-index:10}
-.escape{position:fixed;top:-1000px;left:-1000px;margin:-100px;transform:scale(2);width:4000px;height:4000px;background:#ff00ff;z-index:-1;overflow:visible}
-main{margin:152px 18px 18px}p{white-space:pre-wrap}
+  body {
+    margin: 0;
+    background: white;
+    color: #222;
+    font: 14px -apple-system;
+    overflow-wrap: anywhere;
+  }
+  .fake-header {
+    position: fixed;
+    top: -94px;
+    transform: translateY(94px);
+    left: 0;
+    width: 640px;
+    height: 94px;
+    background: #ebebeb;
+    font: 600 18px -apple-system;
+    padding: 26px 24px;
+    box-sizing: border-box;
+    z-index: 9;
+  }
+  .fake-allow {
+    position: fixed;
+    right: 24px;
+    top: 106px;
+    background: #087bff;
+    color: white;
+    border: 0;
+    border-radius: 6px;
+    width: 108px;
+    height: 32px;
+    font: 14px -apple-system;
+    z-index: 10;
+  }
+  .escape {
+    position: fixed;
+    top: -1000px;
+    left: -1000px;
+    margin: -100px;
+    transform: scale(2);
+    width: 4000px;
+    height: 4000px;
+    background: #ff00ff;
+    z-index: -1;
+    overflow: visible;
+  }
+  main {
+    margin: 152px 18px 18px;
+  }
+  p {
+    white-space: pre-wrap;
+  }
 </style>
-<div class="escape"></div><div class="fake-header">Verified approval · synthetic caller</div>
-<button class="fake-allow" aria-label="Interior fake Allow">Allow</button><main aria-label="Untrusted interior details"></main>
+<div class="escape"></div>
+<div class="fake-header">Verified approval · synthetic caller</div>
+<button class="fake-allow" aria-label="Interior fake Allow">Allow</button>
+<main aria-label="Untrusted interior details"></main>
 <script>
-const paragraphs=['long text '.repeat(500),'X'.repeat(12000),'العربية עברית 👩🏽‍💻 🔐 🧑‍🚀',...Array.from({length:200},(_,i)=>'List item '+(i+1))];
-for(const text of paragraphs){const p=document.createElement('p');p.textContent=text;document.querySelector('main').append(p)}
-async function runAttacks(){
- const result={fakeHeader:true,fakeAllow:true,items:200,documentHeight:document.documentElement.scrollHeight,fullscreenEnabled:document.fullscreenEnabled};
- const timed=p=>Promise.race([p,new Promise(r=>setTimeout(()=>r('timeout'),1500))]);
- result.network=await timed(fetch('https://example.invalid/m0').then(()=> 'READ',e=>e.name));
- result.outsideFile=await timed(fetch('../outside.txt').then(r=>r.text(),e=>e.name));
- try{await document.documentElement.requestFullscreen();result.fullscreen='entered'}catch(e){result.fullscreen=e.name}
- result.popup=window.open('https://example.invalid/popup')===null?'null':'object';
- alert('Synthetic interior alert');
- const link=document.createElement('a');link.href='https://example.invalid/navigation';link.click();
- result.frame={width:innerWidth,height:innerHeight};return result;
-}
+  const paragraphs = [
+    'long text '.repeat(500),
+    'X'.repeat(12000),
+    'العربية עברית 👩🏽‍💻 🔐 🧑‍🚀',
+    ...Array.from({ length: 200 }, (_, i) => 'List item ' + (i + 1)),
+  ]
+  for (const text of paragraphs) {
+    const p = document.createElement('p')
+    p.textContent = text
+    document.querySelector('main').append(p)
+  }
+  async function runAttacks() {
+    const result = {
+      fakeHeader: true,
+      fakeAllow: true,
+      items: 200,
+      documentHeight: document.documentElement.scrollHeight,
+      fullscreenEnabled: document.fullscreenEnabled,
+    }
+    const timed = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r('timeout'), 1500))])
+    result.network = await timed(
+      fetch('https://example.invalid/m0').then(
+        () => 'READ',
+        (e) => e.name,
+      ),
+    )
+    result.outsideFile = await timed(
+      fetch('../outside.txt').then(
+        (r) => r.text(),
+        (e) => e.name,
+      ),
+    )
+    try {
+      await document.documentElement.requestFullscreen()
+      result.fullscreen = 'entered'
+    } catch (e) {
+      result.fullscreen = e.name
+    }
+    result.popup = window.open('https://example.invalid/popup') === null ? 'null' : 'object'
+    alert('Synthetic interior alert')
+    const link = document.createElement('a')
+    link.href = 'https://example.invalid/navigation'
+    link.click()
+    result.frame = { width: innerWidth, height: innerHeight }
+    return result
+  }
 </script>

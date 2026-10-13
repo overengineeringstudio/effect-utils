@@ -84,20 +84,20 @@ JSON reports stay in gitignored scratch, not in this experiment directory.
 
 Final fixture measurements, one sample per row (not statistical estimates):
 
-| Measurement | A: declarative AppKit | B: pinned WKWebView |
-| --- | ---: | ---: |
-| Fresh-process first saved frame | 439.14 ms | 758.78 ms |
-| Host resident memory before shell PNG capture | 52.97 MiB | 80.34 MiB |
-| Additional WebKit processes | 0 | 3 |
-| Additional service RSS | 0 MiB | 92.34 MiB |
-| Approx. host + additional service RSS | 52.97 MiB | 172.69 MiB |
-| Panel / interior dimensions | 640×502 / 640×350 pt | 640×502 / 640×350 pt |
-| Interior list items / huge token length | 200 / 12,000 | 200 / 12,000 |
-| Local AX nodes enumerated | 14 | 7 |
-| Local AX interior text codepoints | 19,964 | Not exposed by this traversal |
-| Native Allow enabled, fresh / expired | true / false | true / false |
-| Native Allow enabled at expired process launch | false | false |
-| Expired process-launch first saved frame | 405.17 ms | 755.35 ms |
+| Measurement                                    | A: declarative AppKit |           B: pinned WKWebView |
+| ---------------------------------------------- | --------------------: | ----------------------------: |
+| Fresh-process first saved frame                |             439.14 ms |                     758.78 ms |
+| Host resident memory before shell PNG capture  |             52.97 MiB |                     80.34 MiB |
+| Additional WebKit processes                    |                     0 |                             3 |
+| Additional service RSS                         |                 0 MiB |                     92.34 MiB |
+| Approx. host + additional service RSS          |             52.97 MiB |                    172.69 MiB |
+| Panel / interior dimensions                    |  640×502 / 640×350 pt |          640×502 / 640×350 pt |
+| Interior list items / huge token length        |          200 / 12,000 |                  200 / 12,000 |
+| Local AX nodes enumerated                      |                    14 |                             7 |
+| Local AX interior text codepoints              |                19,964 | Not exposed by this traversal |
+| Native Allow enabled, fresh / expired          |          true / false |                  true / false |
+| Native Allow enabled at expired process launch |                 false |                         false |
+| Expired process-launch first saved frame       |             405.17 ms |                     755.35 ms |
 
 B's three new services were WebContent (45.03 MiB), Networking (19.75 MiB)
 and GPU (27.56 MiB). PID-delta attribution is strong temporal evidence, not a
@@ -128,15 +128,15 @@ Snapshot names: `native-stress.png`, `web-stress.png`, `native-expired.png`,
 
 ### Web attack outcomes
 
-| Attempt | Observed result | Required boundary / limitation |
-| --- | --- | --- |
-| Fixed position, negative margin, transform, overflow | Huge paint stays within interior snapshot; shell frames unchanged | Native frame ownership and `masksToBounds`, never DOM-driven shell sizing |
-| External navigation | Delegate canceled 1 navigation to synthetic external URL | Admit initial exact local URL once; deny subsequent main/subframe navigation |
-| Network fetch | Promise rejected with `TypeError` | Content-rule blocking installed before load; rejection alone is not a packet-level no-egress proof |
-| Outside-directory file fetch | Promise rejected with `TypeError`; sentinel not returned | Narrow `allowingReadAccessTo`; no host file-reading bridge. Fetch/CORS failure alone does not establish every possible file-read route |
-| Fullscreen | `TypeError`; no fullscreen entered | Native fullscreen preference disabled; offscreen/no-gesture conditions also constrain this attempt |
-| `window.open` | Returned null; 0 new-view delegate callbacks | Popup did not open; offscreen conditions may reject it before delegate. Still install a nil-returning UI delegate in production |
-| `alert()` | 1 UI delegate callback completed without a dialog | Handle all JS dialog callbacks without opening native UI |
+| Attempt                                              | Observed result                                                   | Required boundary / limitation                                                                                                         |
+| ---------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Fixed position, negative margin, transform, overflow | Huge paint stays within interior snapshot; shell frames unchanged | Native frame ownership and `masksToBounds`, never DOM-driven shell sizing                                                              |
+| External navigation                                  | Delegate canceled 1 navigation to synthetic external URL          | Admit initial exact local URL once; deny subsequent main/subframe navigation                                                           |
+| Network fetch                                        | Promise rejected with `TypeError`                                 | Content-rule blocking installed before load; rejection alone is not a packet-level no-egress proof                                     |
+| Outside-directory file fetch                         | Promise rejected with `TypeError`; sentinel not returned          | Narrow `allowingReadAccessTo`; no host file-reading bridge. Fetch/CORS failure alone does not establish every possible file-read route |
+| Fullscreen                                           | `TypeError`; no fullscreen entered                                | Native fullscreen preference disabled; offscreen/no-gesture conditions also constrain this attempt                                     |
+| `window.open`                                        | Returned null; 0 new-view delegate callbacks                      | Popup did not open; offscreen conditions may reject it before delegate. Still install a nil-returning UI delegate in production        |
+| `alert()`                                            | 1 UI delegate callback completed without a dialog                 | Handle all JS dialog callbacks without opening native UI                                                                               |
 
 A has no CSS, JS, navigation or file/network execution surface in the spec.
 Its defenses are schema bounds, plain-text-only rendering, native style/geometry
