@@ -228,17 +228,9 @@ let
         if [ "''${CI:-}" = "true" ]; then
           # CI materializes locked commits end to end (`--worktree-mode auto`
           # semantics) and never advances shared branch worktrees.
-          ${
-            if setupNestedTrees then
-              ''
-                # Readiness is `mr status --all`, which inspects every root
-                # member's nested tree, so every root member is prepared.
-                commit_members="$(mr ls --output json | ${jq} -r '${mrLsMemberNamesJq}' | paste -sd, -)"
-                mr apply --worktree-mode commit --commit-members "$commit_members" --lock-sync off "''${MR_SKIP_ARGS[@]}"
-              ''
-            else
-              ''mr apply --worktree-mode commit --lock-sync off "''${MR_SKIP_ARGS[@]}"''
-          }
+          # With nested trees, readiness is `mr status --all`, which inspects
+          # every root member's nested tree, so every root member is prepared.
+          mr apply --worktree-mode commit${lib.optionalString setupNestedTrees " --commit-all-members"} --lock-sync off "''${MR_SKIP_ARGS[@]}"
         else
           mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off "''${MR_SKIP_ARGS[@]}"
         fi

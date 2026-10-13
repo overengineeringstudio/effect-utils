@@ -209,10 +209,12 @@ apply.
 
 CI setup (`CI=true`, the same predicate as `--worktree-mode auto`) never uses
 tracking worktrees: `mr:setup` applies `--worktree-mode commit`, and with a
-non-empty `setupCommitMembers` it passes every root member to
-`--commit-members`, because `mr status --all` readiness inspects every root
-member's nested tree. Readiness and apply then cover the same trees, and a
-warm rerun accepts the prepared commit worktrees instead of refusing them.
+non-empty `setupCommitMembers` it passes `--commit-all-members`, which selects
+every root member as `--commit-members` would, because `mr status --all`
+readiness inspects every root member's nested tree. The selector is resolved
+inside `mr` from the config, so member names containing commas are not split.
+Readiness and apply then cover the same trees, and a warm rerun accepts the
+prepared commit worktrees instead of refusing them.
 
 `mr store worktree new` creates standalone worktrees only. The composed
 workspace shape — an owned worktree at `P/repos/<owned>`, read-only `cp -a`

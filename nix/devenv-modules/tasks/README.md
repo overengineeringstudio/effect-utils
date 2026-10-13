@@ -111,8 +111,8 @@ for outer tasks that must complete before the nested devenv process can evaluate
     worktrees (readiness via `mr status --all`); unlisted members stay on
     tracking worktrees. Default `[ ]` keeps the plain tracking setup.
     With `CI=true`, `mr:setup` uses commit worktrees for every member; with a
-    non-empty list it prepares every root member's nested tree, matching the
-    `mr status --all` readiness check.
+    non-empty list it passes `mr apply --commit-all-members`, preparing every
+    root member's nested tree to match the `mr status --all` readiness check.
 - `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
   - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`
     selects the lockfiles and only defines `nix:flake-lock:check-duplicates`.

@@ -1639,6 +1639,111 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
   }
 
   it.effect(
+    '--commit-all-members prepares every root tree, including comma-containing member names',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const fixture = yield* createColdCanonicalRecursionFixture()
+        // A comma is a valid member name character, so a comma-joined --commit-members list
+        // cannot name this member.
+        const nestedName = 'child,core'
+        const consumer = yield* createWorkspaceWithLock({
+          members: {
+            [nestedName]: 'https://example.com/acme/child#main',
+            plain: 'https://example.com/acme/leaf#main',
+          },
+          lockEntries: {
+            [nestedName]: {
+              url: 'https://example.com/acme/child',
+              ref: 'main',
+              commit: fixture.childCommit,
+            },
+            plain: { url: 'https://example.com/acme/leaf', ref: 'main', commit: fixture.leafCommit },
+          },
+        })
+        const env = {
+          CI: 'true',
+          MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
+          MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+        }
+        const mount = (root: string, name: string) =>
+          `${root.endsWith('/') === true ? root : `${root}/`}repos/${name}`
+        const applyArgs = [
+          '--output',
+          'json',
+          '--worktree-mode',
+          'commit',
+          '--commit-all-members',
+          '--lock-sync',
+          'off',
+        ]
+
+        const listed = yield* runApplyCommand({
+          cwd: consumer.workspacePath,
+          args: ['--output', 'json', '--commit-members', nestedName, '--lock-sync', 'off'],
+          env,
+        })
+        expect(listed.exitCode).toBe(1)
+        expect(yield* fs.exists(mount(consumer.workspacePath, nestedName))).toBe(false)
+
+        for (const run of ['cold', 'warm'] as const) {
+          const result = yield* runApplyCommand({ cwd: consumer.workspacePath, args: applyArgs, env })
+          expect(result.stdout, run).not.toContain('PermissionDenied')
+          expect(result.exitCode, run).toBe(0)
+        }
+        const mounts = [
+          [consumer.workspacePath, nestedName, fixture.childPath, fixture.childCommit],
+          [fixture.childPath, 'grandchild', fixture.grandchildPath, fixture.grandchildCommit],
+          [fixture.grandchildPath, 'leaf', fixture.leafPath, fixture.leafCommit],
+        ] as const
+        for (const [root, name, target, commit] of mounts) {
+          expect(yield* fs.realPath(mount(root, name))).toBe(target.slice(0, -1))
+          expect(yield* runGitCommand(mount(root, name), 'rev-parse', 'HEAD')).toBe(commit)
+        }
+
+        const status = yield* runMrCommand({
+          cwd: consumer.workspacePath,
+          command: ['status'],
+          args: ['--all', '--output', 'json'],
+          env,
+        })
+        const out = yield* Schema.decodeEffect(
+          Schema.fromJsonString(Schema.Struct({ applyNeeded: Schema.Boolean })),
+        )(status.stdout.trim())
+        expect(out.applyNeeded).toBe(false)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  it.effect(
+    'rejects --commit-all-members combined with --commit-members, --all or lock sync',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createSetupConsumerFixture()
+        for (const args of [
+          ['--commit-all-members', '--commit-members', 'child', '--lock-sync', 'off'],
+          ['--commit-all-members', '--all', '--lock-sync', 'off'],
+          ['--commit-all-members', '--lock-sync', 'direct'],
+        ]) {
+          const result = yield* runApplyCommand({
+            cwd: fixture.consumer.workspacePath,
+            args: ['--output', 'json', '--worktree-mode', 'commit', ...args],
+            env: fixture.env,
+          })
+          expect(result.exitCode).toBe(1)
+          expect(yield* fixture.applyNeeded()).toBe(true)
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 30000 },
+  )
+
+  it.effect(
     'refuses a preexisting incomplete shared commit worktree instead of granting freshness',
     Effect.fnUntraced(
       function* () {

@@ -104,7 +104,7 @@ echo "Test 4: CI applies commit worktrees and prepares every root member's tree"
 grep -qx 'apply --worktree-mode commit --lock-sync off' "$calls" \
   || fail "unset CI setup must apply commit worktrees"
 [ "$(CI=true run_script "$exec_set")" = 0 ] || fail "set CI setup exec failed"
-grep -qx 'apply --worktree-mode commit --commit-members plain,nested --lock-sync off' "$calls" \
+grep -qx 'apply --worktree-mode commit --commit-all-members --lock-sync off' "$calls" \
   || fail "set CI setup must prepare every member that mr status --all inspects"
 if grep -q 'tracking' "$calls"; then
   fail "CI setup must never use tracking worktrees"
