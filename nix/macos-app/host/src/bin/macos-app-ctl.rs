@@ -82,6 +82,66 @@ fn resolve_domain(kind: &str, requested: &str, session: &str, uid: u32) -> Resul
 #[path = "macos-app-ctl/keys.rs"]
 mod keys;
 
+// A nonblocking self-pipe wakes the owning thread. The handler only stores a lock-free
+// atomic and writes one byte; child teardown and checked locks happen outside the handler.
+static STOP_SIGNAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static SIGNAL_READ: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+static SIGNAL_WRITE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+struct SignalPipe { _read: File, _write: File }
+impl Drop for SignalPipe {
+    fn drop(&mut self) {
+        SIGNAL_READ.store(-1, std::sync::atomic::Ordering::Relaxed);
+        SIGNAL_WRITE.store(-1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+extern "C" fn request_stop(signal: i32) {
+    STOP_SIGNAL.store(signal, std::sync::atomic::Ordering::Relaxed);
+    let fd = SIGNAL_WRITE.load(std::sync::atomic::Ordering::Relaxed);
+    if fd >= 0 {
+        // SAFETY: write is async-signal-safe, nonblocking, and consumes one stack byte.
+        // Preserve errno so interrupted main-thread framework calls see their own errors.
+        unsafe {
+            let saved = *libc::__error();
+            let byte = signal as u8;
+            libc::write(fd, (&byte as *const u8).cast(), 1);
+            *libc::__error() = saved;
+        }
+    }
+}
+fn cancellation() -> Result<()> {
+    let signal = STOP_SIGNAL.load(std::sync::atomic::Ordering::Relaxed);
+    if signal == 0 { Ok(()) } else { Err(fail(23, "operation-failed", format!("Cancelled by signal {signal}"))) }
+}
+fn signal_pause(duration: Duration) {
+    let fd = SIGNAL_READ.load(std::sync::atomic::Ordering::Relaxed);
+    let mut poll = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
+    // SAFETY: poll points to one valid descriptor structure; a negative fd is ignored.
+    unsafe { libc::poll(&mut poll, 1, duration.as_millis() as i32); }
+}
+fn install_signal_handlers() -> Result<SignalPipe> {
+    // SAFETY: pipe initializes both descriptors; ownership transfers immediately to File.
+    let mut fds = [-1; 2];
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 { return Err(io::Error::last_os_error().into()); }
+    let pipe = SignalPipe { _read: unsafe { File::from_raw_fd(fds[0]) }, _write: unsafe { File::from_raw_fd(fds[1]) } };
+    // SAFETY: both descriptors are owned and live; sigaction is initialized before use.
+    unsafe {
+        for fd in fds {
+            if libc::fcntl(fd, libc::F_SETFL, libc::O_NONBLOCK) != 0 || libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) != 0 {
+                return Err(io::Error::last_os_error().into());
+            }
+        }
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = request_stop as *const () as usize;
+        libc::sigemptyset(&mut action.sa_mask);
+        SIGNAL_READ.store(fds[0], std::sync::atomic::Ordering::Relaxed);
+        SIGNAL_WRITE.store(fds[1], std::sync::atomic::Ordering::Relaxed);
+        for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP, libc::SIGPIPE] {
+            if libc::sigaction(signal, &action, std::ptr::null_mut()) != 0 { return Err(io::Error::last_os_error().into()); }
+        }
+    }
+    Ok(pipe)
+}
+
 // Signing boundary: a dedicated keychain unlocked from an fd-supplied password.
 #[link(name = "Security", kind = "framework")]
 unsafe extern "C" {
@@ -107,6 +167,7 @@ impl Password {
         let mut password = Password { bytes: [0; PASSWORD_MAX + 2], len: 0 };
         let deadline = Instant::now() + PASSWORD_DEADLINE;
         loop {
+            cancellation()?;
             let remaining = deadline.saturating_duration_since(Instant::now());
             let mut poll = libc::pollfd { fd: file.as_raw_fd(), events: libc::POLLIN, revents: 0 };
             let timeout = i32::try_from(remaining.as_millis()).unwrap_or(i32::MAX);
@@ -153,11 +214,13 @@ impl Keychain {
         // SAFETY: self owns a live keychain reference.
         let status = unsafe { SecKeychainLock(self.0) };
         if status != 0 || failpoint("relock") { return Err(signing("relock-failed", format!("SecKeychainLock status {status}"))); }
+        cancellation()?;
         result
     }
     /// Unlocks for one window. `close` must succeed before the result is used. The caller
     /// drops (and so zeroes) the password as soon as it has no further use for it.
     fn unlock(&self, password: &Password) -> Result<UnlockWindow<'_>> {
+        cancellation()?;
         let length = u32::try_from(password.len).map_err(|_| signing("password-invalid", "Password too long"))?;
         // SAFETY: the password pointer is valid for length bytes; usePassword is true, so no UI is shown.
         let status = unsafe { SecKeychainUnlock(self.0, length, password.bytes.as_ptr().cast(), 1) };
@@ -165,6 +228,10 @@ impl Keychain {
         if status != 0 {
             window.close()?;
             return Err(signing("unlock-failed", format!("SecKeychainUnlock status {status}")));
+        }
+        if let Err(error) = cancellation() {
+            window.close()?;
+            return Err(error);
         }
         Ok(window)
     }
@@ -183,6 +250,7 @@ impl UnlockWindow<'_> {
         // SAFETY: the borrowed keychain reference outlives the window.
         let status = unsafe { SecKeychainLock(self.keychain.0) };
         if status != 0 || failpoint("relock") { return Err(signing("relock-failed", format!("SecKeychainLock status {status}"))); }
+        cancellation()?;
         Ok(())
     }
 }
@@ -219,9 +287,9 @@ impl Ctl {
     /// Runs only codesign, so it is admissible inside the unlocked signing window.
     fn signature_with(&self, app: &Path, requirement: &str) -> Result<String> {
         let path = text(app)?;
-        let strict = command(keys::codesign_program(), &["--verify", "--strict", path])?;
-        let matches = command(keys::codesign_program(), &["-v", &format!("-R={requirement}"), path])?;
-        let details = command(keys::codesign_program(), &["-d", "-r-", path])?;
+        let strict = keys::bounded_codesign(&["--verify", "--strict", path])?;
+        let matches = keys::bounded_codesign(&["-v", &format!("-R={requirement}"), path])?;
+        let details = keys::bounded_codesign(&["-d", "-r-", path])?;
         let details_text = format!("{}\n{}", String::from_utf8_lossy(&details.stdout), String::from_utf8_lossy(&details.stderr));
         let dr = details_text.lines().find_map(|line| line.strip_prefix("designated => ").map(str::to_owned)).unwrap_or_default();
         if !strict.status.success() || !matches.status.success() || !details.status.success() || dr != requirement { return Err(mismatch(format!("Signature/DR mismatch: {dr}"))); }
@@ -537,6 +605,7 @@ fn known_option(key: &str) -> bool {
         "csr-out" | "cert" | "restore-host" | "signing-auth-pending" | "replace" | "no-sign")
 }
 fn run() -> Result<Value> {
+    let _signals = install_signal_handlers()?;
     let mut argv = std::env::args().skip(1); let action = argv.next().ok_or_else(|| fail(64, "invalid-input", "Missing primitive"))?;
     let mut args = BTreeMap::new();
     while let Some(flag) = argv.next() {
@@ -557,6 +626,7 @@ fn run() -> Result<Value> {
         "provision-signing-key" => keys::provision(&ctl), "import-signing-cert" => keys::import_certificate(&ctl), "prove-signing-key" => keys::prove(&ctl),
         _ => Err(fail(64, "invalid-input", "Unknown primitive")),
     }?;
+    cancellation()?;
     Ok(json!({"ok": true, "primitive": action, "result": result}))
 }
 fn main() {

@@ -238,7 +238,7 @@ content rejected before unlock), `keychain-missing`, `unlock-failed`,
 `identity-missing` (identity absent from the dedicated keychain; the default
 search list is never consulted for identity lookup), `chain-incomplete` (the
 code-signing chain does not reach a trusted anchor; no codesign runs),
-`sign-failed`, `sign-timeout` (a signing `codesign` did not finish within
+`sign-failed`, `sign-timeout` (a signing, verify or detail `codesign` did not finish within
 30 seconds and was killed), `dr-mismatch`,
 `relock-failed` (the keychain could not be locked again; the signed stage is
 discarded). A codesign-guard refusal (below) is `verification-failed` and
@@ -275,7 +275,9 @@ can only force a failure or a crash, never make a check pass.
   password-authorized edit that removes it, so it stays. It still cannot use
   the key, because its partition (`cdhash:…`) is outside `[apple:]`.
 - **ACL record.** `provision-signing-key` records the exact `ctl` path that
-  securityd stored in the new key's signing ACL, together with its cdhash. The
+  securityd stored in the new key's signing ACL. The guard checks that exact
+  path, not a code hash; `[apple:]` is what blocks the non-Apple ctl from using
+  the key. Unrecognized fields in older records are ignored. The
   record is `<K>.acl.json` (mode 0600, owned by the user), keyed by the
   public-key SHA-256. The guard compares against this record, never against a
   file name. A missing, loose (not 0600), foreign (naming another keychain) or
@@ -287,7 +289,7 @@ can only force a failure or a crash, never make a check pass.
   It requires a partition-capable `K`, a partition list equal to `[apple:]` and
   signing ACLs equal to `{/usr/bin/codesign, recorded ctl}`. Anything wider or
   different fails with `verification-failed` and runs no `codesign`. Each
-  signing `codesign` also has a 30-second deadline, after which it is killed
+  signing, verify and detail `codesign` has a 30-second deadline, after which it is killed
   (`sign-timeout`). Production always executes the absolute
   `/usr/bin/codesign`, for signing and verification, never a PATH-selected
   executable. Only the separate `test-signing-cert` build selects a PATH
@@ -325,6 +327,12 @@ can only force a failure or a crash, never make a check pass.
   exchanged. Failures inside the unlock window also pass through a checked
   final lock before they are returned; relock failure overrides the original
   error. Destructors provide additional best-effort cleanup for unwinding.
+  During the window, SIGTERM, SIGINT and SIGHUP (also SIGPIPE) wake a
+  nonblocking self-pipe. The handler performs no keychain/framework calls.
+  The owning thread kills the active codesign process group, reaps the child,
+  runs the checked final lock and returns nonzero (`operation-failed`).
+  SIGKILL cannot be handled; the next invocation's initial lock closes that
+  interrupted window.
 - **Never the login keychain.** A path that resolves to the login keychain,
   by name or by `security login-keychain`, is refused before it is opened.
 
@@ -359,9 +367,13 @@ write `useLockInterval`; the interval's actual value determines the result.
 
 | Primitive               | Arguments                                          | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `provision-signing-key` | `--common-name-hint CN --csr-out PATH [--replace]` | Creates `K` if absent (mode 0600, not added to the search list, not made default), sets auto-lock after 300 seconds and lock on sleep (`SecKeychainSetSettings`), creates a permanent, non-extractable RSA-2048 key (`SecKeyCreateRandomKey`) whose initial ACL trusts `ctl` and `/usr/bin/codesign`, records the stored `ctl` path and cdhash in `<K>.acl.json`, and writes a PEM PKCS#10 CSR (subject `CN`) that `ctl` signs with the key (`SecKeyCreateSignature`). If `K` already holds a private key it refuses (`invalid-input`, listing them) unless `--replace` is passed. `--replace` adds a key, adds its record entry and reports `retainedPrivateKeys`; keys are never deleted. Reports `aclRecord`, `ctlPath` and `ctlCdhash`.                                                |
+| `provision-signing-key` | `--common-name-hint CN --csr-out PATH [--replace]` | Creates `K` if absent (mode 0600, not added to the search list, not made default), sets auto-lock after 300 seconds and lock on sleep (`SecKeychainSetSettings`), creates a permanent, non-extractable RSA-2048 key (`SecKeyCreateRandomKey`) whose initial ACL trusts `ctl` and `/usr/bin/codesign`, records the stored `ctl` path in `<K>.acl.json`, and writes a PEM PKCS#10 CSR (subject `CN`) that `ctl` signs with the key (`SecKeyCreateSignature`). If `K` already holds a private key it refuses (`invalid-input`, listing them) unless `--replace` is passed. `--replace` adds a key, adds its record entry and reports `retainedPrivateKeys`; keys are never deleted. Reports `aclRecord` and `ctlPath`.                                                                        |
 | `import-signing-cert`   | `--cert PATH` (PEM or DER)                         | Imports the certificate only if it pairs with a private key in `K` (`SecIdentityCreateWithCertificate` before `SecItemAdd`; otherwise `verification-failed` and nothing is imported), then confirms that `find-identity` sees the identity. Idempotent (`imported: false` on repeat). Reports `certificateSha1`, `subject` and `publicKeySha256`.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `prove-signing-key`     | `[--no-sign]`                                      | Requires exactly one identity in `K` and its ACL record. While `ctl` can still use the key it attempts a PKCS#12 export of the identity (only if the key's attribute already says non-extractable) and expects refusal. It then sets the partition list to `[apple:]` in one ACL edit authorized in-process by the keychain password (`SecACLSetContents` + `SecKeychainItemSetAccessWithPassword`, the equivalent of `security set-key-partition-list` without argv). The signing ACL is not edited. Then it runs the codesign guard and, unless `--no-sign`, signs and verifies a throwaway file with `codesign` under the deadline. Finally it relocks `K`. A repeat run finds the guard already holds and skips the export attempt, because `ctl`'s partition is now outside the list. |
+
+The export proof accepts only `errSecDataNotAvailable` (`-25316`), the
+non-extractable key's PKCS#12 export refusal. Other failure statuses do not
+prove non-extractability and fail verification.
 
 The proof result has `partitionCapable`, `exportAttempted`, `exportStatus`,
 `exportRefused`, `signOk` (`null` with `--no-sign`), `guardReady`,

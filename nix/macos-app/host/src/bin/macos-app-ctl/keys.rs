@@ -61,7 +61,6 @@ unsafe extern "C" {
     fn CFPropertyListCreateWithData(allocator: Ref, data: Ref, options: usize, format: *mut isize, error: *mut Ref) -> Ref;
     fn CFErrorCopyDescription(error: Ref) -> Ref;
     fn CFRetain(value: Ref) -> Ref;
-    fn CFURLCreateFromFileSystemRepresentation(allocator: Ref, path: *const u8, length: isize, directory: u8) -> Ref;
 }
 
 #[allow(non_upper_case_globals)]
@@ -90,9 +89,6 @@ unsafe extern "C" {
     static kSecKeyAlgorithmRSASignatureMessagePKCS1v15SHA256: Ref;
     static kSecACLAuthorizationPartitionID: Ref;
     static kSecACLAuthorizationSign: Ref;
-    static kSecCodeInfoUnique: Ref;
-    fn SecStaticCodeCreateWithPath(path: Ref, flags: u32, code: *mut Ref) -> i32;
-    fn SecCodeCopySigningInformation(code: Ref, flags: u32, information: *mut Ref) -> i32;
     fn SecKeychainCreate(path: *const c_char, length: u32, password: *const c_void, prompt: u8, access: Ref, keychain: *mut Ref) -> i32;
     fn SecKeychainSetSettings(keychain: Ref, settings: *const Settings) -> i32;
     fn SecKeychainGetStatus(keychain: Ref, status: *mut u32) -> i32;
@@ -382,6 +378,7 @@ fn create_key(keychain: &Keychain, label: &str) -> Result<Cf> {
     Ok(Cf(key))
 }
 fn sign_request(key: Ref, info: &[u8]) -> Result<Vec<u8>> {
+    cancellation()?;
     let data = cf_data(info)?;
     let mut error = std::ptr::null();
     // SAFETY: key and data are live; the signature follows the create rule.
@@ -442,7 +439,7 @@ pub(super) fn provision(ctl: &Ctl) -> Result<Value> {
     let spki = subject_public_key_info(&public_key_pkcs1(key.0)?);
     let info = request_info(common_name, &spki);
     let signature = sign_request(key.0, &info)?;
-    let (ctl_path, ctl_cdhash) = record_ctl(&path, key.0)?;
+    let ctl_path = record_ctl(&path, key.0)?;
     #[cfg(feature = "test-signing-cert")]
     if let Some(out) = ctl.args.get("test-self-signed-cert-out") {
         test_certificate::issue(key.0, common_name, &spki, Path::new(out))?;
@@ -450,7 +447,7 @@ pub(super) fn provision(ctl: &Ctl) -> Result<Value> {
     window.close()?;
     if let Some(parent) = csr_out.parent() { fs::create_dir_all(parent)?; }
     atomic_write(&csr_out, pem("CERTIFICATE REQUEST", &certification_request(&info, &signature)).as_bytes())?;
-    Ok(json!({"keychain": path, "createdKeychain": created, "mode": "0600", "lockOnSleep": true, "lockIntervalSeconds": LOCK_INTERVAL, "keyLabel": common_name, "publicKeySha256": sha256(&spki), "csr": csr_out, "retainedPrivateKeys": retained, "aclRecord": sidecar_path(&path), "ctlPath": ctl_path, "ctlCdhash": ctl_cdhash}))
+    Ok(json!({"keychain": path, "createdKeychain": created, "mode": "0600", "lockOnSleep": true, "lockIntervalSeconds": LOCK_INTERVAL, "keyLabel": common_name, "publicKeySha256": sha256(&spki), "csr": csr_out, "retainedPrivateKeys": retained, "aclRecord": sidecar_path(&path), "ctlPath": ctl_path}))
     })();
     match held { Some(keychain) => keychain.finish(result), None => result }
 }
@@ -641,7 +638,7 @@ fn exact_sign_applications(paths: &[String], ctl: &str) -> bool {
     ctl != CODESIGN && matches!(paths, [a, b] if (a == CODESIGN && b == ctl) || (b == CODESIGN && a == ctl))
 }
 /// `<keychain>.acl.json`: per key (public-key SHA-256), the exact ctl path provisioning wrote
-/// into the signing ACL and its cdhash. The guard trusts only this record, never a name match.
+/// into the signing ACL. The guard compares exact paths; `[apple:]` blocks ctl's key use.
 fn sidecar_path(keychain_path: &Path) -> PathBuf {
     let mut path = keychain_path.as_os_str().to_owned();
     path.push(".acl.json");
@@ -667,15 +664,14 @@ fn recorded_ctl(keychain_path: &Path, key: Ref) -> Result<String> {
         .ok_or_else(|| fail(64, "invalid-input", format!("ACL record {} has no entry for key {id}; re-run provision-signing-key", sidecar_path(keychain_path).display())))
 }
 /// Records the one non-codesign application the new key's signing ACL holds (the provisioning
-/// ctl, as securityd stored it) with its cdhash, merging into an existing record (`--replace`).
-fn record_ctl(keychain_path: &Path, key: Ref) -> Result<(String, String)> {
+/// ctl, as securityd stored it), merging into an existing record (`--replace`).
+fn record_ctl(keychain_path: &Path, key: Ref) -> Result<String> {
     let mut others: Vec<String> = sign_applications(key)?.into_iter().flatten().flatten().filter(|path| path != CODESIGN).collect();
     others.sort_unstable();
     others.dedup();
     let [ctl] = <[String; 1]>::try_from(others).map_err(|others| fail(23, "operation-failed", format!("The new key's signing ACL holds {others:?} besides codesign; expected exactly this ctl")))?;
-    let cdhash = cdhash(&ctl)?;
     let mut record = if sidecar_path(keychain_path).exists() { read_sidecar(keychain_path)? } else { json!({"keychain": text(keychain_path)?, "keys": {}}) };
-    record["keys"][key_id(key)?] = json!({"ctlPath": ctl, "ctlCdhash": cdhash});
+    record["keys"][key_id(key)?] = json!({"ctlPath": ctl});
     let path = sidecar_path(keychain_path);
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(format!(".tmp-{}", std::process::id()));
@@ -683,24 +679,7 @@ fn record_ctl(keychain_path: &Path, key: Ref) -> Result<(String, String)> {
     file.write_all(serde_json::to_string_pretty(&record).map_err(|e| fail(23, "operation-failed", e.to_string()))?.as_bytes())?;
     file.sync_all()?;
     fs::rename(&tmp, &path)?;
-    Ok((ctl, cdhash))
-}
-/// The code directory hash of the binary at `path` (`kSecCodeInfoUnique`), read in-process.
-fn cdhash(path: &str) -> Result<String> {
-    // SAFETY: the bytes are valid for their length; the URL follows the create rule.
-    let url = owned(unsafe { CFURLCreateFromFileSystemRepresentation(std::ptr::null(), path.as_ptr(), path.len() as isize, 0) }, "CFURLCreateFromFileSystemRepresentation")?;
-    let mut code = std::ptr::null();
-    // SAFETY: url is live; code follows the create rule.
-    checked_status(unsafe { SecStaticCodeCreateWithPath(url.0, 0, &mut code) }, "SecStaticCodeCreateWithPath")?;
-    let code = owned(code, "SecStaticCodeCreateWithPath")?;
-    let mut information = std::ptr::null();
-    // SAFETY: code is live; information follows the copy rule.
-    checked_status(unsafe { SecCodeCopySigningInformation(code.0, 0, &mut information) }, "SecCodeCopySigningInformation")?;
-    let information = owned(information, "SecCodeCopySigningInformation")?;
-    // SAFETY: lookup in a live dictionary with an immutable framework constant.
-    let unique = unsafe { CFDictionaryGetValue(information.0, kSecCodeInfoUnique) };
-    if unique.is_null() { return Err(fail(23, "operation-failed", format!("{path} has no code directory hash"))); }
-    Ok(hex(&bytes(unique)))
+    Ok(ctl)
 }
 /// Pins the partition list to exactly `[apple:]` in one ACL edit authorized by the keychain
 /// password in-process (`security set-key-partition-list` without the password in argv). Other ACL
@@ -776,19 +755,30 @@ fn export_status(identity: Ref) -> Result<i32> {
 /// Runs one signing `codesign` with `SIGN_DEADLINE`; a run that has not finished (for example
 /// because it waits on a confirmation) is killed and reported as `sign-timeout`.
 pub(super) fn bounded_codesign(args: &[&str]) -> Result<Output> {
-    let mut child = Command::new(codesign_program()).args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
+    cancellation()?;
+    use std::os::unix::process::CommandExt;
+    let mut child = Command::new(codesign_program()).args(args).process_group(0).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
     let drain = |pipe: Option<Box<dyn Read + Send>>| std::thread::spawn(move || { let mut buffer = Vec::new(); if let Some(mut pipe) = pipe { let _ = pipe.read_to_end(&mut buffer); } buffer });
     let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let deadline = Instant::now() + SIGN_DEADLINE;
     let status = loop {
+        if let Err(error) = cancellation() {
+            // SAFETY: child is the leader of its freshly created process group.
+            unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL); }
+            child.wait()?;
+            let _ = stdout.join();
+            let _ = stderr.join();
+            return Err(error);
+        }
         if let Some(status) = child.try_wait()? { break status; }
         if Instant::now() >= deadline {
-            let _ = child.kill();
+            // SAFETY: child is the leader of its freshly created process group.
+            unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL); }
             let _ = child.wait();
             return Err(signing("sign-timeout", format!("codesign did not finish within {}s and was killed; a keychain confirmation may have been requested", SIGN_DEADLINE.as_secs())));
         }
-        std::thread::sleep(Duration::from_millis(50));
+        signal_pause(Duration::from_millis(50));
     };
     Ok(Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() })
 }
@@ -802,7 +792,7 @@ fn codesign_probe(keychain: &Path, identity_sha1: &str) -> Result<bool> {
         fs::write(&file, b"macos-app-ctl signing-key proof\n")?;
         let signed = bounded_codesign(&["--force", "--keychain", text(keychain)?, "--sign", identity_sha1, text(&file)?])?;
         if !signed.status.success() { return Err(fail(22, "verification-failed", format!("Signing-key codesign probe: {}", String::from_utf8_lossy(&signed.stderr)))); }
-        let verified = command(codesign_program(), &["--verify", text(&file)?])?;
+        let verified = bounded_codesign(&["--verify", text(&file)?])?;
         if !verified.status.success() { return Err(fail(22, "verification-failed", format!("Signing-key codesign probe verification: {}", String::from_utf8_lossy(&verified.stderr)))); }
         Ok(true)
     })();
@@ -846,7 +836,7 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
     let settings = keychain_settings(&keychain)?;
     window.close()?;
     let locked_after = keychain_locked(&keychain)?;
-    let export_refused = match export { Some(status) => status != 0, None => pinned_before && extractable == Some(false) };
+    let export_refused = match export { Some(status) => status == -25316, None => pinned_before && extractable == Some(false) }; // errSecDataNotAvailable only
     // `security` runs in partition `apple-tool:`; an exact `[apple:]` list excludes it structurally.
     let security_excluded = guard.partitions == [CODESIGN_PARTITION];
     let proof = json!({

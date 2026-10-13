@@ -93,18 +93,27 @@ def security_agent_windows():
 agent_baseline = security_agent_windows()
 if agent_baseline != 0:
     sys.exit('ABORT before keychain tests: SecurityAgent window baseline must be zero')
-def watched(argv, **kwargs):
+def watched(argv, terminate_when=None, **kwargs):
     """Runs argv, killing its process group and aborting if a SecurityAgent window appears."""
     if security_agent_windows() != 0:
         sys.exit(f'ABORT before {argv[1]}: SecurityAgent window present')
     process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                start_new_session=True, **kwargs)
     deadline = time.monotonic() + 60
+    terminated = False
     while process.poll() is None:
         if security_agent_windows() > agent_baseline or time.monotonic() > deadline:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
+            process.send_signal(signal.SIGTERM)
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
             sys.exit(f'ABORT: {argv[1]} raised a SecurityAgent window or hung; a keychain prompt was requested. Stopping.')
+        if terminate_when is not None and terminate_when.exists() and not terminated:
+            assert unlocked(), 'SIGTERM test did not reach the unlock window'
+            process.send_signal(signal.SIGTERM)
+            terminated = True
         time.sleep(0.1)
     stdout, stderr = process.communicate()
     assert security_agent_windows() <= agent_baseline, f'{argv[1]} left a SecurityAgent window'
@@ -217,7 +226,7 @@ jobs_file.write_text(json.dumps(jobs))
     # inject a signing failure without touching any keychain.
     codesign = bin_dir / 'codesign'
     codesign.write_text(f'#!{sys.executable}\n' + r'''
-import json, os, subprocess, sys
+import json, os, subprocess, sys, time
 from pathlib import Path
 base = Path(os.environ['MACOS_APP_TEST_WORK'])
 args = sys.argv[1:]
@@ -227,6 +236,10 @@ if '--sign' in args:
     if (base / 'sign-fail').exists():
         print('test-injected signing failure', file=sys.stderr)
         sys.exit(1)
+    if (base / 'sign-slow').exists():
+        (base / 'slow-child-pid').write_text(str(os.getpid()))
+        (base / 'slow-ready').touch()
+        time.sleep(60)
 # exec keeps the pid, so ctl's signing deadline kills the real codesign, not just this shim.
 os.execv('/usr/bin/codesign', ['codesign'] + args)
 ''')
@@ -235,7 +248,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
 
     common = ['--config', str(config_file), '--app-dir', str(app), '--state', str(state),
               '--socket', sock, '--plist-dir', str(plists)]
-    def call(action, *args, code=0, secret=None, hold_open=False, failpoint=None):
+    def call(action, *args, code=0, secret=None, hold_open=False, failpoint=None, terminate_when=None):
         """`secret` str is sent with one trailing newline; bytes are sent verbatim.
         `hold_open` keeps the writer open so the reader never sees EOF."""
         fds = ()
@@ -250,7 +263,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
             args = (*args, '--keychain-password-fd', str(read))
         run_env = dict(env, MACOS_APP_CTL_TEST_FAILPOINT=failpoint) if failpoint else env
         try:
-            process = watched([str(ctl), action, *common, *map(str, args)], env=run_env, pass_fds=fds)
+            process = watched([str(ctl), action, *common, *map(str, args)], env=run_env, pass_fds=fds, terminate_when=terminate_when)
         finally:
             for fd in fds: os.close(fd)
             if write is not None: os.close(write)
@@ -275,8 +288,8 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     record = json.loads(record_path.read_text())
     assert oct(record_path.stat().st_mode & 0o777) == '0o600' and record['keychain'] == str(keychain), record
     ctl_path = provisioned['ctlPath']
-    assert record['keys'] == {provisioned['publicKeySha256']: {'ctlPath': ctl_path, 'ctlCdhash': provisioned['ctlCdhash']}}, record
-    assert Path(ctl_path).name == 'macos-app-ctl' and len(provisioned['ctlCdhash']) == 40, provisioned
+    assert record['keys'] == {provisioned['publicKeySha256']: {'ctlPath': ctl_path}}, record
+    assert Path(ctl_path).name == 'macos-app-ctl', provisioned
     assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
     assert tool('/usr/bin/openssl', 'req', '-in', str(work / 'signing.csr'), '-noout', '-verify').returncode == 0
     refused = key_call('provision-signing-key', keychain, '--common-name-hint', identity, '--csr-out', work / 'again.csr', code=64)
@@ -340,7 +353,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     # Dry pass first: pin and guard without running codesign, then the full proof.
     dry = key_call('prove-signing-key', keychain, '--no-sign')['result']
     assert dry['guardReady'] and dry['signOk'] is None and dry['signSkipped'], dry
-    assert dry['exportAttempted'] and dry['exportRefused'] and dry['exportStatus'] != 0, dry
+    assert dry['exportAttempted'] and dry['exportRefused'] and dry['exportStatus'] == -25316, dry
     proof = key_call('prove-signing-key', keychain)['result']
     assert proof['partitionCapable'] and proof['guardReady'] and proof['signOk'] is True, proof
     assert proof['partitionList'] == ['apple:'] and proof['signAclExact'] and proof['recordedCtlPath'] == ctl_path, proof
@@ -349,6 +362,25 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert proof['lockedAfterWindow'] and proof['lockOnSleep'] and proof['lockIntervalSeconds'] == 300, proof
     assert not unlocked()
     print(f'PASS signing-key proof: {json.dumps(proof, sort_keys=True)}', flush=True)
+
+    # The fake signer pauses only after ctl has unlocked K and passed its exact guard.
+    (work / 'sign-slow').touch()
+    try:
+        interrupted = call('prove-signing-key', '--keychain', keychain, secret=password, code=23,
+                           terminate_when=work / 'slow-ready')
+        assert 'Cancelled by signal' in interrupted['error']['reason'], interrupted
+        assert not unlocked(), 'SIGTERM left K unlocked'
+        child = int((work / 'slow-child-pid').read_text())
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            pass
+        else:
+            raise AssertionError('SIGTERM left the codesign child running or unreaped')
+    finally:
+        for name in ('sign-slow', 'slow-ready', 'slow-child-pid'):
+            (work / name).unlink(missing_ok=True)
+    print('PASS SIGTERM inside the signing window kills/reaps codesign and checks the final keychain lock', flush=True)
 
     # --replace adds a key and never deletes; an unpinned identity is refused before codesign.
     unpinned_identity = 'macos-app-ctl unpinned signer'
