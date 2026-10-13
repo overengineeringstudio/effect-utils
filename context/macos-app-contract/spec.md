@@ -421,6 +421,11 @@ self-issued leaf as an anchor only for its ephemeral `SecTrust` evaluation,
 never adding system trust or changing a keychain search list. A CA-issued
 test leaf without a system anchor is a negative case (`chain-incomplete`,
 no codesign).
+The harness observes a zero SecurityAgent window baseline and aborts on changes.
+If CGWindowList is unavailable, it accepts only an audit session whose graphics
+and console-access flags are both absent, rechecked before and throughout every
+keychain child. It reports that evidence as a no-UI session, never as zero windows;
+an unavailable observer in a UI-capable session aborts before keychain operations.
 
 ### Fixture signing and agent process rules
 
@@ -441,7 +446,6 @@ by absolute path bypasses host PATH wrappers. This is covered by agent process
 rules, not technical enforcement: wrappers are not a sandbox. Production ctl
 does not accept runtime overrides of its codesign executable; only the separate
 test-feature build admits the recording/sentinel shim.
-
 
 ### Opt-in real-launchd smoke
 
