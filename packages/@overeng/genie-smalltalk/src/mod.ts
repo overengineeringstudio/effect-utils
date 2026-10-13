@@ -245,6 +245,14 @@ export const person = (subject: `person/${string}`): PersonReference =>
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
   identity: Schema.optionalKey(Text),
+  accountable: Schema.optionalKey(
+    PersonReferenceSchema.pipe(
+      Schema.refine(
+        (person): person is typeof person => /^person\/[A-Za-z0-9_.-]+$/u.test(person.subject),
+        { message: 'accountable must name one concrete person/NAME' },
+      ),
+    ),
+  ),
   name: Schema.optionalKey(Text),
   description: Schema.optionalKey(Text),
   host: Schema.optionalKey(Text),
@@ -626,6 +634,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
   const a = decode({ schema: AgentSchema, input })
   const children: Node[] = [
     ...optionalChild({ name: 'identity', value: a.identity }),
+    ...optionalChild({ name: 'accountable', value: a.accountable?.subject }),
     ...optionalChild({ name: 'name', value: a.name }),
     ...optionalChild({ name: 'description', value: a.description }),
     ...optionalChild({ name: 'host', value: a.host }),

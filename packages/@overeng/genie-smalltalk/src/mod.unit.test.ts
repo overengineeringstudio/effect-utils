@@ -40,6 +40,54 @@ const gate = {
   reviewer: operator,
 } satisfies typeof HumanGateSchema.Encoded
 
+describe('accountable fleet roots', () => {
+  it('accepts only a person reference and lowers the exact native child', () => {
+    type Accountable = NonNullable<(typeof AgentSchema.Encoded)['accountable']>
+    expectTypeOf<PersonReference>().toMatchTypeOf<Accountable>()
+    expectTypeOf<AgentReference>().not.toMatchTypeOf<Accountable>()
+    expectTypeOf<string>().not.toMatchTypeOf<Accountable>()
+    expect(emit([agent({ id: 'example/root', accountable: operator, command: 'true' })]))
+      .toBe(`version 2
+agent "example/root" {
+  accountable "person/schickling"
+  command "true"
+}
+`)
+  })
+
+  it('leaves existing declarations unchanged when accountable is absent', () => {
+    expect(emit([agent({ id: 'example/root', command: 'true' })])).toBe(`version 2
+agent "example/root" {
+  command "true"
+}
+`)
+  })
+
+  it.each([
+    'person/',
+    'person/..',
+    'person/name/child',
+    'person/name@host',
+    'person/name with spaces',
+    'agent/example/root',
+  ])('rejects non-concrete accountable subjects %s', (subject) => {
+    expect(() =>
+      Schema.decodeUnknownSync(AgentSchema)({
+        id: 'example/root',
+        accountable: { kind: 'person', subject },
+      }),
+    ).toThrow()
+  })
+
+  it('rejects agent references and bare person strings', () => {
+    for (const accountable of [owner, 'person/schickling']) {
+      expect(() =>
+        Schema.decodeUnknownSync(AgentSchema)({ id: 'example/root', accountable }),
+      ).toThrow()
+    }
+  })
+})
+
 // These are authoring contracts, not assertions about person authentication.
 describe('attributed human gates', () => {
   it('keeps person references distinct from imported agent references', () => {
