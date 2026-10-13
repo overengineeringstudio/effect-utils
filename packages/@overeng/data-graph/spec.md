@@ -88,6 +88,16 @@ selected head. A changed input may rerun `extract` while its `value` stays equal
 of `value` retain their action keys. An evidence-only change reruns `gate` but not
 `render-en`/`render-de`. These are the action-cache and output early cutoffs respectively.
 
+Historical heads retain their original output set across recipe upgrades. Comparing a
+new execution reads that historical map independently of the current contract; added and
+removed names count as changed, while overlapping names compare digests. Current cache
+hits still require an exact match with the current declared output set.
+
+Input/output descriptor maps have no object prototype, and duplicate detection uses
+own-property checks. Names such as `constructor` and `__proto__` are supported, not banned.
+Consumer definitions must supply own named properties: use computed `['__proto__']`
+keys or prototype-free objects instead of JavaScript's special prototype-setting literal.
+
 Zero false cutoff relies on consumer canonicalization: erasing meaningful precision or
 policy differences is a correctness bug, not a graph optimization. Determinism and complete
 recipe identity are consumer obligations. Cache lookup never skips upstream selection or
@@ -169,7 +179,7 @@ pull across both renders and the evidence gate. No mocks, network, or new depend
 From this package directory:
 
 ```sh
-CI=1 ../../../../node_modules/.bin/vitest run src/mod.integration.test.ts --config vitest.config.ts
+CI=1 ../../../node_modules/.bin/vitest run src/mod.integration.test.ts --config vitest.config.ts
 bun src/spike.ts
 ```
 
@@ -199,6 +209,13 @@ restart/crash injection, production canonicalizers, high cardinality, or garbage
 - **Rejected observations after recipe changes:** preserve old head, expose Rejected on
   that refresh; subsequent non-refresh reads fail the action check. Decide an explicit
   consumer stale-selection policy rather than silently relabeling old acceptance.
+- **Freshness-sensitive downstream gates:** how do confirmation (`lastConfirmedAt`)
+  changes reach these gates while preserving semantic reuse? Confirmation is outside
+  ordinary output dependencies, so scheduling alone cannot expire a cached publication.
+  Recommend evaluating freshness-sensitive gates at read/publish time from the selected
+  head confirmation plus explicit `now`, consistently with `isStale`, rather than by graph
+  rebuild. A dedicated confirmation dependency channel is an alternative if the owner
+  explicitly prefers persisted freshness-derived graph outputs.
 
 ## Explicitly out of scope
 
