@@ -163,6 +163,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     identities reject candidates overlapping either default shared store or
     `PNPM_SHARED_STORE_DIR`. Mount inventory also rejects mount points at the
     candidate root or below it, including same-filesystem bind mounts.
+    Directory mount IDs define traversal containment; `st_dev` remains part of
+    inode accounting only. Overlayfs payloads can expose differing backing
+    device IDs without crossing a mount, so device-number inequality is not
+    grounds to reject an otherwise contained historical cache.
     `--observe` records eligible roots without deleting payloads; after 24 hours,
     repeat the dry-run, then opt in to `--apply` to retire eligible payloads.
     An initial `--apply` only establishes the observation, never skips grace.

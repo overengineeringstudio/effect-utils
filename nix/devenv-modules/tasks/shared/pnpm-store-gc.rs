@@ -954,7 +954,12 @@ mod linux {
             if stat.file_type().is_symlink() {
                 return Err(format!("store contains a bridge: {}", path.display()));
             }
-            if stat.dev() != metadata.dev() {
+            // Overlayfs can expose backing device IDs for payloads within one
+            // mount. Device IDs identify accounting inodes, not containment.
+            if stat.is_dir()
+                && path != store
+                && mount_id(&open_directory(&path)?)? != admitted.mount
+            {
                 return Err("store contains a filesystem mount boundary".into());
             }
             let inode = inodes
@@ -1164,6 +1169,68 @@ mod linux {
             let root = PathBuf::from(parent).join(format!("{label}-{}", std::process::id()));
             fs::create_dir_all(&root).unwrap();
             root
+        }
+
+        #[test]
+        fn overlay_device_numbers_do_not_define_mount_boundaries() {
+            if let Some(store) = env::var_os("PNPM_GC_OVERLAY_CANDIDATE") {
+                let store = PathBuf::from(store);
+                let admitted = AdmittedStore::open(&store).unwrap();
+                let root = admitted.directory.metadata().unwrap();
+                let payload =
+                    fs::symlink_metadata(descriptor_path(&admitted.directory).join("payload"))
+                        .unwrap();
+                eprintln!(
+                    "overlay held-root-dev={} payload-dev={}",
+                    root.dev(),
+                    payload.dev()
+                );
+                assert_ne!(
+                    root.dev(),
+                    payload.dev(),
+                    "overlay xino=off must exercise differing device numbers"
+                );
+                assert!(footprint(&store).is_ok());
+                return;
+            }
+            let probe = Command::new("unshare").args(["-rm", "true"]).output();
+            if !probe.as_ref().is_ok_and(|output| output.status.success()) {
+                eprintln!("SKIP overlay integration: user/mount namespaces unavailable");
+                return;
+            }
+            let root = fixture("overlay");
+            let backing = root.join("backing");
+            fs::create_dir_all(&backing).unwrap();
+            let script = r#"
+set -eu
+mount -t tmpfs tmpfs "$1" || exit 77
+mkdir -p "$1/lower" "$1/upper" "$1/work" "$1/merged"
+mount -t tmpfs tmpfs "$1/lower" || exit 77
+mkdir -p "$1/lower/store"
+printf preserve > "$1/lower/store/payload"
+mount -t overlay overlay -o "lowerdir=$1/lower,upperdir=$1/upper,workdir=$1/work,userxattr,xino=off" "$1/merged" || exit 77
+export PNPM_GC_OVERLAY_CANDIDATE="$1/merged/store"
+exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_boundaries --nocapture
+"#;
+            let output = Command::new("unshare")
+                .args(["-rm", "bash", "-c", script, "overlay-test"])
+                .arg(&backing)
+                .arg(env::current_exe().unwrap())
+                .output()
+                .unwrap();
+            if output.status.code() == Some(77) {
+                eprintln!(
+                    "SKIP overlay integration: overlay/tmpfs mount unavailable: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                return;
+            }
+            assert!(
+                output.status.success(),
+                "overlay proof failed:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         #[test]
