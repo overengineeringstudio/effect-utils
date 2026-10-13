@@ -27,7 +27,7 @@ export default ciWorkflow({
       deployPreview: storybookPreviewRunner('always'),
       publishPreviewComment: storybookPreviewRunner('always'),
     },
-    setupSteps: storybookPreviewSetupSteps,
+    setupSteps: storybookPreviewSetupSteps('always'),
     netlifyAuthToken: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
     title: 'Storybook Previews',
     noRecordsMessage: 'No storybooks were deployed.',

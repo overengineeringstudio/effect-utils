@@ -38,12 +38,22 @@ describe('namespaceRunner', () => {
     expect(namespacePrivilegeTrustedPredicate).toBe(
       "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
     )
-    expect(linuxSandboxPrerequisitesStep.env.BUCK2_TS_PRIVILEGE_ALLOWED).toBe(
+    const step = linuxSandboxPrerequisitesStep({ privileged: 'trusted' })
+    expect(step.env.BUCK2_TS_PRIVILEGE_ALLOWED).toBe(
       `\${{ ${namespacePrivilegeTrustedPredicate} }}`,
     )
-    const script = linuxSandboxPrerequisitesStep.run
+    const script = step.run
     expect(script).toContain('untrusted pull_request runs on an unprivileged Namespace runner')
     expect(script.indexOf('exit 1')).toBeLessThan(script.indexOf('nix config show'))
+  })
+
+  it('does not read PR identity for always or never prerequisite policies', () => {
+    for (const privileged of ['always', 'never'] as const) {
+      const step = linuxSandboxPrerequisitesStep({ privileged })
+      expect(step.env.BUCK2_TS_PRIVILEGE_ALLOWED).toBe(privileged === 'always' ? 'true' : 'false')
+      expect(JSON.stringify(step)).not.toContain('github.event.pull_request')
+      expect(JSON.stringify(step)).not.toContain('pull_request.head')
+    }
   })
 
   it('keeps the separate features label for -with-features machine labels', () => {

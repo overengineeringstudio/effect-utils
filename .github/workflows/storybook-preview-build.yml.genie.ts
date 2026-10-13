@@ -32,7 +32,11 @@ export default ciWorkflow({
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,
       env: buck2CachePostureEnv('reader'),
-      steps: [checkoutStep(), ...storybookPreviewSetupSteps, ...netlifyPreviewBuildSteps()],
+      steps: [
+        checkoutStep(),
+        ...storybookPreviewSetupSteps('trusted'),
+        ...netlifyPreviewBuildSteps(),
+      ],
     },
   }),
 } satisfies CiWorkflowArgs)

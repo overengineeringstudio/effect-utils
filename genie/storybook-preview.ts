@@ -77,12 +77,13 @@ const binaryCache = readBinaryCacheDescriptors(
 )['overeng-effect-utils']!
 
 /** Nix + devenv setup after checkout. Read-only caches; no secrets. */
-export const storybookPreviewSetupSteps = [
-  installNixStep({ binaryCaches: [binaryCache] }),
-  linuxSandboxPrerequisitesStep,
-  cachixCliBuildStep,
-  cachixStep({ name: 'overeng-effect-utils' }),
-  prepareCiScriptsStep,
-  preparePinnedDevenvStep,
-  validateNixStoreStep,
-] as const
+export const storybookPreviewSetupSteps = (privileged: NamespacePrivilege) =>
+  [
+    installNixStep({ binaryCaches: [binaryCache] }),
+    linuxSandboxPrerequisitesStep({ privileged }),
+    cachixCliBuildStep,
+    cachixStep({ name: 'overeng-effect-utils' }),
+    prepareCiScriptsStep,
+    preparePinnedDevenvStep,
+    validateNixStoreStep,
+  ] as const

@@ -257,6 +257,9 @@ github.event.pull_request.head.repo.full_name == github.repository`.
 Fork PRs select unprivileged runners, and Buck TS setup fails closed with a named
 diagnostic while fork admission policy remains unresolved. Darwin labels never
 receive Linux container privilege.
+The Linux prerequisites guard takes the same explicit policy: only `trusted`
+renders the PR-identity expression. `always` emits literal permission and never
+reads the PR event, preserving the `workflow_run` deployment trust boundary.
 
 `plainFlakeSetupSteps` installs Determinate Nix and accepts an optional public
 `cachix` name for read-only cache access. For custom jobs, compose these setup steps

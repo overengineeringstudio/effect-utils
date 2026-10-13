@@ -47,7 +47,7 @@ export default ciWorkflow({
       env: { FORCE_SETUP: '1', CI: 'true', ...buck2CachePostureEnv('trusted-writer') },
       steps: [
         checkoutStep(),
-        ...storybookPreviewSetupSteps,
+        ...storybookPreviewSetupSteps('always'),
         buck2TrustedCacheWriterStep({
           name: 'Storybook play tests',
           env: githubTokenEnv(),

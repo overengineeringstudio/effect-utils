@@ -251,27 +251,35 @@ export const installNixStep = (opts?: {
 
 /**
  * Linux namespace prerequisites behind Nix's build sandbox and nested TS
- * Bubblewrap. Fork PRs fail closed before building while Q49 is pending.
+ * Bubblewrap. Only the trusted policy reads PR identity; always jobs do not.
  */
-export const linuxSandboxPrerequisitesStep = {
-  name: 'Log Linux sandbox prerequisites',
-  if: "${{ runner.os == 'Linux' }}",
-  shell: 'bash',
-  env: { BUCK2_TS_PRIVILEGE_ALLOWED: `\${{ ${namespacePrivilegeTrustedPredicate} }}` },
-  run: [
-    'set -euo pipefail',
-    'if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then',
-    '  echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2',
-    '  exit 1',
-    'fi',
-    "nix config show | grep -E '^sandbox'",
-    'for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do',
-    '  if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\\n" "$key"; fi',
-    'done',
-    'unshare -Ur true',
-    'echo "unshare -Ur true: passed"',
-  ].join('\n'),
-} as const
+export const linuxSandboxPrerequisitesStep = ({ privileged }: { privileged: NamespacePrivilege }) =>
+  ({
+    name: 'Log Linux sandbox prerequisites',
+    if: "${{ runner.os == 'Linux' }}",
+    shell: 'bash',
+    env: {
+      BUCK2_TS_PRIVILEGE_ALLOWED:
+        privileged === 'trusted'
+          ? `\${{ ${namespacePrivilegeTrustedPredicate} }}`
+          : privileged === 'always'
+            ? 'true'
+            : 'false',
+    },
+    run: [
+      'set -euo pipefail',
+      'if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then',
+      '  echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2',
+      '  exit 1',
+      'fi',
+      "nix config show | grep -E '^sandbox'",
+      'for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do',
+      '  if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\\n" "$key"; fi',
+      'done',
+      'unshare -Ur true',
+      'echo "unshare -Ur true: passed"',
+    ].join('\n'),
+  }) as const
 
 /**
  * Provide the cachix CLI to subsequent steps from a /nix/store output.

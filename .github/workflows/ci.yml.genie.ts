@@ -71,7 +71,7 @@ const binaryCache = readBinaryCacheDescriptors(
 const baseSteps = [
   checkoutStep(),
   installNixStep({ binaryCaches: [binaryCache] }),
-  linuxSandboxPrerequisitesStep,
+  linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
   ciMeasurementBaselineCheckoutStep,
   cachixCliBuildStep,
   trustedCachixStep,
