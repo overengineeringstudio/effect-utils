@@ -202,6 +202,15 @@ const resolveRef = Effect.fnUntraced(function* ({
   return yield* subjectId({ root, file, path })
 })
 
+type ReferenceFields = {
+  readonly reportTo?: unknown
+  readonly assignedTo?: unknown
+  readonly target?: unknown
+  readonly steps?: unknown
+  readonly finally?: unknown
+  readonly under?: unknown
+}
+
 /** Lowers only reference-bearing fields, preserving identity-bearing authoring handles. */
 const lowerReferences: (args: {
   readonly root: string
@@ -209,20 +218,21 @@ const lowerReferences: (args: {
   readonly intent: unknown
 }) => Effect.Effect<unknown, SubjectTreeError> = Effect.fnUntraced(function* ({ root, path, intent }) {
   if (typeof intent !== 'object' || intent === null) return intent
+  const fields = intent as ReferenceFields
   let lowered: Record<PropertyKey, unknown> | undefined
   const set = (key: string, value: unknown) => {
     lowered ??= { ...intent }
     lowered[key] = value
   }
   for (const key of ['reportTo', 'assignedTo', 'target'] as const) {
-    if (key in intent && isRef(intent[key]) === true) {
-      const id = yield* resolveRef({ root, path, ref: intent[key], expected: 'agent' })
+    if (key in intent && isRef(fields[key]) === true) {
+      const id = yield* resolveRef({ root, path, ref: fields[key], expected: 'agent' })
       set(key, { id })
     }
   }
   for (const key of ['steps', 'finally', 'under'] as const) {
-    if (key in intent && Array.isArray(intent[key]) === true) {
-      const values = intent[key]
+    if (key in intent && Array.isArray(fields[key]) === true) {
+      const values = fields[key]
       const next = yield* Effect.forEach(values as readonly unknown[], (value) =>
         lowerReferences({ root, path, intent: value }),
       )
@@ -323,7 +333,7 @@ const loadModule = Effect.fnUntraced(function* <C>({
     try: () => missionWire(lowered as MissionInput<string>),
     catch: invalid,
   })
-  const mission = yield* Schema.decodeUnknownEffect(MissionSchema, { onExcessProperty: 'error' })(
+  const mission = yield* Schema.decodeEffect(MissionSchema, { onExcessProperty: 'error' })(
     wire,
   ).pipe(Effect.mapError(invalid))
   if ((mission.schedule !== undefined) !== (kind === 'schedule')) {
