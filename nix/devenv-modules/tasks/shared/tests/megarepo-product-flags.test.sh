@@ -9,12 +9,12 @@ export MR_PRODUCT_CONTRACT_ROOT="$root"
 # would conceal the very product/source skew this gate protects against.
 product="$(nix build "git+file://$root?shallow=1#megarepo" --no-link --print-out-paths)"
 export MR_PRODUCT_CONTRACT_BINARY="$product/bin/mr"
-export MR_PRODUCT_CONTRACT_SCRIPTS="$(nix eval --impure --json --expr '
+MR_PRODUCT_CONTRACT_SCRIPTS="$(nix eval --impure --json --expr '
   let
     root = builtins.toPath (builtins.getEnv "MR_PRODUCT_CONTRACT_ROOT");
     flake = builtins.getFlake ("git+file://" + toString root + "?shallow=1");
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    module = (import (root + /nix/devenv-modules/tasks/shared/megarepo.nix) {
+    module = (import (root + "/nix/devenv-modules/tasks/shared/megarepo.nix") {
       syncAll = true;
       bootstrapMembers = [ "contract-fixture" ];
       setupCommitMembers = [ "contract-fixture" ];
@@ -23,6 +23,7 @@ export MR_PRODUCT_CONTRACT_SCRIPTS="$(nix eval --impure --json --expr '
     inherit (task) exec status;
   }) module.tasks
 ')"
+export MR_PRODUCT_CONTRACT_SCRIPTS
 
 node <<'NODE'
 const { spawnSync } = require('node:child_process')
