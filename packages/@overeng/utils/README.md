@@ -52,6 +52,10 @@ awaits the requested snapshot and any events coalesced while it runs. This is
 an observation barrier: it does not initiate a refresh or wait for future
 watcher events. Integration probes can then assert the served snapshot without
 racing the debounce or Git subprocesses against an arbitrary polling deadline.
+Fixtures canonicalize temporary roots before comparing watch subscriptions and
+source-event paths, and look up watched directories with Vite's resolved root.
+Git's absolute paths and Vite resolve filesystem aliases such as macOS `/var`
+to `/private/var`; the spelling returned by `tmpdir()` need not match either.
 
 For packaged apps, the static host injects `globalThis.__BUILD_DEPLOYMENT_ID__`
 before browser modules execute. It identifies the serving package's real Nix

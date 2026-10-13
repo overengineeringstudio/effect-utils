@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   unwatchFile,
   watchFile,
@@ -23,8 +24,13 @@ import { createBuildIdentityPlugin, readWorktreeGitMetadata } from './vite-build
 const waitForWatchUpdate = (assertion: () => void | Promise<void>) =>
   vi.waitFor(assertion, { timeout: 10000 })
 
+// Darwin's tmpdir may spell /var where Git's absolute paths and Vite's
+// resolved root spell /private/var. Watch subscriptions, keys, and event paths
+// must share that physical namespace rather than compare different aliases.
+const fixtureRoot = (prefix: string): string => realpathSync(mkdtempSync(join(tmpdir(), prefix)))
+
 it('loads installed Node config, preserving immutable Nix metadata and runtime closure identity', () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-installed-'))
+  const root = fixtureRoot('build-identity-installed-')
   const installed = join(root, 'node_modules/@overeng/utils')
   const source = fileURLToPath(new URL('.', import.meta.url))
   const stamp = {
@@ -97,7 +103,7 @@ it('loads installed Node config, preserving immutable Nix metadata and runtime c
 })
 
 it('reads the served worktree revision and dirty state instead of a stale shell identity', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-worktree-'))
+  const root = fixtureRoot('build-identity-worktree-')
   let server: ViteDevServer | undefined
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
@@ -143,7 +149,7 @@ it('reads the served worktree revision and dirty state instead of a stale shell 
 })
 
 it('re-reads fallback identity after registering watches without a timing race', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'identity-fallback-race-'))
+  const root = fixtureRoot('identity-fallback-race-')
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
   try {
@@ -187,7 +193,7 @@ it('re-reads fallback identity after registering watches without a timing race',
 })
 
 it('refreshes served identity after creating, deleting, and committing worktree files', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-events-'))
+  const root = fixtureRoot('build-identity-events-')
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
   let server: ViteDevServer | undefined
@@ -224,7 +230,9 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     // Vite starts scanning before configureServer hooks run, so its one-shot
     // ready event may already have fired. Wait for the source watch's durable
     // state instead; this also bounds failures before any fixture writes.
-    await waitForWatchUpdate(() => expect(server!.watcher.getWatched()[root]).toContain('entry.js'))
+    await waitForWatchUpdate(() =>
+      expect(server!.watcher.getWatched()[server!.config.root]).toContain('entry.js'),
+    )
     await server.listen()
     const probeUrl = new URL('build-identity.json', server.resolvedUrls!.local[0]!)
     const response = await fetch(probeUrl)
@@ -310,7 +318,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
 }, 60000)
 
 it('does not recompute identity for a sibling worktree commit', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-siblings-'))
+  const root = fixtureRoot('build-identity-siblings-')
   const served = join(root, 'served')
   const sibling = join(root, 'sibling')
   const trace = join(root, 'git.trace')
@@ -387,7 +395,7 @@ it('does not recompute identity for a sibling worktree commit', async () => {
 }, 60000)
 
 it('refreshes local metadata and browser identity on production watch rebuilds', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-watch-'))
+  const root = fixtureRoot('build-identity-watch-')
   let closeWatcher: (() => Promise<void>) | undefined
   try {
     const git = (...args: string[]) =>
