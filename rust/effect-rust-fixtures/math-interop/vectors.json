@@ -399,5 +399,740 @@
     "name": "signed overflow",
     "input": { "unsigned": "0", "signed": "9223372036854775808" },
     "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "nested-match two recordings",
+    "input": {
+      "artist": { "name": "Fixture Artist" },
+      "recordings": [
+        { "title": "First", "durationMs": 180000 },
+        { "title": "Second", "durationMs": 240000 }
+      ]
+    },
+    "accept": true
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nested-match two recordings optional strings absent",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": true
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nullable alias score",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": null,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": true
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "excess root",
+    "input": {
+      "artist": { "name": "Fixture Artist" },
+      "recordings": [
+        { "title": "First", "durationMs": 180000 },
+        { "title": "Second", "durationMs": 240000 }
+      ],
+      "extra": true
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "excess artist",
+    "input": {
+      "artist": { "name": "Fixture Artist", "extra": true },
+      "recordings": [
+        { "title": "First", "durationMs": 180000 },
+        { "title": "Second", "durationMs": 240000 }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "excess recordings.0",
+    "input": {
+      "artist": { "name": "Fixture Artist" },
+      "recordings": [
+        { "title": "First", "durationMs": 180000, "extra": true },
+        { "title": "Second", "durationMs": 240000 }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "missing artist",
+    "input": {
+      "recordings": [
+        { "title": "First", "durationMs": 180000 },
+        { "title": "Second", "durationMs": 240000 }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "missing recordings",
+    "input": { "artist": { "name": "Fixture Artist" } },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "missing artist.name",
+    "input": {
+      "artist": {},
+      "recordings": [
+        { "title": "First", "durationMs": 180000 },
+        { "title": "Second", "durationMs": 240000 }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "missing recordings.0.title",
+    "input": {
+      "artist": { "name": "Fixture Artist" },
+      "recordings": [{ "durationMs": 180000 }, { "title": "Second", "durationMs": 240000 }]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "missing recordings.0.durationMs",
+    "input": {
+      "artist": { "name": "Fixture Artist" },
+      "recordings": [{ "title": "First" }, { "title": "Second", "durationMs": 240000 }]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "excess root",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ],
+      "extra": true
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "excess artist",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist", "extra": true },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "excess recordings.0",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1,
+          "extra": true
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "excess recordings.0.recording",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001",
+            "extra": true
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing artist",
+    "input": {
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing artistMatchScore",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing averageRecordingScore",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing recordings",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing artist.id",
+    "input": {
+      "artist": { "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing artist.name",
+    "input": {
+      "artist": { "id": "artist-1" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing recordings.0.recording",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        { "matchingScore": 1 },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing recordings.0.matchingScore",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001"
+          }
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing recordings.0.recording.id",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": { "title": "First", "durationMs": 180000, "isrc": "FIXTURE00001" },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing recordings.0.recording.title",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": { "id": "recording-1", "durationMs": 180000, "isrc": "FIXTURE00001" },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "missing recordings.0.recording.durationMs",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": { "id": "recording-1", "title": "First", "isrc": "FIXTURE00001" },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "null optional isrc",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": null
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "present optional isrc",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "present"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": true
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "null optional release",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001",
+            "release": null
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "present optional release",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001",
+            "release": "present"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": true
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "null optional album",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001",
+            "album": null
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "present optional album",
+    "input": {
+      "artist": { "id": "artist-1", "name": "Fixture Artist" },
+      "artistMatchScore": 1,
+      "averageRecordingScore": 0.75,
+      "recordings": [
+        {
+          "recording": {
+            "id": "recording-1",
+            "title": "First",
+            "durationMs": 180000,
+            "isrc": "FIXTURE00001",
+            "album": "present"
+          },
+          "matchingScore": 1
+        },
+        {
+          "recording": { "id": "recording-2", "title": "Second", "durationMs": 240000 },
+          "matchingScore": 0.5
+        }
+      ]
+    },
+    "accept": true
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nonfinite artistMatchScore 1e39",
+    "input": null,
+    "accept": false,
+    "inputJson": "{\"artist\": {\"id\": \"artist-1\", \"name\": \"Fixture Artist\"}, \"artistMatchScore\": 1e39, \"averageRecordingScore\": 0.75, \"recordings\": [{\"recording\": {\"id\": \"recording-1\", \"title\": \"First\", \"durationMs\": 180000, \"isrc\": \"FIXTURE00001\"}, \"matchingScore\": 1}, {\"recording\": {\"id\": \"recording-2\", \"title\": \"Second\", \"durationMs\": 240000}, \"matchingScore\": 0.5}]}"
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nonfinite artistMatchScore 1e999",
+    "input": null,
+    "accept": false,
+    "inputJson": "{\"artist\": {\"id\": \"artist-1\", \"name\": \"Fixture Artist\"}, \"artistMatchScore\": 1e999, \"averageRecordingScore\": 0.75, \"recordings\": [{\"recording\": {\"id\": \"recording-1\", \"title\": \"First\", \"durationMs\": 180000, \"isrc\": \"FIXTURE00001\"}, \"matchingScore\": 1}, {\"recording\": {\"id\": \"recording-2\", \"title\": \"Second\", \"durationMs\": 240000}, \"matchingScore\": 0.5}]}"
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nonfinite artistMatchScore -1e999",
+    "input": null,
+    "accept": false,
+    "inputJson": "{\"artist\": {\"id\": \"artist-1\", \"name\": \"Fixture Artist\"}, \"artistMatchScore\": -1e999, \"averageRecordingScore\": 0.75, \"recordings\": [{\"recording\": {\"id\": \"recording-1\", \"title\": \"First\", \"durationMs\": 180000, \"isrc\": \"FIXTURE00001\"}, \"matchingScore\": 1}, {\"recording\": {\"id\": \"recording-2\", \"title\": \"Second\", \"durationMs\": 240000}, \"matchingScore\": 0.5}]}"
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nonfinite averageRecordingScore 1e39",
+    "input": null,
+    "accept": false,
+    "inputJson": "{\"artist\": {\"id\": \"artist-1\", \"name\": \"Fixture Artist\"}, \"artistMatchScore\": 1, \"averageRecordingScore\": 1e39, \"recordings\": [{\"recording\": {\"id\": \"recording-1\", \"title\": \"First\", \"durationMs\": 180000, \"isrc\": \"FIXTURE00001\"}, \"matchingScore\": 1}, {\"recording\": {\"id\": \"recording-2\", \"title\": \"Second\", \"durationMs\": 240000}, \"matchingScore\": 0.5}]}"
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nonfinite averageRecordingScore 1e999",
+    "input": null,
+    "accept": false,
+    "inputJson": "{\"artist\": {\"id\": \"artist-1\", \"name\": \"Fixture Artist\"}, \"artistMatchScore\": 1, \"averageRecordingScore\": 1e999, \"recordings\": [{\"recording\": {\"id\": \"recording-1\", \"title\": \"First\", \"durationMs\": 180000, \"isrc\": \"FIXTURE00001\"}, \"matchingScore\": 1}, {\"recording\": {\"id\": \"recording-2\", \"title\": \"Second\", \"durationMs\": 240000}, \"matchingScore\": 0.5}]}"
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nonfinite averageRecordingScore -1e999",
+    "input": null,
+    "accept": false,
+    "inputJson": "{\"artist\": {\"id\": \"artist-1\", \"name\": \"Fixture Artist\"}, \"artistMatchScore\": 1, \"averageRecordingScore\": -1e999, \"recordings\": [{\"recording\": {\"id\": \"recording-1\", \"title\": \"First\", \"durationMs\": 180000, \"isrc\": \"FIXTURE00001\"}, \"matchingScore\": 1}, {\"recording\": {\"id\": \"recording-2\", \"title\": \"Second\", \"durationMs\": 240000}, \"matchingScore\": 0.5}]}"
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nonfinite matchingScore 1e39",
+    "input": null,
+    "accept": false,
+    "inputJson": "{\"artist\": {\"id\": \"artist-1\", \"name\": \"Fixture Artist\"}, \"artistMatchScore\": 1, \"averageRecordingScore\": 0.75, \"recordings\": [{\"recording\": {\"id\": \"recording-1\", \"title\": \"First\", \"durationMs\": 180000, \"isrc\": \"FIXTURE00001\"}, \"matchingScore\": 1e39}, {\"recording\": {\"id\": \"recording-2\", \"title\": \"Second\", \"durationMs\": 240000}, \"matchingScore\": 0.5}]}"
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nonfinite matchingScore 1e999",
+    "input": null,
+    "accept": false,
+    "inputJson": "{\"artist\": {\"id\": \"artist-1\", \"name\": \"Fixture Artist\"}, \"artistMatchScore\": 1, \"averageRecordingScore\": 0.75, \"recordings\": [{\"recording\": {\"id\": \"recording-1\", \"title\": \"First\", \"durationMs\": 180000, \"isrc\": \"FIXTURE00001\"}, \"matchingScore\": 1e999}, {\"recording\": {\"id\": \"recording-2\", \"title\": \"Second\", \"durationMs\": 240000}, \"matchingScore\": 0.5}]}"
+  },
+  {
+    "contract": "NestedMatchResult",
+    "name": "nonfinite matchingScore -1e999",
+    "input": null,
+    "accept": false,
+    "inputJson": "{\"artist\": {\"id\": \"artist-1\", \"name\": \"Fixture Artist\"}, \"artistMatchScore\": 1, \"averageRecordingScore\": 0.75, \"recordings\": [{\"recording\": {\"id\": \"recording-1\", \"title\": \"First\", \"durationMs\": 180000, \"isrc\": \"FIXTURE00001\"}, \"matchingScore\": -1e999}, {\"recording\": {\"id\": \"recording-2\", \"title\": \"Second\", \"durationMs\": 240000}, \"matchingScore\": 0.5}]}"
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "duration u32 rejects -1",
+    "input": {
+      "artist": { "name": "Fixture Artist" },
+      "recordings": [
+        { "title": "First", "durationMs": -1 },
+        { "title": "Second", "durationMs": 240000 }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "duration u32 rejects 4294967296",
+    "input": {
+      "artist": { "name": "Fixture Artist" },
+      "recordings": [
+        { "title": "First", "durationMs": 4294967296 },
+        { "title": "Second", "durationMs": 240000 }
+      ]
+    },
+    "accept": false
+  },
+  {
+    "contract": "NestedMatchInput",
+    "name": "duration u32 rejects 1.5",
+    "input": {
+      "artist": { "name": "Fixture Artist" },
+      "recordings": [
+        { "title": "First", "durationMs": 1.5 },
+        { "title": "Second", "durationMs": 240000 }
+      ]
+    },
+    "accept": false
   }
 ]

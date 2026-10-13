@@ -58,9 +58,7 @@ export const decodeValue = <TSchema extends Schema.ConstraintCodec<unknown>>(sch
 /** Strict encoded JSON value boundary, with schema-aware optional undefined omission. */
 export const encodeValue = <TSchema extends Schema.ConstraintCodec<unknown>>(schema: TSchema) => {
   const values = valueCodec(schema)
-  const encoder = encodeSchema(values)
-  const omitOptional = makeOptionalOmitter(SchemaAST.toEncoded(values.ast))
-  return (value: TSchema['Type']): unknown => omitOptional(encoder(value))
+  return encodeSchema(values, { omitOptional: true })
 }
 
 /** Synchronous convenience using the same ordinary Effect codec. */

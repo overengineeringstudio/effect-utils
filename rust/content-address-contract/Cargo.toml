@@ -1,8 +1,8 @@
 # Generated contract; DO NOT EDIT BY HAND.
 # Provenance: rust/content-address-contract/generation.json
 # Regenerate: bun packages/@overeng/content-address/src/generate-contract.ts
-# Input fingerprint: sha256:c1ae8391152529c2e012d910004c1bf02a68cffd39a2780b3ffa179704ce894d
-# Generated at: 2026-10-12T19:12:03.510Z
+# Input fingerprint: sha256:54e58c32e727d7ff583c89101a7c0cdd42e0829628e7ce07650cca81861c8231
+# Generated at: 2026-10-13T11:41:37.068Z
 [package]
 name = "content-address-contract"
 version.workspace = true

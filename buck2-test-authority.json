@@ -360,6 +360,7 @@
         "src/runtime/host.unit.test.ts",
         "src/runtime/instance.unit.test.ts",
         "src/runtime/worker.unit.test.ts",
+        "src/schema/compiled-codec.unit.test.ts",
         "src/schema/contract-json.unit.test.ts"
       ],
       "sourceOwners": {},
@@ -373,6 +374,7 @@
         "src/runtime/host.unit.test.ts",
         "src/runtime/instance.unit.test.ts",
         "src/runtime/worker.unit.test.ts",
+        "src/schema/compiled-codec.unit.test.ts",
         "src/schema/contract-json.unit.test.ts"
       ],
       "unboundedAfter": [],

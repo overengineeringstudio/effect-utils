@@ -1,7 +1,9 @@
 import { Schema, SchemaAST } from 'effect'
 
+import { makeCompiledCodec } from './compiled-codec.ts'
 import { excess, width } from './effect-rust.ts'
 import { JsonError, JsonNumber } from './json.ts'
+import { makeOptionalOmitter } from './value-codec.ts'
 
 const needsPreparation = (root: SchemaAST.AST): boolean => {
   const seen = new Set<SchemaAST.AST>()
@@ -104,16 +106,49 @@ export const prepare = ({
   }
   return output
 }
-/** Creates a strict schema decoder honoring explicitly annotated excess-key policies. */
-export const decode = <TSchema extends Schema.ConstraintDecoder<unknown>>(schema: TSchema) => {
+/** Interpreter reference, retained for fallback and differential conformance tests. */
+export const decodeReference = <TSchema extends Schema.ConstraintDecoder<unknown>>(
+  schema: TSchema,
+) => {
   const parser = Schema.decodeUnknownSync(schema, { onExcessProperty: 'error' })
   if (needsPreparation(schema.ast) === false) return parser
   return (input: unknown): TSchema['Type'] => parser(prepare({ ast: schema.ast, input }))
 }
-/** Creates a strict schema encoder honoring explicitly annotated excess-key policies. */
-export const encode = <TSchema extends Schema.ConstraintEncoder<unknown>>(schema: TSchema) => {
+
+/** Interpreter reference, including optional omission when requested by a value boundary. */
+export const encodeReference = <TSchema extends Schema.ConstraintEncoder<unknown>>(
+  schema: TSchema,
+  { omitOptional = false }: { omitOptional?: boolean } = {},
+) => {
   const parser = Schema.encodeUnknownSync(schema, { onExcessProperty: 'error' })
-  if (needsPreparation(SchemaAST.toType(schema.ast)) === false) return parser
-  return (input: TSchema['Type']): TSchema['Encoded'] =>
-    parser(prepare({ ast: SchemaAST.toType(schema.ast), input }))
+  const preparation = needsPreparation(SchemaAST.toType(schema.ast))
+  const omit = omitOptional
+    ? makeOptionalOmitter(SchemaAST.toEncoded(schema.ast))
+    : (value: unknown) => value
+  return (input: TSchema['Type']): unknown =>
+    omit(parser(preparation ? prepare({ ast: SchemaAST.toType(schema.ast), input }) : input))
+}
+
+/** Compile strict containers once; explicit per-object ignore retains the interpreter. */
+export const decode = <TSchema extends Schema.ConstraintDecoder<unknown>>(schema: TSchema) => {
+  const reference = decodeReference(schema)
+  if (needsPreparation(schema.ast) === true) return reference
+  const compiled = makeCompiledCodec({ ast: schema.ast, direction: 'decode', reference })
+  return (input: unknown): TSchema['Type'] => compiled(input) as TSchema['Type']
+}
+
+/** Optional omission is fused into the same successful encode walk. */
+export const encode = <TSchema extends Schema.ConstraintEncoder<unknown>>(
+  schema: TSchema,
+  { omitOptional = false }: { omitOptional?: boolean } = {},
+) => {
+  const reference = encodeReference(schema, { omitOptional })
+  if (needsPreparation(SchemaAST.toType(schema.ast)) === true) return reference
+  const compiled = makeCompiledCodec({
+    ast: schema.ast,
+    direction: 'encode',
+    reference,
+    omitOptional,
+  })
+  return (input: TSchema['Type']): unknown => compiled(input)
 }

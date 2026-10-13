@@ -59,6 +59,8 @@ const codecs = {
   FloatSample: Contracts.FloatSample,
   NullableFloatSample: Contracts.NullableFloatSample,
   WideSample: Contracts.WideSample,
+  NestedMatchInput: Contracts.NestedMatchInput,
+  NestedMatchResult: Contracts.NestedMatchResult,
 }
 const Vectors = Schema.Array(
   Schema.Struct({
@@ -69,6 +71,8 @@ const Vectors = Schema.Array(
       'FloatSample',
       'NullableFloatSample',
       'WideSample',
+      'NestedMatchInput',
+      'NestedMatchResult',
     ]),
     name: Schema.String,
     input: Schema.Unknown,
@@ -85,6 +89,24 @@ for (const vector of vectors) {
   const decode = () => ContractJson.decode(codec)(vector.inputJson ?? JSON.stringify(vector.input))
   if (vector.accept === false) {
     assert.throws(decode, Schema.SchemaError, `${label} must be rejected by the contract codec`)
+    if (vector.contract === 'NestedMatchInput' || vector.contract === 'NestedMatchResult') {
+      const value = vector.inputJson === undefined ? vector.input : JSON.parse(vector.inputJson)
+      const reference = Schema.decodeUnknownSync(Direct.codec(codec), { onExcessProperty: 'error' })
+      let referenceIssue: Schema.SchemaError | undefined
+      try {
+        reference(value)
+      } catch (cause) {
+        assert.ok(cause instanceof Schema.SchemaError, `${label} reference rejection`)
+        referenceIssue = cause
+      }
+      assert.ok(referenceIssue, `${label} reference must reject`)
+      const expectedIssue = referenceIssue
+      assert.throws(
+        () => Direct.decode(codec)(value),
+        (cause) => cause instanceof Schema.SchemaError && cause.message === expectedIssue.message,
+        `${label} compiled direct rejection agrees`,
+      )
+    }
     continue
   }
   assert.equal(
@@ -175,6 +197,59 @@ const program = (transport: 'wasm' | 'native') =>
       }
       assert.equal(yield* fixture.checkedDivide(10, 2), 5)
       assert.equal(yield* fixture.add(1, 2), 3)
+      const nestedMatchInput = {
+        artist: { name: 'Fixture Artist' },
+        recordings: [
+          { title: 'First', durationMs: 180000 },
+          { title: 'Second', durationMs: 240000 },
+        ],
+      }
+      const nestedMatchExpected = {
+        artist: { id: 'artist-1', name: 'Fixture Artist' },
+        artistMatchScore: 1,
+        averageRecordingScore: 0.75,
+        recordings: [
+          {
+            recording: {
+              id: 'recording-1',
+              title: 'First',
+              durationMs: 180000,
+              isrc: 'FIXTURE00001',
+            },
+            matchingScore: 1,
+          },
+          {
+            recording: { id: 'recording-2', title: 'Second', durationMs: 240000 },
+            matchingScore: 0.5,
+          },
+        ],
+      }
+      assert.deepEqual(
+        Effect.runSync(fixture.nestedMatch(nestedMatchInput)),
+        nestedMatchExpected,
+        `${transport} nested-match completes synchronously with absent optional strings`,
+      )
+      assert.deepEqual(
+        Effect.runSync(
+          fixture.nestedMatch({
+            ...nestedMatchInput,
+            recordings: nestedMatchInput.recordings.slice(0, 1),
+          }),
+        ),
+        {
+          ...nestedMatchExpected,
+          averageRecordingScore: 1,
+          recordings: nestedMatchExpected.recordings.slice(0, 1),
+        },
+      )
+      assert.equal(
+        Effect.runSync(fixture.nestedMatch({ ...nestedMatchInput, recordings: [] })),
+        null,
+      )
+      assert.equal(
+        Effect.runSync(fixture.nestedMatch({ ...nestedMatchInput, artist: { name: '' } })),
+        null,
+      )
       assert.equal(yield* fixture.echoF32(1.1), Math.fround(1.1))
       assertSynchronous(
         fixture.sumJsonIntegers({

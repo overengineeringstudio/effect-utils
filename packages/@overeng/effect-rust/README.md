@@ -337,6 +337,30 @@ entrypoints; retirement deterministically closes all owned native resources afte
 the borrow has unwound. Explicit close/drop failures are defects; native GC
 destructors are guarded so an unwind never crosses the addon finalizer boundary.
 
+### Short, repeated calls
+
+Acquire the service once in a caller-owned Scope, then compose repeated calls in
+one fiber instead of rebuilding its Layer or invoking `runPromise` per item:
+
+```ts
+const program = Effect.gen(function* () {
+  const fixture = yield* EffectRustFixture
+  for (const order of orders) {
+    const quote = yield* fixture.quoteOrder(order, discount)
+    // Consume each result here, in the same fiber.
+  }
+}).pipe(Effect.provide(EffectRustFixture.layerWasm.node()))
+```
+
+For hot loops, batch work into a domain-level Rust operation where practical:
+fewer boundary crossings help even when each call is synchronous. Choose the
+batch size to preserve the application's interruption and responsiveness needs.
+Do not keep a service beyond the Scope that acquired it.
+
+The direct value codec compiles strict struct/array/nullable/tagged-union walks
+at construction and fuses optional-field omission into encoding; Effect remains
+the reference for leaf validation, unsupported shapes, and exact failure issues.
+
 ### Interruption and host capabilities
 
 `runtime.call(({ api, signal }) => ...)` accepts a synchronous value, a Promise, or an explicit `RustJob`:

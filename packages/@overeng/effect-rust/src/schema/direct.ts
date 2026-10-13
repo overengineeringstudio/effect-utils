@@ -1,7 +1,7 @@
-import { type Schema, SchemaAST } from 'effect'
+import { type Schema } from 'effect'
 
 import { decode as decodeSchema, encode as encodeSchema } from './validation.ts'
-import { makeOptionalOmitter, makeValueCodec } from './value-codec.ts'
+import { makeValueCodec } from './value-codec.ts'
 
 /** Same admitted contract and checks as ContractJson, without textual leaf staging. */
 export const codec = <TSchema extends Schema.ConstraintCodec<unknown>>(
@@ -18,7 +18,5 @@ export const encode = <TSchema extends Schema.ConstraintCodec<unknown>>(
   schema: TSchema,
 ): ((value: TSchema['Type']) => unknown) => {
   const values = codec(schema)
-  const encoder = encodeSchema(values)
-  const omitOptional = makeOptionalOmitter(SchemaAST.toEncoded(values.ast))
-  return (value) => omitOptional(encoder(value))
+  return encodeSchema(values, { omitOptional: true })
 }

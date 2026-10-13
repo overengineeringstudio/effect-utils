@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:c1ae8391152529c2e012d910004c1bf02a68cffd39a2780b3ffa179704ce894d",
-  "generatedAt": "2026-10-12T19:12:03.510Z",
+  "inputFingerprint": "sha256:54e58c32e727d7ff583c89101a7c0cdd42e0829628e7ce07650cca81861c8231",
+  "generatedAt": "2026-10-13T11:41:37.068Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.2"
@@ -72,12 +72,16 @@
       "sha256": "c8a525da681864e19372c45936bbe41901f0b14238dc6b5292b189164c84afb0"
     },
     {
+      "path": "packages/@overeng/effect-rust/src/schema/compiled-codec.ts",
+      "sha256": "58fa4432847510e283ee224ab2cb7f3321a7b5cd4d6574d1cde2c024655b4803"
+    },
+    {
       "path": "packages/@overeng/effect-rust/src/schema/contract-json.ts",
-      "sha256": "db424d60d1a4880f83628acd58aade3a41ba44513dfdb74490e6baba78551c12"
+      "sha256": "2dcd1c66b177376d04baf6448d283e12dfea9e5038ba4888e93ed12c9d6bcada"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/direct.ts",
-      "sha256": "012f4d479af4ac76d6f782ae42b7d6314c5f0d1221814a6d9938d7f0654ff443"
+      "sha256": "d09af3442a299b02bc5be569a17b78014e08e90f86d306c3ca5af6450fab5f3d"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/discriminator.ts",
@@ -105,7 +109,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/validation.ts",
-      "sha256": "14fdd8878602084bdfe721398392322be6e997d0f486716a281e794108ce5d6b"
+      "sha256": "e9b2bc84ac6c850c52eae462b5e3cbb41e460ce862e54548ea2e2c7d3e6cf40f"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/value-codec.ts",
@@ -127,7 +131,7 @@
   "artifacts": [
     {
       "path": "Cargo.toml",
-      "sha256": "5ac76b75b54f47b04326a877a2b093781ba2967aaa0bcb724f0a2c01ab6b5891"
+      "sha256": "70deb4c556cf5c9f672481fc2844062edabd33bbe233738865ca95cb833a9708"
     },
     {
       "path": "schema/Codec.json",
@@ -151,7 +155,7 @@
     },
     {
       "path": "src/lib.rs",
-      "sha256": "a7b88f4285dea4fd90d21fa5001346d5c1cd05ba5cf0c171544862aeefaf6366"
+      "sha256": "32a03ca3f5597244a64dcf105443fc91517acff5bd826c51701390dc170d33cb"
     }
   ]
 }

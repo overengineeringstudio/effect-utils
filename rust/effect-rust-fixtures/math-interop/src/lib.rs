@@ -125,6 +125,41 @@ pub fn quote_order(order: Order, discount: Discount) -> Result<Quote, Arithmetic
     contract::quote(order, &discount).ok_or(ArithmeticError::PriceOverflow { quantity })
 }
 
+/// Deterministic nested-match workload, bounded to two returned recordings.
+#[effect_rust::export(name = "nestedMatch")]
+pub fn nested_match(input: contract::NestedMatchInput) -> Option<contract::NestedMatchResult> {
+    if input.artist.name.is_empty() || input.recordings.is_empty() {
+        return None;
+    }
+    let recordings = input
+        .recordings
+        .into_iter()
+        .take(2)
+        .enumerate()
+        .map(|(index, recording)| contract::NestedMatchRecordingMatch {
+            recording: contract::NestedMatchRecording {
+                id: format!("recording-{}", index + 1),
+                title: recording.title,
+                duration_ms: recording.duration_ms,
+                isrc: (index == 0).then(|| "FIXTURE00001".to_owned()),
+                release: None,
+                album: None,
+            },
+            matching_score: if index == 0 { 1.0 } else { 0.5 },
+        })
+        .collect::<Vec<_>>();
+    let average_recording_score = Some(if recordings.len() == 1 { 1.0 } else { 0.75 });
+    Some(contract::NestedMatchResult {
+        artist: contract::NestedMatchArtist {
+            id: "artist-1".to_owned(),
+            name: input.artist.name,
+        },
+        artist_match_score: 1.0,
+        average_recording_score,
+        recordings,
+    })
+}
+
 #[effect_rust::export(name = "sumJsonIntegers")]
 pub fn sum_json_integers(input: contract::NumericOperands) -> i64 {
     i64::from(input.unsigned)

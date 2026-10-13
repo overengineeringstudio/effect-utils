@@ -91,6 +91,100 @@ pub struct NullableFloatSample {
     pub value: Option<f32>,
 }
 
+/// A score alias keeps the binary32 wire policy on its containing field.
+pub type RecordingScore = f32;
+
+/// Required nullable score, annotated explicitly at the contract edge.
+pub type AverageRecordingScore = Option<RecordingScore>;
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct NestedMatchArtistInput {
+    pub name: String,
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NestedMatchRecordingInput {
+    pub title: String,
+    pub duration_ms: u32,
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct NestedMatchInput {
+    pub artist: NestedMatchArtistInput,
+    pub recordings: Vec<NestedMatchRecordingInput>,
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct NestedMatchArtist {
+    pub id: String,
+    pub name: String,
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NestedMatchRecording {
+    pub id: String,
+    pub title: String,
+    pub duration_ms: u32,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_string"
+    )]
+    #[schemars(with = "String")]
+    pub isrc: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_string"
+    )]
+    #[schemars(with = "String")]
+    pub release: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_string"
+    )]
+    #[schemars(with = "String")]
+    pub album: Option<String>,
+}
+
+/// Absence is allowed; a present optional string is never a JSON null.
+fn optional_string<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    String::deserialize(deserializer).map(Some)
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NestedMatchRecordingMatch {
+    pub recording: NestedMatchRecording,
+    #[wire(f32)]
+    pub matching_score: f32,
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NestedMatchResult {
+    pub artist: NestedMatchArtist,
+    #[wire(f32)]
+    pub artist_match_score: f32,
+    // The alias owns the explicit required/nullable binary32 policy; no serde default.
+    #[serde(with = "effect_rust::wire::f32::nullable")]
+    #[schemars(with = "effect_rust::contract::Required<Option<effect_rust::contract::F32>>")]
+    pub average_recording_score: AverageRecordingScore,
+    pub recordings: Vec<NestedMatchRecordingMatch>,
+}
+
 #[effect_rust::contract]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct WideSample {
@@ -189,6 +283,8 @@ mod tests {
                 "FloatSample" => roundtrip::<FloatSample>(&input),
                 "NullableFloatSample" => roundtrip::<NullableFloatSample>(&input),
                 "WideSample" => roundtrip::<WideSample>(&input),
+                "NestedMatchInput" => roundtrip::<NestedMatchInput>(&input),
+                "NestedMatchResult" => roundtrip::<NestedMatchResult>(&input),
                 other => panic!("unknown vector contract {other}"),
             };
             let label = format!("{}/{}", vector.contract, vector.name);
@@ -272,5 +368,34 @@ mod tests {
         );
         let cleared: Order = decode_json(&input.replace('}', r#","note":null}"#)).unwrap();
         assert_eq!(cleared.note, Patch::Null);
+    }
+
+    #[test]
+    fn nested_match_alias_preserves_binary32_and_optional_omission() {
+        let schema = effect_rust::contract::schemars::schema_for!(NestedMatchResult).to_value();
+        let score = &schema["properties"]["averageRecordingScore"];
+        assert_eq!(score["x-effect-rust-width"], "f32");
+        assert_eq!(score["x-effect-rust-nonfinite"], "reject");
+        assert_eq!(score["type"], serde_json::json!(["number", "null"]));
+        let input = r#"{"artist":{"name":"Fixture Artist"},"recordings":[{"title":"First","durationMs":180000},{"title":"Second","durationMs":240000},{"title":"Ignored","durationMs":1}]}"#;
+        let mut matched = crate::nested_match(decode_json(input).unwrap()).unwrap();
+        assert_eq!(matched.recordings.len(), 2);
+        assert_eq!(matched.average_recording_score, Some(0.75));
+        let encoded = encode_json(&matched, &[]).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        assert!(json["recordings"][1]["recording"].get("isrc").is_none());
+        assert!(json["recordings"][0]["recording"].get("release").is_none());
+        assert!(json["recordings"][0]["recording"].get("album").is_none());
+        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            matched.average_recording_score = Some(value);
+            assert!(encode_json(&matched, &[]).is_err());
+            matched.average_recording_score = None;
+            matched.artist_match_score = value;
+            assert!(encode_json(&matched, &[]).is_err());
+            matched.artist_match_score = 1.0;
+            matched.recordings[0].matching_score = value;
+            assert!(encode_json(&matched, &[]).is_err());
+            matched.recordings[0].matching_score = 1.0;
+        }
     }
 }
