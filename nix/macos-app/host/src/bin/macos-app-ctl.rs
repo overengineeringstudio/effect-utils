@@ -1,11 +1,12 @@
 //! Nonresident primitives. The consumer serializes calls and owns transaction policy.
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, ffi::{c_char, c_void, CString}, fs::{self, File}, io::{self, BufRead, BufReader, Read, Write}, os::{fd::FromRawFd, unix::{fs::symlink, net::UnixStream}}, path::{Path, PathBuf}, process::{Command, Output}, time::Duration};
+use std::{collections::BTreeMap, ffi::{c_char, c_void, CString}, fs::{self, File}, io::{self, BufRead, BufReader, Read, Write}, os::{fd::{AsRawFd, FromRawFd}, unix::{fs::{symlink, MetadataExt, PermissionsExt}, net::UnixStream}}, path::{Path, PathBuf}, process::{Command, Output}, time::{Duration, Instant}};
 
 type Result<T, E = Failure> = std::result::Result<T, E>;
 struct Failure { code: i32, kind: &'static str, category: Option<&'static str>, reason: String }
 fn fail(code: i32, kind: &'static str, reason: impl Into<String>) -> Failure { Failure { code, kind, category: None, reason: reason.into() } }
 fn signing(category: &'static str, reason: impl Into<String>) -> Failure { Failure { code: 20, kind: "signing-failed", category: Some(category), reason: reason.into() } }
+fn mismatch(reason: impl Into<String>) -> Failure { fail(22, "verification-failed", reason) }
 impl From<io::Error> for Failure { fn from(e: io::Error) -> Self { fail(23, "operation-failed", e.to_string()) } }
 impl From<serde_json::Error> for Failure { fn from(e: serde_json::Error) -> Self { fail(64, "invalid-input", e.to_string()) } }
 struct Ctl { config: Value, args: BTreeMap<String, String> }
@@ -15,9 +16,18 @@ fn text(path: &Path) -> Result<&str> { path.to_str().ok_or_else(|| fail(64, "inv
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> { let tmp = path.with_extension(format!("tmp-{}", std::process::id())); let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?; f.write_all(bytes)?; f.sync_all()?; fs::rename(tmp, path)?; Ok(()) }
 fn pointer(path: &Path) -> Option<PathBuf> { fs::read_link(path).ok() }
 fn select(path: &Path, target: &Path) -> Result<()> { let tmp = path.with_extension(format!("tmp-{}", std::process::id())); symlink(target, &tmp)?; fs::rename(tmp, path)?; Ok(()) }
-fn marker(app: &Path) -> PathBuf { app.join("Contents/Resources/host-source-hash") }
-fn hash(app: &Path) -> Option<String> { fs::read_to_string(marker(app)).ok().map(|s| s.trim().to_owned()) }
+fn remove_if_present(path: &Path) -> Result<()> { match fs::remove_file(path) { Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e.into()), _ => Ok(()) } }
+fn hash(app: &Path) -> Option<String> { fs::read_to_string(app.join("Contents/Resources/host-source-hash")).ok().map(|s| s.trim().to_owned()) }
+/// Session-dependent bundle metadata. Codesign seals but never rewrites Info.plist,
+/// so the unsigned desired bundle and the signed installed bundle compare byte-equal.
+fn metadata_digest(app: &Path) -> Option<String> { use sha2::Digest; fs::read(app.join("Contents/Info.plist")).ok().map(|b| format!("{:x}", sha2::Sha256::digest(b))) }
+fn inode(path: &Path) -> Option<u64> { fs::symlink_metadata(path).ok().map(|m| m.ino()) }
+fn socket_mode(path: &str) -> Option<u32> { fs::metadata(path).ok().map(|m| m.permissions().mode() & 0o777) }
 fn signing_failure_marker(app: &Path) -> PathBuf { app.with_extension("signing-failed.json") }
+fn archive_pointer(app: &Path) -> PathBuf { app.with_extension("previous") }
+fn transaction_record(app: &Path) -> PathBuf { app.with_extension("txn.json") }
+/// Test-only failpoints can force failure or crash paths; they cannot make any check pass.
+fn failpoint(name: &str) -> bool { std::env::var("MACOS_APP_CTL_TEST_FAILPOINT").is_ok_and(|v| v == name) }
 fn exchange(a: &Path, b: &Path) -> Result<()> {
     let a = CString::new(text(a)?).map_err(|e| fail(64, "invalid-input", e.to_string()))?;
     let b = CString::new(text(b)?).map_err(|e| fail(64, "invalid-input", e.to_string()))?;
@@ -40,6 +50,19 @@ fn canonical_requirement(requirement: &str) -> Result<String> {
     let out = checked("/usr/bin/csreq", &[&format!("-r={requirement}"), "-t"])?;
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }
+/// Domain selection per session kind. Explicit overrides obey the same rules as `auto`.
+fn resolve_domain(kind: &str, requested: &str, session: &str, uid: u32) -> Result<String> {
+    let invalid = || Err(fail(64, "invalid-input", format!("Domain {requested} is not allowed for {kind}")));
+    let gui = || if session == "gui" { Ok(format!("gui/{uid}")) } else { Err(fail(21, "gui-absent", "gui/<uid> is absent; no job operation was attempted")) };
+    match (kind, requested) {
+        ("system-daemon", "auto" | "system") => Ok("system".to_owned()),
+        ("gui-agent", "auto" | "gui") | ("background-agent", "gui") => gui(),
+        ("background-agent", "auto") if session == "gui" => Ok(format!("gui/{uid}")),
+        ("background-agent", "auto" | "user") if session != "no-session" => Ok(format!("user/{uid}")),
+        ("background-agent", "auto" | "user") => Err(fail(21, "no-session", "No user launchd domain")),
+        _ => invalid(),
+    }
+}
 
 // Signing boundary: a dedicated keychain unlocked from an fd-supplied password.
 #[link(name = "Security", kind = "framework")]
@@ -50,21 +73,37 @@ unsafe extern "C" {
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" { fn CFRelease(value: *const c_void); }
+const PASSWORD_MAX: usize = 1024;
+const PASSWORD_DEADLINE: Duration = Duration::from_secs(5);
 /// Fixed-capacity buffer: never reallocates, so no stale copy of the password survives.
-struct Password { bytes: [u8; 1024], len: usize }
+/// Two spare bytes detect an over-long password and its optional trailing newline.
+struct Password { bytes: [u8; PASSWORD_MAX + 2], len: usize }
 impl Password {
+    /// The password is the descriptor's bytes up to EOF with exactly one trailing `\n`
+    /// removed if present. Empty, over-long or not-at-EOF-by-the-deadline input is refused.
     fn read(fd: i32) -> Result<Self> {
         if fd < 3 { return Err(fail(64, "invalid-input", "Password fd must not be stdio")); }
         // SAFETY: the caller transfers this descriptor; File closes it when dropped.
         let mut file = unsafe { File::from_raw_fd(fd) };
-        let mut password = Password { bytes: [0; 1024], len: 0 };
+        let mut password = Password { bytes: [0; PASSWORD_MAX + 2], len: 0 };
+        let deadline = Instant::now() + PASSWORD_DEADLINE;
         loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let mut poll = libc::pollfd { fd: file.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+            let timeout = i32::try_from(remaining.as_millis()).unwrap_or(i32::MAX);
+            // SAFETY: poll reads exactly one valid pollfd for the duration of the call.
+            let ready = unsafe { libc::poll(&mut poll, 1, timeout) };
+            if ready < 0 && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted { continue; }
+            if ready < 0 { return Err(io::Error::last_os_error().into()); }
+            if ready == 0 { return Err(signing("password-invalid", "Password descriptor did not reach EOF before the deadline")); }
             let read = file.read(&mut password.bytes[password.len..])?;
             if read == 0 { break; }
             password.len += read;
-            if password.len == password.bytes.len() { return Err(fail(64, "invalid-input", "Password exceeds 1023 bytes")); }
+            if password.len == password.bytes.len() { return Err(signing("password-invalid", format!("Password exceeds {PASSWORD_MAX} bytes"))); }
         }
         if password.len > 0 && password.bytes[password.len - 1] == b'\n' { password.len -= 1; }
+        if password.len == 0 { return Err(signing("password-invalid", "Password is empty")); }
+        if password.len > PASSWORD_MAX { return Err(signing("password-invalid", format!("Password exceeds {PASSWORD_MAX} bytes"))); }
         Ok(password)
     }
 }
@@ -75,7 +114,7 @@ impl Drop for Password {
     }
 }
 /// An opened dedicated keychain. Opening locks it unconditionally (a SIGKILLed earlier run
-/// may have left it unlocked); dropping it locks again before releasing the reference.
+/// may have left it unlocked); dropping it locks again, best effort, before releasing it.
 struct Keychain(*mut c_void);
 impl Keychain {
     fn open_locked(path: &Path) -> Result<Self> {
@@ -87,16 +126,16 @@ impl Keychain {
         let keychain = Keychain(reference);
         // SAFETY: reference is a live keychain reference owned by `keychain`.
         let status = unsafe { SecKeychainLock(keychain.0) };
-        if status != 0 { return Err(signing("keychain-missing", format!("SecKeychainLock status {status}"))); }
+        if status != 0 { return Err(signing("relock-failed", format!("Initial SecKeychainLock status {status}"))); }
         Ok(keychain)
     }
-    /// Unlocks for one signing window; the returned guard relocks on every path.
+    /// Unlocks for one signing window. `close` must succeed before the result is used.
     fn unlock(&self, password: Password) -> Result<UnlockWindow<'_>> {
-        let length = u32::try_from(password.len).map_err(|_| fail(64, "invalid-input", "Password too long"))?;
+        let length = u32::try_from(password.len).map_err(|_| signing("password-invalid", "Password too long"))?;
         // SAFETY: the password pointer is valid for length bytes; usePassword is true, so no UI is shown.
         let status = unsafe { SecKeychainUnlock(self.0, length, password.bytes.as_ptr().cast(), 1) };
         drop(password);
-        let window = UnlockWindow(self);
+        let window = UnlockWindow { keychain: self, open: true };
         if status != 0 { return Err(signing("unlock-failed", format!("SecKeychainUnlock status {status}"))); }
         Ok(window)
     }
@@ -107,10 +146,21 @@ impl Drop for Keychain {
         unsafe { SecKeychainLock(self.0); CFRelease(self.0); }
     }
 }
-struct UnlockWindow<'a>(&'a Keychain);
+struct UnlockWindow<'a> { keychain: &'a Keychain, open: bool }
+impl UnlockWindow<'_> {
+    /// Fallible relock; signing output is only used after this succeeds.
+    fn close(mut self) -> Result<()> {
+        self.open = false;
+        // SAFETY: the borrowed keychain reference outlives the window.
+        let status = unsafe { SecKeychainLock(self.keychain.0) };
+        if status != 0 || failpoint("relock") { return Err(signing("relock-failed", format!("SecKeychainLock status {status}"))); }
+        Ok(())
+    }
+}
 impl Drop for UnlockWindow<'_> {
+    // Best-effort cleanup for early returns and unwinding; `close` is the checked path.
     // SAFETY: the borrowed keychain reference outlives the window.
-    fn drop(&mut self) { unsafe { SecKeychainLock(self.0.0); } }
+    fn drop(&mut self) { if self.open { unsafe { SecKeychainLock(self.keychain.0); } } }
 }
 fn is_login_keychain(path: &Path) -> bool {
     let name_is_login = path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.to_ascii_lowercase().starts_with("login.keychain"));
@@ -144,7 +194,7 @@ impl Ctl {
         let details = command("codesign", &["-d", "-r-", path])?;
         let details_text = format!("{}\n{}", String::from_utf8_lossy(&details.stdout), String::from_utf8_lossy(&details.stderr));
         let dr = details_text.lines().find_map(|line| line.strip_prefix("designated => ").map(str::to_owned)).unwrap_or_default();
-        if !strict.status.success() || !matches.status.success() || !details.status.success() || dr != requirement { return Err(fail(22, "verification-failed", format!("Signature/DR mismatch: {dr}"))); }
+        if !strict.status.success() || !matches.status.success() || !details.status.success() || dr != requirement { return Err(mismatch(format!("Signature/DR mismatch: {dr}"))); }
         Ok(dr)
     }
     fn session(&self) -> Result<&'static str> {
@@ -155,20 +205,7 @@ impl Ctl {
     }
     fn domain(&self) -> Result<String> {
         let requested = self.args.get("domain").map(String::as_str).unwrap_or("auto");
-        let daemon = self.field("session")? == "system-daemon";
-        let session = self.session()?;
-        let kind = match requested {
-            "auto" if daemon => "system",
-            "auto" if self.field("session")? == "gui-agent" && session != "gui" => return Err(fail(21, "gui-absent", "GUI agent requires gui/<uid>; no job operations performed")),
-            "auto" if session == "gui" => "gui",
-            "auto" if session == "background-only" => "user",
-            "auto" => return Err(fail(21, "no-session", "No user launchd domain")),
-            "gui" if session != "gui" => return Err(fail(21, "gui-absent", "Requested GUI domain absent")),
-            "gui" | "user" if !daemon => requested,
-            "system" if daemon => "system",
-            _ => return Err(fail(64, "invalid-input", "Domain conflicts with session kind")),
-        };
-        Ok(if kind == "system" { kind.to_owned() } else { format!("{kind}/{}", unsafe { libc::geteuid() }) })
+        resolve_domain(self.field("session")?, requested, self.session()?, unsafe { libc::geteuid() })
     }
     fn label(&self) -> Result<&str> { self.config["launchd"]["label"].as_str().ok_or_else(|| fail(64, "invalid-input", "Missing launchd label")) }
     fn job(&self, domain: &str) -> Result<(bool, Option<u32>)> {
@@ -176,8 +213,13 @@ impl Ctl {
         let pid = String::from_utf8_lossy(&out.stdout).lines().find_map(|line| line.trim().strip_prefix("pid = ").and_then(|s| s.parse().ok()));
         Ok((out.status.success(), pid))
     }
-    /// Signs the staged bundle. Only `codesign` runs while the keychain is unlocked; the
-    /// identity lookup and requirement canonicalization happen before the window opens.
+    /// The startup-only socket mode declared by the active generation.
+    fn desired_socket_mode(&self) -> Result<u32> {
+        let manifest: Value = serde_json::from_slice(&fs::read(self.state()?.join("current/manifest.json"))?)?;
+        manifest["socketMode"].as_u64().and_then(|m| u32::try_from(m).ok()).ok_or_else(|| fail(64, "invalid-input", "Manifest lacks socketMode"))
+    }
+    /// Signs the staged bundle. The identity lookup, requirement canonicalization and password
+    /// read finish while the keychain is locked; only `codesign` runs inside the unlock window.
     fn sign(&self, keychain_path: &Path, keychain: &Keychain, stage: &Path) -> Result<()> {
         let identity = self.config["signer"]["identity"].as_str().filter(|s| !s.is_empty() && *s != "-").ok_or_else(|| fail(64, "invalid-input", "A certificate identity is required; ad-hoc signing is refused"))?;
         if !identity_in_keychain(keychain_path, identity)? { return Err(signing("identity-missing", "Identity not present in the dedicated keychain")); }
@@ -189,13 +231,46 @@ impl Ctl {
         let signed = command("codesign", &["--force", "--keychain", text(keychain_path)?, "--sign", identity, "--requirements", &format!("=designated => {declared}"), text(stage)?])?;
         if !signed.status.success() { return Err(signing("sign-failed", String::from_utf8_lossy(&signed.stderr).trim().to_owned())); }
         let verified = self.signature_with(stage, &requirement);
-        drop(window);
+        window.close()?;
         verified.map_err(|e| signing("dr-mismatch", e.reason))?;
         Ok(())
+    }
+    /// Publishes the archive of an exchanged incumbent and the generation it ran with.
+    fn publish_archive(&self, app: &Path, stage: &Path, generation: Option<&Path>) -> Result<()> {
+        let state = self.state()?;
+        fs::create_dir_all(&state)?;
+        let recorded = state.join("host-previous-generation");
+        match generation { Some(generation) => select(&recorded, generation)?, None => remove_if_present(&recorded)? }
+        // Exactly one archive is kept; the superseded one is no longer reachable by rollback.
+        let superseded = pointer(&archive_pointer(app)).filter(|old| old != stage);
+        select(&archive_pointer(app), stage)?;
+        // A signed host is now installed, so an earlier signing failure no longer describes D.
+        remove_if_present(&signing_failure_marker(app))?;
+        remove_if_present(&transaction_record(app))?;
+        if let Some(old) = superseded.filter(|old| old.exists()) { fs::remove_dir_all(old)?; }
+        Ok(())
+    }
+    /// Completes or discards a host exchange interrupted by a crash; runs before any no-op check.
+    fn reconcile(&self, app: &Path) -> Result<Option<&'static str>> {
+        let record = transaction_record(app);
+        let Ok(bytes) = fs::read(&record) else { return Ok(None) };
+        let txn: Value = serde_json::from_slice(&bytes)?;
+        let stage = PathBuf::from(txn["stage"].as_str().ok_or_else(|| fail(64, "invalid-input", "Corrupt transaction record"))?);
+        let generation = txn["generation"].as_str().map(PathBuf::from);
+        // renamex_np swaps directory entries, so the stage inode at the app path proves the exchange.
+        if stage.exists() && inode(app) == txn["stageInode"].as_u64() {
+            self.publish_archive(app, &stage, generation.as_deref())?;
+            return Ok(Some("archive-published"));
+        }
+        if stage.exists() { fs::remove_dir_all(&stage)?; }
+        remove_if_present(&record)?;
+        Ok(Some("stage-discarded"))
     }
     fn install(&self) -> Result<Value> {
         let app = self.app()?; let desired = PathBuf::from(self.arg("desired")?);
         let expected = hash(&desired).ok_or_else(|| fail(64, "invalid-input", "Unsigned app lacks source hash marker"))?;
+        let expected_metadata = metadata_digest(&desired).ok_or_else(|| fail(64, "invalid-input", "Unsigned app lacks Info.plist"))?;
+        let reconciled = self.reconcile(&app)?;
         let failure_marker = signing_failure_marker(&app);
         let record = |error: Failure| -> Failure {
             if let Some(category) = error.category {
@@ -204,10 +279,11 @@ impl Ctl {
             }
             error
         };
-        let current = || hash(&app).as_ref() == Some(&expected) && self.signature(&app).is_ok();
+        let current = || hash(&app).as_ref() == Some(&expected) && metadata_digest(&app).as_ref() == Some(&expected_metadata) && self.signature(&app).is_ok();
+        let unchanged = || json!({"changed": false, "hostSourceHash": expected, "bundleMetadataDigest": expected_metadata, "reconciled": reconciled});
         if self.args.contains_key("signing-auth-pending") {
             // The consumer could not obtain the password; the keychain is not touched.
-            if current() { return Ok(json!({"changed": false, "hostSourceHash": expected})); }
+            if current() { return Ok(unchanged()); }
             return Err(record(signing("signing-auth-pending", "Consumer could not obtain the signing keychain password")));
         }
         // The login keychain is refused even on the no-op path, so misconfiguration is never silent.
@@ -219,7 +295,7 @@ impl Ctl {
             Err(e) => return Err(record(signing("keychain-missing", e.to_string()))),
         };
         let keychain = Keychain::open_locked(&keychain_path).map_err(&record)?;
-        if current() { return Ok(json!({"changed": false, "hostSourceHash": expected})); }
+        if current() { return Ok(unchanged()); }
         let parent = app.parent().ok_or_else(|| fail(64, "invalid-input", "App requires parent"))?;
         fs::create_dir_all(parent)?;
         let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| fail(23, "operation-failed", e.to_string()))?.as_nanos();
@@ -229,14 +305,22 @@ impl Ctl {
             checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
             self.sign(&keychain_path, &keychain, &stage).map_err(&record)?;
             if app.exists() {
+                // The record is durable before the exchange, so a crash at any point reconciles.
+                let generation = pointer(&self.state()?.join("current"));
+                let txn = json!({"stage": stage, "stageInode": inode(&stage), "generation": generation});
+                atomic_write(&transaction_record(&app), &serde_json::to_vec(&txn)?)?;
                 exchange(&stage, &app)?;
-                // The stage now is the signed incumbent; retain before publishing its pointer.
-                if let Err(error) = select(&app.with_extension("previous"), &stage) { exchange(&stage, &app)?; return Err(error); }
+                if failpoint("after-exchange") { std::process::exit(137); }
+                if let Err(error) = self.publish_archive(&app, &stage, generation.as_deref()) {
+                    exchange(&stage, &app)?;
+                    remove_if_present(&transaction_record(&app))?;
+                    return Err(error);
+                }
             } else { fs::rename(&stage, &app)?; }
-            if failure_marker.exists() { fs::remove_file(&failure_marker)?; }
-            Ok(json!({"changed": true, "hostSourceHash": expected, "archive": pointer(&app.with_extension("previous"))}))
+            remove_if_present(&failure_marker)?;
+            Ok(json!({"changed": true, "hostSourceHash": expected, "bundleMetadataDigest": expected_metadata, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled}))
         })();
-        if result.is_err() && stage.exists() && pointer(&app.with_extension("previous")).as_ref() != Some(&stage) { fs::remove_dir_all(stage)?; }
+        if result.is_err() && stage.exists() && pointer(&archive_pointer(&app)).as_ref() != Some(&stage) && !transaction_record(&app).exists() { fs::remove_dir_all(stage)?; }
         result
     }
     fn generation(&self) -> Result<Value> {
@@ -271,13 +355,25 @@ impl Ctl {
         let bytes = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\">{}</plist>\n", plist(&data)?).into_bytes();
         let dir = PathBuf::from(self.arg("plist-dir")?); let path = dir.join(format!("{}.plist", self.label()?));
         let same = fs::read(&path).is_ok_and(|old| old == bytes); let (loaded, _) = self.job(&domain)?;
-        // A host swap needs a restart; a generation-only change does not, because the host rereads the pointer.
-        let installed_hash = hash(&app);
+        // Any bundle exchange (host bytes or metadata) needs a restart: the running process was
+        // launched from the bundle inode that is now archived. A generation-only change does not,
+        // because the host rereads the pointer per request; the socket mode is its one
+        // startup-only generation setting.
+        let launched_record = state.join("launched-app-inode");
+        let installed_inode = inode(&app).map(|i| i.to_string()).unwrap_or_default();
+        let launched_inode = fs::read_to_string(&launched_record).unwrap_or_default();
         let running_hash = if loaded { self.ipc().ok().and_then(|v| v["status"]["hostSourceHash"].as_str().map(str::to_owned)) } else { None };
-        if same && loaded && !force && installed_hash == running_hash { return Ok(json!({"changed": false, "domain": domain})); }
-        if loaded { checked("launchctl", &["bootout", &format!("{domain}/{}", self.label()?)])?; }
+        let target = format!("{domain}/{}", self.label()?);
+        if same && loaded && !force && hash(&app) == running_hash && installed_inode == launched_inode {
+            if socket_mode(socket) == Some(self.desired_socket_mode()?) { return Ok(json!({"changed": false, "domain": domain})); }
+            checked("launchctl", &["kickstart", "-k", &target])?;
+            return Ok(json!({"changed": true, "domain": domain, "restart": "socket-mode"}));
+        }
+        if loaded { checked("launchctl", &["bootout", &target])?; }
         if !same { fs::create_dir_all(&dir)?; atomic_write(&path, &bytes)?; }
         checked("launchctl", &["bootstrap", &domain, text(&path)?])?;
+        fs::create_dir_all(&state)?;
+        atomic_write(&launched_record, installed_inode.as_bytes())?;
         Ok(json!({"changed": true, "domain": domain}))
     }
     fn ipc(&self) -> Result<Value> {
@@ -288,30 +384,49 @@ impl Ctl {
         BufReader::new(stream).take(65536).read_until(b'\n', &mut bytes)?;
         Ok(serde_json::from_slice(&bytes)?)
     }
-    fn verify_expected(&self, expected_hash: &str, generation: &Path) -> Result<Value> {
+    fn verify_expected(&self, expected_hash: &str, expected_metadata: &str, generation: &Path) -> Result<Value> {
         let app = self.app()?; self.signature(&app)?;
-        if hash(&app).as_deref() != Some(expected_hash) || pointer(&self.state()?.join("current")).as_deref() != Some(generation) { return Err(fail(22, "verification-failed", "Installed source or generation pointer differs")); }
+        if hash(&app).as_deref() != Some(expected_hash) { return Err(mismatch("Installed host source differs")); }
+        if metadata_digest(&app).as_deref() != Some(expected_metadata) { return Err(mismatch("Installed bundle metadata differs")); }
+        if pointer(&self.state()?.join("current")).as_deref() != Some(generation) { return Err(mismatch("Generation pointer differs")); }
         let manifest: Value = serde_json::from_slice(&fs::read(generation.join("manifest.json"))?)?;
         let domain = self.domain()?; let (loaded, pid) = self.job(&domain)?; let ipc = self.ipc()?;
-        if !loaded || pid.is_none() || ipc["ok"] != true || ipc["status"]["hostSourceHash"] != expected_hash || ipc["status"]["generation"] != manifest["generation"] || ipc["status"]["pid"].as_u64() != pid.map(u64::from) { return Err(fail(22, "verification-failed", "IPC host hash/generation/PID does not match desired and launchd")); }
-        Ok(json!({"verified": true, "domain": domain, "pid": pid, "hostSourceHash": expected_hash, "generation": generation}))
+        if !loaded || pid.is_none() || ipc["ok"] != true || ipc["status"]["hostSourceHash"] != expected_hash || ipc["status"]["generation"] != manifest["generation"] || ipc["status"]["pid"].as_u64() != pid.map(u64::from) { return Err(mismatch("IPC host hash/generation/PID does not match desired and launchd")); }
+        let mode = socket_mode(self.arg("socket")?);
+        if mode.map(u64::from) != manifest["socketMode"].as_u64() { return Err(mismatch(format!("Socket mode {mode:?} differs from the generation's socketMode"))); }
+        Ok(json!({"verified": true, "domain": domain, "pid": pid, "hostSourceHash": expected_hash, "bundleMetadataDigest": expected_metadata, "generation": generation}))
     }
     fn verify(&self) -> Result<Value> {
-        let expected = hash(Path::new(self.arg("desired")?)).ok_or_else(|| fail(64, "invalid-input", "Desired app lacks source marker"))?;
-        self.verify_expected(&expected, Path::new(self.arg("generation")?))
+        let desired = Path::new(self.arg("desired")?);
+        let expected = hash(desired).ok_or_else(|| fail(64, "invalid-input", "Desired app lacks source marker"))?;
+        let metadata = metadata_digest(desired).ok_or_else(|| fail(64, "invalid-input", "Desired app lacks Info.plist"))?;
+        self.verify_expected(&expected, &metadata, Path::new(self.arg("generation")?))
     }
+    /// Generation-only rollback selects S/previous. Host rollback restores the archived host and
+    /// the generation recorded when it was archived, independent of S/previous.
     fn rollback(&self) -> Result<Value> {
-        let state = self.state()?; let previous = pointer(&state.join("previous")).ok_or_else(|| fail(22, "verification-failed", "No previous generation"))?;
-        let app = self.app()?;
+        let state = self.state()?; let app = self.app()?;
+        self.reconcile(&app)?;
         let restore_host = self.args.contains_key("restore-host");
-        if restore_host {
-            let archive = pointer(&app.with_extension("previous")).ok_or_else(|| fail(22, "verification-failed", "No archived host"))?;
-            self.signature(&archive)?; exchange(&archive, &app)?;
-        }
-        select(&state.join("current"), &previous)?;
+        let (target, discarded) = if restore_host {
+            let archive = pointer(&archive_pointer(&app)).ok_or_else(|| mismatch("No archived host"))?;
+            let target = pointer(&state.join("host-previous-generation")).or_else(|| pointer(&state.join("current"))).ok_or_else(|| mismatch("No generation to run the restored host with"))?;
+            self.signature(&archive)?;
+            exchange(&archive, &app)?;
+            // The archive path now holds the rolled-back host; drop the pointers so a repeat cannot flip back.
+            remove_if_present(&archive_pointer(&app))?;
+            remove_if_present(&state.join("host-previous-generation"))?;
+            (target, Some(archive))
+        } else {
+            (pointer(&state.join("previous")).ok_or_else(|| mismatch("No previous generation"))?, None)
+        };
+        if pointer(&state.join("current")).as_ref() != Some(&target) { select(&state.join("current"), &target)?; }
         self.converge(restore_host)?;
-        let expected = hash(&app).ok_or_else(|| fail(22, "verification-failed", "Restored host lacks marker"))?;
-        self.verify_expected(&expected, &previous)
+        // Removed only after the restart, so the replaced process never ran from a deleted bundle.
+        if let Some(discarded) = discarded.filter(|d| d.exists()) { fs::remove_dir_all(discarded)?; }
+        let expected = hash(&app).ok_or_else(|| mismatch("Restored host lacks marker"))?;
+        let metadata = metadata_digest(&app).ok_or_else(|| mismatch("Restored host lacks Info.plist"))?;
+        self.verify_expected(&expected, &metadata, &target)
     }
     fn status(&self) -> Result<Value> {
         let app = self.app()?; let state = self.state()?; let session = self.session()?;
@@ -319,7 +434,7 @@ impl Ctl {
         let dr = self.signature(&app);
         let signing_failure = fs::read(signing_failure_marker(&app)).ok().map(|b| serde_json::from_slice::<Value>(&b)).transpose()?;
         let ipc = self.ipc().ok();
-        Ok(json!({"hostSourceHash": hash(&app), "drValid": dr.is_ok(), "requirement": dr.ok(), "activeGeneration": pointer(&state.join("current")), "previousGeneration": pointer(&state.join("previous")), "launchd": {"domain": domain.ok(), "loaded": job.map(|j| j.0).unwrap_or(false), "pid": job.and_then(|j| j.1)}, "session": session, "signingFailure": signing_failure, "running": ipc}))
+        Ok(json!({"hostSourceHash": hash(&app), "bundleMetadataDigest": metadata_digest(&app), "drValid": dr.is_ok(), "requirement": dr.ok(), "activeGeneration": pointer(&state.join("current")), "previousGeneration": pointer(&state.join("previous")), "hostArchive": pointer(&archive_pointer(&app)), "hostArchiveGeneration": pointer(&state.join("host-previous-generation")), "interruptedTransaction": transaction_record(&app).exists(), "socketMode": socket_mode(self.arg("socket")?), "launchd": {"domain": domain.ok(), "loaded": job.map(|j| j.0).unwrap_or(false), "pid": job.and_then(|j| j.1)}, "session": session, "signingFailure": signing_failure, "running": ipc}))
     }
 }
 fn run() -> Result<Value> {
@@ -346,6 +461,51 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn pipe_with(bytes: &[u8], close_writer: bool) -> (i32, Option<File>) {
+        let mut fds = [0; 2];
+        // SAFETY: fds has room for the two descriptors pipe writes.
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        // SAFETY: fds[1] is the freshly created write end, owned here.
+        let mut writer = unsafe { File::from_raw_fd(fds[1]) };
+        writer.write_all(bytes).unwrap_or_else(|_| panic!("pipe write"));
+        (fds[0], if close_writer { None } else { Some(writer) })
+    }
+    fn category(result: Result<Password>) -> Option<&'static str> { result.err().and_then(|e| e.category) }
+    #[test]
+    fn password_strips_exactly_one_newline() {
+        let (fd, _) = pipe_with(b"secret\n\n", true);
+        let password = Password::read(fd).unwrap_or_else(|_| panic!("valid password"));
+        assert_eq!(&password.bytes[..password.len], b"secret\n");
+        let (fd, _) = pipe_with(b" secret ", true);
+        let password = Password::read(fd).unwrap_or_else(|_| panic!("valid password"));
+        assert_eq!(&password.bytes[..password.len], b" secret ");
+    }
+    #[test]
+    fn password_rejects_empty_long_and_unterminated_input() {
+        assert_eq!(category(Password::read(pipe_with(b"", true).0)), Some("password-invalid"));
+        assert_eq!(category(Password::read(pipe_with(b"\n", true).0)), Some("password-invalid"));
+        assert!(Password::read(pipe_with(&[b'a'; PASSWORD_MAX], true).0).is_ok());
+        assert!(Password::read(pipe_with(&[[b'a'; PASSWORD_MAX].as_slice(), b"\n"].concat(), true).0).is_ok());
+        assert_eq!(category(Password::read(pipe_with(&[b'a'; PASSWORD_MAX + 1], true).0)), Some("password-invalid"));
+        let (fd, _writer) = pipe_with(b"partial", false);
+        assert_eq!(category(Password::read(fd)), Some("password-invalid"));
+    }
+    #[test]
+    fn domains_follow_session_kind() {
+        let ok = |kind, requested, session| resolve_domain(kind, requested, session, 501).ok();
+        let code = |kind, requested, session| resolve_domain(kind, requested, session, 501).err().map(|e| e.code);
+        assert_eq!(ok("gui-agent", "auto", "gui").as_deref(), Some("gui/501"));
+        assert_eq!(code("gui-agent", "auto", "background-only"), Some(21));
+        assert_eq!(code("gui-agent", "user", "background-only"), Some(64));
+        assert_eq!(code("gui-agent", "user", "gui"), Some(64));
+        assert_eq!(code("gui-agent", "system", "gui"), Some(64));
+        assert_eq!(ok("background-agent", "auto", "background-only").as_deref(), Some("user/501"));
+        assert_eq!(ok("background-agent", "user", "gui").as_deref(), Some("user/501"));
+        assert_eq!(code("background-agent", "gui", "background-only"), Some(21));
+        assert_eq!(code("background-agent", "system", "gui"), Some(64));
+        assert_eq!(ok("system-daemon", "auto", "no-session").as_deref(), Some("system"));
+        assert_eq!(code("system-daemon", "user", "gui"), Some(64));
+    }
     #[test]
     fn plist_encodes_data_not_markup() {
         let encoded = plist(&json!({"Program": "/tmp/<app>&", "RunAtLoad": true, "ProgramArguments": ["host", "serve"], "Umask": 63})).unwrap_or_else(|_| panic!("valid plist"));

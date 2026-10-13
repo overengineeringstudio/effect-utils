@@ -143,15 +143,14 @@ if args[0] == 'print':
     print('pid =', jobs[target]['pid'])
     sys.exit(0)
 with (base / 'launchctl.log').open('a') as log: log.write(json.dumps(args) + '\n')
-if args[0] == 'bootout':
-    job = jobs.pop(args[1])
+def stop(job):
     os.kill(job['pid'], signal.SIGTERM)
     for _ in range(500):
-        if not Path(job['socket']).exists(): break
+        if not Path(job['socket']).exists(): return
         time.sleep(.01)
-    else: raise RuntimeError('host did not remove socket')
-elif args[0] == 'bootstrap':
-    with open(args[2], 'rb') as f: plist = plistlib.load(f)
+    raise RuntimeError('host did not remove socket')
+def start(plist_path):
+    with open(plist_path, 'rb') as f: plist = plistlib.load(f)
     argv = plist['ProgramArguments']
     assert plist['Program'] == argv[0] and '/Contents/MacOS/' in argv[0]
     log = (base / 'host.log').open('ab')
@@ -162,7 +161,15 @@ elif args[0] == 'bootstrap':
         if process.poll() is not None: raise RuntimeError('host failed to start')
         time.sleep(.01)
     else: raise RuntimeError('host not ready')
-    jobs[args[1] + '/' + plist['Label']] = {'pid': process.pid, 'socket': sock}
+    return plist['Label'], {'pid': process.pid, 'socket': sock, 'plist': plist_path}
+if args[0] == 'bootout':
+    stop(jobs.pop(args[1]))
+elif args[0] == 'bootstrap':
+    label, job = start(args[2])
+    jobs[args[1] + '/' + label] = job
+elif args[:2] == ['kickstart', '-k']:
+    stop(jobs[args[2]])
+    jobs[args[2]] = start(jobs[args[2]]['plist'])[1]
 else: raise RuntimeError('unexpected launchctl operation')
 jobs_file.write_text(json.dumps(jobs))
 ''')
@@ -188,27 +195,36 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
 
     common = ['--config', str(config_file), '--app-dir', str(app), '--state', str(state),
               '--socket', sock, '--plist-dir', str(plists)]
-    def call(action, *args, code=0, secret=None):
+    def call(action, *args, code=0, secret=None, hold_open=False, failpoint=None):
+        """`secret` str is sent with one trailing newline; bytes are sent verbatim.
+        `hold_open` keeps the writer open so the reader never sees EOF."""
         fds = ()
+        write = None
         if secret is not None:
             read, write = os.pipe()
-            os.write(write, secret.encode() + b'\n')
-            os.close(write)
+            os.write(write, secret if isinstance(secret, bytes) else secret.encode() + b'\n')
+            if not hold_open:
+                os.close(write)
+                write = None
             fds = (read,)
             args = (*args, '--keychain-password-fd', str(read))
+        run_env = dict(env, MACOS_APP_CTL_TEST_FAILPOINT=failpoint) if failpoint else env
         try:
-            process = subprocess.run([str(ctl), action, *common, *map(str, args)], env=env,
+            process = subprocess.run([str(ctl), action, *common, *map(str, args)], env=run_env,
                                      capture_output=True, text=True, pass_fds=fds, timeout=60)
         except subprocess.TimeoutExpired:
             sys.exit(f'ABORT: {action} hung; a keychain UI prompt may be pending. Stopping.')
         finally:
             for fd in fds: os.close(fd)
+            if write is not None: os.close(write)
         assert process.returncode == code, (action, process.returncode, process.stdout, process.stderr)
+        if code == 137: return None
         lines = process.stdout.splitlines()
         assert len(lines) == 1, process.stdout
         return json.loads(lines[0])
-    def install(desired_app, secret=password, *extra, code=0):
-        return call('install-host', '--desired', desired_app, '--keychain', keychain, *extra, code=code, secret=secret)
+    def install(desired_app, secret=password, *extra, code=0, failpoint=None):
+        return call('install-host', '--desired', desired_app, '--keychain', keychain, *extra, code=code,
+                    secret=secret, failpoint=failpoint)
 
     def contents(path):
         return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -261,10 +277,11 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     (changed / 'Contents/Resources/host-source-hash').write_text(changed_hash)
     incumbent = contents(app / 'Contents/MacOS/macos-app-host')
 
-    def expect_signing_failure(category, *args, secret=password, keychain_path=keychain, auth_pending=False):
+    def expect_signing_failure(category, *args, secret=password, keychain_path=keychain, auth_pending=False,
+                               hold_open=False, failpoint=None):
         extra = ['--signing-auth-pending'] if auth_pending else ['--keychain', keychain_path]
         result = call('install-host', '--desired', changed, *extra, *args, code=20,
-                      secret=None if auth_pending else secret)
+                      secret=None if auth_pending else secret, hold_open=hold_open, failpoint=failpoint)
         assert result['error']['kind'] == 'signing-failed' and result['error']['category'] == category, result
         assert contents(app / 'Contents/MacOS/macos-app-host') == incumbent
         assert call('status')['result']['signingFailure']['category'] == category
@@ -284,6 +301,15 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     expect_signing_failure('sign-failed')
     (work / 'sign-fail').unlink()
     assert not unlocked()
+    signing_log = log(work / 'sign.log')
+    expect_signing_failure('password-invalid', secret=b'')
+    expect_signing_failure('password-invalid', secret=b'x' * 1025)
+    # The correct password with the writer held open: no EOF within the deadline is rejected, not trusted.
+    expect_signing_failure('password-invalid', secret=password.encode() + b'\n', hold_open=True)
+    assert log(work / 'sign.log') == signing_log and not unlocked(), 'password-invalid reached unlock/codesign'
+    expect_signing_failure('relock-failed', failpoint='relock')
+    assert log(work / 'sign.log') != signing_log, 'relock failpoint fired before codesign ran'
+    assert not unlocked()
     login = Path.home() / 'Library/Keychains/login.keychain-db'
     refused = call('install-host', '--desired', changed, '--keychain', login, code=64, secret='unused')
     assert 'login keychain' in refused['error']['reason']
@@ -291,7 +317,8 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     assert call('install-host', '--desired', changed, '--keychain', keychain, code=64, secret=password)['error']['kind'] == 'invalid-input'
     write_config()
     print('PASS signing failures keep the incumbent: signing-auth-pending (keychain untouched), '
-          'keychain-missing, unlock-failed, identity-missing, dr-mismatch, sign-failed; '
+          'keychain-missing, unlock-failed, identity-missing, dr-mismatch, sign-failed, '
+          'password-invalid (empty, over-long, no EOF) before unlock, relock-failed; '
           'login keychain and ad-hoc refused', flush=True)
 
     write_config(requirement=f'identifier "dev.example.synthetic-host" and certificate leaf = H"{"0" * 40}"')
@@ -299,17 +326,69 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     write_config()
     print('PASS verify rejects an installed host whose DR differs from the declared requirement', flush=True)
 
-    installed = install(changed)['result']
-    assert installed['changed'] and Path(installed['archive']).is_dir()
+    assert install(changed, failpoint='after-exchange', code=137) is None
     assert contents(app / 'Contents/MacOS/macos-app-host') != incumbent
-    assert call('status')['result']['signingFailure'] is None
+    status = call('status')['result']
+    assert status['interruptedTransaction'] and status['hostArchive'] is None, status
+    reconciled = install(changed)['result']
+    assert reconciled['reconciled'] == 'archive-published' and not reconciled['changed'], reconciled
+    status = call('status')['result']
+    assert not status['interruptedTransaction'] and Path(status['hostArchive']).is_dir()
+    assert status['hostArchiveGeneration'] == str(second) and status['signingFailure'] is None, status
     assert call('converge-launchd')['result']['changed']
     call('verify', '--desired', changed, '--generation', second)
+    print('PASS crash after exchange: next install reconciles the archive pointer instead of losing it', flush=True)
+
     call('rollback', '--restore-host')
     assert contents(app / 'Contents/MacOS/macos-app-host') == incumbent
+    assert state.joinpath('current').readlink() == second, 'host-only rollback moved the generation'
+    call('verify', '--desired', desired, '--generation', second)
+    assert call('status')['result']['hostArchive'] is None
+    assert not list(app.parent.glob('.*stage*')), 'rolled-away host left behind'
+    mutation_log = log(work / 'launchctl.log')
+    call('rollback')
     assert state.joinpath('current').readlink() == first
     call('verify', '--desired', desired, '--generation', first)
-    print('PASS changed host signed and atomically exchanged; rollback restored pointer and signed incumbent', flush=True)
+    assert log(work / 'launchctl.log') == mutation_log, 'generation rollback restarted the host'
+    print('PASS host-only rollback keeps the generation it archived with; generation rollback uses S/previous', flush=True)
+
+    installed = install(changed)['result']
+    assert installed['changed'] and Path(installed['archive']).is_dir() and installed['reconciled'] is None
+    assert call('converge-launchd')['result']['changed']
+    call('verify', '--desired', changed, '--generation', first)
+    metadata = work / 'metadata.app'
+    shutil.copytree(changed, metadata)
+    for path in metadata.rglob('*'):
+        if not path.is_symlink(): path.chmod(path.stat().st_mode | 0o200)
+    with (metadata / 'Contents/Info.plist').open('rb') as f: info = plistlib.load(f)
+    info['LSBackgroundOnly'] = not info.get('LSBackgroundOnly', False)
+    with (metadata / 'Contents/Info.plist').open('wb') as f: plistlib.dump(info, f)
+    first_archive = installed['archive']
+    reinstalled = install(metadata)['result']
+    assert reinstalled['changed'] and reinstalled['hostSourceHash'] == installed['hostSourceHash']
+    assert reinstalled['bundleMetadataDigest'] != installed['bundleMetadataDigest']
+    assert not Path(first_archive).exists(), 'superseded archive kept'
+    assert len(list(app.parent.glob('.*stage*'))) == 1
+    call('verify', '--desired', changed, '--generation', first, code=22)
+    assert call('converge-launchd')['result']['changed'], 'metadata-only exchange did not restart'
+    call('verify', '--desired', metadata, '--generation', first)
+    assert not install(metadata)['result']['changed']
+    print('PASS metadata-only change (same host hash) re-signs, exchanges and restarts; verify checks Info.plist', flush=True)
+
+    third = work / 'generation-owner-only'
+    third.mkdir()
+    manifest = json.loads((second / 'manifest.json').read_text())
+    manifest['socketMode'] = 0o600
+    (third / 'manifest.json').write_text(json.dumps(manifest))
+    call('select-generation', '--generation', third)
+    call('verify', '--desired', metadata, '--generation', third, code=22)
+    converged = call('converge-launchd')['result']
+    assert converged['changed'] and converged['restart'] == 'socket-mode', converged
+    assert json.loads(log(work / 'launchctl.log').splitlines()[-1])[:2] == ['kickstart', '-k']
+    call('verify', '--desired', metadata, '--generation', third)
+    assert call('status')['result']['socketMode'] == 0o600
+    assert not call('converge-launchd')['result']['changed']
+    print('PASS startup-only socketMode change restarts via kickstart; verify checks the socket mode', flush=True)
 
     calls = [json.loads(line) for line in log(work / 'codesign.log').splitlines()]
     assert calls and all(password not in json.dumps(entry) for entry in calls)
@@ -321,9 +400,14 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     assert call('converge-launchd', code=21)['error']['kind'] == 'gui-absent'
     assert log(work / 'launchctl.log') == before_log
     assert call('status')['result']['session'] == 'background-only'
+    write_config(session='gui-agent')
+    assert call('converge-launchd', '--domain', 'user', code=64)['error']['kind'] == 'invalid-input'
     write_config()
+    assert call('converge-launchd', '--domain', 'system', code=64)['error']['kind'] == 'invalid-input'
+    assert log(work / 'launchctl.log') == before_log
     assert call('status')['result']['launchd']['domain'] == f'user/{uid}'
-    print('PASS GUI-absent is explicit; background agent resolves user domain', flush=True)
+    print('PASS GUI-absent is explicit; gui-agent/user and background-agent/system overrides refused; '
+          'background agent resolves user domain', flush=True)
     (work / 'gui-absent').unlink()
 
     other = work / 'Other.app'
@@ -353,6 +437,21 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     assert plists.joinpath('dev.example.synthetic-host.plist').is_file()
     assert plists.joinpath('dev.example.other-host.plist').is_file()
     print('PASS two products: distinct DR, app directory, label and socket', flush=True)
+
+    # Host-only rollback for a product that never had a generation swap (no S/previous).
+    other_changed = work / 'OtherChanged.app'
+    shutil.copytree(changed, other_changed)
+    for path in other_changed.rglob('*'):
+        if not path.is_symlink(): path.chmod(path.stat().st_mode | 0o200)
+    shutil.copy(other / 'Contents/Info.plist', other_changed / 'Contents/Info.plist')
+    assert not (work / 'other-state/previous').exists()
+    assert install(other_changed)['result']['changed']
+    call('converge-launchd')
+    call('verify', '--desired', other_changed, '--generation', first)
+    call('rollback', '--restore-host')
+    assert (work / 'other-state/current').readlink() == first
+    call('verify', '--desired', other, '--generation', first)
+    print('PASS host-only rollback works without a previous generation', flush=True)
 finally:
     cleanup()
 print('PASS throwaway keychain removed; user search list unchanged')

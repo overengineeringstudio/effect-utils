@@ -166,19 +166,36 @@ the TCC subject stays the host. The consumer's activation-bundle framework owns
 the per-product state machine (desired state, stamps, holds, pins, GC policy,
 serialization) and calls one primitive per step:
 
-| Primitive           | Arguments                                                                                     | Effect                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `install-host`      | `--app-dir D --desired APP (--keychain K --keychain-password-fd N \| --signing-auth-pending)` | No-op when the installed marker equals the desired marker, `codesign --verify --strict` passes and the DR equals `requirement`. Otherwise stages a copy beside `D`, signs it, verifies the DR, exchanges it with `D` by `renamex_np(RENAME_SWAP)` and records the incumbent at `D.previous`.                                                                                                                                     |
-| `select-generation` | `--state S --generation G`                                                                    | No-op when `S/current` already points to `G`. Otherwise roots `G` with `nix-store --add-root S/roots/<sha256(G)> --indirect`, or records `S/roots/<hash>.path` and reports `consumerRootRequired` when `nix-store` is absent; moves the old pointer to `S/previous`; atomically replaces `S/current`.                                                                                                                            |
-| `converge-launchd`  | `--app-dir --state --socket --plist-dir P [--domain auto\|gui\|user\|system]`                 | Renders `P/<label>.plist` with `Program` = the host executable inside `D` and `serve --socket … --generation-pointer S/current` arguments. No-op (read-only `launchctl print` probes only) when the bytes are equal, the job is loaded and the running host reports the installed host hash. Otherwise `bootout` (if loaded) and `bootstrap`. A generation-only change never restarts: the host rereads the pointer per request. |
-| `verify`            | `--app-dir --state --socket --desired APP --generation G`                                     | Exact DR, installed marker equals the desired marker, `S/current` equals `G`, and the IPC `status` reports the same host hash, generation and the PID that launchd reports.                                                                                                                                                                                                                                                      |
-| `rollback`          | `--app-dir --state --socket --plist-dir [--restore-host]`                                     | Points `S/current` at `S/previous`. With `--restore-host`, which the consumer passes when its own record shows the host was swapped, verifies the archived incumbent's DR and exchanges it back, then restarts the job. Finishes with `verify`.                                                                                                                                                                                  |
-| `status`            | `--app-dir --state --socket`                                                                  | Host hash, DR validity, active and previous generation, launchd domain/loaded/PID, session (`gui`, `background-only`, `no-session`), `signingFailure` marker and the running host's IPC status.                                                                                                                                                                                                                                  |
+| Primitive           | Arguments                                                                                               | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `install-host`      | `--app-dir D --state S --desired APP (--keychain K --keychain-password-fd N \| --signing-auth-pending)` | First reconciles an interrupted exchange (below). No-op when the installed marker and bundle-metadata digest (sha256 of `Contents/Info.plist`) equal the desired ones, `codesign --verify --strict` passes and the DR equals `requirement`. Otherwise stages a copy beside `D`, signs it, verifies the DR, writes the transaction record `D.txn.json`, exchanges the stage with `D` by `renamex_np(RENAME_SWAP)` and publishes the archive: `D.previous` points to the incumbent, `S/host-previous-generation` records the generation it ran with, and the superseded archive is removed.                                                                                                                                                     |
+| `select-generation` | `--state S --generation G`                                                                              | No-op when `S/current` already points to `G`. Otherwise roots `G` with `nix-store --add-root S/roots/<sha256(G)> --indirect`, or records `S/roots/<hash>.path` and reports `consumerRootRequired` when `nix-store` is absent; moves the old pointer to `S/previous`; atomically replaces `S/current`.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `converge-launchd`  | `--app-dir --state --socket --plist-dir P [--domain auto\|gui\|user\|system]`                           | Renders `P/<label>.plist` with `Program` = the host executable inside `D` and `serve --socket … --generation-pointer S/current` arguments. No-op (read-only `launchctl print` probes only) when the bytes are equal, the job is loaded, the running host reports the installed host hash, `S/launched-app-inode` equals the inode at `D` and the socket mode equals the active generation's `socketMode`. A plist, host or bundle exchange (including metadata-only) causes `bootout` (if loaded), `bootstrap` and a new `S/launched-app-inode`. A `socketMode` change alone causes `launchctl kickstart -k` and reports `restart: "socket-mode"`. Any other generation-only change never restarts: the host rereads the pointer per request. |
+| `verify`            | `--app-dir --state --socket --desired APP --generation G`                                               | Exact DR, installed marker and bundle-metadata digest equal the desired ones, `S/current` equals `G`, the socket mode equals `G`'s `socketMode`, and the IPC `status` reports the same host hash, generation and the PID that launchd reports.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `rollback`          | `--app-dir --state --socket --plist-dir [--restore-host]`                                               | Without `--restore-host`, a generation rollback: points `S/current` at `S/previous` and converges (no restart unless `socketMode` differs). With `--restore-host`, a host-only rollback that the consumer passes when its own record shows the host was swapped: verifies the archive's DR, exchanges it back, selects `S/host-previous-generation` (else keeps `S/current`; `S/previous` is not used), removes `D.previous` and `S/host-previous-generation`, restarts the job and then deletes the rolled-away bundle. Both finish with `verify`.                                                                                                                                                                                           |
+| `status`            | `--app-dir --state --socket`                                                                            | Host hash, bundle-metadata digest, DR validity, active and previous generation, `hostArchive`, `hostArchiveGeneration`, `interruptedTransaction`, socket mode, launchd domain/loaded/PID, session (`gui`, `background-only`, `no-session`), `signingFailure` marker and the running host's IPC status.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
-Domain resolution: `system-daemon` uses `system`. Agents use `gui/<uid>` when
-`launchctl print gui/<uid>` succeeds; otherwise a `background-agent` uses
-`user/<uid>` and a `gui-agent` fails with `gui-absent` without any job
-operation. There is no fallback to broader `launchctl` operations.
+The consumer calls `install-host` before `select-generation` in one
+activation, so `S/host-previous-generation` records the generation the
+incumbent host actually ran with.
+
+**Crash-safe exchange.** `D.txn.json` (`stage`, `stageInode`, `generation`)
+is durable before the exchange and removed after the archive is published.
+`install-host` and `rollback` reconcile a leftover record before anything else:
+if the inode at `D` equals `stageInode`, the exchange happened and the archive
+is published; otherwise the stage is discarded. The result reports
+`reconciled: "archive-published" | "stage-discarded" | null`.
+
+Domain resolution, for `auto` and for explicit `--domain` alike:
+
+| Session            | Allowed `--domain`    | Resolves to                                                              |
+| ------------------ | --------------------- | ------------------------------------------------------------------------ |
+| `gui-agent`        | `auto`, `gui`         | `gui/<uid>` when `launchctl print gui/<uid>` succeeds, else `gui-absent` |
+| `background-agent` | `auto`, `gui`, `user` | `auto`: `gui/<uid>` when present, else `user/<uid>`; `gui` requires it   |
+| `system-daemon`    | `auto`, `system`      | `system`                                                                 |
+
+Any other combination is `invalid-input` before any `launchctl` call. There is
+no fallback to broader `launchctl` operations.
 
 Each run prints exactly one JSON object on stdout: `{"ok":true,"primitive",
 "result"}` or `{"ok":false,"error":{"kind","category","reason"}}`.
@@ -188,15 +205,20 @@ Each run prints exactly one JSON object on stdout: `{"ok":true,"primitive",
 | 0    | —                          | Converged; `result.changed` tells whether anything was mutated.             |
 | 20   | `signing-failed`           | Incumbent untouched; `category` and `D.signing-failed.json` name the cause. |
 | 21   | `gui-absent`, `no-session` | Required launchd domain absent; no job operation was attempted.             |
-| 22   | `verification-failed`      | DR, marker, pointer, launchd or IPC state differs from desired.             |
+| 22   | `verification-failed`      | DR, marker, metadata, pointer, socket mode, launchd or IPC state differs.   |
 | 23   | `operation-failed`         | Filesystem, `launchctl` or `nix-store` operation failed.                    |
-| 64   | `invalid-input`            | Bad arguments or config, login keychain, ad-hoc identity.                   |
+| 64   | `invalid-input`            | Bad arguments or config, login keychain, ad-hoc identity, domain override.  |
 
 Signing failure categories: `signing-auth-pending` (consumer could not obtain
-the password; the keychain is not touched), `keychain-missing`,
-`unlock-failed`, `identity-missing` (identity absent from the dedicated
-keychain; the default search list is never consulted), `sign-failed`,
-`dr-mismatch`.
+the password; the keychain is not touched), `password-invalid` (descriptor
+content rejected before unlock), `keychain-missing`, `unlock-failed`,
+`identity-missing` (identity absent from the dedicated keychain; the default
+search list is never consulted), `sign-failed`, `dr-mismatch`,
+`relock-failed` (the keychain could not be locked again; the signed stage is
+discarded).
+
+`MACOS_APP_CTL_TEST_FAILPOINT` (`relock`, `after-exchange`) is test-only. It
+can only force a failure or a crash, never make a check pass.
 
 ### Signer contract
 
@@ -208,17 +230,24 @@ keychain; the default search list is never consulted), `sign-failed`,
   prompt (`security set-key-partition-list -S codesign: -s -k … K`).
 - **Password by descriptor.** The consumer owns password retrieval (for
   example an op-proxy grant) and passes it on an inherited descriptor
-  (`--keychain-password-fd N`, one optional trailing newline). It is never
+  (`--keychain-password-fd N`). The password is the descriptor's bytes up to
+  EOF with exactly one trailing `\n` removed; no other byte is trimmed, and
+  provisioning (`create-keychain`, `set-key-partition-list`) must use the same
+  bytes. Empty content, more than 1024 bytes, or no EOF within five seconds is
+  `password-invalid`, decided before `SecKeychainUnlock`. The password is never
   accepted from argv or the environment and never passed to a child process.
   `ctl` reads it into a fixed buffer and zeroes the buffer after unlocking.
-  If the consumer cannot obtain the password it passes
-  `--signing-auth-pending`.
+- **Auth pending is the consumer's decision.** The consumer decides from its
+  password reader's exit status (with `pipefail` or equivalent), never from
+  empty output alone. If the reader fails it passes `--signing-auth-pending`
+  instead of a descriptor.
 - **Lock discipline.** Every `install-host` run that names `K` first calls
   `SecKeychainLock(K)`, because a SIGKILLed run skips cleanup. The identity
   lookup and requirement canonicalization happen while `K` is locked.
   `SecKeychainUnlock` then opens a window for exactly one `codesign` of the
   staged bundle and its `codesign` verification; no other child process,
-  network or op-proxy call runs inside it. `SecKeychainLock` closes it on
-  every path.
+  network or op-proxy call runs inside it. A checked `SecKeychainLock` closes
+  it before any signing result is used; if that lock fails the run fails with
+  `relock-failed` and nothing is exchanged. Early returns relock best effort.
 - **Never the login keychain.** A path that resolves to the login keychain,
   by name or by `security login-keychain`, is refused before it is opened.
