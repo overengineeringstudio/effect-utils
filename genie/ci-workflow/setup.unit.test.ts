@@ -36,6 +36,7 @@ describe('required platform test classification', () => {
       'devenv-modules:test',
       'genie:buck2:test',
       'genie:ci-workflow:test',
+      'buck2:rust:generators:test',
       'test:buck2-tools',
       ...buck2TestAuthority.lanes.flatMap((lane) =>
         'unboundedTaskName' in lane ? [lane.unboundedTaskName] : [],
@@ -46,6 +47,7 @@ describe('required platform test classification', () => {
     expect(suites.every(({ rationale }) => rationale.trim().length > 0)).toBe(true)
     expect(testPlatforms.darwin.map(({ task }) => task)).toContain('test:buck2:unit')
     expect(testPlatforms.darwin.map(({ task }) => task)).toContain('test:run')
+    expect(testPlatforms.neutral.map(({ task }) => task)).toContain('buck2:rust:generators:test')
     for (const task of [
       'test:ci-tools:unbounded',
       'test:notion-cli:unbounded',

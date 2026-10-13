@@ -17,10 +17,6 @@
       "rationale": "Checkout Buck wiring, native product staging and host-platform capability projection."
     },
     {
-      "task": "buck2:rust:generators:test",
-      "rationale": "Rust interop generator subprocesses, temporary filesystem and symlink fixtures, and real USTAR listing/extraction."
-    },
-    {
       "task": "test:megarepo:unbounded",
       "rationale": "Darwin process-CWD scans, signals, filesystem/watchers and PTY prompt behavior."
     },
@@ -58,6 +54,10 @@
     }
   ],
   "neutral": [
+    {
+      "task": "buck2:rust:generators:test",
+      "rationale": "Platform-neutral Bun/JS contract generation and USTAR round-trips through pinned GNU tar; no Darwin-specific behavior."
+    },
     {
       "task": "test:agent-session-ingest:unbounded",
       "rationale": "Session-file parsing contracts."

@@ -239,7 +239,8 @@ Infrastructure Bun suites outside package source roots run through source tasks
 rather than `buck2-test-authority.json`: `genie:buck2:test` covers the Buck projection
 suite, and `buck2:rust:generators:test` covers every test under `buck2/rust/`, including
 the interop service and wasm guest packager integration tests. Both tasks participate
-in `test:run` and its Linux/Darwin CI test partition.
+in `test:run`; the platform-neutral Rust generator suite runs in the Linux CI partition,
+while the Darwin partition retains only host-sensitive suites.
 
 ### Type Checking
 
