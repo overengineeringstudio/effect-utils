@@ -28,7 +28,10 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
-import { editorViewStagingCreatorIdentity, readEditorViewSourceManifest } from './editor-view-sharing.ts'
+import {
+  editorViewStagingCreatorIdentity,
+  readEditorViewSourceManifest,
+} from './editor-view-sharing.ts'
 import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
@@ -2686,7 +2689,9 @@ describe('editor view publisher', () => {
           { hang: true },
         )
         expect(captured.invocations).toHaveLength(4)
-        expect(captured.invocations.every((args) => args.includes('editor-view.saturated'))).toBe(true)
+        expect(captured.invocations.every((args) => args.includes('editor-view.saturated'))).toBe(
+          true,
+        )
         expect(captured.exits).toEqual(
           Array.from({ length: 4 }, () => ({ code: null, signal: 'SIGKILL' })),
         )
@@ -3450,9 +3455,13 @@ describe('same-host abandoned publication lock recovery', () => {
     beforeAll(async () => {
       fixture = makeFixture()
       const ready = Promise.withResolvers<void>()
-      child = ChildProcess.spawn(requireTool('BUN_BIN'), ['--eval', 'process.stdout.write("ready\\n"); process.stdin.resume()'], {
-        stdio: ['pipe', 'pipe', 'ignore'],
-      })
+      child = ChildProcess.spawn(
+        requireTool('BUN_BIN'),
+        ['--eval', 'process.stdout.write("ready\\n"); process.stdin.resume()'],
+        {
+          stdio: ['pipe', 'pipe', 'ignore'],
+        },
+      )
       child.once('error', ready.reject)
       child.stdout!.once('data', () => ready.resolve())
       const closed = Promise.withResolvers<void>()
@@ -3482,22 +3491,28 @@ describe('same-host abandoned publication lock recovery', () => {
         publication = publishEditorView({
           ...fixture.options,
           beforeMaterialize: () => {
-            expect(JSON.parse(readFileSync(join(fixture.editorRoot, '.publish.lock', 'owner.json'), 'utf8')))
-              .toMatchObject({
-                pid: process.pid,
-                host: hostname(),
-                process: editorViewStagingCreatorIdentity({ pid: process.pid }),
-              })
+            expect(
+              JSON.parse(
+                readFileSync(join(fixture.editorRoot, '.publish.lock', 'owner.json'), 'utf8'),
+              ),
+            ).toMatchObject({
+              pid: process.pid,
+              host: hostname(),
+              process: editorViewStagingCreatorIdentity({ pid: process.pid }),
+            })
           },
         })
         const record = await publication
         expect(currentTarget(fixture)).toBe(record.snapshot)
         expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
-        expect(log.mock.calls.some(([line]) =>
-          String(line).includes('"event":"editor-view.publication-lock.recovered"') &&
-          String(line).includes('"reason":"dead-pid"') &&
-          String(line).includes(`"pid":${deadPid}`),
-        )).toBe(true)
+        expect(
+          log.mock.calls.some(
+            ([line]) =>
+              String(line).includes('"event":"editor-view.publication-lock.recovered"') &&
+              String(line).includes('"reason":"dead-pid"') &&
+              String(line).includes(`"pid":${deadPid}`),
+          ),
+        ).toBe(true)
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
         log.mockRestore()
@@ -3517,7 +3532,9 @@ describe('same-host abandoned publication lock recovery', () => {
       publication = publishEditorView(fixture.options)
       const record = await publication
       expect(currentTarget(fixture)).toBe(record.snapshot)
-      expect(log.mock.calls.some(([line]) => String(line).includes('"reason":"reused-pid"'))).toBe(true)
+      expect(log.mock.calls.some(([line]) => String(line).includes('"reason":"reused-pid"'))).toBe(
+        true,
+      )
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
       log.mockRestore()
@@ -3532,16 +3549,19 @@ describe('same-host abandoned publication lock recovery', () => {
       const owner = writeOwner({
         fixture,
         pid: process.pid,
-        processIdentity: kind === 'unknown-incarnation'
-          ? 'unknown'
-          : editorViewStagingCreatorIdentity({ pid: process.pid }),
+        processIdentity:
+          kind === 'unknown-incarnation'
+            ? 'unknown'
+            : editorViewStagingCreatorIdentity({ pid: process.pid }),
         host: kind === 'foreign-host' ? `${hostname()}-another-host` : hostname(),
       })
       let publication: Promise<EditorViewRecord> | undefined
       try {
         publication = publishEditorView(fixture.options)
         await expect(publication).rejects.toThrow('publication lock exists')
-        expect(readFileSync(join(fixture.editorRoot, '.publish.lock', 'owner.json'), 'utf8')).toBe(owner)
+        expect(readFileSync(join(fixture.editorRoot, '.publish.lock', 'owner.json'), 'utf8')).toBe(
+          owner,
+        )
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
         cleanup(fixture)

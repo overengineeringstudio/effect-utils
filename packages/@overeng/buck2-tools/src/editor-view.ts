@@ -90,7 +90,14 @@ const editorViewRecordFields = [
 const lockRecordFields = ['pid', 'schema', 'token'] as const
 const evictionLockRecordFields = ['kind', 'pid', 'process', 'schema', 'token'] as const
 const identifiedLockRecordFields = ['host', 'pid', 'process', 'schema', 'token'] as const
-const identifiedEvictionLockRecordFields = ['host', 'kind', 'pid', 'process', 'schema', 'token'] as const
+const identifiedEvictionLockRecordFields = [
+  'host',
+  'kind',
+  'pid',
+  'process',
+  'schema',
+  'token',
+] as const
 
 type JsonRecord = { [key: string]: unknown }
 
@@ -2273,7 +2280,13 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
 }
 
 /** Exact-token recovery shared by explicit operator recovery and proven abandoned-owner recovery. */
-const recoverPublicationLock = ({ editorRoot, token }: { editorRoot: string; token: string }): void => {
+const recoverPublicationLock = ({
+  editorRoot,
+  token,
+}: {
+  editorRoot: string
+  token: string
+}): void => {
   ensureRealDirectory({ path: editorRoot, field: 'editor root' })
   const lockPath = join(editorRoot, '.publish.lock')
   const owner = readLockOwner(join(lockPath, 'owner.json'))
