@@ -2502,7 +2502,7 @@ describe('editor view publisher', () => {
         // Model that syscall result, but only for a real alias of the same inode,
         // so this regression is deterministic even on Linux.
         fsMocks.realpathSync.mockImplementation((...args) => {
-          const named = Reflect.apply(nativeFs.realpathSync, nativeFs, args) as string | Buffer
+          const named = nativeFs.realpathSync(...args)
           const path = String(args[0])
           const otherName = phase === 'relocation' ? outside : blob
           if (

@@ -78,7 +78,7 @@ export const realpathThroughName = (path: string): string => {
     isAbsolute(path) === true ? path : `${process.cwd()}${sep}${path}`,
   )
   // Invariant: `resolved` is an existing, symlink-free directory.
-  let resolved = sep
+  let resolved: string = sep
   let hops = 0
   for (;;) {
     const component = pending.shift()
