@@ -296,13 +296,21 @@ to describe omitted **representatives**, not missing full-artifact rows.
 Populate and replay invocations retain proof context labels; repeated native
 logs are deduplicated by build ID, preserving the first context.
 Summary and per-invocation `excludedByDesign` contain
-`{ "local-materialization-policy": <count> }`. Native `counts` still retain
-every observed outcome; the exclusion counters are a separate policy axis,
-not an alternative execution-kind mapping.
+`{ "local-materialization-policy": <count>, "darwin-unsandboxed": <count> }`.
+Darwin TS execution uses the named exclusion defined by
+[the execution policy](../05-execution/spec.md#typescript-containment-and-platform-admission-buildbuck-r04):
+it runs locally but cannot enter shared-cache or hermetic shared immutable-store
+admission. Worktree-local editor snapshots remain reusable on Darwin; this
+exclusion does not alter existing npm/archive or Nix product boundaries.
+Native `counts` still retain every observed outcome; the exclusion counters
+are a separate policy axis, not an alternative execution-kind mapping.
 Retained schema-1 full artifacts without policy fields derive exclusions from
 their complete category rows. Older bounded summaries may omit
 `excludedByDesign`: their sampled rows cannot reconstruct a complete total,
 so absence means unavailable, not zero. New collectors always emit the counters.
+Retained counters predating Darwin-specific categories decode a missing
+`darwin-unsandboxed` key as zero; complete artifact rows must agree with that
+count. New collectors always emit both keys.
 
 Admission evidence is independent of native execution evidence. Before writer
 fail-closed handling, every direct invocation that probes cache appends a UTF-8

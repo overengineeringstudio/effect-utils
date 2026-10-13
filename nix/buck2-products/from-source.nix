@@ -242,17 +242,31 @@ let
           rust_profile_args+=(--config "$setting")
         done <<< "$release_settings"
       ''}
+      # Linux TS actions run Bubblewrap nested in this sandbox. Its EPERM at
+      # namespace setup is a host restriction; name it without changing the
+      # failure. Stderr is streamed unchanged and also scanned after failure.
+      buck_build() {
+        local status
+        set +e
+        { ${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" "$@" 2>&1 1>&3 3>&- | tee -a "$TMPDIR/buck-build-stderr.log" >&2; } 3>&1
+        status="''${PIPESTATUS[0]}"
+        set -e
+        if [ "$status" != 0 ] && grep -qE 'bwrap: .*(pivot_root|RTM_NEWADDR).*Operation not permitted' "$TMPDIR/buck-build-stderr.log"; then
+          echo 'buck2-products: nested user namespaces are restricted on this host (e.g. Ubuntu 24.04 AppArmor `kernel.apparmor_restrict_unprivileged_userns=1` or an unprivileged container); enable them or substitute this package from the binary cache' >&2
+        fi
+        return "$status"
+      }
 
-      artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg target})"
+      artifact="$(buck_build ${lib.escapeShellArg target})"
       test -f "$artifact"
       cp "$artifact" ${lib.escapeShellArg outputName}
       ${lib.optionalString hasDescriptor ''
-        descriptor="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg "${target}[descriptor]"})"
+        descriptor="$(buck_build ${lib.escapeShellArg "${target}[descriptor]"})"
         test -f "$descriptor"
         jq -cS . "$descriptor" > descriptor.json
       ''}
       ${lib.optionalString (runtimeClosureTarget != null) ''
-        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg runtimeClosureTarget})"
+        runtime_closure="$(buck_build ${lib.escapeShellArg runtimeClosureTarget})"
         test -f "$runtime_closure/descriptor.json"
         cp -R "$runtime_closure" runtime-closure
       ''}

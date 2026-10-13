@@ -4,6 +4,12 @@ load("//buck2/toolchains:defs.bzl", "bun_toolchain", "configured_rust_toolchain"
 load("//buck2/rust:toolchains.bzl", "native_rust_toolchains")
 load(":configured.bzl", "support_tool")
 load(":provider_identity_fixture.bzl", "cross_cell_product_identity")
+load(":ts_sandbox.bzl", "ts_sandbox_toolchain")
+
+ts_sandbox_toolchain(
+    name = "ts_sandbox",
+    visibility = ["PUBLIC"],
+)
 
 support_tool(
     name = "archive_tool",

@@ -21,8 +21,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
-    runs-on: ['${{ matrix.runner }};github.run-id=${{ github.run_id }}']
+        include:
+          - runner: namespace-profile-linux-x86-64
+            runnerLabel: namespace-profile-linux-x86-64;github.run-id={0};container.privileged=true
+          - runner: namespace-profile-macos-arm64
+            runnerLabel: namespace-profile-macos-arm64;github.run-id={0}
+    runs-on: ['${{ format(matrix.runnerLabel, github.run_id) }}']
     timeout-minutes: 120
     permissions:
       contents: read
