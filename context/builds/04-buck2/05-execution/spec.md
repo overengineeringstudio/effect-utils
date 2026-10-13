@@ -97,6 +97,11 @@ isolation is judged by egress properties: no addressed non-loopback interface
 and no non-loopback IPv4/IPv6 route. Down kernel fallback tunnel devices such as
 `tunl0` and `ip6tnl0` may appear in every new network namespace.
 
+The from-source core-budget contract checks the evaluated shared `buck_build`
+command and its three output calls (artifact, descriptor, runtime closure).
+Both from-source contract scripts report the failing command and exit status,
+with its line when available, on any nonzero exit, including child contracts.
+
 `buck2/platforms:ts_action_execution_policy` is a default-only execution
 dependency, selected in Buck's actual execution configuration. The policy does
 not infer execution OS from a portable target, host metadata or tool strings.
