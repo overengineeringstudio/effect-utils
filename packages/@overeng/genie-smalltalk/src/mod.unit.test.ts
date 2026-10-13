@@ -1398,6 +1398,9 @@ describe('native mission grammar', () => {
       step({ id: 'review', assignedTo: { kind: 'mission', id: 'work' } } as never),
     ).toThrow()
     expect(() =>
+      step({ id: 'review', assignedTo: { kind: 'agent', id: 'work' } } as never),
+    ).toThrow()
+    expect(() =>
       step({ id: 'review', assignedTo: { kind: 'agent', url: 'file:///tree/agent.ts' } } as never),
     ).toThrow()
   })

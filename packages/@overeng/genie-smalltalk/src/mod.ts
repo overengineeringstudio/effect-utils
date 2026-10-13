@@ -357,7 +357,9 @@ export const AgentSchema = AgentSchemaFields.pipe(
   Schema.annotate({ identifier: 'St.Agent' }),
 )
 
-const isAgentDeclaration = Schema.is(AgentSchema)
+const isAgentShape = Schema.is(AgentSchema)
+const isAgentDeclaration = (input: unknown): input is typeof AgentSchema.Type =>
+  isAgentShape(input) === true && 'kind' in input === false
 
 const GateName = Text.pipe(Schema.refine((s): s is string => utf8ByteLength(s) <= 160))
 const validName = ({

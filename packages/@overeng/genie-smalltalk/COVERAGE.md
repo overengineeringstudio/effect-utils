@@ -51,6 +51,8 @@ Author mission and step `assignedTo` with an imported agent declaration or `pers
 
 `AgentReference` exposes the structural `{ readonly id: string }` view to avoid recursively expanding agent authoring types. `AgentReferenceSchema` defers validation to the complete `AgentSchema`, including harness routing, launch conflicts, nested supervisor references, and ID validation; empty ID path segments are rejected as for `ReportToSchema`. The imported object and any kit metadata retain their identity. The existing `ReportToSchema` API continues to expose the complete agent authoring type.
 
+Imported agent declarations are untagged objects. Tagged references such as `{ kind: 'mission', id }` or `{ kind: 'agent', id }` are rejected even when their ID alone would satisfy the agent schema; unrelated kit metadata remains permitted and identity-preserved.
+
 Lowering emits only `assigned-to "agent/ID"` or `under "agent/ID" reason="..."`, never the referenced agent's launch configuration or kit metadata. There is no separate mission-agent launch API. Unit coverage includes exact KDL, object-only authoring types, invalid IDs and launches, and retained imported metadata.
 
 Runtime rejection tests use `Schema.decodeSync` when the authored input already satisfies the schema's encoded TypeScript shape; semantic launch/ID violations still throw at runtime. Inputs outside that shape retain `decodeUnknownSync`. This keeps compile-time decoder checking without weakening rejection coverage.
