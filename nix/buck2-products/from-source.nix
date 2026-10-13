@@ -115,10 +115,10 @@ let
   # Descriptor-bearing products: JavaScript product-v2 and build_product.
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
-  # Linux TS actions trust the declared outer Nix derivation boundary instead
-  # of nesting Bubblewrap. This is not per-action BUCK-R04 hermeticity: the
-  # caller owns Nix's sandbox policy, including when sandboxing is disabled.
-  # Keep these actions local and outside Buck's remote action cache.
+  # Linux TS actions may omit nested Bubblewrap only after their launcher
+  # verifies the outer Nix derivation boundary at runtime. A declaration alone,
+  # including an unsandboxed Nix build, must fail closed. This does not provide
+  # per-action BUCK-R04 hermeticity; keep actions local and outside remote cache.
   buckBuildArgs = "-j \"$NIX_BUILD_CORES\" --config build.num_tokio_workers=\"$NIX_BUILD_CORES\" --config nix_store.root=${pnpmArchives}${
     lib.optionalString (product.kind == "native") " --config rust_profile.mode=release"
   }${
@@ -203,6 +203,8 @@ let
       fi
       # Bound daemon blocking work as well as execution and Tokio workers.
       export BUCK2_MAX_BLOCKING_THREADS="$NIX_BUILD_CORES"
+      # The wrapped Buck daemon needs a writable HOME. Keep it inside Nix's
+      # build directory so the TS outer-boundary verifier can resolve it there.
       export HOME="$TMPDIR/home"
       export XDG_CACHE_HOME="$TMPDIR/cache"
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"

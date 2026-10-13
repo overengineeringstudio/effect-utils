@@ -21,6 +21,8 @@ contract="$(nix eval --impure --json --expr '
     hasStandaloneRoot = product ? standaloneRoot;
     source = toString product.source;
     typescriptBuildPhase = typescriptProduct.buildPhase;
+    typescriptIsFixedOutput = typescriptProduct ? outputHash;
+    typescriptDisablesSandbox = typescriptProduct.__noChroot or false;
     isLinux = flake.inputs.nixpkgs.lib.hasSuffix "-linux" system;
   }
 ')"
@@ -48,9 +50,14 @@ source="$(jq -r .source <<<"$contract")"
 [[ -f "$source/buck2/dependencies/BUCK" ]]
 
 # Assert the production TypeScript recipe, not just the core-budget fixture.
-# The outer Nix boundary does not admit these actions to Buck's remote cache.
+# Runtime verification, not the declaration, permits omitting nested Bubblewrap.
+# This outer boundary still does not admit actions to Buck's remote cache.
 typescript_build_phase="$(jq -r .typescriptBuildPhase <<<"$contract")"
 is_linux="$(jq -r .isLinux <<<"$contract")"
+[[ "$(jq -r .typescriptIsFixedOutput <<<"$contract")" == false ]]
+[[ "$(jq -r .typescriptDisablesSandbox <<<"$contract")" == false ]]
+[[ "$typescript_build_phase" == *'export HOME="$TMPDIR/home"'* ]]
+[[ "$typescript_build_phase" == *'mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities'* ]]
 typescript_build_count=0
 while IFS= read -r line; do
   if [[ "$line" == *' build '* ]]; then
@@ -65,11 +72,18 @@ while IFS= read -r line; do
 done <<<"$typescript_build_phase"
 [[ "$typescript_build_count" -ge 1 ]]
 
-nix build "$repo_root#buck-product-megarepo-from-source" --no-link
-# Rebuild even a cached output so nested Linux sandbox regressions cannot hide
-# behind Nix substitution. This production package runs real TypeScript actions.
-nix build "$repo_root#buck-product-overeng-content-address-from-source" --no-link
-nix build "$repo_root#buck-product-overeng-content-address-from-source" --no-link --rebuild
+# Require a real non-FOD sandbox on Linux even if the caller's Nix configuration
+# defaults to sandbox=false or relaxed. The action launcher must still verify it;
+# these flags do not bypass verification. Preserve Darwin's sandbox policy.
+sandbox_args=()
+if [[ "$is_linux" == true ]]; then
+  sandbox_args+=(--option sandbox true)
+fi
+nix build "$repo_root#buck-product-megarepo-from-source" --no-link "${sandbox_args[@]}"
+# Create the output, then rebuild even when cached so substitution cannot hide
+# verifier failures. This non-FOD production package runs real TypeScript actions.
+nix build "$repo_root#buck-product-overeng-content-address-from-source" --no-link "${sandbox_args[@]}"
+nix build "$repo_root#buck-product-overeng-content-address-from-source" --no-link --rebuild "${sandbox_args[@]}"
 
 # Source products must also build against the exported, local-cell consumer root.
 "$repo_root/nix/buck2-rules/tests/consumer-root-contract.test.sh" "$repo_root"

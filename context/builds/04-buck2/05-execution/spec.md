@@ -121,22 +121,40 @@ cohorts without rewriting native execution/cache outcome enums.
 Linux Nix from-source products explicitly set `ts_action.outer_sandbox=nix-build/v1`
 in their declared Buck build arguments. Their Nix derivation owns filesystem and
 network containment over the complete declared build inputs; nested Bubblewrap
-user namespaces and `pivot_root` are not available on all Nix builders. These
-actions use the named `nix-outer-sandboxed` mode, the shared scrubbed/output-owning
-launcher, and native nonremote execution with cache uploads disabled. There is
-no automatic environment detection, namespace-error retry, or Bubblewrap-failure
-fallback. An absent declaration still requires Bubblewrap; unknown declaration
-versions fail analysis.
+user namespaces and `pivot_root` are not available on all Nix builders. The
+declaration selects `nix-outer-sandboxed` policy but is not sufficient to execute:
+the native nonremote launcher verifies the outer boundary at runtime **before**
+creating declared outputs or executing the TS child. It requires:
 
-The declaration is an assertion by the Nix builder, not proof that the caller's
-Nix daemon enabled sandboxing and not per-action input isolation: other declared
-derivation inputs can be visible. Even with an outer sandbox, these TS actions
-are not hermetic action-cache candidates or eligible for shared immutable TS-store
-reuse. Their `_nix_outer_sandboxed` action categories produce a separate
-`nix-outer-sandboxed` evidence exclusion, preserving raw Buck outcomes. The
-Bubblewrap probe reports this boundary as unsupported rather than claiming its
-per-action checks passed. A from-source product build regression executes the
-production path in the existing CI contract lane.
+- `NIX_BUILD_TOP` to name an existing absolute directory, resolved physically,
+  containing both the action cwd and its discovered `.buckroot` Buck root.
+- `HOME` to be exactly `/homeless-shelter` or resolve physically under `NIX_BUILD_TOP`.
+- Readable `/proc/net/dev` to list only `lo`, including `lo`.
+- Cheap `-w` checks to reject writable `/home`, `/home/*`, `/root`, `/nix/var`,
+  the current EUID's home from `/etc/passwd` outside the verified build root, and
+  its Nix gcroots/profiles paths.
+
+`NIX_BUILD_TOP` and `HOME` are explicitly conveyed through `env -i` only for
+verification, then unset before the scrubbed TS child runs. Missing, unreadable,
+unusable, or failing criteria refuse execution with
+`outer sandbox declared but not verified`; diagnostics name all required criteria
+and the actual failures. No failure falls back to unsandboxed execution or retries
+Bubblewrap. There is no automatic environment detection: an absent declaration
+still requires Bubblewrap, and unknown declaration versions fail analysis.
+Default Linux and Darwin execution remain unchanged.
+
+Runtime verification checks the outer derivation boundary, not per-action input
+isolation: other declared derivation inputs can be visible. Even with a verified
+outer sandbox, these TS actions use native nonremote execution with cache uploads
+disabled and are not hermetic action-cache candidates or eligible for shared
+immutable TS-store reuse. Their `_nix_outer_sandboxed` action categories produce a
+separate `nix-outer-sandboxed` evidence exclusion, preserving raw Buck outcomes;
+the category records selected policy, not proof of successful verification.
+The Bubblewrap probe reports this boundary as unsupported rather than claiming
+BUILD.BUCK-R04's per-action checks passed. Real Buck action regressions reject an
+ordinary-host declaration and a forged `NIX_BUILD_TOP`/`HOME` context without
+producing verdicts. The positive production-path regression runs in the existing
+Nix from-source product CI contract lane.
 
 ## Rust Actions
 

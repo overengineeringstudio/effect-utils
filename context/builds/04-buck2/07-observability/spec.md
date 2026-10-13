@@ -80,9 +80,13 @@ Their explicit `_darwin_unsandboxed` category suffix identifies selected
 execution policy without inferring executor OS from the target configuration.
 The exact `tsgo_typecheck_nix_outer_sandboxed`, `tsgo_emit_nix_outer_sandboxed`
 and `package_tree_nix_outer_sandboxed` categories carry
-`exclusionReason: "nix-outer-sandboxed"`. This mode trusts the declared outer
-Nix derivation sandbox, not the admitted per-action Linux `linux-bwrap` boundary
-required by BUILD.BUCK-R04. It does not admit Buck shared-cache reuse.
+`exclusionReason: "nix-outer-sandboxed"`. This mode requires runtime verification
+of the declared outer Nix derivation boundary before creating outputs or executing
+the scrubbed child, with verification context cleared before that child runs.
+Missing or failed verification refuses execution without fallback. Its category
+records selected policy, including failed verification, not proof of containment
+or the admitted per-action Linux `linux-bwrap` boundary required by BUILD.BUCK-R04.
+It does not admit Buck shared-cache or hermetic shared immutable TS-store reuse.
 Other rows, including unknown mode spellings and unrelated categories, carry
 `null`. Summary, full-artifact header, and invocation `excludedByDesign` counters
 report all three named reasons independently of native outcome counts. Retained

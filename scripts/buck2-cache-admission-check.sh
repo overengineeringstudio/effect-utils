@@ -15,6 +15,9 @@ mkdir -p "$scratch_parent"
 work="$(mktemp -d "$scratch_parent/buck2-cache-admission.XXXXXXXX")"
 cleanup() {
   (cd "$work" && "$buck" --isolation-dir cache-admission-check kill >/dev/null 2>&1) || true
+  (cd "$work" && "$buck" --isolation-dir cache-admission-unverified-outer kill >/dev/null 2>&1) || true
+  (cd "$work" && HOME="$work/forged-home" NIX_BUILD_TOP="$work" \
+    "$buck" --isolation-dir cache-admission-forged-outer kill >/dev/null 2>&1) || true
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -278,7 +281,8 @@ fixture_ts_policy(name = "ts_policy_default")
 fixture_ts_policy(name = "ts_policy_cache", exec_compatible_with = ["@rules//buck2/platforms:cache_hermetic"])
 fixture_ts_policy_with_helper(name = "ts_policy_helper")
 fixture_ts_output(name = "darwin_fresh_verdict", expected_status = "darwin-unsandboxed")
-fixture_ts_output(name = "nix_fresh_verdict", expected_status = "nix-outer-sandboxed")
+fixture_ts_output(name = "nix_unverified_verdict", expected_status = "nix-outer-sandboxed")
+fixture_ts_output(name = "nix_forged_verdict", expected_status = "nix-outer-sandboxed")
 
 vitest_collect(
     name = "admitted_collect",
@@ -532,24 +536,67 @@ if ! grep -Fq 'TypeScript outer sandbox has unsupported declared boundary unknow
   cat "$work/ts-policy-unknown-outer.log" >&2
   exit 1
 fi
-# The fixture bwrap path is deliberately nonexistent; success proves that the
-# declared outer mode directly executes the shared launcher rather than nesting.
-"$buck" --isolation-dir cache-admission-check build \
-  -c ts_action.outer_sandbox=nix-build/v1 \
-  -c build.execution_platforms=effect_utils//buck2/platforms:exec_linux_x86_64 \
-  --local-only --show-full-json-output effect_utils//:nix_fresh_verdict \
-  > "$work/nix-fresh-verdict.json" 2> "$work/nix-fresh-verdict.log" || {
-    cat "$work/nix-fresh-verdict.log" >&2
+# A caller's declaration cannot disable Bubblewrap on an ordinary host. Each
+# real action uses its own daemon so inherited context cannot leak between cases.
+# The nonexistent fixture bwrap must not be reached as an error fallback either.
+for context in unverified forged; do
+  target="nix_${context}_verdict"
+  isolation="cache-admission-${context}-outer"
+  if [[ "$context" == forged ]]; then
+    mkdir -p "$work/forged-home"
+    outer_env=(env NIX_BUILD_TOP="$work" HOME="$work/forged-home")
+  else
+    outer_env=(env -u NIX_BUILD_TOP)
+  fi
+  if "${outer_env[@]}" "$buck" --isolation-dir "$isolation" build \
+    -c ts_action.outer_sandbox=nix-build/v1 \
+    -c build.execution_platforms=effect_utils//buck2/platforms:exec_linux_x86_64 \
+    --local-only --show-full-json-output "effect_utils//:$target" \
+    > "$work/nix-$context-verdict.json" 2> "$work/nix-$context-verdict.log"; then
+    printf 'Unverified Nix outer boundary unexpectedly executed: %s\n' "$context" >&2
     exit 1
-  }
-nix_receipt="$("$JQ_BIN" -er \
-  '."effect_utils//:nix_fresh_verdict"' "$work/nix-fresh-verdict.json")"
-IFS= read -r nix_verdict < "$nix_receipt"
-if [[ "$nix_verdict" != nix-outer-sandboxed ]]; then
-  printf 'Nix launcher did not create and populate its fresh nested verdict\n' >&2
-  exit 1
-fi
-printf 'PASS declared Nix outer boundary: no nested bwrap, no TS cache admission\n'
+  fi
+  for criterion in 'outer sandbox declared but not verified' NIX_BUILD_TOP \
+    'action cwd' .buckroot HOME /proc/net/dev lo /home /root /nix/var; do
+    if ! grep -Fq "$criterion" "$work/nix-$context-verdict.log"; then
+      cat "$work/nix-$context-verdict.log" >&2
+      printf 'Outer boundary refusal omitted required criterion %s: %s\n' "$criterion" "$context" >&2
+      exit 1
+    fi
+  done
+  if [[ "$context" == forged ]]; then
+    for criterion in \
+      'Failed criterion: NIX_BUILD_TOP must identify an existing absolute build directory' \
+      'Failed criterion: action cwd must be under NIX_BUILD_TOP' \
+      'Failed criterion: Buck root (.buckroot) must be under NIX_BUILD_TOP' \
+      'Failed criterion: HOME must equal /homeless-shelter'; do
+      if grep -Fq "$criterion" "$work/nix-$context-verdict.log"; then
+        cat "$work/nix-$context-verdict.log" >&2
+        printf 'Forged outer context did not reach the runtime boundary checks\n' >&2
+        exit 1
+      fi
+    done
+    if ! grep -Fq 'Failed criterion: /proc/net/dev must contain only lo, including lo' \
+      "$work/nix-$context-verdict.log" &&
+      ! grep -Fq 'Failed criterion: host homes and /nix/var must not be writable' \
+        "$work/nix-$context-verdict.log"; then
+      cat "$work/nix-$context-verdict.log" >&2
+      printf 'Forged outer context failed without detecting networking or host exposure\n' >&2
+      exit 1
+    fi
+  elif ! grep -Fq \
+    'Failed criterion: NIX_BUILD_TOP must identify an existing absolute build directory' \
+    "$work/nix-$context-verdict.log"; then
+    cat "$work/nix-$context-verdict.log" >&2
+    printf 'Missing outer context failed without identifying missing NIX_BUILD_TOP\n' >&2
+    exit 1
+  fi
+  if [[ -n "$(find "$work/buck-out" -type f -name typecheck.ok -path "*$target*")" ]]; then
+    printf 'Unverified outer boundary produced a nested verdict: %s\n' "$context" >&2
+    exit 1
+  fi
+  printf 'PASS refused unverified Nix outer boundary: %s\n' "$context"
+done
 
 for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
   for spelling in canonical relative alias alias_at; do
