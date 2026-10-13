@@ -174,10 +174,10 @@ const ControlState = {
    */
   retryBackoffs: Schema.Finite,
   /**
-   * The awakeable id of the CURRENT inter-cycle wait (wake mode), persisted so an
-   * external caller (the webhook) can read it via the `wakeId` SHARED handler and
-   * `resolveAwakeable` it. ROTATED every cycle; cleared when no wait is live. A
-   * stale id resolves harmlessly (its awakeable belongs to a completed invocation).
+   * The latest published wake awakeable id, readable via the SHARED `wakeId`
+   * handler. Replaced atomically each cycle: retain the prior id until the next
+   * cycle publishes its replacement. Cleared when the loop ends. A stale id
+   * resolves harmlessly but cannot wake a newer cycle.
    */
   wakeId: Schema.String,
   /**
@@ -199,7 +199,7 @@ const StatusOutput = Schema.Struct({
   lastError: Schema.optional(Schema.String),
   /** Consecutive retryable backoffs for the current logical cycle (0 when none). */
   retryBackoffs: Schema.Finite,
-  /** The live wake awakeable id (wake mode); omitted when no wait is live. */
+  /** The latest published wake id (wake mode); omitted before publication or after the loop ends. */
   wakeId: Schema.optional(Schema.String),
 })
 /** The decoded {@link StatusOutput} (re-exported from the entry as `ScheduledStatus`). */
@@ -327,9 +327,9 @@ const buildContract = (name: string) =>
         /** Read-only status (SHARED handler — no write lock, safe to poll). */
         status: { input: Schema.Void, success: StatusOutput, shared: true },
         /**
-         * Read the live wake awakeable id (SHARED — no write lock, so the webhook can
-         * read it even while an exclusive cycle holds the lock). Empty string when no
-         * wait is live (or wake is disabled). Wake mode only.
+         * Read the latest published wake id (SHARED — no write lock). Retained
+         * between running cycles until atomically replaced; empty before the
+         * first publication, after the loop ends, or when wake is disabled.
          */
         wakeId: { input: Schema.Void, success: Schema.String, shared: true },
         /**
@@ -530,6 +530,7 @@ export const RestateScheduled = {
           /* Flip status; the pending delayed `cycle` send will land and no-op
            * because the `running` guard fails. We do NOT cancel the timer. */
           yield* Ctrl.set({ key: 'status', value: 'stopped' })
+          yield* Ctrl.clear('wakeId')
           return true
         }).pipe(Effect.orDie),
 
@@ -706,14 +707,15 @@ export const RestateScheduled = {
 
           /* If the awakeable resolved, `raced` is the WakePayload; if the timer
            * fired, it is `undefined` (sleep returns void). Persist the wokenBy reason
-           * for the NEXT cycle (one-shot), then clear the live wakeId. */
+           * for the NEXT cycle (one-shot). Retain wakeId until that cycle replaces
+           * it in one State write: clearing here exposes an empty id to shared
+           * readers between invocations. Terminal paths clear it instead. */
           const wokenBy =
             typeof raced === 'object' && raced !== null && 'reason' in (raced as object)
               ? (raced as WakePayload)
               : undefined
           if (wokenBy !== undefined)
             yield* Ctrl.set({ key: 'wokenByReason', value: wokenBy.reason })
-          yield* Ctrl.clear('wakeId')
 
           /* Re-arm the next cycle immediately (delay 0) under the SAME generation. */
           yield* armNext({ generation: liveGen, delay: 0 })
