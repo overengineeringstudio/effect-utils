@@ -8,9 +8,10 @@ import { parse } from '@overeng/kdl'
 import {
   AgentSchema,
   MissionSchema,
+  missionWire,
+  type MissionInput,
   SubjectId,
   type ScheduleSchema,
-  type StepSchema,
   type WorkSchema,
 } from './mod.ts'
 
@@ -43,19 +44,35 @@ export interface SubjectDefinition<K extends SubjectKind, I, C> extends SubjectR
   readonly intent: I | ((context: C) => I)
 }
 
-type StepWire = typeof StepSchema.Encoded
 type WorkWire = typeof WorkSchema.Encoded
 
-/** Agent fields without `id`, which comes from the module path. */
-export type AgentIntent = Omit<typeof AgentSchema.Encoded, 'id'>
+/** Agent fields without `id`; supervisor targets may be typed seat references. */
+export type AgentIntent = Omit<typeof AgentSchema.Encoded, 'id' | 'under'> & {
+  readonly under?: ReadonlyArray<{
+    readonly target: AgentRef | NonNullable<(typeof AgentSchema.Encoded)['under']>[number]['target']
+    readonly reason?: string
+  }>
+}
 
-/** Mission fields without `id`; steps may assign typed seat references. */
-export type MissionIntent = Omit<typeof MissionSchema.Encoded, 'id' | 'steps' | 'schedule'> & {
-  readonly steps: ReadonlyArray<
-    Omit<StepWire, 'assignedTo'> & {
-      readonly assignedTo?: AgentRef | NonNullable<StepWire['assignedTo']>
-    }
-  >
+type TreeStep<T> = T extends { readonly round: infer R }
+  ? Omit<T, 'round'> & { readonly round: TreeRound<R> }
+  : { [K in keyof T]: K extends 'assignedTo' ? T[K] | AgentRef : T[K] }
+
+type TreeSteps<T> = T extends readonly unknown[] ? { [K in keyof T]: TreeStep<T[K]> } : T
+
+type TreeRound<T> = {
+  [K in keyof T]: K extends 'steps' | 'finally' ? TreeSteps<T[K]> : T[K]
+}
+
+/** Path-derived mission ID with current authoring handles and typed seat references. */
+export type MissionIntent = Omit<
+  MissionInput<string>,
+  'id' | 'steps' | 'finally' | 'schedule' | 'reportTo' | 'assignedTo'
+> & {
+  readonly reportTo: AgentRef | MissionInput<string>['reportTo']
+  readonly assignedTo?: AgentRef | MissionInput<string>['assignedTo']
+  readonly steps: ReadonlyArray<TreeStep<MissionInput<string>['steps'][number]>>
+  readonly finally?: ReadonlyArray<TreeStep<NonNullable<MissionInput<string>['finally']>[number]>>
 }
 
 /** Mission fields for a schedule file; its work may name a typed mission reference. */
@@ -180,29 +197,36 @@ const resolveRef = Effect.fnUntraced(function* ({
   return yield* subjectId({ root, file, path })
 })
 
-/** Replaces typed references with their wire strings before schema decoding. */
-const lowerMission = Effect.fnUntraced(function* ({
-  root,
-  path,
-  intent,
-}: {
+/** Lowers only reference-bearing fields, preserving identity-bearing authoring handles. */
+const lowerReferences: (args: {
   readonly root: string
   readonly path: string
   readonly intent: unknown
-}) {
+}) => Effect.Effect<unknown, SubjectTreeError> = Effect.fnUntraced(function* ({ root, path, intent }) {
   if (typeof intent !== 'object' || intent === null) return intent
-  const lowered: Record<string, unknown> = { ...intent }
-  if ('steps' in intent && Array.isArray(intent.steps) === true) {
-    lowered.steps = yield* Effect.forEach(intent.steps as readonly unknown[], (step) =>
-      typeof step === 'object' &&
-      step !== null &&
-      'assignedTo' in step &&
-      isRef(step.assignedTo) === true
-        ? resolveRef({ root, path, ref: step.assignedTo, expected: 'agent' }).pipe(
-            Effect.map((id) => ({ ...step, assignedTo: `agent/${id}` })),
-          )
-        : Effect.succeed(step),
-    )
+  let lowered: Record<PropertyKey, unknown> | undefined
+  const set = (key: string, value: unknown) => {
+    lowered ??= { ...intent }
+    lowered[key] = value
+  }
+  for (const key of ['reportTo', 'assignedTo', 'target'] as const) {
+    if (key in intent && isRef(intent[key]) === true) {
+      const id = yield* resolveRef({ root, path, ref: intent[key], expected: 'agent' })
+      set(key, { id })
+    }
+  }
+  for (const key of ['steps', 'finally', 'under'] as const) {
+    if (key in intent && Array.isArray(intent[key]) === true) {
+      const values = intent[key]
+      const next = yield* Effect.forEach(values as readonly unknown[], (value) =>
+        lowerReferences({ root, path, intent: value }),
+      )
+      if (next.some((value, index) => value !== values[index])) set(key, next)
+    }
+  }
+  if ('round' in intent) {
+    const round = yield* lowerReferences({ root, path, intent: intent.round })
+    if (round !== intent.round) set('round', round)
   }
   if ('schedule' in intent && typeof intent.schedule === 'object' && intent.schedule !== null) {
     const schedule = intent.schedule
@@ -210,11 +234,11 @@ const lowerMission = Effect.fnUntraced(function* ({
       const work = schedule.work
       if ('mission' in work && isRef(work.mission) === true) {
         const mission = yield* resolveRef({ root, path, ref: work.mission, expected: 'mission' })
-        lowered.schedule = { ...schedule, work: { ...work, mission } }
+        set('schedule', { ...schedule, work: { ...work, mission } })
       }
     }
   }
-  return lowered
+  return lowered ?? intent
 })
 
 const loadModule = Effect.fnUntraced(function* <C>({
@@ -275,9 +299,10 @@ const loadModule = Effect.fnUntraced(function* <C>({
   }
   const invalid = (cause: unknown) =>
     new SubjectTreeError({ path, message: `Invalid ${kind} declaration`, cause })
+  const lowered = yield* lowerReferences({ root, path, intent: identified })
   if (kind === 'agent') {
     const agent = yield* Schema.decodeUnknownEffect(AgentSchema, { onExcessProperty: 'error' })(
-      identified,
+      lowered,
     ).pipe(Effect.mapError(invalid))
     const subject: Subject = {
       kind,
@@ -287,7 +312,12 @@ const loadModule = Effect.fnUntraced(function* <C>({
     }
     return subject
   }
-  const wire = yield* lowerMission({ root, path, intent: identified })
+  const wire = yield* Effect.try({
+    // Trusted module authoring is validated by missionWire's strict schemas; the
+    // boundary assertion preserves templates/handles until assembly, not a wire cast.
+    try: () => missionWire(lowered as MissionInput<string>),
+    catch: invalid,
+  })
   const mission = yield* Schema.decodeUnknownEffect(MissionSchema, { onExcessProperty: 'error' })(
     wire,
   ).pipe(Effect.mapError(invalid))

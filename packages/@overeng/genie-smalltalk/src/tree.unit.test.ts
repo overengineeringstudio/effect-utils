@@ -42,8 +42,8 @@ describe('loadSubjectTree', () => {
     Effect.gen(function* () {
       const root = fixture({
         'team/owner/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: (ctx: { workspace: string }) => ({ workspace: ctx.workspace, restart: 'always' }) })`,
-        'team/review/mission.ts': `${define}import owner from '../owner/agent.ts'\nexport const publish = false\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', goal: 'Review.', steps: [{ id: 'read', assignedTo: owner }, { id: 'legacy', assignedTo: 'agent/elsewhere' }] } })`,
-        'team/plain/mission.ts': `export default (ctx: { workspace: string }) => ({ id: 'team/plain', state: 'ready', goal: ctx.workspace, steps: [{ id: 'only', agentless: true }] })`,
+        'team/review/mission.ts': `${define}import owner from '../owner/agent.ts'\nexport const publish = false\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: owner, goal: 'Review.', steps: [{ id: 'read', assignedTo: owner }, { id: 'imported', assignedTo: { id: 'elsewhere' } }] } })`,
+        'team/plain/mission.ts': `export default (ctx: { workspace: string }) => ({ id: 'team/plain', state: 'ready', reportTo: { id: 'team/owner' }, goal: ctx.workspace, steps: [{ id: 'only', agentless: true }] })`,
         'team/kdl/agent.kdl': 'version 2\nagent "team/kdl" {\n  restart "never"\n}\n',
         'team/notes.ts': 'export default 1',
       })
@@ -58,9 +58,9 @@ describe('loadSubjectTree', () => {
         _tag: 'Module',
         intent: { id: 'team/owner', workspace: '/srv/team', restart: 'always' },
       })
-      expect(subjects[2]?.declaration).toMatchObject({ intent: { goal: '/srv/team' } })
+      expect(subjects[2]?.declaration).toMatchObject({ intent: { goal: ['/srv/team'] } })
       expect(subjects[3]?.declaration).toMatchObject({
-        intent: { steps: [{ assignedTo: 'agent/team/owner' }, { assignedTo: 'agent/elsewhere' }] },
+        intent: { reportTo: { id: 'team/owner' }, steps: [{ assignedTo: { id: 'team/owner' } }, { assignedTo: { id: 'elsewhere' } }] },
         exports: { publish: false },
       })
     }),
@@ -69,8 +69,8 @@ describe('loadSubjectTree', () => {
   it.effect('lowers a typed mission reference to unpinned schedule work', () =>
     Effect.gen(function* () {
       const root = fixture({
-        'ops/cycle/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { state: 'ready', goal: 'Cycle.', steps: [{ id: 'run', agentless: true }] } })`,
-        'ops/weekly/schedule.ts': `${define}import cycle from '../cycle/mission.ts'\nexport default defineSchedule({ meta: import.meta, intent: { state: 'ready', goal: 'Weekly.', schedule: { id: 'tick', host: 'local', every: '7d', anchor: '2026-09-28T07:00:00Z', catchUp: 'latest', work: { mission: cycle, workspace: '/srv/runs' } }, steps: [{ id: 'retire', agentless: true }] } })`,
+        'ops/cycle/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'ops/owner' }, goal: 'Cycle.', steps: [{ id: 'run', agentless: true }] } })`,
+        'ops/weekly/schedule.ts': `${define}import cycle from '../cycle/mission.ts'\nexport default defineSchedule({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'ops/owner' }, goal: 'Weekly.', schedule: { id: 'tick', host: 'local', every: '7d', anchor: '2026-09-28T07:00:00Z', catchUp: 'latest', work: { mission: cycle, workspace: '/srv/runs' } }, steps: [{ id: 'retire', agentless: true }] } })`,
       })
       const subjects = yield* load(root)
       expect(subjects[1]).toMatchObject({
@@ -85,7 +85,7 @@ describe('loadSubjectTree', () => {
     Effect.gen(function* () {
       const root = fixture({
         'a/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: {} })`,
-        'm/mission.ts': `${define}import a from '../alias/agent.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', goal: 'g', steps: [{ id: 's', assignedTo: a }] } })`,
+        'm/mission.ts': `${define}import a from '../alias/agent.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: a, goal: 'g', steps: [{ id: 's', assignedTo: a }] } })`,
       })
       symlinkSync(join(root, 'a'), join(root, 'alias'))
       const subjects = yield* load(root)
@@ -94,7 +94,47 @@ describe('loadSubjectTree', () => {
         { id: 'm', path: 'm/mission.ts' },
       ])
       expect(subjects[1]?.declaration).toMatchObject({
-        intent: { steps: [{ assignedTo: 'agent/a' }] },
+        intent: { reportTo: { id: 'a' }, steps: [{ assignedTo: { id: 'a' } }] },
+      })
+    }),
+  )
+
+  it.effect('lowers typed supervisors, loop workers and final workers', () =>
+    Effect.gen(function* () {
+      const root = fixture({
+        'owner/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: {} })`,
+        'worker/agent.ts': `${define}import owner from '../owner/agent.ts'\nexport default defineAgent({ meta: import.meta, intent: { under: [{ target: owner, reason: 'Delegation.' }] } })`,
+        'work/mission.ts': `${define}import owner from '../owner/agent.ts'\nimport worker from '../worker/agent.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: owner, assignedTo: worker, goal: 'g', steps: [{ id: 'loop', maxRounds: 2, onExhausted: { outcome: 'fail' }, round: { steps: [{ id: 'run', assignedTo: worker }], completion: { when: 'all-steps-exhausted' } } }], finally: [{ id: 'finish', assignedTo: worker }] } })`,
+      })
+      const subjects = yield* load(root)
+      expect(subjects.find(({ id }) => id === 'worker')?.declaration).toMatchObject({
+        intent: { under: [{ target: { id: 'owner' }, reason: 'Delegation.' }] },
+      })
+      expect(subjects.find(({ id }) => id === 'work')?.declaration).toMatchObject({
+        intent: {
+          reportTo: { id: 'owner' },
+          assignedTo: { id: 'worker' },
+          steps: [{ round: { steps: [{ assignedTo: { id: 'worker' } }] } }],
+          finally: [{ assignedTo: { id: 'worker' } }],
+        },
+      })
+    }),
+  )
+
+  it.effect('materializes current authoring templates and scoped step handles', () =>
+    Effect.gen(function* () {
+      const authoring = new URL('./mod.ts', import.meta.url).href
+      const root = fixture({
+        'work/mission.ts': `${define}import { input, step, t } from '${authoring}'\nconst head = input.text('head')\nconst first = step({ id: 'first', agentless: true, goal: t\`Review \${head}.\` })\nconst second = step({ id: 'second', agentless: true, dependsOn: first })\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'owner' }, inputs: [head], goal: t\`Check \${head}.\`, steps: [first, second] } })`,
+      })
+      expect((yield* load(root))[0]?.declaration).toMatchObject({
+        intent: {
+          goal: ['Check ${input.head}.'],
+          steps: [
+            { id: 'first', goal: ['Review ${input.head}.'] },
+            { id: 'second', dependsOn: [{ step: 'first', state: 'completed' }] },
+          ],
+        },
       })
     }),
   )
@@ -124,8 +164,32 @@ describe('loadSubjectTree', () => {
     }),
   )
 
-  const mission = `{ state: 'ready', goal: 'g', steps: [{ id: 's', agentless: true }] }`
+  const mission = `{ state: 'ready', reportTo: { id: 'owner' }, goal: 'g', steps: [{ id: 's', agentless: true }] }`
   const rejections: ReadonlyArray<Case> = [
+    {
+      name: 'a mission without required reporting',
+      files: {
+        'a/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { state: 'ready', goal: 'g', steps: [{ id: 's', agentless: true }] } })`,
+      },
+      path: 'a/mission.ts',
+      message: 'Invalid mission declaration',
+    },
+    {
+      name: 'a legacy string assignee',
+      files: {
+        'a/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { ...${mission}, steps: [{ id: 's', assignedTo: 'agent/owner' }] } })`,
+      },
+      path: 'a/mission.ts',
+      message: 'Invalid mission declaration',
+    },
+    {
+      name: 'an excess mission property',
+      files: {
+        'a/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { ...${mission}, unexpected: true } })`,
+      },
+      path: 'a/mission.ts',
+      message: 'Invalid mission declaration',
+    },
     {
       name: 'agent.kdl and agent.ts in one directory',
       files: {
@@ -202,7 +266,7 @@ describe('loadSubjectTree', () => {
       name: 'a mission reference as a TS assignee',
       files: {
         'm/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: ${mission} })`,
-        'a/mission.ts': `${define}import m from '../m/mission.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', goal: 'g', steps: [{ id: 's', assignedTo: m as never }] } })`,
+        'a/mission.ts': `${define}import m from '../m/mission.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'owner' }, goal: 'g', steps: [{ id: 's', assignedTo: m as never }] } })`,
       },
       path: 'a/mission.ts',
       message: 'Reference must point at agent.ts, got mission.ts',
@@ -226,6 +290,7 @@ describe('loadSubjectTree', () => {
       meta: import.meta,
       intent: {
         state: 'ready',
+        reportTo: { id: 'owner' },
         goal: 'g',
         // @ts-expect-error a mission reference cannot be a step assignee
         steps: [{ id: 's', assignedTo: work }],

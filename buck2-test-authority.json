@@ -417,7 +417,8 @@
         "src/child-missions.unit.test.ts",
         "src/gate-constructors.unit.test.ts",
         "src/mod.unit.test.ts",
-        "src/run-values.unit.test.ts"
+        "src/run-values.unit.test.ts",
+        "src/tree.unit.test.ts"
       ],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/genie-smalltalk:test",
@@ -427,7 +428,8 @@
         "src/child-missions.unit.test.ts",
         "src/gate-constructors.unit.test.ts",
         "src/mod.unit.test.ts",
-        "src/run-values.unit.test.ts"
+        "src/run-values.unit.test.ts",
+        "src/tree.unit.test.ts"
       ],
       "unboundedAfter": [],
       "unboundedFiles": []

@@ -16,6 +16,15 @@ Authoritative grammar: `compoundingtech/smalltalk`, `crates/st3/src/graph.rs` an
 
 Schedule work accepts either a pinned `mission@revision` or an unpinned mission ID.
 
+## Subject trees (`@overeng/genie-smalltalk/tree`, Node only)
+
+`loadSubjectTree({ root, context })` discovers `agent.ts|kdl`, `mission.ts|kdl` and `schedule.ts|kdl` declarations recursively. IDs come from directories relative to the root. A seat and mission may share a directory; mission and schedule cannot. Symlink aliases load once under their canonical path, and declarations outside the tree are rejected.
+
+TS modules export an intent, a context factory, or `defineAgent|defineMission|defineSchedule({ meta: import.meta, intent })`. Typed agent refs are accepted for `under.target`, required mission `reportTo`, mission/step `assignedTo`, and loop/final workers; they lower to validated `{ id }` agent references, never legacy assignee strings. Typed mission refs lower to unpinned schedule work IDs. Plain imported declarations and attributed people retain the authoring schemas' contracts.
+
+Mission modules pass through `missionWire` before strict schema decoding, preserving scoped step handles, input/product identities and text templates until assembly. Reference lowering leaves unchanged authoring objects intact. Extra properties and invalid current declarations remain errors. Named module exports are retained beside the decoded intent. KDL declarations are checked for version, root kind and path-derived ID; native st remains their grammar authority.
+
+
 Native conformance is opt-in: `ST_BIN` selects the production binary for the agent-attributed round-trip; `ST_FIXTURE_BIN` selects upstream's separately compiled, pinned `st3-fixture` test-support binary for synthetic-person gate semantics. Both use isolated private runtime directories. The fixture mode does not prove production person authentication; see [the acceptance boundary](./HUMAN_GATE_ACCEPTANCE.md).
 The unified conformance target is native `d5e2302`. Assertions derive run subjects from the native start response, including mission-scoped run IDs; they do not assume the legacy `mission-run/ID` shape.
 
