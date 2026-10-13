@@ -881,6 +881,13 @@ const extraJobs: Record<string, any> = {
         run: runDevenvTasksBefore('nix:flake:eval'),
       },
       {
+        name: 'Check shared megarepo task flags against the published CLI',
+        env: githubTokenEnv(),
+        run: withCiSourceRoot(
+          '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/devenv-modules/tasks/shared/tests/megarepo-product-flags.test.sh "$PWD"',
+        ),
+      },
+      {
         name: 'Run focused normalized, projection, and runner tests',
         env: githubTokenEnv(),
         run: withCiSourceRoot(
