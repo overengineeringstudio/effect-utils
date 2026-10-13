@@ -216,7 +216,11 @@ const lowerReferences: (args: {
   readonly root: string
   readonly path: string
   readonly intent: unknown
-}) => Effect.Effect<unknown, SubjectTreeError> = Effect.fnUntraced(function* ({ root, path, intent }) {
+}) => Effect.Effect<unknown, SubjectTreeError> = Effect.fnUntraced(function* ({
+  root,
+  path,
+  intent,
+}) {
   if (typeof intent !== 'object' || intent === null) return intent
   const fields = intent as ReferenceFields
   let lowered: Record<PropertyKey, unknown> | undefined
@@ -432,18 +436,16 @@ export const loadSubjectTree = Effect.fn('genie-smalltalk.loadSubjectTree')(func
     const kind = match[1] as SubjectKind
     const discovered = entry.split(sep).join('/')
     // Directory symlinks are followed while listing; IDs and refs both use the canonical file.
-    const file = yield* fs
-      .realPath(join(tree.real, entry))
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new SubjectTreeError({
-              path: discovered,
-              message: 'Cannot resolve declaration',
-              cause,
-            }),
-        ),
-      )
+    const file = yield* fs.realPath(join(tree.real, entry)).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SubjectTreeError({
+            path: discovered,
+            message: 'Cannot resolve declaration',
+            cause,
+          }),
+      ),
+    )
     if (loaded.has(file) === true) continue
     loaded.add(file)
     const id = yield* subjectId({ root: tree.real, file, path: discovered })

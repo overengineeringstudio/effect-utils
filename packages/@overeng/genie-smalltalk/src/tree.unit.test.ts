@@ -66,7 +66,10 @@ describe('loadSubjectTree', () => {
       })
       expect(subjects[2]?.declaration).toMatchObject({ intent: { goal: ['/srv/team'] } })
       expect(subjects[3]?.declaration).toMatchObject({
-        intent: { reportTo: { id: 'team/owner' }, steps: [{ assignedTo: { id: 'team/owner' } }, { assignedTo: { id: 'elsewhere' } }] },
+        intent: {
+          reportTo: { id: 'team/owner' },
+          steps: [{ assignedTo: { id: 'team/owner' } }, { assignedTo: { id: 'elsewhere' } }],
+        },
         exports: { publish: false },
       })
     }),
@@ -307,7 +310,9 @@ describe('loadSubjectTree', () => {
       catchUp: 'latest'
       work: { mission: MissionRef; workspace: string }
     }
-    expectTypeOf<Common & { every: string; anchor: string }>().toExtend<ScheduleIntent['schedule']>()
+    expectTypeOf<Common & { every: string; anchor: string }>().toExtend<
+      ScheduleIntent['schedule']
+    >()
     expectTypeOf<Common & { _tag: 'calendar'; at: string; timezone: string }>().toExtend<
       ScheduleIntent['schedule']
     >()
