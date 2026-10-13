@@ -3,6 +3,9 @@
 //! call runs in-process with user interaction disabled, so a would-be prompt fails instead of
 //! showing UI; the password arrives only on a descriptor and never reaches argv or a child.
 use super::*;
+#[cfg(feature = "test-signing-cert")]
+#[path = "test_certificate.rs"]
+mod test_certificate;
 
 type Ref = *const c_void;
 const UTF8: u32 = 0x0800_0100;
@@ -40,11 +43,9 @@ unsafe extern "C" {
     fn CFArrayGetTypeID() -> usize;
     fn CFDictionaryGetTypeID() -> usize;
     fn CFStringGetTypeID() -> usize;
-    fn CFBooleanGetTypeID() -> usize;
     fn CFArrayGetCount(array: Ref) -> isize;
     fn CFArrayGetValueAtIndex(array: Ref, index: isize) -> Ref;
     fn CFDictionaryGetValue(dictionary: Ref, key: Ref) -> Ref;
-    fn CFBooleanGetValue(boolean: Ref) -> u8;
     fn CFStringGetLength(string: Ref) -> isize;
     fn CFStringGetMaximumSizeForEncoding(length: isize, encoding: u32) -> isize;
     fn CFStringGetCString(string: Ref, buffer: *mut c_char, size: isize, encoding: u32) -> u8;
@@ -72,8 +73,6 @@ unsafe extern "C" {
     static kSecAttrLabel: Ref;
     static kSecUseKeychain: Ref;
     static kSecAttrAccess: Ref;
-    static kSecPrivateKeyAttrs: Ref;
-    static kSecPublicKeyAttrs: Ref;
     static kSecMatchSearchList: Ref;
     static kSecMatchLimit: Ref;
     static kSecMatchLimitAll: Ref;
@@ -97,7 +96,7 @@ unsafe extern "C" {
     fn SecKeyCopyPublicKey(key: Ref) -> Ref;
     fn SecKeyCopyExternalRepresentation(key: Ref, error: *mut Ref) -> Ref;
     fn SecKeyCreateSignature(key: Ref, algorithm: Ref, data: Ref, error: *mut Ref) -> Ref;
-    fn SecKeyCopyAttributes(key: Ref) -> Ref;
+    fn SecKeyGetCSSMKey(key: Ref, cssm_key: *mut *const CssmKeyHeaderPrefix) -> i32;
     fn SecItemCopyMatching(query: Ref, result: *mut Ref) -> i32;
     fn SecItemAdd(attributes: Ref, result: *mut Ref) -> i32;
     fn SecItemExport(item: Ref, format: u32, flags: u32, parameters: *const ExportParameters, data: *mut Ref) -> i32;
@@ -113,6 +112,17 @@ unsafe extern "C" {
     fn SecAccessCopyMatchingACLList(access: Ref, tag: Ref) -> Ref;
     fn SecACLCopyContents(acl: Ref, applications: *mut Ref, description: *mut Ref, prompt: *mut u16) -> i32;
     fn SecACLSetContents(acl: Ref, applications: Ref, description: Ref, prompt: u16) -> i32;
+    static kSecPolicyAppleCodeSigning: Ref;
+    fn SecPolicyCreateWithProperties(identifier: Ref, properties: Ref) -> Ref;
+    fn SecTrustCreateWithCertificates(certificates: Ref, policies: Ref, trust: *mut Ref) -> i32;
+    fn SecTrustSetNetworkFetchAllowed(trust: Ref, allowed: u8) -> i32;
+    fn SecTrustEvaluateWithError(trust: Ref, error: *mut Ref) -> bool;
+    #[cfg(feature = "test-signing-cert")]
+    fn SecCertificateCopyNormalizedIssuerSequence(certificate: Ref) -> Ref;
+    #[cfg(feature = "test-signing-cert")]
+    fn SecCertificateCopyNormalizedSubjectSequence(certificate: Ref) -> Ref;
+    #[cfg(feature = "test-signing-cert")]
+    fn SecTrustSetAnchorCertificates(trust: Ref, certificates: Ref) -> i32;
 }
 unsafe extern "C" {
     fn CC_SHA1(data: *const c_void, length: u32, digest: *mut u8) -> *mut u8;
@@ -122,6 +132,13 @@ unsafe extern "C" {
 struct Settings { version: u32, lock_on_sleep: u8, use_lock_interval: u8, lock_interval: u32 }
 #[repr(C)]
 struct ExportParameters { version: u32, flags: u32, passphrase: Ref, alert_title: Ref, alert_prompt: Ref, access: Ref, key_usage: Ref, key_attributes: Ref }
+/// Prefix of CSSM_KEYHEADER through KeyAttr, from cssmtype.h. SecKeyGetCSSMKey returns a
+/// borrowed CSSM_KEY whose first member is this header; no key material is read.
+#[repr(C)]
+struct CssmKeyHeaderPrefix {
+    version: u32, csp_id: [u8; 16], blob_type: u32, format: u32, algorithm: u32,
+    key_class: u32, logical_bits: u32, attributes: u32,
+}
 
 /// An owned Core Foundation reference, released exactly once.
 struct Cf(Ref);
@@ -183,10 +200,6 @@ fn string(value: Ref) -> Option<String> {
         let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
         String::from_utf8(buffer[..end].to_vec()).ok()
     }
-}
-fn boolean(value: Ref) -> Option<bool> {
-    // SAFETY: type-checked CFBoolean.
-    unsafe { (!value.is_null() && CFGetTypeID(value) == CFBooleanGetTypeID()).then(|| CFBooleanGetValue(value) != 0) }
 }
 /// Borrowed elements of a CFArray (owned by the array).
 fn elements(array: Ref) -> Vec<Ref> {
@@ -344,11 +357,15 @@ fn create_key(keychain: &Keychain, label: &str) -> Result<Cf> {
     let label = cf_string(label)?;
     let access = initial_access(&label)?;
     let bits = cf_i32(2048)?;
+    // The CDSA/file-keychain branch of SecKeyCreateRandomKey passes only the top-level
+    // dictionary to GetKeyParameters; nested private/public attributes are ignored there.
+    // Public keys are always extractable; false here applies only to the private key.
     // SAFETY: every value is a live CF reference or immutable framework constant.
     let parameters = unsafe {
-        let private = cf_dictionary(&[(kSecAttrIsPermanent, kCFBooleanTrue), (kSecAttrIsExtractable, kCFBooleanFalse), (kSecAttrLabel, label.0)])?;
-        let public = cf_dictionary(&[(kSecAttrIsPermanent, kCFBooleanTrue), (kSecAttrLabel, label.0)])?;
-        cf_dictionary(&[(kSecAttrKeyType, kSecAttrKeyTypeRSA), (kSecAttrKeySizeInBits, bits.0), (kSecUseKeychain, keychain_ref(keychain)), (kSecAttrAccess, access.0), (kSecPrivateKeyAttrs, private.0), (kSecPublicKeyAttrs, public.0)])?
+        cf_dictionary(&[(kSecAttrKeyType, kSecAttrKeyTypeRSA), (kSecAttrKeySizeInBits, bits.0),
+            (kSecUseKeychain, keychain_ref(keychain)), (kSecAttrAccess, access.0),
+            (kSecAttrIsPermanent, kCFBooleanTrue), (kSecAttrIsExtractable, kCFBooleanFalse),
+            (kSecAttrLabel, label.0)])?
     };
     let mut error = std::ptr::null();
     // SAFETY: parameters is a live dictionary; the key follows the create rule.
@@ -368,6 +385,9 @@ fn keychain_settings(keychain: &Keychain) -> Result<Settings> {
     let mut settings = Settings { version: 1, lock_on_sleep: 0, use_lock_interval: 0, lock_interval: 0 };
     // SAFETY: settings is a valid SecKeychainSettings (version 1) for the call.
     checked_status(unsafe { SecKeychainCopySettings(keychain_ref(keychain), &mut settings) }, "SecKeychainCopySettings")?;
+    // SecKeychainCopySettings writes lockOnSleep and lockInterval only; useLockInterval is
+    // ignored by both SetSettings and CopySettings. Derive it from the actual interval.
+    settings.use_lock_interval = u8::from(settings.lock_interval != i32::MAX as u32);
     Ok(settings)
 }
 
@@ -402,10 +422,19 @@ pub(super) fn provision(ctl: &Ctl) -> Result<Value> {
         return Err(fail(64, "invalid-input", format!("The keychain already holds {} private key(s) {retained:?}; pass --replace to add a new key (existing keys are never deleted)", retained.len())));
     }
     let key = create_key(&keychain, common_name)?;
+    let actual = keychain_settings(&keychain)?;
+    let extractable = key_extractable(key.0)?;
+    if extractable != Some(false) || actual.lock_on_sleep == 0 || actual.lock_interval != LOCK_INTERVAL {
+        return Err(fail(22, "verification-failed", format!("Provisioning readback refused: keyExtractable {extractable:?}, lockOnSleep {}, lockIntervalSeconds {}", actual.lock_on_sleep != 0, actual.lock_interval)));
+    }
     let spki = subject_public_key_info(&public_key_pkcs1(key.0)?);
     let info = request_info(common_name, &spki);
     let signature = sign_request(key.0, &info)?;
     let (ctl_path, ctl_cdhash) = record_ctl(&path, key.0)?;
+    #[cfg(feature = "test-signing-cert")]
+    if let Some(out) = ctl.args.get("test-self-signed-cert-out") {
+        test_certificate::issue(key.0, common_name, &spki, Path::new(out))?;
+    }
     window.close()?;
     if let Some(parent) = csr_out.parent() { fs::create_dir_all(parent)?; }
     atomic_write(&csr_out, pem("CERTIFICATE REQUEST", &certification_request(&info, &signature)).as_bytes())?;
@@ -481,19 +510,19 @@ fn sole_identity(keychain: &Keychain) -> Result<(Cf, Cf, Cf)> {
     let identity = Cf(unsafe { CFRetain(*identity) });
     Ok((identity, key, certificate))
 }
-/// The private key of the identity named by certificate SHA-1 or subject (as codesign resolves it).
-fn identity_key(keychain: &Keychain, name: &str) -> Result<Cf> {
+/// Private key and certificate of the named identity (SHA-1 or subject, as codesign resolves it).
+fn named_identity(keychain: &Keychain, name: &str) -> Result<(Cf, Cf)> {
     let found = keychain_identities(keychain)?;
     let mut keys = Vec::new();
     for identity in found.as_ref().map(|f| elements(f.0)).unwrap_or_default() {
         let (key, certificate) = identity_parts(identity)?;
         // SAFETY: certificate is live; the summary follows the copy rule.
         let subject = owned(unsafe { SecCertificateCopySubjectSummary(certificate.0) }, "SecCertificateCopySubjectSummary").ok().and_then(|s| string(s.0));
-        if certificate_sha1(certificate.0)?.eq_ignore_ascii_case(name) || subject.as_deref() == Some(name) { keys.push(key); }
+        if certificate_sha1(certificate.0)?.eq_ignore_ascii_case(name) || subject.as_deref() == Some(name) { keys.push((key, certificate)); }
     }
     let count = keys.len();
-    match <[Cf; 1]>::try_from(keys) {
-        Ok([key]) => Ok(key),
+    match <[(Cf, Cf); 1]>::try_from(keys) {
+        Ok([parts]) => Ok(parts),
         Err(_) => Err(fail(22, "verification-failed", format!("Codesign guard: {count} identities match {name:?}; exactly one is required"))),
     }
 }
@@ -515,9 +544,9 @@ fn codesign_guard(keychain_path: &Path, key: Ref) -> Result<Guard> {
 /// `install-host`'s pre-codesign check, run inside the unlock window (key ACLs are only readable
 /// while unlocked). Fails (22, or 64 for the ACL record) without invoking codesign unless ready.
 pub(super) fn require_codesign_ready(keychain_path: &Path, keychain: &Keychain, identity: &str) -> Result<()> {
-    let key = identity_key(keychain, identity)?;
+    let (key, certificate) = named_identity(keychain, identity)?;
     let guard = codesign_guard(keychain_path, key.0)?;
-    if guard.ready { return Ok(()); }
+    if guard.ready { require_chain(certificate.0)?; return Ok(()); }
     Err(fail(22, "verification-failed", format!("Codesign guard refused (partitionCapable {}, partitionList {:?}, signAclExact {} for ctl {}); run prove-signing-key", guard.capable, guard.partitions, guard.sign_acl_exact, guard.ctl)))
 }
 fn item_access(item: Ref) -> Result<Cf> {
@@ -592,11 +621,7 @@ fn application_path(application: Ref) -> Option<String> {
 /// securityd refuses (errSecAuthFailed) a password-authorized edit that removes it; it cannot use
 /// the key anyway, since its partition (`cdhash:…`) is outside `[apple:]`.
 fn exact_sign_applications(paths: &[String], ctl: &str) -> bool {
-    let mut seen: Vec<&str> = paths.iter().map(String::as_str).collect();
-    seen.sort_unstable();
-    let mut wanted = [CODESIGN, ctl];
-    wanted.sort_unstable();
-    ctl != CODESIGN && seen == wanted
+    ctl != CODESIGN && matches!(paths, [a, b] if (a == CODESIGN && b == ctl) || (b == CODESIGN && a == ctl))
 }
 /// `<keychain>.acl.json`: per key (public-key SHA-256), the exact ctl path provisioning wrote
 /// into the signing ACL and its cdhash. The guard trusts only this record, never a name match.
@@ -687,10 +712,39 @@ fn sign_applications(key: Ref) -> Result<Vec<Option<Vec<String>>>> {
     })).collect())
 }
 fn key_extractable(key: Ref) -> Result<Option<bool>> {
-    // SAFETY: key is live; the attributes follow the copy rule.
-    let attributes = owned(unsafe { SecKeyCopyAttributes(key) }, "SecKeyCopyAttributes")?;
-    // SAFETY: lookup in a live dictionary with an immutable framework constant.
-    Ok(boolean(unsafe { CFDictionaryGetValue(attributes.0, kSecAttrIsExtractable) }))
+    let mut header = std::ptr::null();
+    // SAFETY: key is a live legacy SecKey; the pointer is borrowed until key is released.
+    checked_status(unsafe { SecKeyGetCSSMKey(key, &mut header) }, "SecKeyGetCSSMKey")?;
+    if header.is_null() { return Err(fail(22, "verification-failed", "The key has no CSSM key header")); }
+    // SAFETY: CSSM_KEY starts with CSSM_KEYHEADER; this is its prefix through KeyAttr.
+    Ok(Some(unsafe { (*header).attributes & 0x20 != 0 })) // CSSM_KEYATTR_EXTRACTABLE
+}
+/// Code-signing trust evaluation before codesign. No network fetch or trust-store mutation:
+/// intermediates/anchors must already be available through the normal system search list.
+fn require_chain(certificate: Ref) -> Result<()> {
+    // SAFETY: immutable policy identifier; the policy follows the create rule.
+    let policy = owned(unsafe { SecPolicyCreateWithProperties(kSecPolicyAppleCodeSigning, std::ptr::null()) }, "SecPolicyCreateWithProperties")?;
+    let mut trust = std::ptr::null();
+    // SAFETY: certificate and policy are live; trust follows the create rule.
+    checked_status(unsafe { SecTrustCreateWithCertificates(certificate, policy.0, &mut trust) }, "SecTrustCreateWithCertificates")?;
+    let trust = owned(trust, "SecTrustCreateWithCertificates")?;
+    checked_status(unsafe { SecTrustSetNetworkFetchAllowed(trust.0, 0) }, "SecTrustSetNetworkFetchAllowed")?;
+    #[cfg(feature = "test-signing-cert")]
+    {
+        // A self-issued test leaf is an anchor only for this ephemeral trust evaluation.
+        // No system or keychain trust is changed.
+        let issuer = owned(unsafe { SecCertificateCopyNormalizedIssuerSequence(certificate) }, "issuer")?;
+        let subject = owned(unsafe { SecCertificateCopyNormalizedSubjectSequence(certificate) }, "subject")?;
+        if bytes(issuer.0) == bytes(subject.0) {
+            let anchors = cf_array(&[certificate])?;
+            checked_status(unsafe { SecTrustSetAnchorCertificates(trust.0, anchors.0) }, "SecTrustSetAnchorCertificates(test only)")?;
+        }
+    }
+    let mut error = std::ptr::null();
+    // SAFETY: trust is live; error follows the create rule.
+    if unsafe { SecTrustEvaluateWithError(trust.0, &mut error) } { return Ok(()); }
+    let reason = cf_failure(error, "Code-signing chain is incomplete or untrusted").reason;
+    Err(signing("chain-incomplete", reason))
 }
 /// Attempts a PKCS#12 export of the identity; the status is the proof.
 fn export_status(identity: Ref) -> Result<i32> {
@@ -730,7 +784,10 @@ fn codesign_probe(keychain: &Path, identity_sha1: &str) -> Result<bool> {
     let result = (|| {
         fs::write(&file, b"macos-app-ctl signing-key proof\n")?;
         let signed = bounded_codesign(&["--force", "--keychain", text(keychain)?, "--sign", identity_sha1, text(&file)?])?;
-        Ok(signed.status.success() && command("codesign", &["--verify", text(&file)?])?.status.success())
+        if !signed.status.success() { return Err(fail(22, "verification-failed", format!("Signing-key codesign probe: {}", String::from_utf8_lossy(&signed.stderr)))); }
+        let verified = command("codesign", &["--verify", text(&file)?])?;
+        if !verified.status.success() { return Err(fail(22, "verification-failed", format!("Signing-key codesign probe verification: {}", String::from_utf8_lossy(&verified.stderr)))); }
+        Ok(true)
     })();
     fs::remove_dir_all(&dir)?;
     result
@@ -766,6 +823,7 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
     if !pinned_before { pin_partition(key.0, &password)?; }
     drop(password);
     let guard = codesign_guard(&path, key.0)?;
+    if guard.ready && !no_sign { require_chain(certificate.0)?; }
     let sign_ok = match (guard.ready, no_sign) { (true, false) => Some(codesign_probe(&path, &identity_sha1)?), _ => None };
     let settings = keychain_settings(&keychain)?;
     window.close()?;
@@ -781,12 +839,21 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
         "securityToolExcluded": security_excluded, "keyExtractable": extractable, "lockedAfterWindow": locked_after,
         "lockOnSleep": settings.lock_on_sleep != 0, "lockIntervalSeconds": (settings.use_lock_interval != 0).then_some(settings.lock_interval),
     });
-    let ok = partition_capable && guard.ready && export_refused && extractable == Some(false) && locked_after && (no_sign || sign_ok == Some(true));
+    let ok = partition_capable && guard.ready && export_refused && extractable == Some(false) && locked_after
+        && settings.lock_on_sleep != 0 && settings.lock_interval == LOCK_INTERVAL && (no_sign || sign_ok == Some(true));
     if ok { Ok(proof) } else { Err(fail(22, "verification-failed", format!("Signing-key proof failed: {proof}"))) }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn security_structs_match_the_sdk_abi() {
+        assert_eq!(std::mem::size_of::<Settings>(), 12);
+        assert_eq!(std::mem::offset_of!(Settings, lock_on_sleep), 4);
+        assert_eq!(std::mem::offset_of!(Settings, use_lock_interval), 5);
+        assert_eq!(std::mem::offset_of!(Settings, lock_interval), 8);
+        assert_eq!(std::mem::offset_of!(CssmKeyHeaderPrefix, attributes), 40);
+    }
     use super::*;
     #[test]
     fn base64_round_trips_and_matches_known_vectors() {

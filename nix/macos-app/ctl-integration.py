@@ -36,7 +36,7 @@ work = Path(tempfile.mkdtemp(prefix='macos-app-ctl-', dir=scratch))
 with (scratch / 'TEMPORARY_FILES.md').open('a') as log:
     log.write(f'\n- `{work.relative_to(root)}`: primitive integration apps, fake launchctl state, '
               'signing logs; its throwaway keychain file is removed by the runner.\n')
-ctl = example / 'primitives/bin/macos-app-ctl'
+ctl = example / 'testPrimitives/bin/macos-app-ctl'
 base_config = json.loads((example / 'ctl-config.json').read_text())
 bin_dir = work / 'bin'
 bin_dir.mkdir()
@@ -91,8 +91,12 @@ def security_agent_windows():
     finally:
         core_foundation.CFRelease(windows)
 agent_baseline = security_agent_windows()
+if agent_baseline != 0:
+    sys.exit('ABORT before keychain tests: SecurityAgent window baseline must be zero')
 def watched(argv, **kwargs):
     """Runs argv, killing its process group and aborting if a SecurityAgent window appears."""
+    if security_agent_windows() != 0:
+        sys.exit(f'ABORT before {argv[1]}: SecurityAgent window present')
     process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                start_new_session=True, **kwargs)
     deadline = time.monotonic() + 60
@@ -112,6 +116,7 @@ keychains = work / 'Library/Keychains'
 keychains.mkdir(parents=True)
 keychain = keychains / 'signing.keychain-db'
 unpinned = keychains / 'unpinned.keychain-db'
+chain_missing = keychains / 'chain-missing.keychain-db'
 password = 'macos-app-ctl-test-' + os.urandom(8).hex()
 identity = 'macos-app-ctl test signer'
 # A test CA issues the code-signing certificates from the CSRs the ctl primitives write.
@@ -130,9 +135,8 @@ def cleanup():
             try: os.kill(job['pid'], signal.SIGTERM)
             except ProcessLookupError: pass
     # File removal only: the keychains were never on the search list.
-    keychain.unlink(missing_ok=True)
-    unpinned.unlink(missing_ok=True)
-    for path in (keychain, unpinned):
+    for path in (keychain, unpinned, chain_missing):
+        path.unlink(missing_ok=True)
         Path(f'{path}.acl.json').unlink(missing_ok=True)
     (work / 'ca.key').unlink(missing_ok=True)
     assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
@@ -261,7 +265,8 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     # Provisioning: key and CSR by ctl, certificate by the test CA, then the codesign pin.
     def key_call(action, path, *args, code=0, secret=password):
         return call(action, '--keychain', path, *args, code=code, secret=secret)
-    provisioned = key_call('provision-signing-key', keychain, '--common-name-hint', identity, '--csr-out', work / 'signing.csr')['result']
+    provisioned = key_call('provision-signing-key', keychain, '--common-name-hint', identity, '--csr-out', work / 'signing.csr',
+                           '--test-self-signed-cert-out', work / 'signing.pem')['result']
     assert provisioned['createdKeychain'] and provisioned['mode'] == '0600' and provisioned['retainedPrivateKeys'] == []
     assert provisioned['lockOnSleep'] and provisioned['lockIntervalSeconds'] == 300
     assert oct(keychain.stat().st_mode & 0o777) == '0o600' and not unlocked()
@@ -273,7 +278,6 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert Path(ctl_path).name == 'macos-app-ctl' and len(provisioned['ctlCdhash']) == 40, provisioned
     assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
     assert tool('/usr/bin/openssl', 'req', '-in', str(work / 'signing.csr'), '-noout', '-verify').returncode == 0
-    issue(work / 'signing.csr', work / 'signing.pem')
     refused = key_call('provision-signing-key', keychain, '--common-name-hint', identity, '--csr-out', work / 'again.csr', code=64)
     assert 'already holds 1 private key' in refused['error']['reason'] and not (work / 'again.csr').exists()
     assert key_call('import-signing-cert', keychain, '--cert', work / 'ca.pem', code=22)['error']['kind'] == 'verification-failed'
@@ -281,35 +285,22 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert imported['imported'] and imported['identity'] and imported['subject'] == identity
     assert not key_call('import-signing-cert', keychain, '--cert', work / 'signing.pem')['result']['imported']
     leaf = imported['certificateSha1']
-    # codesign embeds the chain up to a self-signed root; the test CA stands in for Apple's roots.
-    # A certificate add uses no key, so no key ACL is consulted; interaction stays disabled.
-    def add_ca(path):
-        tool('/usr/bin/openssl', 'x509', '-in', str(work / 'ca.pem'), '-outform', 'DER', '-out', str(work / 'ca.der'))
-        blob = (work / 'ca.der').read_bytes()
-        void = ctypes.c_void_p
-        core_foundation.CFDataCreate.restype = void
-        core_foundation.CFDataCreate.argtypes = [void, ctypes.c_char_p, ctypes.c_long]
-        core_foundation.CFDictionaryCreate.restype = void
-        core_foundation.CFDictionaryCreate.argtypes = [void, void, void, ctypes.c_long, void, void]
-        security.SecCertificateCreateWithData.restype = void
-        security.SecCertificateCreateWithData.argtypes = [void, void]
-        security.SecItemAdd.argtypes = [void, void]
-        security.SecKeychainUnlock.argtypes = [void, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_bool]
-        security.SecKeychainSetUserInteractionAllowed(False)
-        reference = void()
-        assert security.SecKeychainOpen(str(path).encode(), ctypes.byref(reference)) == 0
-        assert security.SecKeychainUnlock(reference, len(password), password.encode(), True) == 0
-        certificate = security.SecCertificateCreateWithData(None, core_foundation.CFDataCreate(None, blob, len(blob)))
-        symbol = lambda name: void.in_dll(security, name).value
-        keys = (void * 3)(symbol('kSecClass'), symbol('kSecValueRef'), symbol('kSecUseKeychain'))
-        values = (void * 3)(symbol('kSecClassCertificate'), certificate, reference.value)
-        callbacks = lambda name: ctypes.addressof(void.in_dll(core_foundation, name))
-        query = core_foundation.CFDictionaryCreate(None, keys, values, 3, callbacks('kCFTypeDictionaryKeyCallBacks'),
-                                                   callbacks('kCFTypeDictionaryValueCallBacks'))
-        assert security.SecItemAdd(query, None) in (0, -25299)  # added or already present
-        security.SecKeychainLock(reference)
-        assert not unlocked(path)
-    add_ca(keychain)
+    # A CA-issued test leaf with no system anchor must fail before codesign; no K search-list
+    # membership or system trust change is permitted. Self-signed test leaves use a per-evaluation
+    # anchor in the feature build only.
+    key_call('provision-signing-key', chain_missing, '--common-name-hint', 'chain missing', '--csr-out', work / 'chain.csr')
+    issue(work / 'chain.csr', work / 'chain.pem')
+    key_call('import-signing-cert', chain_missing, '--cert', work / 'chain.pem')
+    key_call('prove-signing-key', chain_missing, '--no-sign')
+    signing_before = (work / 'sign.log').read_text() if (work / 'sign.log').exists() else ''
+    incomplete = key_call('prove-signing-key', chain_missing, code=20)
+    assert incomplete['error']['category'] == 'chain-incomplete', incomplete
+    assert ((work / 'sign.log').read_text() if (work / 'sign.log').exists() else '') == signing_before
+    assert not unlocked(chain_missing)
+    production = tool(str(example / 'primitives/bin/macos-app-ctl'), 'provision-signing-key',
+                      '--test-self-signed-cert-out', 'unused', check=False)
+    assert production.returncode == 64 and 'Unknown option' in production.stdout
+    print('PASS unanchored CA-issued leaf refused as chain-incomplete before codesign; production has no test issuance option', flush=True)
     login = Path.home() / 'Library/Keychains/login.keychain-db'
     assert 'login keychain' in key_call('provision-signing-key', login, '--common-name-hint', 'x', '--csr-out', work / 'x.csr', code=64, secret='unused')['error']['reason']
     assert 'Library/Keychains' in key_call('provision-signing-key', work / 'elsewhere.keychain-db', '--common-name-hint', 'x', '--csr-out', work / 'x.csr', code=64)['error']['reason']

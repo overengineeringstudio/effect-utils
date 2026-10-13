@@ -517,11 +517,19 @@ impl Ctl {
         Ok(json!({"hostSourceHash": hash(&app), "bundleMetadataDigest": metadata_digest(&app), "drValid": dr.is_ok(), "requirement": dr.ok(), "activeGeneration": pointer(&state.join("current")), "previousGeneration": pointer(&state.join("previous")), "hostArchive": pointer(&archive_pointer(&app)), "hostArchiveGeneration": pointer(&state.join("host-previous-generation")), "interruptedTransaction": transaction_record(&app).exists(), "interruptedRollback": rollback_record(&app).exists(), "socketMode": socket_mode(self.arg("socket")?), "launchd": {"domain": domain.ok(), "loaded": job.map(|j| j.0).unwrap_or(false), "pid": job.and_then(|j| j.1)}, "session": session, "signingFailure": signing_failure, "running": ipc}))
     }
 }
+fn known_option(key: &str) -> bool {
+    #[cfg(feature = "test-signing-cert")]
+    if key == "test-self-signed-cert-out" { return true; }
+    matches!(key, "config" | "app-dir" | "state" | "socket" | "plist-dir" | "domain" |
+        "desired" | "generation" | "keychain" | "keychain-password-fd" | "common-name-hint" |
+        "csr-out" | "cert" | "restore-host" | "signing-auth-pending" | "replace" | "no-sign")
+}
 fn run() -> Result<Value> {
     let mut argv = std::env::args().skip(1); let action = argv.next().ok_or_else(|| fail(64, "invalid-input", "Missing primitive"))?;
     let mut args = BTreeMap::new();
     while let Some(flag) = argv.next() {
         let key = flag.strip_prefix("--").ok_or_else(|| fail(64, "invalid-input", "Expected --option"))?;
+        if !known_option(key) { return Err(fail(64, "invalid-input", format!("Unknown option --{key}"))); }
         if matches!(key, "restore-host" | "signing-auth-pending" | "replace" | "no-sign") { args.insert(key.to_owned(), String::new()); continue; }
         let value = argv.next().ok_or_else(|| fail(64, "invalid-input", "Missing option value"))?;
         if args.insert(key.to_owned(), value).is_some() { return Err(fail(64, "invalid-input", "Duplicate option")); }

@@ -6,6 +6,9 @@ publish = false
 
 [workspace]
 
+[features]
+test-signing-cert = []
+
 [dependencies]
 libc = "0.2.177"
 regex = "1.11.3"

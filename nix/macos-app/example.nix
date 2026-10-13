@@ -78,6 +78,12 @@ let
     chmod u+w "$out/payload"
     printf '# tampered bytes\n' >> "$out/payload"
   '';
+  # Test-only issuance stays outside the shipped primitives and host app.
+  testPrimitives = first.primitives.overrideAttrs {
+    pname = "macos-app-test-primitives";
+    cargoBuildFlags = [ "--features=test-signing-cert" ];
+    cargoTestFlags = [ "--features=test-signing-cert" ];
+  };
   example = pkgs.linkFarm "macos-app-example" [
     {
       name = "ctl";
@@ -86,6 +92,10 @@ let
     {
       name = "primitives";
       path = first.primitives;
+    }
+    {
+      name = "testPrimitives";
+      path = testPrimitives;
     }
     {
       name = "ctl-config.json";

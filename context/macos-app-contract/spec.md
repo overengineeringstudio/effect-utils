@@ -236,8 +236,10 @@ Signing failure categories: `signing-auth-pending` (consumer could not obtain
 the password; the keychain is not touched), `password-invalid` (descriptor
 content rejected before unlock), `keychain-missing`, `unlock-failed`,
 `identity-missing` (identity absent from the dedicated keychain; the default
-search list is never consulted), `sign-failed`, `sign-timeout` (a signing
-`codesign` did not finish within 30 seconds and was killed), `dr-mismatch`,
+search list is never consulted for identity lookup), `chain-incomplete` (the
+code-signing chain does not reach a trusted anchor; no codesign runs),
+`sign-failed`, `sign-timeout` (a signing `codesign` did not finish within
+30 seconds and was killed), `dr-mismatch`,
 `relock-failed` (the keychain could not be locked again; the signed stage is
 discarded). A codesign-guard refusal (below) is `verification-failed` and
 runs no `codesign`.
@@ -287,6 +289,15 @@ can only force a failure or a crash, never make a check pass.
   different fails with `verification-failed` and runs no `codesign`. Each
   signing `codesign` also has a 30-second deadline, after which it is killed
   (`sign-timeout`).
+- **Certificate chain preflight.** Before codesign, `ctl` evaluates the
+  identity's certificate with `SecTrust` and the code-signing policy.
+  Network fetching is disabled; intermediates and trusted anchors must
+  already be available through the normal system search list. A failed
+  evaluation is `chain-incomplete`, before codesign can return an opaque
+  `errSecInternalComponent`. Neither `K`'s search-list membership nor
+  system trust is changed. For an Apple-issued signing certificate, the
+  consumer makes the WWDR intermediate available in the system keychain;
+  Apple's root is a system anchor.
 - **Password by descriptor.** The consumer owns password retrieval (for
   example an op-proxy grant) and passes it on an inherited descriptor
   (`--keychain-password-fd N`). The password is the descriptor's bytes up to
@@ -322,6 +333,17 @@ process-wide (`SecKeychainSetUserInteractionAllowed(false)`), so any call of
 its own that would need UI fails with `errSecInteractionNotAllowed` instead of
 prompting.
 
+For file-based keychains, `SecKeyCreateRandomKey`'s CDSA branch reads the
+top-level generation attributes; nested private/public attribute dictionaries
+are not used there. Provision therefore sets `kSecAttrIsExtractable=false`
+at the top level (public keys remain extractable). Provision and prove read
+the actual `CSSM_KEYATTR_EXTRACTABLE` bit via `SecKeyGetCSSMKey`; the bit,
+not the requested attributes, is the ground truth. Provision fails closed
+with `verification-failed` unless the created private key is non-extractable
+and the settings read back as lock on sleep and a 300-second interval.
+`SecKeychainCopySettings` writes `lockOnSleep` and `lockInterval`, but does not
+write `useLockInterval`; the interval's actual value determines the result.
+
 | Primitive               | Arguments                                          | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `provision-signing-key` | `--common-name-hint CN --csr-out PATH [--replace]` | Creates `K` if absent (mode 0600, not added to the search list, not made default), sets auto-lock after 300 seconds and lock on sleep (`SecKeychainSetSettings`), creates a permanent, non-extractable RSA-2048 key (`SecKeyCreateRandomKey`) whose initial ACL trusts `ctl` and `/usr/bin/codesign`, records the stored `ctl` path and cdhash in `<K>.acl.json`, and writes a PEM PKCS#10 CSR (subject `CN`) that `ctl` signs with the key (`SecKeyCreateSignature`). If `K` already holds a private key it refuses (`invalid-input`, listing them) unless `--replace` is passed. `--replace` adds a key, adds its record entry and reports `retainedPrivateKeys`; keys are never deleted. Reports `aclRecord`, `ctlPath` and `ctlCdhash`.                                                |
@@ -346,5 +368,11 @@ The consumer runs these primitives once per signer: provision, have the CSR
 issued, import, prove. Its verify steps then rely on `install-host`'s guard.
 The proof for the production keychain in `~/Library/Keychains/` is recorded by
 running `prove-signing-key` during rollout. The integration suite proves the
-same properties on throwaway keychains under `tmp/<work>/Library/Keychains/`,
-with a test CA in place of Apple's.
+same properties on throwaway keychains under `tmp/<work>/Library/Keychains/`.
+Its separate `test-signing-cert` build issues self-signed code-signing leaves
+with the non-extractable key before pinning it. The shipped binary neither
+compiles nor accepts `--test-self-signed-cert-out`. The test build uses a
+self-issued leaf as an anchor only for its ephemeral `SecTrust` evaluation,
+never adding system trust or changing a keychain search list. A CA-issued
+test leaf without a system anchor is a negative case (`chain-incomplete`,
+no codesign).
