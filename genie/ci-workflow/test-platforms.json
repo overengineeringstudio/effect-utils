@@ -55,6 +55,10 @@
   ],
   "neutral": [
     {
+      "task": "buck2:rust:generators:test",
+      "rationale": "Platform-neutral Bun/JS contract generation and USTAR round-trips through pinned GNU tar; no Darwin-specific behavior."
+    },
+    {
       "task": "test:agent-session-ingest:unbounded",
       "rationale": "Session-file parsing contracts."
     },

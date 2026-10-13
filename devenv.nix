@@ -38,6 +38,7 @@ let
   classifiedTestTasks = darwinTestTasks ++ map (suite: suite.task) testPlatforms.neutral;
   extraSourceTestTasks = [
     "devenv-modules:test"
+    "buck2:rust:generators:test"
     "genie:buck2:test"
     "genie:ci-workflow:test"
   ];
@@ -1225,6 +1226,25 @@ in
       "scripts/editor-view-authority.unit.test.ts"
       "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
       "packages/@overeng/buck2-tools/src/**/*.ts"
+    ];
+  };
+
+  # Like genie:buck2:test, these Bun suites live outside the package test census.
+  # Keep them beside the generators and include their source task in test:run.
+  tasks."buck2:rust:generators:test" = {
+    description = "Run the Rust interop service and wasm guest generator integration tests";
+    after = [ "buck2:editor:publish:test" ];
+    exec = trace.exec "buck2:rust:generators:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      export PATH=${lib.makeBinPath [ pkgs.gnutar ]}:$PATH
+      exec ${pkgs.bun}/bin/bun test ./buck2/rust/
+    '';
+    execIfModified = [
+      "buck2/rust/**/*.ts"
+      "packages/@overeng/effect-rust/src/**/*.ts"
+      "package.json"
+      "pnpm-lock.yaml"
     ];
   };
 
