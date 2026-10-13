@@ -26,6 +26,10 @@
       "types": "./dist/src/mod.d.ts",
       "default": "./src/mod.ts"
     },
+    "./testing": {
+      "types": "./dist/src/testing.d.ts",
+      "default": "./src/testing.ts"
+    },
     "./tree": {
       "types": "./dist/src/tree.d.ts",
       "default": "./src/tree.ts"
@@ -52,6 +56,10 @@
       ".": {
         "types": "./dist/src/mod.d.ts",
         "default": "./dist/src/mod.js"
+      },
+      "./testing": {
+        "types": "./dist/src/testing.d.ts",
+        "default": "./dist/src/testing.js"
       },
       "./tree": {
         "types": "./dist/src/tree.d.ts",
