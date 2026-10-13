@@ -195,7 +195,9 @@ read-only mode: **0444 for data, 0555 when any source execute bit is set**.
 Executables remain executable; write and special permission bits are removed.
 Snapshot-root `editor-view.json` and `editor-view-sources-v1.json` remain private
 metadata; nested files of those names are ordinary shareable payloads. Snapshot directories and
-relocated symlinks remain private to each generation.
+relocated symlinks remain private to each generation. Link containment resolves
+a file through the link path, not the kernel's descriptor name: on Darwin,
+realpath of a shared inode may report its content-store or sibling-snapshot name.
 
 The default store is `.editor-view-content/v1` beside the common Git repository
 directory, so every worktree uses the same host-local data. Non-Git fixtures use

@@ -10,7 +10,7 @@
     },
     {
       "task": "test:buck2-tools",
-      "rationale": "Editor publication, filesystem locks, snapshots and Darwin fsevents dependency projection."
+      "rationale": "Editor publication, filesystem locks, snapshots and Darwin fsevents dependency projection; snapshot link containment must name hardlinked CAS files through their link path because Darwin realpath (F_GETPATH) may report any hardlink name."
     },
     {
       "task": "genie:buck2:test",
