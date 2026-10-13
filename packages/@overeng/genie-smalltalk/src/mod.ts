@@ -152,13 +152,12 @@ const Restart = Schema.Literals(['never', 'always'])
 const Env = Schema.Record(Schema.String, Schema.String)
 const Authority = Schema.Array(Schema.Struct({ verb: Text, pattern: Text }))
 
-const AgentTask = Schema.Struct({
+const AgentTaskFields = Schema.Struct({
   id: LocalId,
   host: Schema.optionalKey(Text),
   workspace: Schema.optionalKey(Text),
   command: Schema.optionalKey(Text),
   argv: Schema.optionalKey(Schema.Array(Text)),
-  restart: Schema.optionalKey(Restart),
 }).pipe(
   Schema.refine(
     (t): t is typeof t => Number(t.command !== undefined) + Number(t.argv !== undefined) === 1,
@@ -167,6 +166,12 @@ const AgentTask = Schema.Struct({
     },
   ),
 )
+
+const AgentTask = Schema.declare<typeof AgentTaskFields.Encoded>(
+  (input): input is typeof AgentTaskFields.Encoded =>
+    Schema.is(AgentTaskFields)(input) &&
+    Reflect.ownKeys(input).every((key) => Object.hasOwn(AgentTaskFields.schema.fields, key)),
+).annotate({ identifier: 'St.AgentTask' })
 
 const RenderOperation = Schema.Struct({
   kind: Schema.Literals(['copy', 'file', 'json-upsert']),
@@ -190,14 +195,52 @@ export const OmpSchema = Schema.Struct({
   resume: Schema.optionalKey(OmpResumeSchema),
 }).annotate({ identifier: 'St.Omp' })
 
-/** Codex configuration; omitted model and effort retain provider defaults. */
+/** Codex harness selection with explicit model and effort routing. */
 export const CodexSchema = Schema.Struct({
   kind: Schema.Literal('codex'),
-  model: Schema.optionalKey(Text),
-  effort: Schema.optionalKey(Text),
+  model: Text,
+  effort: Text,
   args: Schema.optionalKey(Schema.Array(Text)),
   resume: Schema.optionalKey(Schema.Struct({ session: Text })),
 }).annotate({ identifier: 'St.Codex' })
+
+/**
+ * The ID view of an imported agent declaration. Validation still checks the full
+ * AgentSchema; this structural view keeps under references from recursively
+ * expanding AgentSchema's inferred type and retains the original object.
+ */
+export interface AgentReference {
+  readonly id: string
+}
+
+const isAgentReference = (input: unknown): input is AgentReference =>
+  isAgentDeclaration(input) && input.id.includes('//') === false
+
+/** An imported agent object, validated lazily without copying launch or kit metadata. */
+export const AgentReferenceSchema = Schema.declare<AgentReference>(isAgentReference).annotate({
+  identifier: 'St.AgentReference',
+})
+
+/** A person subject, distinct from the ID view of an imported agent declaration. */
+export const PersonReferenceSchema = Schema.Struct({
+  kind: Schema.Literal('person'),
+  subject: Schema.String.pipe(
+    Schema.refine(
+      (subject): subject is `person/${string}` =>
+        subject.startsWith('person/') &&
+        subject.length > 'person/'.length &&
+        subject.includes('//') === false &&
+        Schema.is(SubjectId)(subject),
+      { message: 'invalid person subject' },
+    ),
+  ),
+}).annotate({ identifier: 'St.PersonReference' })
+
+export type PersonReference = typeof PersonReferenceSchema.Type
+
+/** References a named person; it is attribution, not a person credential. */
+export const person = (subject: `person/${string}`): PersonReference =>
+  decode({ schema: PersonReferenceSchema, input: { kind: 'person', subject } })
 
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
@@ -216,7 +259,7 @@ const AgentSchemaFields = Schema.Struct({
     }),
   ),
   under: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ target: Text, reason: Schema.optionalKey(Text) })),
+    Schema.Array(Schema.Struct({ target: AgentReferenceSchema, reason: Schema.optionalKey(Text) })),
   ),
   restart: Schema.optionalKey(Restart),
   rollout: Schema.optionalKey(Schema.Literal('manual')),
@@ -255,21 +298,54 @@ const isValidAgent = (a: typeof AgentSchemaFields.Type): boolean =>
     (rules) => rules === undefined || rules.length > 0,
   )
 
-/** A durable st agent seat declaration. */
+/**
+ * A durable st agent declaration. Roots orchestrate and delegate heavy work to
+ * harness subagents and missions; role and persona/runtime selectors are not authored.
+ */
 export const AgentSchema = AgentSchemaFields.pipe(
   Schema.refine((a): a is typeof a => isValidAgent(a), { message: 'invalid agent declaration' }),
   Schema.annotate({ identifier: 'St.Agent' }),
 )
 
+const isAgentDeclaration = Schema.is(AgentSchema)
+
 /** A step gate on an exit code or subject state. */
-export const GateSchema = Schema.Struct({
+export const FieldGateSchema = Schema.Struct({
+  kind: Schema.Literal('field'),
   name: Text,
   field: Schema.Struct({
     kind: Schema.Literals(['exit_code', 'state']),
     ref: Text,
     is: Schema.Union([Schema.String, Schema.Finite]),
   }),
-}).annotate({ identifier: 'St.Gate' })
+}).annotate({ identifier: 'St.FieldGate' })
+
+/**
+ * A current-episode attributed review. Critical is the default: silence never passes.
+ * TODO: authenticated-person-only decisions: https://github.com/compoundingtech/smalltalk/issues/2184
+ */
+export const HumanGateSchema = Schema.Struct({
+  kind: Schema.Literal('human'),
+  name: Text,
+  reviewer: PersonReferenceSchema,
+  mode: Schema.optionalKey(Schema.Literals(['approve', 'feedback'])),
+  question: Schema.optionalKey(Text),
+  review: Schema.optionalKey(
+    Schema.Array(Text).pipe(
+      Schema.refine(
+        (targets): targets is typeof targets => new Set(targets).size === targets.length,
+        {
+          message: 'human gate review targets must be unique',
+        },
+      ),
+    ),
+  ),
+}).annotate({ identifier: 'St.HumanGate' })
+
+/** Tagged native gate variants; unsupported consent/window policies are not authorable. */
+export const GateSchema = Schema.Union([FieldGateSchema, HumanGateSchema]).annotate({
+  identifier: 'St.Gate',
+})
 
 /** An agentless command a step runs. */
 export const ExecSchema = Schema.Struct({
@@ -293,8 +369,15 @@ export const StepSchema = Schema.Struct({
   id: LocalId,
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
-  assignedTo: Schema.optionalKey(SubjectId),
-  dependsOn: Schema.optionalKey(DependsOnSchema),
+  assignedTo: Schema.optionalKey(Schema.Union([AgentReferenceSchema, PersonReferenceSchema])),
+  dependsOn: Schema.optionalKey(
+    Schema.Array(DependsOnSchema).pipe(
+      Schema.refine(
+        (dependencies): dependencies is typeof dependencies => dependencies.length > 0,
+        { message: 'dependsOn needs at least one dependency' },
+      ),
+    ),
+  ),
   goal: Schema.optionalKey(Text),
   exec: Schema.optionalKey(ExecSchema),
   gate: Schema.optionalKey(GateSchema),
@@ -304,6 +387,11 @@ export const StepSchema = Schema.Struct({
     {
       message: 'agentless and assigned-to conflict',
     },
+  ),
+  Schema.refine(
+    (s): s is typeof s =>
+      s.gate?.kind !== 'human' || s.gate.mode !== 'feedback' || s.agentless !== true,
+    { message: 'feedback human gates require a worker step' },
   ),
   Schema.annotate({ identifier: 'St.Step' }),
 )
@@ -323,10 +411,23 @@ export const ScheduleSchema = Schema.Struct({
   work: WorkSchema,
 }).annotate({ identifier: 'St.Schedule' })
 
-/** A ready mission with unique steps whose dependencies exist. */
+/**
+ * Reference an imported agent declaration without copying its launch configuration.
+ * Native st reports only to agents; people must be reached through their own agent.
+ * Kit metadata on the declaration is not part of the reference.
+ */
+export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(isAgentDeclaration).pipe(
+  Schema.refine((a): a is typeof a => a.id.includes('//') === false, {
+    message: 'report-to agent ID must not contain empty path segments',
+  }),
+  Schema.annotate({ identifier: 'St.ReportTo' }),
+)
+
+/** A ready mission with a required reporting agent and unique, valid step dependencies. */
 export const MissionSchema = Schema.Struct({
   id: MissionId,
   state: Schema.Literal('ready'),
+  reportTo: ReportToSchema,
   timeout: Schema.optionalKey(Duration),
   goal: Text,
   constraints: Schema.optionalKey(Schema.Array(Text)),
@@ -338,7 +439,9 @@ export const MissionSchema = Schema.Struct({
       m.steps.length > 0 &&
       new Set(m.steps.map((s) => s.id)).size === m.steps.length &&
       m.steps.every(
-        (s) => s.dependsOn === undefined || m.steps.some((p) => p.id === s.dependsOn?.step),
+        (s) =>
+          s.dependsOn === undefined ||
+          s.dependsOn.every((dependency) => m.steps.some((p) => p.id === dependency.step)),
       ),
     { message: 'mission needs unique steps and existing dependencies' },
   ),
@@ -411,12 +514,21 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
   const s = decode({ schema: StepSchema, input })
   const children: Node[] = []
   if (s.agentless === true) children.push(node({ name: 'agentless' }))
-  if (s.assignedTo !== undefined) children.push(child({ name: 'assigned-to', value: s.assignedTo }))
+  if (s.assignedTo !== undefined) {
+    children.push(
+      child({
+        name: 'assigned-to',
+        value: 'id' in s.assignedTo ? `agent/${s.assignedTo.id}` : s.assignedTo.subject,
+      }),
+    )
+  }
   if (s.dependsOn !== undefined) {
     children.push(
       block({
         name: 'depends-on',
-        children: [node({ name: 'step', args: [s.dependsOn.step, s.dependsOn.state] })],
+        children: s.dependsOn.map((dependency) =>
+          node({ name: 'step', args: [dependency.step, dependency.state] }),
+        ),
       }),
     )
   }
@@ -436,13 +548,26 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
     )
   }
   if (s.gate !== undefined) {
-    const field = s.gate.field
+    const gate = s.gate
     children.push(
-      node({
-        name: 'gate',
-        args: [s.gate.name],
-        children: [node({ name: 'field', args: [field.kind, field.ref, 'is', field.is] })],
-      }),
+      gate.kind === 'field'
+        ? node({
+            name: 'gate',
+            args: [gate.name],
+            children: [
+              node({ name: 'field', args: [gate.field.kind, gate.field.ref, 'is', gate.field.is] }),
+            ],
+          })
+        : node({
+            name: 'gate',
+            args: [gate.name],
+            props: { type: 'human', mode: gate.mode ?? 'approve' },
+            children: [
+              child({ name: 'reviewer', value: gate.reviewer.subject }),
+              ...optionalChild({ name: 'question', value: gate.question }),
+              ...(gate.review ?? []).map((target) => child({ name: 'review', value: target })),
+            ],
+          }),
     )
   }
   return node({
@@ -459,7 +584,11 @@ export const mission = (input: typeof MissionSchema.Encoded): Node => {
   return node({
     name: 'mission',
     args: [m.id],
-    props: { state: m.state, ...(m.timeout === undefined ? {} : { timeout: m.timeout }) },
+    props: {
+      state: m.state,
+      'report-to': `agent/${m.reportTo.id}`,
+      ...(m.timeout === undefined ? {} : { timeout: m.timeout }),
+    },
     children: [
       child({ name: 'goal', value: m.goal }),
       ...(m.constraints ?? []).map((constraint) =>
@@ -489,7 +618,6 @@ const taskNode = ({
       ...optionalChild({ name: 'workspace', value: task.workspace }),
       ...optionalChild({ name: 'command', value: task.command }),
       ...(task.argv === undefined ? [] : [node({ name: 'argv', args: task.argv })]),
-      ...optionalChild({ name: 'restart', value: task.restart }),
     ],
   })
 
@@ -531,7 +659,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
     children.push(
       node({
         name: 'under',
-        args: [under.target],
+        args: [`agent/${under.target.id}`],
         props: under.reason === undefined ? {} : { reason: under.reason },
       }),
     )
@@ -572,8 +700,8 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
         name: 'harness',
         args: [a.harness.kind],
         children: [
-          ...optionalChild({ name: 'model', value: a.harness.model }),
-          ...optionalChild({ name: 'effort', value: a.harness.effort }),
+          child({ name: 'model', value: a.harness.model }),
+          child({ name: 'effort', value: a.harness.effort }),
           ...(a.harness.kind === 'codex' && a.harness.args !== undefined
             ? [node({ name: 'args', args: a.harness.args })]
             : []),

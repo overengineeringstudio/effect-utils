@@ -18,6 +18,7 @@ import {
   parseShowOutput,
   repoPathFromReportName,
   taskFileStem,
+  selectTestLanes,
   type FileOwnership,
 } from './baseline-collection.ts'
 
@@ -110,8 +111,18 @@ const lanes = decodeTestAuthority({
   sourceLabel: authorityPath,
 })
 
-const buildPlan = collectionBuildPlan({ lanes })
+const boundedTasksPath = argumentValue('--bounded-tasks-file')
+const selectedLanes = selectTestLanes({
+  lanes,
+  scope:
+    boundedTasksPath === undefined
+      ? undefined
+      : decodeSourceTaskScope(await readJson(resolve(root, boundedTasksPath))),
+})
+const buildPlan = collectionBuildPlan({ lanes: selectedLanes })
 const collectionTargets = buildPlan.targets
+const selectedCollectionTargets =
+  boundedTasksPath === undefined ? undefined : new Set(collectionTargets)
 
 /** Builds every needed collection target in ONE Buck invocation. */
 const buildCollectionArtifacts = async (): Promise<
@@ -204,7 +215,13 @@ const baselineFiles: readonly BaselineFile[] = testFileSources
     ),
   )
   .map(([file]): BaselineFile => ({ file, ownership: ownershipForFile({ file, lanes }) }))
-  .filter(({ ownership }) => ownershipInSourceScope({ ownership, scope: sourceScope }))
+  .filter(({ ownership }) =>
+    ownershipInSourceScope({
+      ownership,
+      scope: sourceScope,
+      collectionTargets: selectedCollectionTargets,
+    }),
+  )
   .toSorted((left, right) => compareAuthorityStrings(left.file, right.file))
 
 // --- Buck-owned evidence -----------------------------------------------------------------
@@ -260,7 +277,7 @@ const collectionArtifactErrors: readonly string[] =
         return typeof counts === 'string' ? [counts] : []
       })
     : [collectionBuildError]
-const collectionCoverageErrors = lanes.flatMap((lane) => {
+const collectionCoverageErrors = selectedLanes.flatMap((lane) => {
   if (lane.collectionTarget === undefined) return []
   const counts = countsByTarget.get(lane.collectionTarget)
   if (counts === undefined || typeof counts === 'string') return []

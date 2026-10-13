@@ -3,7 +3,7 @@ import { Schema } from 'effect'
 import { expect } from 'vitest'
 
 import * as ContractJson from '../schema/contract-json.ts'
-import { canonicalJson, parseJson } from '../schema/json.ts'
+import { canonicalJson, JsonError, parseJson } from '../schema/json.ts'
 import { AdmissionError, compile } from './mod.ts'
 
 const Optional = Schema.Struct({
@@ -50,7 +50,9 @@ describe('schema-aware JSON omission', () => {
     const present = { required: 'r', field: 'v', nullable: null }
     expect(ContractJson.decode(Optional)(encode(present))).toEqual(present)
     expect(encode(present)).toBe('{"field":"v","nullable":null,"required":"r"}')
-    expect(() => ContractJson.decode(Optional)('{"required":"r","field":null}')).toThrow()
+    expect(() => ContractJson.decode(Optional)('{"required":"r","field":null}')).toThrow(
+      Schema.SchemaError,
+    )
   })
 
   it('recurses through nested structs, array items, records and tagged union members', () => {
@@ -100,15 +102,15 @@ describe('schema-aware JSON omission', () => {
     }
   })
 
-  it('rejects undefined required keys, array elements and record values even when Effect accepts them', () => {
+  it('rejects unportable undefined contracts at admission and missing required values at decoding', () => {
     const required = Schema.Struct({ value: Schema.UndefinedOr(Schema.String) })
     const array = Schema.Array(Schema.UndefinedOr(Schema.String))
     const record = Schema.Record(Schema.String, Schema.UndefinedOr(Schema.String))
-    expect(() => ContractJson.encode(required)({ value: undefined })).toThrow()
-    expect(() => ContractJson.encode(array)([undefined])).toThrow()
-    expect(() => ContractJson.encode(record)({ entry: undefined })).toThrow()
-    expect(() => canonicalJson({ value: undefined })).toThrow()
-    expect(() => ContractJson.decode(Optional)('{}')).toThrow()
+    expect(() => ContractJson.encode(required)({ value: undefined })).toThrow(AdmissionError)
+    expect(() => ContractJson.encode(array)([undefined])).toThrow(AdmissionError)
+    expect(() => ContractJson.encode(record)({ entry: undefined })).toThrow(AdmissionError)
+    expect(() => canonicalJson({ value: undefined })).toThrow(JsonError)
+    expect(() => ContractJson.decode(Optional)('{}')).toThrow(Schema.SchemaError)
     for (const schema of [required, array, record])
       expect(() => compile({ Request: schema })).toThrow(AdmissionError)
     for (const schema of [

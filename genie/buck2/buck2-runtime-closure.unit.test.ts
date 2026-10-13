@@ -10,11 +10,11 @@ import { buck2StagedRuntimes, stagedModuleName } from './runtime-modules.ts'
  * Every relative specifier in one module, in source order.
  *
  * Matches `import`/`export ... from './x.ts'`, bare `import './x.ts'`, and
- * dynamic `import('./x.ts')`. Buck stages sources verbatim, so the specifier a
- * runner writes is the path Bun resolves inside the action.
+ * dynamic `import('./x.ts')`, and `new URL('./x.ts', import.meta.url)` preload entries.
+ * Buck stages sources verbatim, so each specifier resolves inside the action.
  */
 const relativeSpecifiers = (source: string): readonly string[] =>
-  [...source.matchAll(/(?:from|import)\s*\(?\s*['"](\.[^'"]*)['"]/gu)].map(
+  [...source.matchAll(/(?:from|import|new URL)\s*\(?\s*['"](\.[^'"]*)['"]/gu)].map(
     (match) => match[1] ?? '',
   )
 

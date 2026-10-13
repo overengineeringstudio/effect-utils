@@ -388,8 +388,8 @@ for (const entry of exportEntries) {
   )
   preparations.push(
     `  const decode${definition.name}Reason = Direct.decode(${definition.name}Reason)`,
-    `const decode${definition.name} = (cause: unknown): Effect.Effect<never, ${definition.name} | Interop.Input | Interop.Transport> => {`,
-    `  if (typeof cause !== 'object' || cause === null || !('rustError' in cause)) return decodeBoundary(${JSON.stringify(definition.name)}, cause)`,
+    `const decode${definition.name} = (operation: string, cause: unknown): Effect.Effect<never, ${definition.name} | Interop.Input | Interop.Transport> => {`,
+    `  if (typeof cause !== 'object' || cause === null || !('rustError' in cause)) return decodeBoundary(operation, cause)`,
     '  const reason = cause.rustError',
     `  if (typeof reason !== 'object' || reason === null || !(${JSON.stringify(definition.tagKey)} in reason)) return Effect.die(cause)`,
     `  const { ${JSON.stringify(definition.tagKey)}: _tag, ...fields } = reason`,
@@ -493,7 +493,7 @@ for (const entry of exportEntries) {
     .join(', ')
   const callOptions = `options_${entry.name}`
   preparations.push(
-    `  const ${callOptions} = { decodeError: ${entry.error === null ? `(cause: unknown) => decodeBoundary(${operation}, cause)` : `decode${entry.error.name}`} }`,
+    `  const ${callOptions} = { decodeError: (cause: unknown) => ${entry.error === null ? `decodeBoundary(${operation}, cause)` : `decode${entry.error.name}(${operation}, cause)`} }`,
   )
   const method =
     entry.mode === 'input_stream'
@@ -554,6 +554,10 @@ for (const entry of exportEntries) {
       : ''
   const sync = syncEntry(entry)
   if (sync === true) {
+    // The return temporary shares the argument-encoding scope; never shadow its inputs.
+    let resultName = 'result'
+    while (entry.args.some((arg) => arg.name === resultName || `${arg.name}Wire` === resultName))
+      resultName += '_'
     methodSource.push(
       `  ${entry.name}: (${args}) => runtime.callSync((api) => {`,
       ...scalarChecks.map((check) => `    ${check}`),
@@ -563,10 +567,10 @@ for (const entry of exportEntries) {
       ),
       resultCodec === undefined
         ? `    return api.${entry.name}(${values})`
-        : `    const result = api.${entry.name}(${values})`,
+        : `    const ${resultName} = api.${entry.name}(${values})`,
       ...(resultCodec === undefined
         ? []
-        : [`    return decodeOutputSync(${operation}, () => decode${resultCodec}(result))`]),
+        : [`    return decodeOutputSync(${operation}, () => decode${resultCodec}(${resultName}))`]),
       `  }, ${callOptions}),`,
     )
   } else if (encoded.length === 0) {
@@ -589,7 +593,6 @@ for (const entry of exportEntries) {
     )
   }
   implementations.set(entry.name, methodSource)
-
 }
 source.push(
   `export const make${service} = (runtime: Interop.Runtime<${service}Api>): ${service}Service => {`,
