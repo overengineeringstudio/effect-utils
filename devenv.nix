@@ -1267,6 +1267,10 @@ in
         cargo clippy --locked --workspace --all-targets -- -D warnings
         cargo fmt --all --check
       )
+      cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+        --target-dir rust/target
+      cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+        --target-dir rust/target --target wasm32-unknown-unknown
     '';
   };
 

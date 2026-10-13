@@ -615,12 +615,14 @@ export CARGO_BUILD_JOBS=6
 ```
 
 The wasm-only macro regression consumer denies warnings and declares no `napi`
-feature. Check it on both targets:
+feature. The `cargo:check` gate checks it on both targets using the shared Cargo
+target directory. To run those checks directly:
 
 ```sh
-cargo check --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml
-cargo check --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
-  --target wasm32-unknown-unknown
+cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+  --target-dir rust/target
+cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+  --target-dir rust/target --target wasm32-unknown-unknown
 ```
 
 Package the resulting adapters with `buck2/rust/interop-package.ts`, then run
