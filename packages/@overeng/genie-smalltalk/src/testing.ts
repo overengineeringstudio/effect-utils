@@ -1,5 +1,13 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -45,6 +53,8 @@ export interface ScratchDaemonOptions {
   readonly binary: string
   /** Daemon node name. Default `scratch`. */
   readonly node?: string
+  /** Person configured in the private daemon, for native attribution fixtures. */
+  readonly person?: string
   /** PATH visible to the daemon and CLI. Default `/nonexistent`, so seats cannot reach host tools by accident. */
   readonly path?: string
   /** Socket readiness timeout. Default 10 seconds. */
@@ -190,10 +200,29 @@ export const scratchDaemonLayer = (options: ScratchDaemonOptions) =>
         XDG_STATE_HOME: join(directory, 'xdg-state'),
         XDG_RUNTIME_DIR: join(directory, 'runtime'),
       }
-      for (const path of Object.values(env)) mkdirSync(path)
+      for (const path of Object.values(env)) mkdirSync(path, { mode: 0o700 })
+      mkdirSync(join(directory, 'state'), { mode: 0o700 })
+      mkdirSync(join(directory, 'pty'), { mode: 0o700 })
       const isolatedEnv = { ...env, PATH: options.path ?? '/nonexistent' }
       const socket = join(directory, 'daemon.sock')
       const endpoint = `unix://${socket}`
+      const configDir = join(env.XDG_CONFIG_HOME, 'st3')
+      mkdirSync(configDir, { mode: 0o700 })
+      const config = join(configDir, 'config.toml')
+      writeFileSync(
+        config,
+        [
+          `node = ${JSON.stringify(options.node ?? 'scratch')}`,
+          ...(options.person === undefined ? [] : [`person = ${JSON.stringify(options.person)}`]),
+          `state_dir = ${JSON.stringify(join(directory, 'state'))}`,
+          `pty_root = ${JSON.stringify(join(directory, 'pty'))}`,
+          `socket = ${JSON.stringify(socket)}`,
+          `client_gateway_socket = ${JSON.stringify(join(directory, 'gateway.sock'))}`,
+          'peers = []',
+          '',
+        ].join('\n'),
+        { mode: 0o600 },
+      )
       const stderr: Array<string> = []
       let ready = false
       const daemon = yield* Effect.acquireRelease(
@@ -202,6 +231,8 @@ export const scratchDaemonLayer = (options: ScratchDaemonOptions) =>
             binary,
             [
               'up',
+              '--config',
+              config,
               '--node',
               options.node ?? 'scratch',
               '--state-dir',

@@ -42,6 +42,30 @@ export default pnpmWorkspaceYaml.root({
 })
 ```
 
+### Opt-in global virtual store
+
+Use `enableGlobalVirtualStore` in the workspace configuration to opt in:
+
+```ts
+export default pnpmWorkspaceYaml.root({
+  packages: [appPkg, sharedPkg],
+  repoName: 'my-repo',
+  nodeLinker: 'isolated',
+  enableGlobalVirtualStore: true,
+})
+```
+
+The global virtual store applies only to the `isolated` linker, not `hoisted`
+or `pnp`. It is shared mutable dependency state: package symlinks can resolve
+to realpaths outside the workspace. Opt in only when tooling and the install
+boundary permit external dependency realpaths; keep it disabled for hermetic
+or workspace-local dependency layouts.
+
+Genie preserves both explicit `true` and `false` in `pnpm-workspace.yaml` and
+omits the option when undefined, leaving pnpm's own configuration precedence
+in effect. `PnpmSettings` also accepts the option when authoring shared
+`settings`; prefer the top-level workspace option for the install boundary.
+
 ## Why wrappers exist
 
 The wrapper is the public projection API because repo authoring should project

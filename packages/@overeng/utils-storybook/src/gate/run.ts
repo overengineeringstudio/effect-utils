@@ -1663,21 +1663,24 @@ export const readBaselinePairIdentity = ({
   worktreeDir,
   sourceRoots,
   borrowedDependencies,
+  readIdentity = readTreeIdentity,
 }: {
   repoRoot: string
   packageRoot: string
   worktreeDir: string
   sourceRoots: readonly string[]
   borrowedDependencies: boolean
+  /** Tree reads are an I/O boundary; pair selection and composition are pure. */
+  readIdentity?: typeof readTreeIdentity
 }): TreeIdentity => {
-  const worktree = readTreeIdentity({
+  const worktree = readIdentity({
     repoRoot: worktreeDir,
     packageRoot: join(worktreeDir, relative(repoRoot, packageRoot)),
     sourceRoots,
   })
   if (borrowedDependencies === false) return worktree
 
-  const linked = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
+  const linked = readIdentity({ repoRoot, packageRoot, sourceRoots })
   return {
     head: worktree.head,
     digest: createHash('sha1').update(`${worktree.digest}\n${linked.digest}`).digest('hex'),

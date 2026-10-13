@@ -15,7 +15,7 @@ cp "$ROOT/nix/devenv-modules/tasks/lib/trace.nix" \
 
 nix eval --impure --expr "
   let
-    flake = builtins.getFlake (toString $ROOT);
+    flake = builtins.getFlake (\"git+file://\" + toString $ROOT + \"?shallow=1\");
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     moduleSource = builtins.path {
       path = $source;

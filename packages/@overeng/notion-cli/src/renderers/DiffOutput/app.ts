@@ -2,22 +2,13 @@ import { type TuiApp, createTuiApp } from '@overeng/tui-react'
 
 import { DiffState, DiffAction, diffReducer } from './schema.ts'
 
-let cached: TuiApp<DiffState, DiffAction> | undefined
-
 /**
  * TUI app definition for the schema diff command.
- *
- * Constructed lazily (and memoized) rather than at module top level: building it
- * eagerly is a module-load side-effect that crashes the umbrella `notion` binary
- * under Bun's concurrent command-tree import (#787, upstream oven-sh/bun#30634).
- * The five renderer `get*App()` accessors share this workaround; see `cli.ts` for
- * the trigger + the TODO to drop it once the Bun fix lands.
  */
-export const getDiffApp = (): TuiApp<DiffState, DiffAction> =>
-  (cached ??= createTuiApp({
-    stateSchema: DiffState,
-    actionSchema: DiffAction,
-    initial: { _tag: 'Loading' } as DiffState,
-    reducer: diffReducer,
-    exitCode: (state) => (state._tag === 'Error' ? 1 : 0),
-  }))
+export const DiffApp: TuiApp<DiffState, DiffAction> = createTuiApp({
+  stateSchema: DiffState,
+  actionSchema: DiffAction,
+  initial: { _tag: 'Loading' } as DiffState,
+  reducer: diffReducer,
+  exitCode: (state) => (state._tag === 'Error' ? 1 : 0),
+})

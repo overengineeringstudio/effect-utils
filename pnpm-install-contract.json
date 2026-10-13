@@ -11,7 +11,7 @@
       "unix-dgram": false
     },
     "overrides": {
-      "@effect/platform-node-shared": "4.0.0-rc.118"
+      "@effect/platform-node-shared": "4.0.0"
     },
     "packageExtensions": {
       "storybook": {
@@ -28,17 +28,7 @@
   "installPolicy": {
     "dedupePeerDependents": true,
     "ignoreScripts": true,
-    "minimumReleaseAgeExclude": [
-      "@types/node",
-      "effect",
-      "@effect/ai-openai-compat",
-      "@effect/ai-typesafe",
-      "@effect/platform-node",
-      "@effect/vitest",
-      "@effect/opentelemetry",
-      "@effect/atom-react",
-      "@effect/platform-node-shared"
-    ],
+    "minimumReleaseAgeExclude": ["@types/node"],
     "optimisticRepeatInstall": false,
     "packageImportMethod": {
       "live": {
@@ -116,6 +106,8 @@
       "context/effect/socket",
       "context/opentui",
       "packages/@overeng/agent-session-ingest",
+      "packages/@overeng/ai-gateway-conformance",
+      "packages/@overeng/ai-gateway-edge",
       "packages/@overeng/buck2-tools",
       "packages/@overeng/ci-tools",
       "packages/@overeng/content-address",
@@ -123,12 +115,15 @@
       "packages/@overeng/effect-ai-claude-cli",
       "packages/@overeng/effect-ai-gateway",
       "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-iroh",
       "packages/@overeng/effect-path",
       "packages/@overeng/effect-react",
       "packages/@overeng/effect-rpc-explorer",
       "packages/@overeng/effect-rpc-explorer-react",
       "packages/@overeng/effect-rpc-tanstack",
       "packages/@overeng/effect-rpc-tanstack/examples/basic",
+      "packages/@overeng/effect-rust",
+      "packages/@overeng/effect-rust-fixture-consumer",
       "packages/@overeng/effect-schema-form",
       "packages/@overeng/effect-schema-form-aria",
       "packages/@overeng/genie",
@@ -148,6 +143,7 @@
       "packages/@overeng/npm-release",
       "packages/@overeng/otel-browser",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/outline",
       "packages/@overeng/oxc-config",
       "packages/@overeng/pty-effect",
       "packages/@overeng/react-inspector",

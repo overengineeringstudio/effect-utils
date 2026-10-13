@@ -3,11 +3,9 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { getGenerateApp } from './GenerateOutput/mod.ts'
+import { GenerateApp } from './GenerateOutput/mod.ts'
 import type { GenerateAction, GenerateState } from './GenerateOutput/schema.ts'
 import { GenerateView } from './GenerateOutput/view.tsx'
-
-const GenerateApp = getGenerateApp()
 
 export default {
   title: 'NotionCLI/Generate Output',

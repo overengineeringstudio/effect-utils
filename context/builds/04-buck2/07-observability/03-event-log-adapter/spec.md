@@ -53,6 +53,9 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
   JSONL (same bytes, typed); cache-upload results, action digests, execution
   kinds, stage timings, and materialization byte counts all map (per-field
   corpus hit counts recorded in the decode bakeoff).
+- **Cache-hit classification:** each action's first end sets `buck2.execution_kind`
+  and `buck2.cache_hit`; the same classification produces the command summary
+  hit counts ([04](../04-trace-views/spec.md#command-summary-attributes)).
 
 ## Schema Bump Procedure
 

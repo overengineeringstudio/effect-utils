@@ -28,6 +28,12 @@ CI=1 pnpm vitest run             # from packages/@overeng/notion-react/
 pnpm --filter @overeng/notion-react test
 ```
 
+Interruption tests coordinate fiber startup with `Deferred`, not elapsed time.
+The Effect o11y adapter's interruption test signals readiness from inside the
+wrapped effect before interrupting it, so the `onExit` finalizer is registered.
+An interruption before that effect starts must not emit a synthetic `SyncEnd`:
+there is no running sync or open span to close.
+
 ### Mock-client integration
 
 Runs the full reconciler ↔ diff ↔ client loop with a Notion client that

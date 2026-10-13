@@ -11,6 +11,24 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/ai-gateway-conformance",
+      "outputName": "overeng-ai-gateway-conformance.tgz",
+      "packagePath": "packages/@overeng/ai-gateway-conformance",
+      "packageTreePath": "packages/@overeng/ai-gateway-conformance",
+      "target": "effect_utils//packages/@overeng/ai-gateway-conformance:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/ai-gateway-edge",
+      "outputName": "overeng-ai-gateway-edge.tgz",
+      "packagePath": "packages/@overeng/ai-gateway-edge",
+      "packageTreePath": "packages/@overeng/ai-gateway-edge",
+      "target": "effect_utils//packages/@overeng/ai-gateway-edge:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/content-address",
       "outputName": "overeng-content-address.tgz",
       "packagePath": "packages/@overeng/content-address",
@@ -79,6 +97,15 @@
       "packagePath": "packages/@overeng/effect-rpc-explorer-react",
       "packageTreePath": "packages/@overeng/effect-rpc-explorer-react",
       "target": "effect_utils//packages/@overeng/effect-rpc-explorer-react:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
+      "name": "@overeng/effect-rust",
+      "outputName": "overeng-effect-rust.tgz",
+      "packagePath": "packages/@overeng/effect-rust",
+      "packageTreePath": "packages/@overeng/effect-rust",
+      "target": "effect_utils//packages/@overeng/effect-rust:dist-package",
       "version": "0.1.0"
     },
     {
@@ -155,6 +182,15 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/outline",
+      "outputName": "overeng-outline.tgz",
+      "packagePath": "packages/@overeng/outline",
+      "packageTreePath": "packages/@overeng/outline",
+      "target": "effect_utils//packages/@overeng/outline:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/restate-effect",
       "outputName": "overeng-restate-effect.tgz",
       "packagePath": "packages/@overeng/restate-effect",
@@ -215,6 +251,15 @@
       "packageTreePath": "packages/@overeng/utils-storybook",
       "target": "effect_utils//packages/@overeng/utils-storybook:dist-package",
       "version": "0.1.0"
+    },
+    {
+      "kind": "javascript",
+      "name": "ai-gateway-edge",
+      "outputName": "ai-gateway-edge.js",
+      "packagePath": "packages/@overeng/ai-gateway-edge",
+      "packageTreePath": "packages/@overeng/ai-gateway-edge",
+      "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate",
+      "version": "0.0.0"
     },
     {
       "kind": "javascript",

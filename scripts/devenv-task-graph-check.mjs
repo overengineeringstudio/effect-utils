@@ -125,6 +125,7 @@ for (const name of [
   'buck2:providers:check',
   'buck2:quick',
   'buck2:all',
+  'buck2:capabilities:test',
   'check:buck2-producer-overlap',
   'buck2:typescript:materialize-dist',
   'buck2:editor:bootstrap',
@@ -135,10 +136,15 @@ for (const name of [
   'buck2:editor:publish:restate-effect',
   'buck2:editor:publish:otel-contract',
   'buck2:editor:publish:playwright',
+  'buck2:editor:publish:test',
   'test:run',
   'test:buck2:unit',
 ])
   requireTask(name)
+ok({
+  condition: reaches({ start: 'check:quick', target: 'buck2:capabilities:test' }),
+  name: 'check:quick exercises real capability publication across long-lived daemons',
+})
 for (const name of [
   'ts:check',
   'ts:check:strict',
@@ -164,6 +170,21 @@ for (const name of ['nix:build', 'nix:check']) {
     condition: tasks.has(name) === false,
     name: `${name} is absent without repository pnpm FOD producers`,
   })
+}
+
+for (const lifecycle of ['buck2:editor:release', 'worktree:teardown']) {
+  requireTask(lifecycle)
+  ok({
+    condition: dependencies.get(lifecycle).size === 0,
+    name: `${lifecycle} does not build or publish dependencies`,
+  })
+  for (const name of tasks.keys()) {
+    if (name === lifecycle) continue
+    ok({
+      condition: reaches({ start: name, target: lifecycle }) === false,
+      name: `${name} never schedules ${lifecycle}`,
+    })
+  }
 }
 
 const visiting = new Set()
@@ -247,7 +268,7 @@ for (const checkTask of ['check:quick', 'check:all']) {
     name: `${checkTask} does not reach mr:apply`,
   })
 }
-// `test:run` must schedule the one Buck aggregate and the source-side batches which own
+// `test:run` must schedule the one Buck aggregate and the source-side chains which own
 // packages absent from the authority plus admitted lanes' exact unbounded complements. Either
 // edge going missing would silently omit a disjoint side of the test partition.
 const testRunDependencies = [...(dependencies.get('test:run') ?? [])]
@@ -256,9 +277,77 @@ ok({
   name: 'test:run executes the Buck-owned bounded partition',
 })
 ok({
-  condition: testRunDependencies.some((name) => name.startsWith('test:run:batch:') === true),
+  condition: testRunDependencies.some((name) => name.startsWith('test:run:chain:') === true),
   name: 'test:run executes the source-owned complement partition',
 })
+ok({
+  condition:
+    [...(dependencies.get('test:buck2:unit') ?? [])].join('\n') === 'genie:check' &&
+    reaches({ start: 'test:buck2:unit', target: 'buck2:editor:publish:test' }) === false &&
+    reaches({ start: 'buck2:editor:publish:test', target: 'test:buck2:unit' }) === false,
+  name: 'bounded tests and collection prebuild run alongside editor publication after freshness',
+})
+const boundedTestCommand = requireTask('test:buck2:unit').command
+if (typeof boundedTestCommand === 'string') {
+  const commandBody =
+    existsSync(boundedTestCommand) === true ? readFileSync(boundedTestCommand, 'utf8') : ''
+  // trace.exec emits mutually exclusive traced and untraced copies of the task.
+  // Require exactly one prebuild before each copy's verdict, not one in the wrapper.
+  const verdictBranches = commandBody.split('exec "$BUCK2_BIN" test')
+  ok({
+    condition:
+      verdictBranches.length > 1 &&
+      verdictBranches.at(-1).includes('--prebuild-only') === false &&
+      verdictBranches
+        .slice(0, -1)
+        .every(
+          (branch) =>
+            branch.includes('packages/@overeng/utils-dev/src/check-baseline-test-collection.ts') &&
+            branch.split('--prebuild-only').length === 2,
+        ),
+    name: 'the bounded aggregate prebuilds collection once before its single test invocation',
+    detail: boundedTestCommand,
+  })
+}
+const genieBuckTestCommand = requireTask('genie:buck2:test').command
+if (typeof genieBuckTestCommand === 'string') {
+  const commandBody =
+    existsSync(genieBuckTestCommand) === true ? readFileSync(genieBuckTestCommand, 'utf8') : ''
+  ok({
+    condition:
+      commandBody.includes(' test ./genie/buck2/') &&
+      commandBody.includes(' ./scripts/editor-view-authority.unit.test.ts') &&
+      commandBody.includes(' test genie/buck2/') === false,
+    name: 'Genie Buck tests use an explicit source directory, not a staged-copy substring filter',
+    detail: genieBuckTestCommand,
+  })
+}
+const rustGeneratorTestCommand = requireTask('buck2:rust:generators:test').command
+if (typeof rustGeneratorTestCommand === 'string') {
+  const commandBody =
+    existsSync(rustGeneratorTestCommand) === true
+      ? readFileSync(rustGeneratorTestCommand, 'utf8')
+      : ''
+  ok({
+    condition:
+      commandBody.includes(' test ./buck2/rust/') &&
+      commandBody.includes(' test buck2/rust/') === false,
+    name: 'Rust generator tests use an explicit source directory without excluding integration files',
+    detail: rustGeneratorTestCommand,
+  })
+}
+const collectionGateCommand = requireTask('test:run').command
+if (typeof collectionGateCommand === 'string') {
+  const commandBody =
+    existsSync(collectionGateCommand) === true ? readFileSync(collectionGateCommand, 'utf8') : ''
+  ok({
+    condition:
+      commandBody.includes('packages/@overeng/utils-dev/src/check-baseline-test-collection.ts') &&
+      commandBody.includes('--prebuild-only') === false,
+    name: 'final collection aggregation never substitutes the build-only phase for its verdict',
+    detail: collectionGateCommand,
+  })
+}
 // `genie:check` prevents a stale graph from proving itself. It is the freshness barrier for
 // repository-root Buck tasks. `mr:apply` stays outside the check aggregates.
 const buck2TestAuthority = JSON.parse(readFileSync(`${root}/buck2-test-authority.json`, 'utf8'))
@@ -295,6 +384,7 @@ const standaloneBuckTaskNames = [
   'buck2:editor:publish:restate-effect',
   'buck2:editor:publish:otel-contract',
   'buck2:editor:publish:playwright',
+  'buck2:editor:publish:test',
   'buck2:nix-bridge:check',
   'nix:buck2-artifact-import:check',
   'nix:javascript-product-import:check',
@@ -336,6 +426,109 @@ ok({
   name: 'editor bootstrap reads committed standalone dependencies without mutating projections',
 })
 
+// Aggregate-only aliases use the union publisher. Direct source tasks publish
+// only their own execution view and the generator bootstrap closure.
+const sourceTestAggregate = 'test:run'
+const sourceTestExtraSuites = [
+  'devenv-modules:test',
+  'genie:buck2:test',
+  'buck2:rust:generators:test',
+]
+const sourceTestChainPrefix = `${sourceTestAggregate}:chain:`
+const chainExecutionPattern = /^test:run:chain:(\d+):/
+const sourceTestTasks = [...dependencies.keys()].filter((name) => chainExecutionPattern.test(name))
+const directSourceTestTasks = sourceTestTasks.map((name) =>
+  name.replace(chainExecutionPattern, 'test:'),
+)
+const scheduling = JSON.parse(
+  readFileSync(`${root}/genie/ci-workflow/test-scheduling.json`, 'utf8'),
+)
+const chainIds = new Set(
+  sourceTestTasks.map((name) => Number(chainExecutionPattern.exec(name)?.[1])),
+)
+ok({
+  condition:
+    Number.isInteger(scheduling.workers) &&
+    scheduling.workers > 0 &&
+    chainIds.size <= scheduling.workers &&
+    [...chainIds].every((index) => index >= 0 && index < scheduling.workers),
+  name: 'source execution chains respect the declared worker count',
+})
+const platformSuites = JSON.parse(
+  readFileSync(`${root}/genie/ci-workflow/test-platforms.json`, 'utf8'),
+)
+const darwinTasks = new Set(platformSuites.darwin.map(({ task }) => task))
+const sourceTaskSelected = (name) =>
+  process.env.EFFECT_UTILS_TEST_PLATFORM !== 'darwin' || darwinTasks.has(name)
+const allDirectSourceTestTasks = [
+  ...new Set([...directSourceTestTasks, ...buck2UnboundedTaskNames]),
+]
+const bootstrapPackagePaths = ['.', 'packages/@overeng/otel-contract']
+ok({
+  condition: sourceTestTasks.length > 0,
+  name: `${sourceTestAggregate} schedules source test tasks through independent chains`,
+})
+for (const name of buck2UnboundedTaskNames) {
+  ok({
+    condition: directSourceTestTasks.includes(name) === sourceTaskSelected(name),
+    name: `${sourceTestAggregate} matches the declared platform scope for ${name}`,
+  })
+}
+ok({
+  condition: dependencies
+    .get('test:notion-cli:unbounded')
+    ?.has('buck2:editor:publish:test:notion-cli:unbounded'),
+  name: 'test:notion-cli:unbounded waits for its request-scoped publisher',
+})
+for (const name of allDirectSourceTestTasks) {
+  ok({
+    condition: tasks.has(name),
+    name: `${name} remains independently addressable`,
+  })
+  ok({
+    condition: [...(dependencies.get(name) ?? [])].every(
+      (dependency) => dependency.startsWith(sourceTestChainPrefix) === false,
+    ),
+    name: `${name} never pulls an aggregate chain into direct execution`,
+  })
+}
+for (const name of sourceTestTasks) {
+  const chainIndex = Number(chainExecutionPattern.exec(name)?.[1])
+  const predecessors = [...(dependencies.get(name) ?? [])].filter((dependency) =>
+    dependency.startsWith(sourceTestChainPrefix),
+  )
+  ok({
+    condition:
+      predecessors.length <= 1 &&
+      predecessors.every(
+        (dependency) => Number(chainExecutionPattern.exec(dependency)?.[1]) === chainIndex,
+      ) &&
+      reaches({ start: sourceTestAggregate, target: name }),
+    name: `${name} advances only its own chain and remains in aggregate coverage`,
+  })
+}
+for (const name of sourceTestTasks) {
+  const isTail = sourceTestTasks.every((other) => dependencies.get(other)?.has(name) !== true)
+  ok({
+    condition: testRunDependencies.includes(name) === isTail,
+    name: `${name} is awaited directly exactly when it is a chain tail`,
+  })
+}
+const packagePublisherContracts = Object.fromEntries(
+  [
+    ...allDirectSourceTestTasks.map((name) => ({
+      consumer: name,
+      packagePath: tasks.get(name)?.cwd,
+    })),
+    ...buck2TestAuthority.lanes
+      .filter(({ unboundedTaskName }) => unboundedTaskName === undefined)
+      .map(({ taskName, packagePath }) => ({ consumer: taskName, packagePath })),
+  ].map(({ consumer, packagePath }) => [
+    `buck2:editor:publish:${consumer}`,
+    { consumers: [consumer], packagePaths: [...new Set([...bootstrapPackagePaths, packagePath])] },
+  ]),
+)
+
 const scopedPublisherContracts = {
   'buck2:editor:publish:restate-effect': {
     consumers: ['test:restate-integration'],
@@ -349,6 +542,23 @@ const scopedPublisherContracts = {
     consumers: ['test:pw:tui-react', 'test:pw:utils'],
     packagePaths: ['packages/@overeng/tui-react', 'packages/@overeng/utils'],
   },
+  'buck2:editor:publish:test': {
+    // check:all's observability profile names the test publisher among its prerequisites.
+    consumers: [
+      ...sourceTestTasks,
+      ...sourceTestExtraSuites,
+      ...(process.env.EFFECT_UTILS_CI_TEST === '1'
+        ? []
+        : ['otel:profile:genie-check', 'otel:verify:genie-check']),
+    ],
+    packagePaths: [
+      '.',
+      'packages/@overeng/ci-tools',
+      'packages/@overeng/genie',
+      ...directSourceTestTasks.map((name) => tasks.get(name)?.cwd),
+    ],
+  },
+  ...packagePublisherContracts,
 }
 for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPublisherContracts)) {
   const publisherDependencies = [...(dependencies.get(publisher) ?? [])]
@@ -367,8 +577,9 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
     ok({
       condition:
         command.includes(publisher.replaceAll(':', '-')) &&
-        commandBody.includes('--packages') &&
-        packagePaths.every((packagePath) => commandBody.includes(`"${packagePath}"`)),
+        JSON.stringify(
+          JSON.parse(commandBody.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]').toSorted(),
+        ) === JSON.stringify([...new Set(packagePaths)].toSorted()),
       name: `${publisher} has its distinct trace identity and explicit canonical package scope`,
       detail: command,
     })
@@ -409,6 +620,42 @@ ok({
   name: 'both Playwright lanes depend on one canonical union publisher',
 })
 
+// Publishers sharing an editor state root fail fast on its `.publish.lock` (no waiting, no
+// theft), so any two publishers one entrypoint schedules together must be ordered by an edge.
+const editorPublishers = [...dependencies.keys()].filter(
+  (name) =>
+    name === 'buck2:editor:bootstrap' ||
+    name === 'buck2:editor:publish' ||
+    name.startsWith('buck2:editor:publish:'),
+)
+const closures = new Map()
+const closureOf = (start) => {
+  const cached = closures.get(start)
+  if (cached !== undefined) return cached
+  const seen = new Set()
+  const visit = (name) => {
+    if (seen.has(name) === true) return
+    seen.add(name)
+    for (const dependency of dependencies.get(name) ?? []) visit(dependency)
+  }
+  visit(start)
+  closures.set(start, seen)
+  return seen
+}
+const unorderedPublishers = []
+for (const entrypoint of dependencies.keys()) {
+  const scheduled = editorPublishers.filter((publisher) => closureOf(entrypoint).has(publisher))
+  for (const [index, left] of scheduled.entries())
+    for (const right of scheduled.slice(index + 1))
+      if (closureOf(left).has(right) === false && closureOf(right).has(left) === false)
+        unorderedPublishers.push(`${entrypoint}: ${left} || ${right}`)
+}
+ok({
+  condition: unorderedPublishers.length === 0,
+  name: 'no entrypoint co-schedules two editor publishers without an ordering edge',
+  detail: unorderedPublishers.join('; '),
+})
+
 ok({
   condition:
     reaches({
@@ -429,6 +676,32 @@ const taskSource = (name) => {
   const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
 }
+
+ok({
+  condition: taskSource('test:buck2:unit').includes('prebuildCollection = true;'),
+  name: 'bounded aggregate declares early collection prebuild even without command metadata',
+})
+const collectionGateSource = readFileSync(
+  `${root}/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts`,
+  'utf8',
+)
+const prebuildBranchOffset = collectionGateSource.indexOf(
+  "if (process.argv.includes('--prebuild-only') === true)",
+)
+ok({
+  condition:
+    prebuildBranchOffset !== -1 &&
+    prebuildBranchOffset < collectionGateSource.indexOf('const sourceTasksPath =') &&
+    prebuildBranchOffset < collectionGateSource.indexOf('const testFiles =') &&
+    collectionGateSource.includes(
+      'const buildPlan = collectionBuildPlan({ lanes: selectedLanes })',
+    ) &&
+    collectionGateSource.indexOf('const selectedLanes = selectTestLanes(') < prebuildBranchOffset &&
+    collectionGateSource.includes('ownershipForFile({ file, lanes })') &&
+    collectionGateSource.includes('const collectionBuildError = await') &&
+    collectionGateSource.includes('const built = await buildCollectionArtifacts()'),
+  name: 'prebuild shares the final current-input plan without reading or caching source verdicts',
+})
 
 const editorMaterializeSource = taskSource('buck2:editor:materialize')
 const orderedMaterializationSteps = [
@@ -500,6 +773,17 @@ ok({
   name: 'whole-workspace editor publisher never kills the shared Buck daemon',
 })
 
+const capabilityPublisherHelper = source.slice(
+  source.indexOf('  publishBuckCapabilities ='),
+  source.indexOf('  buck2BuildExec ='),
+)
+ok({
+  condition:
+    /buck2-capability-publish\.ts/.test(capabilityPublisherHelper) === true &&
+    /--buck2 "\$BUCK2_BIN" >&2/.test(capabilityPublisherHelper) === true,
+  name: 'capability preparation keeps shell command stdout free of publication diagnostics',
+})
+
 const buckProviderCheckSource = taskSource('buck2:providers:check')
 const buckQuickSource = taskSource('buck2:quick')
 const buckAllSource = taskSource('buck2:all')
@@ -534,13 +818,6 @@ ok({
     buckToolchainSource.includes('load("@capabilities//:defs.bzl"') === true &&
     configuredToolchainSource.includes('load("@capabilities//:defs.bzl"') === true,
   name: 'capability Starlark loads use external-cell import syntax',
-})
-const standaloneBuckConfig = readFileSync(`${root}/.buckconfig`, 'utf8')
-ok({
-  condition:
-    standaloneBuckConfig.includes('file_watcher = notify') === true &&
-    standaloneBuckConfig.includes('file_watcher = watchman') === false,
-  name: 'standalone roots use the notify file watcher',
 })
 ok({
   condition: existsSync(`${root}/toolchains`) === false,

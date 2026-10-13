@@ -1,0 +1,403 @@
+[
+  { "contract": "Discount", "name": "unit variant", "input": { "kind": "none" }, "accept": true },
+  {
+    "contract": "Discount",
+    "name": "tag-last decodes, encodes tag first",
+    "input": { "percent": 10, "kind": "percent" },
+    "accept": true,
+    "canonical": { "kind": "percent", "percent": 10 }
+  },
+  {
+    "contract": "Discount",
+    "name": "u64 maximum",
+    "input": { "kind": "fixed", "amountCents": "18446744073709551615" },
+    "accept": true
+  },
+  {
+    "contract": "Discount",
+    "name": "u64 as JSON number",
+    "input": { "kind": "fixed", "amountCents": 5 },
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "u64 overflow",
+    "input": { "kind": "fixed", "amountCents": "18446744073709551616" },
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "u64 leading zero",
+    "input": { "kind": "fixed", "amountCents": "05" },
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "u8 overflow",
+    "input": { "kind": "percent", "percent": 256 },
+    "accept": false
+  },
+  { "contract": "Discount", "name": "unknown tag", "input": { "kind": "bogus" }, "accept": false },
+  {
+    "contract": "Discount",
+    "name": "excess variant field",
+    "input": { "kind": "none", "extra": true },
+    "accept": false
+  },
+  { "contract": "Discount", "name": "missing tag", "input": { "percent": 10 }, "accept": false },
+  { "contract": "Discount", "name": "non-string tag", "input": { "kind": 1 }, "accept": false },
+  {
+    "contract": "Order",
+    "name": "offset timestamp normalizes, value patch",
+    "input": {
+      "unitPriceCents": "250",
+      "sku": "ABC-1234",
+      "quantity": 3,
+      "placedAt": "2026-10-02T12:00:00.5+02:00",
+      "note": "gift",
+      "id": "9007199254740993"
+    },
+    "accept": true,
+    "canonical": {
+      "id": "9007199254740993",
+      "note": "gift",
+      "placedAt": "2026-10-02T10:00:00.500Z",
+      "quantity": 3,
+      "sku": "ABC-1234",
+      "unitPriceCents": "250"
+    }
+  },
+  {
+    "contract": "Order",
+    "name": "null patch",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z",
+      "note": null
+    },
+    "accept": true
+  },
+  {
+    "contract": "Order",
+    "name": "absent patch",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": true
+  },
+  {
+    "contract": "Order",
+    "name": "brand pattern",
+    "input": {
+      "id": "1",
+      "sku": "abc-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "brand trailing newline",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234\n",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "sub-millisecond timestamp",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.0001Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "timestamp without zone",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": 1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "missing required field",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Order",
+    "name": "u32 negative",
+    "input": {
+      "id": "1",
+      "sku": "ABC-1234",
+      "quantity": -1,
+      "unitPriceCents": "1",
+      "placedAt": "2026-10-02T00:00:00.000Z"
+    },
+    "accept": false
+  },
+  {
+    "contract": "Quote",
+    "name": "nested struct inside variant, tag last",
+    "input": {
+      "receipt": {
+        "totalCents": "675",
+        "sku": "ABC-1234",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "orderId": "7"
+      },
+      "note": null,
+      "kind": "priced"
+    },
+    "accept": true,
+    "canonical": {
+      "kind": "priced",
+      "note": null,
+      "receipt": {
+        "orderId": "7",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "sku": "ABC-1234",
+        "totalCents": "675"
+      }
+    }
+  },
+  {
+    "contract": "Quote",
+    "name": "nullable present",
+    "input": {
+      "kind": "priced",
+      "note": "gift",
+      "receipt": {
+        "orderId": "7",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "sku": "ABC-1234",
+        "totalCents": "675"
+      }
+    },
+    "accept": true
+  },
+  {
+    "contract": "Quote",
+    "name": "nullable key is required",
+    "input": {
+      "kind": "priced",
+      "receipt": {
+        "orderId": "7",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "sku": "ABC-1234",
+        "totalCents": "675"
+      }
+    },
+    "accept": false
+  },
+  {
+    "contract": "Quote",
+    "name": "second variant",
+    "input": { "kind": "free", "orderId": "0" },
+    "accept": true
+  },
+  {
+    "contract": "Quote",
+    "name": "nested excess field",
+    "input": {
+      "kind": "priced",
+      "note": null,
+      "receipt": {
+        "orderId": "7",
+        "placedAt": "2026-10-02T12:00:00.500Z",
+        "sku": "ABC-1234",
+        "totalCents": "675",
+        "extra": 1
+      }
+    },
+    "accept": false
+  },
+  {
+    "contract": "Quote",
+    "name": "variant field from another variant",
+    "input": { "kind": "free", "orderId": "0", "note": null },
+    "accept": false
+  },
+  {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 null",
+    "input": { "value": null },
+    "accept": true
+  },
+  {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 rounding",
+    "input": { "value": 0.1 },
+    "accept": true,
+    "canonicalJson": "{\"value\":0.10000000149011612}"
+  },
+  {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 missing",
+    "input": {},
+    "accept": false
+  },
+  {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 overflow",
+    "input": { "value": 3.5e38 },
+    "accept": false
+  },
+  {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 non-finite",
+    "input": { "value": "Infinity" },
+    "inputJson": "{\"value\":Infinity}",
+    "accept": false
+  },
+  {
+    "contract": "FloatSample",
+    "name": "binary32 decimal rounding",
+    "input": { "value": 0.1 },
+    "accept": true,
+    "canonicalJson": "{\"value\":0.10000000149011612}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "binary32 subnormal",
+    "input": { "value": 1e-45 },
+    "accept": true,
+    "canonicalJson": "{\"value\":1.401298464324817e-45}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "binary32 maximum rounding",
+    "input": { "value": 3.4028235e38 },
+    "accept": true,
+    "canonicalJson": "{\"value\":3.4028234663852886e+38}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "binary32 overflow",
+    "input": { "value": 3.5e38 },
+    "accept": false
+  },
+  {
+    "contract": "FloatSample",
+    "name": "negative zero normalizes in JSON",
+    "input": { "value": 0 },
+    "inputJson": "{\"value\":-0}",
+    "accept": true,
+    "canonicalJson": "{\"value\":0}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "float field accepts integral fraction token",
+    "input": { "value": 1 },
+    "inputJson": "{\"value\":1.0}",
+    "accept": true,
+    "canonicalJson": "{\"value\":1}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "float field accepts exponent token",
+    "input": { "value": 1 },
+    "inputJson": "{\"value\":1e0}",
+    "accept": true,
+    "canonicalJson": "{\"value\":1}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "float integer token above safe-integer limit",
+    "input": { "value": 9007199254740992 },
+    "accept": true,
+    "canonicalJson": "{\"value\":9007199254740992}"
+  },
+  {
+    "contract": "FloatSample",
+    "name": "NaN rejected",
+    "input": { "value": "NaN" },
+    "inputJson": "{\"value\":NaN}",
+    "accept": false
+  },
+  {
+    "contract": "FloatSample",
+    "name": "Infinity rejected",
+    "input": { "value": "Infinity" },
+    "inputJson": "{\"value\":Infinity}",
+    "accept": false
+  },
+  {
+    "contract": "FloatSample",
+    "name": "negative Infinity rejected",
+    "input": { "value": "-Infinity" },
+    "inputJson": "{\"value\":-Infinity}",
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "integer field rejects fraction token",
+    "input": { "kind": "percent", "percent": 1 },
+    "inputJson": "{\"kind\":\"percent\",\"percent\":1.0}",
+    "accept": false
+  },
+  {
+    "contract": "Discount",
+    "name": "integer field rejects exponent token",
+    "input": { "kind": "percent", "percent": 1 },
+    "inputJson": "{\"kind\":\"percent\",\"percent\":1e0}",
+    "accept": false
+  },
+  {
+    "contract": "WideSample",
+    "name": "2^53 minus one",
+    "input": { "unsigned": "9007199254740991", "signed": "9007199254740991" },
+    "accept": true
+  },
+  {
+    "contract": "WideSample",
+    "name": "2^53",
+    "input": { "unsigned": "9007199254740992", "signed": "-9007199254740992" },
+    "accept": true
+  },
+  {
+    "contract": "WideSample",
+    "name": "2^53 plus one",
+    "input": { "unsigned": "9007199254740993", "signed": "-9007199254740993" },
+    "accept": true
+  },
+  {
+    "contract": "WideSample",
+    "name": "64-bit extrema",
+    "input": { "unsigned": "18446744073709551615", "signed": "-9223372036854775808" },
+    "accept": true
+  },
+  {
+    "contract": "WideSample",
+    "name": "signed overflow",
+    "input": { "unsigned": "0", "signed": "9223372036854775808" },
+    "accept": false
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "id": "errors.rate-limited-429",
+  "summary": "Surface the gateway/provider error status and wire type.",
+  "requirements": ["AIG-R10"],
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "auth": "bearer",
+    "match": {
+      "model": "fixture/rate-limited",
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 429,
+    "headers": {
+      "retry-after": "1"
+    },
+    "json": {
+      "error": {
+        "message": "rate limited",
+        "type": "rate_limit_error"
+      }
+    }
+  },
+  "expect": {
+    "outcome": "http-error",
+    "error": {
+      "status": 429,
+      "type": "rate_limit_error"
+    }
+  }
+}

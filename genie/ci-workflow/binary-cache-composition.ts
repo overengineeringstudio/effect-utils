@@ -7,8 +7,10 @@ import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 
 export class ConflictingBinaryCacheError extends Error {
   readonly _tag = 'ConflictingBinaryCacheError'
-  constructor(readonly cacheName: string) {
+  readonly cacheName: string
+  constructor(cacheName: string) {
     super(`Conflicting build cache descriptor: ${cacheName}`)
+    this.cacheName = cacheName
     this.name = 'ConflictingBinaryCacheError'
   }
 }

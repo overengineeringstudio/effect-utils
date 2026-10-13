@@ -53,6 +53,11 @@ Truncate SHA-256 to 16 bytes for trace IDs and 8 bytes for span IDs; if
 all zero, rehash the original preimage with appended `u32be(counter)` from
 1 until nonzero. No stringified `job[runner=value]` is hashed.
 
+The shell identity producer frames and hashes inside a subshell with
+`LC_ALL=C`. This counts bytes independently of the caller's locale without
+restoring an ambient native locale in a forked hashing pipeline; commands
+wrapped by `pipeline-run` retain their own locale.
+
 In CI, `job` is the workflow job identifier. The generated GitHub workflow
 already supplies it as `JOB_KEY`; its sole current matrix dimension is
 `runner`, supplied by `MATRIX_VALUE` (`matrix.runner`). For example,
@@ -180,8 +185,8 @@ caller task span (task run)
 The mode is **preparation plus post-hoc completion**, never supervision. No
 process sits between the caller and Buck: the caller invokes Buck directly
 with the prepared environment, and after Buck exits the caller completes the
-command span itself, exactly the #1382 pattern (`emitCompletedSpan` in
-buck2-tools: fire-and-forget, failures swallowed). `otel-span emit-span`
+command span itself, exactly the #1382 pattern (`emitCompletedSpanAsync` in
+buck2-tools: bounded fire-and-forget, drop-on-full, failures swallowed). `otel-span emit-span`
 already accepts a caller-chosen span id (`--span-id`, with `--trace-id`,
 `--parent-span-id`, explicit start/end nanoseconds, and status), so the
 post-hoc emit needs no new CLI capability — the buck2 mode only fixes _which_

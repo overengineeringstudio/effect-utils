@@ -341,7 +341,7 @@ REPO_ROOT="$ROOT" "$BUN" -e '
 
 foreign_repo="$TEMP_ROOT/foreign-repository"
 mkdir -p "$foreign_repo/scripts/fixtures"
-cp "$ROOT/.buckconfig" "$ROOT/.buckroot" "$foreign_repo/"
+cp "$ROOT/.buckconfig" "$ROOT/.buckroot" "$ROOT/.watchmanconfig" "$foreign_repo/"
 cp -R "$ROOT/scripts/fixtures/rust-foreign" "$foreign_repo/scripts/fixtures/"
 foreign_workspace="scripts/fixtures/rust-foreign/a"
 foreign_graph="$foreign_workspace/third-party/BUCK"

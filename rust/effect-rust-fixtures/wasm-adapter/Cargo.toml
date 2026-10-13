@@ -9,7 +9,10 @@ license.workspace = true
 name = "effect_rust_fixture_wasm"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["wasm"]
+wasm = []
+
 [dependencies]
-hash-core = { path = "../hash-core" }
-math-core = { path = "../math-core" }
-wasm-bindgen.workspace = true
+hash-interop = { path = "../hash-interop" }
+math-interop = { path = "../math-interop" }

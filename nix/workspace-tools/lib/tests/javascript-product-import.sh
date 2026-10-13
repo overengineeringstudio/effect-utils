@@ -9,6 +9,10 @@
 # proven here by the script text the boundary emits.
 set -euo pipefail
 
+# Supplied by devenv for both task execution and direct shell-based CI calls.
+# Keep the digest tool independent of the caller's ambient PATH.
+openssl_bin="${JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN:?devenv must provide the OpenSSL binary}"
+
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -16,7 +20,7 @@ trap 'rm -rf "$tmp"' EXIT
 module="$tmp/tool.js"
 printf '%s\n' 'process.stdout.write("candidate-ok\n")' >"$module"
 module_digest="$(sha256sum "$module" | cut -d ' ' -f 1)"
-integrity="sha256-$(openssl dgst -sha256 -binary "$module" | openssl base64 -A)"
+integrity="sha256-$("$openssl_bin" dgst -sha256 -binary "$module" | "$openssl_bin" base64 -A)"
 size="$(stat --format=%s "$module")"
 
 # Stubbed `pkgs`: every referenced package is a sentinel string and
@@ -70,8 +74,9 @@ write_descriptor() {
   local capabilities="${6:-[]}"
   local modules="${7:-[]}"
   local module_path="${8:-tool.js}"
+  local runtime_kind="${9:-node}"
   cat >"$target" <<JSON
-{"externalCapabilities":$capabilities,"externalModules":$modules,"integrity":"$integrity","modulePath":"$module_path","platform":$platform,"productKind":"$product_kind","productName":"$product_name","provenance":{"configuredTarget":"fixture//x:y (fixture//p:javascript_portable#deadbeef)","dependencyClosureIdentity":"runtime=node;package_tree=fixture//x:package_tree","module":"fixture//x:y-module"},"runtimeContract":"$runtime_contract","runtimeContractVersion":"v1","runtimeKind":"node","schema":"effect-utils/javascript-product/v2","sizeBytes":$size,"target":"fixture//x:y"}
+{"externalCapabilities":$capabilities,"externalModules":$modules,"integrity":"$integrity","modulePath":"$module_path","platform":$platform,"productKind":"$product_kind","productName":"$product_name","provenance":{"configuredTarget":"fixture//x:y (fixture//p:javascript_portable#deadbeef)","dependencyClosureIdentity":"runtime=node;package_tree=fixture//x:package_tree","module":"fixture//x:y-module"},"runtimeContract":"$runtime_contract","runtimeContractVersion":"v1","runtimeKind":"$runtime_kind","schema":"effect-utils/javascript-product/v2","sizeBytes":$size,"target":"fixture//x:y"}
 JSON
 }
 
@@ -173,6 +178,18 @@ jq -e --arg q "'" '
 ' <<<"$wrapper" >/dev/null
 echo "javascript-product-import-test: GREEN wrapper contract reaches the installer"
 
+# GREEN: a Bun product's wrapper disables Bun's runtime auto-install, so a bare
+# import missing from the shipped closure fails instead of resolving unpinned.
+write_descriptor "$tmp/bun-runtime.json" fixture cli javascript-esm \
+  "$portable" '[]' '[]' tool.js bun
+write_case "$tmp/bun-runtime.nix" "$tmp/bun-runtime.json"
+jq -e '
+  (.script | contains("makeWrapper /stub/bun/bin/bun")) and
+  (.script | contains("--add-flags \"--no-install $out/libexec/$module_path\""))
+' <<<"$(eval_case "$tmp/bun-runtime.nix")" >/dev/null
+jq -e '.script | contains("--no-install") | not' <<<"$valid" >/dev/null
+echo "javascript-product-import-test: GREEN Bun wrapper disables runtime auto-install"
+
 # The descriptor bytes have an independently supplied content address.
 write_case "$tmp/wrong-descriptor-digest.nix" "$tmp/product.json" "" \
   0000000000000000000000000000000000000000000000000000000000000000
@@ -215,6 +232,41 @@ write_case "$tmp/surplus-capability.nix" "$tmp/product.json" \
   'expectedExternalCapabilities = [ "watchman" ];'
 expect_failure "surplus declared capability" "external capability mismatch" \
   "$tmp/surplus-capability.nix"
+
+# The pinned descriptor selects a closed provider registry, not the current
+# producer source's capability list. Old and new Genie products both import.
+provider_expr="import $repo_root/nix/workspace-tools/lib/javascript-capability-providers.nix {
+  lib.assertMsg = condition: message: if condition then true else throw message;
+}"
+for gh_required in false true; do
+  nix-instantiate --eval --strict --json --expr "
+    let realize = $provider_expr;
+        value = realize {
+          required = [ \"oxfmt\" ] ++ (if $gh_required then [ \"gh\" ] else [ ]);
+          providers = {
+            oxfmt = { capability = \"oxfmt\"; pathPackages = [ \"formatter\" ]; };
+            gh = { capability = \"gh\"; pathPackages = [ \"github-cli\" ]; };
+          };
+        };
+    in assert builtins.elem \"github-cli\" value.pathPackages == $gh_required;
+       assert builtins.elem \"gh\" value.capabilities == $gh_required;
+       value
+  " >/dev/null
+done
+cat >"$tmp/unknown-provider.nix" <<NIX
+($provider_expr) { required = [ "unregistered-tool" ]; providers = { }; }
+NIX
+expect_failure "unregistered capability provider" \
+  "unregistered capabilities: unregistered-tool" "$tmp/unknown-provider.nix"
+# A registered provider cannot claim to realize a different capability:
+# feed the realization into the unchanged exact importer comparison.
+write_case "$tmp/wrong-provider.nix" "$tmp/undeclared-capability.json" \
+  "expectedExternalCapabilities = (($provider_expr) {
+    required = [ \"watchman\" ];
+    providers.watchman.capability = \"wrong-tool\";
+  }).capabilities;"
+expect_failure "provider realization mismatch" "external capability mismatch" \
+  "$tmp/wrong-provider.nix"
 
 # Same contract for the bare imports the product leaves to the host.
 write_descriptor "$tmp/undeclared-module.json" fixture cli javascript-esm \

@@ -65,6 +65,24 @@ export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions =
   } satisfies GitHubWorkflowJob
 }
 export {
+  cargoClippyJob,
+  cargoClippyStep,
+  cargoFmtJob,
+  cargoFmtStep,
+  cargoNextestJob,
+  cargoNextestStep,
+  nixDevelopStep,
+  plainFlakeGenieCheckJob,
+  plainFlakeJob,
+  plainFlakeSetupSteps,
+  type CargoClippyOptions,
+  type CargoNextestOptions,
+  type NixDevelopStepOptions,
+  type PlainFlakeJobOptions,
+  type PlainFlakeSetupOptions,
+} from './ci-workflow/rust.ts'
+
+export {
   RUNNER_PROFILES,
   bashShellDefaults,
   ciWorkflow,
@@ -112,7 +130,11 @@ export {
   isFleetCacheRunner,
   PrivateBinaryCacheRunnerError,
 } from './ci-workflow/binary-cache-composition.ts'
-export { CachePublisherJobError, validateWorkflowCachePolicy } from './ci-workflow/cache-policy.ts'
+export {
+  CachePublisherJobError,
+  publisherWriteSecret,
+  validateWorkflowCachePolicy,
+} from './ci-workflow/cache-policy.ts'
 export {
   ciMeasurementMetrics,
   ciMeasurementBaselineBackfillPredicate,
@@ -191,6 +213,8 @@ export {
 } from './ci-workflow/support-files.ts'
 export {
   appendGitHubAccessTokenToNixConfigStep,
+  buck2TrustedCacheWriterStep,
+  buck2PublicCacheWriteSecret,
   cachixCliBuildStep,
   cachixStep,
   cachixPublisherStep,
@@ -207,6 +231,7 @@ export {
   githubAppInstallationTokenStep,
   installNixStep,
   namespaceRunner,
+  linuxSandboxPrerequisitesStep,
   nixCacheSetupStep,
   nixDiagnosticsArtifactStep,
   defaultPnpmStateKeyPrefix,

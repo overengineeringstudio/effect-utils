@@ -1,0 +1,35 @@
+[package]
+name = "ai-gateway"
+workspace = ".."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Async, typed client for the public AI gateway contract"
+
+[lib]
+name = "ai_gateway"
+
+[dependencies]
+async-openai = { version = "=0.42.1", default-features = false, features = ["chat-completion", "byot", "middleware", "rustls-no-provider"] }
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+jsonschema = { version = "=0.58.6", default-features = false }
+futures = "0.3"
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-no-provider"] }
+tower = { version = "0.5", features = ["util"] }
+secrecy = "0.10"
+webpki-roots = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+http = "1"
+tokio = { version = "1", features = ["sync"] }
+tracing = "0.1"
+tracing-opentelemetry = "0.32"
+opentelemetry = "0.31"
+
+[dev-dependencies]
+axum = "0.8"
+parking_lot = "0.12"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
+opentelemetry_sdk = { version = "0.31", features = ["testing"] }
+tracing-subscriber = { version = "0.3", features = ["registry"] }

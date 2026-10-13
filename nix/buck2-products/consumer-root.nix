@@ -3,6 +3,7 @@
   rules,
   capabilities,
   cellName,
+  watcherPolicy ? "mutable-checkout",
   remoteCacheEnabled ? false,
   allowCacheUploads ? false,
   actionCacheAddress ? null,
@@ -33,6 +34,7 @@
 
 let
   lib = pkgs.lib;
+  watcherPolicies = import ./watcher-policies.nix;
   ignore = lib.concatStringsSep "," projectIgnore;
   boolString = value: if value then "true" else "false";
   effectiveEngineAddress = if engineAddress == null then actionCacheAddress else engineAddress;
@@ -67,7 +69,7 @@ let
       execution_platforms = rules//buck2/platforms:host_execution_platform
 
     [buck2]
-      file_watcher = notify
+      file_watcher = ${watcherPolicies.${watcherPolicy}}
       digest_algorithms = SHA256
       remote_cache_enabled = ${boolString remoteCacheEnabled}
       allow_cache_uploads = ${boolString allowCacheUploads}${lib.optionalString allowCacheUploads "\n  default_allow_cache_upload = true"}
@@ -82,6 +84,8 @@ let
       cas_address = ${casAddress}
       instance_name = ${cacheInstanceName}
       tls = ${boolString cacheTls}
+      # Buck batches payload bytes, not protobuf overhead; leave room below 4 MiB.
+      max_total_batch_size = 3145728
   ''
   + lib.optionalString (privateProductRoot != null) ''
     [nix_store]
@@ -127,6 +131,9 @@ let
   ''
   + extraToolchainsBuck;
 in
+assert lib.assertMsg
+  (builtins.isString watcherPolicy && builtins.hasAttr watcherPolicy watcherPolicies)
+  "mkConsumerBuckRoot: watcherPolicy must be one of: ${lib.concatStringsSep ", " (builtins.attrNames watcherPolicies)}";
 assert lib.assertMsg (
   builtins.isString cellName
   && builtins.match "[A-Za-z][A-Za-z0-9_]*" cellName != null
@@ -207,6 +214,7 @@ pkgs.runCommand "${cellName}-buck2-root"
     cat > "$out/.buckconfig" <<'BUCKCONFIG'
     ${buckConfig}
     BUCKCONFIG
+    cp ${../../.watchmanconfig} "$out/.watchmanconfig"
     : > "$out/.buckroot"
     cat > "$out/BUCK" <<'ROOT_BUCK'
     ${rootBuck}

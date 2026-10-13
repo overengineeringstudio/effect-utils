@@ -46,6 +46,7 @@ const write = (dir: string, relativePath: string, content: string): string => {
 
 afterEach(() => {
   delete process.env[GENIE_MEMBER_OVERRIDE_MAP_ENV]
+  delete process.env.MEGAREPO_STORE
   for (const dir of createdDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -148,6 +149,45 @@ describe('checkBootstrapClosure', () => {
     expect(failViolation!.chain).toEqual([failRoot, path.join(memberDir, 'reaches-bare.ts')])
 
     expect(violations.find((violation) => violation.source === safeRoot)).toBeUndefined()
+  })
+
+  it('keeps nested #mr closure edges in the initiating workspace lock', async () => {
+    const dir = makeDir()
+    const workspace = path.join(dir, 'workspace')
+    const store = path.join(dir, 'store')
+    process.env.MEGAREPO_STORE = store
+    const commit = '0123456789abcdef0123456789abcdef01234567'
+    const library = {
+      url: 'https://github.com/fixture/library',
+      ref: 'main',
+      commit,
+    }
+    write(workspace, 'megarepo.lock', JSON.stringify({ members: { library } }))
+    write(
+      dir,
+      'nested/megarepo.lock',
+      JSON.stringify({
+        members: { library: { ...library, commit: '1111111111111111111111111111111111111111' } },
+      }),
+    )
+    const nested = write(dir, 'nested/mod.ts', `export { value } from '#mr/library/mod.ts'`)
+    const locked = write(
+      store,
+      `github.com/fixture/library/refs/commits/${commit}/mod.ts`,
+      `import { Effect } from 'effect'\nexport const value = Effect`,
+    )
+    write(
+      store,
+      'github.com/fixture/library/refs/heads/main/mod.ts',
+      `export const value = 'stale'`,
+    )
+    const source = write(
+      workspace,
+      'source.genie.ts',
+      `import { value } from '../nested/mod.ts'\nexport default value`,
+    )
+    const { violations } = await checkBootstrapClosure({ genieFiles: [source] })
+    expect(violations).toEqual([{ source, specifier: 'effect', chain: [source, nested, locked] }])
   })
 
   it('excludes type-only edges (import type, export { type }, import type * as) even when the target reaches a bare package', async () => {

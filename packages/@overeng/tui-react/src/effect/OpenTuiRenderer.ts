@@ -52,25 +52,37 @@ import { keyEvent, resizeEvent } from './events.ts'
 /** Error when OpenTUI core module fails to import */
 export class OpenTuiCoreImportError {
   readonly _tag = 'OpenTuiCoreImportError'
-  constructor(readonly message: string) {}
+  readonly message: string
+  constructor(message: string) {
+    this.message = message
+  }
 }
 
 /** Error when OpenTUI react module fails to import */
 export class OpenTuiReactImportError {
   readonly _tag = 'OpenTuiReactImportError'
-  constructor(readonly message: string) {}
+  readonly message: string
+  constructor(message: string) {
+    this.message = message
+  }
 }
 
 /** Error when OpenTUI renderer fails to initialize */
 export class OpenTuiRendererError {
   readonly _tag = 'OpenTuiRendererError'
-  constructor(readonly message: string) {}
+  readonly message: string
+  constructor(message: string) {
+    this.message = message
+  }
 }
 
 /** Error when OpenTUI is not available (wrong runtime) */
 export class OpenTuiUnavailableError {
   readonly _tag = 'OpenTuiUnavailableError'
-  constructor(readonly message: string) {}
+  readonly message: string
+  constructor(message: string) {
+    this.message = message
+  }
 }
 
 /** Union of all OpenTUI-related errors */

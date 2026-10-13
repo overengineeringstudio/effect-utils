@@ -1,0 +1,47 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/ai-gateway-conformance",
+      "packages/@overeng/ai-gateway-edge"
+    ]
+  },
+  "name": "@overeng/ai-gateway-edge",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Runtime-configured authentication and metering edge for the shared AI gateway wire",
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    }
+  },
+  "bin": {
+    "ai-gateway-edge": "./src/cli.ts"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.0",
+    "effect": "4.0.0"
+  },
+  "devDependencies": {
+    "@overeng/ai-gateway-conformance": "workspace:^",
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "bin": {
+      "ai-gateway-edge": "./dist/src/cli.js"
+    },
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      }
+    }
+  }
+}

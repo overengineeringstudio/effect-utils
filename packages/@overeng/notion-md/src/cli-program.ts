@@ -197,9 +197,9 @@ export const cliVersion = resolveCliVersion({
 
 const resolveToken = resolveNotionToken().pipe(
   Effect.mapError(
-    () =>
+    (error) =>
       new NmdTokenMissingError({
-        message: 'NOTION_API_TOKEN is required',
+        message: error.message,
       }),
   ),
 )

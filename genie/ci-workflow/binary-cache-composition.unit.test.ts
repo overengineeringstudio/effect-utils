@@ -17,13 +17,18 @@ import {
   readBinaryCacheDescriptors,
   type BinaryCacheDescriptor as Cache,
 } from './binary-cache-descriptors.ts'
-import { validateWorkflowCachePolicy } from './cache-policy.ts'
+import {
+  CachePublisherJobError,
+  trustedCacheWriterGuardedSecret,
+  publisherWriteSecret,
+  validateWorkflowCachePolicy,
+} from './cache-policy.ts'
 import { prSnapshotPackJob, prSnapshotReleaseJobs } from './pr-snapshot.ts'
 import {
+  buck2TrustedCacheWriterStep,
   cachixPublisherStep,
   cachixPushStep,
   cachixStep,
-  CachePublisherJobError,
   installNixStep,
 } from './setup.ts'
 import { ciWorkflow } from './shared.ts'
@@ -52,6 +57,24 @@ const privateCache: Cache = {
 const protectedIf = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
 
 describe('build cache composition', () => {
+  it('preserves structured cache error fields and messages', () => {
+    const conflict = new ConflictingBinaryCacheError('cache')
+    expect(conflict).toBeInstanceOf(Error)
+    expect(conflict.cacheName).toBe('cache')
+    expect(conflict._tag).toBe('ConflictingBinaryCacheError')
+    expect(conflict.name).toBe('ConflictingBinaryCacheError')
+    expect(conflict.message).toBe('Conflicting build cache descriptor: cache')
+
+    const publisher = new CachePublisherJobError('publish')
+    expect(publisher).toBeInstanceOf(Error)
+    expect(publisher.jobName).toBe('publish')
+    expect(publisher._tag).toBe('CachePublisherJobError')
+    expect(publisher.name).toBe('CachePublisherJobError')
+    expect(publisher.message).toBe(
+      'Cache publisher job publish requires protected main-branch publication or an exact main-push Buck2 secret guard; write secrets are step-local',
+    )
+  })
+
   it('accepts public cache on non-fleet and private cache only on static fleet labels', () => {
     expect(binaryCachesExtraConfForJob({ runner: 'ubuntu-latest', caches: [publicCache] })).toBe(
       `extra-substituters = ${publicCache.kind === 'nix-binary' ? publicCache.uri : ''}\nextra-trusted-public-keys = ${publicCache.kind === 'nix-binary' ? publicCache.publicKey : ''}`,
@@ -232,6 +255,53 @@ it('guards private descriptors through direct githubWorkflow output', () => {
       },
     }),
   ).toThrow(PrivateBinaryCacheRunnerError)
+})
+
+describe('trusted Buck2 publisher', () => {
+  const secret = 'BUCK2_PUBLIC_CACHE_WRITE_AUTH'
+  const guarded = trustedCacheWriterGuardedSecret(secret)
+  const step = buck2TrustedCacheWriterStep({ run: 'devenv tasks run test:run' })
+  const on = { push: { branches: ['main'] }, pull_request: null, merge_group: null } as const
+  const validate = (
+    steps: Parameters<typeof validateWorkflowCachePolicy>[0]['workflow']['jobs'][string]['steps'],
+    triggers: Parameters<typeof validateWorkflowCachePolicy>[0]['workflow']['on'] = on,
+  ) =>
+    validateWorkflowCachePolicy({
+      workflow: { on: triggers, jobs: { test: { 'runs-on': 'ubuntu-latest', steps } } },
+    })
+
+  it('rejects every unguarded reference, including aliases alongside a guarded credential', () => {
+    for (const reference of [
+      '${{ secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH }}',
+      "${{ secrets['BUCK2_PUBLIC_CACHE_WRITE_AUTH'] }}",
+      "${{ github.ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
+      "${{ github.event_name == 'merge_group' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
+      "${{ github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}",
+      '${{ toJSON(secrets) }}',
+    ]) {
+      expect(() => validate([{ ...step, env: { ...step.env, EXTRA: reference } }])).toThrow(
+        CachePublisherJobError,
+      )
+    }
+  })
+
+  it('rejects push triggers not restricted exclusively to main', () => {
+    for (const push of [{}, { branches: ['feature'] }, { branches: ['main', 'feature'] }]) {
+      expect(() => validate([step], { ...on, push })).toThrow(CachePublisherJobError)
+    }
+  })
+
+  it('rejects guarded credentials in an unmarked step even without any marked publisher', () => {
+    expect(() =>
+      validate([{ run: 'devenv tasks run test:run', env: { [secret]: guarded } }]),
+    ).toThrow(CachePublisherJobError)
+    expect(() =>
+      validate([
+        { [publisherWriteSecret]: secret, run: 'true', env: { [secret]: guarded } },
+        { run: 'echo $EXTRA', env: { EXTRA: guarded } },
+      ]),
+    ).toThrow(CachePublisherJobError)
+  })
 })
 
 describe('Cachix publisher', () => {

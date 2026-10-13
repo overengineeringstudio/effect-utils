@@ -35,7 +35,15 @@ notion-md sync page.nmd --watch --poll-interval-ms 30000
 notion-md sync docs --recursive --watch --poll-interval-ms 30000
 ```
 
-The CLI reads `NOTION_API_TOKEN`.
+The CLI reads `NOTION_API_TOKEN` (or `NOTION_TOKEN`). In this repo's devenv
+shell, `notion-md` resolves the SecretSpec profile from `secretspec.toml`
+when neither environment variable is set. For source entrypoints, use
+`secrets-run --reason "run notion-md" -- <command>`. Outside devenv, supply
+the token explicitly in the environment.
+Configure a SecretSpec provider before using this path (`secretspec config global init`,
+or `SECRETSPEC_PROVIDER`); `SECRETSPEC_FILE` can select a local manifest with
+provider references. The public repo's manifest declares the token but contains
+no workstation-specific credential references.
 
 ## Safety Model
 

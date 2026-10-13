@@ -132,7 +132,6 @@ pkgs.writeShellScriptBin "otel-span" ''
       }
 
       _frame() {
-        local LC_ALL=C
         _u32be "''${#1}"
         printf '%s' "$1"
       }
@@ -167,7 +166,12 @@ pkgs.writeShellScriptBin "otel-span" ''
         done < <(printf '%s\0' "''${names[@]}" | LC_ALL=C ${pkgs.coreutils}/bin/sort -zu)
       }
 
-      _derive_pipeline_id() {
+      # Keep bytewise framing in an isolated locale context. Restoring a local
+      # LC_ALL in a forked Darwin shell can enter fork-unsafe CoreFoundation.
+      # A subshell body does not restore the ambient locale or affect commands
+      # wrapped by pipeline-run.
+      _derive_pipeline_id() (
+        export LC_ALL=C
         local domain=$1 length=$2 run=$3 counter=0 digest result
         shift 3
         while :; do
@@ -186,7 +190,7 @@ pkgs.writeShellScriptBin "otel-span" ''
           fi
           ((counter += 1))
         done
-      }
+      )
 
       _valid_ci_component() {
         local component=$1 char hex byte i

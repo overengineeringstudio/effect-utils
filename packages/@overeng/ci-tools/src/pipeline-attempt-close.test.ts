@@ -18,10 +18,10 @@ test('attempt close links latest jobs from each job’s execution attempt withou
     attempt: 2,
     jobs: [
       job('test (namespace-profile-linux-x86-64)', 2, '2026-09-29T10:01:00Z'),
-      job('typecheck', 2, '2026-09-29T10:02:00Z'),
+      job('pr/quality', 2, '2026-09-29T10:02:00Z'),
       job('cargo', 2, null),
-      job('lint', 1, '2026-09-29T09:00:00Z'),
-      job('lint', 2, '2026-09-29T09:00:00Z'), // carried over from attempt 1
+      job('weaver', 1, '2026-09-29T09:00:00Z'),
+      job('weaver', 2, '2026-09-29T09:00:00Z'), // carried over from attempt 1
       job('pr-a-inert-buck', 2, '2026-09-29T10:01:00Z'),
       job('pr-a-inert-buck', 2, null),
       job('unknown dynamically named job', 2, '2026-09-29T10:03:00Z'),
@@ -42,12 +42,12 @@ test('attempt close links latest jobs from each job’s execution attempt withou
     }),
   )
   expect(root.links[1]!.traceId).toBe(
-    deriveJobTraceId({ runId: run, job: 'typecheck', dimensions: {} }),
+    deriveJobTraceId({ runId: run, job: 'quality', dimensions: {} }),
   )
   expect(root.links[2]!.traceId).toBe(
     deriveJobTraceId({
       runId: 'ci/github/overengineeringstudio%2Feffect-utils/421/1',
-      job: 'lint',
+      job: 'weaver',
       dimensions: {},
     }),
   )

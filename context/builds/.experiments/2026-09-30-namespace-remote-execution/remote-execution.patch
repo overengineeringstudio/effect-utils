@@ -1,0 +1,207 @@
+diff --git a/buck2/dependencies/defs.bzl b/buck2/dependencies/defs.bzl
+index ad139c90..09bac4b7 100644
+--- a/buck2/dependencies/defs.bzl
++++ b/buck2/dependencies/defs.bzl
+@@ -47,6 +47,7 @@ maps have exactly the keys ``linux_x86_64``, ``linux_aarch64``, and
+ """
+ 
+ load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
++load("//buck2/platforms:defs.bzl", "namespace_re_enabled")
+ 
+ PnpmPackageInfo = provider(fields = {
+     "bins": provider_field(dict[str, str]),
+@@ -550,7 +551,7 @@ def _store_entry_impl(ctx):
+         args,
+         category = "pnpm_store_entry",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not namespace_re_enabled(),
+         allow_cache_upload = True,
+     )
+     return [
+@@ -664,7 +665,7 @@ def _store_scc_impl(ctx):
+         args,
+         category = "pnpm_store_scc",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not namespace_re_enabled(),
+         allow_cache_upload = True,
+     )
+     return [
+@@ -788,7 +789,7 @@ def _store_view_impl(ctx):
+         args,
+         category = "pnpm_store_view",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not namespace_re_enabled(),
+         allow_cache_upload = True,
+     )
+     return [
+@@ -879,7 +880,7 @@ def _runtime_closure_impl(ctx):
+         args,
+         category = "pnpm_runtime_closure",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not namespace_re_enabled(),
+         allow_cache_upload = True,
+     )
+     return [DefaultInfo(default_output = out)]
+diff --git a/buck2/javascript.bzl b/buck2/javascript.bzl
+index 04f7de57..9ce15ceb 100644
+--- a/buck2/javascript.bzl
++++ b/buck2/javascript.bzl
+@@ -7,7 +7,7 @@ input. The runner hashes all declared inputs before and after execution.
+ load("//buck2/materialization.bzl", "PackageTreeInfo")
+ load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
+ load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
+-load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
++load("//buck2/platforms:defs.bzl", "namespace_executor_config", "namespace_re_enabled", "root_allow_cache_uploads", "root_remote_cache_enabled")
+ 
+ JavaScriptExecutableInfo = provider(fields = {
+     "package_tree": Artifact,
+@@ -140,14 +140,9 @@ def _test_info(ctx, command, positional):
+             env = {},
+             labels = ctx.attrs.labels,
+             contacts = ctx.attrs.contacts,
+-            default_executor = CommandExecutorConfig(
+-                local_enabled = True,
+-                remote_enabled = False,
+-                remote_cache_enabled = cache_enabled,
+-                allow_cache_uploads = cache_uploads,
+-            ),
+-            run_from_project_root = False,
+-            use_project_relative_paths = False,
++            default_executor = namespace_executor_config(cache_enabled, cache_uploads),
++            run_from_project_root = namespace_re_enabled(),
++            use_project_relative_paths = namespace_re_enabled(),
+             supports_test_execution_caching = cache_enabled,
+         ),
+     ]
+@@ -242,7 +237,7 @@ def _vitest_collect_impl(ctx):
+         args,
+         category = "vitest_collect",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not namespace_re_enabled(),
+         allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+     )
+     return [DefaultInfo(default_output = collection)]
+diff --git a/buck2/materialization.bzl b/buck2/materialization.bzl
+index 1c05dc4e..5a62e9f1 100644
+--- a/buck2/materialization.bzl
++++ b/buck2/materialization.bzl
+@@ -2,6 +2,7 @@
+ 
+ load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
+ load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
++load("//buck2/platforms:defs.bzl", "namespace_re_enabled")
+ 
+ 
+ PackageTreeInfo = provider(fields = {
+@@ -84,7 +85,7 @@ def _package_tree_impl(ctx):
+         args,
+         category = "package_tree",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not namespace_re_enabled(),
+         allow_cache_upload = True,
+     )
+     providers = [
+diff --git a/buck2/platforms/defs.bzl b/buck2/platforms/defs.bzl
+index 5779f52c..4b781dcd 100644
+--- a/buck2/platforms/defs.bzl
++++ b/buck2/platforms/defs.bzl
+@@ -136,6 +136,47 @@ def root_remote_cache_enabled():
+ def root_allow_cache_uploads():
+     return read_root_config("buck2", "allow_cache_uploads", "true") == "true"
+ 
++
++def namespace_re_enabled():
++    return read_root_config("namespace_re", "enabled", "false") == "true"
++
++def namespace_re_properties():
++    if not namespace_re_enabled():
++        return {}
++    closure_paths = read_root_config("namespace_re", "closure_paths", "")
++    if not closure_paths:
++        fail("namespace_re.closure_paths must name the realized buck2-capabilities tool closure")
++    startup = """
++set -eux
++export DEBIAN_FRONTEND=noninteractive
++apt-get update -qq
++apt-get install -y -qq curl ca-certificates xz-utils >/dev/null
++curl -sSfL https://install.determinate.systems/nix | sh -s -- install linux --init none --no-confirm \
++  --extra-conf 'extra-substituters = https://overeng-effect-utils.cachix.org' \
++  --extra-conf 'extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc='
++. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
++nix-store --realise %s >/dev/null
++""" % closure_paths
++    return {
++        "OSFamily": "linux",
++        "namespace_pool": read_root_config("namespace_re", "pool", "effect-utils-real-graph"),
++        "namespace_pool_machine_type": "linux/amd64:8x16",
++        "namespace_pool_startup_script": startup,
++        "namespace_action_isolation": "none",
++    }
++
++def namespace_executor_config(cache_enabled, cache_uploads):
++    return CommandExecutorConfig(
++        local_enabled = True,
++        remote_enabled = namespace_re_enabled(),
++        remote_execution_properties = namespace_re_properties(),
++        remote_execution_use_case = "buck2-default",
++        remote_output_paths = "output_paths",
++        remote_cache_enabled = cache_enabled,
++        allow_cache_uploads = cache_uploads,
++        use_windows_path_separators = False,
++    )
++
+ def _native_execution_platform_impl(ctx):
+     constraints = {}
+     for dep in ctx.attrs.constraint_values:
+@@ -145,12 +186,9 @@ def _native_execution_platform_impl(ctx):
+     platform = ExecutionPlatformInfo(
+         label = ctx.label.raw_target(),
+         configuration = configuration,
+-        executor_config = CommandExecutorConfig(
+-            local_enabled = True,
+-            remote_enabled = False,
+-            remote_cache_enabled = root_remote_cache_enabled(),
+-            allow_cache_uploads = root_allow_cache_uploads(),
+-            use_windows_path_separators = False,
++        executor_config = namespace_executor_config(
++            root_remote_cache_enabled(),
++            root_allow_cache_uploads(),
+         ),
+     )
+     return [
+diff --git a/buck2/typescript.bzl b/buck2/typescript.bzl
+index f2634b26..78c41935 100644
+--- a/buck2/typescript.bzl
++++ b/buck2/typescript.bzl
+@@ -8,6 +8,7 @@ before and after execution so TypeScript actions remain write-free.
+ load("//buck2/materialization.bzl", "PackageTreeInfo")
+ load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
+ load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
++load("//buck2/platforms:defs.bzl", "namespace_re_enabled")
+ 
+ TsgoTypecheckInfo = provider(fields = {
+     "toolchain_identity": str,
+@@ -54,7 +55,7 @@ def _tsgo_typecheck_impl(ctx):
+         args,
+         category = "tsgo_typecheck",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not namespace_re_enabled(),
+         allow_cache_upload = True,
+     )
+     return [
+@@ -116,7 +117,7 @@ def _tsgo_emit_impl(ctx):
+         args,
+         category = "tsgo_emit",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not namespace_re_enabled(),
+         allow_cache_upload = True,
+     )
+     return [

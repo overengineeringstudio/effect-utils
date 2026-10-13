@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import testScheduling from '../genie/ci-workflow/test-scheduling.json'
 import {
   decodePublicationPackagePaths,
   editorViewPackagePaths,
@@ -14,7 +15,7 @@ describe('editor view authority orchestration', () => {
     const plan = editorViewPlan({ cell: 'workspace_cell' })
 
     expect(plan.packages.map(({ packagePath }) => packagePath)).toEqual(editorViewPackagePaths)
-    expect(plan.packages).toHaveLength(40)
+    expect(plan.packages).toHaveLength(editorViewPackagePaths.length)
     expect(plan.packages[0]?.editor).toMatchObject({
       cell: 'workspace_cell',
       inputsManifestTarget: 'workspace_cell//:editor_view_inputs',
@@ -27,6 +28,66 @@ describe('editor view authority orchestration', () => {
         `workspace_cell//${entry.packagePath}:editor_view_inputs`,
       )
       expect(entry.editor?.target).toBe(`//${entry.packagePath}:editor_inputs`)
+    }
+  })
+
+  it('starts long declared editor views first without changing their authority or targets', () => {
+    const packagePaths = [
+      '.',
+      ...Object.keys(testScheduling.editorViewSeconds).filter((path) => path !== '.'),
+    ]
+    const lexical = editorViewPlan({ cell: 'workspace_cell', packagePaths })
+    const weighted = editorViewPlan({
+      cell: 'workspace_cell',
+      packagePaths,
+      packageWeights: testScheduling.editorViewSeconds,
+    })
+    const weights: Readonly<Record<string, number>> = testScheduling.editorViewSeconds
+
+    expect(weighted.packages.map(({ packagePath }) => packagePath)).toEqual(
+      [...packagePaths].sort((left, right) => {
+        const difference = (weights[right] ?? 1) - (weights[left] ?? 1)
+        return difference !== 0 ? difference : left === right ? 0 : left < right ? -1 : 1
+      }),
+    )
+    expect(weighted.packages.slice(0, 2).map(({ packagePath }) => packagePath)).toEqual([
+      'packages/@overeng/notion-cli',
+      'packages/@overeng/notion-datasource-sync',
+    ])
+    expect(
+      weighted.packages.toSorted((left, right) =>
+        left.packagePath.localeCompare(right.packagePath),
+      ),
+    ).toEqual(
+      lexical.packages.toSorted((left, right) => left.packagePath.localeCompare(right.packagePath)),
+    )
+  })
+
+  it('uses lexical ties and weight one for editor views without a declared duration', () => {
+    const plan = editorViewPlan({
+      cell: 'workspace_cell',
+      packagePaths: ['packages/@overeng/utils', '.', 'packages/@overeng/genie'],
+      packageWeights: { 'packages/@overeng/genie': 10 },
+    })
+    expect(plan.packages.map(({ packagePath }) => packagePath)).toEqual([
+      'packages/@overeng/genie',
+      '.',
+      'packages/@overeng/utils',
+    ])
+  })
+
+  it('declares a single positive worker count and positive integer duration weights', () => {
+    expect(Number.isInteger(testScheduling.workers)).toBe(true)
+    expect(testScheduling.workers).toBeGreaterThan(0)
+    for (const weights of [
+      testScheduling.sourceTaskSeconds,
+      testScheduling.moduleScriptSeconds,
+      testScheduling.editorViewSeconds,
+    ]) {
+      for (const weight of Object.values(weights)) {
+        expect(Number.isInteger(weight)).toBe(true)
+        expect(weight).toBeGreaterThan(0)
+      }
     }
   })
 

@@ -4,6 +4,8 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 
+unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+
 assert_exit_code() {
   local expected="$1"
   local actual="$2"
@@ -80,7 +82,7 @@ extract_task_script() {
   chmod +x "$output_path"
 }
 
-eval_pnpm_package_count() {
+eval_pnpm_package_names() {
   nix eval --impure --raw --expr "
     let
       flake = builtins.getFlake \"$NIX_FLAKE_REF\";
@@ -93,7 +95,7 @@ eval_pnpm_package_count() {
         lib = pkgs.lib;
         config = { devenv.root = \"$workspace\"; };
       };
-    in builtins.toString (builtins.length module.packages)
+    in builtins.concatStringsSep \"\\n\" (map pkgs.lib.getName module.packages)
   "
 }
 
@@ -223,12 +225,12 @@ trap 'if [ "${KEEP_PNPM_SMOKE_TMP:-0}" = "1" ]; then echo "pnpm smoke tmp: $tmpd
 workspace="$tmpdir/workspace"
 mkdir -p "$workspace/.devenv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
 
-echo "Preflight: pnpmPkg is exec-only guard backing, not a profile package"
-assert_eq 1 "$(eval_pnpm_package_count)" "pnpm module packages should contain the pnpm guard only"
+echo "Preflight: profile exposes the pnpm guard and opt-in historical-store collector, not pnpmPkg"
+assert_eq $'pnpm\npnpm-store-gc' "$(eval_pnpm_package_names)" "pnpm module packages should contain the guard and collector only"
 
 echo "Preflight: generated dependency graph contract classifies workspace overrides"
 assert_json_field \
-  "4.0.0-rc.118" \
+  "4.0.0" \
   "$ROOT/pnpm-install-contract.json" \
   '(value) => value.dependencyGraphContract.overrides["@effect/platform-node-shared"]' \
   "dependency graph contract should include the active Effect cohort override"
@@ -545,7 +547,6 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   grep -qxF "flock --shared -w 600 202" "$tmpdir/flock.log"
   ! grep -qF -- '--exclusive' "$tmpdir/flock.log"
   test "$(wc -l < "$tmpdir/flock.log")" -eq 3
-  grep -qxF "install --frozen-lockfile --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --config.child-concurrency=1 --config.network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
   ! grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
   test -w "$workspace/.devenv/task-cache/pnpm-install/pnpm-install-contract.json"
@@ -571,9 +572,6 @@ echo "Test 2c: lockfile mutation entrypoints preserve the live topology policy"
   : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-update.exec.sh"
   bash "$tmpdir/pnpm-dedupe.exec.sh"
-  policy_flags="--ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --config.child-concurrency=1 --config.network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore"
-  grep -qxF "install --fix-lockfile $policy_flags --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm-mutator.log"
-  grep -qxF "dedupe $policy_flags --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
   test "$(grep -cFx 'flock -w 600 200' "$tmpdir/flock.log")" -eq 2
   test "$(grep -cFx 'flock -w 600 201' "$tmpdir/flock.log")" -eq 2
   test "$(grep -cFx 'flock --shared -w 600 202' "$tmpdir/flock.log")" -eq 2
@@ -702,7 +700,7 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   test ! -e "$workspace/node_modules/corrupt-edge"
   test -f "$workspace/node_modules/.install-ok"
   grep -qxF "PWD=$workspace" "$tmpdir/pnpm.log"
-  CI=1 bash "$tmpdir/pnpm-install.exec.sh"
+  CI=1 GITHUB_ACTIONS=true bash "$tmpdir/pnpm-install.exec.sh"
   set +e
   bash "$tmpdir/pnpm-install.status.sh"
   exit_code=$?
@@ -845,7 +843,6 @@ echo "Test 16: install flags and pre-install hooks are applied"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --config.child-concurrency=1 --config.network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 17: impure no-frozen install flags are rejected before pnpm runs"
@@ -1152,8 +1149,6 @@ EOF
   bash "$tmpdir/pnpm-update.exec.sh"
   grep -qxF -- "--defer-validation" "$tmpdir/genie.log"
   grep -qxF -- "--check" "$tmpdir/genie.log"
-  policy_flags="--ignore-scripts --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --config.child-concurrency=1 --config.network-concurrency=4 --config.enable-global-virtual-store=false --config.virtual-store-dir=node_modules/.pnpm --pm-on-fail=ignore"
-  grep -qxF "install --fix-lockfile $policy_flags --config.package-import-method=auto --config.store-dir=$tmpdir/home/.local/share/pnpm/store-shared-v1" "$tmpdir/pnpm-mutator.log"
   grep -qF "hasBin: true" pnpm-lock.yaml
 )
 

@@ -334,8 +334,10 @@ const mirrorNodeModulesSearchPaths = async ({
 /** Stage and bundle a compiled-generation import graph in an isolated temporary directory. */
 export const stageCompiledBinaryImportGraph = ({
   entryPath,
+  workspaceRoot = path.dirname(entryPath),
 }: {
   entryPath: string
+  workspaceRoot?: string | undefined
 }): Effect.Effect<StagedCompiledBinaryImportGraph, GenieImportError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const tempRoot = yield* Effect.tryPromise({
@@ -351,7 +353,7 @@ export const stageCompiledBinaryImportGraph = ({
     // Ownership of the staging root passes to the caller only on success: any failure or
     // interruption between mkdtemp and the returned graph removes the root here, so a failed
     // or interrupted staging cannot leak temporary directories.
-    return yield* stageGraphWithinRoot({ entryPath, tempRoot }).pipe(
+    return yield* stageGraphWithinRoot({ entryPath, tempRoot, workspaceRoot }).pipe(
       Effect.onExit((exit) =>
         Exit.isFailure(exit) === true ? removeStagingRoot(tempRoot) : Effect.void,
       ),
@@ -361,9 +363,11 @@ export const stageCompiledBinaryImportGraph = ({
 const stageGraphWithinRoot = ({
   entryPath,
   tempRoot,
+  workspaceRoot,
 }: {
   entryPath: string
   tempRoot: string
+  workspaceRoot: string
 }): Effect.Effect<StagedCompiledBinaryImportGraph, GenieImportError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const stagedPaths = new Map<string, string>()
@@ -413,6 +417,7 @@ const stageGraphWithinRoot = ({
           const resolvedMemberPath = resolveMegarepoMemberSpecifierSync({
             specifier,
             importerPath: sourcePath,
+            workspaceRoot,
           })
           if (resolvedMemberPath === undefined) continue
 
@@ -456,6 +461,7 @@ const stageGraphWithinRoot = ({
         const transformedSource = yield* resolveImportMapsInSource({
           sourceCode: sourceWithStagedMegarepoMembers,
           sourcePath,
+          workspaceRoot,
         }).pipe(
           Effect.mapError(
             (error) =>
@@ -727,8 +733,8 @@ export const getHeaderComment = ({
     return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
   }
 
-  // Regular JSON files don't support comments - rely on read-only permissions + .gitattributes
-  if (ext === '.json') {
+  // Strict JSON formats rely on read-only permissions + .gitattributes, not comments.
+  if (ext === '.json' || basename === '.watchmanconfig') {
     return ''
   }
 
@@ -911,8 +917,8 @@ const computeLocationFromPath = ({
 /**
  * Import a genie file and return its typed output plus the base context.
  *
- * A Bun import resolver is registered once so `#...` specifiers are resolved
- * using the import map closest to the importing file (including transitive imports).
+ * A source-mode Bun import resolver is registered once for one workspace per process.
+ * Ordinary import maps remain importer-relative; transitive `#mr` imports use that workspace's lock.
  */
 export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
   genieFilePath,
@@ -932,7 +938,16 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
     genieFilePath,
     targetFilePath: genieFilePath.replace('.genie.ts', ''),
   })
-  yield* ensureImportMapResolver
+  yield* ensureImportMapResolver(cwd).pipe(
+    Effect.mapError(
+      (cause) =>
+        new GenieImportError({
+          genieFilePath,
+          message: `Failed to import ${genieFilePath}: ${cause.message}`,
+          cause,
+        }),
+    ),
+  )
 
   const importModule = (
     importPath: string,
@@ -952,7 +967,10 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
     compiledBinaryImportGraphLoader ??
     (() =>
       Effect.gen(function* () {
-        const staged = yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath })
+        const staged = yield* stageCompiledBinaryImportGraph({
+          entryPath: genieFilePath,
+          workspaceRoot: cwd,
+        })
         const importPath = `${pathToFileURL(staged.stagePath).href}?import=${Date.now()}`
         return yield* importModule(importPath).pipe(
           Effect.ensuring(removeStagingRoot(staged.tempRoot)),
@@ -1115,8 +1133,13 @@ const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
   effect: Effect.Effect<void, E, FileSystem.FileSystem>
 }) {
   yield* Observability.annotateTargetLock({ cwd, targetFilePath })
-  /** Use cwd-relative dir instead of shared /tmp to avoid EACCES when multiple CI jobs with different UIDs share the same tmpdir */
-  const lockDir = path.join(cwd, 'tmp', 'genie-locks')
+  // User-owned state keeps locks outside source roots and avoids shared /tmp UID conflicts.
+  const configuredStateHome = process.env.XDG_STATE_HOME
+  const stateHome =
+    configuredStateHome !== undefined && path.isAbsolute(configuredStateHome) === true
+      ? configuredStateHome
+      : path.join(os.homedir(), '.local', 'state')
+  const lockDir = path.join(stateHome, 'genie', 'locks')
   const lockLayer = FileSystemBacking.layer({ lockDir })
   const lockKey = `genie:file:${createHash('sha256').update(path.resolve(targetFilePath)).digest('hex')}`
 
