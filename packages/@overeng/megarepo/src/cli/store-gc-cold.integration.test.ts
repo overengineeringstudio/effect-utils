@@ -177,9 +177,7 @@ const runGc = ({
     const stdout = (yield* getStdoutLines).join('\n')
     if (stdout.length === 0 && Exit.isFailure(exit) === true)
       return yield* Effect.failCause(exit.cause)
-    const decoded = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StoreGcJsonOutput))(
-      stdout,
-    )
+    const decoded = yield* Schema.decodeEffect(Schema.fromJsonString(StoreGcJsonOutput))(stdout)
     return { exitCode: Exit.isSuccess(exit) === true ? 0 : 1, results: decoded.results }
   }).pipe(Effect.scoped)
 
