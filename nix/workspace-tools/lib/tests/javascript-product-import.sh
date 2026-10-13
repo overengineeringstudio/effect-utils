@@ -233,6 +233,41 @@ write_case "$tmp/surplus-capability.nix" "$tmp/product.json" \
 expect_failure "surplus declared capability" "external capability mismatch" \
   "$tmp/surplus-capability.nix"
 
+# The pinned descriptor selects a closed provider registry, not the current
+# producer source's capability list. Old and new Genie products both import.
+provider_expr="import $repo_root/nix/workspace-tools/lib/javascript-capability-providers.nix {
+  lib.assertMsg = condition: message: if condition then true else throw message;
+}"
+for gh_required in false true; do
+  nix-instantiate --eval --strict --json --expr "
+    let realize = $provider_expr;
+        value = realize {
+          required = [ \"oxfmt\" ] ++ (if $gh_required then [ \"gh\" ] else [ ]);
+          providers = {
+            oxfmt = { capability = \"oxfmt\"; pathPackages = [ \"formatter\" ]; };
+            gh = { capability = \"gh\"; pathPackages = [ \"github-cli\" ]; };
+          };
+        };
+    in assert builtins.elem \"github-cli\" value.pathPackages == $gh_required;
+       assert builtins.elem \"gh\" value.capabilities == $gh_required;
+       value
+  " >/dev/null
+done
+cat >"$tmp/unknown-provider.nix" <<NIX
+($provider_expr) { required = [ "unregistered-tool" ]; providers = { }; }
+NIX
+expect_failure "unregistered capability provider" \
+  "unregistered capabilities: unregistered-tool" "$tmp/unknown-provider.nix"
+# A registered provider cannot claim to realize a different capability:
+# feed the realization into the unchanged exact importer comparison.
+write_case "$tmp/wrong-provider.nix" "$tmp/undeclared-capability.json" \
+  "expectedExternalCapabilities = (($provider_expr) {
+    required = [ \"watchman\" ];
+    providers.watchman.capability = \"wrong-tool\";
+  }).capabilities;"
+expect_failure "provider realization mismatch" "external capability mismatch" \
+  "$tmp/wrong-provider.nix"
+
 # Same contract for the bare imports the product leaves to the host.
 write_descriptor "$tmp/undeclared-module.json" fixture cli javascript-esm \
   "$portable" '[]' '["@scope/native-linux-x64"]'

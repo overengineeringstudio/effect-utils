@@ -290,18 +290,27 @@ const resolveLocalMegarepoMemberRootSync = ({
 
   const lockPath = path.join(repoRoot, 'megarepo.lock')
   if (fs.existsSync(lockPath) === true) {
-    try {
-      const lockContent = fs.readFileSync(lockPath, 'utf8')
-      const lock = parseMegarepoLockContent(lockContent)
-      const lockMember = lock.members?.[memberName]
-      if (lockMember !== undefined) {
-        const derivedPath = deriveStoreWorktreePathFromLockMember({ member: lockMember })
-        if (derivedPath !== undefined) {
-          return derivedPath
+    const lockContent = fs.readFileSync(lockPath, 'utf8')
+    const lock = parseMegarepoLockContent(lockContent)
+    const lockMember = lock.members?.[memberName]
+    if (lockMember !== undefined) {
+      const derivedPath = deriveStoreWorktreePathFromLockMember({ member: lockMember })
+      if (derivedPath !== undefined) {
+        const selectedCommit =
+          lockMember.commit !== undefined && lockMember.commit.length > 0
+            ? lockMember.commit
+            : classifyMegarepoRef(lockMember.ref) === 'commit'
+              ? lockMember.ref
+              : undefined
+        if (selectedCommit !== undefined && fs.existsSync(derivedPath) === false) {
+          throw new Error(
+            `Lock source not materialized: member ${memberName}, commit ${selectedCommit}. ` +
+              `Run \`mr apply --worktree-mode commit --lock-sync off\` in ${repoRoot} ` +
+              `to materialize the locked source at ${derivedPath}.`,
+          )
         }
+        return derivedPath
       }
-    } catch {
-      // Ignore lock parse/read errors and continue to local symlink fallback.
     }
   }
 

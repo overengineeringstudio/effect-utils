@@ -19,7 +19,7 @@ describe('shared R vectors', () => {
       const schema = contracts[row.contract as keyof typeof contracts]
       const text = JSON.stringify(row.input)
       if (row.accept === false) {
-        expect(() => ContractJson.decode(schema)(text)).toThrow()
+        expect(() => ContractJson.decode(schema)(text)).toThrow(Schema.SchemaError)
         return
       }
       const value = ContractJson.decode(schema)(text)
@@ -36,7 +36,7 @@ describe('bounded integer contracts', () => {
       const decode = ContractJson.decode(schema)
       const text = JSON.stringify(row.input)
       if (row.accept === false) {
-        expect(() => decode(text)).toThrow()
+        expect(() => decode(text)).toThrow(Schema.SchemaError)
       } else {
         expect(ContractJson.encode(schema)(decode(text))).toBe(
           canonicalJson(row.canonical ?? row.input, [], row.contract === 'Binary32'),
