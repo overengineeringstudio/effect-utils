@@ -224,14 +224,14 @@ const lowerReferences: (args: {
   if (typeof intent !== 'object' || intent === null) return intent
   const fields = intent as ReferenceFields
   let lowered: Record<PropertyKey, unknown> | undefined
-  const set = (key: string, value: unknown) => {
+  const set = ({ key, value }: { key: string; value: unknown }) => {
     lowered ??= { ...intent }
     lowered[key] = value
   }
   for (const key of ['reportTo', 'assignedTo', 'target'] as const) {
     if (key in intent && isRef(fields[key]) === true) {
       const id = yield* resolveRef({ root, path, ref: fields[key], expected: 'agent' })
-      set(key, { id })
+      set({ key, value: { id } })
     }
   }
   for (const key of ['steps', 'finally', 'under'] as const) {
@@ -240,12 +240,12 @@ const lowerReferences: (args: {
       const next = yield* Effect.forEach(values as readonly unknown[], (value) =>
         lowerReferences({ root, path, intent: value }),
       )
-      if (next.some((value, index) => value !== values[index])) set(key, next)
+      if (next.some((value, index) => value !== values[index]) === true) set({ key, value: next })
     }
   }
   if ('round' in intent) {
     const round = yield* lowerReferences({ root, path, intent: intent.round })
-    if (round !== intent.round) set('round', round)
+    if (round !== intent.round) set({ key: 'round', value: round })
   }
   if ('schedule' in intent && typeof intent.schedule === 'object' && intent.schedule !== null) {
     const schedule = intent.schedule
@@ -253,7 +253,7 @@ const lowerReferences: (args: {
       const work = schedule.work
       if ('mission' in work && isRef(work.mission) === true) {
         const mission = yield* resolveRef({ root, path, ref: work.mission, expected: 'mission' })
-        set('schedule', { ...schedule, work: { ...work, mission } })
+        set({ key: 'schedule', value: { ...schedule, work: { ...work, mission } } })
       }
     }
   }
@@ -461,5 +461,5 @@ export const loadSubjectTree = Effect.fn('genie-smalltalk.loadSubjectTree')(func
         : yield* loadModule({ root: tree.real, file, path, kind, id, context }),
     )
   }
-  return subjects.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  return subjects.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 })
