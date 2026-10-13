@@ -1658,7 +1658,11 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
               ref: 'main',
               commit: fixture.childCommit,
             },
-            plain: { url: 'https://example.com/acme/leaf', ref: 'main', commit: fixture.leafCommit },
+            plain: {
+              url: 'https://example.com/acme/leaf',
+              ref: 'main',
+              commit: fixture.leafCommit,
+            },
           },
         })
         const env = {
@@ -1690,7 +1694,11 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
         expect(yield* fs.exists(mount(consumer.workspacePath, nestedName))).toBe(false)
 
         for (const run of ['cold', 'warm'] as const) {
-          const result = yield* runApplyCommand({ cwd: consumer.workspacePath, args: applyArgs, env })
+          const result = yield* runApplyCommand({
+            cwd: consumer.workspacePath,
+            args: applyArgs,
+            env,
+          })
           expect(result.stdout, run).not.toContain('PermissionDenied')
           expect(result.exitCode, run).toBe(0)
         }
