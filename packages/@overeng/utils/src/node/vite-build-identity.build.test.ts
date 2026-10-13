@@ -1,5 +1,15 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  unwatchFile,
+  watchFile,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -9,13 +19,18 @@ import { runInNewContext } from 'node:vm'
 import { build, createServer, type ViteDevServer } from 'vite'
 import { expect, it, vi } from 'vitest'
 
-import { createBuildIdentityPlugin } from './vite-build-identity.js'
+import { createBuildIdentityPlugin, readWorktreeGitMetadata } from './vite-build-identity.js'
 
 const waitForWatchUpdate = (assertion: () => void | Promise<void>) =>
   vi.waitFor(assertion, { timeout: 10000 })
 
+// Darwin's tmpdir may spell /var where Git's absolute paths and Vite's
+// resolved root spell /private/var. Watch subscriptions, keys, and event paths
+// must share that physical namespace rather than compare different aliases.
+const fixtureRoot = (prefix: string): string => realpathSync(mkdtempSync(join(tmpdir(), prefix)))
+
 it('loads installed Node config, preserving immutable Nix metadata and runtime closure identity', () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-installed-'))
+  const root = fixtureRoot('build-identity-installed-')
   const installed = join(root, 'node_modules/@overeng/utils')
   const source = fileURLToPath(new URL('.', import.meta.url))
   const stamp = {
@@ -37,7 +52,6 @@ it('loads installed Node config, preserving immutable Nix metadata and runtime c
     for (const name of ['cli-build-identity.js', 'vite-build-identity.js']) {
       copyFileSync(join(source, name), join(installed, 'src/node', name))
     }
-    copyFileSync(join(source, '../build-identity.js'), join(installed, 'src/build-identity.js'))
     writeFileSync(
       join(root, 'entry.js'),
       "import {buildIdentity,deploymentId} from 'virtual:build-identity'; globalThis.provenance={buildIdentity,deploymentId};",
@@ -89,7 +103,7 @@ it('loads installed Node config, preserving immutable Nix metadata and runtime c
 })
 
 it('reads the served worktree revision and dirty state instead of a stale shell identity', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-worktree-'))
+  const root = fixtureRoot('build-identity-worktree-')
   let server: ViteDevServer | undefined
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
@@ -137,7 +151,7 @@ it('reads the served worktree revision and dirty state instead of a stale shell 
 })
 
 it('omits local commitTs when the Git timestamp lookup fails', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-git-failure-'))
+  const root = fixtureRoot('build-identity-git-failure-')
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
   const originalPath = process.env['PATH']
@@ -197,13 +211,59 @@ it('omits local commitTs when the Git timestamp lookup fails', async () => {
   }
 })
 
+it('re-reads fallback identity after registering watches without a timing race', async () => {
+  const root = fixtureRoot('identity-fallback-race-')
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
+  try {
+    git('init', '--quiet')
+    const commitArgs = [
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--quiet',
+      '--allow-empty',
+      '-m',
+    ]
+    git(...commitArgs, 'first')
+    const first = git('rev-parse', 'HEAD')
+    git(...commitArgs, 'second')
+    const second = git('rev-parse', 'HEAD')
+    git('checkout', '--quiet', '--detach', first)
+    // Packed detached objects require the CLI fallback rather than the loose-object fast path.
+    git('gc', '--quiet', '--prune=now')
+    const headPath = join(root, '.git/HEAD')
+    let headSubscriptions = 0
+    const result = await readWorktreeGitMetadata({
+      root,
+      // Inject the mutation into fallback watch registration, not a timer or retry.
+      subscribe: (path) => {
+        if (path !== headPath) return
+        headSubscriptions++
+        if (headSubscriptions === 2) git('update-ref', 'HEAD', second)
+      },
+    })
+    expect(headSubscriptions).toBe(2)
+    expect(result.rev).toBe(second)
+    expect(result.paths).toContain(headPath)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 it('refreshes served identity after creating, deleting, and committing worktree files', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-events-'))
+  const root = fixtureRoot('build-identity-events-')
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
   let server: ViteDevServer | undefined
-  let sourceUpdated: (() => void) | undefined
-  let watcherReady: Promise<void> | undefined
+  const plugin = createBuildIdentityPlugin({
+    baseVersion: '1.2.3',
+    buildStamp: '__CLI_BUILD_STAMP__',
+  })
   try {
     git('init', '--quiet')
     writeFileSync(join(root, '.gitignore'), 'node_modules/\ndist/\n')
@@ -227,23 +287,15 @@ it('refreshes served identity after creating, deleting, and committing worktree 
       root,
       logLevel: 'silent',
       optimizeDeps: { noDiscovery: true },
-      plugins: [
-        {
-          name: 'identity-fixture-update-barrier',
-          configureServer(server) {
-            const { promise, resolve } = Promise.withResolvers<void>()
-            watcherReady = promise
-            server.watcher.once('ready', resolve)
-          },
-          handleHotUpdate() {
-            sourceUpdated?.()
-          },
-        },
-        createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
-      ],
+      plugins: [plugin],
       server: { host: '127.0.0.1', port: 0 },
     })
-    await watcherReady
+    // Vite starts scanning before configureServer hooks run, so its one-shot
+    // ready event may already have fired. Wait for the source watch's durable
+    // state instead; this also bounds failures before any fixture writes.
+    await waitForWatchUpdate(() =>
+      expect(server!.watcher.getWatched()[server!.config.root]).toContain('entry.js'),
+    )
     await server.listen()
     const probeUrl = new URL('build-identity.json', server.resolvedUrls!.local[0]!)
     const response = await fetch(probeUrl)
@@ -259,40 +311,70 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     const identity = async () =>
       (await server!.ssrLoadModule('virtual:build-identity')).buildIdentity
     expect((await identity()).dirty).toBe(false)
-    writeFileSync(join(root, 'new.txt'), 'untracked\n')
-    // This integration probe checks absence of refresh across the real fs
-    // polling/debounce window; fake timers cannot drive native fs.watchFile.
-    await delay(250)
+    const afterSourceUpdate = async (event: 'add' | 'change', file: string, update: () => void) => {
+      const { promise, resolve } = Promise.withResolvers<void>()
+      const onEvent = (path: string) => {
+        if (path === file) resolve()
+      }
+      server!.watcher.on(event, onEvent)
+      try {
+        update()
+        await promise
+        await plugin.api.waitForRefresh()
+      } finally {
+        server!.watcher.off(event, onEvent)
+      }
+    }
+    const index = git('rev-parse', '--path-format=absolute', '--git-path', 'index')
+    const afterGitUpdate = async (update: () => void) => {
+      const { promise, resolve } = Promise.withResolvers<void>()
+      const onChange = () => resolve()
+      // Node shares the existing index poller. The plugin subscribed first,
+      // so its refresh is requested before this observer resumes.
+      watchFile(index, { persistent: false, interval: 100 }, onChange)
+      try {
+        update()
+        await promise
+        await plugin.api.waitForRefresh()
+      } finally {
+        unwatchFile(index, onChange)
+      }
+    }
+    await afterSourceUpdate('add', join(root, 'new.txt'), () =>
+      writeFileSync(join(root, 'new.txt'), 'untracked\n'),
+    )
     expect((await identity()).dirty).toBe(false)
-    git('add', 'new.txt')
-    await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(true))
-    git('reset', '--quiet', '--', 'new.txt')
-    rmSync(join(root, 'new.txt'))
-    await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(false))
-    writeFileSync(join(root, 'entry.js'), 'export const value = 2\n')
-    await waitForWatchUpdate(async () => expect((await identity()).dirty).toBe(true))
+    await afterGitUpdate(() => git('add', 'new.txt'))
+    expect((await identity()).dirty).toBe(true)
+    await afterGitUpdate(() => {
+      git('reset', '--quiet', '--', 'new.txt')
+      rmSync(join(root, 'new.txt'))
+    })
+    expect((await identity()).dirty).toBe(false)
+    await afterSourceUpdate('change', join(root, 'entry.js'), () =>
+      writeFileSync(join(root, 'entry.js'), 'export const value = 2\n'),
+    )
+    expect((await identity()).dirty).toBe(true)
     const dirtyIdentity = await identity()
     const now = Date.now
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + 60_000)
     try {
-      const { promise: updated, resolve } = Promise.withResolvers<void>()
-      sourceUpdated = resolve
-      writeFileSync(join(root, 'entry.js'), 'export const value = 3\n')
-      await updated
+      await afterSourceUpdate('change', join(root, 'entry.js'), () =>
+        writeFileSync(join(root, 'entry.js'), 'export const value = 3\n'),
+      )
       expect(await (await fetch(probeUrl)).json()).toEqual(dirtyIdentity)
       expect(await identity()).toEqual(dirtyIdentity)
     } finally {
-      sourceUpdated = undefined
       clock.mockRestore()
     }
-    git('add', '.')
-    git(...commitArgs)
-    const revision = git('rev-parse', 'HEAD')
-    await waitForWatchUpdate(async () => {
-      expect((await identity()).rev).toBe(revision)
-      expect((await identity()).dirty).toBe(false)
-      expect((await identity()).commitTs).toBe(Number(git('log', '-1', '--format=%ct', revision)))
+    await afterGitUpdate(() => {
+      git('add', '.')
+      git(...commitArgs)
     })
+    const revision = git('rev-parse', 'HEAD')
+    expect((await identity()).rev).toBe(revision)
+    expect((await identity()).dirty).toBe(false)
+    expect((await identity()).commitTs).toBe(Number(git('log', '-1', '--format=%ct', revision)))
     expect(await (await fetch(probeUrl)).json()).toEqual(await identity())
   } finally {
     await server?.close()
@@ -301,7 +383,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
 }, 60000)
 
 it('does not recompute identity for a sibling worktree commit', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-siblings-'))
+  const root = fixtureRoot('build-identity-siblings-')
   const served = join(root, 'served')
   const sibling = join(root, 'sibling')
   const trace = join(root, 'git.trace')
@@ -378,7 +460,7 @@ it('does not recompute identity for a sibling worktree commit', async () => {
 }, 60000)
 
 it('refreshes local metadata and browser identity on production watch rebuilds', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'build-identity-watch-'))
+  const root = fixtureRoot('build-identity-watch-')
   let closeWatcher: (() => Promise<void>) | undefined
   try {
     const git = (...args: string[]) =>

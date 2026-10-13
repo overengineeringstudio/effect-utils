@@ -26,7 +26,7 @@
     },
     {
       "task": "test:utils:unbounded",
-      "rationale": "Recursive fs.watch uses FSEvents on Darwin rather than Linux inotify; process execution and signals."
+      "rationale": "Recursive fs.watch uses FSEvents on Darwin rather than Linux inotify; process execution and signals. Vite identity build tests exercise Chokidar readiness, native source/Git notifications and completed refreshes across real worktree mutations."
     },
     {
       "task": "test:genie:unbounded",
@@ -119,7 +119,7 @@
       },
       {
         "task": "test:utils",
-        "rationale": "Host filesystem backing, FileLogger and native filesystem/process utilities execute against the Darwin runner."
+        "rationale": "Host filesystem backing, FileLogger and native filesystem/process utilities execute against the Darwin runner. Vite identity metadata fixtures cover linked-worktree gitdir/commondir resolution, packed-to-loose ref precedence and detached HEAD object readability."
       },
       {
         "task": "test:tui-react",
