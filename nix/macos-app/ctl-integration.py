@@ -6,8 +6,9 @@ so securityd's partition checks are real) provisioned by the ctl primitives: a n
 a feature-built self-signed test certificate and the codesign pin. An unanchored CA-issued leaf is
 a negative chain-preflight case. Keychains never enter the search list; login is never touched.
 A fake launchctl on PATH starts real hosts directly, so no background item is registered.
-Every keychain operation has a timeout; each ctl call checks a zero SecurityAgent window baseline
-before it starts and is watched for a new window. A hang or window aborts the run loudly.
+Every keychain operation is bounded and watched for new SecurityAgent windows.
+A missing window server is accepted only with read-only audit-session evidence
+that graphics and console access are absent; it is never reported as zero windows.
 
 From the Darwin checkout root:
   nix run .#macos-app-ctl-integration --option builders '' --option max-jobs 2
@@ -56,10 +57,7 @@ for source, target in [(example / 'generation', first), (example / 'secondGenera
 
 PROMPT_TIMEOUT = 15
 def tool(*args, check=True):
-    try:
-        result = subprocess.run(list(args), capture_output=True, text=True, timeout=PROMPT_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        sys.exit(f'ABORT: {args[0]} {args[1]} hung; a keychain UI prompt may be pending. Stopping.')
+    result = watched(list(args), timeout=PROMPT_TIMEOUT)
     if check and result.returncode != 0:
         raise RuntimeError(f'{args}: {result.stderr}')
     return result
@@ -79,8 +77,29 @@ core_foundation.CFStringGetCString.restype = ctypes.c_bool
 core_foundation.CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32]
 core_foundation.CFRelease.argtypes = [ctypes.c_void_p]
 owner_key = ctypes.c_void_p.in_dll(core_graphics, 'kCGWindowOwnerName').value
+libc = ctypes.CDLL(None, use_errno=True)
+class AuditMask(ctypes.Structure):
+    _fields_ = [('success', ctypes.c_uint32), ('failure', ctypes.c_uint32)]
+class AuditTerminal(ctypes.Structure):
+    _fields_ = [('port', ctypes.c_int32), ('type', ctypes.c_uint32), ('address', ctypes.c_uint32 * 4)]
+class AuditSession(ctypes.Structure):
+    _fields_ = [('uid', ctypes.c_uint32), ('mask', AuditMask), ('terminal', AuditTerminal),
+                ('session', ctypes.c_int32), ('flags', ctypes.c_uint64)]
+libc.getaudit_addr.argtypes = [ctypes.POINTER(AuditSession), ctypes.c_int]
+libc.getaudit_addr.restype = ctypes.c_int
+def no_ui_session():
+    audit = AuditSession()
+    if libc.getaudit_addr(ctypes.byref(audit), ctypes.sizeof(audit)) != 0:
+        sys.exit('ABORT: unavailable window list and unreadable audit session')
+    # SDK AU_SESSION_FLAG_HAS_GRAPHIC_ACCESS / HAS_CONSOLE_ACCESS.
+    if audit.flags & (0x0010 | 0x2000):
+        sys.exit('ABORT: unavailable window list in a graphics/console-capable session')
+    return audit.flags
 def security_agent_windows():
     windows = core_graphics.CGWindowListCopyWindowInfo(1, 0)  # on-screen only
+    if not windows:
+        no_ui_session()  # Reprove absence of UI capability on every observation.
+        return None
     try:
         names = []
         for i in range(core_foundation.CFArrayGetCount(windows)):
@@ -91,18 +110,20 @@ def security_agent_windows():
     finally:
         core_foundation.CFRelease(windows)
 agent_baseline = security_agent_windows()
-if agent_baseline != 0:
+if agent_baseline not in (0, None):
     sys.exit('ABORT before keychain tests: SecurityAgent window baseline must be zero')
-def watched(argv, terminate_when=None, **kwargs):
+print(f'SecurityAgent before: {agent_baseline}' if agent_baseline is not None else
+      f'SecurityAgent before: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
+def watched(argv, terminate_when=None, timeout=60, **kwargs):
     """Runs argv, killing its process group and aborting if a SecurityAgent window appears."""
-    if security_agent_windows() != 0:
+    if security_agent_windows() != agent_baseline:
         sys.exit(f'ABORT before {argv[1]}: SecurityAgent window present')
     process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                start_new_session=True, **kwargs)
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + timeout
     terminated = False
     while process.poll() is None:
-        if security_agent_windows() > agent_baseline or time.monotonic() > deadline:
+        if security_agent_windows() != agent_baseline or time.monotonic() > deadline:
             process.send_signal(signal.SIGTERM)
             try:
                 process.wait(timeout=2)
@@ -115,7 +136,7 @@ def watched(argv, terminate_when=None, **kwargs):
             terminated = True
         time.sleep(0.1)
     stdout, stderr = process.communicate()
-    assert security_agent_windows() <= agent_baseline, f'{argv[1]} left a SecurityAgent window'
+    assert security_agent_windows() == agent_baseline, f'{argv[1]} changed SecurityAgent window observation'
     return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
 
 # Throwaway signing keychains; the password is test-only and may appear in test argv.
@@ -786,4 +807,6 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
 finally:
     cleanup()
 print('PASS throwaway keychains removed; user search list unchanged')
+print(f'SecurityAgent after: {security_agent_windows()}' if agent_baseline is not None else
+      f'SecurityAgent after: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
 print(f'PASS primitive integration; scratch: {work.relative_to(root)}')
