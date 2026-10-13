@@ -408,6 +408,18 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     dry = key_call('prove-signing-key', keychain, '--no-sign')['result']
     assert dry['guardReady'] and dry['signOk'] is None and dry['signSkipped'], dry
     assert dry['exportAttempted'] and dry['exportRefused'] and dry['exportStatus'] == -25316, dry
+    if agent_baseline is None:
+        # The per-evaluation test anchor in ctl does not grant trust to codesign.
+        # Prove the expected trust limitation rather than skipping other failures.
+        valid = tool('/usr/bin/security', 'find-identity', '-v', '-p', 'codesigning', str(keychain)).stdout
+        matching = tool('/usr/bin/security', 'find-identity', '-p', 'codesigning', str(keychain)).stdout
+        untrusted = any(leaf.lower() in line.lower() and 'CSSMERR_TP_NOT_TRUSTED' in line
+                        for line in matching.splitlines())
+        assert leaf.lower() not in valid.lower() and untrusted, (valid, matching)
+        print('NOT RUN: untrusted test identity in no-UI session: positive sign-fixture, '
+              'prove-signing-key codesign, and signing-dependent install/verify/rollback/IPC cases', flush=True)
+        print('PASS no-UI refusal and non-signing integration cases; positive signing is NOT VERIFIED', flush=True)
+        raise SystemExit(0)
     proof = key_call('prove-signing-key', keychain)['result']
     assert proof['partitionCapable'] and proof['guardReady'] and proof['signOk'] is True, proof
     assert proof['partitionList'] == ['apple:'] and proof['signAclExact'] and proof['recordedCtlPath'] == ctl_path, proof
@@ -808,7 +820,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     print('PASS host-only rollback works without a previous generation', flush=True)
 finally:
     cleanup()
-print('PASS throwaway keychains removed; user search list unchanged')
-print(f'SecurityAgent after: {security_agent_windows()}' if agent_baseline is not None else
-      f'SecurityAgent after: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
+    print('PASS throwaway keychains removed; user search list unchanged')
+    print(f'SecurityAgent after: {security_agent_windows()}' if agent_baseline is not None else
+          f'SecurityAgent after: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
 print(f'PASS primitive integration; scratch: {work.relative_to(root)}')

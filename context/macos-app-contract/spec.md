@@ -426,6 +426,15 @@ If CGWindowList is unavailable, it accepts only an audit session whose graphics
 and console-access flags are both absent, rechecked before and throughout every
 keychain child. It reports that evidence as a no-UI session, never as zero windows;
 an unavailable observer in a UI-capable session aborts before keychain operations.
+The transient ctl anchor does not make the test identity trusted by the codesign
+child. In no-UI mode the harness proves that the fixture identity exists but is
+`CSSMERR_TP_NOT_TRUSTED`, runs refusal and non-signing cases, and explicitly
+prints `NOT RUN: untrusted test identity in no-UI session` for positive fixture
+signing, the codesign key proof and dependent host-signing cases. Exit zero means
+only that every case run passed; positive signing remains unverified. The default
+GUI mode still runs the full suite. Positive-path proof requires a human-present
+session with an appropriately trusted test identity; the harness never bootstraps
+trust or treats that prerequisite as a passing signature test.
 
 ### Fixture signing and agent process rules
 
