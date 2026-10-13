@@ -9,7 +9,18 @@ export const buck2TypeScriptAdmission = {
   sourceRoots: ['src'],
   workspaceSiblings: [],
   authorities: [{ declarationEntrypoint: 'index.d.ts', projectFile: 'tsconfig.json' }],
-  tests: [{ name: 'test', runner: 'vitest', staticCollection: true }],
+  tests: [
+    {
+      name: 'test',
+      runner: 'vitest',
+      staticCollection: true,
+      excludes: ['e2e/meter-strip.pw.test.ts', 'e2e/perf-gates.pw.test.ts'],
+      sourceOwners: {
+        'e2e/meter-strip.pw.test.ts': 'test:pw:meters',
+        'e2e/perf-gates.pw.test.ts': 'test:pw:meters',
+      },
+    },
+  ],
 } as const satisfies Buck2TypeScriptAdmission
 
 export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)
