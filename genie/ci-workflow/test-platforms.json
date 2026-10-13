@@ -406,6 +406,10 @@
         "rationale": "Pure jq matching of member names and revision identities."
       },
       {
+        "script": "megarepo-product-flags.test.sh",
+        "rationale": "Evaluated shared task command/flag contracts against the manifest-backed CLI help; Linux represents the platform-independent grammar without Git/worktree mutation or Darwin lifecycle behavior."
+      },
+      {
         "script": "megarepo-setup-commit-members.test.sh",
         "rationale": "Nix setup option and recursive-readiness task contracts with a fake mr executable; no native Git, daemon or Darwin filesystem lifecycle."
       },
