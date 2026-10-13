@@ -477,7 +477,9 @@ const checkWorkspaceContract = ({
           buildCapabilities.includes('rust-shell') === false)) ||
       linuxBuildCapabilities.join('\0') !== (tsSandbox === true ? 'bubblewrap' : '')
     )
-      throw new Error(`native products[${index}] must declare exactly the TS sandbox capabilities it uses`)
+      throw new Error(
+        `native products[${index}] must declare exactly the TS sandbox capabilities it uses`,
+      )
     const packagePath = rust === true ? name : 'genie'
     const sourcePaths = requireStrings(entry.sourcePaths, `native products[${index}].sourcePaths`)
     requireUnique(sourcePaths, `native products[${index}].sourcePaths`)
