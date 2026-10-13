@@ -24,6 +24,10 @@
     ".": {
       "types": "./dist/src/mod.d.ts",
       "default": "./src/mod.ts"
+    },
+    "./testing": {
+      "types": "./dist/src/testing.d.ts",
+      "default": "./src/testing.ts"
     }
   },
   "dependencies": {
@@ -45,6 +49,10 @@
       ".": {
         "types": "./dist/src/mod.d.ts",
         "default": "./dist/src/mod.js"
+      },
+      "./testing": {
+        "types": "./dist/src/testing.d.ts",
+        "default": "./dist/src/testing.js"
       }
     }
   }
