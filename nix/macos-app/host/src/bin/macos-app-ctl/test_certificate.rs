@@ -1,7 +1,7 @@
 //! Compiled only for the separate test-signing-cert output; never in shipped ctl.
 use super::*;
 
-pub(super) fn issue(key: Ref, common_name: &str, spki: &[u8], out: &Path) -> Result<()> {
+pub(super) fn issue(key: Ref, common_name: &str, spki: &[u8], out: &Path) -> Result<String> {
     let time = |offset: i64| -> Result<Vec<u8>> {
         let seconds = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| fail(23, "operation-failed", e.to_string()))?.as_secs() as libc::time_t + offset;
         let mut tm = std::mem::MaybeUninit::<libc::tm>::uninit();
@@ -19,5 +19,7 @@ pub(super) fn issue(key: Ref, common_name: &str, spki: &[u8], out: &Path) -> Res
     let extensions = der(0xa3, &sequence(&[&basic, &usage, &eku]));
     let tbs = sequence(&[&[0xa0, 0x03, 0x02, 0x01, 0x02], &[0x02, 0x01, 0x01], &algorithm, &name, &validity, &name, spki, &extensions]);
     let signature = sign_request(key, &tbs)?;
-    atomic_write(out, pem("CERTIFICATE", &sequence(&[&tbs, &algorithm, &bit_string(&signature)])).as_bytes())
+    let certificate = sequence(&[&tbs, &algorithm, &bit_string(&signature)]);
+    atomic_write(out, pem("CERTIFICATE", &certificate).as_bytes())?;
+    Ok(sha1(&certificate))
 }

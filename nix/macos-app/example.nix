@@ -135,6 +135,9 @@ let
       "$PWD/nix/macos-app/integration.py" "$@"
   '';
   ctlIntegration = pkgs.writeShellScriptBin "macos-app-ctl-integration" ''
+    # Pin the production and test-feature ctl binaries, including fixture signing,
+    # as runtime dependencies rather than rebuilding the example inside the test.
+    if [ "$#" -eq 0 ]; then set -- ${example}; fi
     exec ${pkgs.python3}/bin/python3 "$PWD/nix/macos-app/ctl-integration.py" "$@"
   '';
   smokeProduct =
