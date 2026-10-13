@@ -414,6 +414,24 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         assert 'production signer' in refused['error']['reason'], refused
     finally:
         write_config()
+    # The production key's SHA1 and public-key hash stay genuine; only the
+    # allowlist subject is forged. Refusal must use the actual locked certificate.
+    forged_record_path = Path(f'{keychain}.fixture-identity.json')
+    original_fixture_record = forged_record_path.read_text()
+    forged_record = json.loads(original_fixture_record)
+    forged_record['subject'] = 'forged fixture subject'
+    forged_record_path.write_text(json.dumps(forged_record))
+    signing_before = (work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else ''
+    try:
+        refused = key_call('sign-fixture', keychain, '--certificate-sha1', leaf,
+                          '--identifier', fixture_identifier, '--target', fixture,
+                          '--production-requirements', production_requirements, code=64, secret=None)
+        assert 'production signer' in refused['error']['reason'], refused
+        assert not unlocked()
+        assert ((work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else '') == signing_before
+    finally:
+        forged_record_path.write_text(original_fixture_record)
+    print('PASS forged allowlist subject cannot authorize the actual production certificate before unlock/codesign', flush=True)
     production_requirements.write_text(json.dumps([fixture_requirement.replace(' and ', '\n and ')]))
     try:
         refused = key_call('sign-fixture', fixture_keychain, *fixture_options, code=64, secret=None)

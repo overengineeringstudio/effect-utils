@@ -937,7 +937,7 @@ fn fixture_identity_path(keychain: &Path) -> PathBuf {
     PathBuf::from(path)
 }
 /// Deliberate fixture allowlist. Production provisioning never writes this record.
-fn require_fixture_identity(ctl: &Ctl, keychain: &Path, sha1: &str) -> Result<String> {
+fn require_fixture_identity(keychain: &Path, sha1: &str) -> Result<String> {
     let path = fixture_identity_path(keychain);
     let refuse = || fail(64, "invalid-input", "Identity is not explicitly recorded as a fixture identity");
     let metadata = fs::symlink_metadata(&path).map_err(|_| refuse())?;
@@ -948,14 +948,46 @@ fn require_fixture_identity(ctl: &Ctl, keychain: &Path, sha1: &str) -> Result<St
     let record: Value = serde_json::from_slice(&fs::read(&path)?).map_err(|_| refuse())?;
     let allowed = record["certificateSha1"].as_str().is_some_and(|s| s.eq_ignore_ascii_case(sha1));
     if record["keychain"].as_str() != Some(text(keychain)?) || !allowed { return Err(refuse()); }
-    if let Some(production) = ctl.config["signer"]["identity"].as_str() {
-        if production.eq_ignore_ascii_case(sha1) || record["subject"].as_str() == Some(production) {
-            return Err(fail(64, "invalid-input", "The configured production signer cannot sign fixtures"));
-        }
-    }
     record["publicKeySha256"].as_str().filter(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()))
         .map(str::to_owned).ok_or_else(refuse)
 }
+/// Certificates and their public keys are readable while K is locked. The sidecar
+/// is only an allowlist: production exclusion uses actual certificate metadata,
+/// including other certificates for the same production private key.
+fn require_not_production(ctl: &Ctl, keychain: &Keychain, sha1: &str, recorded_key: &str) -> Result<()> {
+    let list = search_list(keychain)?;
+    // SAFETY: Security constants are immutable; only public certificate refs are requested.
+    let query = unsafe { cf_dictionary(&[(kSecClass, kSecClassCertificate), (kSecMatchSearchList, list.0),
+        (kSecMatchLimit, kSecMatchLimitAll), (kSecReturnRef, kCFBooleanTrue)])? };
+    let found = matching(&query)?;
+    let production = ctl.config["signer"]["identity"].as_str().ok_or_else(|| fail(64, "invalid-input", "Missing configured production signer"))?;
+    let refuse = || fail(64, "invalid-input", "The configured production signer cannot sign fixtures");
+    let mut selected = None;
+    let mut production_keys = Vec::new();
+    for certificate in found.as_ref().map(|f| elements(f.0)).unwrap_or_default() {
+        let actual_sha1 = certificate_sha1(certificate)?;
+        // SAFETY: certificate is live; subject summary follows the copy rule.
+        let subject = owned(unsafe { SecCertificateCopySubjectSummary(certificate) }, "SecCertificateCopySubjectSummary")?;
+        let is_production = actual_sha1.eq_ignore_ascii_case(production) || string(subject.0).as_deref() == Some(production);
+        let is_selected = actual_sha1.eq_ignore_ascii_case(sha1);
+        if is_selected && is_production { return Err(refuse()); }
+        if !is_selected && !is_production { continue; }
+        // SAFETY: certificate is live; its public key and external bytes follow the copy rule.
+        let public = owned(unsafe { SecCertificateCopyKey(certificate) }, "SecCertificateCopyKey")?;
+        let mut error = std::ptr::null();
+        let data = unsafe { SecKeyCopyExternalRepresentation(public.0, &mut error) };
+        if data.is_null() { return Err(cf_failure(error, "SecKeyCopyExternalRepresentation(public certificate)")); }
+        let key = sha256(&subject_public_key_info(&bytes(Cf(data).0)));
+        if is_selected { selected = Some(key); } else { production_keys.push(key); }
+    }
+    let selected = selected.ok_or_else(|| fail(64, "invalid-input", "Fixture certificate is not present in the dedicated keychain"))?;
+    if production_keys.contains(&selected) { return Err(refuse()); }
+    if !selected.eq_ignore_ascii_case(recorded_key) {
+        return Err(fail(64, "invalid-input", "Fixture allowlist public key differs from the actual certificate"));
+    }
+    Ok(())
+}
+
 
 /// Fixture sealing has the same password-authorized pin, non-extractability readback and
 /// exact ACL/chain preflight as the key proof. Inventory entries are relative descendants;
@@ -968,7 +1000,8 @@ pub(super) fn sign_fixture(ctl: &Ctl) -> Result<Value> {
     if sha1.len() != 40 || !sha1.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(fail(64, "invalid-input", "A certificate SHA1 is required"));
     }
-    let fixture_key = require_fixture_identity(ctl, &path, sha1)?;
+    let fixture_key = require_fixture_identity(&path, sha1)?;
+    require_not_production(ctl, &keychain, sha1, &fixture_key)?;
     let target = fs::canonicalize(ctl.arg("target")?)?;
     if ctl.args.contains_key("requirement") {
         return Err(fail(64, "invalid-input", "Fixture requirements are ctl-constructed; supply --identifier"));

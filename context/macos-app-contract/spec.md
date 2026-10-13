@@ -455,9 +455,15 @@ The certificate must be explicitly allowlisted by `<K>.fixture-identity.json`,
 a regular 0600 file owned by the current user, naming K and its fixture
 certificate SHA1, subject and public-key SHA256. Only deliberate test-feature
 provisioning with `--test-self-signed-cert-out` writes this record; production
-provisioning never does. Missing/foreign records, unlisted SHA1s and the production
-signer named in config refuse before unlocking. Each product ctl config pins one
-production requirement, not a repository-wide product inventory, so the mandatory
+provisioning never does. The record is only an allowlist, not an authority for a
+certificate's subject or key. Before unlocking, ctl reads actual certificate
+SHA1s, subjects and public keys from the locked keychain. It rejects the configured
+production identity by actual SHA1/subject and rejects a different certificate for
+that production key by actual public-key hash. The selected certificate's actual
+public-key hash must also match the allowlist. Forging the sidecar subject cannot
+authorize a production signer. Missing/foreign records and unlisted SHA1s also
+refuse before unlock. Each product ctl config pins one production requirement,
+not a repository-wide product inventory, so the mandatory
 `--production-requirements` file supplies that inventory as a JSON array of DR
 strings. ctl adds its configured product requirement and refuses a canonical,
 compiled-equivalent match before unlock. The inventory must enumerate all
