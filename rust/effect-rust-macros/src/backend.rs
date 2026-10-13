@@ -170,9 +170,9 @@ pub(super) fn generate(export: &Export, backend: Backend) -> syn::Result<Tokens>
         Backend::Wasm => quote!(wasm),
         Backend::Napi => quote!(native),
     };
-    let cfg = match backend {
-        Backend::Wasm => quote!(all(feature = "wasm", target_arch = "wasm32")),
-        Backend::Napi => quote!(all(feature = "napi", not(target_arch = "wasm32"))),
+    let gate = match backend {
+        Backend::Wasm => quote!(::effect_rust::__wasm_only),
+        Backend::Napi => quote!(::effect_rust::__napi_only),
     };
     let error = backend.error();
     let edge_error = match backend {
@@ -186,7 +186,7 @@ pub(super) fn generate(export: &Export, backend: Backend) -> syn::Result<Tokens>
     };
     let common = common(export, backend);
     Ok(quote! {
-        #[cfg(#cfg)]
+        #gate! {
         mod #module {
             #[allow(unused_imports)]
             use super::*;
@@ -195,6 +195,7 @@ pub(super) fn generate(export: &Export, backend: Backend) -> syn::Result<Tokens>
             fn edge_error(message: impl std::fmt::Display) -> #error { #edge_error }
             #common
             #body
+        }
         }
     })
 }
@@ -630,9 +631,9 @@ pub(super) fn resource(
     methods: &[Export],
     backend: Backend,
 ) -> syn::Result<Tokens> {
-    let cfg = match backend {
-        Backend::Wasm => quote!(all(feature = "wasm", target_arch = "wasm32")),
-        Backend::Napi => quote!(all(feature = "napi", not(target_arch = "wasm32"))),
+    let gate = match backend {
+        Backend::Wasm => quote!(::effect_rust::__wasm_only),
+        Backend::Napi => quote!(::effect_rust::__napi_only),
     };
     let module = match backend {
         Backend::Wasm => quote!(wasm),
@@ -725,7 +726,7 @@ pub(super) fn resource(
         },
     };
     Ok(quote! {
-        #[cfg(#cfg)]
+        #gate! {
         mod #module {
             use super::*;
             fn edge_error(message: impl std::fmt::Display) -> #error { #edge_error }
@@ -748,6 +749,7 @@ pub(super) fn resource(
                 }
             }
             #(#helpers)*
+        }
         }
     })
 }

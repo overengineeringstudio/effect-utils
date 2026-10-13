@@ -41,6 +41,10 @@ the macro emits backend entrypoints and binary export metadata. The fixture's
 [`napi-adapter`](../../../rust/effect-rust-fixtures/napi-adapter/src/lib.rs)
 re-export those annotated functions into the two product crates.
 
+Backend selection follows the `effect-rust` dependency's `wasm` and `napi`
+features, together with the compilation target. The macros do not reference
+features in the calling crate: a wasm-only consumer need not declare `napi`.
+
 ### 3. Build and admit the generated service package
 
 In this repository's configured Buck workspace:
@@ -454,6 +458,10 @@ binary frames, but canonical JSON normalizes it to `0`. Borsh uses four
 little-endian bytes; Columns uses Float32Array. Width metadata alone cannot
 authorize an arbitrary transformation.
 
+`#[wire(f32)]` also accepts `Option<f32>`: the key is required, `None` is JSON
+`null`, and present values use the same finite binary32 codec. Missing keys fail;
+use `Patch` when absence is part of the contract.
+
 `Schema.optionalKey(Schema.NullOr(T))` represents Patch directly in TypeScript:
 missing, `null` and a present value stay distinct. Generated Rust keeps
 `Patch<T>` for those three states; there is no tagged Patch ADT in the
@@ -604,6 +612,15 @@ export CARGO_BUILD_JOBS=6
 "$CARGO" build --manifest-path rust/Cargo.toml -p effect-rust-fixture-napi --release
 "$CARGO" build --manifest-path rust/Cargo.toml -p effect-rust-fixture-wasm \
   --release --target wasm32-unknown-unknown
+```
+
+The wasm-only macro regression consumer denies warnings and declares no `napi`
+feature. Check it on both targets:
+
+```sh
+cargo check --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml
+cargo check --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+  --target wasm32-unknown-unknown
 ```
 
 Package the resulting adapters with `buck2/rust/interop-package.ts`, then run
