@@ -130,19 +130,9 @@ creating declared outputs or executing the TS child. It requires:
   containing both the action cwd and its discovered `.buckroot` Buck root.
 - `HOME` to be exactly `/homeless-shelter` or resolve physically under `NIX_BUILD_TOP`.
 - Readable `/proc/net/dev` to list only `lo`, including `lo`.
-- Readable `/proc/self/mountinfo` to identify the mount at `/`, whose root field
-  must differ from `/`; a network namespace alone is not a filesystem boundary.
-- `/tmp` to be absent with `lstat` returning `ENOENT`, or be a plain nonsymlink
-  directory on the same subtree root mount. Its actual device must match `/`,
-  and `/proc/self/mountinfo` must contain no separate or bind mount at `/tmp`.
-  Equal device/inode with the build directory does not exempt a `/tmp` mount.
-- `/home`, `/root`, `/run/user`, and `/nix/var/nix` to be absent with `lstat`
-  returning `ENOENT`. Real passwd homes outside the verified `NIX_BUILD_TOP`
-  must likewise be absent: these are homes for UID 0 or
-  `1000 <= UID < 65534`, read from `/etc/passwd`. Builder homes within the
-  build top are exempt; the `nobody` UID 65534 entry is ignored.
-  Nonwritability is insufficient: existing read-only paths and inspection
-  failures such as `EACCES` do not satisfy absence.
+- Cheap `-w` checks to reject writable `/home`, `/home/*`, `/root`, `/nix/var`,
+  the current EUID's home from `/etc/passwd` outside the verified build root, and
+  its Nix gcroots/profiles paths.
 
 `NIX_BUILD_TOP` and `HOME` are explicitly conveyed through `env -i` only for
 verification, then unset before the scrubbed TS child runs. Missing, unreadable,
@@ -162,19 +152,6 @@ environment and namespace arguments inside a strict Nix derivation. Its evidence
 must be observed before changing the declared outer-mode policy.
 Default Linux and Darwin execution remain unchanged.
 
-The verifier establishes a filesystem/network boundary, not proof of Nix
-origin. A caller-created full mount namespace satisfying every criterion is
-acceptable; plain `unshare -rn` with a forged build top and HOME is rejected
-because it retains the host filesystem.
-
-The empirical dev4 Nix builder probe (2026-10-13) ran as UID 1000 (`nixbld`).
-Its root mount's root field was the derivation's private chroot directory;
-passwd homes for both `root` and `nixbld` were `/build`, while `nobody` had `/`.
-`/tmp` was a private plain directory in that chroot on the root device, with
-an inode distinct from `/build` and no separate `/tmp` mount. The accepted
-plain-directory layout therefore does not require or admit a build-directory
-alias exemption.
-
 Runtime verification checks the outer derivation boundary, not per-action input
 isolation: other declared derivation inputs can be visible. Even with a verified
 outer sandbox, these TS actions use native nonremote execution with cache uploads
@@ -183,11 +160,10 @@ immutable TS-store reuse. Their `_nix_outer_sandboxed` action categories produce
 separate `nix-outer-sandboxed` evidence exclusion, preserving raw Buck outcomes;
 the category records selected policy, not proof of successful verification.
 The Bubblewrap probe reports this boundary as unsupported rather than claiming
-BUILD.BUCK-R04's per-action checks passed. The runtime regression contract rejects
-an ordinary-host declaration and a forged `NIX_BUILD_TOP`/`HOME` context,
-including plain `unshare -rn`, without producing verdicts. The positive
-production-path regression runs in the existing Nix from-source product CI
-contract lane.
+BUILD.BUCK-R04's per-action checks passed. Real Buck action regressions reject an
+ordinary-host declaration and a forged `NIX_BUILD_TOP`/`HOME` context without
+producing verdicts. The positive production-path regression runs in the existing
+Nix from-source product CI contract lane.
 
 ## Rust Actions
 

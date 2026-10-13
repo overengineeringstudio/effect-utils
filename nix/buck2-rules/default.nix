@@ -173,12 +173,6 @@ pkgs.runCommand "buck2-rules"
     )
 
     export_file(
-        name = "src/outer-sandbox.ts",
-        src = "src/outer-sandbox.ts",
-        visibility = ["PUBLIC"],
-    )
-
-    export_file(
         name = "src/static-check-runner.ts",
         src = "src/static-check-runner.ts",
         visibility = ["PUBLIC"],

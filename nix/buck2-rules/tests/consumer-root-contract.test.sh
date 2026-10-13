@@ -43,7 +43,6 @@ grep -Fx '  file_watcher = fs_hash_crawler' "$immutable_root/.buckconfig" >/dev/
 [ -f "$root/.buck2/rules/prelude/prelude.bzl" ]
 [ -f "$root/.buck2/capabilities/defs.bzl" ]
 [ -f "$root/.buck2/rules/packages/@overeng/buck2-tools/src/typescript-runner.ts" ]
-[ -f "$root/.buck2/rules/packages/@overeng/buck2-tools/src/outer-sandbox.ts" ]
 [ -f "$root/.buck2/rules/buck2/dependencies/runtime-closure.ts" ]
 
 # Verify the realized distribution, not another copy of its source file list.
@@ -101,7 +100,6 @@ grep -F 'effect_tsgo_toolchain(' "$root/buck2/toolchains/BUCK" >/dev/null
 grep -F 'name = "product_tool"' "$root/buck2/toolchains/BUCK" >/dev/null
 grep -F 'actual = "//buck2/toolchains:rust"' "$root/BUCK" >/dev/null
 grep -F 'name = "typescript-runner.ts"' "$root/.buck2/rules/packages/@overeng/buck2-tools/BUCK" >/dev/null
-grep -F 'name = "src/outer-sandbox.ts"' "$root/.buck2/rules/packages/@overeng/buck2-tools/BUCK" >/dev/null
 grep -F 'name = "package_tree_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 grep -F 'name = "package_command_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 grep -F 'name = "runtime-closure.ts"' "$root/.buck2/rules/buck2/dependencies/BUCK" >/dev/null
@@ -215,7 +213,7 @@ BUCK
 (
   cd "$work"
   buck2 --isolation-dir consumer-root-contract uquery \
-    'set(rules//:package_tree_runtime rules//:package_command_runtime rules//packages/@overeng/buck2-tools:typescript-runner.ts rules//packages/@overeng/buck2-tools:src/outer-sandbox.ts)' >/dev/null
+    'set(rules//:package_tree_runtime rules//:package_command_runtime rules//packages/@overeng/buck2-tools:typescript-runner.ts)' >/dev/null
   buck2 --isolation-dir consumer-root-contract uquery 'rules//buck2/dependencies:runtime-closure.ts' >/dev/null
   ignored="$(jq -cn --arg root "$work" \
     '["query",$root,{"fields":["name"],"expression":["dirname","buck-out"]}]' \

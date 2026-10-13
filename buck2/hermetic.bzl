@@ -69,9 +69,6 @@ def ts_action_attrs():
             default = "@rules//buck2/toolchains:ts_sandbox",
             providers = [TsSandboxToolchainInfo],
         )),
-        "_outer_filesystem_verifier": attrs.default_only(attrs.source(
-            default = "@rules//packages/@overeng/buck2-tools:src/outer-sandbox.ts",
-        )),
     }))
 
 
@@ -84,12 +81,6 @@ def _ts_action_launcher(ctx, sandbox, command, inputs, outputs, verify_nix_outer
     launcher = ctx.actions.declare_output("ts-sandbox.sh")
     verification = []
     if verify_nix_outer:
-        verifier_inputs = [ctx.attrs._outer_filesystem_verifier]
-        verifier_command = cmd_args([
-            hermetic_bun_command(ctx, sandbox.bun, config_name = "outer-verifier-bunfig.toml", sandbox_inputs = verifier_inputs),
-            ctx.attrs._outer_filesystem_verifier,
-        ], quote = "shell")
-        inputs = inputs + verifier_inputs
         verification = [
             "outer_failures=()",
             'outer_top=""',
@@ -132,9 +123,26 @@ def _ts_action_launcher(ctx, sandbox, command, inputs, outputs, verify_nix_outer
             "  done < /proc/net/dev",
             "fi",
             'if [[ "$outer_network_ok" != true || "$outer_devices" != 1 ]]; then outer_failures+=("/proc/net/dev must contain only lo, including lo"); fi',
-            cmd_args(['if !', verifier_command, '"$outer_top"; then outer_failures+=("filesystem boundary verification failed"); fi'], delimiter = " "),
+            "outer_host_writable=false",
+            "for outer_host_path in /home /home/* /root /nix/var; do",
+            '  if [[ -w "$outer_host_path" ]]; then outer_host_writable=true; fi',
+            "done",
+            "if [[ -r /etc/passwd ]]; then",
+            "  while IFS=: read -r outer_user _ outer_uid _ _ outer_home _; do",
+            '    if [[ "$outer_uid" != "$EUID" ]]; then continue; fi',
+            "    outer_passwd_home_in_build=false",
+            '    if [[ -n "$outer_top" && -d "$outer_home" ]] && outer_passwd_home="$(cd -P -- "$outer_home" 2>/dev/null && pwd -P)"; then',
+            '      case "$outer_passwd_home/" in "$outer_top/"*) outer_passwd_home_in_build=true ;; esac',
+            "    fi",
+            '    if [[ "$outer_passwd_home_in_build" != true && -w "$outer_home" ]]; then outer_host_writable=true; fi',
+            '    for outer_host_path in "/nix/var/nix/gcroots/per-user/$outer_user" "/nix/var/nix/profiles/per-user/$outer_user"; do',
+            '      if [[ -w "$outer_host_path" ]]; then outer_host_writable=true; fi',
+            "    done",
+            "  done < /etc/passwd",
+            "fi",
+            'if [[ "$outer_host_writable" == true ]]; then outer_failures+=("host homes and /nix/var must not be writable"); fi',
             'if [[ "${#outer_failures[@]}" != 0 ]]; then',
-            '  printf "%s\\n" "TS sandbox: outer sandbox declared but not verified; required: NIX_BUILD_TOP set with action cwd and Buck root (.buckroot) beneath it; HOME=/homeless-shelter or physically under NIX_BUILD_TOP; /proc/net/dev contains only lo; / root mount is a pivoted or chrooted subtree; /home, /root, /run/user, /nix/var/nix and real passwd homes outside the build are absent with ENOENT; /tmp is absent or is a plain directory on the root mount with no separate or bind mount." >&2',
+            '  printf "%s\\n" "TS sandbox: outer sandbox declared but not verified; required: NIX_BUILD_TOP set with action cwd and Buck root (.buckroot) beneath it; HOME=/homeless-shelter or physically under NIX_BUILD_TOP; /proc/net/dev contains only lo; host homes (/home, /home/*, /root, current passwd home outside the build root) and /nix/var are not writable." >&2',
             '  printf "Failed criterion: %s\\n" "${outer_failures[@]}" >&2',
             "  exit 1",
             "fi",

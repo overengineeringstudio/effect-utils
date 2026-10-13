@@ -1583,11 +1583,6 @@ in
       root="''${DEVENV_ROOT:-$PWD}"
       export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
       export CP_BIN=${pkgs.coreutils}/bin/cp JQ_BIN=${pkgs.jq}/bin/jq
-      export BUN_BIN=${flakePkgs.bun}/bin/bun
-      ${lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
-        export UNSHARE_BIN=${pkgs.util-linux}/bin/unshare
-        export IP_BIN=${pkgs.iproute2}/bin/ip
-      ''}
       exec ${pkgs.bash}/bin/bash "$root/scripts/buck2-cache-admission-check.sh" "$root"
     '';
   };

@@ -302,10 +302,8 @@ exclusions defined by
 [the execution policy](../05-execution/spec.md#typescript-containment-and-platform-admission-buildbuck-r04):
 both run locally but cannot enter shared-cache or hermetic shared immutable-store
 admission. `nix-outer-sandboxed` requires runtime verification of the declared
-outer filesystem/network boundary before output creation or child execution,
-using the execution policy's exact mount, path-absence, build-root and loopback
-criteria. This verifies a boundary, not Nix origin or caller trust, and does not
-establish the admitted per-action Linux `linux-bwrap` boundary required by
+outer Nix derivation boundary before output creation or child execution, not
+caller trust or the admitted per-action Linux `linux-bwrap` boundary required by
 BUILD.BUCK-R04. Its category identifies selected policy, including failed
 verification, rather than proving containment; verification failure cannot
 fall back to unsandboxed execution.
