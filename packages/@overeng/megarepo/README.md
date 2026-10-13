@@ -269,14 +269,55 @@ windows, live-set veto, lossless floor) and additionally HEAD is reachable from
 status is clean apart from the worklog, and ignored content outside it is rebuildable output. A
 planning-time failed or unknown check falls back to archiving; a check failing under the lock keeps
 the worktree. Parked, closed, or unmerged worktrees are never torn down. Under the worktree lock and the owner's deletion lease, the policy is reloaded and must
-keep the same SHA-256, the live set is re-checked, admitted activity must be available and show
-no agent, PTY, or process claim (unavailable activity keeps with `agent-liveness-unavailable`), the
-strict cwd/root/fd/maps probe must pass (foreign processes covered by an admitted root snapshot),
-and every teardown check is re-run; then the
-worklog is measured, and one `git worktree remove --force` removes the worktree (force only covers
-the proven worklog and rebuildable output; the branch ref is retained). The result reports
+keep the same SHA-256, the live set is re-checked, and admitted activity must be available and show
+no agent, PTY, or non-Buck process claim (unavailable activity keeps with `agent-liveness-unavailable`).
+Every teardown check is re-run and the worklog is measured before idle Buck daemons are stopped.
+Only the exact discovered Buck daemon/forkserver process lifetimes are deferred from the local
+activity scan to shutdown and the strict probe; immutable manifest claims and all other holders
+still veto before shutdown, even when they refer to the same path.
+The strict cwd/root/fd/maps probe must pass (foreign processes covered by an admitted root
+snapshot), and refreshed activity/process claims must still be clear. Linux fd-pinned deletion
+removes the worktree and Git prunes its registration; the branch ref is retained. The result reports
 `status: "reaped"`, `reason: "merged-worklog-teardown"`, `worklogBytesRemoved` (allocated bytes,
 estimated in `--dry-run`), `worklogPolicyPath`, and `worklogPolicySha256`.
+
+### Buck2 daemons at worktree retirement
+
+On Linux, whole-worktree GC stops the current user's idle Buck2 daemons before renaming or
+removing the root: cold archive, clean ref-mismatch archive, merged-worklog teardown, legacy
+whole-worktree sweep, and their targeted plan applications. The hook runs under the existing
+worktree lock (and deletion lease where present), after the path's existing keep checks and
+immediately before its process-in-use probe or deletion. The legacy sweep retains its existing
+protection checks without adding a process probe or status reclassification.
+It discovers same-UID Buck daemons in `/proc`, using the same path-containment predicate as the
+existing probes. Isolation comes from daemon argv; the project
+root is its cwd with a trailing `/buck-out/<isolation>` stripped, or the cwd itself when that suffix
+is absent (for example a daemon started by LSP may stay at the project root).
+
+`buck2 --isolation-dir <isolation> status` must return the identical PID and daemon ID and an empty
+`active_commands` list before `buck2 --isolation-dir <isolation> kill` runs from that project root.
+Each command has a 30-second deadline. GC never signals a daemon. Active, mismatched, unreadable,
+or unkillable daemons remain for paths with an existing in-use probe to veto; the legacy sweep's
+pre-existing deletion contract is unchanged. This is not atomic with new Buck commands: a command
+can attach between status and kill; the worktree lock/lease only excludes cooperating worktree
+activations, not every Buck client.
+
+JSON worktree receipts include `buckDaemonsStopped` (root, daemon ID, PID, isolation, cwd path,
+and `freedKiB`: pre-kill RSS + VmSwap of the daemon and its forkserver), even if a later probe or
+mutation keeps/fails. Targeted application retains its error contract and includes any stopped
+daemon's PID, daemon ID, root and `freedKiB` in the error message.
+`buckDaemonsUnreachable` records identity, cwd, memory and reason. `buck2 kill` has no
+conditional form: the final status and event-log read is immediately followed by the kill, and a
+stop that met another daemon pid or a command's new event log carries `raced` and logs a warning.
+A command starting in that sub-second window fails loudly and restarts the daemon. Already
+archived roots are report-only (`archived-root`): Buck's address is keyed to the original root,
+so GC never tries status or kill from the renamed archive path. Their in-use probe still keeps
+held archives. `--dry-run` never invokes the hook. `MEGAREPO_GC_BUCK2_BIN` selects the executable
+(default `buck2`); an empty string disables the hook.
+
+Budget/generated-artifact deletion inside a surviving worktree, `mr store fix`, and the separate
+idle-daemon reaper are unchanged. Implementation: `src/store/store-buck-daemons.ts`; GC ordering
+and receipts: `src/cli/commands/store/mod.ts` and `src/cli/renderers/StoreOutput/schema.ts`.
 
 ### Deletion lease
 

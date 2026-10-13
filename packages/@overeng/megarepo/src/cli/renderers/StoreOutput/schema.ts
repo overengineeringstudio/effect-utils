@@ -7,6 +7,8 @@
 
 import { Schema } from 'effect'
 
+import { BuckDaemonStopped, BuckDaemonUnreachable } from '../../../store/store-buck-daemons.ts'
+
 // =============================================================================
 // Common Types
 // =============================================================================
@@ -87,6 +89,10 @@ export const StoreGcResult = Schema.Struct({
   worklogPolicyPath: Schema.optional(Schema.String),
   /** Merged teardown: canonical SHA-256 of that policy, re-checked under the worktree lock. */
   worklogPolicySha256: Schema.optional(Schema.String),
+  /** Root-scoped shutdowns, including ones followed by a keep or deletion error. */
+  buckDaemonsStopped: Schema.optional(Schema.Array(BuckDaemonStopped)),
+  /** Daemons that GC could not address (archived roots are always report-only). */
+  buckDaemonsUnreachable: Schema.optional(Schema.Array(BuckDaemonUnreachable)),
 })
 
 /** Inferred type for a store GC result. */
