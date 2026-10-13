@@ -1876,6 +1876,7 @@
         "src/gate/portable-stories.unit.test.ts",
         "src/gate/project-annotations.unit.test.ts",
         "src/gate/project.unit.test.ts",
+        "src/gate/run.integration.test.ts",
         "src/gate/run.unit.test.ts",
         "src/gate/settle.unit.test.ts"
       ],
@@ -1888,6 +1889,7 @@
         "src/gate/portable-stories.unit.test.ts",
         "src/gate/project-annotations.unit.test.ts",
         "src/gate/project.unit.test.ts",
+        "src/gate/run.integration.test.ts",
         "src/gate/run.unit.test.ts",
         "src/gate/settle.unit.test.ts"
       ],
