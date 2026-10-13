@@ -228,6 +228,23 @@ See the `examples/` directory:
 - `examples/effect-logging.tsx` - TUI logger integration
 - `examples/universal-components-demo.tsx` - Universal components
 
+## Browser Tests
+
+Run the Storybook-backed browser suite with `devenv tasks run test:pw:tui-react`.
+Failed tests retain a Playwright trace, screenshot, and error context in
+`packages/@overeng/tui-react/test-results/`. CI uploads that directory as the
+`playwright-test-results-tui-react-run-<run>-attempt-<attempt>` artifact on failure.
+Open a downloaded trace with `playwright show-trace <path>/trace.zip` to inspect
+the preview DOM, browser console, and network requests.
+
+Both the TUI React and utils Playwright CI jobs also capture
+`network/runner-network.log` (initial interfaces, addresses, routes, and timestamped
+netlink changes) and `network/chromium-netlog.json` (Chromium's Default capture
+mode, without sensitive-header or raw-socket-byte capture). Test-specific
+artifacts live under `tests/` in CI so Playwright's output cleanup cannot delete
+the suite-wide network evidence. These network captures are disabled locally
+and uploaded only when the job fails, with 14-day retention.
+
 ## License
 
 MIT

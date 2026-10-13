@@ -21,6 +21,7 @@ const ignoredDiscoveryDirs = new Set([
   '.git',
   '.next',
   '.turbo',
+  'buck-out',
   'coverage',
   'dist',
   'node_modules',

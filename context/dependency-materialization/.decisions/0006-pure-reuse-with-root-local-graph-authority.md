@@ -83,3 +83,106 @@ and pass identity, purity, data-safety, concurrency, and bounded-repair gates.
   synonym for cache reuse or runtime identity.
 - The long-term design should remove repeated pure topology work by publishing
   immutable graph-addressed artifacts, rather than widening mutation scope.
+
+## Amendment 1 — Reopen Local GVS With Staged pnpm 12 Validation
+
+The local shared-GVS rejection is reopened. Local GVS is the preferred
+challenger for compatible isolated-linker workspaces, subject to a designated
+pilot and the concurrency, repair, and compatibility gates below. This is an
+explicit acceptance of bounded shared mutable topology for the pilot, not a
+claim that GVS satisfies the immutable Hermetic Dependency Artifact target.
+The original identity experiment already distinguished pnpm's correct native
+graph identities from an unsafe secondary name-only graph writer.
+
+The shared task exposes `globalVirtualStore = true;` and Genie exposes
+`enableGlobalVirtualStore: true`. Defaults remain root-local. CI and
+fixed-output preparation remain GVS-disabled and job/output-local, independent
+of a local opt-in. Actual effect-utils and LiveStore enablement waits until the
+designated pilot has remained green for several days; this amendment does not
+enable either repository.
+
+### New Evidence And Limits
+
+A 2026-10-05 same-workload comparison used all 36 workspace projects in
+[LiveStore at a52baaff](https://github.com/livestorejs/livestore/commit/a52baaff0396dfc4ac8ca7e295afdd4fab051cf8),
+pnpm 12.7.0, Node 24.20.0, an isolated linker, and ignored lifecycle scripts.
+The second checkout shared each strategy's already-populated complete store:
+
+| Strategy                                        | Second-checkout install | Additional allocated bytes | Additional unique inodes |
+| ----------------------------------------------- | ----------------------: | -------------------------: | -----------------------: |
+| Root-local virtual topology, hardlinked content |                 36.51 s |                160,271,360 |                   36,302 |
+| Shared GVS                                      |                  4.94 s |                 17,368,064 |                    3,594 |
+
+These are store-plus-root `du` union deltas with hardlinks deduplicated and
+distinct `(device, inode)` counts, not exclusive physical filesystem usage.
+GVS reduced charged bytes by 9.23× and unique inodes by 10.10× for this workload.
+Heavy background disk contention prevents treating the timing difference as a
+clean general speed ranking. The successful smokes resolved Effect, TypeScript,
+and Vitest, executed an Effect expression, and ran the TypeScript CLI version
+command; they did not prove semantic typechecking, a bundler build, native
+rebuilds, or full application compatibility.
+
+The upstream offline tarball regression independently proves real pnpm 12.7
+graph-instance reuse between two roots, package execution, parsed
+`.modules.yaml`/`pnpm store path` agreement, and default/CI isolation despite
+ambient and authored GVS opt-ins. Reachable-edge health/digest tests cover
+missing and foreign-store edges without scanning unrelated shared graphs.
+These checks do not substitute for the rollout gates.
+
+### Concurrency Contract And Gate
+
+- pnpm remains the sole Dependency Edge writer. Declare missing edges in
+  manifests or graph-specific package extensions; never rewrite by package name.
+- Share one complete, same-filesystem Store Cache among trusted same-user
+  consumers. Reject external version/files bridges. pnpm 12.7 uses `v11`;
+  neither a historical `v12` assumption nor a split writable `files/` pool is
+  admissible.
+- Managed mutations retain per-root and PNPM_HOME locks plus the shared Store
+  Cache maintenance lease. Independent roots may install concurrently; prune,
+  graph removal, and other maintenance require the exclusive counterpart.
+- A native addon initializer must also hold an instance-local lock while
+  holding the shared maintenance lease. Do not infer native-build safety from
+  script-free installs; consume immutable native output or prove this locking
+  path before enabling a workspace that needs it.
+- In disposable stores, run overlapping cold and offline warm installs into
+  equivalent and different graphs in both orders. Repeat mixed Effect and React
+  peer generations on pnpm 12, verify every root's exact runtime identity and
+  realpaths, and verify maintenance cannot enter while a consumer lease is held.
+
+### Repair Contract And Gate
+
+`pnpm store status` and install integrity checks validate package content;
+`pnpm store prune` collects reachability. None proves a damaged graph edge was
+restored. The pnpm 11 missing-edge result remains a warning, not proof about
+pnpm 12; do not promise that `pnpm install --force` repairs shared topology.
+
+Reproduce a missing edge in a disposable pnpm 12 graph shared by two roots.
+Check both consumers, record what status/force/prune actually do, then quiesce
+affected consumers and take the exclusive maintenance lease. Discard only the
+identified corrupt graph instance and reinstall every affected root. If safe
+instance identification or complete affected-root enumeration is unavailable,
+select a fresh complete `PNPM_SHARED_STORE_DIR` namespace and reinstall rather
+than destructively sweeping a live store. Keep the old namespace until its
+consumers are quiesced and maintenance ownership is established.
+
+Root repair removes only root-owned projections; it cannot certify shared-graph
+recovery. A root-local rollback disables the opt-in and rematerializes that
+root's projection without deleting shared instances.
+
+### Verification And Rollout Gate
+
+For the designated pilot, record the exact pnpm version, lock/peer graph, linker,
+effective store/mode, `.modules.yaml`, package realpaths, cold/warm footprints,
+and readiness receipts. pnpm 12 must receive GVS through the honoured environment
+key or workspace YAML, not the ineffective kebab-case generic config argument.
+Test mode changes against both normal and shortcut readiness caches.
+
+Run semantic typechecks and the consuming applications' actual build/runtime
+paths, including bundlers with root boundaries, implicit type/phantom
+dependencies, patched/local packages, generated source inputs, and any required
+native initialization. Prove CI and fixed-output preparation stay local.
+Observe the pilot across repeated fresh worktrees and lock changes for several
+green days before proposing effect-utils/LiveStore cutover. Only measured
+compatible consumers advance; default changes require that evidence, not this
+API's availability or the benchmark alone. Hermetic artifacts remain the
+long-term architectural target; GVS remains pnpm-owned mutable live state.

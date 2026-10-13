@@ -19,13 +19,21 @@
 #   # Simple tests (no per-package):
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.test {}) ];
 #
-#   # Bound package-level fan-out for large repos / constrained CI runners:
-#   imports = [ (inputs.effect-utils.devenvModules.tasks.test { packageConcurrency = 4; }) ];
+#   # Bound package-level fan-out for large repos / constrained CI runners.
+#   # test:run runs aggregate packages in `packageConcurrency` independent
+#   # chains, assigned longest-first by declared seconds (default weight 1):
+#   imports = [
+#     (inputs.effect-utils.devenvModules.tasks.test {
+#       packageConcurrency = 4;
+#       packageWeights = { "test:genie" = 72; };
+#     })
+#   ];
 #
 # Each package must have:
 #   - vitest as a devDependency in package.json
 #   - vitest.config.ts in the package root
 #   - optional `after = [ ... ]` for package-specific prerequisites
+#   - optional `installTask` overriding the aggregate's installer for direct execution
 #
 # Provides:
 #   - test:run - Run all tests
@@ -33,12 +41,20 @@
 #   - test:<name> - Run tests for specific package (when packages provided)
 {
   packages ? [ ],
+  # Aggregate scope may be narrower than the standalone package task surface.
+  aggregatePackages ? packages,
   installTask ? "pnpm:install",
   extraTests ? [ ],
   packageConcurrency ? null,
+  packageWeights ? { },
   retainVitestJson ? false,
 }:
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
@@ -48,11 +64,21 @@ let
   hasPackages = packages != [ ];
   hasPackageConcurrency = packageConcurrency != null;
   validatedPackageConcurrency =
-    if hasPackageConcurrency && packageConcurrency < 1 then
-      throw "packageConcurrency must be at least 1"
+    if hasPackageConcurrency && (!builtins.isInt packageConcurrency || packageConcurrency < 1) then
+      throw "packageConcurrency must be a positive integer or null"
     else
       packageConcurrency;
-  packagesWithIndexes = lib.imap0 (index: pkg: pkg // { __testIndex = index; }) packages;
+  validatedPackageWeights =
+    if !builtins.isAttrs packageWeights then
+      throw "packageWeights must be an attribute set of positive integer seconds"
+    else
+      lib.mapAttrs (
+        name: weight:
+        if !builtins.isInt weight || weight < 1 then
+          throw "packageWeights.${name} must be a positive integer number of seconds"
+        else
+          weight
+      ) packageWeights;
   taskFileStem =
     taskName:
     builtins.replaceStrings
@@ -112,58 +138,103 @@ let
     run_package_bin vitest vitest
   '';
 
-  # Per-package test task using the workspace-aware vitest entrypoint.
-  chunkList =
-    size: items:
-    if items == [ ] then [ ] else [ (lib.take size items) ] ++ chunkList size (lib.drop size items);
+  # Assign longest source tasks first to the least-loaded chain. Lexical task
+  # names and stable chain indices break ties without runtime timing state.
+  packageTaskName = pkg: "test:${pkg.name}";
+  packageWeight = pkg: validatedPackageWeights.${packageTaskName pkg} or 1;
+  sortedAggregatePackages = lib.sort (
+    left: right:
+    if packageWeight left == packageWeight right then
+      packageTaskName left < packageTaskName right
+    else
+      packageWeight left > packageWeight right
+  ) aggregatePackages;
+  packageTestChains =
+    if hasPackageConcurrency then
+      lib.foldl'
+        (
+          chains: pkg:
+          let
+            lightestChain = lib.foldl' (
+              lightest: chain: if chain.weight < lightest.weight then chain else lightest
+            ) (builtins.head chains) chains;
+          in
+          map (
+            chain:
+            if chain.index == lightestChain.index then
+              chain
+              // {
+                weight = chain.weight + packageWeight pkg;
+                packages = chain.packages ++ [ pkg ];
+              }
+            else
+              chain
+          ) chains
+        )
+        (lib.genList (index: {
+          inherit index;
+          weight = 0;
+          packages = [ ];
+        }) validatedPackageConcurrency)
+        sortedAggregatePackages
+    else
+      [ ];
+  packageTestExecutionName = index: pkg: "test:run:chain:${toString index}:${pkg.name}";
+  packageTestChainTails = map (
+    chain: packageTestExecutionName chain.index (lib.last chain.packages)
+  ) (lib.filter (chain: chain.packages != [ ]) packageTestChains);
 
-  packageTestTaskNames = map (pkg: "test:${pkg.name}") packages;
-  packageTestBatches =
-    if hasPackageConcurrency then chunkList validatedPackageConcurrency packageTestTaskNames else [ ];
-  packageTestBatchTaskName = index: "test:run:batch:${toString index}";
-  lastPackageTestBatchTaskName = packageTestBatchTaskName (builtins.length packageTestBatches - 1);
-
-  mkTestTask =
-    pkg:
-    let
-      batchIndex =
-        if hasPackageConcurrency then builtins.div pkg.__testIndex validatedPackageConcurrency else 0;
-    in
-    {
-      "test:${pkg.name}" = {
-        description = "Run tests for ${pkg.name}";
-        exec = trace.exec "test:${pkg.name}" (vitestExec {
-          name = "test:${pkg.name}";
-          extraArgs = pkg.vitestArgs or "";
-        });
-        cwd = pkg.path;
-        execIfModified = [
-          "${pkg.path}/src/**/*.ts"
-          "${pkg.path}/src/**/*.tsx"
-          "${pkg.path}/src/**/*.test.ts"
-          "${pkg.path}/src/**/*.test.tsx"
-          "${pkg.path}/test/**/*.ts"
-          "${pkg.path}/test/**/*.tsx"
-          "${pkg.path}/test/**/*.test.ts"
-          "${pkg.path}/test/**/*.test.tsx"
-          "${pkg.path}/vitest.config.ts"
-        ];
-        after = [
-          installTask
-        ]
-        ++ (pkg.after or [ ])
-        ++ lib.optional (hasPackageConcurrency && batchIndex > 0) (
-          packageTestBatchTaskName (batchIndex - 1)
-        );
-      };
-    };
-
-  mkPackageTestBatchTask = index: taskNames: {
-    "${packageTestBatchTaskName index}" = {
-      description = "Complete test:run package batch ${toString (index + 1)}";
-      after = taskNames;
+  mkTestTask = pkg: {
+    "test:${pkg.name}" = {
+      description = "Run tests for ${pkg.name}";
+      exec = trace.exec "test:${pkg.name}" (vitestExec {
+        name = "test:${pkg.name}";
+        extraArgs = pkg.vitestArgs or "";
+      });
+      cwd = pkg.path;
+      execIfModified = [
+        "${pkg.path}/src/**/*.ts"
+        "${pkg.path}/src/**/*.tsx"
+        "${pkg.path}/src/**/*.test.ts"
+        "${pkg.path}/src/**/*.test.tsx"
+        "${pkg.path}/test/**/*.ts"
+        "${pkg.path}/test/**/*.tsx"
+        "${pkg.path}/test/**/*.test.ts"
+        "${pkg.path}/test/**/*.test.tsx"
+        "${pkg.path}/vitest.config.ts"
+      ];
+      after = [ (pkg.installTask or installTask) ] ++ (pkg.after or [ ]);
     };
   };
+
+  # Aggregate-only execution aliases carry per-chain ordering. Direct package
+  # tasks keep their own prerequisites and never pull another source task into
+  # their closure. Each alias uses the aggregate's one installer.
+  mkPackageTestChain =
+    chain:
+    lib.imap0 (
+      index: pkg:
+      let
+        execution = config.tasks.${packageTaskName pkg};
+      in
+      {
+        "${packageTestExecutionName chain.index pkg}" = {
+          # Reuse final task overrides, including pinned runtimes and tool env.
+          inherit (execution) description exec cwd;
+          env = execution.env or { };
+          execIfModified = execution.execIfModified or [ ];
+          # trace-audit-allow: inherit the final task's already-instrumented status; do not wrap twice.
+          status = execution.status or null;
+          after = [
+            installTask
+          ]
+          ++ (pkg.after or [ ])
+          ++ lib.optional (index > 0) (
+            packageTestExecutionName chain.index (builtins.elemAt chain.packages (index - 1))
+          );
+        };
+      }
+    ) chain.packages;
 
   guardedTasks = {
     "test:run" = {
@@ -178,10 +249,10 @@ let
           });
       after =
         if hasPackages then
-          if hasPackageConcurrency then
-            [ lastPackageTestBatchTaskName ] ++ extraTests
+          if hasPackageConcurrency && aggregatePackages != [ ] then
+            packageTestChainTails ++ extraTests
           else
-            map (pkg: "test:${pkg.name}") packages ++ extraTests
+            map (pkg: "test:${pkg.name}") aggregatePackages ++ extraTests
         else
           [ "genie:run" ];
     };
@@ -193,17 +264,19 @@ let
     };
   };
 in
-{
-  packages = cliGuard.fromTasks guardedTasks;
+builtins.seq validatedPackageConcurrency (
+  builtins.deepSeq validatedPackageWeights {
+    packages = cliGuard.fromTasks guardedTasks;
 
-  tasks = lib.mkMerge (
-    (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packagesWithIndexes else [ ])
-    ++ (
-      if hasPackages && hasPackageConcurrency then
-        lib.imap0 mkPackageTestBatchTask packageTestBatches
-      else
-        [ ]
-    )
-    ++ [ (cliGuard.stripGuards guardedTasks) ]
-  );
-}
+    tasks = lib.mkMerge (
+      (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packages else [ ])
+      ++ (
+        if hasPackages && hasPackageConcurrency then
+          lib.concatMap mkPackageTestChain packageTestChains
+        else
+          [ ]
+      )
+      ++ [ (cliGuard.stripGuards guardedTasks) ]
+    );
+  }
+)

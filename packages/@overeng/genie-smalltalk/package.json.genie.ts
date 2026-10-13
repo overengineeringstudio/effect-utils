@@ -26,10 +26,16 @@ export default packageJson(
   },
   catalog.compose({
     workspace: workspaceMember({ memberPath: 'packages/@overeng/genie-smalltalk' }),
-    dependencies: { workspace: [geniePkg], external: catalog.pick('effect') },
+    dependencies: { workspace: [geniePkg], external: catalog.pick('effect', '@noble/hashes') },
     devDependencies: {
       workspace: [utilsDevPkg],
-      external: catalog.pick('@effect/vitest', '@types/node', 'typescript', 'vitest'),
+      external: catalog.pick(
+        '@effect/opentelemetry',
+        '@effect/vitest',
+        '@types/node',
+        'typescript',
+        'vitest',
+      ),
     },
   }),
 )

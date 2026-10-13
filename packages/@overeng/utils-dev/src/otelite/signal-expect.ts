@@ -146,10 +146,13 @@ export class MetricExpect {
     return new MetricExpect(metrics, [])
   }
 
-  private constructor(
-    readonly metrics: readonly MetricRow[],
-    private readonly filters: readonly string[],
-  ) {}
+  readonly metrics: readonly MetricRow[]
+  private readonly filters: readonly string[]
+
+  private constructor(metrics: readonly MetricRow[], filters: readonly string[]) {
+    this.metrics = metrics
+    this.filters = filters
+  }
 
   metric(name: string): MetricExpect {
     return this.filter({ name })
@@ -215,10 +218,13 @@ export class LogExpect {
     return new LogExpect(logs, [])
   }
 
-  private constructor(
-    readonly logs: readonly LogRow[],
-    private readonly filters: readonly string[],
-  ) {}
+  readonly logs: readonly LogRow[]
+  private readonly filters: readonly string[]
+
+  private constructor(logs: readonly LogRow[], filters: readonly string[]) {
+    this.logs = logs
+    this.filters = filters
+  }
 
   service(service: string): LogExpect {
     return this.filter({ service })

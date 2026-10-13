@@ -1,0 +1,30 @@
+{
+  "id": "errors.upstream-404",
+  "summary": "Surface the gateway/provider error status and wire type.",
+  "requirements": ["AIG-R10"],
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "auth": "bearer",
+    "match": {
+      "model": "fixture/unknown",
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 404,
+    "json": {
+      "error": {
+        "message": "Unknown model: fixture/unknown",
+        "type": "invalid_request_error"
+      }
+    }
+  },
+  "expect": {
+    "outcome": "http-error",
+    "error": {
+      "status": 404,
+      "type": "invalid_request_error"
+    }
+  }
+}

@@ -1,0 +1,84 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/content-address-service/BUCK.genie.ts
+# Projection generator: effect-utils/rust/content-address-service
+# Projection schema version: 1
+# Semantic fingerprint: sha256:66d98487d8311003e4b70a5f6e97d3eb89e95aee201fe3bdd92990d74e4fb54a
+# Semantic inputs: rust/content-address-service/BUCK.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2/rust:interop.bzl", "rust_wasm_bindgen_library", "rust_napi_library", "rust_interop_service", "rust_interop_service_smoke")
+load("//buck2/rust:content-address-parity.bzl", "content_address_parity")
+
+native.export_file(
+    name = "smoke",
+    src = "interop-smoke.ts",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(name = "engine-parity", src = "engine-parity.ts", visibility = ["PUBLIC"])
+
+rust_wasm_bindgen_library(
+    name = "wasm",
+    crate = "//rust/content-address-interop:lib",
+    out_name = "content_address_core",
+    visibility = ["PUBLIC"],
+)
+
+rust_napi_library(
+    name = "napi",
+    crate = "//rust/content-address-interop:lib",
+    out_name = "content_address_core",
+    visibility = ["PUBLIC"],
+)
+
+rust_interop_service(
+    name = "service",
+    service = "ContentAddressCore",
+    package_name = "content-address-core-service",
+    wasm = ":wasm",
+    napi = ":napi",
+    visibility = ["PUBLIC"],
+)
+
+rust_interop_service_smoke(
+    name = "service-smoke-node",
+    service = ":service",
+    runtime = "node",
+    script = ":smoke",
+    scheduler_script = "//rust/effect-rust-fixtures:wasm-scheduler-smoke",
+    vectors = "//rust/content-address-contract:contract-schema",
+    visibility = ["PUBLIC"],
+)
+
+rust_interop_service_smoke(
+    name = "service-smoke-bun",
+    service = ":service",
+    runtime = "bun",
+    script = ":smoke",
+    scheduler_script = "//rust/effect-rust-fixtures:wasm-scheduler-smoke",
+    vectors = "//rust/content-address-contract:contract-schema",
+    visibility = ["PUBLIC"],
+)
+
+content_address_parity(
+    name = "engine-parity-node",
+    package_tree = "//packages/@overeng/content-address:package_tree",
+    dist = "//packages/@overeng/content-address:dist",
+    service = ":service",
+    script = ":engine-parity",
+    runtime = "node",
+    visibility = ["PUBLIC"],
+)
+
+content_address_parity(
+    name = "engine-parity-bun",
+    package_tree = "//packages/@overeng/content-address:package_tree",
+    dist = "//packages/@overeng/content-address:dist",
+    service = ":service",
+    script = ":engine-parity",
+    runtime = "bun",
+    visibility = ["PUBLIC"],
+)

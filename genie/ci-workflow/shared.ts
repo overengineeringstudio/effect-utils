@@ -31,6 +31,8 @@ const SELF_HOSTED_RUNNER_LABELS = [
     ...RUNNER_PROFILES,
     ...linuxX64Runner,
     ...linuxArm64Runner,
+    'sh-linux-x64-publish',
+    'sh-linux-arm64-publish',
     ...darwinArm64Runner,
     namespaceLinuxX64PairedPerfRunner,
   ]),

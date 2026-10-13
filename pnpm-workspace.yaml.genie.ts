@@ -49,8 +49,8 @@ export default pnpmWorkspaceYaml.root({
   ],
   ...commonPnpmWorkspaceData,
   overrides: {
-    // A caret prerelease range selects newer RCs. Pin the transitive package so
-    // the intentionally frozen Effect RC cohort remains on one release.
+    // Keep the transitive platform package on the catalog version so the entire
+    // Effect cohort resolves to one release.
     '@effect/platform-node-shared': catalog.effect,
   },
 })

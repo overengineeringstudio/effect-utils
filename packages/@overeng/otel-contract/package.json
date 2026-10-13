@@ -4,6 +4,7 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils-dev"
     ]
@@ -32,12 +33,12 @@
   "devDependencies": {
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.0.0",
     "typescript": "7.0.2",
-    "vitest": "4.1.9"
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "4.0.0-rc.118"
+    "effect": "^4.0.0"
   },
   "publishConfig": {
     "access": "public",

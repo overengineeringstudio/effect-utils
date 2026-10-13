@@ -15,6 +15,8 @@ import { type PlatformError } from 'effect/PlatformError'
 
 import type { AbsoluteFilePath } from '@overeng/effect-path'
 
+import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
+
 // =============================================================================
 // Lock File Schema
 // =============================================================================
@@ -89,11 +91,18 @@ export const readLockFile = (
 export const writeLockFile = ({
   lockPath,
   lockFile,
+  materializationRoot,
 }: {
   lockPath: AbsoluteFilePath
   lockFile: LockFile
+  /** Top-level fetch root that owns this lock file (see assertCanonicalMutationAllowed). */
+  materializationRoot?: string
 }): Effect.Effect<void, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
+    yield* assertCanonicalMutationAllowed({
+      target: lockPath,
+      ...(materializationRoot !== undefined ? { materializationRoot, lockFile: lockPath } : {}),
+    })
     const fs = yield* FileSystem.FileSystem
     const content = yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(
       lockFile,

@@ -7,7 +7,9 @@ import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { findGenieFiles } from './discovery.ts'
+import { makeTempGitEnvironment } from '@overeng/utils-dev/node-vitest'
+
+import { ensureImportMapResolver, findGenieFiles } from './discovery.ts'
 
 const writeFile = async ({ content, filePath }: { content: string; filePath: string }) => {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
@@ -29,12 +31,28 @@ const toCanonicalRelative = async ({
     .toSorted()
 }
 
+describe('ensureImportMapResolver', () => {
+  it.skipIf(typeof Bun !== 'undefined')(
+    'does not register a Bun hook or workspace guard under Node',
+    async () => {
+      await expect(
+        Effect.runPromise(
+          Effect.gen(function* () {
+            yield* ensureImportMapResolver(path.resolve('first-node-workspace'))
+            yield* ensureImportMapResolver(path.resolve('second-node-workspace'))
+          }),
+        ),
+      ).resolves.toBeUndefined()
+    },
+  )
+})
+
 describe('findGenieFiles', () => {
   it('uses git ignore rules for repository discovery', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-discovery-'))
 
     try {
-      execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' })
+      execFileSync('git', ['init'], { cwd: root, env: makeTempGitEnvironment(), stdio: 'ignore' })
       await writeFile({ filePath: path.join(root, '.gitignore'), content: '.claude/\n' })
       await writeFile({
         filePath: path.join(root, 'tracked', 'package.json.genie.ts'),
@@ -50,6 +68,7 @@ describe('findGenieFiles', () => {
       })
       execFileSync('git', ['add', '.gitignore', 'tracked/package.json.genie.ts'], {
         cwd: root,
+        env: makeTempGitEnvironment(),
         stdio: 'ignore',
       })
 
@@ -72,14 +91,19 @@ describe('findGenieFiles', () => {
     const submoduleSource = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-submodule-'))
 
     try {
-      execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' })
-      execFileSync('git', ['init'], { cwd: submoduleSource, stdio: 'ignore' })
+      execFileSync('git', ['init'], { cwd: root, env: makeTempGitEnvironment(), stdio: 'ignore' })
+      execFileSync('git', ['init'], {
+        cwd: submoduleSource,
+        env: makeTempGitEnvironment(),
+        stdio: 'ignore',
+      })
       await writeFile({
         filePath: path.join(submoduleSource, 'package.json.genie.ts'),
         content: 'export default {}\n',
       })
       execFileSync('git', ['add', 'package.json.genie.ts'], {
         cwd: submoduleSource,
+        env: makeTempGitEnvironment(),
         stdio: 'ignore',
       })
       execFileSync(
@@ -100,12 +124,12 @@ describe('findGenieFiles', () => {
           '-m',
           'add genie source',
         ],
-        { cwd: submoduleSource, stdio: 'ignore' },
+        { cwd: submoduleSource, env: makeTempGitEnvironment(), stdio: 'ignore' },
       )
       execFileSync(
         'git',
         ['-c', 'protocol.file.allow=always', 'submodule', 'add', submoduleSource, 'vendor/genie'],
-        { cwd: root, stdio: 'ignore' },
+        { cwd: root, env: makeTempGitEnvironment(), stdio: 'ignore' },
       )
 
       const discovered = await Effect.runPromise(

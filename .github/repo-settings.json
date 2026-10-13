@@ -30,10 +30,7 @@
             "context": "default-ref-policy"
           },
           {
-            "context": "typecheck"
-          },
-          {
-            "context": "lint"
+            "context": "pr/quality"
           },
           {
             "context": "test (namespace-profile-linux-x86-64)"
@@ -48,25 +45,10 @@
             "context": "test-playwright-tui-react"
           },
           {
-            "context": "test-megarepo-cold-gc"
-          },
-          {
-            "context": "native-dependency-policy"
-          },
-          {
-            "context": "bundle-smoke"
-          },
-          {
             "context": "cargo"
           },
           {
             "context": "weaver"
-          },
-          {
-            "context": "bootstrap-cold-proof"
-          },
-          {
-            "context": "nix-closure-sizes"
           },
           {
             "context": "source-shape"
@@ -84,6 +66,18 @@
             "context": "test-storybook-plays"
           }
         ]
+      }
+    },
+    {
+      "type": "merge_queue",
+      "parameters": {
+        "merge_method": "SQUASH",
+        "min_entries_to_merge": 1,
+        "max_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 0,
+        "max_entries_to_build": 1,
+        "grouping_strategy": "ALLGREEN",
+        "check_response_timeout_minutes": 180
       }
     },
     {

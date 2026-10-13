@@ -66,6 +66,16 @@ its digest, and its closure, and renders the per-tool `BUCK`, `manifest.json`,
 and generation-keyed `defs.bzl`. Toolchains load `capabilities//:defs.bzl`.
 Consumer roots take the same output from effect-utils' flake.
 
+The projection's checkout source is a `lib.fileset` containing only the member
+manifest and the projector. The projector uses built-in runtime modules; its
+type-only manifest import does not load code. Package sources and lockfiles
+enter through the declared Nix package outputs and their closures, not a
+whole-checkout store path. Unrelated CI, generator, workflow, and specification
+changes therefore preserve capability store identities. The source-boundary
+regression builds the real projector in this restricted source and rejects
+undeclared checkout reads. The shipped rules cell similarly derives its
+fileset from the generated rules inventory.
+
 Consumer-specific native inputs extend that producer projection through
 `effect-utils.lib.mkBuck2Capabilities { pkgs; extraCapabilities = { … }; }`;
 the result replaces the capability output in both the consumer's Nix-built

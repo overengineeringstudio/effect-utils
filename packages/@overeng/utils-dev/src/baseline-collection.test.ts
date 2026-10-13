@@ -1,16 +1,60 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  collectionBuildPlan,
   decodeCollectionArtifact,
   decodeTestAuthority,
+  decodeSourceTaskScope,
+  ownershipInSourceScope,
   minimumTestAuthorityLanes,
   isTestDiscoveryDirectory,
   ownershipForFile,
   parseShowOutput,
   repoPathFromReportName,
   taskFileStem,
+  selectTestLanes,
   type TestAuthorityLane,
 } from './baseline-collection.ts'
+
+describe('platform source collection scope', () => {
+  it('requires safe, unique, nonempty task names', () => {
+    expect([...decodeSourceTaskScope(['test:utils:unbounded'])]).toEqual(['test:utils:unbounded'])
+    for (const decoded of [undefined, {}, [], ['test:a', 'test:a'], ['test:a;exit 0'], [1]]) {
+      expect(() => decodeSourceTaskScope(decoded)).toThrow()
+    }
+  })
+
+  it('selects only scoped source reports without dropping bounded or unowned evidence', () => {
+    const scope = decodeSourceTaskScope(['test:utils:unbounded'])
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'source', taskName: 'test:utils:unbounded' },
+        scope,
+      }),
+    ).toBe(true)
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'source', taskName: 'test:restate-effect:unbounded' },
+        scope,
+      }),
+    ).toBe(false)
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'source', taskName: 'test:restate-effect:unbounded' },
+        scope: undefined,
+      }),
+    ).toBe(true)
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'buck', collectionTarget: 'target', packageRelative: 'file' },
+        scope,
+      }),
+    ).toBe(true)
+    expect(ownershipInSourceScope({ ownership: { kind: 'unowned', reason: 'drift' }, scope })).toBe(
+      true,
+    )
+  })
+})
 
 const lane = (overrides: Partial<TestAuthorityLane> = {}): TestAuthorityLane => ({
   collectionTarget: 'effect_utils//packages/@overeng/alpha:test_collect',
@@ -55,6 +99,40 @@ const registryWith = (overrides: Partial<TestAuthorityLane>) =>
   conformantLanes().map((entry, index) =>
     index === 0 ? Object.assign({}, entry, overrides) : entry,
   )
+
+describe('platform bounded collection scope', () => {
+  it('selects the same bounded lanes for prebuild and final collection without changing ownership', () => {
+    const lanes = conformantLanes()
+    const selected = selectTestLanes({
+      lanes,
+      scope: decodeSourceTaskScope([lanes[0]!.taskName]),
+    })
+    expect(selected).toEqual([lanes[0]])
+    expect(collectionBuildPlan({ lanes: selected }).targets).toEqual([lanes[0]!.collectionTarget])
+    expect(selectTestLanes({ lanes, scope: undefined })).toBe(lanes)
+    expect(() =>
+      selectTestLanes({ lanes, scope: decodeSourceTaskScope(['test:missing']) }),
+    ).toThrow(/undeclared task/)
+    const collectionTargets = new Set(collectionBuildPlan({ lanes: selected }).targets)
+    for (const [index, entry] of lanes.entries()) {
+      const ownership = ownershipForFile({
+        file: `${entry.packagePath}/src/a.test.ts`,
+        lanes,
+      })
+      expect(ownership.kind).toBe('buck')
+      expect(ownershipInSourceScope({ ownership, scope: undefined, collectionTargets })).toBe(
+        index === 0,
+      )
+    }
+    expect(
+      ownershipInSourceScope({
+        ownership: { kind: 'unowned', reason: 'authority drift' },
+        scope: undefined,
+        collectionTargets,
+      }),
+    ).toBe(true)
+  })
+})
 
 const decode = (lanes: readonly unknown[]) =>
   decodeTestAuthority({ decoded: { schemaVersion: 2, lanes }, sourceLabel: 'bridge.json' })
@@ -387,6 +465,55 @@ describe('ownershipForFile', () => {
     expect(
       ownershipForFile({ file: 'packages/@overeng/alpha/src/a.test.ts', lanes: [bunLane] }).kind,
     ).toBe('unowned')
+  })
+})
+
+describe('collectionBuildPlan', () => {
+  it('builds every declared product once in byte order, including named and baseline-free lanes', () => {
+    const targets = [
+      'effect_utils//packages/@overeng/alpha:bundle_smoke_collect',
+      'effect_utils//packages/@overeng/alpha:test_collect',
+      'effect_utils//packages/@overeng/zeta:test_collect',
+    ]
+    const plan = collectionBuildPlan({
+      lanes: [
+        lane({
+          collectionTarget: targets[2]!,
+          packageName: 'zeta',
+          packagePath: 'packages/@overeng/zeta',
+        }),
+        lane(),
+        lane({
+          collectionTarget: targets[0]!,
+          selectedTestFiles: ['src/bundle.test.ts'],
+          target: 'effect_utils//packages/@overeng/alpha:bundle_smoke',
+          taskName: 'test:alpha:bundle_smoke',
+        }),
+        lane(),
+      ],
+    })
+    expect(plan.targets).toStrictEqual(targets)
+    expect(plan.args).toStrictEqual([
+      'build',
+      '--show-output',
+      '--target-platforms',
+      'effect_utils//buck2/platforms:host_platform',
+      '--local-only',
+      ...targets,
+    ])
+  })
+
+  it('does not manufacture collection products for Bun or shell verdict lanes', () => {
+    const { collectionTarget: _collectionTarget, ...withoutCollection } = lane()
+    expect(
+      collectionBuildPlan({
+        lanes: [
+          { ...withoutCollection, runner: 'bun' },
+          { ...withoutCollection, runner: 'shell' },
+        ],
+      }).targets,
+    ).toStrictEqual([])
+    expect(collectionBuildPlan({ lanes: [] }).targets).toStrictEqual([])
   })
 })
 

@@ -1,0 +1,15 @@
+{
+  "ignore_dirs": [
+    "packages/.editor-view",
+    ".editor-view",
+    "context/.editor-view",
+    "buck-out",
+    ".devenv",
+    "target",
+    "tmp",
+    "node_modules",
+    ".direnv",
+    ".git"
+  ],
+  "idle_reap_age_seconds": 3600
+}

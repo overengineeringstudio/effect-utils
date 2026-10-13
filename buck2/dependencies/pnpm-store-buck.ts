@@ -115,8 +115,13 @@ const edgesFor = ({
 }: {
   entry: PnpmStoreEntry
   platform: PnpmPlatform
-}): PnpmStoreEdgeSet =>
-  entry.variants.find((variant) => variant.platforms.includes(platform))?.edges ?? {}
+}): PnpmStoreEdgeSet => {
+  const variant = entry.variants.find((candidate) => candidate.platforms.includes(platform))
+  if (variant === undefined && entry.platforms.includes(platform)) {
+    return fail(`entry ${entry.snapshot} has no variant for supported platform ${platform}`)
+  }
+  return variant?.edges ?? {}
+}
 
 const invariantRecord = ({
   field,
@@ -159,45 +164,88 @@ const packageEdges = ({
     ),
   )
 
+/** Unsupported branches carry an analysis error, never a successful empty tree. */
+const renderUnavailablePlatforms = ({
+  owner,
+  platforms,
+}: {
+  owner: string
+  platforms: readonly PnpmPlatform[]
+}): readonly string[] =>
+  platforms.length === pnpmPlatforms.length
+    ? []
+    : [
+        `    unavailable_by_platform = ${renderDict({
+          indent: 4,
+          record: byPlatform((platform) =>
+            platforms.includes(platform)
+              ? ''
+              : `${owner} has no complete required dependency closure on ${platform}`,
+          ),
+        })},`,
+      ]
+
 const renderView = ({
   targetByStoreKey,
+  entryByStoreKey,
   view,
 }: {
   targetByStoreKey: ReadonlyMap<string, string>
+  entryByStoreKey: ReadonlyMap<string, PnpmStoreEntry>
   view: PnpmStoreView
 }): readonly string[] => {
-  const variantFor = (platform: PnpmPlatform) =>
-    view.variants.find((variant) => variant.platforms.includes(platform)) ??
-    fail(`view ${view.importer} has no variant for ${platform}`)
+  const variantFor = (platform: PnpmPlatform) => {
+    const variant = view.variants.find((candidate) => candidate.platforms.includes(platform))
+    if (variant === undefined && view.platforms.includes(platform)) {
+      return fail(`view ${view.importer} has no variant for supported platform ${platform}`)
+    }
+    return variant
+  }
   const direct = byPlatform((platform) =>
     Object.fromEntries(
-      sortedEntries(variantFor(platform).direct).flatMap(([name, edge]) =>
+      sortedEntries(variantFor(platform)?.direct ?? {}).flatMap(([name, edge]) =>
         edge.kind === 'entry' ? [[name, edge.storeKey] as const] : [],
       ),
     ),
   )
   const closure = byPlatform((platform) =>
     Object.fromEntries(
-      variantFor(platform).closure.map((storeKey) => [
+      (variantFor(platform)?.closure ?? []).map((storeKey) => [
         storeKey,
         targetByStoreKey.get(storeKey) ?? fail(`unknown store entry ${storeKey}`),
       ]),
     ),
   )
-  const bins = byPlatform((platform) => variantFor(platform).bins)
-  const workspaceDependencies = invariantRecord({
-    field: `view ${view.importer} workspace dependencies`,
-    values: byPlatform((platform) => workspaceEdges(variantFor(platform).direct)),
+  const bins = byPlatform((platform) => variantFor(platform)?.bins ?? {})
+  const workspaceDependencies = byPlatform((platform) =>
+    workspaceEdges(variantFor(platform)?.direct ?? {}),
+  )
+  const workspaceTrees = byPlatform((platform) => {
+    const variant = variantFor(platform)
+    const keys = new Set(Object.values(workspaceDependencies[platform]))
+    for (const storeKey of variant?.closure ?? []) {
+      const entry = entryByStoreKey.get(storeKey) ?? fail(`unknown store entry ${storeKey}`)
+      for (const key of Object.values(workspaceEdges(edgesFor({ entry, platform })))) keys.add(key)
+    }
+    return Object.fromEntries(
+      [...keys]
+        .toSorted()
+        .map((key) => [
+          key,
+          view.workspaceTrees[key] ?? fail(`view ${view.importer} has no workspace tree ${key}`),
+        ]),
+    )
   })
   return [
     'pnpm_store_view(',
     `    name = ${starlarkString(view.target)},`,
     '    runtime = ":assemble-store.ts",',
+    ...renderUnavailablePlatforms({ owner: `view ${view.importer}`, platforms: view.platforms }),
     ...renderMaybeSelected({ byPlatform: direct, field: 'direct' }),
     ...renderMaybeSelected({ byPlatform: closure, field: 'closure' }),
     ...renderMaybeSelected({ byPlatform: bins, field: 'bins' }),
-    `    workspace_trees = ${renderDict({ indent: 4, record: view.workspaceTrees })},`,
-    `    workspace_dependencies = ${renderDict({ indent: 4, record: workspaceDependencies })},`,
+    ...renderMaybeSelected({ byPlatform: workspaceTrees, field: 'workspace_trees' }),
+    ...renderMaybeSelected({ byPlatform: workspaceDependencies, field: 'workspace_dependencies' }),
     '    visibility = ["PUBLIC"],',
     ')',
     '',
@@ -345,6 +393,17 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
   ]
 
   for (const scc of projection.sccs) {
+    const supported = pnpmPlatforms.filter((platform) =>
+      scc.members.some((key) => entryByStoreKey.get(key)!.platforms.includes(platform)),
+    )
+    const membersByPlatform = byPlatform((platform) =>
+      Object.fromEntries(
+        scc.members.flatMap((storeKey) => {
+          const entry = entryByStoreKey.get(storeKey) ?? fail(`unknown store entry ${storeKey}`)
+          return entry.platforms.includes(platform) ? [[storeKey, `:${entry.packageTarget}`]] : []
+        }),
+      ),
+    )
     const members = new Set(scc.members)
     const internalByPlatform = byPlatform((platform) => {
       const internal: Record<string, string> = {}
@@ -376,15 +435,8 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
       'pnpm_store_scc(',
       `    name = ${starlarkString(scc.target)},`,
       '    runtime = ":assemble-store.ts",',
-      `    members = ${renderDict({
-        indent: 4,
-        record: Object.fromEntries(
-          scc.members.map((storeKey) => [
-            storeKey,
-            `:${(entryByStoreKey.get(storeKey) ?? fail(`unknown store entry ${storeKey}`)).packageTarget}`,
-          ]),
-        ),
-      })},`,
+      ...renderUnavailablePlatforms({ owner: `component ${scc.target}`, platforms: supported }),
+      ...renderMaybeSelected({ byPlatform: membersByPlatform, field: 'members' }),
       ...renderMaybeSelected({ byPlatform: internalByPlatform, field: 'internal_edges' }),
       ...renderMaybeSelected({ byPlatform: externalByPlatform, field: 'external_edges' }),
       ')',
@@ -399,6 +451,10 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
       `    package = ${starlarkString(`:${entry.packageTarget}`)},`,
       `    store_key = ${starlarkString(entry.storeKey)},`,
       '    runtime = ":assemble-store.ts",',
+      ...renderUnavailablePlatforms({
+        owner: `entry ${entry.snapshot}`,
+        platforms: entry.platforms,
+      }),
     )
     const overrideLines = renderPackageOverride(entry)
     if (entry.sccIndex === undefined) {
@@ -431,7 +487,7 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
   }
 
   for (const view of projection.views) {
-    lines.push(...renderView({ targetByStoreKey, view }))
+    lines.push(...renderView({ entryByStoreKey, targetByStoreKey, view }))
   }
   return lines.join('\n')
 }

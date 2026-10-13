@@ -197,6 +197,122 @@ fn repeated_ends_and_critical_ids_stay_bounded() {
     assert_eq!(capped.spans.len(), 2);
 }
 
+fn command_summary(spans: &[Value]) -> [String; 4] {
+    let command = spans
+        .iter()
+        .find(|s| s["name"].as_str().unwrap().starts_with("buck2.command "))
+        .unwrap();
+    [
+        "buck2.cache_hit_count",
+        "buck2.remote_cache_hit_count",
+        "buck2.local_cache_hit_count",
+        "buck2.action_count",
+    ]
+    .map(|key| {
+        command["attributes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["key"] == key)
+            .unwrap()["value"]["intValue"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    })
+}
+
+/// Remote and local hit counts split `cache_hit_count` exactly, from the
+/// decoded model, identically in the capped critical view and the full view.
+#[test]
+fn cache_hit_summary_splits_remote_and_local_across_views() {
+    let actions = 1_300u64;
+    let mut raw = synthetic_log(actions, true); // command span 1, actions 2..=1301
+    let end = |span_id: u64, execution_kind: i32| {
+        let mut progress = event(
+            span_id,
+            1,
+            buck_event::Data::SpanEnd(data::SpanEndEvent {
+                data: Some(span_end_event::Data::ActionExecution(
+                    data::ActionExecutionEnd {
+                        execution_kind,
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            }),
+        );
+        // Every action lasts 2 s, so all exceed the 1 s threshold and the
+        // critical view must escalate to meet its 1,200-span cap.
+        if let Some(command_progress::Progress::Event(e)) = &mut progress.progress {
+            e.timestamp.as_mut().unwrap().seconds += 2;
+        }
+        progress
+    };
+    let kinds = [3, 9, 10, 2, 7]; // action_cache, remote_dep_file_cache, local_action_cache, remote, local_dep_file
+    for id in 2..2 + actions {
+        let kind = kinds.get((id - 2) as usize).copied().unwrap_or(1);
+        append(&mut raw, &end(id, kind));
+    }
+    // A repeated end must not reclassify the first one (span 7 ended as local).
+    append(&mut raw, &end(7, 3));
+    let directory = tempfile::tempdir().unwrap();
+    let path = write_log(
+        &directory,
+        "cache_hit_split_events.pb.zst",
+        &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
+    );
+
+    let model = decode(&path).unwrap();
+    let views = make_views(&model, None);
+    let critical = &views[0].2;
+    assert!(critical.len() < model.spans.len());
+    assert!(critical.iter().any(
+        |s| s["attributes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["key"] == "buck2.critical_threshold_ns"
+                && a["value"]["intValue"] != "1000000000")
+    ));
+    let expected = ["3", "2", "1", "1300"].map(String::from);
+    assert_eq!(command_summary(critical), expected);
+    assert_eq!(command_summary(&views[1].2), expected);
+}
+
+#[test]
+fn cache_hit_summary_reports_zero_hits() {
+    let mut raw = synthetic_log(1, true);
+    append(
+        &mut raw,
+        &event(
+            2,
+            1,
+            buck_event::Data::SpanEnd(data::SpanEndEvent {
+                data: Some(span_end_event::Data::ActionExecution(
+                    data::ActionExecutionEnd {
+                        execution_kind: 1,
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            }),
+        ),
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let path = write_log(
+        &directory,
+        "zero_hit_events.pb.zst",
+        &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
+    );
+    let model = decode(&path).unwrap();
+    for (_, _, spans) in make_views(&model, None) {
+        assert_eq!(
+            command_summary(&spans),
+            ["0", "0", "0", "1"].map(String::from)
+        );
+    }
+}
+
 fn event(span_id: u64, parent_id: u64, data: buck_event::Data) -> CommandProgress {
     CommandProgress {
         progress: Some(command_progress::Progress::Event(data::BuckEvent {

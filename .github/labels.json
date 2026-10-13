@@ -91,6 +91,11 @@
       "description": "TypeScript code, tsconfig, and type definitions · Set: manual"
     },
     {
+      "name": "ci:heavy-proofs",
+      "color": "ededed",
+      "description": "Opt in to credential-free empirical CI proofs on this PR · Set: manual"
+    },
+    {
       "name": "ci:publish-snapshot",
       "color": "0e8a16",
       "description": "Trust this fork PR branch for snapshot publishing · Set: manual"
@@ -151,6 +156,16 @@
       "description": "@overeng/agent-session-ingest package · Set: manual"
     },
     {
+      "name": "system:ai-gateway-conformance",
+      "color": "a371f7",
+      "description": "@overeng/ai-gateway-conformance package · Set: manual"
+    },
+    {
+      "name": "system:ai-gateway-edge",
+      "color": "a371f7",
+      "description": "@overeng/ai-gateway-edge package · Set: manual"
+    },
+    {
       "name": "system:buck2-tools",
       "color": "a371f7",
       "description": "@overeng/buck2-tools package · Set: manual"
@@ -186,6 +201,11 @@
       "description": "@overeng/effect-distributed-lock package · Set: manual"
     },
     {
+      "name": "system:effect-iroh",
+      "color": "a371f7",
+      "description": "@overeng/effect-iroh package · Set: manual"
+    },
+    {
       "name": "system:effect-path",
       "color": "a371f7",
       "description": "@overeng/effect-path package · Set: manual"
@@ -209,6 +229,16 @@
       "name": "system:effect-rpc-tanstack",
       "color": "a371f7",
       "description": "@overeng/effect-rpc-tanstack package · Set: manual"
+    },
+    {
+      "name": "system:effect-rust",
+      "color": "a371f7",
+      "description": "@overeng/effect-rust package · Set: manual"
+    },
+    {
+      "name": "system:effect-rust-fixture-consumer",
+      "color": "a371f7",
+      "description": "@overeng/effect-rust-fixture-consumer package · Set: manual"
     },
     {
       "name": "system:effect-schema-form",
@@ -316,9 +346,19 @@
       "description": "@overeng/otelite package · Set: manual"
     },
     {
+      "name": "system:outline",
+      "color": "a371f7",
+      "description": "@overeng/outline package · Set: manual"
+    },
+    {
       "name": "system:oxc-config",
       "color": "a371f7",
       "description": "@overeng/oxc-config package · Set: manual"
+    },
+    {
+      "name": "system:pingping",
+      "color": "a371f7",
+      "description": "@overeng/pingping package · Set: manual"
     },
     {
       "name": "system:pty-effect",

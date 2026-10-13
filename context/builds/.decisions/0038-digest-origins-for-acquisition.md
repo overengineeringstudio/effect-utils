@@ -41,12 +41,12 @@ action, with no synthetic root or prepared `node_modules` adapter.
 
 ## Options
 
-| Option | Tradeoff | Outcome |
-| --- | --- | --- |
-| Digest origin per Buck context plus per-digest Nix FODs | Keeps acquisition local to each context, preserves exact verification, and lets the sandbox execute the real graph. | Accepted |
-| One aggregate prepared dependency tree | Fewer fetch actions, but broad invalidation, duplicated worktree materialization, and the failed synthetic adapter preserve the wrong build boundary. | Rejected |
-| Registry only | Correct recovery path, but repeats network transfer and cannot exploit the existing digest CAS. | Rejected |
-| CAS only | Fast while present, but eviction removes recovery authority and availability depends on one unproven retention tier. | Rejected |
+| Option                                                  | Tradeoff                                                                                                                                              | Outcome  |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Digest origin per Buck context plus per-digest Nix FODs | Keeps acquisition local to each context, preserves exact verification, and lets the sandbox execute the real graph.                                   | Accepted |
+| One aggregate prepared dependency tree                  | Fewer fetch actions, but broad invalidation, duplicated worktree materialization, and the failed synthetic adapter preserve the wrong build boundary. | Rejected |
+| Registry only                                           | Correct recovery path, but repeats network transfer and cannot exploit the existing digest CAS.                                                       | Rejected |
+| CAS only                                                | Fast while present, but eviction removes recovery authority and availability depends on one unproven retention tier.                                  | Rejected |
 
 ## Decision
 
@@ -59,12 +59,15 @@ action, with no synthetic root or prepared `node_modules` adapter.
    Without an archive origin, client-side `download_file` fetches the canonical
    registry URL. With `archive_origin.url_prefix` configured, a local acquisition
    action first requests `<prefix><sha256>` and falls back to the canonical
-   registry URL **only** on a direct CAS HTTP 404. CAS redirects are errors;
-   registry redirects are followed manually only while every hop passes the
-   same approved public HTTPS origin policy as the manifest. Response-header
-   and overall transfer deadlines bound acquisition. The action aborts oversized
-   streams immediately and publishes an atomic rename only after SHA-256 and
-   byte-size verification; other CAS errors and mismatched bytes fail closed.
+   registry URL on a direct CAS HTTP 404, response-header timeout, connection
+   error, or HTTP 5xx. Every fallback reports its reason as structured evidence.
+   CAS redirects are errors; registry redirects are followed manually only
+   while every hop passes the same approved public HTTPS origin policy as the
+   manifest. Response-header and overall transfer deadlines bound acquisition.
+   The action cancels the failed CAS request or body before registry recovery,
+   aborts oversized streams immediately, and publishes an atomic rename only
+   after SHA-256 and byte-size verification. Other CAS errors, mismatched bytes,
+   and registry failures fail closed.
    Buck's `download_file` accepts only one URL, so it cannot implement this
    fallback itself. Downstream actions consume the verified content artifact,
    converging on the same digest regardless of the supplying origin.
@@ -106,3 +109,46 @@ action, with no synthetic root or prepared `node_modules` adapter.
   may be published there.
 - Registry or a separately retention-proven backend remains recovery authority
   for archive bytes. CAS eviction is a reseed event, not data loss.
+
+## Amendment 1: the seeder runs on the CAS host (2026-10-03)
+
+Confirmed by Johannes (speed-up-ci decisions q5 and q8, 2026-10-03).
+
+Item 4's protected-main seeder was a CI job on a `[self-hosted, Linux, X64]`
+runner. No runner with those labels was ever registered for this repository:
+all 153 of its jobs, from 2026-09-23 to 2026-09-30, were cancelled without a
+runner or a step. Because the run-close job waits on every job, each main push
+run stayed open until the next push cancelled it. The private CAS was never
+seeded by it; 39 of 733 digests were missing on 2026-09-30.
+
+The seeder runs as a systemd timer on the host that serves the private CAS. It
+runs `buck2/dependencies/seed-archives.ts` against a checkout of `origin/main`,
+with the same verification as before. The CAS write credential stays on that
+host, scoped to the seeder service; this relies on the matching dotfiles
+amendment of BC.REAPI-R02, which otherwise denies fleet hosts any cache write
+credential. No CI job seeds archives, so no runner, pull-request job, or
+protected-main job holds the write credential. Item 4's verification and tier
+rules are unchanged.
+
+## Amendment 2: CAS availability failures are reported misses (Q41, 2026-10-10)
+
+Confirmed by Johannes (decision Q41, fallback-reported, 2026-10-10).
+
+Item 2 previously allowed registry recovery only for a direct CAS HTTP 404.
+On 2026-10-10 from 17:53 to 18:01 UTC, host overload stalled the private CAS;
+response-header timeouts became `pnpm_archive` build failures instead of
+recovering through the registry. The CAS is an acceleration tier, not the
+archive recovery authority.
+
+Response-header timeouts, connection errors, and CAS HTTP 5xx are reported
+misses, like a direct 404. The failed request or body is cancelled before the
+existing registry path is attempted. This fallback is content-safe because
+the same reviewed SHA-256 and byte size are verified before atomic publication.
+Redirects, digest or size mismatches, oversized streams, overall transfer
+deadline exhaustion, and registry failures remain fail-closed.
+
+Every fallback emits a structured reason (`not-found`, `headers-timeout`,
+`connection-error`, or `server-error`). Cache evidence counts these actual
+acquisitions separately by reason and includes them in the archive-origin
+fallback aggregate, distinguishing missing objects from availability stalls
+without retaining response bodies or connection diagnostics.

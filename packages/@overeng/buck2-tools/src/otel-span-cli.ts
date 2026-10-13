@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { accessSync, constants, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -58,19 +58,7 @@ const otelSpanPath = (): string | undefined => {
 const epochNanoseconds = (milliseconds: number): string =>
   String(BigInt(Math.round(milliseconds * 1_000_000)))
 
-/**
- * Emits one completed span with explicit boundaries via `otel-span emit-span`.
- * Fire-and-forget: delivery problems must never affect the publishing process,
- * so every failure of the CLI is swallowed and nothing is returned.
- */
-export const emitCompletedSpan = ({
-  name,
-  label,
-  attributes,
-  startedAtMs,
-  endedAtMs,
-  exitCode = 0,
-}: {
+type CompletedSpanOptions = {
   readonly name: string
   readonly label: string
   readonly attributes: readonly OtelSpanAttribute[]
@@ -79,33 +67,78 @@ export const emitCompletedSpan = ({
   readonly endedAtMs: number
   /** Real command exit status recorded on the span; nonzero marks the span error. */
   readonly exitCode?: number
-}): void => {
-  const otelSpan = otelSpanPath()
-  if (otelSpan === undefined) return
-  spawnSync(
-    otelSpan,
-    [
-      'emit-span',
-      'effect-utils-devenv',
-      name,
-      '--start-time-ns',
-      epochNanoseconds(startedAtMs),
-      '--end-time-ns',
-      epochNanoseconds(endedAtMs),
-      ...attributes.flatMap(([key, value]) =>
-        typeof value === 'number'
-          ? ['--attr-int', `${key}=${Math.round(value)}`]
-          : typeof value === 'boolean'
-            ? ['--attr-bool', `${key}=${value}`]
-            : ['--attr-string', `${key}=${value}`],
-      ),
-      '--attr-int',
-      `exit.code=${exitCode}`,
-      '--status-code',
-      exitCode === 0 ? 'ok' : 'error',
-      '--attr-string',
-      `span.label=${label}`,
-    ],
-    { stdio: 'ignore' },
-  )
+}
+
+const completedSpanArguments = ({
+  name,
+  label,
+  attributes,
+  startedAtMs,
+  endedAtMs,
+  exitCode = 0,
+}: CompletedSpanOptions): string[] => [
+  'emit-span',
+  'effect-utils-devenv',
+  name,
+  '--start-time-ns',
+  epochNanoseconds(startedAtMs),
+  '--end-time-ns',
+  epochNanoseconds(endedAtMs),
+  ...attributes.flatMap(([key, value]) =>
+    typeof value === 'number'
+      ? ['--attr-int', `${key}=${Math.round(value)}`]
+      : typeof value === 'boolean'
+        ? ['--attr-bool', `${key}=${value}`]
+        : ['--attr-string', `${key}=${value}`],
+  ),
+  '--attr-int',
+  `exit.code=${exitCode}`,
+  '--status-code',
+  exitCode === 0 ? 'ok' : 'error',
+  '--attr-string',
+  `span.label=${label}`,
+]
+
+const maxAsyncSpans = 4
+const asyncSpanTimeoutMs = 1_000
+let pendingAsyncSpans = 0
+const asyncChildren = new Set<ChildProcess>()
+process.once('exit', () => {
+  for (const child of asyncChildren) child.kill('SIGKILL')
+})
+
+/**
+ * Shared fire-and-forget delivery for every procedural publisher/watch span.
+ * At most four queued/running exporters across all callers in this process;
+ * saturation drops the event. Referenced children are killed after one second
+ * and keep their slot until `close` reaps them. No detached processes or queues.
+ * Returns whether delivery was queued, not whether the exporter succeeded.
+ */
+export const emitCompletedSpanAsync = (options: CompletedSpanOptions): boolean => {
+  if (pendingAsyncSpans >= maxAsyncSpans) return false
+  try {
+    const otelSpan = otelSpanPath()
+    if (otelSpan === undefined) return false
+    const args = completedSpanArguments(options)
+    pendingAsyncSpans++
+    // Never start an exporter in the caller's host-ledger critical section.
+    setImmediate(() => {
+      try {
+        const child = spawn(otelSpan, args, { stdio: 'ignore' })
+        asyncChildren.add(child)
+        const timeout = setTimeout(() => child.kill('SIGKILL'), asyncSpanTimeoutMs)
+        child.once('error', () => undefined)
+        child.once('close', () => {
+          clearTimeout(timeout)
+          asyncChildren.delete(child)
+          pendingAsyncSpans--
+        })
+      } catch {
+        pendingAsyncSpans--
+      }
+    })
+    return true
+  } catch {
+    return false
+  }
 }

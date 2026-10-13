@@ -3,11 +3,9 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { getIntrospectApp } from './IntrospectOutput/mod.ts'
+import { IntrospectApp } from './IntrospectOutput/mod.ts'
 import type { IntrospectState } from './IntrospectOutput/schema.ts'
 import { IntrospectView } from './IntrospectOutput/view.tsx'
-
-const IntrospectApp = getIntrospectApp()
 
 export default {
   title: 'NotionCLI/Introspect Output',

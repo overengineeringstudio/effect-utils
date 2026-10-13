@@ -73,6 +73,11 @@ let
     builtins.isString path
     && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*(/[A-Za-z0-9][A-Za-z0-9._+-]*)*" path != null;
   runtime = if value.runtimeKind == "bun" then pkgs.bun else pkgs.nodejs_24 or pkgs.nodejs;
+  # Bun auto-installs a missing bare import from the network or its global cache
+  # when the importing file has no `node_modules` above it. A product ships its
+  # own closure, and code it loads at run time (Genie's `.genie.ts` graphs) must
+  # fail loudly on a missing package rather than resolve an unpinned version.
+  runtimeFlags = lib.optionalString (value.runtimeKind == "bun") "--no-install ";
   wrapperEnvironment = lib.concatStringsSep " \\\n      " (
     lib.mapAttrsToList (
       name: entry: "--set ${lib.escapeShellArg name} ${lib.escapeShellArg entry}"
@@ -211,7 +216,7 @@ pkgs.runCommand "${expectedProductName}-buck2-candidate"
       makeWrapper ${runtime}/bin/${
         if value.runtimeKind == "bun" then "bun" else "node"
       } "$out/bin/${binaryName}" \
-        --add-flags "$out/libexec/$module_path" \
+        --add-flags "${runtimeFlags}$out/libexec/$module_path" \
         ${wrapperEnvironment} \
         ${wrapperPath}
     ''}

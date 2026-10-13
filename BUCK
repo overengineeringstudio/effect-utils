@@ -4,8 +4,8 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:b7d8e30e5a66528f31dfbd1c56613ff919b3789008999296f7b7c69ab6824b17
-# Semantic inputs: BUCK.genie.ts, genie/buck2/mod.ts, genie/buck2/root-aggregate-projection.ts, genie/buck2/typescript-admissions.ts, buck2/check_aggregate.bzl, buck2/weaver.bzl, packages/@overeng/buck2-tools/src/weaver-check-runner.ts, context/effect/socket/BUCK.genie.ts, context/opentui/BUCK.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/buck2-tools/BUCK.genie.ts, packages/@overeng/ci-tools/BUCK.genie.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/devbar/BUCK.genie.ts, packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts, packages/@overeng/effect-ai-gateway/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-path/BUCK.genie.ts, packages/@overeng/effect-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts, packages/@overeng/effect-schema-form-aria/BUCK.genie.ts, packages/@overeng/effect-schema-form/BUCK.genie.ts, packages/@overeng/genie-smalltalk/BUCK.genie.ts, packages/@overeng/genie/BUCK.genie.ts, packages/@overeng/gh-ci-utils/BUCK.genie.ts, packages/@overeng/kdl-effect/BUCK.genie.ts, packages/@overeng/kdl/BUCK.genie.ts, packages/@overeng/megarepo/BUCK.genie.ts, packages/@overeng/notion-cli/BUCK.genie.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-datasource-sync/BUCK.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-md/BUCK.genie.ts, packages/@overeng/notion-property-write/BUCK.genie.ts, packages/@overeng/notion-react/BUCK.genie.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/otel-browser/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/pty-effect/BUCK.genie.ts, packages/@overeng/react-inspector/BUCK.genie.ts, packages/@overeng/restate-effect/BUCK.genie.ts, packages/@overeng/stylex-tokens/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-stories/BUCK.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-storybook/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts
+# Semantic fingerprint: sha256:3aed4a57038caae80ec1b115c48307a3a95964cc9fe192ada0245d231d8012c2
+# Semantic inputs: BUCK.genie.ts, genie/buck2/mod.ts, genie/buck2/root-aggregate-projection.ts, genie/buck2/typescript-admissions.ts, rust/effect-rust-fixtures/BUCK.genie.ts, buck2/check_aggregate.bzl, buck2/weaver.bzl, packages/@overeng/buck2-tools/src/weaver-check-runner.ts, context/effect/socket/BUCK.genie.ts, context/opentui/BUCK.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/ai-gateway-conformance/BUCK.genie.ts, packages/@overeng/ai-gateway-edge/BUCK.genie.ts, packages/@overeng/buck2-tools/BUCK.genie.ts, packages/@overeng/ci-tools/BUCK.genie.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/devbar/BUCK.genie.ts, packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts, packages/@overeng/effect-ai-gateway/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-iroh/BUCK.genie.ts, packages/@overeng/effect-path/BUCK.genie.ts, packages/@overeng/effect-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts, packages/@overeng/effect-rust-fixture-consumer/BUCK.genie.ts, packages/@overeng/effect-rust/BUCK.genie.ts, packages/@overeng/effect-schema-form-aria/BUCK.genie.ts, packages/@overeng/effect-schema-form/BUCK.genie.ts, packages/@overeng/genie-smalltalk/BUCK.genie.ts, packages/@overeng/genie/BUCK.genie.ts, packages/@overeng/gh-ci-utils/BUCK.genie.ts, packages/@overeng/kdl-effect/BUCK.genie.ts, packages/@overeng/kdl/BUCK.genie.ts, packages/@overeng/megarepo/BUCK.genie.ts, packages/@overeng/notion-cli/BUCK.genie.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-datasource-sync/BUCK.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-md/BUCK.genie.ts, packages/@overeng/notion-property-write/BUCK.genie.ts, packages/@overeng/notion-react/BUCK.genie.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/otel-browser/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/outline/BUCK.genie.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/pty-effect/BUCK.genie.ts, packages/@overeng/react-inspector/BUCK.genie.ts, packages/@overeng/restate-effect/BUCK.genie.ts, packages/@overeng/stylex-tokens/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-stories/BUCK.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-storybook/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -159,13 +159,15 @@ weaver_checks(
     visibility = ["PUBLIC"],
 )
 
-# Scoped repository checks derived from the TypeScript admission registry.
+# Scoped repository checks: admitted packages and non-package TypeScript fixtures.
 check_aggregate(
     name = "quick",
     targets = [
         "//context/effect/socket:typecheck",
         "//context/opentui:typecheck",
         "//packages/@overeng/agent-session-ingest:typecheck",
+        "//packages/@overeng/ai-gateway-conformance:typecheck",
+        "//packages/@overeng/ai-gateway-edge:typecheck",
         "//packages/@overeng/buck2-tools:typecheck",
         "//packages/@overeng/ci-tools:typecheck",
         "//packages/@overeng/content-address:typecheck",
@@ -173,12 +175,15 @@ check_aggregate(
         "//packages/@overeng/effect-ai-claude-cli:typecheck",
         "//packages/@overeng/effect-ai-gateway:typecheck",
         "//packages/@overeng/effect-distributed-lock:typecheck",
+        "//packages/@overeng/effect-iroh:typecheck",
         "//packages/@overeng/effect-path:typecheck",
         "//packages/@overeng/effect-react:typecheck",
         "//packages/@overeng/effect-rpc-explorer:typecheck",
         "//packages/@overeng/effect-rpc-explorer-react:typecheck",
         "//packages/@overeng/effect-rpc-tanstack:typecheck",
         "//packages/@overeng/effect-rpc-tanstack/examples/basic:typecheck",
+        "//packages/@overeng/effect-rust:typecheck",
+        "//packages/@overeng/effect-rust-fixture-consumer:typecheck",
         "//packages/@overeng/effect-schema-form:typecheck",
         "//packages/@overeng/effect-schema-form-aria:typecheck",
         "//packages/@overeng/genie:typecheck",
@@ -196,6 +201,7 @@ check_aggregate(
         "//packages/@overeng/notion-property-write:typecheck",
         "//packages/@overeng/notion-react:typecheck",
         "//packages/@overeng/npm-release:typecheck",
+        "//packages/@overeng/outline:typecheck",
         "//packages/@overeng/otel-browser:typecheck",
         "//packages/@overeng/otel-contract:typecheck",
         "//packages/@overeng/oxc-config:typecheck",
@@ -210,6 +216,7 @@ check_aggregate(
         "//packages/@overeng/utils:typecheck",
         "//packages/@overeng/utils-dev:typecheck",
         "//packages/@overeng/utils-storybook:typecheck",
+        "//rust/effect-rust-fixtures:typecheck",
         ":weaver_check",
         ":weaver_version_smoke",
         "//buck2/static:check",
@@ -223,6 +230,8 @@ check_aggregate(
     targets = [
         ":quick",
         "//packages/@overeng/agent-session-ingest:dist",
+        "//packages/@overeng/ai-gateway-conformance:dist",
+        "//packages/@overeng/ai-gateway-edge:dist",
         "//packages/@overeng/buck2-tools:dist",
         "//packages/@overeng/ci-tools:dist",
         "//packages/@overeng/content-address:dist",
@@ -230,11 +239,14 @@ check_aggregate(
         "//packages/@overeng/effect-ai-claude-cli:dist",
         "//packages/@overeng/effect-ai-gateway:dist",
         "//packages/@overeng/effect-distributed-lock:dist",
+        "//packages/@overeng/effect-iroh:dist",
         "//packages/@overeng/effect-path:dist",
         "//packages/@overeng/effect-react:dist",
         "//packages/@overeng/effect-rpc-explorer:dist",
         "//packages/@overeng/effect-rpc-explorer-react:dist",
         "//packages/@overeng/effect-rpc-tanstack:dist",
+        "//packages/@overeng/effect-rust:dist",
+        "//packages/@overeng/effect-rust-fixture-consumer:dist",
         "//packages/@overeng/effect-schema-form:dist",
         "//packages/@overeng/effect-schema-form-aria:dist",
         "//packages/@overeng/genie:dist",
@@ -252,6 +264,7 @@ check_aggregate(
         "//packages/@overeng/notion-property-write:dist",
         "//packages/@overeng/notion-react:dist",
         "//packages/@overeng/npm-release:dist",
+        "//packages/@overeng/outline:dist",
         "//packages/@overeng/otel-browser:dist",
         "//packages/@overeng/otel-contract:dist",
         "//packages/@overeng/oxc-config:dist",
@@ -266,6 +279,7 @@ check_aggregate(
         "//packages/@overeng/utils-dev:dist",
         "//packages/@overeng/utils-storybook:dist",
         "effect_utils//packages/@overeng/agent-session-ingest:test",
+        "effect_utils//packages/@overeng/ai-gateway-edge:test",
         "effect_utils//packages/@overeng/ci-tools:test",
         "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api",
         "effect_utils//packages/@overeng/content-address:test",
@@ -273,11 +287,13 @@ check_aggregate(
         "effect_utils//packages/@overeng/effect-ai-claude-cli:test",
         "effect_utils//packages/@overeng/effect-ai-gateway:test",
         "effect_utils//packages/@overeng/effect-distributed-lock:test",
+        "effect_utils//packages/@overeng/effect-iroh:test",
         "effect_utils//packages/@overeng/effect-path:test",
         "effect_utils//packages/@overeng/effect-react:test",
         "effect_utils//packages/@overeng/effect-rpc-explorer-react:test",
         "effect_utils//packages/@overeng/effect-rpc-explorer:test",
         "effect_utils//packages/@overeng/effect-rpc-tanstack:test",
+        "effect_utils//packages/@overeng/effect-rust:test",
         "effect_utils//packages/@overeng/effect-schema-form-aria:test",
         "effect_utils//packages/@overeng/effect-schema-form:test",
         "effect_utils//packages/@overeng/genie-smalltalk:test",
@@ -297,6 +313,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/npm-release:test",
         "effect_utils//packages/@overeng/otel-browser:test",
         "effect_utils//packages/@overeng/otel-contract:test",
+        "effect_utils//packages/@overeng/outline:test",
         "effect_utils//packages/@overeng/oxc-config:test",
         "effect_utils//packages/@overeng/pty-effect:bundle_smoke",
         "effect_utils//packages/@overeng/pty-effect:test",

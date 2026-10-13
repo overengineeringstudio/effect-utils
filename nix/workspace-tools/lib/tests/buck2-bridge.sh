@@ -20,7 +20,7 @@ repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 export BUCK2_BRIDGE_REPO="$repo_root"
 
 common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
-  flake = builtins.getFlake (toString repo);
+  flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
   pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
   test = import (repo + "/nix/workspace-tools/lib/tests/buck2-bridge.nix") { inherit pkgs; };
   contract = import (repo + "/nix/workspace-tools/lib/buck2-build-product-contract.nix");
@@ -55,7 +55,7 @@ expect_build_failure() {
   local expression="$3"
   local log
   log="$(mktemp)"
-  if nix build --impure --no-link --expr "$expression" >"$log" 2>&1; then
+  if nix build --impure --no-link --print-build-logs --expr "$expression" >"$log" 2>&1; then
     echo "buck2-bridge-test: expected $label to fail" >&2
     rm -f "$log"
     exit 1
@@ -173,6 +173,8 @@ in test.mkImport {
   expectedPlatform = descriptor.platform;
   artifact = exported + \"/artifact.tar\";
 }"
+# Regression: this rejection is emitted by the import builder, not Nix evaluation.
+# Remote builder logs must reach expect_build_failure's captured diagnostic.
 expect_build_failure \
   "wasm guest missing declared export" \
   'wasm guest export mismatch: expected [{"name":"answer","kind":"function"},{"name":"missing","kind":"function"}], observed [{"name":"answer","kind":"function"}]' \

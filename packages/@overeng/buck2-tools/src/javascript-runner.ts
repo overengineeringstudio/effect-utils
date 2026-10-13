@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { runBunTests } from './bun-test-runner.ts'
 import { publishTestVerdict } from './test-verdict.ts'
 import { hashDeclaredInputRoots, requireFingerprintTool } from './typescript-runner.ts'
 
@@ -320,7 +321,7 @@ export const vitestCollectArgv = (options: {
   join(options.packageTree, options.config),
   '--configLoader=runner',
   '--no-cache',
-  ...(options.staticParse === true ? ['--staticParse'] : []),
+  options.staticParse === true ? '--staticParse' : '--no-staticParse',
   `--json=${options.report}`,
   ...options.tests,
   ...options.excludes.flatMap((path) => ['--exclude', path]),
@@ -641,6 +642,20 @@ const runCommand = async ({
     await Bun.write(bunConfig, '')
     containedCommand.splice(1, 0, '--no-env-file', '--no-install', `--config=${bunConfig}`)
   }
+  if (options.command === 'bun-test')
+    return runBunTests({
+      command: containedCommand,
+      cwd: options.packageTree,
+      env: {
+        ...Object.fromEntries(
+          ['BUN_TEST_TIMEOUT_CAP', 'BUN_TEST_TIMEOUT_SCALING']
+            .filter((name) => process.env[name] !== undefined)
+            .map((name) => [name, process.env[name]]),
+        ),
+        ...environment,
+      },
+      results,
+    })
   const child = Bun.spawn(containedCommand, {
     cwd: options.packageTree,
     env: environment,

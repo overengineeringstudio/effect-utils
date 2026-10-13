@@ -185,6 +185,10 @@ each session. This prevents server-mode socket/pid/lock files from colliding
 across tests, processes, or developer machines. See
 `src/PtySession.test.ts:withIsolatedDir`.
 
+Client unit tests install per-test module mocks with `vi.doMock` and remove
+them with `vi.doUnmock` during cleanup. The runtime pair preserves test
+isolation; `vi.unmock` is hoisted and cannot run inside a Vitest 5 hook.
+
 ## Roadmap
 
 - `Stream<PtyEvent, PtyError>` on `PtySession` (schemas already defined).

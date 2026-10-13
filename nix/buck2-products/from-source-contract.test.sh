@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+report_failure() {
+  local status="$1"
+  if [[ "$status" != 0 ]]; then
+    printf 'from-source-contract: FAILED (exit %s) at line %s: %s\n' "$status" "$2" "$3" >&2
+  fi
+}
+# ERR retains the command's actual line; LINENO in EXIT alone is always 1.
+trap 'failure_line="$LINENO"; failure_command="$BASH_COMMAND"' ERR
+trap 'report_failure "$?" "${failure_line:-unknown}" "${failure_command:-$BASH_COMMAND}"' EXIT
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
+bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
 contract="$(nix eval --impure --json --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
-    flake = builtins.getFlake (toString repo);
+    flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
     system = builtins.currentSystem;
     packages = flake.packages.${system};
     product = packages.buck-product-megarepo-from-source;

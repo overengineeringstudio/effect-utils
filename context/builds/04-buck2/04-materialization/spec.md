@@ -24,15 +24,22 @@ translate (genie, freshness-gated)
   -> per package version: fetch target (url, sha256 from generated sidecar)
                           extract target (tarball -> package tree artifact)
   -> per importer:        node_modules assembly target
-  -> platform constraints on optional/platform packages (select())
+  -> per-configuration required-edge availability and optional filtering (select())
 
 fetch     download_file, remote-cacheable, network only here (BUILD.BUCK.MAT-R08)
-extract   tar -> package tree, remote-cacheable
+extract   tar -> package tree, local-materialization-policy (no AC reads/uploads)
 assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/<name>
           hardlinks from extract artifacts, relative symlinks for edges,
           workspace: edges as relative links, .bin entries as symlinks
-          local_only (BUILD.BUCK.MAT-T01); public node_modules output
+          local-materialization-policy (BUILD.BUCK.MAT-T01); public node_modules output
 ```
+
+Extract, store-entry, store-SCC, store-view, and package-tree rules use the
+default non-remote execution platform, not the cache-admitted platform.
+Their cheap filesystem projections are recomputed locally; declared outputs,
+incremental invalidation, and editor backing-root completeness are unchanged.
+The decision and measured transfer cost are specified by
+[the local materialization policy](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10).
 
 No package manager executes inside Buck actions. pnpm is the developer-time
 resolver that writes `pnpm-lock.yaml`; the generated sha256 sidecar is derived
@@ -65,6 +72,82 @@ The package-tree API projects declared workspace files into the output for
 cacheable consumers; the editor-surface realization provides BUILD.BUCK.MAT-R03
 live-source links outside the cacheable package tree without weakening
 BUILD.BUCK.MAT-R02.
+
+## Resolver-Context Platform Availability
+
+```text
+own package cpu/os/libc gates
+  -> initial snapshot/importer availability
+  -> required-edge removal to a fixed point (including cycles)
+  -> supported entry/view variants + unsupported-configuration reasons
+  -> configured Buck selection
+       supported: materialize the complete filtered resolver context
+       unsupported: fail before registering actions
+```
+
+This realizes BUILD.BUCK.MAT-R02, BUILD.BUCK.MAT-R07, and
+BUILD.BUCK.MAT-R08 under
+[decision 0040](../../.decisions/0040-required-edge-transitive-platform-availability.md).
+Portability is a property of the complete required resolver context; own
+package gates are only initial constraints. Unsupported configurations are
+representable and rejected when selected; required obligations are never
+omitted to manufacture a supported tree.
+
+The dependency projection evaluates four configurations: `javascript_portable`,
+`linux_aarch64`, `linux_x86_64`, and `macos_aarch64`. The native configurations
+use the tuples in [the platform spec](../02-platforms-toolchains/spec.md#platforms).
+`javascript_portable` requires an ungated package: any cpu, os, or libc
+restriction excludes it, rather than borrowing the generator host's tuple.
+
+Availability is computed over resolved snapshot and importer nodes before
+projecting store edges:
+
+1. Seed each snapshot with the configurations allowed by its package's own
+   metadata gates; seed importers with all four configurations.
+2. For each required resolved dependency, remove a configuration from its
+   owner whenever the dependency is unavailable in that configuration.
+   Required workspace references participate through their importer context
+   when the lockfile represents it; externally declared workspace trees remain
+   first-party Buck dependencies. Peer-suffixed snapshots retain exact resolution.
+3. Propagate removals through required predecessors until no set changes.
+   This descending fixed point preserves a required strongly connected
+   component when every member and external required dependency is available.
+   A restriction in any member or external required dependency propagates
+   through the cycle; traversal order must not affect the result.
+4. Project edges only for surviving owner configurations. A required edge
+   remains present in every such configuration. An optional edge is retained
+   only when its resolved dependency is available there, including that
+   dependency's own required closure; its absence does not remove the owner.
+   Linked and injected optional workspace references use their resolved importer
+   availability when represented in the lockfile. Importer `workspace_trees`
+   and `workspace_dependencies` declarations select only that configuration's
+   surviving edges; an omitted optional workspace must not remain a Buck
+   dependency that triggers analysis of an unavailable workspace closure.
+
+Missing referenced package or snapshot metadata, integrity, or patch metadata remains a
+global generation error, including for an unavailable configuration or an
+optional edge. Platform exclusion is not permission to accept an unresolved
+reference or bypass hash verification.
+
+Store-entry `platforms` records the transitively constrained availability set.
+The normalized projection schema is `effect-utils/buck2-pnpm-store/v2`; adding
+the view availability set changes the versioned metadata and store fingerprint,
+not the identity of unchanged supported view rules.
+Each `PnpmStoreView` independently records `platforms: readonly PnpmPlatform[]`;
+its variants cover supported configurations only. Equal supported projections
+may share a variant. SCC assembly likewise projects only supported member
+contexts; it cannot restore a removed configuration. An empty availability set
+is a valid projection, not a reason to omit the target or fail generation.
+
+Restricted entries and views emit `unavailable_by_platform`, a repository-local
+Starlark attribute mapping all four exact lowercase configuration keys to a
+nonempty diagnostic reason when unavailable and an empty string when supported.
+Unrestricted entries and views omit the attribute, preserving their existing
+generated bytes and identities. Shared rules select the diagnostic for the
+configured platform and fail at the beginning of implementation, before any
+actions are registered. Thus generation of a mixed-platform graph succeeds,
+while selecting an unsupported dependency context fails explicitly rather than
+linking an incomplete tree. Supported, unrelated view bytes remain unchanged.
 
 ## Editor Surface
 
@@ -103,6 +186,12 @@ view digest, exact byte-owned snapshot digest, and deterministic snapshot name.
 Tree digests use the `effect-utils/tree-digest/v1` domain separator, unsigned
 UTF-8 byte ordering, length framing, and fail-closed checks for special or
 concurrently changing files.
+Stability checks retain entry type, device, modification/change times, regular-file
+size, and file/symlink inode identity. Directory inode numbers are excluded:
+[overlayfs inode properties](https://docs.kernel.org/filesystems/overlayfs.html#inode-properties)
+do not guarantee their persistence in every layer configuration. Directory
+content and link targets remain covered by the same tree digest and timestamps;
+the digest format and byte-ownership admission are unchanged.
 
 Before publication, `buck2:editor:authority` compares the canonical admission
 registry with tracked package manifests and a Buck `owner(...)` census. The
@@ -116,25 +205,62 @@ the lock, the publisher:
 
 1. fingerprints each distinct selected dependency view and finite declared root
    once for the admitted state;
-2. recursively copies the selected view and disjoint backing roots into a
-   same-filesystem candidate with dereferenced, byte-owned regular files;
-3. relocates internal links into `.backing/`, rejects links outside the declared
-   roots, and proves no snapshot file shares an inode with a disposable source;
+2. derives the content-addressed snapshot name before copying; if that entry
+   exists, verifies its complete immutable payload and exact admission record
+   and reuses it without writing store bytes;
+3. for a missing entry, copies the selected view and disjoint backing roots into
+   a same-filesystem byte-owned candidate, relocates links into `.backing/`,
+   rejects links outside declared roots, and proves no snapshot file shares an
+   inode with a disposable source;
 4. verifies the complete payload digest and writes `editor-view.json`;
-5. hardens a new candidate read-only and renames it to the deterministic
-   snapshot, or verifies an existing immutable snapshot before reuse;
+5. hardens the private candidate read-only, then promotes it with owner-write
+   temporarily enabled only on the top directory for Darwin's rename semantics;
+   the payload stays read-only, and the final root is hardened and checked
+   before any current pointer is published;
 6. atomically renames the current pointer, installs or validates the package
    first hop, and emits the package-manifest settle signal required by live
    language servers;
 7. updates the retention record and garbage-collects snapshots outside the
-   configured finite retention set. Pointer helpers validate their exact writes;
-   a separate `buck2:editor:check` performs the full admitted-state traversal.
+   configured finite retention set. Retention proves every snapshot of the
+   published view read-only in full; a store entry owned by another view is
+   proven only by its self-addressed record and read-only root, because its
+   owner proves its payload in full at every publication, reuse, and check. A
+   whole-workspace publication therefore stays linear in total snapshot size.
+   Pointer helpers validate their exact writes; a separate
+   `buck2:editor:check` performs the full admitted-state traversal.
+
+Bootstrap and publication commands submit all selected views in one
+`publish-batch` operation, with the JSON array of publish argument lists on
+stdin. Request size is not limited by the operating system's per-argument cap.
+The batch acquires each distinct state-root lock before preparing any view and
+holds every lock until all workers have settled. `editorViewPublicationWorkers`
+in the publisher is the single declared resource bound (four); bootstrap and
+source-test publication both use it. Independent root fingerprints within a
+candidate remain concurrent. Native copy children are awaited asynchronously,
+with at most one per active view. Candidate names are unique per view operation;
+promotion, retention, pointer writes, and GC
+are serialized per state root, so sibling inventory validation cannot race
+promotion or deletion. Duplicate root/view identities are rejected. Every view
+is attempted after a preparation failure, and the first failure in request order
+is reported only after workers settle and locks are released. Each successful
+view retains its stderr timing record. Snapshot/retention formats, lock ownership,
+explicit recovery, and whole-workspace authority checks are unchanged.
 
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip
 leaves the prior current view intact. Snapshot payloads never retain links into
 `buck-out`, whose action directories Buck may delete before rebuilding.
+
+Repository tasks configure two completed snapshots **per view**: current and
+previous. For `N` admitted views the shared-store bound is `2 × N`, excluding
+in-flight candidates, which are not retention garbage. GC deletes only
+validated older snapshots of the publishing view after its pointer flip; it
+neither infers process liveness nor collects inactive worktrees. The preceding
+snapshot supplies a bounded rollback/read-overlap window, not an indefinite
+lease for a process pinned to an older generation. Literal admitted link text
+participates in identity, so changed Buck artifact paths can create a new
+snapshot even when dependency file bytes remain identical.
 
 ## Staleness Gate
 
@@ -163,10 +289,95 @@ This does not change the standalone freshness contract: `genie:check` still
 runs after bootstrap without invoking `genie:run`, so it cannot repair the
 projection it proves.
 
+Direct `test:<package>` and source-complement tasks publish only that package's
+view plus the repository-root and OpenTelemetry bootstrap views. The scoped
+publisher still proves complete workspace authority and waits for unchanged
+generator freshness validation; the selected package snapshot contains its
+entire provider-declared runtime closure, not links to sibling editor views.
+
+`test:run` uses aggregate-only execution aliases. These aliases retain bounded
+batch ordering and share `buck2:editor:publish:test`, which publishes the union
+of the aggregate's selected source-test consumers plus the root and extra
+source-suite consumers. Required CI platform scope is defined in
+[the CI spec](../../../ci/spec.md#required-platform-test-coverage).
+Direct package tasks never depend on an earlier batch; requesting one package
+does not run unrelated package tests. The `check:all` observability profile and
+extra source suites retain the union publisher.
+
+Explicit setup/materialization and the full `buck2:editor:publish` entrypoint
+remain complete-workspace operations for human consumers; shell entry is
+mutation-free. Views not selected by a test refresh through these explicit
+operations. Publishers sharing `packages/.editor-view` must be ordered: their
+publication lock fails fast rather than waiting. Aggregate aliases use the one
+union publisher rather than concurrently scheduling per-package publishers.
+`scripts/devenv-task-graph-check.mjs` verifies scopes, direct-task isolation,
+batch ordering, and publisher ordering on the evaluated graph.
+
 Missing, malformed, escaping, dangling, incomplete, or stale state fails with
 the recorded and current identities. `buck2:editor:recover-lock` is the only
 recovery surface; it requires both `EDITOR_VIEW_PACKAGE` and the exact printed
 `EDITOR_VIEW_LOCK_TOKEN`, and neither builds nor mutates snapshots.
+
+## Retired Worktree Teardown
+
+```text
+worktree:teardown
+  -> stop root-owned Buck isolations and remove only their state
+  -> delete the root's watch from reachable Watchman
+  -> remove root-keyed watcher admission entries
+  -> buck2:editor:release
+  -> chmod owner-write on remaining real directories
+  -> operator leaves checkout and runs git worktree remove
+```
+
+After closing editors and builds, run
+`devenv tasks run worktree:teardown --mode single` from the retired worktree.
+The shared task resolves the physical absolute Git checkout root and operates
+only on state keyed to that root. It is offline and idempotent; missing daemons,
+unreachable Watchman, and absent cache/editor roots are no-ops. Watcher admission
+filenames under `${XDG_CACHE_HOME:-~/.cache}/effect-utils/buck2-posture-v2` begin
+with `sha256(absolute-root)-`, followed by the invocation-key hash; endpoint-only
+REAPI/archive admission remains shared and is not removed.
+
+Buck state is a hierarchy under canonical `~/.buck/buckd`: the absolute checkout
+path without its leading slash, followed by an isolation name. A directory with
+direct `buckd.info`, `buckd.pid`, `buckd.stdout`, `buckd.stderr`, or
+`buckd.lifecycle` files identifies an isolation. Other child directories hold
+descendant checkout state and are untouched. An identified isolation can itself
+contain descendant state when its name overlaps a descendant checkout path.
+Before stopping its daemon, teardown refuses ambiguous contents with a nonzero
+exit: subdirectories matching actual descendant paths, unknown subdirectories,
+symlinks, or non-regular history entries. It clears only regular daemon files and
+the shallow regular-file contents of Buck's owned `prev` history directory, then
+uses `rmdir`; isolation directories are never recursively deleted. The checkout's
+state container is removed only if empty. State paths outside the canonical base
+and any symlinked state component are refused.
+
+`devenv tasks run buck2:editor:release --mode single` is the editor-only release
+surface. Teardown calls that existing task when the consuming repository defines
+it. Both are explicit lifecycle operations, never dependencies of publication,
+setup, tests, or checks. The evaluated task graph asserts that isolation.
+Consumers inherit teardown through the shared setup, check, clean, or
+worktree-guard module, or import the exported worktree-teardown module directly.
+
+Teardown makes remaining directories owner-writable without following symlinks
+or changing file modes. Before chmod, it prunes any nested directory containing
+a `.git` file/directory, a megarepo configuration, or a `.bare` store boundary,
+and the `repos` member container of a megarepo-configured directory. These nested
+checkout/composition roots and their contents retain their modes.
+It never deletes tracked files or determines removal eligibility; the caller
+owns dirty-tree and canonical-checkout policy.
+Capability-profile Nix indirect gcroots are left alone: after worktree removal
+they become dangling, and Nix GC prunes them.
+
+The publisher's `release --repo-root <root> --package <package>` command operates
+on the package's entire shared editor root, not just its individual view. It
+acquires the existing publication lock, refuses active or stale locks, makes
+owned directories writable without following symlinks, atomically retires the
+root, and removes it. Missing roots are a no-op; external dependency targets and
+source files are untouched. Exact-token recovery remains required for a stale
+lock. Package first-hop links can remain dangling until the retired worktree is
+removed or publication recreates its root.
 
 ## Relationship to Exact Closure Materialization
 

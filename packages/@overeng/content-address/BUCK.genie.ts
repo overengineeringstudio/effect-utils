@@ -9,6 +9,11 @@ export const buck2TypeScriptAdmission = {
   sourceRoots: ['src'],
   workspaceSiblings: [
     {
+      packageName: '@overeng/effect-rust',
+      packagePath: 'packages/@overeng/effect-rust',
+      distTarget: '//packages/@overeng/effect-rust:dist',
+    },
+    {
       packageName: '@overeng/utils-dev',
       packagePath: 'packages/@overeng/utils-dev',
       distTarget: '//packages/@overeng/utils-dev:dist',

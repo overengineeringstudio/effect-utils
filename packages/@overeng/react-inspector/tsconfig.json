@@ -25,6 +25,7 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "isolatedModules": true,
+    "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": false,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,

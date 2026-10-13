@@ -135,6 +135,87 @@ registration agrees: the branch is registered exactly at `P`, or nowhere while
 as ambiguous rather than shadowed. A member path that is a real directory or
 file rather than a symlink is foreign and refused before replacement.
 
+### Recursive materialization ownership
+
+```text
+create commit worktree → publish physical identity → release worktree lock
+                              ↑
+                  all recursive branches share freshness
+```
+
+`mr apply --all --lock-sync off` shares its visited roots and freshly created
+commit-worktree identities across the entire invocation. Every commit-worktree
+visit joins the same physical-path creation lock, including a visit that already
+sees `.git` on disk: existence can precede completion of creation and publication
+of freshness. Only the creator publishes freshness under that lock. Recursive
+apply may populate the root and `repos/` mounts of those fresh commit worktrees;
+a second recursive visit to the same physical root is a no-op.
+
+Worktrees that existed before the invocation remain shared, not owned.
+Recursive apply refuses canonical mutations there; freshness is neither
+persisted nor inferred from existence. The freshness exception does not authorize
+lock rewrites or generators' authoring outputs.
+
+The invoking workspace is the one canonical root an author owns when it is a
+non-default branch worktree (`refs/heads/<branch>` where `<branch>` is not the
+store bare repo's default branch, its `HEAD`): top-level `mr apply` may populate
+its root and `repos/` mounts, and top-level `mr fetch` (including the fetch phase
+of `mr fetch --apply`) may additionally rewrite its own `megarepo.lock`. The
+default-branch worktree is the shared consumer cache and stays refused, as does a
+branch root whose default branch cannot be resolved. Ownership is proven offline
+from Git metadata, not from the path suffix: the root must be the top of a
+worktree of the store's `.bare` whose `HEAD` is `refs/heads/<branch>` and which
+sits at exactly `refs/heads/<branch>`; subdirectories of any worktree, detached
+or mismatched worktrees stay refused. The author grant covers only paths
+that physically resolve directly inside that root; tag worktrees, nested
+megarepos visited by `--all`, and aliases into other store paths stay refused.
+Accepted limitation: mr cannot tell one author's feature branch from
+another's, so any non-default branch worktree used as the invoking root is
+treated as owned (Git does not protect it either).
+
+Top-level `mr apply --lock-sync off` may also prepare an invoking
+`refs/commits/<H>` worktree when Git resolves its worktree root to that exact
+physical root and its `HEAD` to exactly `<H>`. This materialization-only grant
+covers only the root and its own physical `repos/` directory, not lock/config
+writes, generators, branch advancement, or aliases into other trees. Lock sync
+must remain off. It does not grant ownership to preexisting shared nested trees,
+and neither tags nor branch paths gain permission from this commit grant.
+Enabled generators cause `PermissionDenied` before any member mount is changed,
+including when their output directories or files alias external destinations.
+
+Consumers normally prepare the dependency tree through the outer workspace's
+`mr apply --all`. A separately invoked exact-commit apply may prepare its own
+mounts under the top-level grant above; it cannot repair preexisting shared
+trees reached recursively. Package-install hooks may check that an already
+prepared member has the locked commit and fail with instructions to prepare
+it from the invoking workspace. An incomplete shared nested tree requires an
+owned workspace or explicit administrative repair, not a freshness grant.
+
+Local setup that needs nested trees names the members explicitly:
+`mr apply --worktree-mode tracking --commit-members <a,b> --lock-sync off`.
+The listed root members become commit worktrees and are applied recursively;
+everything below them is applied in commit mode, so fresh worktrees carry the
+freshness grant. Unlisted members stay on shared tracking worktrees and are not
+recursed into, which keeps co-development through `repos/<member>` on
+`refs/heads/*`. `--only`/`--skip` select root members only; a listed member's
+fresh commit subtree is always applied completely or not created at all. A
+nested commit worktree that existed before the invocation is
+accepted only if its locked tree is already mounted; an incomplete one is
+refused as above. The devenv `taskModules.megarepo` option
+`setupCommitMembers` is the intended consumer path: `mr:setup` passes the list
+and checks readiness with `mr status --all`, also on the outer setup cache-hit
+path. The option is empty by default, leaving `mr:setup` a plain tracking
+apply.
+
+CI setup (`CI=true`, the same predicate as `--worktree-mode auto`) never uses
+tracking worktrees: `mr:setup` applies `--worktree-mode commit`, and with a
+non-empty `setupCommitMembers` it passes `--commit-all-members`, which selects
+every root member as `--commit-members` would, because `mr status --all`
+readiness inspects every root member's nested tree. The selector is resolved
+inside `mr` from the config, so member names containing commas are not split.
+Readiness and apply then cover the same trees, and a warm rerun accepts the
+prepared commit worktrees instead of refusing them.
+
 `mr store worktree new` creates standalone worktrees only. The composed
 workspace shape — an owned worktree at `P/repos/<owned>`, read-only `cp -a`
 mounts, dist overlays, per-workspace capability projection, and a synthesized

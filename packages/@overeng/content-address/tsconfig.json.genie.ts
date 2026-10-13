@@ -13,5 +13,5 @@ export default tsconfigJson({
     noEmit: true,
   },
   include: ['src/**/*'],
-  references: [],
+  references: [{ path: '../effect-rust' }],
 } satisfies TSConfigArgs)

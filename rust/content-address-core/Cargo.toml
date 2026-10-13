@@ -1,0 +1,21 @@
+[package]
+name = "content-address-core"
+workspace = ".."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "content_address_core"
+
+[features]
+default = []
+contract = ["dep:serde", "dep:schemars"]
+
+[dependencies]
+sha2.workspace = true
+serde = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true

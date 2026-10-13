@@ -7,6 +7,10 @@
 # `packages.genie` and `packages.oxlint-npm` from a separate downstream flake,
 # through both a standalone checkout and the composed megarepo
 # `repos/effect-utils` path.
+#
+# Test the committed public source, not editor views or daemon state in the
+# live workspace. Both layouts use the same immutable Git revision; commit
+# local source changes before running this regression.
 set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
@@ -14,13 +18,11 @@ fixture="$repo_root/nix/workspace-tools/lib/tests/downstream-flake-input"
 system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr builtins.currentSystem)}"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/effect-utils-downstream.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
+source_revision="$(git -C "$repo_root" rev-parse HEAD)"
 
 copy_repo() {
   mkdir -p "$1"
-  (cd "$repo_root" && tar \
-    --exclude=.git --exclude=.devenv --exclude=.direnv --exclude=.cache \
-    --exclude=node_modules --exclude=buck-out --exclude=result --exclude=tmp \
-    -cf - .) | (cd "$1" && tar -xf -)
+  git -C "$repo_root" archive "$source_revision" | (cd "$1" && tar -xf -)
 }
 
 check_completions() {

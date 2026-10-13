@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Hooks export repository-local variables; every fixture and child owns its repo.
+mapfile -t git_local_env < <(git rev-parse --local-env-vars)
+unset "${git_local_env[@]}"
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"

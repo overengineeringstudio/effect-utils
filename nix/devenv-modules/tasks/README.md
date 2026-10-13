@@ -31,6 +31,13 @@ tasks."repo:typecheck".exec = "pnpm exec tsc --noEmit";
 select their own aggregate explicitly (for example, `buck2:quick` and
 `buck2:all`).
 
+pnpm source-input staging resolves `repos/<member>/...` with genie's
+bootstrap-safe member resolver. The initiating workspace's `megarepo.lock`
+selects the member source, not the potentially newer tracking symlink.
+Explicit `GENIE_MEMBER_OVERRIDE_MAP` overrides have the same precedence as
+genie imports. Materialize pinned sources with
+`mr apply --worktree-mode commit --lock-sync off` before staging.
+
 ## Observability
 
 Import the sibling observability module once to capture native devenv spans
@@ -71,6 +78,17 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `devenv-eval-input-budget.nix` - Per-attribute recursive eval-cache input budget,
   wired into `check:quick` and `check:all` by default
 - `clean.nix` - Clean tasks
+- `worktree-teardown.nix` - Explicit offline `worktree:teardown` before worktree
+  removal; inherited by setup, check, clean, and worktree-guard imports. Stops
+  every root-owned Buck isolation, releases reachable Watchman and root-keyed
+  admission state, calls `buck2:editor:release` when defined, and makes real
+  directories owner-writable. Never auto-scheduled; indirect Nix gcroots are
+  left to become dangling and be pruned by Nix GC.
+  Its live shell fixture also runs through `devenv-modules:test`; the repository's
+  aggregate runner supplies pinned fingerprint, copy, move, and JSON tools rather
+  than relying on a developer's ambient tool-input environment. The fixture uses
+  ordinary glob expansion compatible with the runner's `bashNonInteractive`,
+  which omits shell-completion builtins.
 - `genie.nix` - Genie config generation tasks
 - `lint-oxc.nix` - Linting tasks (oxlint, oxfmt)
   - `lintPaths` are Git pathspecs. The lint tasks enumerate tracked and untracked
@@ -88,6 +106,13 @@ for outer tasks that must complete before the nested devenv process can evaluate
     apps, while `"**"` explicitly exempts an entire repository. A reason is
     required; other library paths remain guarded.
 - `megarepo.nix` - Megarepo workspace tasks
+  - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` makes
+    `mr:setup` prepare those members' nested megarepo trees in fresh commit
+    worktrees (readiness via `mr status --all`); unlisted members stay on
+    tracking worktrees. Default `[ ]` keeps the plain tracking setup.
+    With `CI=true`, `mr:setup` uses commit worktrees for every member; with a
+    non-empty list it passes `mr apply --commit-all-members`, preparing every
+    root member's nested tree to match the `mr status --all` readiness check.
 - `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
   - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`
     selects the lockfiles and only defines `nix:flake-lock:check-duplicates`.
@@ -101,14 +126,111 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
   - Local development shares one complete pnpm Store Cache between trusted
-    roots of the same OS user; CI uses a job-local Store Cache.
-  - Dependency graphs, `node_modules/.pnpm`, projections, and repair remain
-    Materialization-Root-owned.
+    roots of the same OS user. `GITHUB_ACTIONS=true` or the explicit opt-in
+    `PNPM_JOB_LOCAL_STORE=1` selects the job-local Store Cache under
+    `<root>/.devenv/pnpm-store-pure-v1` (with a workspace suffix for nested roots).
+    `CI=1` alone keeps shared storage, so non-watch dev-host tasks reuse the cache.
+  - By default dependency graphs and `node_modules/.pnpm` remain
+    Materialization-Root-owned. Pass `globalVirtualStore = true;` to opt local
+    development into pnpm's graph-hashed shared projections with the isolated
+    linker. Genie authors `enableGlobalVirtualStore: true` in workspace YAML.
+    Hoisted linking does not use GVS.
+  - GVS uses `PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true`, not the ineffective
+    pnpm 12 kebab-case `--config` spelling, and leaves `virtual-store-dir` unset.
+    The default complete store is `$HOME/.local/share/pnpm/store` in GVS mode
+    versus `$HOME/.local/share/pnpm/store-shared-v1` otherwise;
+    `PNPM_SHARED_STORE_DIR` overrides either local store.
+  - Job-local mode explicitly disables GVS (including inherited environment/YAML
+    opt-ins) and uses the job-local store and projection. Other CI runners must
+    set `PNPM_JOB_LOCAL_STORE=1` to obtain that isolation. Fixed-output preparation
+    stays root-local and GVS-disabled.
+  - Install, update, dedupe, status, doctor, and shell setup share the selected
+    policy. Readiness receipts include effective GVS/store policy. Health and
+    projection fingerprints visit only this root's reachable shared instances,
+    not unrelated graphs. Repair removes only root-owned links, never shared
+    graph instances. Stores are writable state for trusted same-user consumers;
+    verify tools that depend on package realpaths or implicit dependencies
+    before opting in.
   - Managed installs use pnpm's `auto` import policy and reject cross-device
     Linux storage before materialization.
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
     historical `v11/files` bridge under the exclusive cache lease; normal
     installs and unknown bridges fail closed.
+  - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
+    reports historical root-local store retirement in a read-only dry-run.
+    The collector is Linux-only. On other platforms it exits nonzero before
+    filesystem input access with `pnpm-store-gc: unsupported platform (Linux only; Darwin census not implemented)`.
+    Repeat `--root` for explicitly selected worktrees; there is no fleet traversal.
+    It never targets `$HOME/.local/share/pnpm` or `PNPM_SHARED_STORE_DIR`.
+    Before ownership admission or lease creation, resolved paths and inode
+    identities reject candidates overlapping either default shared store or
+    `PNPM_SHARED_STORE_DIR`. Mount inventory also rejects mount points at the
+    candidate root or below it, including same-filesystem bind mounts.
+    Directory mount IDs define traversal containment; `st_dev` remains part of
+    inode accounting only. Overlayfs payloads can expose differing backing
+    device IDs without crossing a mount, so device-number inequality is not
+    grounds to reject an otherwise contained historical cache.
+    `--observe` records eligible roots without deleting payloads; after 24 hours,
+    repeat the dry-run, then opt in to `--apply` to retire eligible payloads.
+    An initial `--apply` only establishes the observation, never skips grace.
+  - Eligibility requires the root to be absent from Git's worktree registry
+    **and** have no `.git` marker, or its own checkout to have stopped owning
+    the historical store. For effect-utils this is proved by HEAD containing
+    `727cb7544bea32ec031c9f6e5e840cbe717e772a` (#1794). Consumer checkouts can
+    prove resolved selection through matching `pnpm-storage-state` receipts
+    and `.modules.yaml` metadata naming the default shared store (or the
+    operator's `PNPM_SHARED_STORE_DIR`). Any projection still naming a
+    worktree-local store protects the cache. Unknown metadata, incomplete
+    ownership evidence, and Git worktree locks fail closed; PR closure alone
+    does not prove a checkout stopped referencing its store.
+  - The collector requires no own-UID cwd/open-fd references under the
+    historical **store**, not the entire checkout, using Linux `/proc`.
+    Other-UID processes are outside the normal
+    user-owned-cache flow; the CLI states this assumption explicitly. Unreadable
+    own-UID processes fail closed, except the explicit Linux privileged-broker
+    allowlist. SSH brokers (`sshd-session`, Tailscale SSH's
+    `.tailscaled-wrapped` executable or truncated `.tailscaled-wra` comm)
+    require a root-owned fd directory. The `systemd` user-manager exception
+    requires `PPid=1` and nonzero permitted capabilities. Its `(sd-pam)` child
+    shares the same exception only when its PPid identifies that same approved,
+    same-UID manager. Only `ESRCH` or disappearance of the PID directory proves
+    a process gone. A live PID with missing leader cwd/fd evidence requires
+    inventory of its remaining tasks; unreadable task evidence fails closed.
+    Other unreadable process classes fail closed. Every exception prints the PID,
+    comm, executable
+    (or its read error), parent, permitted capabilities, and the normal-flow
+    assumption that privileged brokers do not use pnpm stores. The invoking UID
+    must own the store; no privileged observer or GitHub/API access is needed.
+    It rechecks checkout ownership, process references, and every payload inode's
+    size/link-count/mtime/ctime under a proved exclusive Store Cache lease before
+    retirement. Changed observed eligibility resets the 24-hour grace.
+    The candidate is opened once at admission: its directory descriptor and
+    inode/mount identity remain held through lease acquisition, proofs, and
+    retirement. The lease is opened relative to that descriptor, and its locked
+    open-file description remains held in the same collector process. Pathname
+    replacement aborts rather than admitting a replacement directory; deletion
+    never reopens the root path and verifies its identity again at the end.
+    Linux retirement walks held directory descriptors with `O_NOFOLLOW` and
+    compares each opened directory's mount ID before descending or unlinking;
+    a newly inserted mount or replacement symlink cannot redirect the walk.
+    Observations live in `$XDG_STATE_HOME/effect-utils/pnpm-store-gc` (default
+    `$HOME/.local/state/...`); the stable store directory and maintenance-lock
+    inode remain, so cooperating pnpm mutations cannot bypass the lease.
+  - Output lists `would-free`, `grace`, `protected`, or `absent` per root and a
+    `would-free-total` in bytes. Reclaim estimates count allocated blocks once
+    per inode and exclude payload inodes still hardlinked outside the selected
+    store; `allocated=` also reports the gross store footprint. These are not
+    physical reclaim guarantees on compressed, snapshotted, or clone-sharing
+    filesystems. Unmanaged processes can start after a census: stop/unpin root
+    users first; process evidence does not replace lifecycle ownership.
+  - Historical attribution: `8c5bc8e6be49440f03b9b0bb9504264352d47bd8`
+    (#692) introduced the `pure-v1` namespace for lifecycle-free, integrity-
+    checked frozen installs, not because Buck/Nix required worktree-local CAS.
+    `4514099e0` (#922) selected a complete shared Store Cache with root-owned
+    topology. `727cb7544bea32ec031c9f6e5e840cbe717e772a` (#1794) stopped
+    treating ambient `CI=1` as job isolation; ordinary dev-host tasks now share
+    the cache even in non-watch CI mode. Copies created before that selection
+    change can be historical, but age alone does not authorize their retirement.
   - Frozen installs and `pnpm:update` both use the current guarded pnpm
     runtime: pnpm 12 is outside the 11.5.2-11.14.0 `hasBin` window that
     required a separate lock mutator, so the dedicated pin is retired while
@@ -120,6 +242,12 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - `skipNonInteractive = true` keeps automatic shell entry cheap for
     non-interactive callers; `DEVENV_FORCE_SETUP=1` explicitly overrides it.
 - `test.nix` - Test tasks
+  - A package's `installTask` overrides the shared installer for direct
+    `test:<name>` execution. `test:run` uses weighted execution chains with the
+    shared installer: a chain advances independently when its preceding task
+    finishes, without a whole-batch barrier. Direct tasks never pull other
+    packages into their closure. Package-specific `after` prerequisites apply
+    to both paths; the aggregate waits for every chain tail and extra test.
 - `test-playwright.nix` - Playwright e2e tasks
 - `vercel.nix` - Vercel deploy tasks
   - Static and build-mode deploys delegate provider behavior to `ci-tools deploy vercel`.
@@ -145,13 +273,182 @@ They assume the effect-utils repo structure and are not exported in flake.nix.
 ### Characteristics:
 
 - **Hardcoded paths** (e.g., `packages/@overeng/*`, `devenv.nix` location)
-- **No parameters** - simple inline definitions
+- **Repository-owned parameters** - local policy stays in this checkout
 - **Not exported** in flake.nix
 - **Repo-specific logic** that wouldn't make sense elsewhere
 
 ### Available Modules:
 
 - `devenv-module-tests.nix` - CI task that runs shell tests for reusable task modules
+
+### Module shell-test scheduling
+
+`devenv-modules:test` discovers every `shared/tests/*.test.sh` and requires each
+script to appear exactly once in `genie/ci-workflow/test-platforms.json`'s
+`moduleScripts` classification. The Nix import and shell dispatcher both reject
+missing, stale, duplicate or overlapping entries before dispatch. Darwin runs
+only Darwin-sensitive scripts; Linux and an unset platform run the complete
+catalog. Platform classification is independent of parallel-safety admission.
+`local/devenv-module-tests.sh` runs selected unaudited and shared-checkout state
+scripts serially before starting a bounded worker pool for explicitly admitted
+scripts. Only admitted scripts are ordered longest-first, with lexical
+ties and weight one for scripts without a declared duration. Both phases keep
+running after failures. The aggregate fails if any script fails, and stderr
+records each script's UTC start/end timestamp, scheduling class, and original
+exit status. Stdout and stderr are not discarded. The Nix task pins Bash,
+GNU date, jq, and xargs; the runner uses the GNU/BSD common
+`xargs -0 -n 1 -P <workers>` interface rather than Bash-version-specific `wait -n`.
+Worker failures, including exit 255, are normalized only at the xargs boundary
+so xargs cannot stop dispatching the remaining scripts. The supervisor waits
+for the complete pool on ordinary failures and on INT/TERM to the supervisor.
+
+#### Isolation admission audit
+
+The parallel admission list is fail-closed: a newly platform-classified script
+runs serially until its side effects have been reviewed. The audit at
+[`1f4b2947`](https://github.com/overengineeringstudio/effect-utils/commit/1f4b2947b8cfe2617e34ade8e5fafb63fd2c5587)
+admitted 42 of the original 43 scripts. Every admitted script runs in a
+separate Bash process, preserving cwd/environment isolation. Their ownership
+boundaries are:
+
+- **Read-only checkout policy/inventory:** `buck2-no-python-actions`,
+  `buck2-stage0-source-inputs`, `devenv-eval-source-roots`,
+  `devenv-task-env-boundary`, `nix-cli-no-hash-refresh`, and
+  `observability-capture`. Negative controls, when present, write only mktemp
+  fixtures; none starts a checkout-owned Buck daemon.
+- **Nix evaluation/copied sources:** `buck2-capability-source`,
+  `buck2-rules-source`, `check-module-options`, `setup-module-options`, and
+  `workflow-report-module-source`. Source mutations affect copies under
+  mktemp, not the checkout. Store realization uses `--no-link`; concurrent Nix
+  store access remains Nix-daemon-owned, with no store GC or checkout result link.
+- **Private state/fixtures:** `buck2-rust-deps`, `changeset-check-bodies`,
+  `devenv-eval-input-budget`, `megarepo-lock-sync`, `megarepo-status`,
+  `pnpm-source-input-staging`, and `setup-cache`. Generated graphs, fake Cargo
+  homes, SQLite databases, manifests, caches, and source staging all live below
+  each script's mktemp root.
+- **pnpm behavior:** `pnpm-gvs`, `pnpm-nested-roots-and-source-inputs`,
+  `pnpm-shared-store-reuse`, `pnpm-source-input-refresh.integration`,
+  `pnpm-task-smoke`, `pnpm`, and `test-task-smoke`. Stores and projections are
+  fixture-local, including the deliberately shared/concurrent pnpm store:
+  "shared" means shared between that script's fixtures, not between scripts.
+  Smoke installs use private homes and fake providers; no repository install
+  or repository node_modules mutation is scheduled.
+- **Genie:** `genie-compiled-staging` and `genie-module-options`. Compiled output,
+  generated JSON, task receipts, and scratch Git repositories are private.
+  The compiled fixture reads repository node_modules through a symlink but
+  writes its compilation/import staging into mktemp.
+- **Lint/plugin fixtures:** `lint-no-tailwind`, `lint-oxc-file-list`,
+  `oxlint-plugin-injection`, and `oxlint-rule-policy`. Repository policies and
+  immutable plugin products are read; malformed inputs, generated task code,
+  argument captures, and plugin overrides are private fixture files.
+- **Trace adapters:** `otel-instr-gating`, `otel-run`, and
+  `otel-scrape-oxfmt-wrap`. Adapters/providers are fixture stubs; capture files,
+  homes, spools, and summaries are private, not the live observability backend.
+- **Lock checking:** `flake-lock-duplicates` builds a no-output-link task wrapper
+  and checks lockfiles inside its private workspace.
+- **Pipeline/report/provider fixtures:** `pipeline-run`,
+  `workflow-report-task-e2e`, and `deploy-task-e2e`. Git state, OTLP spools,
+  GitHub outputs, summaries, and provider logs are private. The deploy fixture
+  binds its local API to port 0 and stops its owned API process; it does not
+  claim a fixed port or call a live deploy provider.
+- **SecretSpec:** `secretspec-native-tasks` realizes a no-output-link stub
+  package environment and uses a private home/repository/capture per fixture;
+  it does not call a real provider or fetch secrets.
+
+The three native lifecycle fixtures are also admitted. Starting daemons is not
+itself shared-state access; ownership of their mutations is what matters:
+
+- `buck2-capability-daemon.test.sh` owns a private HOME, temporary Buck roots,
+  explicit isolation names, and a short private Watchman socket. Every Buck
+  startup, migration stop, and cleanup names that private HOME/root/isolation.
+  Every Watchman operation names its private socket; startup, state, config,
+  log, PID file, and native shutdown are fixture-owned.
+- `buck2-capability-publish.test.sh` owns its publication roots, lock files,
+  synthetic Buck state, and HOME. The five competing publishers and crash
+  victim all use those roots; signals/cleanup address only captured fixture
+  PIDs. Failure diagnostics read native process metadata without mutating
+  other processes. Retention writes/prunes only `capability-publisher.*`
+  evidence directories, not any other suite script's fixtures or evidence.
+  Nix GC-root queries/registrations name that fixture's own absolute root links.
+- `worktree-teardown.test.sh` has a unique canonical mktemp parent for all Git
+  worktrees, editor publications, and nested-checkout/collision probes. Although
+  Buck state is under the caller's `$HOME/.buck/buckd`, its keys include those
+  unique absolute checkout paths. The production teardown kills only the
+  selected root's direct isolations and deletes only their shallow files/root
+  leaf, never a shared ancestor directory. Cache entries use fixture-specific
+  root hashes below its private `XDG_CACHE_HOME`. Watchman startup/shutdown uses
+  the fixture's private socket; production release performs only `watch-del`
+  for the selected fixture root, even if its no-spawn client reaches an ambient
+  service in the fixture's no-Watchman branch. No whole-service/global watch
+  deletion is issued.
+
+The remaining original serial script is `devenv-task-graph.test.sh`: it invokes
+`devenv tasks list --json` at the real checkout, using that checkout's Devenv
+evaluation/cache state. All unaudited additions also remain serial.
+
+`devenv-module-tests-runner.test.sh` is also serial. Its FIFO-gated fixtures
+exercise the actual runner, including explicit daemon/publisher/teardown
+admission and the graph-check serial barrier: four-worker bounds, the
+three-worker fallback, longest-first dispatch, continued
+dispatch after either worker or the serial phase fails, exit-255 coverage,
+per-script verdicts, cwd/environment isolation, complete child cleanup/reaping,
+unknown filenames with spaces, empty/missing suites, and draining after
+supervisor TERM.
+
+#### Declared scheduling policy and evidence
+
+[`genie/ci-workflow/test-scheduling.json`](../../../genie/ci-workflow/test-scheduling.json)
+is the checked-in scheduling authority. Its `workers` setting defaults to four
+for both source-task chains and module-test workers. Change this one setting
+to three for the lower-concurrency fallback; no runtime timing download or
+environment-dependent worker override changes the CI policy.
+
+The table's positive integer weights round up observed Darwin seconds from
+[run 37886131764](https://github.com/overengineeringstudio/effect-utils/actions/runs/37886131764).
+Missing weights use one, so newly selected tasks still execute. Source tasks
+are assigned longest-first to the least-loaded chain; ties are deterministic.
+Editor publication starts the longest declared views first in its existing
+four-worker publisher, without changing authority, snapshot validation, or
+commit serialization.
+
+| Observed Darwin phase/script | Seconds |
+| ---------------------------- | ------: |
+| Module task, two workers     | 162.926 |
+| `worktree-teardown`          |  50.859 |
+| `buck2-capability-publish`   |  46.243 |
+| `buck2-capability-daemon`    |  36.662 |
+| `pnpm-task-smoke`            |  35.419 |
+| `pnpm-gvs`                   |  21.660 |
+| `pipeline-run`               |  18.069 |
+| Source whole-batch chain     | 135.347 |
+| Editor test publication      | 164.919 |
+| Final Buck collector         |   1.642 |
+
+**[INFERENCE]** Holding these observed durations fixed, four longest-first
+module workers give about 77 seconds including the serial prefix, and four
+weighted source chains give about 72 seconds. Together they could shorten the
+critical test tail by about 86 seconds. This is a scheduling model, not a
+measured four-worker speedup: increased CPU, Nix evaluation, filesystem, or
+daemon contention can lengthen individual tasks. Changing only one branch
+cannot realize their combined modeled saving.
+
+The run's host sampler saw a peak summed process RSS of 15.66 GiB on 28 GiB,
+no observed compression/pageouts, and peak summed process lifetime-average
+CPU of 1164.9% on 12 CPUs. CPU is not interval utilization, and peaks have no
+phase timestamps. The four-worker choice requires an actual merge-group
+observation; use the declared three-worker fallback if contention warrants it.
+
+Focused verification (inside the pinned development shell):
+
+```sh
+bash nix/devenv-modules/tasks/shared/tests/devenv-module-tests-runner.test.sh
+devenv tasks run devenv-modules:test --mode single
+```
+
+The aggregate command also retains all real Buck daemon, publisher, and
+worktree-teardown scenarios. Compare complete start/end verdict records and
+the task duration on both Linux and Darwin; do not infer performance from the
+focused scheduler fixture alone.
 
 ## `lib/` - Shared Utilities
 
