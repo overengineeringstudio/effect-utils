@@ -150,6 +150,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     reports historical root-local store retirement in a read-only dry-run.
     Repeat `--root` for explicitly selected worktrees; there is no fleet traversal.
     It never targets `$HOME/.local/share/pnpm` or `PNPM_SHARED_STORE_DIR`.
+    Before ownership admission or lease creation, resolved paths and inode
+    identities reject candidates overlapping either default shared store or
+    `PNPM_SHARED_STORE_DIR`. Mount inventory also rejects mount points at the
+    candidate root or below it, including same-filesystem bind mounts.
     `--observe` records eligible roots without deleting payloads; after 24 hours,
     repeat the dry-run, then opt in to `--apply` to retire eligible payloads.
     An initial `--apply` only establishes the observation, never skips grace.
@@ -173,8 +177,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     require a root-owned fd directory. The `systemd` user-manager exception
     requires `PPid=1` and nonzero permitted capabilities. Its `(sd-pam)` child
     shares the same exception only when its PPid identifies that same approved,
-    same-UID manager. Exited processes (`ENOENT`/`ESRCH`) are not live references;
-    other unreadable process classes fail closed. Every exception prints the PID,
+    same-UID manager. Only `ESRCH` or disappearance of the PID directory proves
+    a process gone. A live PID with missing leader cwd/fd evidence requires
+    inventory of its remaining tasks; unreadable task evidence fails closed.
+    Other unreadable process classes fail closed. Every exception prints the PID,
     comm, executable
     (or its read error), parent, permitted capabilities, and the normal-flow
     assumption that privileged brokers do not use pnpm stores. The invoking UID
@@ -182,6 +188,9 @@ for outer tasks that must complete before the nested devenv process can evaluate
     It rechecks checkout ownership, process references, and every payload inode's
     size/link-count/mtime/ctime under a proved exclusive Store Cache lease before
     retirement. Changed observed eligibility resets the 24-hour grace.
+    Linux retirement walks held directory descriptors with `O_NOFOLLOW` and
+    compares each opened directory's mount ID before descending or unlinking;
+    a newly inserted mount or replacement symlink cannot redirect the walk.
     Observations live in `$XDG_STATE_HOME/effect-utils/pnpm-store-gc` (default
     `$HOME/.local/state/...`); the stable store directory and maintenance-lock
     inode remain, so cooperating pnpm mutations cannot bypass the lease.

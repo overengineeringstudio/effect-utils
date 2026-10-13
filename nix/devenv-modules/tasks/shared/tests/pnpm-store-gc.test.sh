@@ -10,8 +10,11 @@ unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
 "${RUSTC_BIN:-rustc}" --edition=2024 -D warnings --test \
   "$ROOT/nix/devenv-modules/tasks/shared/pnpm-store-gc.rs" -o "$fixture/tests"
 "$fixture/tests"
-"${RUSTC_BIN:-rustc}" --edition=2024 -D warnings \
+# This cfg is never enabled by the production Nix package.
+"${RUSTC_BIN:-rustc}" --edition=2024 -D warnings --cfg pnpm_gc_test \
   "$ROOT/nix/devenv-modules/tasks/shared/pnpm-store-gc.rs" -o "$fixture/engine"
+export PNPM_GC_TEST_PROC_ROOT="$fixture/proc"
+mkdir -p "$PNPM_GC_TEST_PROC_ROOT"
 git init --bare -q "$fixture/repo.git"
 store="$fixture/retired-root/.devenv/pnpm-store-pure-v1"
 mkdir -p "$store/v11/files"
