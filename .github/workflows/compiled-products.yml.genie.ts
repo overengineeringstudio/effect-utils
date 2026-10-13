@@ -51,7 +51,11 @@ export default ciWorkflow({
         matrix: {
           include: RUNNER_PROFILES.map((runner) => ({
             runner,
-            runnerLabel: namespaceRunner({ profile: runner, runId: '{0}' })[0],
+            runnerLabel: namespaceRunner({
+              profile: runner,
+              runId: '{0}',
+              privileged: 'always',
+            })[0],
           })),
         },
       },

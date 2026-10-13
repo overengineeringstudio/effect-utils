@@ -327,9 +327,15 @@ const trustedDefaultBranchCheckoutStep = {
  *
  * `setupSteps` must not check out code: the helper checks out the
  * default-branch workflow revision itself.
+ * Runner selection is per job: the API-only resolver does not inherit
+ * privilege from deploy/comment jobs whose shared setup may realize Nix builds.
  */
 export const netlifyPreviewDeployJobs = (opts: {
-  readonly runsOn: string | readonly string[]
+  readonly runsOn: {
+    readonly resolvePreview: string | readonly string[]
+    readonly deployPreview: string | readonly string[]
+    readonly publishPreviewComment: string | readonly string[]
+  }
   readonly setupSteps: readonly Record<string, unknown>[]
   /** Secret expression, e.g. `${{ secrets.NETLIFY_AUTH_TOKEN }}`. */
   readonly netlifyAuthToken: string
@@ -352,7 +358,7 @@ export const netlifyPreviewDeployJobs = (opts: {
   return {
     'resolve-preview': {
       if: netlifyPreviewDeployIf,
-      'runs-on': opts.runsOn,
+      'runs-on': opts.runsOn.resolvePreview,
       'timeout-minutes': 5,
       permissions: { 'pull-requests': 'read' },
       defaults: bashShellDefaults,
@@ -367,7 +373,7 @@ export const netlifyPreviewDeployJobs = (opts: {
     'deploy-preview': {
       needs: ['resolve-preview'],
       if: "${{ needs.resolve-preview.outputs.deploy == 'true' }}",
-      'runs-on': opts.runsOn,
+      'runs-on': opts.runsOn.deployPreview,
       'timeout-minutes': timeoutMinutes,
       permissions: { actions: 'read', contents: 'read', 'pull-requests': 'read' },
       defaults: bashShellDefaults,
@@ -420,7 +426,7 @@ export const netlifyPreviewDeployJobs = (opts: {
     },
     'publish-preview-comment': {
       needs: ['resolve-preview', 'deploy-preview'],
-      'runs-on': opts.runsOn,
+      'runs-on': opts.runsOn.publishPreviewComment,
       'timeout-minutes': timeoutMinutes,
       permissions: deployCommentPermissions,
       defaults: bashShellDefaults,

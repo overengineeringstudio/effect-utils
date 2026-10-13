@@ -91,6 +91,10 @@
       "rationale": "Deployment and workflow-report API/CLI contracts over local fixture servers and shell stubs; no Darwin-specific filesystem, watcher or process-lifecycle assertions."
     },
     {
+      "task": "test:gh-ci-utils:unbounded",
+      "rationale": "Shared GitHub App authentication over a loopback HTTP fixture and scoped temporary key files; no Darwin-specific filesystem, watcher or process-lifecycle branch."
+    },
+    {
       "task": "test:notion-cli:unbounded",
       "rationale": "CLI help, usage, exit-code and output contract snapshots only; no symlink, watcher or Darwin-specific lifecycle fixture."
     }

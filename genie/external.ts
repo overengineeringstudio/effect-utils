@@ -1033,6 +1033,7 @@ export {
   installMegarepoStep,
   installNixStep,
   namespaceRunner,
+  type NamespacePrivilege,
   nixDiagnosticsArtifactStep,
   runDevenvTasksBefore,
   validateNixStoreStep,

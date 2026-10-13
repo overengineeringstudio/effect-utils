@@ -27,7 +27,14 @@ export const buck2TypeScriptAdmission = {
     },
   ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
-  tests: [{ name: 'test', runner: 'vitest' }],
+  tests: [
+    {
+      name: 'test',
+      runner: 'vitest',
+      // The shared App-auth integration fixture binds a real loopback HTTP server.
+      excludes: ['src/node/GitHubClient.integration.test.ts'],
+    },
+  ],
 } as const satisfies Buck2TypeScriptAdmission
 
 export default withJavaScriptCandidates({

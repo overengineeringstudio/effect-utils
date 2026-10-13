@@ -9,6 +9,11 @@ publish = false
 [features]
 test-signing-cert = []
 
+[[bin]]
+name = "macos-app-launchd-smoke"
+path = "src/bin/macos-app-launchd-smoke.rs"
+required-features = ["test-signing-cert"]
+
 [dependencies]
 libc = "0.2.177"
 regex = "1.11.3"

@@ -70,7 +70,8 @@ let
     # Cargo uses --out-dir, so the capability's -o-specific ABI normalization
     # must also run on the installed executable, after stripping.
     postFixup = ''
-      for binary in macos-app-host macos-app-ctl; do
+      for binary in macos-app-host macos-app-ctl macos-app-launchd-smoke; do
+        if [[ ! -f "$out/bin/$binary" ]]; then continue; fi
         ${pkgs.darwin.cctools}/bin/install_name_tool \
           -change '${pkgs.libiconv}/lib/libiconv.2.dylib' /usr/lib/libiconv.2.dylib \
           "$out/bin/$binary"

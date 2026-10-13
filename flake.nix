@@ -381,6 +381,7 @@ rec {
             macos-app-example = macosAppExample.example;
             macos-app-integration = macosAppExample.integration;
             macos-app-ctl-integration = macosAppExample.ctlIntegration;
+            macos-app-launchd-smoke = macosAppExample.launchdSmoke;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             buck2-vite-runtime-closure-fixture = viteRuntimeFixture;

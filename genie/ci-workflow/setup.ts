@@ -51,6 +51,12 @@ export const evictCachedPnpmDepsStep = ({
   ),
 })
 
+export type NamespacePrivilege = 'always' | 'trusted' | 'never'
+
+/** Q49's fork policy is isolated here; runner selection and TS admission share it. */
+export const namespacePrivilegeTrustedPredicate =
+  "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
+
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping, so
  * runners spawned for one workflow run don't steal jobs from other runs.
@@ -58,23 +64,42 @@ export const evictCachedPnpmDepsStep = ({
  * Namespace accepts the `namespace-features:` label only next to a
  * `-with-features` machine label; runner profiles take features appended as
  * `;key=value` to the profile label itself.
- * Linux containers need privilege for Nix and nested Bubblewrap namespaces.
- * Namespace isolates this privilege inside each ephemeral per-job VM.
+ * Privilege is an explicit per-job choice, never a profile-wide default.
+ * Namespace isolates Linux privilege inside each ephemeral per-job VM.
  * @see https://namespace.so/docs/solutions/github-actions/runner-controls
  */
 export const namespaceRunner = ({
   profile,
   runId,
+  privileged,
 }: {
   profile: RunnerProfile | (string & {})
   runId: string
+  privileged: NamespacePrivilege
 }): readonly [string] | readonly [string, string] => {
-  const features = [
-    `github.run-id=${runId}`,
-    ...(profile.includes('linux') === true || profile.startsWith('nscloud-ubuntu-') === true
-      ? ['container.privileged=true']
-      : []),
-  ].join(';')
+  if (privileged !== 'always' && privileged !== 'trusted' && privileged !== 'never') {
+    throw new Error('namespaceRunner requires explicit privileged: always, trusted or never')
+  }
+  const profileExpression = /^\$\{\{([\s\S]+)\}\}$/.exec(profile)?.[1]?.trim()
+  const isLinux = profile.includes('linux') || profile.startsWith('nscloud-ubuntu-')
+  const linuxPredicate =
+    profileExpression === undefined
+      ? undefined
+      : `(contains(${profileExpression}, 'linux') || startsWith(${profileExpression}, 'nscloud-ubuntu-'))`
+  const trustedPredicate = `(${namespacePrivilegeTrustedPredicate})`
+  const privilegePredicate =
+    linuxPredicate === undefined
+      ? trustedPredicate
+      : privileged === 'trusted'
+        ? `${linuxPredicate} && ${trustedPredicate}`
+        : linuxPredicate
+  const privilegeFeature =
+    privileged === 'never' || (isLinux === false && linuxPredicate === undefined)
+      ? ''
+      : privileged === 'always' && linuxPredicate === undefined
+        ? ';container.privileged=true'
+        : `\${{ ${privilegePredicate} && ';container.privileged=true' || '' }}`
+  const features = `github.run-id=${runId}${privilegeFeature}`
   return profile.endsWith('-with-features') === true
     ? [profile, `namespace-features:${features}`]
     : [`${profile};${features}`]
@@ -225,24 +250,36 @@ export const installNixStep = (opts?: {
 })
 
 /**
- * Read-only Linux record of the namespace prerequisites behind Nix's build
- * sandbox and nested TS Bubblewrap; the namespace check fails fast if the
- * privileged runner feature is lost.
+ * Linux namespace prerequisites behind Nix's build sandbox and nested TS
+ * Bubblewrap. Only the trusted policy reads PR identity; always jobs do not.
  */
-export const linuxSandboxPrerequisitesStep = {
-  name: 'Log Linux sandbox prerequisites',
-  if: "${{ runner.os == 'Linux' }}",
-  shell: 'bash',
-  run: [
-    'set -euo pipefail',
-    "nix config show | grep -E '^sandbox'",
-    'for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do',
-    '  if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\\n" "$key"; fi',
-    'done',
-    'unshare -Ur true',
-    'echo "unshare -Ur true: passed"',
-  ].join('\n'),
-} as const
+export const linuxSandboxPrerequisitesStep = ({ privileged }: { privileged: NamespacePrivilege }) =>
+  ({
+    name: 'Log Linux sandbox prerequisites',
+    if: "${{ runner.os == 'Linux' }}",
+    shell: 'bash',
+    env: {
+      BUCK2_TS_PRIVILEGE_ALLOWED:
+        privileged === 'trusted'
+          ? `\${{ ${namespacePrivilegeTrustedPredicate} }}`
+          : privileged === 'always'
+            ? 'true'
+            : 'false',
+    },
+    run: [
+      'set -euo pipefail',
+      'if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then',
+      '  echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2',
+      '  exit 1',
+      'fi',
+      "nix config show | grep -E '^sandbox'",
+      'for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do',
+      '  if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\\n" "$key"; fi',
+      'done',
+      'unshare -Ur true',
+      'echo "unshare -Ur true: passed"',
+    ].join('\n'),
+  }) as const
 
 /**
  * Provide the cachix CLI to subsequent steps from a /nix/store output.

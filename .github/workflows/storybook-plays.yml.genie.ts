@@ -40,14 +40,14 @@ export default ciWorkflow({
   jobs: withBuck2CacheEvidence({
     [playsJobName]: {
       if: "${{ github.event_name == 'merge_group' }}",
-      'runs-on': storybookPreviewRunner,
+      'runs-on': storybookPreviewRunner('always'),
       'timeout-minutes': 45,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,
       env: { FORCE_SETUP: '1', CI: 'true', ...buck2CachePostureEnv('trusted-writer') },
       steps: [
         checkoutStep(),
-        ...storybookPreviewSetupSteps,
+        ...storybookPreviewSetupSteps('always'),
         buck2TrustedCacheWriterStep({
           name: 'Storybook play tests',
           env: githubTokenEnv(),
