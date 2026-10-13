@@ -20,6 +20,11 @@ import {
   type WatchLoopStatus,
 } from './buck-watch.ts'
 
+// Stable forwarding exports observe the named imports used by Bun's native modules.
+const nativeChildProcess = { ...ChildProcess }
+const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
+vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
+
 const savedWatchTraceContext = {
   TRACEPARENT: process.env.TRACEPARENT,
   OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
@@ -70,9 +75,12 @@ const observeExporters = (bin: string) => {
   const children: ChildProcess.ChildProcess[] = []
   const exits: Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>[] =
     []
-  const nativeSpawn = ChildProcess.spawn
-  const spawned = vi.spyOn(ChildProcess, 'spawn').mockImplementation((...args) => {
-    const child = Reflect.apply(nativeSpawn, ChildProcess, args) as ChildProcess.ChildProcess
+  const spawned = childProcessMocks.spawn.mockImplementation((...args) => {
+    const child = Reflect.apply(
+      nativeChildProcess.spawn,
+      ChildProcess,
+      args,
+    ) as ChildProcess.ChildProcess
     if (String(args[0]) === bin) {
       children.push(child)
       const exited = Promise.withResolvers<{
@@ -92,7 +100,7 @@ const observeExporters = (bin: string) => {
       await turn.promise
       return Promise.all(exits)
     },
-    restore: () => spawned.mockRestore(),
+    restore: () => spawned.mockReset().mockImplementation(nativeChildProcess.spawn),
   }
 }
 

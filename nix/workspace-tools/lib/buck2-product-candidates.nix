@@ -54,28 +54,57 @@ let
       // options
     );
 
+  ai-gateway-edge = mk "ai-gateway-edge" {
+    binaryName = "ai-gateway-edge";
+    expectedProductKind = "cli";
+    generateCompletions = false;
+    smokeTestArgs = [ "--help" ];
+  };
+
+  genieProviders = (import ./javascript-capability-providers.nix { lib = pkgs.lib; }) {
+    required = (builtins.fromJSON products.genie.descriptorContent).externalCapabilities;
+    providers = {
+      actionlint = {
+        capability = "actionlint";
+        environment.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
+      };
+      effect-tsgo = {
+        capability = "effect-tsgo";
+        environment.GENIE_EXPORT_TYPE_PROOF_COMPILER = typeProofCompilerBin;
+      };
+      gh = {
+        capability = "gh";
+        pathPackages = [ pkgs.gh ];
+      };
+      opentui-core-native = {
+        capability = "opentui-core-native";
+        nativeNodePackages = opentuiCoreNative.packages;
+        externalModules = opentuiCoreExternalModules;
+      };
+      oxfmt = {
+        capability = "oxfmt";
+        pathPackages = [ oxfmtPkg ];
+      };
+      typescript-api-server = {
+        capability = "typescript-api-server";
+        environment.GENIE_TYPESCRIPT_API_SERVER = "${nativeProducts.typescript-api-server}/bin/typescript-api-server";
+      };
+    };
+  };
+
   # `oxfmt` is on PATH because genie calls the executable formatter interface.
   # `actionlint`, the export type-proof compiler and the matching TypeScript API
   # server are absolute binaries, so generated-file checks never depend on PATH.
   genie = mk "genie" {
     binaryName = "genie";
-    environment = {
+    environment = genieProviders.environment // {
       CLI_BUILD_STAMP = buildStamp;
-      GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
-      GENIE_EXPORT_TYPE_PROOF_COMPILER = typeProofCompilerBin;
-      GENIE_TYPESCRIPT_API_SERVER = "${nativeProducts.typescript-api-server}/bin/typescript-api-server";
     };
-    expectedExternalCapabilities = [
-      "actionlint"
-      "effect-tsgo"
-      "opentui-core-native"
-      "oxfmt"
-      "typescript-api-server"
-    ];
-    expectedExternalModules = opentuiCoreExternalModules;
+    expectedExternalCapabilities = genieProviders.capabilities;
+    expectedExternalModules = genieProviders.externalModules;
     expectedProductKind = "cli";
-    nativeNodePackages = opentuiCoreNative.packages;
-    pathPackages = [ oxfmtPkg ];
+    nativeNodePackages = genieProviders.nativeNodePackages;
+    pathPackages = genieProviders.pathPackages;
     smokeTestArgs = [ "--dry-run" ];
   };
   genie-bootstrap-closure-check = mk "genie-bootstrap-closure-check" {
@@ -218,6 +247,7 @@ let
   # unpublished product surfaces as a missing attribute instead of a candidate
   # wired to absent bytes.
   requiredProducts = {
+    ai-gateway-edge = [ "ai-gateway-edge" ];
     ci-tools = [ "ci-tools" ];
     genie = [ "genie" ];
     genie-bootstrap-closure-check = [ "genie-bootstrap-closure-check" ];
@@ -237,6 +267,7 @@ let
   };
   candidates = {
     inherit
+      ai-gateway-edge
       ci-tools
       genie
       genie-bootstrap-closure-check

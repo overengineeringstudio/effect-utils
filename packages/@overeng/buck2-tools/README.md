@@ -32,9 +32,9 @@ changes to transitive workspace source, declarations, or dependency bytes still
 select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
 
-Batch publication prepares one private candidate at a time and serializes
-commits within each editor state root. Independent root fingerprints within
-that candidate still run concurrently. All fingerprint subprocesses
+Batch publication prepares up to four private candidates concurrently and
+serializes commits within each editor state root. Independent root fingerprints
+within each candidate also run concurrently. All fingerprint subprocesses
 for a candidate settle before hardening, promotion, or failure cleanup can
 change it. A failed fingerprint does not release the candidate or its state-root
 lock while another payload walk remains active.
@@ -46,6 +46,13 @@ failures capture these states when the first fingerprint child fails, before
 waiting for the remaining children; the original error remains available as
 the cause.
 
+Tree stability compares entry type, device, modification/change times, and
+regular-file size. File and symlink inode identities remain checked; directory
+inode numbers are not persistent on every filesystem and are not a content
+stability signal. In particular, overlayfs without persistent inode mapping can
+reassign a directory inode on cache eviction without changing its contents or
+other metadata. Byte digests, link-target checks, and byte-ownership proofs are
+unchanged.
 Normal per-view retention keeps the current generation plus the configured
 number of previous generations, a **five-minute grace period from supersession**,
 and any **managed reader pins**. Repository tasks retain current plus one previous
@@ -137,7 +144,10 @@ defers collection. None of those observations replaces a managed pin for a reade
 that requires guaranteed retention.
 Retention reuses the selected generation's full validation from the same publication.
 Older protected generations receive only ownership and root-permission checks;
-their complete permission proof runs outside the CAS flock before retirement.
+their complete permission proof runs outside the CAS flock before publishing the
+new current pointer. A writable eligible generation rejects publication without
+changing that pointer or retiring the invalid generation. Actual retirement and
+post-commit cleanup remain advisory and log failures without rejecting a committed view.
 When no unpinned generation is eligible, retention skips both the advisory process
 census and the CAS flock. Every generation is still fully checked before reuse.
 
@@ -211,6 +221,11 @@ worktrees can prepare concurrently. Cross-device store copies use owner-identifi
 only under the flock. An `EXDEV` destination keeps an independent read-only
 reflink/copy and reports `copiedFiles` and `copiedBytes`; it does not pretend to
 share an inode.
+Cross-device fallback is selected only when an actual hardlink returns `EXDEV`,
+not by comparing file and directory device numbers: overlayfs may report
+different device identities for those entries while hardlinks still work.
+Required store-side copies are prepared after releasing the flock, then installed
+in a short retry batch under the same lock.
 The descriptor is opened with `O_CLOEXEC` and verified close-on-exec; children
 cannot retain a parent's ownership. Bun FFI calls libc on Linux and macOS.
 
@@ -320,3 +335,47 @@ The JavaScript runner loads test modules when collecting their inventory without
 executing assertions. Static parsing is opt-in: the runner passes an explicit
 negative flag otherwise, rather than relying on the pinned Vitest CLI's default.
 This includes cases registered by imported helpers such as rule-test generators.
+
+## Bun wall deadlines and failure classification
+
+Repository devenv Bun test tasks and Buck Bun lanes share `src/bun-test-runner.ts`.
+The CLI accepts Bun's explicit `test` command followed by its source paths and flags:
+`bun ./src/bun-test-runner.ts test ./src/`. Use explicit relative source directories
+instead of substring filters so discovery does not include Buck's staged copies.
+
+At run start it samples the one-minute host load and the CPU parallelism available
+to the process. The CLI default and explicit per-test deadlines use:
+
+```text
+effective = ceil(base × min(cap, max(1, load1 / cpus)))
+```
+
+If `load1` or `cpus` is missing, non-finite, or `<=0`, the factor is `1`;
+otherwise the formula above applies.
+
+`BUN_TEST_TIMEOUT_CAP` sets the cap (default `4`, finite and at least `1`);
+`BUN_TEST_TIMEOUT_SCALING=0` disables scaling. Buck lanes can declare these as
+environment inputs; local external-test runs also accept the caller's environment.
+The factor stays fixed for the run. A shared preload intercepts native Bun test
+registration, including parameterized tests and modifiers, to scale explicit
+deadlines and record each case's base. Expanded case titles and nested parameterized
+suites retain their own deadlines in JUnit classification. Hooks, assertions,
+callbacks and exit statuses remain native; no tests are retried.
+
+The wrapper requests Bun's JUnit reporter and leaves console output untouched.
+After the child exits, it samples host load and Linux memory PSI and emits one
+`test-timeout-under-load` line for each JUnit `TimeoutError`, including the test
+identity, base, factor, effective deadline, measured JUnit elapsed milliseconds,
+load, CPU count and `memPsiFullAvg10` (`unavailable` outside Linux or without PSI).
+`test-failure-summary` counts timeout, assertion and other failures separately.
+Self-closing passing records and skipped cases are consumed individually, so a
+later failure keeps its own test identity, elapsed time and registered deadline.
+Attribute boundaries are quote-aware: literal `>` and `/>` in test names or failure
+messages are data, not tag delimiters.
+“Under load” is a diagnostic category, not proof that load caused the timeout.
+Reports live in executor results for Buck and disposable scratch for direct tasks.
+
+Bun's inspector reporter protocol can stream lifecycle events, but would require
+a debugger connection. Its ordinary lifecycle/preload hooks do not expose failure
+results or deadlines. JUnit provides typed outcomes and measured durations without
+parsing stdout, changing assertion semantics or opening a debugger port.

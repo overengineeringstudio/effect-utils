@@ -539,10 +539,10 @@ const canonicalTreeFingerprints = async ({
         ancestors: new Set([...ancestors, identity]),
       })
       const after = lstatSync(absolutePath, { bigint: true })
+      // Overlayfs may reassign directory inodes without a content or timestamp change.
       if (
         after.isDirectory() === false ||
         after.dev !== before.dev ||
-        after.ino !== before.ino ||
         after.mtimeNs !== before.mtimeNs ||
         after.ctimeNs !== before.ctimeNs
       )
@@ -650,7 +650,6 @@ const canonicalTreeFingerprints = async ({
   if (
     rootAfter.isDirectory() === false ||
     rootAfter.dev !== rootBefore.dev ||
-    rootAfter.ino !== rootBefore.ino ||
     rootAfter.mtimeNs !== rootBefore.mtimeNs ||
     rootAfter.ctimeNs !== rootBefore.ctimeNs
   )
@@ -1812,19 +1811,16 @@ const renameReadOnlySnapshot = ({
   }
 }
 
-const garbageCollectSnapshots = async ({
+/** A preliminary pin/age observation; uncertainty conservatively disables retirement. */
+const selectSnapshotRetirement = ({
   paths,
   options,
   ordered,
-  current,
-  token,
 }: {
   paths: ViewPaths
   options: EditorViewOptions
   ordered: readonly string[]
-  current: string
-  token: string
-}): Promise<boolean> => {
+}): readonly string[] => {
   const retained = new Set(ordered.slice(0, options.snapshotRetention))
   const now = Date.now()
   const grace = options.snapshotGraceMs ?? 300_000
@@ -1838,11 +1834,29 @@ const garbageCollectSnapshots = async ({
       pinnedBeforeRetirement.has(name) === false &&
       now - statSync(join(paths.storeDir, name)).mtimeMs >= grace,
   )
+  return eligible
+}
+
+const garbageCollectSnapshots = async ({
+  paths,
+  options,
+  ordered,
+  eligible,
+  current,
+  token,
+}: {
+  paths: ViewPaths
+  options: EditorViewOptions
+  ordered: readonly string[]
+  eligible: readonly string[]
+  current: string
+  token: string
+}): Promise<boolean> => {
   if (eligible.length === 0) return false
-  // Payload validation and the advisory census must not hold the CAS flock.
+  const retained = new Set(ordered.slice(0, options.snapshotRetention))
+  // Payload validation precedes the pointer commit and does not hold the CAS flock.
   // A pin admitted meanwhile is checked again before the canonical rename;
   // a concurrent unpin may conservatively defer retirement until next time.
-  for (const name of eligible) requireReadOnlySnapshot(join(paths.storeDir, name))
   const referenced = referencedEditorSnapshots(paths)
   const retired: { readonly snapshotDir: string; readonly garbage: string }[] = []
   try {
@@ -2028,7 +2042,6 @@ const publicationLockRecoveryReason = (owner: LockOwner): 'dead-pid' | 'reused-p
     ? 'reused-pid'
     : undefined
 }
-
 const acquirePublicationLock = async ({
   editorRoot,
   recoveryCommand,
@@ -2947,6 +2960,14 @@ const publishEditorViewCoordinated = async ({
         current: snapshotName,
         token,
       })
+      const eligible =
+        (await runEditorViewMaintenance({
+          editorRoot: paths.editorRoot,
+          phase: 'snapshot-retirement-observation',
+          run: async () => selectSnapshotRetirement({ paths, options, ordered: retention }),
+        })) ?? []
+      // Permission violations are publication failures, not post-commit cleanup failures.
+      for (const name of eligible) requireReadOnlySnapshot(join(paths.storeDir, name))
       enterPhase('pointers')
       const pointerChanged =
         pathExists(paths.current) === false ||
@@ -2969,6 +2990,7 @@ const publishEditorViewCoordinated = async ({
               paths,
               options,
               ordered: retention,
+              eligible,
               current: snapshotName,
               token,
             }),
@@ -3073,8 +3095,8 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
   return record
 }
 
-/** Shared bound; one view contains suspected cross-view overlap until #1743 establishes the cause. */
-export const editorViewPublicationWorkers = 1
+/** Shared bound for independent private preparations; commits remain serialized per state root. */
+export const editorViewPublicationWorkers = 4
 
 /**
  * Prepare a bounded set of independent views under exclusive state-root locks.

@@ -44,7 +44,22 @@ import {
   type EditorViewOptions,
   type EditorViewRecord,
 } from './editor-view.ts'
+import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 import * as fingerprintRunner from './typescript-runner.ts'
+
+// Namespace-property spies do not replace Bun's native named-import bindings.
+// Capture native functions, then register stable mocked exports for fault injection.
+const nativeFs = { ...fs }
+const fsMocks = {
+  readFileSync: vi.fn(nativeFs.readFileSync),
+  readdirSync: vi.fn(nativeFs.readdirSync),
+  lstatSync: vi.fn(nativeFs.lstatSync),
+  mkdirSync: vi.fn(nativeFs.mkdirSync),
+}
+vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
+const nativeChildProcess = { ...ChildProcess }
+const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
+vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
 
 /** Reads one Buck-declared immutable tool path; nothing resolves through an ambient PATH. */
 const requireTool = (name: string): string => {
@@ -90,6 +105,19 @@ afterAll(() => {
   rmSync(integrationBudgetState, { recursive: true, force: true })
 })
 
+/** A scenario keeps its own ledger across publications without inheriting earlier test roots. */
+const isolateHostBudget = (): (() => void) => {
+  const savedState = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+  const savedRecency = process.env.EDITOR_VIEW_HOST_RECENCY_MS
+  process.env.EDITOR_VIEW_HOST_BUDGET_STATE = mkdtempSync(join(integrationBudgetState, 'scenario-'))
+  process.env.EDITOR_VIEW_HOST_RECENCY_MS = '86400000'
+  return () => {
+    if (savedState === undefined) delete process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+    else process.env.EDITOR_VIEW_HOST_BUDGET_STATE = savedState
+    if (savedRecency === undefined) delete process.env.EDITOR_VIEW_HOST_RECENCY_MS
+    else process.env.EDITOR_VIEW_HOST_RECENCY_MS = savedRecency
+  }
+}
 type Fixture = {
   readonly root: string
   readonly packageDir: string
@@ -112,6 +140,11 @@ afterEach(async () => {
     await child.exited
     editorCliProcesses.delete(child)
   }
+  fsMocks.readFileSync.mockReset().mockImplementation(nativeFs.readFileSync)
+  fsMocks.readdirSync.mockReset().mockImplementation(nativeFs.readdirSync)
+  fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
+  fsMocks.mkdirSync.mockReset().mockImplementation(nativeFs.mkdirSync)
+  childProcessMocks.spawn.mockReset().mockImplementation(nativeChildProcess.spawn)
 })
 
 const runEditorViewCli = async ({
@@ -153,7 +186,7 @@ const runEditorViewCli = async ({
 
 /** One package view fixture; `packageName` also names the published editor view. */
 const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}): Fixture => {
-  const root = mkdtempSync(join(tmpdir(), 'editor-view-integration-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-integration-')))
   const packagePath = `packages/@overeng/${packageName}`
   const packageDir = join(root, 'packages', '@overeng', packageName)
   const editorRoot = join(root, 'packages', '.editor-view')
@@ -195,6 +228,7 @@ const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}
     snapshotRetention: 2,
     snapshotGraceMs: 0,
     contentStore: join(root, '.editor-view-content', 'v1'),
+    hostBudgetBytes: 40_000_000_000,
     mv,
   }
   return {
@@ -343,9 +377,12 @@ const withPublisherTelemetry = async <TValue>(
   const invocations: (readonly string[])[] = []
   const exits: Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>[] =
     []
-  const nativeSpawn = ChildProcess.spawn
-  const spawned = vi.spyOn(ChildProcess, 'spawn').mockImplementation((...args) => {
-    const child = Reflect.apply(nativeSpawn, ChildProcess, args) as ChildProcess.ChildProcess
+  const spawned = childProcessMocks.spawn.mockImplementation((...args) => {
+    const child = Reflect.apply(
+      nativeChildProcess.spawn,
+      ChildProcess,
+      args,
+    ) as ChildProcess.ChildProcess
     if (String(args[0]) === bin) {
       children.push(child)
       invocations.push(child.spawnargs.slice(1))
@@ -375,7 +412,7 @@ const withPublisherTelemetry = async <TValue>(
     }
   } finally {
     await settle()
-    spawned.mockRestore()
+    spawned.mockReset().mockImplementation(nativeChildProcess.spawn)
     for (const [key, value] of Object.entries(saved))
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
@@ -1858,10 +1895,12 @@ describe('editor view publisher', () => {
       expect(existsSync(oldestRoot)).toBe(true)
     })
     it('checks the complete permission proof before retirement', async () => {
+      const previous = currentTarget(fixture)
       writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":3}\n')
       pending = publishEditorView(fixture.options)
       await expect(pending).rejects.toThrow('snapshot directory is writable')
       expect(existsSync(oldestRoot)).toBe(true)
+      expect(currentTarget(fixture)).toBe(previous)
     })
     it('retires the generation once private directory permissions are restored', async () => {
       chmodSync(privateDirectory, 0o555)
@@ -2083,10 +2122,11 @@ describe('editor view publisher', () => {
     },
   )
 
-  it('keeps a queued sibling from preparing while a candidate payload walk is active', async () => {
+  it('allows sibling preparation without mutating an active private payload walk', async () => {
     const fixture = makeFixture()
     const entered = Promise.withResolvers<string>()
     let siblingStarted = false
+    const siblingEntered = Promise.withResolvers<void>()
     const proceed = Promise.withResolvers<void>()
     const runFingerprintTool = fingerprintRunner.runFingerprintTool
     let pausedTree: string | undefined
@@ -2117,6 +2157,7 @@ describe('editor view publisher', () => {
           Object.assign(option, {
             beforeMaterialize: async () => {
               siblingStarted = true
+              siblingEntered.resolve()
             },
           })
         return Object.assign(option, { backingRoots: [backing] })
@@ -2134,9 +2175,9 @@ describe('editor view publisher', () => {
       })
       const pendingTree = await entered.promise
       const before = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
-      await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
-      expect(editorViewPublicationWorkers).toBe(1)
-      expect(siblingStarted).toBe(false)
+      await siblingEntered.promise
+      expect(editorViewPublicationWorkers).toBe(4)
+      expect(siblingStarted).toBe(true)
       const after = lstatSync(join(pendingTree, 'node_modules'), { bigint: true })
       expect(after.ctimeNs).toBe(before.ctimeNs)
       expect(after.mode).toBe(before.mode)
@@ -2163,6 +2204,8 @@ describe('editor view publisher', () => {
     const fixture = makeFixture()
     const entered = Promise.withResolvers<string>()
     const failPayload = Promise.withResolvers<void>()
+    const peersEntered = Promise.withResolvers<void>()
+    let peersStarted = 0
     let siblingStarted = false
     const proceed = Promise.withResolvers<void>()
     const original = Object.assign(new Error('payload fingerprint failed'), { exitCode: 17 })
@@ -2192,9 +2235,21 @@ describe('editor view publisher', () => {
       const backing = join(fixture.root, 'inputs', 'shared-backing')
       mkdirSync(backing)
       writeFileSync(join(backing, 'dep.js'), 'export default 1\n')
+      const peers = ['utils', 'ci-tools', 'buck2-tools'].map(
+        (packageName) => makeSiblingView({ fixture, packageName }).options,
+      )
       publication = publishEditorViews({
         options: [
           { ...fixture.options, backingRoots: [backing] },
+          ...peers.map((option) => ({
+            ...option,
+            backingRoots: [backing],
+            beforeMaterialize: async () => {
+              peersStarted += 1
+              if (peersStarted === editorViewPublicationWorkers - 1) peersEntered.resolve()
+              await proceed.promise
+            },
+          })),
           {
             ...sibling.options,
             backingRoots: [backing],
@@ -2207,6 +2262,7 @@ describe('editor view publisher', () => {
         failure = error
       })
       await entered.promise
+      await peersEntered.promise
       failPayload.resolve()
       await new Promise<void>((resolveTurn) => setImmediate(resolveTurn))
       expect(siblingStarted).toBe(false)
@@ -2221,15 +2277,25 @@ describe('editor view publisher', () => {
       const states: unknown = JSON.parse(
         failure.message.split('; publication workers=')[1] ?? 'null',
       )
-      expect(states).toEqual([
-        {
-          package: fixture.options.package,
-          viewName: fixture.options.viewName,
-          editorRoot: realpathSync(fixture.editorRoot),
-          phase: 'payload',
-          candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
-        },
-      ])
+      expect(states).toEqual(
+        expect.arrayContaining([
+          {
+            package: fixture.options.package,
+            viewName: fixture.options.viewName,
+            editorRoot: realpathSync(fixture.editorRoot),
+            phase: 'payload',
+            candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
+          },
+          ...peers.map((option) => ({
+            package: option.package,
+            viewName: option.viewName,
+            editorRoot: realpathSync(fixture.editorRoot),
+            phase: 'materialize',
+            candidate: expect.stringMatching(/\/\.store\/\.candidate-[0-9a-f]+$/u),
+          })),
+        ]),
+      )
+      expect(states).toHaveLength(editorViewPublicationWorkers)
     } finally {
       failPayload.resolve()
       proceed.resolve()
@@ -2558,6 +2624,68 @@ describe('editor view publisher', () => {
               ]),
             ]),
           )
+      } finally {
+        cleanup(fixture)
+      }
+    },
+  )
+
+  it.each(['single', 'batch'] as const)(
+    'finishes %s publication when the shared exporter slots are saturated',
+    async (mode) => {
+      const fixture = makeFixture()
+      try {
+        const captured = await withPublisherTelemetry(
+          fixture,
+          async (children) => {
+            // Keep the real exporter children alive until the publisher has returned.
+            // Only their global timeout is controlled; publication I/O remains real.
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+            try {
+              const now = performance.timeOrigin + performance.now()
+              const span = {
+                name: 'editor-view.saturated',
+                label: 'saturated',
+                attributes: [],
+                startedAtMs: now,
+                endedAtMs: now,
+              }
+              for (let index = 0; index < 4; index++)
+                expect(emitCompletedSpanAsync(span)).toBe(true)
+              expect(emitCompletedSpanAsync(span)).toBe(false)
+              const records =
+                mode === 'single'
+                  ? [await publishEditorView(fixture.options)]
+                  : await publishEditorViews({ options: [fixture.options] })
+              expect(records).toHaveLength(1)
+              expect(currentTarget(fixture)).toBe(records[0]?.snapshot)
+              expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+              const turn = Promise.withResolvers<void>()
+              setImmediate(turn.resolve)
+              await turn.promise
+              expect(children).toHaveLength(4)
+              for (const child of children) {
+                expect(child.exitCode).toBeNull()
+                expect(child.signalCode).toBeNull()
+              }
+            } finally {
+              try {
+                const spawned = Promise.withResolvers<void>()
+                setImmediate(spawned.resolve)
+                await spawned.promise
+                await vi.advanceTimersByTimeAsync(1_000)
+              } finally {
+                vi.useRealTimers()
+              }
+            }
+          },
+          { hang: true },
+        )
+        expect(captured.invocations).toHaveLength(4)
+        expect(captured.invocations.every((args) => args.includes('editor-view.saturated'))).toBe(true)
+        expect(captured.exits).toEqual(
+          Array.from({ length: 4 }, () => ({ code: null, signal: 'SIGKILL' })),
+        )
       } finally {
         cleanup(fixture)
       }
@@ -3006,8 +3134,8 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
       name: 'vanishing-reader',
       snapshot: `.store/${fixture.options.viewName}-${'a'.repeat(64)}`,
     }
-    const nativeRead = fs.readFileSync
-    const read = vi.spyOn(fs, 'readFileSync')
+    const nativeRead = nativeFs.readFileSync
+    const read = fsMocks.readFileSync
     const vanishBeforeRead = () => {
       rmSync(pin)
       return nativeRead(pin, 'utf8')
@@ -3022,7 +3150,7 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
       read.mockImplementationOnce(vanishBeforeRead)
       expect(() => managedEditorViewSnapshots({ editorRoot: fixture.editorRoot })).toThrow('ENOENT')
     } finally {
-      read.mockRestore()
+      read.mockReset().mockImplementation(nativeFs.readFileSync)
       cleanup(fixture)
     }
   })
@@ -3033,9 +3161,9 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     const registration = join(registrations, 'vanishing-worktree')
     mkdirSync(registration, { recursive: true })
     writeFileSync(join(registration, 'gitdir'), `${join(fixture.root, 'gone', '.git')}\n`)
-    const nativeReaddir = fs.readdirSync
+    const nativeReaddir = nativeFs.readdirSync
     let removed = false
-    const scan = vi.spyOn(fs, 'readdirSync').mockImplementation((...args) => {
+    const scan = fsMocks.readdirSync.mockImplementation((...args) => {
       const entries = Reflect.apply(nativeReaddir, fs, args) as ReturnType<typeof fs.readdirSync>
       if (String(args[0]) === registrations && removed === false) {
         removed = true
@@ -3045,13 +3173,13 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     })
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = publishEditorView(fixture.options)
+      publication = publishEditorView({ ...fixture.options, hostBudgetBytes: 1 })
       const record = await publication
       expect(removed).toBe(true)
       expect(currentTarget(fixture)).toBe(record.snapshot)
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
-      scan.mockRestore()
+      scan.mockReset().mockImplementation(nativeFs.readdirSync)
       cleanup(fixture)
     }
   })
@@ -3065,9 +3193,9 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     mkdirSync(otherRoot, { recursive: true })
     mkdirSync(registration, { recursive: true })
     writeFileSync(join(registration, 'gitdir'), `${join(otherRepo, '.git')}\n`)
-    const nativeLstat = fs.lstatSync
+    const nativeLstat = nativeFs.lstatSync
     let removed = false
-    const inspect = vi.spyOn(fs, 'lstatSync').mockImplementation((...args) => {
+    const inspect = fsMocks.lstatSync.mockImplementation((...args) => {
       if (String(args[0]) === otherRoot && removed === false) {
         removed = true
         rmSync(otherRoot, { recursive: true })
@@ -3076,13 +3204,13 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     })
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = publishEditorView(fixture.options)
+      publication = publishEditorView({ ...fixture.options, hostBudgetBytes: 1 })
       const record = await publication
       expect(removed).toBe(true)
       expect(currentTarget(fixture)).toBe(record.snapshot)
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
-      inspect.mockRestore()
+      inspect.mockReset().mockImplementation(nativeFs.lstatSync)
       cleanup(fixture)
     }
   })
@@ -3093,10 +3221,10 @@ describe('advisory budget failures preserve publication and uncertain readers', 
     'propagates publication-lock %s without retrying',
     async (code) => {
       const fixture = makeFixture()
-      const nativeMkdir = fs.mkdirSync
+      const nativeMkdir = nativeFs.mkdirSync
       const injected = Object.assign(new Error(`injected ${code}`), { code })
       let attempts = 0
-      const create = vi.spyOn(fs, 'mkdirSync').mockImplementation((...args) => {
+      const create = fsMocks.mkdirSync.mockImplementation((...args) => {
         if (String(args[0]) === join(fixture.editorRoot, '.publish.lock')) {
           attempts++
           // One failure makes the old busy loop terminate on its next attempt,
@@ -3113,7 +3241,7 @@ describe('advisory budget failures preserve publication and uncertain readers', 
         expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
-        create.mockRestore()
+        create.mockReset().mockImplementation(nativeFs.mkdirSync)
         cleanup(fixture)
       }
     },
@@ -3124,8 +3252,10 @@ describe('advisory budget failures preserve publication and uncertain readers', 
     let victim: Fixture
     let held: EditorViewRecord
     let publication: Promise<EditorViewRecord> | undefined
+    let restoreHostBudget: () => void
 
     beforeAll(async () => {
+      restoreHostBudget = isolateHostBudget()
       incoming = makeFixture()
       victim = makeFixture()
       victim = {
@@ -3144,13 +3274,14 @@ describe('advisory budget failures preserve publication and uncertain readers', 
       if (publication !== undefined) await Promise.allSettled([publication])
       cleanup(victim)
       cleanup(incoming)
+      restoreHostBudget()
     })
 
     it('logs the unobserved root and publishes without evicting any uncertain generation', async () => {
-      const nativeLstat = fs.lstatSync
+      const nativeLstat = nativeFs.lstatSync
       const injected = Object.assign(new Error(`unobserved ${code}`), { code })
       let observations = 0
-      const inspect = vi.spyOn(fs, 'lstatSync').mockImplementation((...args) => {
+      const inspect = fsMocks.lstatSync.mockImplementation((...args) => {
         if (String(args[0]) === victim.editorRoot) {
           observations++
           throw injected
@@ -3176,7 +3307,7 @@ describe('advisory budget failures preserve publication and uncertain readers', 
         if (publication !== undefined) await Promise.allSettled([publication])
         clock.mockRestore()
         log.mockRestore()
-        inspect.mockRestore()
+        inspect.mockReset().mockImplementation(nativeFs.lstatSync)
       }
     })
   })
@@ -3236,7 +3367,9 @@ describe('budget victim teardown after the census', () => {
   let incoming: Fixture
   let victim: Fixture
   let publication: Promise<EditorViewRecord> | undefined
+  let restoreHostBudget: () => void
   beforeAll(async () => {
+    restoreHostBudget = isolateHostBudget()
     incoming = makeFixture()
     const original = makeFixture()
     victim = {
@@ -3252,11 +3385,12 @@ describe('budget victim teardown after the census', () => {
     if (publication !== undefined) await Promise.allSettled([publication])
     if (existsSync(victim.root) === true) cleanup(victim)
     cleanup(incoming)
+    restoreHostBudget()
   })
   it('skips a victim removed immediately before acquiring its eviction lock', async () => {
-    const nativeMkdir = fs.mkdirSync
+    const nativeMkdir = nativeFs.mkdirSync
     let removed = false
-    const create = vi.spyOn(fs, 'mkdirSync').mockImplementation((...args) => {
+    const create = fsMocks.mkdirSync.mockImplementation((...args) => {
       if (String(args[0]) === join(victim.editorRoot, '.publish.lock') && removed === false) {
         removed = true
         cleanup(victim)
@@ -3273,7 +3407,7 @@ describe('budget victim teardown after the census', () => {
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
       clock.mockRestore()
-      create.mockRestore()
+      create.mockReset().mockImplementation(nativeFs.mkdirSync)
     }
   })
 })

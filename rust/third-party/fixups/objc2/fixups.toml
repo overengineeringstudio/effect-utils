@@ -1,0 +1,3 @@
+# Prototype: carry forward the objc2 build-script policy from pingpong.
+# The newly resolved objc2 release requires review before production adoption.
+buildscript.run = true

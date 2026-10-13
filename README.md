@@ -124,6 +124,16 @@ schema-first `OtelMetric` contracts, preserving their exported metric identities
 - **OTEL spans** - Automatic tracing with cross-process trace propagation
 - **Test helpers** - `withTestCtx` for automatic layer provision in Playwright tests
 
+### Peer-to-peer QUIC
+
+Effect 4 bindings for authenticated peer-to-peer QUIC and schema-framed messages
+in Node and Bun desktop/server applications.
+See the [package README](./packages/@overeng/effect-iroh/README.md) for usage and limitations.
+
+| Package                                                       | Description                         |
+| ------------------------------------------------------------- | ----------------------------------- |
+| [@overeng/effect-iroh](./packages/@overeng/effect-iroh)           | Effect wrapper for the iroh binding |
+
 ### Utilities
 
 | Package                                     | Description                                          |
@@ -198,18 +208,29 @@ devenv tasks run test:watch
 ```
 
 The aggregate starts `test:buck2:unit` after `genie:check`, independently of
-editor dependency publication. It first prebuilds every declared Vitest collection
-product from `buck2-test-authority.json`, then executes the bounded lanes in the
-existing single Buck test invocation. The prebuild performs no source tests and
+editor dependency publication. It first prebuilds the selected Vitest collection
+products from `buck2-test-authority.json`, then executes the selected bounded lanes
+in the existing single Buck test invocation. The prebuild performs no source tests and
 does not cache source reports or coverage verdicts.
 
 After the source suites and bounded verdicts finish, `test:run` still invokes
 the baseline-collection gate. That gate resolves the identical collection targets
 with the same local-only host-platform Buck build, so current inputs are checked
 even when the products are warm. It then validates the complete filesystem census,
-each bounded selection's exact inventory, source-task ownership and baseline counts.
-Prebuilding changes scheduling only: missing or malformed products, coverage drift,
-failed bounded execution and missing source evidence still fail the aggregate.
+each selected bounded lane's exact inventory, source-task ownership and baseline counts.
+Missing or malformed products, coverage drift, failed bounded execution and missing
+selected source evidence still fail the aggregate.
+
+`genie/ci-workflow/test-platforms.json` classifies aggregate source tasks, individual
+bounded Buck lanes, and every shared module shell script as Darwin-sensitive or
+platform-neutral, with a rationale for each. The required macOS lane sets
+`EFFECT_UTILS_TEST_PLATFORM=darwin` and runs only the Darwin subsets; Linux and an
+unset platform run both subsets. Disjointness and completeness are enforced against
+the generated Buck authority and discovered module scripts. The complete ownership
+authority is retained even when collection products and baseline evidence are scoped.
+Editor publication follows the selected source suites and module fixtures rather
+than publishing neutral-only package views. macOS still builds and smokes the native
+and compiled products to cover Darwin artifacts.
 
 ### Type Checking
 
@@ -296,6 +317,15 @@ The consumer's Nix source closure must supply the same cell, package bytes, and
 target declarations. The root continues to ignore `.devenv` wholesale. Unmapped
 workspace packages retain their conventional same-cell `:package_tree` labels;
 mapped labels participate in the projection fingerprint.
+
+Dependency-view availability is derived from the complete required resolver
+context, not just a package's own platform fields. Required native dependencies
+retain their edges on supported machine platforms; their owners and importer
+views have no `javascript_portable` configuration. Generation still succeeds,
+but selecting an unsupported configuration fails analysis before execution.
+Optional native packages retain platform filtering. The normalized store schema
+is `effect-utils/buck2-pnpm-store/v2`; importer `platforms` lists supported
+configurations and `variants` covers only that set.
 
 Put the effect-utils flake's pinned `packages.<system>.buck2` on `PATH` (or use
 its `bin/buck2` as `BUCK2_BIN`). Direct commands, agents and devenv tasks then

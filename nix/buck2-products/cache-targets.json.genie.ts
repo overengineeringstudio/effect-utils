@@ -7,6 +7,12 @@ import {
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const javascriptProducts = [
+  [
+    'ai-gateway-edge',
+    'ai-gateway-edge.js',
+    'packages/@overeng/ai-gateway-edge',
+    'ai-gateway-edge-candidate',
+  ],
   ['ci-tools', 'ci-tools.js', 'packages/@overeng/ci-tools', 'ci-tools-candidate'],
   ['genie', 'genie.js', 'packages/@overeng/genie', 'genie-candidate'],
   [

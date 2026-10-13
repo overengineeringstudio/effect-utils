@@ -132,10 +132,12 @@ _Avoid_: "cycle retry" (it re-arms the loop, it does not re-run the bounded
 `Restate.run`).
 
 **wakeId**:
-The id of a **Poll Loop**'s live inter-cycle wake awakeable (wake mode), persisted in
+The id of a **Poll Loop**'s latest published wake awakeable (wake mode), persisted in
 State and exposed via a SHARED `wakeId` handler so an external webhook can read it
 (even while an exclusive **Cycle** holds the write lock) and `resolveAwakeable` it to
-fire the next cycle EARLY. ROTATED every cycle; a stale id resolves harmlessly.
+fire the next cycle EARLY. Replaced atomically every cycle; retained between running
+cycles and cleared when the loop ends. A stale id resolves harmlessly without waking
+a newer cycle.
 
 **wokenBy**:
 The one-shot payload (the wake reason) handed to the NEXT **Cycle** when the previous

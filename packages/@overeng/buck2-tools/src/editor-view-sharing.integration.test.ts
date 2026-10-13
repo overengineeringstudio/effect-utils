@@ -30,6 +30,7 @@ import {
   type EditorViewContentSharing,
   collectEditorViewContentStore,
   defaultEditorViewContentStore,
+  editorViewStagingCreatorIdentity,
   shareSnapshotFiles,
 } from './editor-view-sharing.ts'
 
@@ -269,8 +270,15 @@ const crashAtBlobInstall = async ({
   try {
     const install = await installed.promise
     const pid = child.pid ?? fail('publisher child has no pid')
+    const identity = editorViewStagingCreatorIdentity({ pid })
+    expect(identity).toMatch(/^(linux-[a-f0-9]{32}-[0-9]+|darwin-[a-f0-9]{64})$/)
+    if (install.preparedCopy !== undefined)
+      expect(basename(install.preparedCopy).startsWith(`${pid}-${identity}-`)).toBe(true)
     expect(child.kill('SIGKILL')).toBe(true)
     expect(await exited.promise).toEqual({ code: null, signal: 'SIGKILL' })
+    const afterExit = editorViewStagingCreatorIdentity({ pid })
+    expect(afterExit).not.toBe('unknown')
+    expect(afterExit).not.toBe(identity)
     return { pid, ...install }
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
@@ -954,6 +962,47 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
+  it.each([0o600, 0o444])('keeps live staging mode %o during repair', async (stageMode) => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const seed = candidate('seed')
+      payload(seed, 'payload', 'seed bytes')
+      await shareSnapshotFiles({ candidate: seed, contentStore })
+      const lock = inode(`${contentStore}.flock`)
+      const identity = editorViewStagingCreatorIdentity({ pid: process.pid })
+      expect(identity).toMatch(/^(linux-[a-f0-9]{32}-[0-9]+|darwin-[a-f0-9]{64})$/)
+      const staging = join(contentStore, '.staging')
+      chmodSync(contentStore, 0o755)
+      mkdirSync(staging)
+      const stage = payload(
+        staging,
+        `${process.pid}-${identity}-00000000-0000-0000-0000-000000000001.tmp`,
+        'live staging bytes',
+        stageMode,
+      )
+      chmodSync(staging, 0o555)
+      chmodSync(contentStore, 0o555)
+      const before = lstatSync(stage, { bigint: true })
+      let inspectedBeforeCallback = false
+      expect(
+        await collectEditorViewContentStore({
+          contentStore,
+          afterStoreLock: () => {
+            const after = lstatSync(stage, { bigint: true })
+            expect([after.dev, after.ino]).toEqual([before.dev, before.ino])
+            expect(after.mode).toBe(before.mode)
+            expect(after.mtimeNs).toBe(before.mtimeNs)
+            expect(readFileSync(stage, 'utf8')).toBe('live staging bytes')
+            expectReadonlyDirectories(contentStore)
+            inspectedBeforeCallback = true
+          },
+        }),
+      ).toEqual({ removedBlobs: 0, removedBytes: 0 })
+      expect(inspectedBeforeCallback).toBe(true)
+      expect(inode(`${contentStore}.flock`)).toBe(lock)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
   it('repairs a publisher SIGKILLed mid-batch on the next acquisition before any callback', async () => {
     await withStore(async ({ root, contentStore, candidate }) => {
       const seed = candidate('seed')
@@ -1135,6 +1184,7 @@ describe('host-wide editor snapshot content store', () => {
           mkdirSync(crashed)
           const crashedFile = payload(crashed, 'payload', 'staged bytes')
           const install = await crashAtBlobInstall({ root, candidate: crashed, contentStore })
+          const lock = inode(`${contentStore}.flock`)
           const staging =
             install.preparedCopy ?? fail('cross-device publisher did not stage a copy')
           expect(install.blob).toBe(blobPath(contentStore, 'staged bytes'))
@@ -1157,6 +1207,9 @@ describe('host-wide editor snapshot content store', () => {
               afterStoreLock: () => {
                 expect(readdirSync(dirname(staging))).toEqual([])
                 expect(exists(install.temporary) === true).toBe(false)
+                expect(readFileSync(install.blob, 'utf8')).toBe('staged bytes')
+                expect(mode(install.blob)).toBe(0o444)
+                expect(inode(`${contentStore}.flock`)).toBe(lock)
                 expectReadonlyStore(contentStore)
                 repairedBeforeCallback = true
               },
@@ -1170,6 +1223,8 @@ describe('host-wide editor snapshot content store', () => {
           })
           expect(exists(install.blob) === true).toBe(false)
           expect(readFileSync(crashedFile, 'utf8')).toBe('staged bytes')
+          expect(mode(crashedFile)).toBe(0o444)
+          expect(inode(`${contentStore}.flock`)).toBe(lock)
           expectReadonlyStore(contentStore)
           expectIdleStoreLock(contentStore)
         })

@@ -8,7 +8,19 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { scheduler } from 'node:timers/promises'
 
-import { Cause, Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Scope, Stream } from 'effect'
+import {
+  Cause,
+  Context,
+  DateTime,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Schema,
+  Scope,
+  Stream,
+} from 'effect'
 import type * as FixtureService from 'effect-rust-fixture'
 import type * as FixtureContracts from 'effect-rust-fixture/contracts'
 
@@ -24,10 +36,11 @@ assert.ok(
 // Keep runtime-selected loads, but check their use against the actual Buck-generated types.
 // eslint-disable-next-line import/no-dynamic-require -- Contract codecs are loaded from the runtime-selected generated Buck service package under test.
 const Contracts: typeof FixtureContracts = await import(resolve(directory, 'contracts.ts'))
-const { EffectRustFixture, ArithmeticError, SourceError, load }: typeof FixtureService = await import(
-  // eslint-disable-next-line import/no-dynamic-require -- Service statics are loaded from the runtime-selected generated Buck service package under test.
-  resolve(directory, 'service.ts')
-)
+const { EffectRustFixture, ArithmeticError, SourceError, load }: typeof FixtureService =
+  await import(
+    // eslint-disable-next-line import/no-dynamic-require -- Service statics are loaded from the runtime-selected generated Buck service package under test.
+    resolve(directory, 'service.ts')
+  )
 
 // Canonical JSON: the `kind` discriminator first, remaining keys by UTF-16 code unit.
 const canonical = (value: unknown): string => {
@@ -44,11 +57,19 @@ const codecs = {
   Order: Contracts.Order,
   Quote: Contracts.Quote,
   FloatSample: Contracts.FloatSample,
+  NullableFloatSample: Contracts.NullableFloatSample,
   WideSample: Contracts.WideSample,
 }
 const Vectors = Schema.Array(
   Schema.Struct({
-    contract: Schema.Literals(['Discount', 'Order', 'Quote', 'FloatSample', 'WideSample']),
+    contract: Schema.Literals([
+      'Discount',
+      'Order',
+      'Quote',
+      'FloatSample',
+      'NullableFloatSample',
+      'WideSample',
+    ]),
     name: Schema.String,
     input: Schema.Unknown,
     accept: Schema.Boolean,
@@ -63,7 +84,7 @@ for (const vector of vectors) {
   const codec = codecs[vector.contract]
   const decode = () => ContractJson.decode(codec)(vector.inputJson ?? JSON.stringify(vector.input))
   if (vector.accept === false) {
-    assert.throws(decode, `${label} must be rejected`)
+    assert.throws(decode, Schema.SchemaError, `${label} must be rejected by the contract codec`)
     continue
   }
   assert.equal(
@@ -123,7 +144,17 @@ const program = (transport: 'wasm' | 'native') =>
         for (const value of [minimum, maximum, 0]) {
           assert.equal(yield* fixture[operation](value), value, `${operation} accepts ${value}`)
         }
-        for (const value of [minimum - 1, maximum + 1, 4294967297, 1.5, -0.5, NaN, Infinity, -Infinity, -0]) {
+        for (const value of [
+          minimum - 1,
+          maximum + 1,
+          4294967297,
+          1.5,
+          -0.5,
+          NaN,
+          Infinity,
+          -Infinity,
+          -0,
+        ]) {
           const error = yield* fixture[operation](value).pipe(Effect.flip)
           assert.ok(error instanceof Interop.Input, `${operation} rejects ${value} as Input`)
           assert.equal(error.operation, operation)
@@ -136,8 +167,11 @@ const program = (transport: 'wasm' | 'native') =>
           )
         }
       }
-      for (const request of [fixture.checkedDivide(10, 4294967297), fixture.add(1.5, 0)]) {
-        assert.ok((yield* request.pipe(Effect.flip)) instanceof Interop.Input)
+      for (const [operation, request] of [
+        ['checkedDivide', fixture.checkedDivide(10, 4294967297)],
+        ['add', fixture.add(1.5, 0)],
+      ] as const) {
+        assertSynchronousInput(request, operation, `${operation} rejects invalid scalar input`)
       }
       assert.equal(yield* fixture.checkedDivide(10, 2), 5)
       assert.equal(yield* fixture.add(1, 2), 3)
@@ -248,11 +282,9 @@ const program = (transport: 'wasm' | 'native') =>
       )
       assert.deepEqual(free, { kind: 'free', orderId: 9007199254740993n })
       // Contract encoding rejects the brand before Rust is called.
-      const invalid = yield* Effect.exit(
+      assertSynchronousInput(
         fixture.quoteOrder({ ...order, sku: 'abc' }, { kind: 'none' }),
-      )
-      assert.ok(
-        Exit.isFailure(invalid) && String(invalid.cause).includes('Input'),
+        'quoteOrder',
         'invalid brand fails with Interop.Input',
       )
       const overflow = yield* fixture
@@ -447,9 +479,23 @@ for (const backend of ['wasm', 'native'] as const) {
   try {
     for (const [operation, minimum, maximum] of scalarCases) {
       for (const value of [minimum, maximum, 0]) {
-        assert.equal(instance.api[operation](value), value, `${backend} ${operation} accepts ${value}`)
+        assert.equal(
+          instance.api[operation](value),
+          value,
+          `${backend} ${operation} accepts ${value}`,
+        )
       }
-      for (const value of [minimum - 1, maximum + 1, 4294967297, 1.5, -0.5, NaN, Infinity, -Infinity, -0]) {
+      for (const value of [
+        minimum - 1,
+        maximum + 1,
+        4294967297,
+        1.5,
+        -0.5,
+        NaN,
+        Infinity,
+        -Infinity,
+        -0,
+      ]) {
         assert.throws(
           () => instance.api[operation](value),
           (cause: unknown) => cause instanceof Error && cause.message.startsWith('RUST_INPUT:'),
@@ -457,10 +503,7 @@ for (const backend of ['wasm', 'native'] as const) {
         )
       }
     }
-    assert.throws(
-      () => instance.api.checkedDivide(10, 4294967297),
-      /^Error: RUST_INPUT:/,
-    )
+    assert.throws(() => instance.api.checkedDivide(10, 4294967297), /^Error: RUST_INPUT:/)
     assert.throws(() => instance.api.add(1.5, 0), /^Error: RUST_INPUT:/)
     assert.equal(instance.api.echoF32(1.1), Math.fround(1.1))
   } finally {
@@ -472,7 +515,9 @@ for (const backend of ['wasm', 'native'] as const) {
 await Effect.runPromise(
   wasmSchedulerSmoke({ runtime, load: load.wasm[runtime] }).pipe(Effect.timeout('10 seconds')),
 )
-console.log(`wasm ${runtime}: first-poll/host-await traps, sibling defects, retirement and rebuild verified`)
+console.log(
+  `wasm ${runtime}: first-poll/host-await traps, sibling defects, retirement and rebuild verified`,
+)
 
 interface ShutdownApi {
   readonly counter: (initial: number) => Interop.ResourceHandle

@@ -18,6 +18,7 @@ export const internalPackages = [
   'effect-ai-claude-cli',
   'effect-ai-gateway',
   'effect-distributed-lock',
+  'effect-iroh',
   'effect-path',
   'effect-react',
   'effect-rpc-explorer',
@@ -110,6 +111,15 @@ export const nixOnlyPackages = [
     kind: 'rust-crate',
     flakeRef: 'otel-scrape',
     cratePath: 'packages/@overeng/otel-scrape',
+  },
+  {
+    name: 'pingping',
+    /** Rust crate: live latency and loss inspection. */
+    kind: 'rust-crate',
+    flakeRef: 'pingping',
+    cratePath: 'packages/@overeng/pingping',
+    /** Install bash, zsh and fish hooks for the COMPLETE=<shell> protocol. */
+    shellCompletions: true,
   },
 ] as const
 

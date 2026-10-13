@@ -24,7 +24,7 @@ translate (genie, freshness-gated)
   -> per package version: fetch target (url, sha256 from generated sidecar)
                           extract target (tarball -> package tree artifact)
   -> per importer:        node_modules assembly target
-  -> platform constraints on optional/platform packages (select())
+  -> per-configuration required-edge availability and optional filtering (select())
 
 fetch     download_file, remote-cacheable, network only here (BUILD.BUCK.MAT-R08)
 extract   tar -> package tree, local-materialization-policy (no AC reads/uploads)
@@ -73,6 +73,82 @@ cacheable consumers; the editor-surface realization provides BUILD.BUCK.MAT-R03
 live-source links outside the cacheable package tree without weakening
 BUILD.BUCK.MAT-R02.
 
+## Resolver-Context Platform Availability
+
+```text
+own package cpu/os/libc gates
+  -> initial snapshot/importer availability
+  -> required-edge removal to a fixed point (including cycles)
+  -> supported entry/view variants + unsupported-configuration reasons
+  -> configured Buck selection
+       supported: materialize the complete filtered resolver context
+       unsupported: fail before registering actions
+```
+
+This realizes BUILD.BUCK.MAT-R02, BUILD.BUCK.MAT-R07, and
+BUILD.BUCK.MAT-R08 under
+[decision 0040](../../.decisions/0040-required-edge-transitive-platform-availability.md).
+Portability is a property of the complete required resolver context; own
+package gates are only initial constraints. Unsupported configurations are
+representable and rejected when selected; required obligations are never
+omitted to manufacture a supported tree.
+
+The dependency projection evaluates four configurations: `javascript_portable`,
+`linux_aarch64`, `linux_x86_64`, and `macos_aarch64`. The native configurations
+use the tuples in [the platform spec](../02-platforms-toolchains/spec.md#platforms).
+`javascript_portable` requires an ungated package: any cpu, os, or libc
+restriction excludes it, rather than borrowing the generator host's tuple.
+
+Availability is computed over resolved snapshot and importer nodes before
+projecting store edges:
+
+1. Seed each snapshot with the configurations allowed by its package's own
+   metadata gates; seed importers with all four configurations.
+2. For each required resolved dependency, remove a configuration from its
+   owner whenever the dependency is unavailable in that configuration.
+   Required workspace references participate through their importer context
+   when the lockfile represents it; externally declared workspace trees remain
+   first-party Buck dependencies. Peer-suffixed snapshots retain exact resolution.
+3. Propagate removals through required predecessors until no set changes.
+   This descending fixed point preserves a required strongly connected
+   component when every member and external required dependency is available.
+   A restriction in any member or external required dependency propagates
+   through the cycle; traversal order must not affect the result.
+4. Project edges only for surviving owner configurations. A required edge
+   remains present in every such configuration. An optional edge is retained
+   only when its resolved dependency is available there, including that
+   dependency's own required closure; its absence does not remove the owner.
+   Linked and injected optional workspace references use their resolved importer
+   availability when represented in the lockfile. Importer `workspace_trees`
+   and `workspace_dependencies` declarations select only that configuration's
+   surviving edges; an omitted optional workspace must not remain a Buck
+   dependency that triggers analysis of an unavailable workspace closure.
+
+Missing referenced package or snapshot metadata, integrity, or patch metadata remains a
+global generation error, including for an unavailable configuration or an
+optional edge. Platform exclusion is not permission to accept an unresolved
+reference or bypass hash verification.
+
+Store-entry `platforms` records the transitively constrained availability set.
+The normalized projection schema is `effect-utils/buck2-pnpm-store/v2`; adding
+the view availability set changes the versioned metadata and store fingerprint,
+not the identity of unchanged supported view rules.
+Each `PnpmStoreView` independently records `platforms: readonly PnpmPlatform[]`;
+its variants cover supported configurations only. Equal supported projections
+may share a variant. SCC assembly likewise projects only supported member
+contexts; it cannot restore a removed configuration. An empty availability set
+is a valid projection, not a reason to omit the target or fail generation.
+
+Restricted entries and views emit `unavailable_by_platform`, a repository-local
+Starlark attribute mapping all four exact lowercase configuration keys to a
+nonempty diagnostic reason when unavailable and an empty string when supported.
+Unrestricted entries and views omit the attribute, preserving their existing
+generated bytes and identities. Shared rules select the diagnostic for the
+configured platform and fail at the beginning of implementation, before any
+actions are registered. Thus generation of a mixed-platform graph succeeds,
+while selecting an unsupported dependency context fails explicitly rather than
+linking an incomplete tree. Supported, unrelated view bytes remain unchanged.
+
 ## Editor Surface
 
 The repository-root source-generator consumer and each admitted workspace
@@ -110,6 +186,12 @@ view digest, exact byte-owned snapshot digest, and deterministic snapshot name.
 Tree digests use the `effect-utils/tree-digest/v1` domain separator, unsigned
 UTF-8 byte ordering, length framing, and fail-closed checks for special or
 concurrently changing files.
+Stability checks retain entry type, device, modification/change times, regular-file
+size, and file/symlink inode identity. Directory inode numbers are excluded:
+[overlayfs inode properties](https://docs.kernel.org/filesystems/overlayfs.html#inode-properties)
+do not guarantee their persistence in every layer configuration. Directory
+content and link targets remain covered by the same tree digest and timestamps;
+the digest format and byte-ownership admission are unchanged.
 
 Before publication, `buck2:editor:authority` compares the canonical admission
 registry with tracked package manifests and a Buck `owner(...)` census. The
@@ -152,7 +234,7 @@ Bootstrap and publication commands submit all selected views in one
 stdin. Request size is not limited by the operating system's per-argument cap.
 The batch acquires each distinct state-root lock before preparing any view and
 holds every lock until all workers have settled. `editorViewPublicationWorkers`
-in the publisher is the single declared resource bound (one); bootstrap and
+in the publisher is the single declared resource bound (four); bootstrap and
 source-test publication both use it. Independent root fingerprints within a
 candidate remain concurrent. Native copy children are awaited asynchronously,
 with at most one per active view. Candidate names are unique per view operation;

@@ -8,6 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { emitCompletedSpanAsync, otelTraceContextActive } from './otel-span-cli.ts'
 
+// Stable forwarding exports observe the named imports used by Bun's native modules.
+const nativeChildProcess = { ...ChildProcess }
+const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
+vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
+
 const traceparent = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
 
 const activeDirectories: string[] = []
@@ -63,9 +68,12 @@ describe('otel span cli', () => {
     OTEL_SPAN_BIN: process.env.OTEL_SPAN_BIN,
   }
   beforeEach(() => {
-    const nativeSpawn = ChildProcess.spawn
-    vi.spyOn(ChildProcess, 'spawn').mockImplementation((...args) => {
-      const child = Reflect.apply(nativeSpawn, ChildProcess, args) as ChildProcess.ChildProcess
+    childProcessMocks.spawn.mockImplementation((...args) => {
+      const child = Reflect.apply(
+        nativeChildProcess.spawn,
+        ChildProcess,
+        args,
+      ) as ChildProcess.ChildProcess
       exporters.push(child)
       const exited = Promise.withResolvers<{
         readonly code: number | null
@@ -78,7 +86,7 @@ describe('otel span cli', () => {
   })
   afterEach(async () => {
     await settleExporters()
-    vi.restoreAllMocks()
+    childProcessMocks.spawn.mockReset().mockImplementation(nativeChildProcess.spawn)
     exporters.length = 0
     exporterExits.length = 0
     for (const [key, value] of Object.entries(saved))

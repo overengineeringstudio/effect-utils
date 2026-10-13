@@ -36,6 +36,17 @@ import {
 } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 
+// Stable forwarding exports observe the named imports used by Bun's native modules.
+const nativeChildProcess = { ...ChildProcess }
+const childProcessMocks = {
+  spawn: vi.fn(nativeChildProcess.spawn),
+  spawnSync: vi.fn(nativeChildProcess.spawnSync),
+}
+vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
+const nativeFs = { ...Fs }
+const fsMocks = { readlinkSync: vi.fn(nativeFs.readlinkSync) }
+vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
+
 /** Match the publisher's integration fixtures: tools never resolve through ambient PATH. */
 const requireTool = (name: string): string => {
   const tool = process.env[name]
@@ -543,7 +554,7 @@ const expectRunningReader = (reader: Reader): void => {
   expect(status.stdout.trim()).toBe(String(reader.child.pid))
 }
 
-/** Record actual otel-span subprocess arguments; no span emitter or process runtime is mocked. */
+/** Record actual otel-span subprocess arguments; forwarding exports preserve native processes. */
 const recordTelemetry = async <TValue>(
   root: string,
   run: (children: readonly ChildProcess.ChildProcess[]) => Promise<TValue>,
@@ -569,9 +580,12 @@ const recordTelemetry = async <TValue>(
   const invocations: (readonly string[])[] = []
   const exits: Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>[] =
     []
-  const nativeSpawn = ChildProcess.spawn
-  const spawned = vi.spyOn(ChildProcess, 'spawn').mockImplementation((...args) => {
-    const child = Reflect.apply(nativeSpawn, ChildProcess, args) as ChildProcess.ChildProcess
+  const spawned = childProcessMocks.spawn.mockImplementation((...args) => {
+    const child = Reflect.apply(
+      nativeChildProcess.spawn,
+      ChildProcess,
+      args,
+    ) as ChildProcess.ChildProcess
     if (String(args[0]) === bin) {
       children.push(child)
       invocations.push(child.spawnargs.slice(1))
@@ -604,7 +618,7 @@ const recordTelemetry = async <TValue>(
     setImmediate(cleanupTurn.resolve)
     await cleanupTurn.promise
     await Promise.all(exits)
-    spawned.mockRestore()
+    spawned.mockReset().mockImplementation(nativeChildProcess.spawn)
     for (const [key, value] of Object.entries(saved)) {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
@@ -1478,30 +1492,26 @@ describe('host-budget reader observations keep a fixed candidate set', () => {
       readerReady === false
     )
       throw new Error('fixed-candidate regression setup did not complete')
-    const nativeReadlink = Fs.readlinkSync
     let crossed = false
-    const scan = vi.spyOn(Fs, 'readlinkSync').mockImplementation((...args) => {
+    const scan = fsMocks.readlinkSync.mockImplementation((...args) => {
       if (crossed === false && /^\/proc\/[0-9]+\/cwd$/.test(String(args[0])) === true) {
         crossed = true
         host.advance(2)
       }
-      return Reflect.apply(nativeReadlink, Fs, args) as ReturnType<typeof Fs.readlinkSync>
+      return nativeFs.readlinkSync(...args)
     })
-    const nativeSpawnSync = ChildProcess.spawnSync
-    const nativeScan = vi.spyOn(ChildProcess, 'spawnSync').mockImplementation((...args) => {
+    const nativeScan = childProcessMocks.spawnSync.mockImplementation((...args) => {
       if (crossed === false && String(args[0]) === '/usr/sbin/lsof') {
         crossed = true
         host.advance(2)
       }
-      return Reflect.apply(nativeSpawnSync, ChildProcess, args) as ReturnType<
-        typeof ChildProcess.spawnSync
-      >
+      return nativeChildProcess.spawnSync(...args)
     })
     try {
       expectCurrent(incoming, await host.publish(incoming, { hostBudgetBytes: 1 }))
     } finally {
-      scan.mockRestore()
-      nativeScan.mockRestore()
+      scan.mockReset().mockImplementation(nativeFs.readlinkSync)
+      nativeScan.mockReset().mockImplementation(nativeChildProcess.spawnSync)
     }
     expect(crossed).toBe(true)
     expect(pathExists(join(old.editorRoot, oldRecord.snapshot))).toBe(false)
