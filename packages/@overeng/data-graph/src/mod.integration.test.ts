@@ -110,7 +110,7 @@ it.effect(
               receipts: [],
               outputs: {
                 ['constructor']: {
-                  bytes: utf8Bytes(inputs.constructor!.digest),
+                  bytes: utf8Bytes(inputs['constructor']!.digest),
                   mediaType: 'text/plain',
                 },
                 ['__proto__']: {
@@ -149,7 +149,7 @@ it.effect(
           yield* DataGraph.getHead({ kind: consumerKind, scope }),
         )
         expect(secondHead.action.digest).not.toBe(firstHead.action.digest)
-        expect(changed.outputs.constructor?.digest).toBe(first.outputs.constructor?.digest)
+        expect(changed.outputs['constructor']?.digest).toBe(first.outputs['constructor']?.digest)
         expect(changed.outputs.__proto__?.digest).not.toBe(first.outputs.__proto__?.digest)
         const changedReused = yield* DataGraph.materialize(target)
         expect(changedReused.trace.map((entry) => entry.outcome._tag)).toEqual(['Reused', 'Reused'])
