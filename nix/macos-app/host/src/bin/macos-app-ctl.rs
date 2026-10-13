@@ -26,6 +26,20 @@ fn socket_mode(path: &str) -> Option<u32> { fs::metadata(path).ok().map(|m| m.pe
 fn signing_failure_marker(app: &Path) -> PathBuf { app.with_extension("signing-failed.json") }
 fn archive_pointer(app: &Path) -> PathBuf { app.with_extension("previous") }
 fn transaction_record(app: &Path) -> PathBuf { app.with_extension("txn.json") }
+fn rollback_record(app: &Path) -> PathBuf { app.with_extension("rollback.json") }
+fn read_json(path: &Path) -> Result<Option<Value>> { fs::read(path).ok().map(|b| serde_json::from_slice(&b)).transpose().map_err(Failure::from) }
+/// The archive path, target generation and restored-host inode of a host-rollback record.
+fn rollback_fields(record: &Value) -> Result<(PathBuf, PathBuf, Option<u64>)> {
+    let corrupt = || fail(64, "invalid-input", "Corrupt host-rollback record");
+    let archive = PathBuf::from(record["archive"].as_str().ok_or_else(corrupt)?);
+    let target = PathBuf::from(record["targetGeneration"].as_str().ok_or_else(corrupt)?);
+    Ok((archive, target, Some(record["restoredInode"].as_u64().ok_or_else(corrupt)?)))
+}
+/// Post-commit cleanup: a failure is reported as a leftover path and never undoes the commit.
+fn remove_leftover(path: &Path) -> Option<PathBuf> {
+    if !path.exists() { return None; }
+    if failpoint("cleanup") || fs::remove_dir_all(path).is_err() { Some(path.to_owned()) } else { None }
+}
 /// Test-only failpoints can force failure or crash paths; they cannot make any check pass.
 fn failpoint(name: &str) -> bool { std::env::var("MACOS_APP_CTL_TEST_FAILPOINT").is_ok_and(|v| v == name) }
 fn exchange(a: &Path, b: &Path) -> Result<()> {
@@ -235,42 +249,73 @@ impl Ctl {
         verified.map_err(|e| signing("dr-mismatch", e.reason))?;
         Ok(())
     }
-    /// Publishes the archive of an exchanged incumbent and the generation it ran with.
-    fn publish_archive(&self, app: &Path, stage: &Path, generation: Option<&Path>) -> Result<()> {
+    /// Roll-forward publication after the exchange, which is the install commit point. Every step
+    /// is idempotent and `D.txn.json` is removed last, so a failure or crash here is completed by
+    /// `reconcile`, never undone. Removing the superseded archive is post-commit cleanup.
+    fn publish_archive(&self, app: &Path, txn: &Value) -> Result<Option<PathBuf>> {
+        let stage = PathBuf::from(txn["stage"].as_str().ok_or_else(|| fail(64, "invalid-input", "Corrupt transaction record"))?);
         let state = self.state()?;
         fs::create_dir_all(&state)?;
         let recorded = state.join("host-previous-generation");
-        match generation { Some(generation) => select(&recorded, generation)?, None => remove_if_present(&recorded)? }
-        // Exactly one archive is kept; the superseded one is no longer reachable by rollback.
-        let superseded = pointer(&archive_pointer(app)).filter(|old| old != stage);
-        select(&archive_pointer(app), stage)?;
+        match txn["generation"].as_str() { Some(generation) => select(&recorded, Path::new(generation))?, None => remove_if_present(&recorded)? }
+        select(&archive_pointer(app), &stage)?;
+        if failpoint("after-archive-pointer") { std::process::exit(137); }
         // A signed host is now installed, so an earlier signing failure no longer describes D.
         remove_if_present(&signing_failure_marker(app))?;
         remove_if_present(&transaction_record(app))?;
-        if let Some(old) = superseded.filter(|old| old.exists()) { fs::remove_dir_all(old)?; }
-        Ok(())
+        // Exactly one archive is kept; the superseded one is no longer reachable by rollback.
+        Ok(txn["superseded"].as_str().map(PathBuf::from).filter(|old| *old != stage).and_then(|old| remove_leftover(&old)))
     }
-    /// Completes or discards a host exchange interrupted by a crash; runs before any no-op check.
-    fn reconcile(&self, app: &Path) -> Result<Option<&'static str>> {
+    /// Completes or discards an install exchange interrupted by a failure or crash. Runs before
+    /// any no-op check in `install-host` and `rollback`.
+    fn reconcile(&self, app: &Path) -> Result<(Option<&'static str>, Option<PathBuf>)> {
         let record = transaction_record(app);
-        let Ok(bytes) = fs::read(&record) else { return Ok(None) };
-        let txn: Value = serde_json::from_slice(&bytes)?;
-        let stage = PathBuf::from(txn["stage"].as_str().ok_or_else(|| fail(64, "invalid-input", "Corrupt transaction record"))?);
-        let generation = txn["generation"].as_str().map(PathBuf::from);
-        // renamex_np swaps directory entries, so the stage inode at the app path proves the exchange.
-        if stage.exists() && inode(app) == txn["stageInode"].as_u64() {
-            self.publish_archive(app, &stage, generation.as_deref())?;
-            return Ok(Some("archive-published"));
+        if let Ok(bytes) = fs::read(&record) {
+            let txn: Value = serde_json::from_slice(&bytes)?;
+            let stage = PathBuf::from(txn["stage"].as_str().ok_or_else(|| fail(64, "invalid-input", "Corrupt transaction record"))?);
+            // renamex_np swaps directory entries, so the stage inode at the app path proves the exchange.
+            if stage.exists() && inode(app) == txn["stageInode"].as_u64() {
+                return Ok((Some("archive-published"), self.publish_archive(app, &txn)?));
+            }
+            if stage.exists() { fs::remove_dir_all(&stage)?; }
+            remove_if_present(&record)?;
+            return Ok((Some("stage-discarded"), None));
         }
-        if stage.exists() { fs::remove_dir_all(&stage)?; }
-        remove_if_present(&record)?;
-        Ok(Some("stage-discarded"))
+        Ok((None, None))
+    }
+    /// `install-host` side of an interrupted host rollback (`rollback` resumes it fully instead).
+    fn reconcile_rollback(&self, app: &Path) -> Result<(Option<&'static str>, Option<PathBuf>)> {
+        let Some(rollback) = read_json(&rollback_record(app))? else { return Ok((None, None)) };
+        let (archive, target, restored) = rollback_fields(&rollback)?;
+        if inode(app) == rollback["rejectedInode"].as_u64() {
+            // The rollback never exchanged; the archive pointers are still consistent.
+            remove_if_present(&rollback_record(app))?;
+            return Ok((Some("rollback-discarded"), None));
+        }
+        if inode(app) != restored { return Err(mismatch("Interrupted host rollback: the app holds neither recorded bundle")); }
+        // The restored host is installed: select the generation it runs with so a later archive
+        // records it, and retire the rolled-away bundle. Restart and verify are the consumer's next steps.
+        let state = self.state()?;
+        if pointer(&state.join("current")).as_ref() != Some(&target) { select(&state.join("current"), &target)?; }
+        let leftover = self.finish_rollback(app, &archive)?;
+        Ok((Some("rollback-host-restored"), leftover))
+    }
+    /// Drops host-rollback recovery state once the restored host is in place; the record goes last.
+    fn finish_rollback(&self, app: &Path, rolled_away: &Path) -> Result<Option<PathBuf>> {
+        remove_if_present(&archive_pointer(app))?;
+        remove_if_present(&self.state()?.join("host-previous-generation"))?;
+        let leftover = remove_leftover(rolled_away);
+        remove_if_present(&rollback_record(app))?;
+        Ok(leftover)
     }
     fn install(&self) -> Result<Value> {
         let app = self.app()?; let desired = PathBuf::from(self.arg("desired")?);
         let expected = hash(&desired).ok_or_else(|| fail(64, "invalid-input", "Unsigned app lacks source hash marker"))?;
         let expected_metadata = metadata_digest(&desired).ok_or_else(|| fail(64, "invalid-input", "Unsigned app lacks Info.plist"))?;
-        let reconciled = self.reconcile(&app)?;
+        let (reconciled, reconcile_leftover) = match self.reconcile(&app)? {
+            (None, _) => self.reconcile_rollback(&app)?,
+            done => done,
+        };
         let failure_marker = signing_failure_marker(&app);
         let record = |error: Failure| -> Failure {
             if let Some(category) = error.category {
@@ -280,7 +325,7 @@ impl Ctl {
             error
         };
         let current = || hash(&app).as_ref() == Some(&expected) && metadata_digest(&app).as_ref() == Some(&expected_metadata) && self.signature(&app).is_ok();
-        let unchanged = || json!({"changed": false, "hostSourceHash": expected, "bundleMetadataDigest": expected_metadata, "reconciled": reconciled});
+        let unchanged = || json!({"changed": false, "hostSourceHash": expected, "bundleMetadataDigest": expected_metadata, "reconciled": reconciled, "leftovers": reconcile_leftover.iter().collect::<Vec<_>>()});
         if self.args.contains_key("signing-auth-pending") {
             // The consumer could not obtain the password; the keychain is not touched.
             if current() { return Ok(unchanged()); }
@@ -304,21 +349,19 @@ impl Ctl {
         let result = (|| {
             checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
             self.sign(&keychain_path, &keychain, &stage).map_err(&record)?;
+            let mut leftovers: Vec<PathBuf> = reconcile_leftover.iter().cloned().collect();
             if app.exists() {
                 // The record is durable before the exchange, so a crash at any point reconciles.
-                let generation = pointer(&self.state()?.join("current"));
-                let txn = json!({"stage": stage, "stageInode": inode(&stage), "generation": generation});
+                let txn = json!({"stage": stage, "stageInode": inode(&stage), "generation": pointer(&self.state()?.join("current")), "superseded": pointer(&archive_pointer(&app))});
                 atomic_write(&transaction_record(&app), &serde_json::to_vec(&txn)?)?;
+                // Commit point: after this exchange the install only rolls forward. A publication
+                // failure leaves D.txn.json for `reconcile` to complete; it never exchanges back.
                 exchange(&stage, &app)?;
                 if failpoint("after-exchange") { std::process::exit(137); }
-                if let Err(error) = self.publish_archive(&app, &stage, generation.as_deref()) {
-                    exchange(&stage, &app)?;
-                    remove_if_present(&transaction_record(&app))?;
-                    return Err(error);
-                }
+                leftovers.extend(self.publish_archive(&app, &txn)?);
             } else { fs::rename(&stage, &app)?; }
             remove_if_present(&failure_marker)?;
-            Ok(json!({"changed": true, "hostSourceHash": expected, "bundleMetadataDigest": expected_metadata, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled}))
+            Ok(json!({"changed": true, "hostSourceHash": expected, "bundleMetadataDigest": expected_metadata, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled, "leftovers": leftovers}))
         })();
         if result.is_err() && stage.exists() && pointer(&archive_pointer(&app)).as_ref() != Some(&stage) && !transaction_record(&app).exists() { fs::remove_dir_all(stage)?; }
         result
@@ -341,7 +384,7 @@ impl Ctl {
         select(&current, &generation)?;
         Ok(json!({"changed": true, "generation": generation, "gcRootCreated": rooted, "consumerRootRequired": !rooted}))
     }
-    fn converge(&self, force: bool) -> Result<Value> {
+    fn converge(&self) -> Result<Value> {
         let domain = self.domain()?;
         let app = self.app()?; let state = self.state()?;
         let program = app.join("Contents/MacOS").join(self.field("hostExecutable")?);
@@ -364,7 +407,7 @@ impl Ctl {
         let launched_inode = fs::read_to_string(&launched_record).unwrap_or_default();
         let running_hash = if loaded { self.ipc().ok().and_then(|v| v["status"]["hostSourceHash"].as_str().map(str::to_owned)) } else { None };
         let target = format!("{domain}/{}", self.label()?);
-        if same && loaded && !force && hash(&app) == running_hash && installed_inode == launched_inode {
+        if same && loaded && hash(&app) == running_hash && installed_inode == launched_inode {
             if socket_mode(socket) == Some(self.desired_socket_mode()?) { return Ok(json!({"changed": false, "domain": domain})); }
             checked("launchctl", &["kickstart", "-k", &target])?;
             return Ok(json!({"changed": true, "domain": domain, "restart": "socket-mode"}));
@@ -403,30 +446,55 @@ impl Ctl {
         self.verify_expected(&expected, &metadata, Path::new(self.arg("generation")?))
     }
     /// Generation-only rollback selects S/previous. Host rollback restores the archived host and
-    /// the generation recorded when it was archived, independent of S/previous.
+    /// the generation recorded when it was archived, independent of S/previous. A pending
+    /// host-rollback record is always resumed first, whichever mode was requested.
     fn rollback(&self) -> Result<Value> {
         let state = self.state()?; let app = self.app()?;
         self.reconcile(&app)?;
-        let restore_host = self.args.contains_key("restore-host");
-        let (target, discarded) = if restore_host {
-            let archive = pointer(&archive_pointer(&app)).ok_or_else(|| mismatch("No archived host"))?;
-            let target = pointer(&state.join("host-previous-generation")).or_else(|| pointer(&state.join("current"))).ok_or_else(|| mismatch("No generation to run the restored host with"))?;
-            self.signature(&archive)?;
-            exchange(&archive, &app)?;
-            // The archive path now holds the rolled-back host; drop the pointers so a repeat cannot flip back.
-            remove_if_present(&archive_pointer(&app))?;
-            remove_if_present(&state.join("host-previous-generation"))?;
-            (target, Some(archive))
-        } else {
-            (pointer(&state.join("previous")).ok_or_else(|| mismatch("No previous generation"))?, None)
-        };
+        let pending = read_json(&rollback_record(&app))?;
+        if pending.is_some() || self.args.contains_key("restore-host") { return self.restore_host(&app, &state, pending); }
+        let target = pointer(&state.join("previous")).ok_or_else(|| mismatch("No previous generation"))?;
         if pointer(&state.join("current")).as_ref() != Some(&target) { select(&state.join("current"), &target)?; }
-        self.converge(restore_host)?;
-        // Removed only after the restart, so the replaced process never ran from a deleted bundle.
-        if let Some(discarded) = discarded.filter(|d| d.exists()) { fs::remove_dir_all(discarded)?; }
-        let expected = hash(&app).ok_or_else(|| mismatch("Restored host lacks marker"))?;
-        let metadata = metadata_digest(&app).ok_or_else(|| mismatch("Restored host lacks Info.plist"))?;
+        self.converge()?;
+        let expected = hash(&app).ok_or_else(|| mismatch("Installed host lacks marker"))?;
+        let metadata = metadata_digest(&app).ok_or_else(|| mismatch("Installed host lacks Info.plist"))?;
         self.verify_expected(&expected, &metadata, &target)
+    }
+    /// Host-only rollback driven by `D.rollback.json`, written before the exchange. Each step is
+    /// idempotent (exchange only while the rejected host is at D, select, converge, verify), and
+    /// the recovery state (record, D.previous, host-previous-generation) is removed only after
+    /// verify succeeds, so any failure or crash is retried to completion.
+    fn restore_host(&self, app: &Path, state: &Path, pending: Option<Value>) -> Result<Value> {
+        let resumed = pending.is_some();
+        let record = match pending {
+            Some(record) => record,
+            None => {
+                let archive = pointer(&archive_pointer(app)).ok_or_else(|| mismatch("No archived host"))?;
+                let target = pointer(&state.join("host-previous-generation")).or_else(|| pointer(&state.join("current"))).ok_or_else(|| mismatch("No generation to run the restored host with"))?;
+                self.signature(&archive)?;
+                let record = json!({"direction": "restore-host", "archive": archive, "targetGeneration": target, "restoredInode": inode(&archive), "rejectedInode": inode(app)});
+                atomic_write(&rollback_record(app), &serde_json::to_vec(&record)?)?;
+                record
+            }
+        };
+        let (archive, target, restored) = rollback_fields(&record)?;
+        if inode(app) == record["rejectedInode"].as_u64() {
+            exchange(&archive, app)?;
+            if failpoint("rollback-after-exchange") { std::process::exit(137); }
+        } else if inode(app) != restored {
+            return Err(mismatch("Interrupted host rollback: the app holds neither recorded bundle"));
+        }
+        if pointer(&state.join("current")).as_ref() != Some(&target) { select(&state.join("current"), &target)?; }
+        // The exchange changed D's inode, so converge restarts once; a retry after a restart does not.
+        self.converge()?;
+        let expected = hash(app).ok_or_else(|| mismatch("Restored host lacks marker"))?;
+        let metadata = metadata_digest(app).ok_or_else(|| mismatch("Restored host lacks Info.plist"))?;
+        let mut verified = self.verify_expected(&expected, &metadata, &target)?;
+        // The rolled-away bundle is deleted only after the restart, so no process runs from it.
+        let leftover = self.finish_rollback(app, &archive)?;
+        verified["resumed"] = json!(resumed);
+        verified["leftovers"] = json!(leftover.into_iter().collect::<Vec<_>>());
+        Ok(verified)
     }
     fn status(&self) -> Result<Value> {
         let app = self.app()?; let state = self.state()?; let session = self.session()?;
@@ -434,7 +502,7 @@ impl Ctl {
         let dr = self.signature(&app);
         let signing_failure = fs::read(signing_failure_marker(&app)).ok().map(|b| serde_json::from_slice::<Value>(&b)).transpose()?;
         let ipc = self.ipc().ok();
-        Ok(json!({"hostSourceHash": hash(&app), "bundleMetadataDigest": metadata_digest(&app), "drValid": dr.is_ok(), "requirement": dr.ok(), "activeGeneration": pointer(&state.join("current")), "previousGeneration": pointer(&state.join("previous")), "hostArchive": pointer(&archive_pointer(&app)), "hostArchiveGeneration": pointer(&state.join("host-previous-generation")), "interruptedTransaction": transaction_record(&app).exists(), "socketMode": socket_mode(self.arg("socket")?), "launchd": {"domain": domain.ok(), "loaded": job.map(|j| j.0).unwrap_or(false), "pid": job.and_then(|j| j.1)}, "session": session, "signingFailure": signing_failure, "running": ipc}))
+        Ok(json!({"hostSourceHash": hash(&app), "bundleMetadataDigest": metadata_digest(&app), "drValid": dr.is_ok(), "requirement": dr.ok(), "activeGeneration": pointer(&state.join("current")), "previousGeneration": pointer(&state.join("previous")), "hostArchive": pointer(&archive_pointer(&app)), "hostArchiveGeneration": pointer(&state.join("host-previous-generation")), "interruptedTransaction": transaction_record(&app).exists(), "interruptedRollback": rollback_record(&app).exists(), "socketMode": socket_mode(self.arg("socket")?), "launchd": {"domain": domain.ok(), "loaded": job.map(|j| j.0).unwrap_or(false), "pid": job.and_then(|j| j.1)}, "session": session, "signingFailure": signing_failure, "running": ipc}))
     }
 }
 fn run() -> Result<Value> {
@@ -448,7 +516,7 @@ fn run() -> Result<Value> {
     }
     let config_path = args.get("config").ok_or_else(|| fail(64, "invalid-input", "Missing --config"))?;
     let config = serde_json::from_slice(&fs::read(config_path)?)?; let ctl = Ctl { config, args };
-    let result = match action.as_str() { "install-host" => ctl.install(), "select-generation" => ctl.generation(), "converge-launchd" => ctl.converge(false), "verify" => ctl.verify(), "rollback" => ctl.rollback(), "status" => ctl.status(), _ => Err(fail(64, "invalid-input", "Unknown primitive")) }?;
+    let result = match action.as_str() { "install-host" => ctl.install(), "select-generation" => ctl.generation(), "converge-launchd" => ctl.converge(), "verify" => ctl.verify(), "rollback" => ctl.rollback(), "status" => ctl.status(), _ => Err(fail(64, "invalid-input", "Unknown primitive")) }?;
     Ok(json!({"ok": true, "primitive": action, "result": result}))
 }
 fn main() {

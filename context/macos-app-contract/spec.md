@@ -168,23 +168,45 @@ serialization) and calls one primitive per step:
 
 | Primitive           | Arguments                                                                                               | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `install-host`      | `--app-dir D --state S --desired APP (--keychain K --keychain-password-fd N \| --signing-auth-pending)` | First reconciles an interrupted exchange (below). No-op when the installed marker and bundle-metadata digest (sha256 of `Contents/Info.plist`) equal the desired ones, `codesign --verify --strict` passes and the DR equals `requirement`. Otherwise stages a copy beside `D`, signs it, verifies the DR, writes the transaction record `D.txn.json`, exchanges the stage with `D` by `renamex_np(RENAME_SWAP)` and publishes the archive: `D.previous` points to the incumbent, `S/host-previous-generation` records the generation it ran with, and the superseded archive is removed.                                                                                                                                                     |
+| `install-host`      | `--app-dir D --state S --desired APP (--keychain K --keychain-password-fd N \| --signing-auth-pending)` | First reconciles an interrupted install exchange, then the install-host side of an interrupted host rollback (below). No-op when the installed marker and bundle-metadata digest (sha256 of `Contents/Info.plist`) equal the desired ones, `codesign --verify --strict` passes and the DR equals `requirement`. Otherwise stages a copy beside `D`, signs it, verifies the DR, writes `D.txn.json`, exchanges the stage with `D` by `renamex_np(RENAME_SWAP)` and publishes the archive: `S/host-previous-generation` records the generation the incumbent ran with and `D.previous` points to the incumbent. Reports `reconciled` and `leftovers`.                                                                                           |
 | `select-generation` | `--state S --generation G`                                                                              | No-op when `S/current` already points to `G`. Otherwise roots `G` with `nix-store --add-root S/roots/<sha256(G)> --indirect`, or records `S/roots/<hash>.path` and reports `consumerRootRequired` when `nix-store` is absent; moves the old pointer to `S/previous`; atomically replaces `S/current`.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `converge-launchd`  | `--app-dir --state --socket --plist-dir P [--domain auto\|gui\|user\|system]`                           | Renders `P/<label>.plist` with `Program` = the host executable inside `D` and `serve --socket … --generation-pointer S/current` arguments. No-op (read-only `launchctl print` probes only) when the bytes are equal, the job is loaded, the running host reports the installed host hash, `S/launched-app-inode` equals the inode at `D` and the socket mode equals the active generation's `socketMode`. A plist, host or bundle exchange (including metadata-only) causes `bootout` (if loaded), `bootstrap` and a new `S/launched-app-inode`. A `socketMode` change alone causes `launchctl kickstart -k` and reports `restart: "socket-mode"`. Any other generation-only change never restarts: the host rereads the pointer per request. |
 | `verify`            | `--app-dir --state --socket --desired APP --generation G`                                               | Exact DR, installed marker and bundle-metadata digest equal the desired ones, `S/current` equals `G`, the socket mode equals `G`'s `socketMode`, and the IPC `status` reports the same host hash, generation and the PID that launchd reports.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `rollback`          | `--app-dir --state --socket --plist-dir [--restore-host]`                                               | Without `--restore-host`, a generation rollback: points `S/current` at `S/previous` and converges (no restart unless `socketMode` differs). With `--restore-host`, a host-only rollback that the consumer passes when its own record shows the host was swapped: verifies the archive's DR, exchanges it back, selects `S/host-previous-generation` (else keeps `S/current`; `S/previous` is not used), removes `D.previous` and `S/host-previous-generation`, restarts the job and then deletes the rolled-away bundle. Both finish with `verify`.                                                                                                                                                                                           |
-| `status`            | `--app-dir --state --socket`                                                                            | Host hash, bundle-metadata digest, DR validity, active and previous generation, `hostArchive`, `hostArchiveGeneration`, `interruptedTransaction`, socket mode, launchd domain/loaded/PID, session (`gui`, `background-only`, `no-session`), `signingFailure` marker and the running host's IPC status.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `rollback`          | `--app-dir --state --socket --plist-dir [--restore-host]`                                               | Resumes a pending `D.rollback.json` first, whatever the flag. Without `--restore-host`, a generation rollback: points `S/current` at `S/previous` and converges (no restart unless `socketMode` differs). With `--restore-host`, a host-only rollback that the consumer passes when its own record shows the host was swapped (below). Both finish with `verify`.                                                                                                                                                                                                                                                                                                                                                                             |
+| `status`            | `--app-dir --state --socket`                                                                            | Host hash, bundle-metadata digest, DR validity, active and previous generation, `hostArchive`, `hostArchiveGeneration`, `interruptedTransaction`, `interruptedRollback`, socket mode, launchd domain/loaded/PID, session (`gui`, `background-only`, `no-session`), `signingFailure` marker and the running host's IPC status.                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 The consumer calls `install-host` before `select-generation` in one
 activation, so `S/host-previous-generation` records the generation the
 incumbent host actually ran with.
 
-**Crash-safe exchange.** `D.txn.json` (`stage`, `stageInode`, `generation`)
-is durable before the exchange and removed after the archive is published.
-`install-host` and `rollback` reconcile a leftover record before anything else:
-if the inode at `D` equals `stageInode`, the exchange happened and the archive
-is published; otherwise the stage is discarded. The result reports
-`reconciled: "archive-published" | "stage-discarded" | null`.
+**Install transaction.** `D.txn.json` (`stage`, `stageInode`, `generation`,
+`superseded`) is durable before the exchange. The exchange is the commit
+point: before it, a failure discards the stage and leaves `D` untouched; after
+it, the install only rolls forward and never exchanges back. Publication sets
+`S/host-previous-generation`, then `D.previous`, clears the signing-failure
+marker and removes `D.txn.json` last; each step is idempotent. A failure or
+crash before the record is removed leaves it for `install-host` or `rollback`
+to reconcile before anything else: if the inode at `D` equals `stageInode`, the
+publication is completed; otherwise the stage is discarded. Removing the
+`superseded` archive comes after the record is gone and is best-effort: a
+failure is reported in `leftovers` and never undoes the install. Results report
+`reconciled: "archive-published" | "stage-discarded" | "rollback-discarded" |
+"rollback-host-restored" | null`.
+
+**Host rollback transaction.** `rollback --restore-host` verifies the archive's
+DR, then writes `D.rollback.json` (`archive`, `targetGeneration` =
+`S/host-previous-generation` or else `S/current`, `restoredInode`,
+`rejectedInode`) before the exchange. The steps are idempotent: exchange only
+while the inode at `D` is `rejectedInode`, select the target, converge (the new
+inode at `D` restarts the job once), verify. `D.previous`,
+`S/host-previous-generation` and the record are removed only after verify
+succeeds, so a failed `select`, `launchctl` or verify step, or a crash, is
+retried to completion by the next `rollback`. The rolled-away bundle is then
+deleted best-effort (`leftovers`). A repeated `--restore-host` after success
+fails with `No archived host` and never flips back. A pending record seen by
+`install-host` is discarded if the exchange did not happen; otherwise
+`install-host` selects the target generation and retires the rollback state,
+leaving restart and verify to the consumer's following steps.
 
 Domain resolution, for `auto` and for explicit `--domain` alike:
 
@@ -217,7 +239,8 @@ search list is never consulted), `sign-failed`, `dr-mismatch`,
 `relock-failed` (the keychain could not be locked again; the signed stage is
 discarded).
 
-`MACOS_APP_CTL_TEST_FAILPOINT` (`relock`, `after-exchange`) is test-only. It
+`MACOS_APP_CTL_TEST_FAILPOINT` (`relock`, `after-exchange`,
+`after-archive-pointer`, `cleanup`, `rollback-after-exchange`) is test-only. It
 can only force a failure or a crash, never make a check pass.
 
 ### Signer contract

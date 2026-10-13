@@ -142,6 +142,9 @@ if args[0] == 'print':
     if target not in jobs: sys.exit(1)
     print('pid =', jobs[target]['pid'])
     sys.exit(0)
+if (base / 'launchctl-fail').exists():
+    print('test-injected launchctl failure', file=sys.stderr)
+    sys.exit(5)
 with (base / 'launchctl.log').open('a') as log: log.write(json.dumps(args) + '\n')
 def stop(job):
     os.kill(job['pid'], signal.SIGTERM)
@@ -364,10 +367,15 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     info['LSBackgroundOnly'] = not info.get('LSBackgroundOnly', False)
     with (metadata / 'Contents/Info.plist').open('wb') as f: plistlib.dump(info, f)
     first_archive = installed['archive']
-    reinstalled = install(metadata)['result']
+    # Removing the superseded archive is post-commit cleanup: its failure is a leftover, not an undo.
+    reinstalled = install(metadata, failpoint='cleanup')['result']
     assert reinstalled['changed'] and reinstalled['hostSourceHash'] == installed['hostSourceHash']
     assert reinstalled['bundleMetadataDigest'] != installed['bundleMetadataDigest']
-    assert not Path(first_archive).exists(), 'superseded archive kept'
+    assert reinstalled['leftovers'] == [first_archive], reinstalled
+    status = call('status')['result']
+    assert status['hostArchive'] == reinstalled['archive'] != first_archive and not status['interruptedTransaction']
+    assert status['bundleMetadataDigest'] == reinstalled['bundleMetadataDigest'], 'cleanup failure undid the exchange'
+    shutil.rmtree(first_archive)
     assert len(list(app.parent.glob('.*stage*'))) == 1
     call('verify', '--desired', changed, '--generation', first, code=22)
     assert call('converge-launchd')['result']['changed'], 'metadata-only exchange did not restart'
@@ -389,6 +397,53 @@ sys.exit(subprocess.call(['/usr/bin/codesign'] + args))
     assert call('status')['result']['socketMode'] == 0o600
     assert not call('converge-launchd')['result']['changed']
     print('PASS startup-only socketMode change restarts via kickstart; verify checks the socket mode', flush=True)
+
+    def stages():
+        return sorted(str(p) for p in app.parent.glob('.*stage*'))
+    metadata_archive = call('status')['result']['hostArchive']
+    assert install(changed, failpoint='after-archive-pointer', code=137) is None
+    status = call('status')['result']
+    assert status['interruptedTransaction'] and status['hostArchive'] != metadata_archive
+    published = install(changed)['result']
+    assert published['reconciled'] == 'archive-published' and not published['changed'] and published['leftovers'] == []
+    assert not Path(metadata_archive).exists() and stages() == [call('status')['result']['hostArchive']]
+    assert call('converge-launchd')['result']['changed']
+    call('verify', '--desired', changed, '--generation', third)
+    print('PASS crash after the archive pointer: reconcile rolls publication forward and removes the superseded archive', flush=True)
+
+    (work / 'launchctl-fail').touch()
+    call('rollback', '--restore-host', code=23)
+    status = call('status')['result']
+    assert status['interruptedRollback'] and status['hostArchive'] and status['hostArchiveGeneration'] == str(third), status
+    (work / 'launchctl-fail').unlink()
+    resumed = call('rollback', '--restore-host')['result']
+    assert resumed['resumed'] and resumed['leftovers'] == [], resumed
+    call('verify', '--desired', metadata, '--generation', third)
+    status = call('status')['result']
+    assert not status['interruptedRollback'] and status['hostArchive'] is None and stages() == []
+    restored = contents(app / 'Contents/MacOS/macos-app-host')
+    assert call('rollback', '--restore-host', code=22)['error']['reason'] == 'No archived host'
+    assert contents(app / 'Contents/MacOS/macos-app-host') == restored, 'repeated rollback flipped back'
+    print('PASS host rollback survives a launchctl failure after the exchange and resumes to verify', flush=True)
+
+    assert install(changed)['result']['changed']
+    call('converge-launchd')
+    assert call('rollback', '--restore-host', failpoint='rollback-after-exchange', code=137) is None
+    assert call('status')['result']['interruptedRollback']
+    resumed = call('rollback')['result']
+    assert resumed['resumed'] and state.joinpath('current').readlink() == third
+    call('verify', '--desired', metadata, '--generation', third)
+    assert call('status')['result']['hostArchive'] is None and stages() == []
+    assert install(changed)['result']['changed']
+    call('converge-launchd')
+    assert call('rollback', '--restore-host', failpoint='rollback-after-exchange', code=137) is None
+    reinstalled = install(changed)['result']
+    assert reinstalled['reconciled'] == 'rollback-host-restored' and reinstalled['changed'], reinstalled
+    status = call('status')['result']
+    assert not status['interruptedRollback'] and status['hostArchiveGeneration'] == str(third), status
+    call('converge-launchd')
+    call('verify', '--desired', changed, '--generation', third)
+    print('PASS crash after the rollback exchange: rollback resumes to verify; install-host completes it first', flush=True)
 
     calls = [json.loads(line) for line in log(work / 'codesign.log').splitlines()]
     assert calls and all(password not in json.dumps(entry) for entry in calls)
