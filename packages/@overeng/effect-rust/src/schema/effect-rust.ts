@@ -28,8 +28,43 @@ export const F32 = Schema.Finite.check(
     ),
   )
 
-/** Recognition uses the registered transformation, never width metadata alone. */
+const sameCheck = ({
+  actual,
+  registered,
+}: {
+  actual: SchemaAST.Check<unknown>
+  registered: SchemaAST.Check<unknown>
+}): boolean => {
+  if (actual === registered) return true
+  if (actual._tag === 'Filter' && registered._tag === 'Filter')
+    return actual.run === registered.run && actual.aborted === registered.aborted
+  if (actual._tag === 'FilterGroup' && registered._tag === 'FilterGroup')
+    return sameChecks({ actual: actual.checks, registered: registered.checks })
+  return false
+}
+
+const sameChecks = ({
+  actual,
+  registered,
+}: {
+  actual: readonly SchemaAST.Check<unknown>[] | undefined
+  registered: readonly SchemaAST.Check<unknown>[] | undefined
+}): boolean =>
+  actual === registered ||
+  (actual !== undefined &&
+    registered !== undefined &&
+    actual.length === registered.length &&
+    actual.every((check, index) => sameCheck({ actual: check, registered: registered[index]! })))
+
+/**
+ * Annotation-only aliases retain the registered encoding and filter behavior.
+ * Effect 4 annotate clones the checks array and its last check, preserving run,
+ * aborted and nested checks; container identity would reject generated aliases.
+ * Width/identifier metadata alone never authorizes a different transformation.
+ */
 export const isF32AST = (ast: SchemaAST.AST): boolean =>
-  ast._tag === 'Number' && ast.encoding === F32.ast.encoding && ast.checks === F32.ast.checks
+  ast._tag === 'Number' &&
+  ast.encoding === F32.ast.encoding &&
+  sameChecks({ actual: ast.checks, registered: F32.ast.checks })
 
 export { pattern, assertPortablePattern } from './pattern.ts'

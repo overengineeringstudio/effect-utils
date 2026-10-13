@@ -509,6 +509,8 @@ In `tracking` mode, if the branch worktree is behind the locked commit, it is fa
 
 `mr apply --commit-members <a,b>` (apply only, requires `--lock-sync off`, exclusive with `--all`) materializes the listed root members as commit worktrees and applies their nested megarepos recursively in commit mode; unlisted members keep `--worktree-mode` and are not recursed into. `--only`/`--skip` select root members only and never filter a listed member's subtree, so a fresh commit subtree is complete or absent. It is the local path for consumers whose nested hooks only validate prepared trees (devenv option `setupCommitMembers`). Recursion populates only commit worktrees created by the invocation; a preexisting nested commit worktree is accepted when its locked tree is already mounted and refused otherwise.
 
+`mr apply --commit-all-members` behaves like `--commit-members` with every root member listed (same `--lock-sync off` requirement, exclusive with `--all` and `--commit-members`). It selects members from the config inside `mr`, so names containing commas are not split by a list; CI `mr:setup` uses it with `--worktree-mode commit`.
+
 **CI usage:** In CI environments (`CI=true`), `mr apply` defaults to `commit` mode, creating `refs/commits/<sha>/` worktrees for deterministic builds. The lock file is never modified.
 
 #### `mr pin <member> [-c <ref>]`
