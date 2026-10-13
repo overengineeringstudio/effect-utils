@@ -938,7 +938,7 @@ export const resource = (input: typeof ResourceSchema.Encoded): Node => {
 }
 
 /** Decodes and renders a binding to an immutable document hash. */
-export const document = (input: typeof DocSchema.Encoded): Node => {
+const renderDocument = (input: typeof DocSchema.Encoded): Node => {
   const d = decode({ schema: DocSchema, input })
   return node({
     name: 'doc',
@@ -946,6 +946,7 @@ export const document = (input: typeof DocSchema.Encoded): Node => {
     children: [child({ name: 'hash', value: d.hash.toLowerCase() })],
   })
 }
+export { renderDocument as document }
 
 /** Decodes and renders a ref observer, including repeated selected fields. */
 export const observer = (input: typeof ObserverSchema.Encoded): Node => {
