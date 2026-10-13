@@ -38,11 +38,14 @@ any exchange; writes must use `Selected`.
 Tokens are cached by installation, normalized repository selection and
 permissions, refreshed before expiry, and minted single-flight per scope.
 Authenticated clients reject off-origin requests. A 401 invalidates the
-rejected token without replaying the request; callers decide whether retrying
-is safe. Credentials are redacted and excluded from errors and telemetry.
+rejected token without replaying the request, including when a status-filtered
+transport returns it as an error; callers decide whether retrying is safe.
+Credentials are redacted and excluded from errors and telemetry.
 Transport failures retain only safe method, path, reason and optional status.
 Response body access remains lazy/streaming; decoding failures carry a fresh,
 credential-free request and response metadata without the original cause.
+Sanitized response requests retain an absolute trusted origin and pathname
+without userinfo or query parameters, allowing same-origin `HttpClient.followRedirects` composition.
 
 Schema-backed telemetry contracts cover construction, minting and authorization. Metrics are
 `github_app_mints_total`, `github_app_mint_failures_total`,

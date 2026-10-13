@@ -402,15 +402,57 @@ for (const [name, transport] of [
     Effect.gen(function* () {
       const { state, app, apiBase } = yield* fixture(transport)
       const credential = Redacted.value(yield* app.token(scope))
-      const response = yield* app.client(scope).get(new URL('/probe', apiBase))
+      const response = yield* app
+        .client(scope)
+        .get(new URL(`/probe?credential=${credential}#fragment`, apiBase))
       expect(response.status).toBe(200)
       expect(response.request.method).toBe('GET')
-      expect(response.request.url).toBe('/probe')
+      expect(response.request.url).toBe(new URL('/probe', apiBase).href)
       expect(response.request.headers.authorization).toBeUndefined()
       expect(state.authorization).toEqual([`Bearer ${credential}`])
       for (const secret of [credential, 'Bearer', ...state.jwtTokens])
         expectCredentialFree(response.request, secret)
       expect(yield* response.json).toEqual({})
+    }),
+  )
+
+  it.effect(`${name}: follows same-origin redirects with a credential-free absolute request`, () =>
+    Effect.gen(function* () {
+      const { state, app, apiBase } = yield* fixture(transport)
+      const credential = Redacted.value(yield* app.token(scope))
+      state.redirect = '/probe'
+      const client = app.client(scope).pipe(HttpClient.followRedirects())
+      const response = yield* client.get(new URL('/redirect', apiBase))
+      expect(response.status).toBe(200)
+      expect(state.calls).toBe(2)
+      expect(new URL(response.request.url).origin).toBe(apiBase.origin)
+      expect(new URL(response.request.url).search).toBe('')
+      expect(response.request.headers.authorization).toBeUndefined()
+      for (const secret of [credential, 'Bearer', ...state.jwtTokens])
+        expectCredentialFree(response.request, secret)
+      expect(yield* response.json).toEqual({})
+    }),
+  )
+
+  it.effect(`${name}: invalidates a rejected token through a status-filtered transport`, () =>
+    Effect.gen(function* () {
+      const filtered = Layer.effect(
+        HttpClient.HttpClient,
+        Effect.map(HttpClient.HttpClient, HttpClient.filterStatusOk),
+      ).pipe(Layer.provide(transport))
+      const { state, app, apiBase } = yield* fixture(filtered)
+      const credential = Redacted.value(yield* app.token(scope))
+      state.unauthorized = true
+      const failure = yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip)
+      expect(failure).toMatchObject({ _tag: 'GitHubAppError', operation: 'authorize', status: 401 })
+      for (const secret of [credential, 'Bearer', ...state.jwtTokens])
+        expectCredentialFree(failure, secret)
+      expect(state.calls).toBe(1)
+      state.unauthorized = false
+      const response = yield* app.client(scope).get(new URL('/probe', apiBase))
+      expect(response.status).toBe(200)
+      expect(state.exchanges).toBe(2)
+      expect(state.authorization).toEqual(['Bearer installation-1', 'Bearer installation-2'])
     }),
   )
 

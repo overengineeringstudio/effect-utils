@@ -455,6 +455,9 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
               ),
             )
             .pipe(
+              Effect.tapError((error) =>
+                error.response?.status === 401 ? invalidate(credential) : Effect.void,
+              ),
               Effect.mapError(
                 (error) =>
                   new GitHubAppError({
@@ -479,7 +482,7 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
           }
           // Never expose the authenticated request through response decoding failures.
           // Body access remains lazy/streaming; only safe metadata survives in errors.
-          const safeRequest = HttpClientRequest.make(request.method)(url.pathname)
+          const safeRequest = HttpClientRequest.make(request.method)(`${url.origin}${url.pathname}`)
           const metadata = HttpClientResponse.fromWeb(
             safeRequest,
             new Response(null, {
