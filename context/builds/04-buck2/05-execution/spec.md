@@ -86,6 +86,9 @@ environment scrubbing or fingerprint detection alone does not establish it.
 
 Linux Nix from-source product builds run the same Bubblewrap boundary nested in
 the Nix build sandbox; there is no outer-sandbox mode or substitute boundary.
+Linux from-source builds of TS products therefore require nested unprivileged
+user namespaces; where the host restricts them, the build fails with a named
+diagnostic and the package must be substituted from the binary cache instead.
 Namespace Linux CI runner labels therefore request `container.privileged=true`.
 The privilege applies inside each ephemeral per-job VM. It lets Nix create its
 real build namespaces instead of disabling sandboxing, and lets nested
