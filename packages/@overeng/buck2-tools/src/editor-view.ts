@@ -20,6 +20,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import { hostname } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
@@ -30,6 +31,7 @@ import {
   cancelEditorViewBudgetReservation,
   touchEditorViewBudgetGeneration,
   collectEditorViewBudgetFootprints,
+  withHostBudgetLock,
   type EditorViewBudgetRoot,
 } from './editor-view-budget.ts'
 import {
@@ -53,7 +55,7 @@ import {
   reuseEditorViewSourceFiles,
   type EditorViewSourceFile,
 } from './editor-view-sharing.ts'
-import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
+import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath, realpathThroughName } from './real-path.ts'
 import { runFingerprintTool } from './typescript-runner.ts'
 
@@ -87,6 +89,15 @@ const editorViewRecordFields = [
 ] as const
 const lockRecordFields = ['pid', 'schema', 'token'] as const
 const evictionLockRecordFields = ['kind', 'pid', 'process', 'schema', 'token'] as const
+const identifiedLockRecordFields = ['host', 'pid', 'process', 'schema', 'token'] as const
+const identifiedEvictionLockRecordFields = [
+  'host',
+  'kind',
+  'pid',
+  'process',
+  'schema',
+  'token',
+] as const
 
 type JsonRecord = { [key: string]: unknown }
 
@@ -1930,6 +1941,7 @@ type LockOwner = {
   readonly pid: number
   readonly kind?: 'eviction'
   readonly process?: string
+  readonly host?: string
 }
 
 const readLockOwner = (path: string): LockOwner => {
@@ -1937,28 +1949,44 @@ const readLockOwner = (path: string): LockOwner => {
   try {
     owner = JSON.parse(readFileSync(path, 'utf8'))
   } catch (error) {
-    return fail(
-      `cannot read publication lock owner: ${error instanceof Error ? error.message : String(error)}`,
+    const contextual = new Error(
+      `editor view: cannot read publication lock owner: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     )
+    // Release must distinguish a vanished held lock from malformed or unreadable owner metadata.
+    if (error instanceof Error && 'code' in error) Object.assign(contextual, { code: error.code })
+    throw contextual
   }
   if (
     isRecord(owner) === false ||
     JSON.stringify(Object.keys(owner).toSorted((left, right) => compareBytes({ left, right }))) !==
-      JSON.stringify(owner.kind === 'eviction' ? evictionLockRecordFields : lockRecordFields) ||
+      JSON.stringify(
+        owner.host === undefined
+          ? owner.kind === 'eviction'
+            ? evictionLockRecordFields
+            : lockRecordFields
+          : owner.kind === 'eviction'
+            ? identifiedEvictionLockRecordFields
+            : identifiedLockRecordFields,
+      ) ||
     owner.schema !== lockSchema ||
     typeof owner.token !== 'string' ||
     owner.token.length === 0 ||
     typeof owner.pid !== 'number' ||
     Number.isSafeInteger(owner.pid) === false ||
     owner.pid <= 0 ||
-    (owner.kind === 'eviction' && (typeof owner.process !== 'string' || owner.process.length === 0))
+    ((owner.kind === 'eviction' || owner.host !== undefined) &&
+      (typeof owner.process !== 'string' || owner.process.length === 0)) ||
+    (owner.host !== undefined && (typeof owner.host !== 'string' || owner.host.length === 0))
   )
     return fail(`publication lock owner does not conform to ${lockSchema}: ${path}`)
   return {
     schema: lockSchema,
     token: owner.token,
     pid: owner.pid,
-    ...(owner.kind === 'eviction' ? { kind: 'eviction', process: owner.process as string } : {}),
+    ...(owner.kind === 'eviction' ? { kind: 'eviction' } : {}),
+    ...(typeof owner.process === 'string' ? { process: owner.process } : {}),
+    ...(typeof owner.host === 'string' ? { host: owner.host } : {}),
   }
 }
 
@@ -1993,9 +2021,9 @@ const acquireLock = ({
         schema: lockSchema,
         token,
         pid: process.pid,
-        ...(kind === 'eviction'
-          ? { kind, process: editorViewStagingCreatorIdentity({ pid: process.pid }) }
-          : {}),
+        host: hostname(),
+        process: editorViewStagingCreatorIdentity({ pid: process.pid }),
+        ...(kind === 'eviction' ? { kind } : {}),
       })}\n`,
       { flag: 'wx' },
     )
@@ -2006,6 +2034,21 @@ const acquireLock = ({
   return { path: lockPath, token }
 }
 
+/** Legacy/unreadable host or incarnation evidence never authorizes automatic recovery. */
+const publicationLockRecoveryReason = (owner: LockOwner): 'dead-pid' | 'reused-pid' | undefined => {
+  if (owner.host !== hostname()) return undefined
+  try {
+    process.kill(owner.pid, 0)
+  } catch (error) {
+    return isNodeErrorCode({ error, code: 'ESRCH' }) === true ? 'dead-pid' : undefined
+  }
+  if (owner.process === undefined || owner.process === 'unknown' || owner.process === 'dead')
+    return undefined
+  const observed = editorViewStagingCreatorIdentity({ pid: owner.pid })
+  return observed !== 'unknown' && observed !== 'dead' && observed !== owner.process
+    ? 'reused-pid'
+    : undefined
+}
 const acquirePublicationLock = async ({
   editorRoot,
   recoveryCommand,
@@ -2013,8 +2056,8 @@ const acquirePublicationLock = async ({
   readonly editorRoot: string
   readonly recoveryCommand: string
 }): Promise<{ readonly path: string; readonly token: string }> => {
-  // Eviction is maintenance, not a competing publisher. Wait only for a positively
-  // identified live eviction incarnation; ordinary and stale locks stay explicit.
+  // Wait only for identified live eviction; recover only positively abandoned same-host owners.
+  // Ordinary live, foreign-host, legacy, and unreadable owners retain explicit recovery.
   for (;;) {
     try {
       return acquireLock({ editorRoot, recoveryCommand })
@@ -2041,7 +2084,36 @@ const acquirePublicationLock = async ({
         }
         throw error
       }
+      if (publicationLockRecoveryReason(owner) !== undefined) {
+        // The host flock serializes recovery across CAS namespaces; no root acquisition occurs inside it.
+        // eslint-disable-next-line no-await-in-loop -- Recovery is a bounded metadata transaction.
+        await withHostBudgetLock(async () => {
+          let current: LockOwner
+          try {
+            current = readLockOwner(join(path, 'owner.json'))
+          } catch (inspectionError) {
+            if (isNodeErrorCode({ error: inspectionError, code: 'ENOENT' }) === true) return
+            throw inspectionError
+          }
+          if (current.token !== owner.token) return
+          const reason = publicationLockRecoveryReason(current)
+          if (reason === undefined) return
+          recoverPublicationLock({ editorRoot, token: current.token })
+          console.error(
+            JSON.stringify({
+              event: 'editor-view.publication-lock.recovered',
+              editorRoot,
+              pid: current.pid,
+              reason,
+            }),
+          )
+        })
+        // eslint-disable-next-line no-await-in-loop -- Yield before retrying the now-free root lock.
+        await Bun.sleep(10)
+        continue
+      }
       if (
+        owner.host !== hostname() ||
         owner.kind !== 'eviction' ||
         owner.process === undefined ||
         owner.process === 'unknown' ||
@@ -2207,6 +2279,25 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
   })
 }
 
+/** Exact-token recovery shared by explicit operator recovery and proven abandoned-owner recovery. */
+const recoverPublicationLock = ({
+  editorRoot,
+  token,
+}: {
+  editorRoot: string
+  token: string
+}): void => {
+  ensureRealDirectory({ path: editorRoot, field: 'editor root' })
+  const lockPath = join(editorRoot, '.publish.lock')
+  const owner = readLockOwner(join(lockPath, 'owner.json'))
+  if (owner.token !== token)
+    fail(`publication lock token mismatch at ${lockPath}; lock was not removed`)
+  const tokenDigest = createHash('sha256').update(token).digest('hex')
+  const recoveredPath = join(editorRoot, `.publish.lock.recovered-${tokenDigest}`)
+  renameSync(lockPath, recoveredPath)
+  rmSync(recoveredPath, { recursive: true })
+}
+
 /** Remove the publication lock only when the caller presents its exact owner token. */
 export const recoverEditorViewLock = ({
   options,
@@ -2215,16 +2306,7 @@ export const recoverEditorViewLock = ({
   options: EditorViewOptions
   token: string
 }): void => {
-  const paths = makePaths(options)
-  ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
-  const lockPath = join(paths.editorRoot, '.publish.lock')
-  const owner = readLockOwner(join(lockPath, 'owner.json'))
-  if (owner.token !== token)
-    fail(`publication lock token mismatch at ${lockPath}; lock was not removed`)
-  const tokenDigest = createHash('sha256').update(token).digest('hex')
-  const recoveredPath = join(paths.editorRoot, `.publish.lock.recovered-${tokenDigest}`)
-  renameSync(lockPath, recoveredPath)
-  rmSync(recoveredPath, { recursive: true })
+  recoverPublicationLock({ editorRoot: makePaths(options).editorRoot, token })
 }
 
 type SnapshotValidation =
@@ -2483,7 +2565,7 @@ const publishEditorViewCoordinated = async ({
     phaseStartedAt = performance.now()
   }
   const emitPhaseSpan = ({ created }: { readonly created: boolean }): void => {
-    emitCompletedSpan({
+    emitCompletedSpanAsync({
       name: 'editor-view.phases',
       label: `phases ${options.viewName}`,
       attributes: [
@@ -3081,8 +3163,8 @@ export const publishEditorViews = async ({
         const index = next++
         const option = options[index] ?? fail('batch publication option is absent')
         const startedAt = performance.now()
-        const emitPublicationSpan = (exitCode: number): void =>
-          emitCompletedSpan({
+        const emitPublicationSpan = (exitCode: number): void => {
+          emitCompletedSpanAsync({
             name: 'editor-view.publish',
             label: `publish ${option.viewName}`,
             attributes: [['package.path', option.package]],
@@ -3090,6 +3172,7 @@ export const publishEditorViews = async ({
             endedAtMs: performance.timeOrigin + performance.now(),
             exitCode,
           })
+        }
         try {
           const coordinator =
             coordinators.get(makePaths(option).editorRoot) ?? fail('batch root lock is absent')

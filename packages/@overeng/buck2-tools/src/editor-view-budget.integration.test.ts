@@ -36,6 +36,17 @@ import {
 } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 
+// Stable forwarding exports observe the named imports used by Bun's native modules.
+const nativeChildProcess = { ...ChildProcess }
+const childProcessMocks = {
+  spawn: vi.fn(nativeChildProcess.spawn),
+  spawnSync: vi.fn(nativeChildProcess.spawnSync),
+}
+vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
+const nativeFs = { ...Fs }
+const fsMocks = { readlinkSync: vi.fn(nativeFs.readlinkSync) }
+vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
+
 /** Match the publisher's integration fixtures: tools never resolve through ambient PATH. */
 const requireTool = (name: string): string => {
   const tool = process.env[name]
@@ -53,6 +64,21 @@ const payloadBytes = 1_048_576
 const hostGraceMs = 300_000
 const hostRecencyMs = 86_400_000
 const setupBudgetBytes = 40_000_000_000
+
+const savedBudgetTraceContext = {
+  TRACEPARENT: process.env.TRACEPARENT,
+  OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
+}
+beforeAll(() => {
+  // Phase spans also share the bound; ambient CI tracing must not compete with capture fixtures.
+  delete process.env.TRACEPARENT
+  delete process.env.OTEL_TASK_TRACEPARENT
+})
+afterAll(() => {
+  for (const [key, value] of Object.entries(savedBudgetTraceContext))
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+})
 
 const pathExists = (path: string): boolean => {
   try {
@@ -528,7 +554,7 @@ const expectRunningReader = (reader: Reader): void => {
   expect(status.stdout.trim()).toBe(String(reader.child.pid))
 }
 
-/** Record actual otel-span subprocess arguments; no span emitter or process runtime is mocked. */
+/** Record actual otel-span subprocess arguments; forwarding exports preserve native processes. */
 const recordTelemetry = async <TValue>(
   root: string,
   run: (children: readonly ChildProcess.ChildProcess[]) => Promise<TValue>,
@@ -554,9 +580,12 @@ const recordTelemetry = async <TValue>(
   const invocations: (readonly string[])[] = []
   const exits: Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>[] =
     []
-  const nativeSpawn = ChildProcess.spawn
-  const spawned = vi.spyOn(ChildProcess, 'spawn').mockImplementation((...args) => {
-    const child = Reflect.apply(nativeSpawn, ChildProcess, args) as ChildProcess.ChildProcess
+  const spawned = childProcessMocks.spawn.mockImplementation((...args) => {
+    const child = Reflect.apply(
+      nativeChildProcess.spawn,
+      ChildProcess,
+      args,
+    ) as ChildProcess.ChildProcess
     if (String(args[0]) === bin) {
       children.push(child)
       invocations.push(child.spawnargs.slice(1))
@@ -589,7 +618,7 @@ const recordTelemetry = async <TValue>(
     setImmediate(cleanupTurn.resolve)
     await cleanupTurn.promise
     await Promise.all(exits)
-    spawned.mockRestore()
+    spawned.mockReset().mockImplementation(nativeChildProcess.spawn)
     for (const [key, value] of Object.entries(saved)) {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
@@ -1463,30 +1492,26 @@ describe('host-budget reader observations keep a fixed candidate set', () => {
       readerReady === false
     )
       throw new Error('fixed-candidate regression setup did not complete')
-    const nativeReadlink = Fs.readlinkSync
     let crossed = false
-    const scan = vi.spyOn(Fs, 'readlinkSync').mockImplementation((...args) => {
+    const scan = fsMocks.readlinkSync.mockImplementation((...args) => {
       if (crossed === false && /^\/proc\/[0-9]+\/cwd$/.test(String(args[0])) === true) {
         crossed = true
         host.advance(2)
       }
-      return Reflect.apply(nativeReadlink, Fs, args) as ReturnType<typeof Fs.readlinkSync>
+      return nativeFs.readlinkSync(...args)
     })
-    const nativeSpawnSync = ChildProcess.spawnSync
-    const nativeScan = vi.spyOn(ChildProcess, 'spawnSync').mockImplementation((...args) => {
+    const nativeScan = childProcessMocks.spawnSync.mockImplementation((...args) => {
       if (crossed === false && String(args[0]) === '/usr/sbin/lsof') {
         crossed = true
         host.advance(2)
       }
-      return Reflect.apply(nativeSpawnSync, ChildProcess, args) as ReturnType<
-        typeof ChildProcess.spawnSync
-      >
+      return nativeChildProcess.spawnSync(...args)
     })
     try {
       expectCurrent(incoming, await host.publish(incoming, { hostBudgetBytes: 1 }))
     } finally {
-      scan.mockRestore()
-      nativeScan.mockRestore()
+      scan.mockReset().mockImplementation(nativeFs.readlinkSync)
+      nativeScan.mockReset().mockImplementation(nativeChildProcess.spawnSync)
     }
     expect(crossed).toBe(true)
     expect(pathExists(join(old.editorRoot, oldRecord.snapshot))).toBe(false)
@@ -1516,21 +1541,52 @@ describe('host-budget eviction tolerates teardown of a held victim root', () => 
     host.age(victim, victimRecord)
   })
 
-  it('continues publication when a victim root disappears while its eviction lock is held', async () => {
+  it('reserves and settles incoming bytes when a held victim root disappears', async () => {
     if (victimRecord === undefined) throw new Error('teardown victim publication did not complete')
     let removed = false
-    const record = await host.publish(incoming, {
-      hostBudgetBytes: 1,
-      beforeBudgetEviction: () => {
-        expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(true)
-        removeOwnedTree(victim.editorRoot)
-        removed = true
-      },
-    })
+    let admissionEpoch: number | undefined
+    const captured = await captureStderr(() =>
+      host.publish(incoming, {
+        hostBudgetBytes: 1,
+        beforeBudgetEviction: () => {
+          expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(true)
+          removeOwnedTree(victim.editorRoot)
+          removed = true
+        },
+        beforeMaterialize: () => {
+          expect(removed).toBe(true)
+          const admitted = readBudgetLedger(host)
+          expect(admitted.reservations).toHaveLength(1)
+          const reservation = admitted.reservations[0]
+          expect(reservation).toMatchObject({
+            editorRoot: incoming.editorRoot,
+            contentStore: host.contentStore,
+            pid: process.pid,
+            budgetBytes: 1,
+          })
+          expect(reservation?.token.length).toBeGreaterThan(0)
+          expect(reservation?.bytes).toBeGreaterThan(0)
+          admissionEpoch = admitted.epoch
+        },
+      }),
+    )
     expect(removed).toBe(true)
     expect(pathExists(victim.editorRoot)).toBe(false)
-    expectCurrent(incoming, record)
+    expectCurrent(incoming, captured.value)
     expect(pathExists(join(incoming.editorRoot, '.publish.lock'))).toBe(false)
+    expect(captured.stderr).not.toContain('editor-view.host-budget.maintenance-error')
+    expect(
+      budgetEvents(captured.stderr).filter(
+        ({ event }) => event === 'editor-view.host-budget.over-budget',
+      ),
+    ).toHaveLength(1)
+    const heldEpoch = admissionEpoch
+    if (heldEpoch === undefined) throw new Error('incoming reservation barrier was not reached')
+    const finished = readBudgetLedger(host)
+    expect(finished.reservations).toEqual([])
+    const settled = finished.journal.filter(({ epoch }) => epoch > heldEpoch)
+    expect(settled).toHaveLength(1)
+    expect(settled[0]?.estimatedBytes).toBeGreaterThan(0)
   })
 })
 
@@ -1546,8 +1602,11 @@ describe('budget telemetry never waits for exporter delivery', () => {
           const deliveryTurn = Promise.withResolvers<void>()
           setImmediate(deliveryTurn.resolve)
           await deliveryTurn.promise
-          expect(children).toHaveLength(2)
-          for (const child of children) {
+          const budgetChildren = children.filter((child) =>
+            child.spawnargs.includes('editor-view.host-budget'),
+          )
+          expect(budgetChildren).toHaveLength(2)
+          for (const child of budgetChildren) {
             expect(child.exitCode).toBeNull()
             expect(child.signalCode).toBeNull()
             const status = spawnSync(ps, ['-p', String(child.pid), '-o', 'pid='], {
@@ -1561,7 +1620,10 @@ describe('budget telemetry never waits for exporter delivery', () => {
         },
         { hangBudget: true },
       )
-      expect(captured.exits).toEqual([
+      const budgetExits = captured.exits.filter(
+        (_, index) => captured.invocations[index]?.includes('editor-view.host-budget') === true,
+      )
+      expect(budgetExits).toEqual([
         { code: null, signal: 'SIGKILL' },
         { code: null, signal: 'SIGKILL' },
       ])
@@ -1571,6 +1633,16 @@ describe('budget telemetry never waits for exporter delivery', () => {
           expect.arrayContaining([
             'editor-view.host-budget',
             'editor_view.host_budget.event=editor-view.host-budget.over-budget',
+            'exit.code=0',
+            'ok',
+          ]),
+        ]),
+      )
+      expect(captured.invocations).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining([
+            'editor-view.phases',
+            'snapshot.created=true',
             'exit.code=0',
             'ok',
           ]),
