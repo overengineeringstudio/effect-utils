@@ -945,6 +945,90 @@ describe('Cargo cross-workspace path dependencies', () => {
       'Foreign Cargo package must itself be Buck-projected (no BUCK.genie.ts): shared/otel-bootstrap',
     )
   })
+
+  /** agent-trace shape: package at `x/rust`, build.rs reads files beside and above it. */
+  const renderForeignBuildScript = ({
+    inputs,
+    prepareFixture,
+  }: {
+    readonly inputs: string
+    readonly prepareFixture?: (root: string) => void
+  }) =>
+    renderCargoFixture({
+      members: {
+        app: {
+          manifest:
+            '[package]\nname = "app"\n\n[dependencies]\nagent-trace = { path = "../../x/rust" }',
+          files: ['src/main.rs'],
+        },
+      },
+      foreignPackages: {
+        'x/rust': {
+          manifest: `[package]\nname = "agent-trace"\nversion = "0.1.0"\nedition = "2024"\n\n[package.metadata.buck2]\nbuildScriptInputs = ${inputs}\n`,
+          files: ['src/lib.rs', 'build.rs', 'schema/local.json'],
+          projected: true,
+        },
+      },
+      extraFiles: ['x/generated/s.json'],
+      render: 'app',
+      ...(prepareFixture === undefined ? {} : { prepareFixture }),
+    })
+
+  it('stages build-script inputs the foreign package declares in its own manifest', () => {
+    const rendered = renderForeignBuildScript({
+      inputs:
+        '[{ path = "schema/local.json" }, { path = "../generated/s.json", label = "//x/generated:s.json" }]',
+    })
+    const launcher = rendered.match(/cargo_build_script\(\n {4}name = "agent-trace-[\s\S]*?^\)$/m)
+    expect(launcher?.[0]).toContain(
+      '        "x/generated/s.json": "//x/generated:s.json",\n        "x/rust/Cargo.toml": "//x/rust:cargo-source/Cargo.toml",',
+    )
+    expect(launcher?.[0]).toContain(
+      '        "x/rust/schema/local.json": "//x/rust:cargo-source/schema/local.json",',
+    )
+  })
+
+  it('rejects foreign build-script inputs escaping the repository', () => {
+    expect(() => renderForeignBuildScript({ inputs: '[{ path = "../../../s.json" }]' })).toThrow(
+      'package.metadata.buck2.buildScriptInputs[0] resolves outside the repository: ../../../s.json',
+    )
+    expect(() => renderForeignBuildScript({ inputs: '[{ path = "/etc/passwd" }]' })).toThrow(
+      'package.metadata.buck2.buildScriptInputs[0] must be a package-relative path: /etc/passwd',
+    )
+    expect(() =>
+      renderForeignBuildScript({
+        inputs: '[{ path = "../generated/escape", label = "//x/generated:escape" }]',
+        prepareFixture: (root) => symlinkSync(tmpdir(), path.join(root, 'x/generated/escape')),
+      }),
+    ).toThrow('package.metadata.buck2.buildScriptInputs[0] resolves outside the repository')
+  })
+
+  it('requires root options to agree with package metadata', () => {
+    const fixture = {
+      members: {
+        app: {
+          manifest:
+            '[package]\nname = "app"\n\n[package.metadata.buck2]\nbuildScriptInputs = [{ path = "schema.json" }]',
+          files: ['src/lib.rs', 'build.rs', 'schema.json', 'other.json'],
+        },
+      },
+      render: 'app',
+    }
+    expect(
+      renderCargoFixture({
+        ...fixture,
+        projectOptions: { buildScriptInputs: [{ path: 'rust/app/schema.json' }] },
+      }),
+    ).toContain('        "rust/app/schema.json": "schema.json",')
+    expect(() =>
+      renderCargoFixture({
+        ...fixture,
+        projectOptions: { buildScriptInputs: [{ path: 'rust/app/other.json' }] },
+      }),
+    ).toThrow(
+      'buildScriptInputs options disagree with package.metadata.buck2.buildScriptInputs in rust/app/Cargo.toml',
+    )
+  })
 })
 
 describe('Cargo renamed dependencies', () => {

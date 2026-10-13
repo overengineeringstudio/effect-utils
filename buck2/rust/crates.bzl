@@ -1,11 +1,12 @@
 """Crate archives for non-vendored Reindeer graphs.
 
 Reindeer emits one `crate_archive` per registry crate (`[buck] http_archive =
-"crate_archive"`). A normal build downloads it exactly like `http_archive`,
-pinned by the `Cargo.lock` sha256. A sandboxed Nix build has no network: it
-sets `nix_store.crates_root` to a Nix store tree of `<sha256>.tgz` archives
-(`nix/workspace-tools/lib/buck2-cargo-archives.nix`), which are copied,
-verified, and extracted offline by the capability tool.
+"crate_archive"`). A normal build downloads it with the `Cargo.lock` sha256;
+both normal and Nix builds extract it through the pinned `archive_tool`
+execution dependency, never an ambient `tar` from PATH. A sandboxed Nix build
+has no network: it sets `nix_store.crates_root` to a Nix store tree of
+`<sha256>.tgz` archives (`nix/workspace-tools/lib/buck2-cargo-archives.nix`),
+which are copied, verified, and extracted offline by the same capability tool.
 
 Git dependencies take the same path. Reindeer emits `git_fetch(name, repo, rev)`
 without a digest; selecting `[buck] git_fetch = "git_archive"` routes them to
@@ -24,30 +25,39 @@ sha256; declared Nix flake sources carry a source-derived archive digest:
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
-def _nix_crate_archive_impl(ctx):
+def _crate_archive_impl(ctx):
     root = read_config("nix_store", "crates_root", "")
-    if not root.startswith("/nix/store/"):
-        fail("nix_store.crates_root must be an immutable Nix store path: {}".format(root))
-    archive = ctx.actions.declare_output("archive.crate")
-    command = [
-        ctx.attrs._bun[BunToolchainInfo].executable,
-        ctx.attrs._nix_archive,
-        "--root",
-        root,
-        "--sha256",
-        ctx.attrs.sha256,
-        "--output",
-        archive.as_output(),
-    ]
-    if ctx.attrs.source_repo != None:
-        command.extend(["--source-repo", ctx.attrs.source_repo, "--source-rev", ctx.attrs.source_rev])
-    ctx.actions.run(
-        cmd_args(command),
-        category = "cargo_nix_archive",
-        identifier = ctx.label.name,
-        local_only = True,
-        allow_cache_upload = True,
-    )
+    if root == "":
+        if len(ctx.attrs.urls) != 1:
+            fail("crate_archive needs exactly one download URL")
+        archive = ctx.actions.download_file(
+            "archive.crate",
+            ctx.attrs.urls[0],
+            sha256 = ctx.attrs.sha256,
+        )
+    else:
+        if not root.startswith("/nix/store/"):
+            fail("nix_store.crates_root must be an immutable Nix store path: {}".format(root))
+        archive = ctx.actions.declare_output("archive.crate")
+        command = [
+            ctx.attrs._bun[BunToolchainInfo].executable,
+            ctx.attrs._nix_archive,
+            "--root",
+            root,
+            "--sha256",
+            ctx.attrs.sha256,
+            "--output",
+            archive.as_output(),
+        ]
+        if ctx.attrs.source_repo != None:
+            command.extend(["--source-repo", ctx.attrs.source_repo, "--source-rev", ctx.attrs.source_rev])
+        ctx.actions.run(
+            cmd_args(command),
+            category = "cargo_nix_archive",
+            identifier = ctx.label.name,
+            local_only = True,
+            allow_cache_upload = True,
+        )
     out = ctx.actions.declare_output(ctx.attrs.out or ctx.label.name, dir = True)
     ctx.actions.run(
         cmd_args([
@@ -72,8 +82,8 @@ def _nix_crate_archive_impl(ctx):
         },
     )]
 
-_nix_crate_archive = cache_guarded_rule(
-    impl = _nix_crate_archive_impl,
+_crate_archive = cache_guarded_rule(
+    impl = _crate_archive_impl,
     attrs = {
         "extract_command": attrs.enum(["extract-crate", "extract-git-archive"], default = "extract-crate"),
         "out": attrs.option(attrs.string(), default = None),
@@ -82,6 +92,7 @@ _nix_crate_archive = cache_guarded_rule(
         "source_repo": attrs.option(attrs.string(), default = None),
         "source_rev": attrs.option(attrs.string(), default = None),
         "sub_targets": attrs.list(attrs.string(), default = []),
+        "urls": attrs.list(attrs.string(), default = []),
         "_archive_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:archive_tool",
             providers = [RunInfo],
@@ -97,25 +108,17 @@ _nix_crate_archive = cache_guarded_rule(
 )
 
 def crate_archive(name, urls, sha256, strip_prefix, visibility = [], **kwargs):
-    """Declares one sha256-pinned registry crate, acquired offline under Nix."""
+    """Declares a sha256-pinned crate with hermetic, declared archive-tool extraction."""
     if len(sha256) != 64 or sha256.lower() != sha256:
         fail("crate_archive {} needs a lowercase hex sha256".format(name))
-    if read_config("nix_store", "crates_root", "") == "":
-        native.http_archive(
-            name = name,
-            urls = urls,
-            sha256 = sha256,
-            strip_prefix = strip_prefix,
-            visibility = visibility,
-            **kwargs
-        )
-    else:
-        _nix_crate_archive(
-            name = name,
-            sha256 = sha256,
-            strip_prefix = strip_prefix,
-            visibility = visibility,
-        )
+    _crate_archive(
+        name = name,
+        urls = urls,
+        sha256 = sha256,
+        strip_prefix = strip_prefix,
+        visibility = visibility,
+        **kwargs
+    )
 
 def _github_repository(repo):
     prefix = "https://github.com/"
@@ -164,7 +167,7 @@ def pinned_git_archive(pins):
                 **kwargs
             )
         else:
-            _nix_crate_archive(
+            _crate_archive(
                 name = name,
                 extract_command = "extract-git-archive",
                 out = out,

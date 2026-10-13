@@ -31,6 +31,13 @@ tasks."repo:typecheck".exec = "pnpm exec tsc --noEmit";
 select their own aggregate explicitly (for example, `buck2:quick` and
 `buck2:all`).
 
+pnpm source-input staging resolves `repos/<member>/...` with genie's
+bootstrap-safe member resolver. The initiating workspace's `megarepo.lock`
+selects the member source, not the potentially newer tracking symlink.
+Explicit `GENIE_MEMBER_OVERRIDE_MAP` overrides have the same precedence as
+genie imports. Materialize pinned sources with
+`mr apply --worktree-mode commit --lock-sync off` before staging.
+
 ## Observability
 
 Import the sibling observability module once to capture native devenv spans
