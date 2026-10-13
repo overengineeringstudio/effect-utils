@@ -86,3 +86,39 @@ it('reads a detached HEAD with a readable loose object without resolving any bra
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+it.each(['bisect', 'worktree', 'rewritten'])(
+  'resolves linked symbolic HEAD through private refs/%s rather than the common shadow ref',
+  async (namespace) => {
+    const root = mkdtempSync(join(tmpdir(), 'identity-private-ref-'))
+    try {
+      const common = join(root, 'main/.git')
+      const gitDir = join(common, 'worktrees/linked')
+      const linked = join(root, 'linked')
+      const privateRef = `refs/${namespace}/current`
+      mkdirSync(join(common, `refs/${namespace}`), { recursive: true })
+      mkdirSync(join(common, 'refs/heads'), { recursive: true })
+      mkdirSync(join(gitDir, `refs/${namespace}`), { recursive: true })
+      mkdirSync(linked, { recursive: true })
+      writeFileSync(join(common, 'config'), '[core]\nrepositoryformatversion = 0\n')
+      writeFileSync(join(linked, '.git'), 'gitdir: ../main/.git/worktrees/linked\n')
+      writeFileSync(join(gitDir, 'commondir'), '../..\n')
+      writeFileSync(join(gitDir, 'HEAD'), `ref: ${privateRef}\n`)
+      writeFileSync(join(gitDir, privateRef), 'ref: refs/heads/main\n')
+      writeFileSync(join(common, privateRef), `${otherRevision}\n`)
+      writeFileSync(join(common, 'refs/heads/main'), `${revision}\n`)
+      const result = await readWorktreeGitMetadata({ root: linked })
+      expect(result.rev).toBe(revision)
+      expect(result.paths).toEqual(
+        new Set([
+          join(gitDir, 'HEAD'),
+          join(gitDir, 'index'),
+          join(gitDir, privateRef),
+          join(common, 'refs/heads/main'),
+        ]),
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)

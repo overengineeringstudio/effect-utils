@@ -40,9 +40,12 @@ mode, Git reads are asynchronous, debounced and single-flight. Only the served
 worktree's HEAD, current branch ref and index are watched; sibling worktree
 commits do not recompute its identity. Loose refs, packed refs and linked-worktree
 metadata are read directly from Git's files while the tracked `git status`
-subprocess runs concurrently. Reftable and unreadable detached objects use Git
-as the fallback authority. Events received during a snapshot coalesce into one
-follow-up snapshot rather than starting overlapping Git processes.
+subprocess runs concurrently. Worktree-private symbolic refs resolve in the
+worktree gitdir; shared refs resolve in the commondir. Reftable and unreadable
+detached objects use Git as the fallback authority, installing watches before
+reading the revision and revalidating the symbolic target afterward. Events
+received during a snapshot coalesce into one follow-up snapshot rather than
+starting overlapping Git processes.
 
 After observing a source or Git watcher event, `plugin.api.waitForRefresh()`
 awaits the requested snapshot and any events coalesced while it runs. This is

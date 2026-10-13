@@ -77,15 +77,26 @@ export const readWorktreeGitMetadata = async ({ root, subscribe }) => {
     const seen = new Set()
     while (head.startsWith('ref: ') === true) {
       const ref = head.slice(5)
+      // Qualified worktree aliases and non-ref names need Git's own path resolver.
+      if (
+        ref.startsWith('refs/') === false ||
+        ref.split('/').some((part) => part === '.' || part === '..' || part === '') === true
+      )
+        throw new Error('Git symbolic ref requires CLI resolution')
+      const privateRef = ['refs/bisect/', 'refs/worktree/', 'refs/rewritten/'].some((prefix) =>
+        ref.startsWith(prefix),
+      )
       if (seen.has(ref) === true) throw new Error('Cyclic Git symbolic ref')
       seen.add(ref)
-      const refPath = join(commonDir, ref)
+      const refPath = join(privateRef === true ? gitDir : commonDir, ref)
       watch(refPath)
       try {
         // oxlint-disable-next-line eslint/no-await-in-loop -- follow Git symbolic refs in order
         head = (await readFile(refPath, 'utf8')).trim()
       } catch (error) {
         if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+        // Per-worktree refs are never resolved from the shared packed-ref store.
+        if (privateRef === true) throw error
         const packedPath = join(commonDir, 'packed-refs')
         watch(packedPath)
         // oxlint-disable-next-line eslint/no-await-in-loop -- loose refs take precedence over packed refs
@@ -104,8 +115,7 @@ export const readWorktreeGitMetadata = async ({ root, subscribe }) => {
     return { rev: head, paths }
   } catch {
     // Git remains the authority for reftable, object alternates, and unusual layouts.
-    const [rev, headPath, indexPath, branch, refFormat] = await Promise.all([
-      readGit({ root, args: ['rev-parse', '--verify', 'HEAD^{commit}'] }),
+    const [headPath, indexPath, initialBranch, refFormat] = await Promise.all([
       readGit({ root, args: ['rev-parse', '--path-format=absolute', '--git-path', 'HEAD'] }),
       readGit({ root, args: ['rev-parse', '--path-format=absolute', '--git-path', 'index'] }),
       readGit({ root, args: ['rev-parse', '--symbolic-full-name', 'HEAD'] }),
@@ -113,14 +123,6 @@ export const readWorktreeGitMetadata = async ({ root, subscribe }) => {
     ])
     watch(headPath)
     watch(indexPath)
-    if (branch !== 'HEAD') {
-      watch(
-        await readGit({
-          root,
-          args: ['rev-parse', '--path-format=absolute', '--git-path', branch],
-        }),
-      )
-    }
     if (refFormat === 'reftable') {
       watch(
         await readGit({
@@ -129,6 +131,37 @@ export const readWorktreeGitMetadata = async ({ root, subscribe }) => {
         }),
       )
     }
+    if (refFormat === 'files') {
+      watch(
+        await readGit({
+          root,
+          args: ['rev-parse', '--path-format=absolute', '--git-path', 'packed-refs'],
+        }),
+      )
+    }
+    // Re-read after subscriptions: the discovery snapshot may predate a watch.
+    // Revalidate the symbolic target too, subscribing before reading a new branch.
+    let branch = initialBranch
+    let snapshotBranch
+    let rev
+    do {
+      snapshotBranch = branch
+      if (branch !== 'HEAD') {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- watch each newly discovered target before its revision
+        const refPath = await readGit({
+          root,
+          args: ['rev-parse', '--path-format=absolute', '--git-path', branch],
+        })
+        watch(refPath)
+      }
+      // oxlint-disable-next-line eslint/no-await-in-loop -- validate the revision only after installing its watches
+      rev = await readGit({ root, args: ['rev-parse', '--verify', 'HEAD^{commit}'] })
+      // oxlint-disable-next-line eslint/no-await-in-loop -- detect a branch switch during snapshot discovery
+      branch = await readGit({
+        root,
+        args: ['rev-parse', '--symbolic-full-name', 'HEAD'],
+      })
+    } while (branch !== snapshotBranch)
     return { rev, paths }
   }
 }

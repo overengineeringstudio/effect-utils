@@ -18,7 +18,7 @@ import { runInNewContext } from 'node:vm'
 import { build, createServer, type ViteDevServer } from 'vite'
 import { expect, it, vi } from 'vitest'
 
-import { createBuildIdentityPlugin } from './vite-build-identity.js'
+import { createBuildIdentityPlugin, readWorktreeGitMetadata } from './vite-build-identity.js'
 
 const waitForWatchUpdate = (assertion: () => void | Promise<void>) =>
   vi.waitFor(assertion, { timeout: 10000 })
@@ -138,6 +138,50 @@ it('reads the served worktree revision and dirty state instead of a stale shell 
     expect(result.deploymentId).toBe('dev (HMR)')
   } finally {
     await server?.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('re-reads fallback identity after registering watches without a timing race', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'identity-fallback-race-'))
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
+  try {
+    git('init', '--quiet')
+    const commitArgs = [
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--quiet',
+      '--allow-empty',
+      '-m',
+    ]
+    git(...commitArgs, 'first')
+    const first = git('rev-parse', 'HEAD')
+    git(...commitArgs, 'second')
+    const second = git('rev-parse', 'HEAD')
+    git('checkout', '--quiet', '--detach', first)
+    // Packed detached objects require the CLI fallback rather than the loose-object fast path.
+    git('gc', '--quiet', '--prune=now')
+    const headPath = join(root, '.git/HEAD')
+    let headSubscriptions = 0
+    const result = await readWorktreeGitMetadata({
+      root,
+      // Inject the mutation into fallback watch registration, not a timer or retry.
+      subscribe: (path) => {
+        if (path !== headPath) return
+        headSubscriptions++
+        if (headSubscriptions === 2) git('update-ref', 'HEAD', second)
+      },
+    })
+    expect(headSubscriptions).toBe(2)
+    expect(result.rev).toBe(second)
+    expect(result.paths).toContain(headPath)
+  } finally {
     rmSync(root, { recursive: true, force: true })
   }
 })
