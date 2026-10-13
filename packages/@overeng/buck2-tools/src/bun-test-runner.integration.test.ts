@@ -31,6 +31,33 @@ test('JUnit self-closing passing cases do not absorb a later failure', () => {
   ])
 })
 
+test.each(['"', "'"])('JUnit quoted %s attributes retain literal tag delimiters', (quote) => {
+  const lines = classifyBunReport({
+    xml: `<testsuite>
+      <testcase file=${quote}passing.test.ts${quote} classname=${quote}suite${quote} name=${quote}pass/> > case${quote} time=${quote}0.002${quote}/>
+      <testcase file=${quote}timed.test.ts${quote} classname=${quote}suite/>quoted>name${quote} name=${quote}a/>b > c${quote} time=${quote}0.0155${quote}>
+        <failure message=${quote}literal /> and >${quote} type=${quote}TimeoutError${quote}/>
+      </testcase>
+    </testsuite>`,
+    deadlines: [
+      {
+        file: 'timed.test.ts',
+        classname: 'suite/>quoted>name',
+        name: 'a/>b > c',
+        base: 11,
+        effective: 22,
+      },
+    ],
+    base: 5000,
+    factor: 2,
+    host: { load1: 40, cpus: 20, memPsiFullAvg10: 1 },
+  })
+  expect(lines).toEqual([
+    'test-timeout-under-load file="timed.test.ts" test="suite/>quoted>name > a/>b > c" base=11 factor=2 effective=22 deadlineMs=22 elapsedMs=15.5 load1=40 cpus=20 memPsiFullAvg10=1',
+    'test-failure-summary timeoutFailures=1 assertionFailures=0 otherFailures=0',
+  ])
+})
+
 test('JUnit distinguishes timed-out tests from assertions without changing the failing exit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'bun-timeout-fixture-'))
   try {

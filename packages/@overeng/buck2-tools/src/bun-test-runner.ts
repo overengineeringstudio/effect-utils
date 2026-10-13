@@ -18,7 +18,10 @@ const decodeXml = (value: string): string =>
   )
 const attributes = (xml: string): Record<string, string> =>
   Object.fromEntries(
-    [...xml.matchAll(/([\w-]+)="([^"]*)"/gu)].map((match) => [match[1]!, decodeXml(match[2]!)]),
+    [...xml.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gu)].map((match) => [
+      match[1]!,
+      decodeXml((match[2] ?? match[3])!),
+    ]),
   )
 /** Registration metadata paired with Bun's typed JUnit failure records. */
 export type TestDeadline = {
@@ -69,7 +72,9 @@ export const classifyBunReport = ({
     }
     return compiled.test(actual)
   }
-  for (const test of xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/gu)) {
+  for (const test of xml.matchAll(
+    /<testcase\b((?:\s+[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(?:\/>|>([\s\S]*?)<\/testcase\s*>)/gu,
+  )) {
     const record = attributes(test[1]!)
     let deadlineIndex = remaining.findIndex(
       (entry) =>
@@ -102,7 +107,9 @@ export const classifyBunReport = ({
           }),
       )
     const deadline = deadlineIndex < 0 ? undefined : remaining.splice(deadlineIndex, 1)[0]
-    const failure = /<failure\b([^>]*)/u.exec(test[2] ?? '')
+    const failure = /<failure\b((?:\s+[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*\/?>/u.exec(
+      test[2] ?? '',
+    )
     if (failure === null) continue
     const type = attributes(failure[1]!)['type']
     if (type === 'TimeoutError') {
