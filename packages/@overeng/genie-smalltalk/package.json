@@ -38,8 +38,8 @@
     "effect": "4.0.0"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.0",
     "@effect/opentelemetry": "4.0.0",
+    "@effect/platform-node": "4.0.0",
     "@effect/vitest": "4.0.0",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
