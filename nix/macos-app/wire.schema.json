@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/macos-app/wire-v1.schema.json",
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/response"}
+  ],
+  "$defs": {
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["wireVersion", "action", "args"],
+      "properties": {
+        "wireVersion": {"const": 1},
+        "action": {"type": "string"},
+        "args": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}}
+      }
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["wireVersion", "ok", "result"],
+          "properties": {
+            "wireVersion": {"const": 1}, "ok": {"const": true},
+            "result": {
+              "type": "object", "additionalProperties": false,
+              "required": ["exitCode", "stdoutTail", "stderrTail", "generation"],
+              "properties": {
+                "exitCode": {"type": "integer"}, "stdoutTail": {"type": "string"},
+                "stderrTail": {"type": "string"}, "generation": {"type": "string"}
+              }
+            }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["wireVersion", "ok", "status"],
+          "properties": {
+            "wireVersion": {"const": 1}, "ok": {"const": true},
+            "status": {
+              "type": "object", "additionalProperties": false,
+              "required": ["hostVersion", "hostSourceHash", "generation", "pid", "session"],
+              "properties": {
+                "hostVersion": {"type": "string"}, "hostSourceHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "generation": {"type": "string"}, "pid": {"type": "integer", "minimum": 1},
+                "session": {"enum": ["gui", "background-only", "no-session", "unknown"]}
+              }
+            }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["wireVersion", "ok", "error"],
+          "properties": {
+            "wireVersion": {"const": 1}, "ok": {"const": false},
+            "error": {
+              "type": "object", "additionalProperties": false,
+              "required": ["code", "message"],
+              "properties": {"code": {"type": "string"}, "message": {"type": "string"}}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

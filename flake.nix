@@ -47,6 +47,10 @@ rec {
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        macosAppExample = import ./nix/macos-app/example.nix {
+          inherit pkgs;
+          nixpkgsRevision = nixpkgs.rev;
+        };
         weaverPackages =
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
@@ -329,6 +333,13 @@ rec {
       in
       {
         buckProducts = trackedBuck2Products;
+        checks = pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          macos-app-host-stability = macosAppExample.check;
+          macos-app-appkit-link = import ./nix/macos-app/appkit-link-check.nix {
+            inherit pkgs;
+            nixpkgsRevision = nixpkgs.rev;
+          };
+        };
         packages =
           cliPackages
           // providerCliPackages
@@ -364,6 +375,10 @@ rec {
           }
           // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             buck2-bubblewrap = buck2Bubblewrap;
+          }
+          // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+            macos-app-example = macosAppExample.example;
+            macos-app-integration = macosAppExample.integration;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             buck2-vite-runtime-closure-fixture = viteRuntimeFixture;
@@ -559,6 +574,13 @@ rec {
       # Standalone otel-span CLI (run + emit subcommands).
       # Can be added to devenv packages without importing the full OTEL module.
       lib.mkOtelSpan = { pkgs }: import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+
+      lib.mkMacosApp =
+        args:
+        import ./nix/macos-app/default.nix {
+          pkgs = args.pkgs;
+          nixpkgsRevision = nixpkgs.rev;
+        } (builtins.removeAttrs args [ "pkgs" ]);
 
       # Convenience helper for bundling the common genie/megarepo CLIs from
       # this effect-utils revision's tracked Buck products. An explicit
