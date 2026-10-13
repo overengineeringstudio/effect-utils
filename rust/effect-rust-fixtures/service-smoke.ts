@@ -186,6 +186,10 @@ const program = (transport: 'wasm' | 'native') =>
       for (const value of [0.1, 1e-45, 3.4028235e38, -0, 1]) {
         assert.ok(Object.is((yield* fixture.roundTripFloat({ value })).value, Math.fround(value)))
       }
+      for (const score of [0.1, 1e-45, 3.4028235e38, -0, 1]) {
+        assert.ok(Object.is((yield* fixture.roundTripScore({ score })).score, Math.fround(score)))
+      }
+      assert.deepEqual(yield* fixture.roundTripScore({ score: null }), { score: null })
       for (const unsigned of [
         9007199254740991n,
         9007199254740992n,

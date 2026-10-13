@@ -454,6 +454,10 @@ ECMAScript shortest representation of the widened binary32 value, matching
 binary frames, but canonical JSON normalizes it to `0`. Borsh uses four
 little-endian bytes; Columns uses Float32Array. Width metadata alone cannot
 authorize an arbitrary transformation.
+Named aliases such as `EffectRust.F32.annotate({ identifier: 'FiniteScore' })`
+retain the registered codec and are admitted, including in required nullable
+fields (`Schema.Union([Schema.Null, FiniteScore])`). Annotation-only derivations
+do not authorize additional filters or different transformations.
 
 `Schema.optionalKey(Schema.NullOr(T))` represents Patch directly in TypeScript:
 missing, `null` and a present value stay distinct. Generated Rust keeps

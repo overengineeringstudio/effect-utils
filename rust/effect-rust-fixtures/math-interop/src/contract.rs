@@ -84,6 +84,21 @@ pub struct FloatSample {
     pub value: f32,
 }
 
+/// Transparent binary32 alias retained by generated Effect schemas.
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(transparent)]
+pub struct FiniteScore {
+    #[wire(f32)]
+    pub value: f32,
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct NullableScore {
+    pub score: Option<FiniteScore>,
+}
+
 #[effect_rust::contract]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct WideSample {
