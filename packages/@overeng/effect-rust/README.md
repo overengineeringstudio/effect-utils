@@ -41,6 +41,10 @@ the macro emits backend entrypoints and binary export metadata. The fixture's
 [`napi-adapter`](../../../rust/effect-rust-fixtures/napi-adapter/src/lib.rs)
 re-export those annotated functions into the two product crates.
 
+Backend selection follows the `effect-rust` dependency's `wasm` and `napi`
+features, together with the compilation target. The macros do not reference
+features in the calling crate: a wasm-only consumer need not declare `napi`.
+
 ### 3. Build and admit the generated service package
 
 In this repository's configured Buck workspace:
@@ -67,6 +71,52 @@ alone does not install a package into an arbitrary application's `node_modules`.
 Keep `effect` deduplicated between your application, generated service, and
 `@overeng/effect-rust`. Import the generated tag instead of declaring a second
 service class.
+
+### Admitting @overeng/effect-rust itself
+
+A consumer outside effect-utils must admit `@overeng/effect-rust` through
+[root-owned source staging](../../../context/dependency-materialization/01-live-pnpm/.decisions/0001-root-scoped-source-input-staging.md),
+not a plain `link:` dependency. With `link:`, Node resolves `effect` from the
+member's own install rather than the consumer's root. That creates a second
+Effect instance, which `Interop.assertEffectCohort` rejects. Do not bypass this
+guard: the consumer, generated service, and runtime must share one instance.
+
+In the root's Genie projection, stage the runtime package and merge its overrides
+after the catalog's `effect` pin:
+
+```ts
+const rootPnpmSourceInputs = projectPnpmSourceInputs({
+  packages: [effectRustPkg],
+  repoName,
+})
+
+const overrides = {
+  effect: catalog.effect,
+  ...rootPnpmSourceInputs.overrides,
+}
+```
+
+Carry `rootPnpmSourceInputs.sourceInputPaths` and the stage path
+`pnpmSourceInputStagePath` into the root's install contract. Pass the same
+`sourceInputPaths` to the root pnpm task; its staging directory is fixed at
+`.devenv/pnpm-source-inputs`, with the current generation under `current`.
+`pnpmSourceInputStagePath` names that current generation, not a configurable
+pnpm task option.
+
+The package's runtime `exports` resolve to erasable TypeScript under `src/*.ts`;
+`publishConfig.exports` resolve to emitted JavaScript under `dist/src/*.js`.
+Source staging carries sources only, not a built runtime distribution. Choose
+one of these supported setups:
+
+- A bundler or TypeScript-aware runtime, such as Vite or Bun.
+- Vitest with `test.server.deps.inline: ['@overeng/effect-rust']`, so the runtime
+  sources are transformed rather than externalized.
+- Unbundled Node with a self-built runtime distribution (for example, a tsgo
+  emit). Pass that dist directory to the service package generator as
+  `--runtime-dist`, and admit the emitted runtime JavaScript into the consumer's
+  runtime package tree. Node refuses type stripping inside `node_modules`
+  (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`); source staging alone does not
+  make the TypeScript exports runnable there.
 
 ### 4. Choose a Layer and call the service
 
@@ -455,6 +505,10 @@ binary frames, but canonical JSON normalizes it to `0`. Borsh uses four
 little-endian bytes; Columns uses Float32Array. Width metadata alone cannot
 authorize an arbitrary transformation.
 
+`#[wire(f32)]` also accepts `Option<f32>`: the key is required, `None` is JSON
+`null`, and present values use the same finite binary32 codec. Missing keys fail;
+use `Patch` when absence is part of the contract.
+
 `Schema.optionalKey(Schema.NullOr(T))` represents Patch directly in TypeScript:
 missing, `null` and a present value stay distinct. Generated Rust keeps
 `Patch<T>` for those three states; there is no tagged Patch ADT in the
@@ -551,6 +605,8 @@ helper to imitate pure calls.
 
 ### Generated package admission
 
+For the runtime dependency itself, see [Admitting @overeng/effect-rust itself](#admitting-overengeffect-rust-itself).
+
 Declare generated service products in a consumer's TypeScript package
 projection, instead of copying them into the source tree or defining a second
 service tag:
@@ -605,6 +661,17 @@ export CARGO_BUILD_JOBS=6
 "$CARGO" build --manifest-path rust/Cargo.toml -p effect-rust-fixture-napi --release
 "$CARGO" build --manifest-path rust/Cargo.toml -p effect-rust-fixture-wasm \
   --release --target wasm32-unknown-unknown
+```
+
+The wasm-only macro regression consumer denies warnings and declares no `napi`
+feature. The `cargo:check` gate checks it on both targets using the shared Cargo
+target directory. To run those checks directly:
+
+```sh
+cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+  --target-dir rust/target
+cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+  --target-dir rust/target --target wasm32-unknown-unknown
 ```
 
 Package the resulting adapters with `buck2/rust/interop-package.ts`, then run

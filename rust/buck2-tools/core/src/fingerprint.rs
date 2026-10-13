@@ -1,6 +1,7 @@
 //! Canonical editor-view tree fingerprints. Framing is `effect-utils/tree-digest/v1`.
 //! Instability errors include changed-field names and full before/after metadata;
-//! mode and link count are diagnostic context, not additional stability checks.
+//! Read-only shared files tolerate link-count ctime churn, but still prove bytes,
+//! inode identity, modification time, size, and unchanged permissions.
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::ffi::OsString;
@@ -75,6 +76,8 @@ struct StabilityMetadata {
     mtime: (i64, i64),
     ctime: (i64, i64),
     size: u64,
+    mode: u32,
+    nlink: u64,
 }
 
 impl From<&Metadata> for StabilityMetadata {
@@ -86,20 +89,28 @@ impl From<&Metadata> for StabilityMetadata {
             mtime: (metadata.mtime(), metadata.mtime_nsec()),
             ctime: (metadata.ctime(), metadata.ctime_nsec()),
             size: metadata.size(),
+            mode: metadata.mode(),
+            nlink: metadata.nlink(),
         }
     }
 }
 
 impl StabilityMetadata {
     fn same(&self, after: &Self, file: bool) -> bool {
+        // CAS snapshot links can change ctime without modifying read-only shared bytes.
+        let immutable_shared_file = file
+            && self.kind.is_file()
+            && self.mode & 0o222 == 0
+            && self.mode == after.mode
+            && (self.nlink > 1 || after.nlink > 1);
         self.kind == after.kind
             && self.dev == after.dev
             // Overlayfs can reassign a directory's inode when its inode cache
             // entry is evicted. It is not a persistent directory identity.
             && (self.kind.is_dir() || self.ino == after.ino)
             && self.mtime == after.mtime
-            && self.ctime == after.ctime
-            && (!file || self.size == after.size)
+            && (self.ctime == after.ctime || immutable_shared_file)
+            && (!file || (self.size == after.size && self.mode == after.mode))
     }
 }
 
@@ -563,6 +574,27 @@ mod tests {
             .unwrap()
             .split(", ")
             .collect()
+    }
+
+    #[test]
+    fn immutable_shared_files_allow_hardlink_lifetime_changes() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("blob");
+        let first = scratch.path().join("first-snapshot");
+        let second = scratch.path().join("second-snapshot");
+        fs::write(&path, b"immutable shared content").unwrap();
+        fs::set_permissions(&path, Permissions::from_mode(0o444)).unwrap();
+        fs::hard_link(&path, &first).unwrap();
+        let before = fs::symlink_metadata(&first).unwrap();
+        fs::hard_link(&path, &second).unwrap();
+        let linked = fs::symlink_metadata(&first).unwrap();
+        assert_ne!(before.nlink(), linked.nlink());
+        assert!(same(&before, &linked, true));
+        fs::remove_file(&second).unwrap();
+        let unlinked = fs::symlink_metadata(&first).unwrap();
+        assert!(same(&before, &unlinked, true));
+        fs::set_permissions(&path, Permissions::from_mode(0o644)).unwrap();
+        assert!(!same(&before, &fs::symlink_metadata(&first).unwrap(), true));
     }
 
     #[test]

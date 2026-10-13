@@ -185,8 +185,8 @@ caller task span (task run)
 The mode is **preparation plus post-hoc completion**, never supervision. No
 process sits between the caller and Buck: the caller invokes Buck directly
 with the prepared environment, and after Buck exits the caller completes the
-command span itself, exactly the #1382 pattern (`emitCompletedSpan` in
-buck2-tools: fire-and-forget, failures swallowed). `otel-span emit-span`
+command span itself, exactly the #1382 pattern (`emitCompletedSpanAsync` in
+buck2-tools: bounded fire-and-forget, drop-on-full, failures swallowed). `otel-span emit-span`
 already accepts a caller-chosen span id (`--span-id`, with `--trace-id`,
 `--parent-span-id`, explicit start/end nanoseconds, and status), so the
 post-hoc emit needs no new CLI capability — the buck2 mode only fixes _which_

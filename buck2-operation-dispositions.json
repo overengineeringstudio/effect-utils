@@ -108,6 +108,10 @@
     },
     {
       "disposition": "outside-by-policy:workspace-publication",
+      "operation": "buck2:rust:generators:test"
+    },
+    {
+      "disposition": "outside-by-policy:workspace-publication",
       "operation": "buck2:typescript:materialize-dist"
     },
     {

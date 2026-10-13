@@ -58,6 +58,8 @@ export const evictCachedPnpmDepsStep = ({
  * Namespace accepts the `namespace-features:` label only next to a
  * `-with-features` machine label; runner profiles take features appended as
  * `;key=value` to the profile label itself.
+ * Linux containers need privilege for Nix and nested Bubblewrap namespaces.
+ * Namespace isolates this privilege inside each ephemeral per-job VM.
  * @see https://namespace.so/docs/solutions/github-actions/runner-controls
  */
 export const namespaceRunner = ({
@@ -66,10 +68,17 @@ export const namespaceRunner = ({
 }: {
   profile: RunnerProfile | (string & {})
   runId: string
-}): readonly [string] | readonly [string, string] =>
-  profile.endsWith('-with-features') === true
-    ? [profile, `namespace-features:github.run-id=${runId}`]
-    : [`${profile};github.run-id=${runId}`]
+}): readonly [string] | readonly [string, string] => {
+  const features = [
+    `github.run-id=${runId}`,
+    ...(profile.includes('linux') === true || profile.startsWith('nscloud-ubuntu-') === true
+      ? ['container.privileged=true']
+      : []),
+  ].join(';')
+  return profile.endsWith('-with-features') === true
+    ? [profile, `namespace-features:${features}`]
+    : [`${profile};${features}`]
+}
 
 // =============================================================================
 // Step Atoms
@@ -214,6 +223,26 @@ export const installNixStep = (opts?: {
     summarize: opts?.summarize ?? true,
   },
 })
+
+/**
+ * Read-only Linux record of the namespace prerequisites behind Nix's build
+ * sandbox and nested TS Bubblewrap; the namespace check fails fast if the
+ * privileged runner feature is lost.
+ */
+export const linuxSandboxPrerequisitesStep = {
+  name: 'Log Linux sandbox prerequisites',
+  if: "${{ runner.os == 'Linux' }}",
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    "nix config show | grep -E '^sandbox'",
+    'for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do',
+    '  if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\\n" "$key"; fi',
+    'done',
+    'unshare -Ur true',
+    'echo "unshare -Ur true: passed"',
+  ].join('\n'),
+} as const
 
 /**
  * Provide the cachix CLI to subsequent steps from a /nix/store output.

@@ -38,12 +38,26 @@ let
   classifiedTestTasks = darwinTestTasks ++ map (suite: suite.task) testPlatforms.neutral;
   extraSourceTestTasks = [
     "devenv-modules:test"
+    "buck2:rust:generators:test"
     "genie:buck2:test"
     "genie:ci-workflow:test"
   ];
   selectedTestTask = task: testPlatform != "darwin" || builtins.elem task darwinTestTasks;
   buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
+  tsSandboxTestEnvironment = lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
+    ${publishBuckCapabilities}
+    cd "$root"
+    export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
+    export BUN_BIN=${flakePkgs.bun}/bin/bun
+    export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
+    probe_outputs="$("$BUCK2_BIN" build \
+      --target-platforms effect_utils//buck2/platforms:host_platform \
+      --show-full-json-output effect_utils//buck2/tests/ts_sandbox:probe)"
+    export TS_SANDBOX_PROBE_OUTPUT="$(printf '%s' "$probe_outputs" | \
+      ${pkgs.jq}/bin/jq -er '."effect_utils//buck2/tests/ts_sandbox:probe"')"
+    export TS_SANDBOX_LAUNCHER="''${TS_SANDBOX_PROBE_OUTPUT%/receipt/summary.json}/ts-sandbox.sh"
+  '';
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
   restatePkgs = import repoFlake.inputs.nixpkgs {
@@ -1118,9 +1132,12 @@ in
       export CP_BIN=${pkgs.coreutils}/bin/cp
       export MV_BIN=${pkgs.coreutils}/bin/mv
       export FALSE_BIN=${pkgs.coreutils}/bin/false
+      export BUN_BIN=${pkgs.bun}/bin/bun
+      export PS_BIN=${if pkgs.stdenv.isDarwin then "/bin/ps" else "${pkgs.procps}/bin/ps"}
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
+      ${tsSandboxTestEnvironment}
       cd "$root/packages/@overeng/buck2-tools"
       exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
     ''
@@ -1241,6 +1258,25 @@ in
     ];
   };
 
+  # Like genie:buck2:test, these Bun suites live outside the package test census.
+  # Keep them beside the generators and include their source task in test:run.
+  tasks."buck2:rust:generators:test" = {
+    description = "Run the Rust interop service and wasm guest generator integration tests";
+    after = [ "buck2:editor:publish:test" ];
+    exec = trace.exec "buck2:rust:generators:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      export PATH=${lib.makeBinPath [ pkgs.gnutar ]}:$PATH
+      exec ${pkgs.bun}/bin/bun test ./buck2/rust/
+    '';
+    execIfModified = [
+      "buck2/rust/**/*.ts"
+      "packages/@overeng/effect-rust/src/**/*.ts"
+      "package.json"
+      "pnpm-lock.yaml"
+    ];
+  };
+
   # Empirical authority for the minimal generator phase that must run before
   # any dependency view exists. The design-time source closure is proven by
   # buck2:editor:bootstrap followed by genie:check.
@@ -1305,6 +1341,10 @@ in
         cargo clippy --locked --workspace --all-targets -- -D warnings
         cargo fmt --all --check
       )
+      cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+        --target-dir rust/target
+      cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+        --target-dir rust/target --target wasm32-unknown-unknown
     '';
   };
 
@@ -1578,11 +1618,30 @@ in
   };
 
   tasks."buck2:cache-admission:check" = {
-    description = "Reject unadmitted cache execution constraints using real Buck analysis";
+    description = "Reject unadmitted cache execution constraints and prove fresh Darwin TS output ownership";
     exec = trace.exec "buck2:cache-admission:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
+      export CP_BIN=${pkgs.coreutils}/bin/cp JQ_BIN=${pkgs.jq}/bin/jq
       exec ${pkgs.bash}/bin/bash "$root/scripts/buck2-cache-admission-check.sh" "$root"
+    '';
+  };
+
+  tasks."buck2:ts-sandbox:test" = {
+    description = "Prove Linux TS action containment and missing/unusable Bubblewrap fail-closed behavior";
+    after = [ "buck2:providers:check" ];
+    exec = trace.exec "buck2:ts-sandbox:test" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      ${lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
+        ${tsSandboxTestEnvironment}
+        exec ${pkgs.bun}/bin/bun test \
+          ./packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts
+      ''}
+      ${lib.optionalString flakePkgs.stdenv.hostPlatform.isDarwin ''
+        printf '%s\n' 'TS sandbox admission excluded: darwin-unsandboxed (jd5hbf, 2026-10-11)'
+      ''}
     '';
   };
 
@@ -1613,7 +1672,10 @@ in
 
   tasks."buck2:quick" = {
     description = "Build the admitted quick Buck aggregate";
-    after = [ "buck2:providers:check" ];
+    after = [
+      "buck2:providers:check"
+      "buck2:ts-sandbox:test"
+    ];
     # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
     exec = buck2AggregateExec "buck2:quick" "//:quick";
   };

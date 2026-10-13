@@ -216,11 +216,13 @@ pub(super) fn expand(args: Tokens, item: Tokens) -> syn::Result<Tokens> {
         #(#metadata)*
         // Public factory names may be camelCase; the generated module mirrors that name.
         #[doc(hidden)] #[allow(non_snake_case)]
-        #[cfg(any(all(feature = "wasm", target_arch = "wasm32"), all(feature = "napi", not(target_arch = "wasm32"))))]
         mod #module {
+            #[allow(unused_imports)]
             use super::*;
-            #[cfg(all(feature = "napi", not(target_arch = "wasm32"), not(panic = "unwind")))]
-            compile_error!("effect-rust napi resources require panic=unwind");
+            ::effect_rust::__napi_only! {
+                #[cfg(not(panic = "unwind"))]
+                compile_error!("effect-rust napi resources require panic=unwind");
+            }
             #wasm #native
         }
     })

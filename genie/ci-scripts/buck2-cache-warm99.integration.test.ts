@@ -19,41 +19,55 @@ const cli = new URL('./buck2-cache-warm99.ts', import.meta.url).pathname
 describe('gzip and compact summary boundaries', () => {
   it('verifies checksum, gzip, rows, counts and metadata', () => {
     const fixture = encodedFixture(artifactFixture())
-    expect(decodeEvidence(fixture.compressed, fixture.summary, 'main-reader').actions.length).toBe(
-      1,
-    )
-    expect(() => decodeEvidence(fixture.compressed, fixture.summary, 'pr')).toThrow()
+    expect(
+      decodeEvidence({
+        compressed: fixture.compressed,
+        summary: fixture.summary,
+        expectedLane: 'main-reader',
+      }).actions.length,
+    ).toBe(1)
     expect(() =>
-      decodeEvidence(
-        fixture.compressed,
-        {
+      decodeEvidence({
+        compressed: fixture.compressed,
+        summary: fixture.summary,
+        expectedLane: 'pr',
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeEvidence({
+        compressed: fixture.compressed,
+        summary: {
           ...fixture.summary,
           actionsArtifact: { ...fixture.summary.actionsArtifact, sha256: '0'.repeat(64) },
         },
-        'main-reader',
-      ),
+        expectedLane: 'main-reader',
+      }),
     ).toThrow()
     for (const key of ['rows', 'bytes', 'uncompressedBytes']) {
       expect(() =>
-        decodeEvidence(
-          fixture.compressed,
-          {
+        decodeEvidence({
+          compressed: fixture.compressed,
+          summary: {
             ...fixture.summary,
             actionsArtifact: { ...fixture.summary.actionsArtifact, [key]: 9999 },
           },
-          'main-reader',
-        ),
+          expectedLane: 'main-reader',
+        }),
       ).toThrow()
     }
     expect(() =>
-      decodeEvidence(fixture.compressed, { ...fixture.summary, actionCount: 9 }, 'main-reader'),
+      decodeEvidence({
+        compressed: fixture.compressed,
+        summary: { ...fixture.summary, actionCount: 9 },
+        expectedLane: 'main-reader',
+      }),
     ).toThrow()
     expect(() =>
-      decodeEvidence(
-        fixture.compressed,
-        { ...fixture.summary, counts: { ...fixture.summary.counts, 'remote-hit': 2 } },
-        'main-reader',
-      ),
+      decodeEvidence({
+        compressed: fixture.compressed,
+        summary: { ...fixture.summary, counts: { ...fixture.summary.counts, 'remote-hit': 2 } },
+        expectedLane: 'main-reader',
+      }),
     ).toThrow()
     const corrupted = fixture.compressed.subarray(0, fixture.compressed.length - 5)
     const corruptedSummary = {
@@ -63,31 +77,39 @@ describe('gzip and compact summary boundaries', () => {
         sha256: createHash('sha256').update(corrupted).digest('hex'),
       },
     }
-    expect(() => decodeEvidence(corrupted, corruptedSummary, 'main-reader')).toThrow()
+    expect(() =>
+      decodeEvidence({
+        compressed: corrupted,
+        summary: corruptedSummary,
+        expectedLane: 'main-reader',
+      }),
+    ).toThrow()
     const truncated = gzipSync(fixture.raw.slice(0, -1))
     expect(() =>
-      decodeEvidence(
-        truncated,
-        {
+      decodeEvidence({
+        compressed: truncated,
+        summary: {
           ...fixture.summary,
           actionsArtifact: {
             ...fixture.summary.actionsArtifact,
             sha256: createHash('sha256').update(truncated).digest('hex'),
           },
         },
-        'main-reader',
-      ),
+        expectedLane: 'main-reader',
+      }),
     ).toThrow()
   })
   it('reads retained v1 summaries but strictly validates present admission fields', () => {
     const fixture = encodedFixture(artifactFixture())
-    const {
-      admissionFallbacks,
-      admissionRetrySuccesses,
-      admissionInvocations,
-      ...legacy
-    } = fixture.summary
-    expect(decodeEvidence(fixture.compressed, legacy, 'main-reader').actions.length).toBe(1)
+    const { admissionFallbacks, admissionRetrySuccesses, admissionInvocations, ...legacy } =
+      fixture.summary
+    expect(
+      decodeEvidence({
+        compressed: fixture.compressed,
+        summary: legacy,
+        expectedLane: 'main-reader',
+      }).actions.length,
+    ).toBe(1)
     const row = {
       invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
       admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
@@ -99,7 +121,13 @@ describe('gzip and compact summary boundaries', () => {
       admissionRetrySuccesses: row.admissionRetrySuccesses,
       admissionInvocations: [row],
     }
-    expect(decodeEvidence(fixture.compressed, admitted, 'main-reader').actions.length).toBe(1)
+    expect(
+      decodeEvidence({
+        compressed: fixture.compressed,
+        summary: admitted,
+        expectedLane: 'main-reader',
+      }).actions.length,
+    ).toBe(1)
     for (const key of ['admissionFallbacks', 'admissionRetrySuccesses'] as const) {
       for (const counters of [
         null,
@@ -110,7 +138,11 @@ describe('gzip and compact summary boundaries', () => {
         { reapi: 0, archiveOrigin: Number.MAX_SAFE_INTEGER + 1 },
       ]) {
         expect(() =>
-          decodeEvidence(fixture.compressed, { ...fixture.summary, [key]: counters }, 'main-reader'),
+          decodeEvidence({
+            compressed: fixture.compressed,
+            summary: { ...fixture.summary, [key]: counters },
+            expectedLane: 'main-reader',
+          }),
         ).toThrow()
       }
     }
@@ -123,15 +155,19 @@ describe('gzip and compact summary boundaries', () => {
       [{ ...row, admissionRetrySuccesses: { reapi: 1, archiveOrigin: 1 } }],
     ]) {
       expect(() =>
-        decodeEvidence(fixture.compressed, { ...admitted, admissionInvocations: rows }, 'main-reader'),
+        decodeEvidence({
+          compressed: fixture.compressed,
+          summary: { ...admitted, admissionInvocations: rows },
+          expectedLane: 'main-reader',
+        }),
       ).toThrow()
     }
     expect(() =>
-      decodeEvidence(
-        fixture.compressed,
-        { ...admitted, admissionFallbacks: { reapi: 0, archiveOrigin: 0 } },
-        'main-reader',
-      ),
+      decodeEvidence({
+        compressed: fixture.compressed,
+        summary: { ...admitted, admissionFallbacks: { reapi: 0, archiveOrigin: 0 } },
+        expectedLane: 'main-reader',
+      }),
     ).toThrow()
     expect(admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
     expect(admissionRetrySuccesses).toEqual({ reapi: 0, archiveOrigin: 0 })
@@ -176,7 +212,7 @@ describe('warm99 CLI manifest completeness', () => {
         eligible: 1,
         remoteHits: 1,
         excluded: 5,
-        excludedByDesign: { 'local-materialization-policy': 5 },
+        excludedByDesign: { 'local-materialization-policy': 5, 'darwin-unsandboxed': 0 },
         cold: 0,
         changed: 0,
       })
@@ -231,6 +267,8 @@ describe('gzip expansion bound', () => {
         bytes: bomb.length,
       },
     }
-    expect(() => decodeEvidence(bomb, summary, 'main-reader')).toThrow()
+    expect(() =>
+      decodeEvidence({ compressed: bomb, summary: summary, expectedLane: 'main-reader' }),
+    ).toThrow()
   })
 })
