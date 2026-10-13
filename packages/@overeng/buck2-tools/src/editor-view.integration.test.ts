@@ -43,6 +43,7 @@ import {
   type EditorViewOptions,
   type EditorViewRecord,
 } from './editor-view.ts'
+import { realpathThroughName } from './real-path.ts'
 import * as fingerprintRunner from './typescript-runner.ts'
 
 // Namespace-property spies do not replace Bun's native named-import bindings.
@@ -53,6 +54,7 @@ const fsMocks = {
   readdirSync: vi.fn(nativeFs.readdirSync),
   lstatSync: vi.fn(nativeFs.lstatSync),
   mkdirSync: vi.fn(nativeFs.mkdirSync),
+  realpathSync: vi.fn(nativeFs.realpathSync),
 }
 vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
 
@@ -130,6 +132,7 @@ afterEach(async () => {
   fsMocks.readdirSync.mockReset().mockImplementation(nativeFs.readdirSync)
   fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
   fsMocks.mkdirSync.mockReset().mockImplementation(nativeFs.mkdirSync)
+  fsMocks.realpathSync.mockReset().mockImplementation(nativeFs.realpathSync)
 })
 
 const runEditorViewCli = async ({
@@ -2341,6 +2344,71 @@ describe('editor view publisher', () => {
       await expect(pending).resolves.toEqual(record)
     })
   })
+
+  it.each(['relocation', 'hardening'] as const)(
+    'keeps a hardlinked symlink leaf inside its named owner during %s',
+    async (phase) => {
+      const fixture = makeFixture()
+      try {
+        const contents = 'export default 1\n'
+        const sourceTarget = join(
+          fixture.nodeModules,
+          '.pnpm',
+          'dep@1',
+          'node_modules',
+          'dep',
+          'index.js',
+        )
+        const alias = join(fixture.nodeModules, 'leaf.js')
+        symlinkSync('.pnpm/dep@1/node_modules/dep/index.js', alias)
+        const outside = join(fixture.root, 'outside-owner.js')
+        if (phase === 'relocation') linkSync(sourceTarget, outside)
+        const digest = createHash('sha256').update(contents).digest('hex')
+        const blob = join(fixture.options.contentStore!, digest.slice(0, 2), `${digest}-0444`)
+        // Darwin's F_GETPATH may name a file through any of its hardlinks.
+        // Model that syscall result, but only for a real alias of the same inode,
+        // so this regression is deterministic even on Linux.
+        fsMocks.realpathSync.mockImplementation((...args) => {
+          const named = Reflect.apply(nativeFs.realpathSync, nativeFs, args) as string | Buffer
+          const path = String(args[0])
+          const otherName = phase === 'relocation' ? outside : blob
+          if (
+            path.endsWith('/leaf.js') === true &&
+            (phase === 'relocation' || path.includes('/.candidate-') === true) &&
+            nativeFs.existsSync(otherName) === true
+          ) {
+            const target = nativeFs.statSync(path, { bigint: true })
+            const other = nativeFs.lstatSync(otherName, { bigint: true })
+            if (target.dev === other.dev && target.ino === other.ino) return otherName
+          }
+          return named
+        })
+        const options = { ...fixture.options, backingRoots: [fixture.nodeModules] }
+        const record = await publishEditorView(options)
+        const snapshot = join(fixture.editorRoot, record.snapshot)
+        const snapshotAlias = join(snapshot, 'node_modules', 'leaf.js')
+        const target = realpathThroughName(snapshotAlias)
+        expect(target.startsWith(`${snapshot}/`)).toBe(true)
+        expect(readFileSync(snapshotAlias, 'utf8')).toBe(contents)
+        const shared = statSync(target, { bigint: true })
+        const cached = lstatSync(blob, { bigint: true })
+        expect([shared.dev, shared.ino]).toEqual([cached.dev, cached.ino])
+        expect(shared.nlink).toBeGreaterThan(1n)
+        // Prove the injected OS condition exists independently of the publisher.
+        if (phase === 'relocation') expect(realpathSync(alias)).toBe(outside)
+        else {
+          const candidateAlias = join(dirname(snapshot), '.candidate-probe', 'leaf.js')
+          mkdirSync(dirname(candidateAlias))
+          symlinkSync(target, candidateAlias)
+          expect(realpathSync(candidateAlias)).toBe(blob)
+          rmSync(dirname(candidateAlias), { recursive: true })
+        }
+      } finally {
+        fsMocks.realpathSync.mockReset().mockImplementation(nativeFs.realpathSync)
+        cleanup(fixture)
+      }
+    },
+  )
 
   describe('residual links in byte-owned snapshots', () => {
     let fixture: Fixture

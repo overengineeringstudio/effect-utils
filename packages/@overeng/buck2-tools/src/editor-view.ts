@@ -54,7 +54,7 @@ import {
   type EditorViewSourceFile,
 } from './editor-view-sharing.ts'
 import { emitCompletedSpan, type OtelSpanAttribute } from './otel-span-cli.ts'
-import { canonicalizeParent, canonicalizePath } from './real-path.ts'
+import { canonicalizeParent, canonicalizePath, realpathThroughName } from './real-path.ts'
 import { runFingerprintTool } from './typescript-runner.ts'
 
 /** Versioned identity of the persisted scoped editor-view record. */
@@ -489,7 +489,7 @@ const canonicalTreeFingerprints = async ({
       const target = readlinkSync(absolutePath)
       let resolved: string
       try {
-        resolved = realpathSync(absolutePath)
+        resolved = realpathThroughName(absolutePath)
       } catch (error) {
         return fail(
           `tree contains an unresolvable symbolic link: ${absolutePath} (${error instanceof Error ? error.message : String(error)})`,
@@ -557,7 +557,7 @@ const canonicalTreeFingerprints = async ({
         literalLinks.push([relativePath, readlinkSync(absolutePath)])
         const [ownerIdentity, ownerTarget] = frameLinkOwner({
           absolutePath,
-          resolved: realpathSync(absolutePath),
+          resolved: realpathThroughName(absolutePath),
         })
         const [identityLength, identityBytes] = frame(ownerIdentity.toString())
         const [ownerTargetLength, ownerTargetBytes] = frame(ownerTarget.toString())
@@ -1400,7 +1400,7 @@ const rewriteSnapshotLinks = ({
       inventories.set(identity, inventory)
       let liveTarget: string
       try {
-        liveTarget = realpathSync(sourcePath)
+        liveTarget = realpathThroughName(sourcePath)
       } catch (error) {
         return fail(
           `declared backing link is unresolvable: ${sourcePath} (${error instanceof Error ? error.message : String(error)})`,
@@ -1522,7 +1522,7 @@ const assertByteOwnedFiniteSnapshot = ({
       const path = join(directory, name)
       const status = lstatSync(path, { bigint: true })
       if (status.isSymbolicLink() === true) {
-        const resolved = realpathSync(path)
+        const resolved = realpathThroughName(path)
         if (isWithin({ root: snapshot, candidate: resolved }) === false)
           fail(`byte-owned snapshot link escapes owned roots: ${path} -> ${resolved}`)
         continue
@@ -1550,7 +1550,7 @@ const hardenSnapshot = (snapshotDir: string): void => {
       const status = lstatSync(path)
       if (status.isSymbolicLink() === true) {
         if (finite === false) fail(`byte-owned snapshot retains a symbolic link: ${path}`)
-        const resolved = realpathSync(path)
+        const resolved = realpathThroughName(path)
         if (isWithin({ root: snapshotDir, candidate: resolved }) === false)
           fail(`byte-owned snapshot link escapes owned roots: ${path} -> ${resolved}`)
         continue
@@ -1609,7 +1609,7 @@ const requireReadOnlySnapshot = (snapshotDir: string): void => {
       const entry = lstatSync(path)
       if (entry.isSymbolicLink() === true) {
         if (finite === false) fail(`snapshot contains a symbolic link: ${path}`)
-        const resolved = realpathSync(path)
+        const resolved = realpathThroughName(path)
         if (isWithin({ root: snapshotDir, candidate: resolved }) === false)
           fail(`snapshot symbolic link escapes owned roots: ${path} -> ${resolved}`)
         continue
