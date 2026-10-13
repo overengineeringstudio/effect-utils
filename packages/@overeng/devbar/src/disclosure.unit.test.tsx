@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { userEvent } from '@testing-library/user-event'
 import * as React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -27,7 +27,7 @@ const nativePopoverDescriptors = {
 beforeEach(() => {
   const open = new WeakSet<Element>()
   const matches = Element.prototype.matches
-  vi.spyOn(Element.prototype, 'matches').mockImplementation(function (selector) {
+  vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector) {
     return selector === ':popover-open' ? open.has(this) : matches.call(this, selector)
   })
   Object.defineProperties(HTMLElement.prototype, {
@@ -138,14 +138,16 @@ describe('anchored disclosure', () => {
     { right: 1600, expectedLeft: 716 },
   ])('clamps both viewport edges at $right', ({ right, expectedLeft }) => {
     vi.stubGlobal('innerWidth', 1024)
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
-      return DOMRect.fromRect({
-        x: this.tagName === 'BUTTON' ? right - 20 : 0,
-        y: 700,
-        width: this.tagName === 'BUTTON' ? 20 : 300,
-        height: 30,
-      })
-    })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        return DOMRect.fromRect({
+          x: this.tagName === 'BUTTON' ? right - 20 : 0,
+          y: 700,
+          width: this.tagName === 'BUTTON' ? 20 : 300,
+          height: 30,
+        })
+      },
+    )
     render(
       <AnchoredDisclosure label="Details" trigger="Details" triggerLabel="Show details">
         <p>Host content</p>
@@ -166,20 +168,22 @@ describe('anchored disclosure', () => {
     ({ top, expectedHeight, expectedAnchor }) => {
       vi.stubGlobal('innerHeight', 320)
       vi.stubGlobal('innerWidth', 900)
-      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
-        const isBuild = this.getAttribute('aria-label')?.includes('show Changelog') === true
-        return DOMRect.fromRect({
-          x: 600,
-          y: isBuild === true ? top : 290,
-          width:
-            this.hasAttribute('data-devbar-segment-content') === true
-              ? 1000
-              : this.tagName === 'BUTTON'
-                ? 160
-                : 300,
-          height: this.tagName === 'BUTTON' ? 24 : 500,
-        })
-      })
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+        function (this: HTMLElement) {
+          const isBuild = this.getAttribute('aria-label')?.includes('show Changelog') === true
+          return DOMRect.fromRect({
+            x: 600,
+            y: isBuild === true ? top : 290,
+            width:
+              this.hasAttribute('data-devbar-segment-content') === true
+                ? 1000
+                : this.tagName === 'BUTTON'
+                  ? 160
+                  : 300,
+            height: this.tagName === 'BUTTON' ? 24 : 500,
+          })
+        },
+      )
       render(
         <Devbar
           panels={[]}
@@ -211,12 +215,14 @@ describe('anchored disclosure', () => {
 
   it('does not mirror alerts on segments that remain visible', () => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(600)
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
-      const segment = this.parentElement?.getAttribute('data-devbar-segment')
-      return DOMRect.fromRect({
-        width: segment === 'visible' ? 200 : segment === 'hidden' ? 400 : 40,
-      })
-    })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        const segment = this.parentElement?.getAttribute('data-devbar-segment')
+        return DOMRect.fromRect({
+          width: segment === 'visible' ? 200 : segment === 'hidden' ? 400 : 40,
+        })
+      },
+    )
     render(
       <Devbar
         panels={[]}
@@ -270,14 +276,16 @@ describe('anchored disclosure', () => {
 
   it('aggregates only hidden alerts and consumes dialog, tooltip, overflow, then panel Escape', () => {
     const onOpenPanelChange = vi.fn()
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
-      return DOMRect.fromRect({
-        x: 100,
-        y: 700,
-        width: this.hasAttribute('data-devbar-segment-content') === true ? 400 : 40,
-        height: 30,
-      })
-    })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        return DOMRect.fromRect({
+          x: 100,
+          y: 700,
+          width: this.hasAttribute('data-devbar-segment-content') === true ? 400 : 40,
+          height: 30,
+        })
+      },
+    )
     render(
       <Devbar
         panels={[{ id: 'logs', label: 'Logs', render: () => <p>Recent requests</p> }]}
