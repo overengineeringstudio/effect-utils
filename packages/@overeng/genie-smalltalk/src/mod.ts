@@ -152,13 +152,12 @@ const Restart = Schema.Literals(['never', 'always'])
 const Env = Schema.Record(Schema.String, Schema.String)
 const Authority = Schema.Array(Schema.Struct({ verb: Text, pattern: Text }))
 
-const AgentTask = Schema.Struct({
+const AgentTaskFields = Schema.Struct({
   id: LocalId,
   host: Schema.optionalKey(Text),
   workspace: Schema.optionalKey(Text),
   command: Schema.optionalKey(Text),
   argv: Schema.optionalKey(Schema.Array(Text)),
-  restart: Schema.optionalKey(Restart),
 }).pipe(
   Schema.refine(
     (t): t is typeof t => Number(t.command !== undefined) + Number(t.argv !== undefined) === 1,
@@ -167,6 +166,12 @@ const AgentTask = Schema.Struct({
     },
   ),
 )
+
+const AgentTask = Schema.declare<typeof AgentTaskFields.Encoded>(
+  (input): input is typeof AgentTaskFields.Encoded =>
+    Schema.is(AgentTaskFields)(input) &&
+    Reflect.ownKeys(input).every((key) => Object.hasOwn(AgentTaskFields.schema.fields, key)),
+).annotate({ identifier: 'St.AgentTask' })
 
 const RenderOperation = Schema.Struct({
   kind: Schema.Literals(['copy', 'file', 'json-upsert']),
@@ -199,6 +204,23 @@ export const CodexSchema = Schema.Struct({
   resume: Schema.optionalKey(Schema.Struct({ session: Text })),
 }).annotate({ identifier: 'St.Codex' })
 
+/**
+ * The ID view of an imported agent declaration. Validation still checks the full
+ * AgentSchema; this structural view keeps under references from recursively
+ * expanding AgentSchema's inferred type and retains the original object.
+ */
+export interface AgentReference {
+  readonly id: string
+}
+
+const isAgentReference = (input: unknown): input is AgentReference =>
+  isAgentDeclaration(input) && input.id.includes('//') === false
+
+/** An imported agent object, validated lazily without copying launch or kit metadata. */
+export const AgentReferenceSchema = Schema.declare<AgentReference>(isAgentReference).annotate({
+  identifier: 'St.AgentReference',
+})
+
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
   identity: Schema.optionalKey(Text),
@@ -216,7 +238,7 @@ const AgentSchemaFields = Schema.Struct({
     }),
   ),
   under: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ target: Text, reason: Schema.optionalKey(Text) })),
+    Schema.Array(Schema.Struct({ target: AgentReferenceSchema, reason: Schema.optionalKey(Text) })),
   ),
   restart: Schema.optionalKey(Restart),
   rollout: Schema.optionalKey(Schema.Literal('manual')),
@@ -264,6 +286,8 @@ export const AgentSchema = AgentSchemaFields.pipe(
   Schema.annotate({ identifier: 'St.Agent' }),
 )
 
+const isAgentDeclaration = Schema.is(AgentSchema)
+
 /** A step gate on an exit code or subject state. */
 export const GateSchema = Schema.Struct({
   name: Text,
@@ -296,7 +320,7 @@ export const StepSchema = Schema.Struct({
   id: LocalId,
   timeout: Schema.optionalKey(Duration),
   agentless: Schema.optionalKey(Schema.Literal(true)),
-  assignedTo: Schema.optionalKey(SubjectId),
+  assignedTo: Schema.optionalKey(AgentReferenceSchema),
   dependsOn: Schema.optionalKey(
     Schema.Array(DependsOnSchema).pipe(
       Schema.refine(
@@ -338,9 +362,7 @@ export const ScheduleSchema = Schema.Struct({
  * Native st reports only to agents; people must be reached through their own agent.
  * Kit metadata on the declaration is not part of the reference.
  */
-export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(
-  Schema.is(AgentSchema),
-).pipe(
+export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(isAgentDeclaration).pipe(
   Schema.refine((a): a is typeof a => a.id.includes('//') === false, {
     message: 'report-to agent ID must not contain empty path segments',
   }),
@@ -438,7 +460,9 @@ export const step = (input: typeof StepSchema.Encoded): Node => {
   const s = decode({ schema: StepSchema, input })
   const children: Node[] = []
   if (s.agentless === true) children.push(node({ name: 'agentless' }))
-  if (s.assignedTo !== undefined) children.push(child({ name: 'assigned-to', value: s.assignedTo }))
+  if (s.assignedTo !== undefined) {
+    children.push(child({ name: 'assigned-to', value: `agent/${s.assignedTo.id}` }))
+  }
   if (s.dependsOn !== undefined) {
     children.push(
       block({
@@ -522,7 +546,6 @@ const taskNode = ({
       ...optionalChild({ name: 'workspace', value: task.workspace }),
       ...optionalChild({ name: 'command', value: task.command }),
       ...(task.argv === undefined ? [] : [node({ name: 'argv', args: task.argv })]),
-      ...optionalChild({ name: 'restart', value: task.restart }),
     ],
   })
 
@@ -564,7 +587,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
     children.push(
       node({
         name: 'under',
-        args: [under.target],
+        args: [`agent/${under.target.id}`],
         props: under.reason === undefined ? {} : { reason: under.reason },
       }),
     )
