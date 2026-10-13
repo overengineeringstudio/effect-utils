@@ -12,8 +12,7 @@ import {
   validationOperationDispositions,
 } from './operation-dispositions.ts'
 
-const sort = (values: Iterable<string>) =>
-  [...values].sort((left, right) => left.localeCompare(right))
+const sort = (values: Iterable<string>) => [...values].sort((left, right) => left.localeCompare(right))
 
 const documentedDeveloperOperations = () => {
   const operations = new Set<string>()
@@ -29,9 +28,7 @@ const documentedDeveloperOperations = () => {
 
 describe('Buck operation disposition coverage', () => {
   it('classifies every documented public developer operation exactly once', () => {
-    expect(sort(Object.keys(developerOperationDispositions))).toEqual(
-      documentedDeveloperOperations(),
-    )
+    expect(sort(Object.keys(developerOperationDispositions))).toEqual(documentedDeveloperOperations())
   })
 
   it('classifies every generated CI job exactly once', () => {
@@ -51,11 +48,9 @@ describe('Buck operation disposition coverage', () => {
   })
 
   it('projects the source registry without a second classification table', () => {
-    expect(JSON.parse(dispositionArtifact.stringify({ cwd: process.cwd(), location: '' }))).toEqual(
-      {
-        schemaVersion: 1,
-        ...operationDispositionProjection,
-      },
-    )
+    expect(JSON.parse(dispositionArtifact.stringify({ cwd: process.cwd(), location: '' }))).toEqual({
+      schemaVersion: 1,
+      ...operationDispositionProjection,
+    })
   })
 })
