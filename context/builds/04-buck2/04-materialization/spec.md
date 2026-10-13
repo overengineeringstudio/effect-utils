@@ -304,12 +304,25 @@ lock. Package first-hop links can remain dangling until the retired worktree is
 removed or publication recreates its root.
 
 Every tool that removes a worktree runs root-scoped `buck2 kill` for each of the
-root's isolations before removal. A Buck daemon's cwd is `<root>/buck-out/<isolation>`,
-so a live daemon holds the worktree for in-use probes, and once the directory is
-gone the CLI can no longer address that daemon. `worktree:teardown` follows this
-rule. `mr store gc`
-(merged-worklog teardown, archive reap, build budgets) removes worktrees without
-stopping Buck and relies on its process probe to veto a held worktree.
+root's isolations before removal. A Buck daemon's cwd can be the root itself or
+`<root>/buck-out/<isolation>`, so a live daemon holds the worktree for in-use probes.
+Once the directory is renamed or gone the CLI can no longer address it. `worktree:teardown`
+follows this rule. On Linux, `mr store gc` discovers the current user's daemons
+inside an eligible worktree and runs `buck2 --isolation-dir <i> kill` from each
+daemon's project root only after root-scoped status proves the same PID/daemon
+ID and no active commands. This happens under the worktree lock (and lease where
+present), after the path's existing keep/activity checks and before its in-use
+probe or deletion, for cold and ref-mismatch archives, merged-worklog teardown,
+legacy whole-root deletion, and targeted applications. The legacy sweep adds no
+process probe or status reclassification. Receipts record every stop and the
+daemon + forkserver's pre-kill RSS + VmSwap KiB; targeted application errors
+include stopped daemon identities and memory estimates in their message.
+Status/kill failures degrade to unreachable evidence; paths with an existing
+probe still veto held roots. Already-moved archive entries are
+report-only/unreachable, never killed from the new path. Budget and generated
+artifact evictions inside a surviving root do not stop Buck; `mr store fix` is
+unchanged. See `packages/@overeng/megarepo/src/store/store-buck-daemons.ts` and
+`packages/@overeng/megarepo/src/cli/commands/store/mod.ts`.
 
 ## Idle Daemon Reaping
 
