@@ -11,8 +11,10 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Context, Data, Effect, Layer, Schedule } from 'effect'
+import { Context, Data, Effect, Layer, Schedule, Schema } from 'effect'
 import type { Duration } from 'effect'
+
+const encodeConfigString = Schema.encodeSync(Schema.fromJsonString(Schema.String))
 
 /** Raised when the scratch daemon cannot be started or never opens its socket. */
 export class ScratchDaemonError extends Data.TaggedError('ScratchDaemonError')<{
@@ -212,12 +214,14 @@ export const scratchDaemonLayer = (options: ScratchDaemonOptions) =>
       writeFileSync(
         config,
         [
-          `node = ${JSON.stringify(options.node ?? 'scratch')}`,
-          ...(options.person === undefined ? [] : [`person = ${JSON.stringify(options.person)}`]),
-          `state_dir = ${JSON.stringify(join(directory, 'state'))}`,
-          `pty_root = ${JSON.stringify(join(directory, 'pty'))}`,
-          `socket = ${JSON.stringify(socket)}`,
-          `client_gateway_socket = ${JSON.stringify(join(directory, 'gateway.sock'))}`,
+          `node = ${encodeConfigString(options.node ?? 'scratch')}`,
+          ...(options.person === undefined
+            ? []
+            : [`person = ${encodeConfigString(options.person)}`]),
+          `state_dir = ${encodeConfigString(join(directory, 'state'))}`,
+          `pty_root = ${encodeConfigString(join(directory, 'pty'))}`,
+          `socket = ${encodeConfigString(socket)}`,
+          `client_gateway_socket = ${encodeConfigString(join(directory, 'gateway.sock'))}`,
           'peers = []',
           '',
         ].join('\n'),

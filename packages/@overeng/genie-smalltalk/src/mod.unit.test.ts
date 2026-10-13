@@ -50,8 +50,8 @@ import {
   terminal,
 } from './mod.ts'
 import { prLanding, prLandingFragment } from './pr-landing.fixture.ts'
-import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
 import { ScratchDaemon, scratchDaemonLayer, type ScratchCommandResult } from './testing.ts'
+import { upstreamRepin, upstreamRepinKdl } from './upstream-repin.fixture.ts'
 
 const operator = person('person/schickling')
 const owner = { id: 'example/owner' } satisfies typeof AgentSchema.Encoded
@@ -1696,7 +1696,7 @@ const pollSt = async <T>(
 }
 
 const withIsolatedSt = async (
-  { kind }: { kind: 'production' | 'fixture' },
+  { kind, signal }: { kind: 'production' | 'fixture'; signal: AbortSignal },
   run: (st: IsolatedSt) => Promise<void>,
 ) => {
   const binary = kind === 'fixture' ? stFixtureBin : stBin
@@ -1710,22 +1710,26 @@ const withIsolatedSt = async (
       const dir = daemon.directory
       const socket = daemon.socket
       const isolatedEnv = daemon.env
-      yield* Effect.promise(async () => {
+      yield* Effect.promise(async (scopeSignal) => {
         const get = <T>(path: string): Promise<T> => {
+          scopeSignal.throwIfAborted()
           const { promise, resolve, reject } = Promise.withResolvers<T>()
-          const req = request({ socketPath: socket, path, method: 'GET' }, (response) => {
-            let body = ''
-            response.setEncoding('utf8')
-            response.on('data', (chunk: string) => {
-              body += chunk
-            })
-            response.on('error', reject)
-            response.on('end', () => {
-              if (response.statusCode !== 200)
-                reject(new Error(`${path} returned ${response.statusCode}: ${body}`))
-              else resolve(JSON.parse(body) as T)
-            })
-          })
+          const req = request(
+            { socketPath: socket, path, method: 'GET', signal: scopeSignal },
+            (response) => {
+              let body = ''
+              response.setEncoding('utf8')
+              response.on('data', (chunk: string) => {
+                body += chunk
+              })
+              response.on('error', reject)
+              response.on('end', () => {
+                if (response.statusCode !== 200)
+                  reject(new Error(`${path} returned ${response.statusCode}: ${body}`))
+                else resolve(JSON.parse(body) as T)
+              })
+            },
+          )
           req.on('error', reject)
           req.setTimeout(5000, () => req.destroy(new Error(`Timed out reading ${path}`)))
           req.end()
@@ -1736,13 +1740,15 @@ const withIsolatedSt = async (
           socket,
           isolatedEnv,
           get,
-          runCommand: (args) => Effect.runPromise(daemon.run(args)),
-          command: (...args) =>
-            spawnSync(daemon.binary, ['--endpoint', daemon.endpoint, '--json', ...args], {
+          runCommand: (args) => Effect.runPromise(daemon.run(args), { signal: scopeSignal }),
+          command: (...args) => {
+            scopeSignal.throwIfAborted()
+            return spawnSync(daemon.binary, ['--endpoint', daemon.endpoint, '--json', ...args], {
               encoding: 'utf8',
               timeout: 30000,
               env: isolatedEnv,
-            }),
+            })
+          },
         })
       })
     }).pipe(
@@ -1752,11 +1758,12 @@ const withIsolatedSt = async (
           node: 'genie-test',
           person: gateReviewer,
           // Native conformance explicitly exercises host shell commands.
-          path: process.env.PATH,
+          ...(process.env.PATH === undefined ? {} : { path: process.env.PATH }),
         }),
       ),
       Effect.scoped,
     ),
+    { signal },
   )
 }
 
@@ -1771,200 +1778,341 @@ const stJson = <T>(st: IsolatedSt, ...args: string[]): T => {
 
 testWithSt(
   'round-trips canonical mission and strict agent fields through isolated st daemon',
-  async () =>
-    withIsolatedSt({ kind: 'production' }, async ({ dir, socket, isolatedEnv, runCommand }) => {
-      const source = join(dir, 'mission.kdl')
-      const actor = process.env.ST_AGENT ?? gateReviewer
-      writeFileSync(source, canonical())
-      const publish = () =>
-        spawnSync(
-          stBin!,
-          [
-            '--endpoint',
-            `unix://${socket}`,
-            '--json',
-            'missions',
-            'publish',
-            source,
-            '--no-gate-check',
-            '--as',
-            actor,
-          ],
-          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-        )
-      const first = publish()
-      expect(first.status, first.stderr).toBe(0)
-      const second = await runCommand([
-        '--json',
-        'missions',
-        'publish',
-        source,
-        '--no-gate-check',
-        '--as',
-        actor,
-      ])
-      expect(second.status, second.stderr).toBe(0)
-      expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
-      const seatSource = join(dir, 'agent.kdl')
-      const launch = { id: 'garden/orchard', workspace: dir, command: 'true' }
-      const seat = emit([agent({ ...launch, rollout: 'manual', handlesFaults: true })])
-      const applySeat = (declaration: string) => {
-        writeFileSync(seatSource, declaration)
-        return spawnSync(
-          stBin!,
-          ['--endpoint', `unix://${socket}`, '--json', 'agents', 'apply', seatSource, '--as', actor],
-          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-        )
-      }
-      const applied = applySeat(seat)
-      expect(applied.status, applied.stderr).toBe(0)
-      const shown = await runCommand(['subject', 'show', 'agent/garden/orchard', '--kdl'])
-      expect(shown.status, shown.stderr).toBe(0)
-      expect(shown.stdout).toMatch(/^\s*handles-faults\s*$/mu)
-      const reapplied = applySeat(shown.stdout)
-      expect(reapplied.status, reapplied.stderr).toBe(0)
-      expect(JSON.parse(reapplied.stdout)).toMatchObject({ changed: false })
-      const xhigh = applySeat(
-        emit([
-          agent({
-            id: 'garden/xhigh',
-            workspace: dir,
-            rollout: 'manual',
-            harness: omp({ model: 'example-model', effort: 'xhigh' }),
-          }),
-        ]),
-      )
-      expect(xhigh.status, xhigh.stderr).toBe(0)
-      const xhighShown = spawnSync(
-        stBin!,
-        ['--endpoint', `unix://${socket}`, 'subject', 'show', 'agent/garden/xhigh', '--kdl'],
-        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-      )
-      expect(xhighShown.status, xhighShown.stderr).toBe(0)
-      expect(xhighShown.stdout).toContain('harness "omp"')
-      expect(xhighShown.stdout).toMatch(/^\s*effort "xhigh"\s*$/mu)
-      const xhighReapplied = applySeat(xhighShown.stdout)
-      expect(xhighReapplied.status, xhighReapplied.stderr).toBe(0)
-      expect(JSON.parse(xhighReapplied.stdout)).toMatchObject({ changed: false })
-      for (const field of [
-        'rollout "automatic"',
-        'rollout 1',
-        'rollout "manual"; rollout "manual"',
-        'rollout "manual" { ignored; }',
-        'rollout "manual" ignored="value"',
-      ]) {
-        const invalid = applySeat(seat.replace('rollout "manual"', field))
-        expect(invalid.status, field).not.toBe(0)
-      }
-      for (const field of [
-        'handles-faults #true',
-        'handles-faults ignored="value"',
-        'handles-faults; handles-faults',
-      ]) {
-        const invalid = applySeat(seat.replace('handles-faults', field))
-        expect(invalid.status, field).not.toBe(0)
-      }
-      const automatic = applySeat(emit([agent(launch)]))
-      expect(automatic.status, automatic.stderr).toBe(0)
-      expect(JSON.parse(automatic.stdout)).toMatchObject({ changed: true })
-      const automaticShown = await runCommand(['subject', 'show', 'agent/garden/orchard', '--kdl'])
-      expect(automaticShown.status, automaticShown.stderr).toBe(0)
-      expect(automaticShown.stdout).not.toContain('rollout')
-      expect(automaticShown.stdout).not.toContain('handles-faults')
-      const fixtureSeats = applySeat(
-        emit([
-          agent({ id: 'example/owner', workspace: dir, command: 'true', rollout: 'manual' }),
-          agent({ id: 'example/updater', workspace: dir, command: 'true', rollout: 'manual' }),
-          agent({ id: 'team/worker', workspace: dir, command: 'true', rollout: 'manual' }),
-          agent({ id: reporter.id, workspace: dir, command: 'true', rollout: 'manual' }),
-        ]),
-      )
-      expect(fixtureSeats.status, fixtureSeats.stderr).toBe(0)
-      const documentFile = join(dir, 'guide.txt')
-      writeFileSync(documentFile, guideText)
-      const storedGuide = spawnSync(
-        stBin!,
-        [
-          '--endpoint',
-          `unix://${socket}`,
-          'documents',
-          'put',
-          documentFile,
+  async ({ signal }) =>
+    withIsolatedSt(
+      { kind: 'production', signal },
+      async ({ dir, socket, isolatedEnv, runCommand }) => {
+        const source = join(dir, 'mission.kdl')
+        const actor = process.env.ST_AGENT ?? gateReviewer
+        writeFileSync(source, canonical())
+        const publish = () =>
+          spawnSync(
+            stBin!,
+            [
+              '--endpoint',
+              `unix://${socket}`,
+              '--json',
+              'missions',
+              'publish',
+              source,
+              '--no-gate-check',
+              '--as',
+              actor,
+            ],
+            { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+          )
+        const first = publish()
+        expect(first.status, first.stderr).toBe(0)
+        const second = await runCommand([
+          '--json',
+          'missions',
+          'publish',
+          source,
+          '--no-gate-check',
           '--as',
-          'doc/example/guide',
-        ],
-        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-      )
-      expect(storedGuide.status, storedGuide.stderr).toBe(0)
-      writeFileSync(source, grammarCanonical())
-      const grammarPublished = publish()
-      expect(grammarPublished.status, grammarPublished.stderr).toBe(0)
-      const grammarRepeated = publish()
-      expect(grammarRepeated.status, grammarRepeated.stderr).toBe(0)
-      expect(JSON.parse(grammarRepeated.stdout)).toMatchObject({ changed: false })
-      // Compare independent native KDL and the typed fixture by normalized revision.
-      writeFileSync(source, upstreamRepinKdl)
-      const originalFixture = publish()
-      expect(originalFixture.status, originalFixture.stderr).toBe(0)
-      writeFileSync(source, upstreamRepin())
-      const typedFixture = publish()
-      expect(typedFixture.status, typedFixture.stderr).toBe(0)
-      expect(JSON.parse(typedFixture.stdout)).toMatchObject({ changed: false })
-      const childProducer = step({
-        id: 'publish-child',
-        produces: childMission`example/child/${runId}`,
-      })
-      const childConsumer = step({
-        id: 'run-child',
-        agentless: true,
-        dependsOn: [childProducer],
-        waitFor: childProducer,
-      })
-      writeFileSync(
-        source,
-        emit([
-          mission({
-            id: 'child-output-proof',
-            state: 'ready',
-            reportTo: reporter,
-            assignedTo: reporter,
-            goal: ['Publish and use one attempt-bound child revision.'],
-            steps: [childProducer, childConsumer],
-          }),
-        ]),
-      )
-      const childPublished = publish()
-      expect(childPublished.status, childPublished.stderr).toBe(0)
-      const childRepeated = publish()
-      expect(childRepeated.status, childRepeated.stderr).toBe(0)
-      expect(JSON.parse(childRepeated.stdout)).toMatchObject({ changed: false })
-      writeFileSync(source, emit([prLanding()]))
-      const inputPublished = publish()
-      expect(inputPublished.status, inputPublished.stderr).toBe(0)
-      const observePr = (state: string) =>
-        spawnSync(
+          actor,
+        ])
+        expect(second.status, second.stderr).toBe(0)
+        expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
+        const seatSource = join(dir, 'agent.kdl')
+        const launch = { id: 'garden/orchard', workspace: dir, command: 'true' }
+        const seat = emit([agent({ ...launch, rollout: 'manual', handlesFaults: true })])
+        const applySeat = (declaration: string) => {
+          writeFileSync(seatSource, declaration)
+          return spawnSync(
+            stBin!,
+            [
+              '--endpoint',
+              `unix://${socket}`,
+              '--json',
+              'agents',
+              'apply',
+              seatSource,
+              '--as',
+              actor,
+            ],
+            { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+          )
+        }
+        const applied = applySeat(seat)
+        expect(applied.status, applied.stderr).toBe(0)
+        const shown = await runCommand(['subject', 'show', 'agent/garden/orchard', '--kdl'])
+        expect(shown.status, shown.stderr).toBe(0)
+        expect(shown.stdout).toMatch(/^\s*handles-faults\s*$/mu)
+        const reapplied = applySeat(shown.stdout)
+        expect(reapplied.status, reapplied.stderr).toBe(0)
+        expect(JSON.parse(reapplied.stdout)).toMatchObject({ changed: false })
+        const xhigh = applySeat(
+          emit([
+            agent({
+              id: 'garden/xhigh',
+              workspace: dir,
+              rollout: 'manual',
+              harness: omp({ model: 'example-model', effort: 'xhigh' }),
+            }),
+          ]),
+        )
+        expect(xhigh.status, xhigh.stderr).toBe(0)
+        const xhighShown = spawnSync(
+          stBin!,
+          ['--endpoint', `unix://${socket}`, 'subject', 'show', 'agent/garden/xhigh', '--kdl'],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+        expect(xhighShown.status, xhighShown.stderr).toBe(0)
+        expect(xhighShown.stdout).toContain('harness "omp"')
+        expect(xhighShown.stdout).toMatch(/^\s*effort "xhigh"\s*$/mu)
+        const xhighReapplied = applySeat(xhighShown.stdout)
+        expect(xhighReapplied.status, xhighReapplied.stderr).toBe(0)
+        expect(JSON.parse(xhighReapplied.stdout)).toMatchObject({ changed: false })
+        for (const field of [
+          'rollout "automatic"',
+          'rollout 1',
+          'rollout "manual"; rollout "manual"',
+          'rollout "manual" { ignored; }',
+          'rollout "manual" ignored="value"',
+        ]) {
+          const invalid = applySeat(seat.replace('rollout "manual"', field))
+          expect(invalid.status, field).not.toBe(0)
+        }
+        for (const field of [
+          'handles-faults #true',
+          'handles-faults ignored="value"',
+          'handles-faults; handles-faults',
+        ]) {
+          const invalid = applySeat(seat.replace('handles-faults', field))
+          expect(invalid.status, field).not.toBe(0)
+        }
+        const automatic = applySeat(emit([agent(launch)]))
+        expect(automatic.status, automatic.stderr).toBe(0)
+        expect(JSON.parse(automatic.stdout)).toMatchObject({ changed: true })
+        const automaticShown = await runCommand([
+          'subject',
+          'show',
+          'agent/garden/orchard',
+          '--kdl',
+        ])
+        expect(automaticShown.status, automaticShown.stderr).toBe(0)
+        expect(automaticShown.stdout).not.toContain('rollout')
+        expect(automaticShown.stdout).not.toContain('handles-faults')
+        const fixtureSeats = applySeat(
+          emit([
+            agent({ id: 'example/owner', workspace: dir, command: 'true', rollout: 'manual' }),
+            agent({ id: 'example/updater', workspace: dir, command: 'true', rollout: 'manual' }),
+            agent({ id: 'team/worker', workspace: dir, command: 'true', rollout: 'manual' }),
+            agent({ id: reporter.id, workspace: dir, command: 'true', rollout: 'manual' }),
+          ]),
+        )
+        expect(fixtureSeats.status, fixtureSeats.stderr).toBe(0)
+        const documentFile = join(dir, 'guide.txt')
+        writeFileSync(documentFile, guideText)
+        const storedGuide = spawnSync(
+          stBin!,
+          [
+            '--endpoint',
+            `unix://${socket}`,
+            'documents',
+            'put',
+            documentFile,
+            '--as',
+            'doc/example/guide',
+          ],
+          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+        )
+        expect(storedGuide.status, storedGuide.stderr).toBe(0)
+        writeFileSync(source, grammarCanonical())
+        const grammarPublished = publish()
+        expect(grammarPublished.status, grammarPublished.stderr).toBe(0)
+        const grammarRepeated = publish()
+        expect(grammarRepeated.status, grammarRepeated.stderr).toBe(0)
+        expect(JSON.parse(grammarRepeated.stdout)).toMatchObject({ changed: false })
+        // Compare independent native KDL and the typed fixture by normalized revision.
+        writeFileSync(source, upstreamRepinKdl)
+        const originalFixture = publish()
+        expect(originalFixture.status, originalFixture.stderr).toBe(0)
+        writeFileSync(source, upstreamRepin())
+        const typedFixture = publish()
+        expect(typedFixture.status, typedFixture.stderr).toBe(0)
+        expect(JSON.parse(typedFixture.stdout)).toMatchObject({ changed: false })
+        const childProducer = step({
+          id: 'publish-child',
+          produces: childMission`example/child/${runId}`,
+        })
+        const childConsumer = step({
+          id: 'run-child',
+          agentless: true,
+          dependsOn: [childProducer],
+          waitFor: childProducer,
+        })
+        writeFileSync(
+          source,
+          emit([
+            mission({
+              id: 'child-output-proof',
+              state: 'ready',
+              reportTo: reporter,
+              assignedTo: reporter,
+              goal: ['Publish and use one attempt-bound child revision.'],
+              steps: [childProducer, childConsumer],
+            }),
+          ]),
+        )
+        const childPublished = publish()
+        expect(childPublished.status, childPublished.stderr).toBe(0)
+        const childRepeated = publish()
+        expect(childRepeated.status, childRepeated.stderr).toBe(0)
+        expect(JSON.parse(childRepeated.stdout)).toMatchObject({ changed: false })
+        writeFileSync(source, emit([prLanding()]))
+        const inputPublished = publish()
+        expect(inputPublished.status, inputPublished.stderr).toBe(0)
+        const observePr = (state: string) =>
+          spawnSync(
+            stBin!,
+            [
+              '--endpoint',
+              `unix://${socket}`,
+              '--json',
+              'claim',
+              'resource/acme/garden/pr-7',
+              'resource.observed',
+              '--field',
+              'kind=vcs.pull-request',
+              '--field',
+              `state=${state}`,
+              '--field',
+              'number=7',
+            ],
+            { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+          )
+        const observedPr = observePr('open')
+        expect(observedPr.status, observedPr.stderr).toBe(0)
+        const claimId = JSON.parse(observedPr.stdout).id
+        const startLanding = (values: readonly string[], id = 'input-proof') =>
+          spawnSync(
+            stBin!,
+            [
+              '--endpoint',
+              `unix://${socket}`,
+              '--json',
+              'missions',
+              'start',
+              'pr-landing',
+              '--id',
+              id,
+              '--workspace',
+              dir,
+              '--as',
+              actor,
+              ...values.flatMap((value) => ['--input', value]),
+            ],
+            { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+          )
+        const values = [
+          'pr=resource/acme/garden/pr-7',
+          `commit=${'a'.repeat(40)}`,
+          'locator=acme/garden#7',
+        ]
+        expect(startLanding([values[0]!]).status).not.toBe(0)
+        expect(startLanding([...values, 'surprise=wrong']).status).not.toBe(0)
+        const startedLanding = startLanding(values)
+        expect(startedLanding.status, startedLanding.stderr).toBe(0)
+        const StartedMission = Schema.Struct({
+          mission_run: Schema.Struct({ subject: Schema.String }),
+        })
+        const inputRun = Schema.decodeUnknownSync(StartedMission)(JSON.parse(startedLanding.stdout))
+        const pinnedPr = {
+          kind: 'resource',
+          subject: 'resource/acme/garden/pr-7',
+          value: `resource/acme/garden/pr-7@${claimId}`,
+          claim_id: claimId,
+        }
+        expect(JSON.parse(startedLanding.stdout)).toMatchObject({
+          mission_run: {
+            inputs: {
+              pr: pinnedPr,
+              commit: { kind: 'text', value: 'a'.repeat(40) },
+              locator: { kind: 'text', value: 'acme/garden#7' },
+            },
+          },
+        })
+        const capacityRejected = startLanding(values, 'input-proof-second')
+        expect(capacityRejected.status).not.toBe(0)
+        expect(capacityRejected.stderr).toContain('reached its active run limit')
+        const laterObservation = observePr('closed')
+        expect(laterObservation.status, laterObservation.stderr).toBe(0)
+        const inputShown = spawnSync(
           stBin!,
           [
             '--endpoint',
             `unix://${socket}`,
             '--json',
-            'claim',
-            'resource/acme/garden/pr-7',
-            'resource.observed',
-            '--field',
-            'kind=vcs.pull-request',
-            '--field',
-            `state=${state}`,
-            '--field',
-            'number=7',
+            'subject',
+            'show',
+            inputRun.mission_run.subject,
           ],
           { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
         )
-      const observedPr = observePr('open')
-      expect(observedPr.status, observedPr.stderr).toBe(0)
-      const claimId = JSON.parse(observedPr.stdout).id
-      const startLanding = (values: readonly string[], id = 'input-proof') =>
-        spawnSync(
+        expect(inputShown.status, inputShown.stderr).toBe(0)
+        expect(JSON.parse(inputShown.stdout)).toMatchObject({
+          status: { subjects: [{ actual: { inputs: { pr: pinnedPr } } }] },
+        })
+        writeFileSync(
+          source,
+          emit([
+            mission({
+              id: 'watch-proof',
+              state: 'ready',
+              reportTo: reporter,
+              goal: ['Keep the ref watch owned by this run.'],
+              resources: [{ id: 'ref', kind: 'vcs.ref' }],
+              observers: [
+                {
+                  id: 'watch',
+                  resource: 'resource/ref',
+                  provider: 'github.ref',
+                  locator: 'acme/garden@feature/proof',
+                  fields: ['head', 'ancestors'],
+                  every: '1h',
+                },
+              ],
+              subscriptions: [
+                {
+                  id: 'changes',
+                  observer: 'observer/watch',
+                  to: 'agent/example/updater',
+                  on: ['head'],
+                  delivery: 'message',
+                  when: { path: 'head', operator: 'starts-with', value: 'git:' },
+                },
+              ],
+              steps: [
+                {
+                  id: 'wait',
+                  agentless: true,
+                  documents: [`doc/example/guide@${guideHash}`],
+                  gates: [
+                    { name: 'guide', kind: 'document', subject: 'doc/example/guide' },
+                    {
+                      name: 'pinned-guide',
+                      kind: 'document',
+                      subject: `doc/example/guide@${guideHash}`,
+                    },
+                    {
+                      name: 'hold',
+                      kind: 'field',
+                      path: 'state',
+                      subject: 'resource/ref',
+                      operator: 'is',
+                      value: 'waiting-for-proof',
+                    },
+                  ],
+                },
+              ],
+            }),
+          ]),
+        )
+        const watchPublished = publish()
+        expect(watchPublished.status, watchPublished.stderr).toBe(0)
+        const watchStarted = spawnSync(
           stBin!,
           [
             '--endpoint',
@@ -1972,239 +2120,118 @@ testWithSt(
             '--json',
             'missions',
             'start',
-            'pr-landing',
+            'watch-proof',
             '--id',
-            id,
+            'watch-proof',
             '--workspace',
             dir,
             '--as',
             actor,
-            ...values.flatMap((value) => ['--input', value]),
           ],
           { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
         )
-      const values = [
-        'pr=resource/acme/garden/pr-7',
-        `commit=${'a'.repeat(40)}`,
-        'locator=acme/garden#7',
-      ]
-      expect(startLanding([values[0]!]).status).not.toBe(0)
-      expect(startLanding([...values, 'surprise=wrong']).status).not.toBe(0)
-      const startedLanding = startLanding(values)
-      expect(startedLanding.status, startedLanding.stderr).toBe(0)
-      const StartedMission = Schema.Struct({
-        mission_run: Schema.Struct({ subject: Schema.String }),
-      })
-      const inputRun = Schema.decodeUnknownSync(StartedMission)(JSON.parse(startedLanding.stdout))
-      const pinnedPr = {
-        kind: 'resource',
-        subject: 'resource/acme/garden/pr-7',
-        value: `resource/acme/garden/pr-7@${claimId}`,
-        claim_id: claimId,
-      }
-      expect(JSON.parse(startedLanding.stdout)).toMatchObject({
-        mission_run: {
-          inputs: {
-            pr: pinnedPr,
-            commit: { kind: 'text', value: 'a'.repeat(40) },
-            locator: { kind: 'text', value: 'acme/garden#7' },
-          },
-        },
-      })
-      const capacityRejected = startLanding(values, 'input-proof-second')
-      expect(capacityRejected.status).not.toBe(0)
-      expect(capacityRejected.stderr).toContain('reached its active run limit')
-      const laterObservation = observePr('closed')
-      expect(laterObservation.status, laterObservation.stderr).toBe(0)
-      const inputShown = spawnSync(
-        stBin!,
-        [
-          '--endpoint',
-          `unix://${socket}`,
-          '--json',
-          'subject',
-          'show',
-          inputRun.mission_run.subject,
-        ],
-        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-      )
-      expect(inputShown.status, inputShown.stderr).toBe(0)
-      expect(JSON.parse(inputShown.stdout)).toMatchObject({
-        status: { subjects: [{ actual: { inputs: { pr: pinnedPr } } }] },
-      })
-      writeFileSync(
-        source,
-        emit([
-          mission({
-            id: 'watch-proof',
-            state: 'ready',
-            reportTo: reporter,
-            goal: ['Keep the ref watch owned by this run.'],
-            resources: [{ id: 'ref', kind: 'vcs.ref' }],
-            observers: [
-              {
-                id: 'watch',
-                resource: 'resource/ref',
-                provider: 'github.ref',
-                locator: 'acme/garden@feature/proof',
-                fields: ['head', 'ancestors'],
-                every: '1h',
-              },
-            ],
-            subscriptions: [
-              {
-                id: 'changes',
-                observer: 'observer/watch',
-                to: 'agent/example/updater',
-                on: ['head'],
-                delivery: 'message',
-                when: { path: 'head', operator: 'starts-with', value: 'git:' },
-              },
-            ],
-            steps: [
-              {
-                id: 'wait',
-                agentless: true,
-                documents: [`doc/example/guide@${guideHash}`],
-                gates: [
-                  { name: 'guide', kind: 'document', subject: 'doc/example/guide' },
-                  {
-                    name: 'pinned-guide',
-                    kind: 'document',
-                    subject: `doc/example/guide@${guideHash}`,
-                  },
-                  {
-                    name: 'hold',
-                    kind: 'field',
-                    path: 'state',
-                    subject: 'resource/ref',
-                    operator: 'is',
-                    value: 'waiting-for-proof',
-                  },
-                ],
-              },
-            ],
-          }),
-        ]),
-      )
-      const watchPublished = publish()
-      expect(watchPublished.status, watchPublished.stderr).toBe(0)
-      const watchStarted = spawnSync(
-        stBin!,
-        [
-          '--endpoint',
-          `unix://${socket}`,
-          '--json',
-          'missions',
-          'start',
-          'watch-proof',
-          '--id',
-          'watch-proof',
-          '--workspace',
-          dir,
-          '--as',
-          actor,
-        ],
-        { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-      )
-      expect(watchStarted.status, watchStarted.stderr).toBe(0)
-      const watchRun = Schema.decodeUnknownSync(StartedMission)(JSON.parse(watchStarted.stdout))
-      const watchRunId = watchRun.mission_run.subject.slice('mission-run/'.length)
-      const observerSubject = `observer/${watchRunId}/watch`
-      const subscriptionSubject = `subscription/${watchRunId}/changes`
-      const OwnedProjection = Schema.Struct({
-        status: Schema.Struct({
-          subjects: Schema.Array(
-            Schema.Struct({
-              subject: Schema.String,
-              desired: Schema.optionalKey(
-                Schema.NullOr(
-                  Schema.Struct({
-                    children: Schema.Array(
-                      Schema.Struct({
-                        name: Schema.String,
-                        arguments: Schema.Array(Schema.String),
-                      }),
-                    ),
-                  }),
+        expect(watchStarted.status, watchStarted.stderr).toBe(0)
+        const watchRun = Schema.decodeUnknownSync(StartedMission)(JSON.parse(watchStarted.stdout))
+        const watchRunId = watchRun.mission_run.subject.slice('mission-run/'.length)
+        const observerSubject = `observer/${watchRunId}/watch`
+        const subscriptionSubject = `subscription/${watchRunId}/changes`
+        const OwnedProjection = Schema.Struct({
+          status: Schema.Struct({
+            subjects: Schema.Array(
+              Schema.Struct({
+                subject: Schema.String,
+                desired: Schema.optionalKey(
+                  Schema.NullOr(
+                    Schema.Struct({
+                      children: Schema.Array(
+                        Schema.Struct({
+                          name: Schema.String,
+                          arguments: Schema.Array(Schema.String),
+                        }),
+                      ),
+                    }),
+                  ),
                 ),
-              ),
-            }),
-          ),
-        }),
-      })
-      const showOwned = (subject: string) => {
-        const result = spawnSync(
-          stBin!,
-          ['--endpoint', `unix://${socket}`, '--json', 'subject', 'show', subject],
-          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+              }),
+            ),
+          }),
+        })
+        const showOwned = (subject: string) => {
+          const result = spawnSync(
+            stBin!,
+            ['--endpoint', `unix://${socket}`, '--json', 'subject', 'show', subject],
+            { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+          )
+          expect(result.status, result.stderr).toBe(0)
+          return Schema.decodeUnknownSync(OwnedProjection)(JSON.parse(result.stdout)).status
+            .subjects[0]
+        }
+        const ownedObserver = await pollSt(
+          async () => showOwned(observerSubject),
+          (value) => value?.desired != null,
+          'run-scoped ref observer',
         )
-        expect(result.status, result.stderr).toBe(0)
-        return Schema.decodeUnknownSync(OwnedProjection)(JSON.parse(result.stdout)).status
-          .subjects[0]
-      }
-      const ownedObserver = await pollSt(
-        async () => showOwned(observerSubject),
-        (value) => value?.desired != null,
-        'run-scoped ref observer',
-      )
-      expect(ownedObserver).toMatchObject({
-        subject: observerSubject,
-        desired: {
-          children: expect.arrayContaining([
-            expect.objectContaining({ name: 'provider', arguments: ['github.ref'] }),
-            expect.objectContaining({ name: 'locator', arguments: ['acme/garden@feature/proof'] }),
-            expect.objectContaining({ name: 'field', arguments: ['head'] }),
-            expect.objectContaining({ name: 'field', arguments: ['ancestors'] }),
-          ]),
-        },
-      })
-      const ownedSubscription = await pollSt(
-        async () => showOwned(subscriptionSubject),
-        (value) => value?.desired != null,
-        'run-scoped ref subscription',
-      )
-      expect(ownedSubscription).toMatchObject({
-        subject: subscriptionSubject,
-        desired: {
-          children: expect.arrayContaining([
-            expect.objectContaining({ name: 'observer', arguments: [observerSubject] }),
-          ]),
-        },
-      })
-      const checkEnv = (env: Readonly<Record<string, string>>) => {
-        writeFileSync(
-          source,
-          emit([
-            mission({
-              id: 'environment-proof',
-              state: 'ready',
-              reportTo: reporter,
-              goal: ['Verify the actual exec-gate environment.'],
-              steps: [],
-              gates: [
-                gate.exec({
-                  name: 'environment',
-                  host: 'local',
-                  workspace: dir,
-                  timeLimit: '5s',
-                  command: 'if test "$ANSWER" = green; then exit 0; else exit 3; fi',
-                  env,
-                }),
-              ],
-            }),
-          ]),
+        expect(ownedObserver).toMatchObject({
+          subject: observerSubject,
+          desired: {
+            children: expect.arrayContaining([
+              expect.objectContaining({ name: 'provider', arguments: ['github.ref'] }),
+              expect.objectContaining({
+                name: 'locator',
+                arguments: ['acme/garden@feature/proof'],
+              }),
+              expect.objectContaining({ name: 'field', arguments: ['head'] }),
+              expect.objectContaining({ name: 'field', arguments: ['ancestors'] }),
+            ]),
+          },
+        })
+        const ownedSubscription = await pollSt(
+          async () => showOwned(subscriptionSubject),
+          (value) => value?.desired != null,
+          'run-scoped ref subscription',
         )
-        return spawnSync(
-          stBin!,
-          ['--endpoint', `unix://${socket}`, 'missions', 'check', source, '--workspace', dir],
-          { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
-        )
-      }
-      const supplied = checkEnv({ ANSWER: 'green', PATH: process.env.PATH ?? '/bin' })
-      expect(supplied.status, supplied.stderr).toBe(0)
-      expect(checkEnv({}).status).toBe(1)
-    }),
+        expect(ownedSubscription).toMatchObject({
+          subject: subscriptionSubject,
+          desired: {
+            children: expect.arrayContaining([
+              expect.objectContaining({ name: 'observer', arguments: [observerSubject] }),
+            ]),
+          },
+        })
+        const checkEnv = (env: Readonly<Record<string, string>>) => {
+          writeFileSync(
+            source,
+            emit([
+              mission({
+                id: 'environment-proof',
+                state: 'ready',
+                reportTo: reporter,
+                goal: ['Verify the actual exec-gate environment.'],
+                steps: [],
+                gates: [
+                  gate.exec({
+                    name: 'environment',
+                    host: 'local',
+                    workspace: dir,
+                    timeLimit: '5s',
+                    command: 'if test "$ANSWER" = green; then exit 0; else exit 3; fi',
+                    env,
+                  }),
+                ],
+              }),
+            ]),
+          )
+          return spawnSync(
+            stBin!,
+            ['--endpoint', `unix://${socket}`, 'missions', 'check', source, '--workspace', dir],
+            { encoding: 'utf8', timeout: 30000, env: isolatedEnv },
+          )
+        }
+        const supplied = checkEnv({ ANSWER: 'green', PATH: process.env.PATH ?? '/bin' })
+        expect(supplied.status, supplied.stderr).toBe(0)
+        expect(checkEnv({}).status).toBe(1)
+      },
+    ),
   60000,
 )
 
@@ -2446,8 +2473,8 @@ const expectRefused = (result: SpawnSyncReturns<string>, pattern: RegExp) => {
 
 testWithStFixture(
   'isolated human gate: critical silence holds readiness until the named reviewer approves',
-  async () =>
-    withIsolatedSt({ kind: 'fixture' }, async (st) => {
+  async ({ signal }) =>
+    withIsolatedSt({ kind: 'fixture', signal }, async (st) => {
       const start = publishHumanFixture(st, 'acceptance/critical')
       const { run, review, card } = await pendingHumanEpisode(st, start())
       // Re-observe the same episode; unanswered critical review stays held, never approved.
@@ -2502,8 +2529,8 @@ testWithStFixture(
 
 testWithStFixture(
   'isolated human gate: an expired agentless checkpoint fails instead of approving',
-  async () =>
-    withIsolatedSt({ kind: 'fixture' }, async (st) => {
+  async ({ signal }) =>
+    withIsolatedSt({ kind: 'fixture', signal }, async (st) => {
       const start = publishHumanFixture(st, 'acceptance/timeout', '2s')
       const { run, review, card } = await pendingHumanEpisode(st, start())
       const failed = await pollSt(
@@ -2529,8 +2556,8 @@ testWithStFixture(
 
 testWithStFixture(
   'isolated human gate: rejection fails the checkpoint without admitting its dependent',
-  async () =>
-    withIsolatedSt({ kind: 'fixture' }, async (st) => {
+  async ({ signal }) =>
+    withIsolatedSt({ kind: 'fixture', signal }, async (st) => {
       const start = publishHumanFixture(st, 'acceptance/rejected')
       const { run, review, card } = await pendingHumanEpisode(st, start())
       expectRefused(
@@ -2577,8 +2604,8 @@ testWithStFixture(
 
 testWithStFixture(
   'isolated human gate: cancellation fences late decisions from a fresh run episode',
-  async () =>
-    withIsolatedSt({ kind: 'fixture' }, async (st) => {
+  async ({ signal }) =>
+    withIsolatedSt({ kind: 'fixture', signal }, async (st) => {
       const start = publishHumanFixture(st, 'acceptance/stale')
       const old = await pendingHumanEpisode(st, start())
       stJson(
