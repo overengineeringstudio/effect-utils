@@ -54,8 +54,12 @@ for (const [task, scripts] of Object.entries(tasks)) {
     }
   }
 }
-if (requirements.size === 0) {
-  throw new Error('Task extraction found no mr invocations')
+const flagCount = [...requirements.values()].reduce((total, flags) => total + flags.size, 0)
+if (flagCount === 0) {
+  throw new Error('Task extraction found no mr flags')
+}
+if (!requirements.get('apply')?.has('--commit-all-members')) {
+  throw new Error('Task extraction did not cover CI nested mr:setup --commit-all-members')
 }
 let failed = false
 for (const [command, flags] of requirements) {
