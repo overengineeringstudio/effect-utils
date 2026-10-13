@@ -531,9 +531,9 @@ describe('Smalltalk declarations', () => {
   it('preserves singleton dependency KDL with list authoring', () => {
     const input = fanInMission()
     const join = { ...input.steps[2]!, dependsOn: [{ step: 'first', state: 'completed' }] as const }
-    expect(
-      emit([mission({ ...input, steps: [...input.steps.slice(0, 2), join] })]),
-    ).toContain('depends-on {\n      step "first" "completed"\n    }')
+    expect(emit([mission({ ...input, steps: [...input.steps.slice(0, 2), join] })])).toContain(
+      'depends-on {\n      step "first" "completed"\n    }',
+    )
   })
   it.each([
     { dependsOn: [] },
@@ -1066,7 +1066,12 @@ describe('native mission grammar', () => {
     for (const [fieldGate, error] of [
       [gate.fieldIs({ name: 'ready', subject: pr, path: 'state', value: 'ready' }), 'not declared'],
       [
-        gate.fieldIs({ name: 'ready', subject: foreign.products.report, path: 'state', value: 'ready' }),
+        gate.fieldIs({
+          name: 'ready',
+          subject: foreign.products.report,
+          path: 'state',
+          value: 'ready',
+        }),
         'outside this mission',
       ],
     ] as const) {

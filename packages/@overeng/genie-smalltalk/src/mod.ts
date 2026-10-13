@@ -1,6 +1,5 @@
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
-
 import { Schema, SchemaGetter } from 'effect'
 
 import type { GenieOutput } from '@overeng/genie'
@@ -133,8 +132,7 @@ const SubjectId = Schema.String.pipe(
 
 const LocalId = Schema.String.pipe(
   Schema.refine(
-    (s): s is string =>
-      s.length > 0 && utf8ByteLength(s) <= 160 && /[\s/]/u.test(s) === false,
+    (s): s is string => s.length > 0 && utf8ByteLength(s) <= 160 && /[\s/]/u.test(s) === false,
     {
       message: 'invalid local ID',
     },
