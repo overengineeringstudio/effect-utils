@@ -22,8 +22,15 @@ export_file(
 )
 
 export_materialization_inputs([
+    "src/authoring-boundaries.unit.test.ts",
+    "src/child-missions.unit.test.ts",
+    "src/gate-constructors.unit.test.ts",
     "src/mod.ts",
     "src/mod.unit.test.ts",
+    "src/pr-landing.fixture.ts",
+    "src/run-values.ts",
+    "src/run-values.unit.test.ts",
+    "src/upstream-repin.fixture.ts",
 ])
 
 static_source_set(
@@ -65,8 +72,15 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_genie_smalltalk_8c26e80c6e0e",
     files = {
         "package.json": "package.json",
+        "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
+        "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
+        "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "src/pr-landing.fixture.ts": "src/pr-landing.fixture.ts",
+        "src/run-values.ts": "src/run-values.ts",
+        "src/run-values.unit.test.ts": "src/run-values.unit.test.ts",
+        "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
@@ -92,8 +106,15 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_genie_smalltalk_8c26e80c6e0e",
     files = {
         "package.json": "package.json",
+        "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
+        "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
+        "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "src/pr-landing.fixture.ts": "src/pr-landing.fixture.ts",
+        "src/run-values.ts": "src/run-values.ts",
+        "src/run-values.unit.test.ts": "src/run-values.unit.test.ts",
+        "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
     },
