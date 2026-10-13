@@ -215,6 +215,7 @@ through their own root and `./load` conditions.
 - `Init` is a typed construction failure only. A failed rebuild is a defect, never a new `Init` error in an operation's error channel.
 - `Input`, `Transport`, and `Unsupported` are foundation `Schema.TaggedError` classes. Domain error enums are generated separately, preserving their reason union.
 - Scalar `i8`/`u8`, `i16`/`u16`, and `i32`/`u32` arguments must be finite, integral, within their declared width, and not negative zero. Generated services return `Input` for violations before ABI conversion; direct wasm/native adapters validate the original number and reject with the `RUST_INPUT:` envelope rather than truncating it.
+- Generated `Input` and `Transport` errors identify the calling export in `operation`, including exports returning `Result`; the Rust domain error type is not an operation name.
 - A synchronous wasm trap or async scheduler-poll trap poisons its entire generation: every pending Effect dies with the trap, Rust handles are retired without destructors, and glue is released. The observer is instance-local and never patches global schedulers. The default `panicPolicy: 'rebuild'` constructs fresh glue and an instance before further calls; `'retire'` permanently denies further calls. Calls and streams bound to the old generation cannot use the rebuilt instance accidentally.
 - Generated lexical wasm glue uses instance-local finalization registries. Live instances run bindgen finalizers normally; retiring an instance disables its delayed destructors before clearing wasm references, so garbage collection after Scope release cannot dereference retired glue.
 - Native adapters expose caught panics with the `RUST_PANIC:` envelope, which is also a defect. The native build must enable unwinding and guard every export. Retirement cancels sibling abortable Rust jobs and awaits their acknowledgments, and waits for settle-only jobs to finish before releasing the generation or loading its replacement. This native cancellation never applies to poisoned wasm, whose job functions and handle destructors must not be called.
@@ -633,6 +634,9 @@ the service with `buck2/rust/interop-service.ts`; run
 erasable for Node's type stripping as well as Bun. Node cannot strip TypeScript
 inside `node_modules`, so use compiled `dist` for installed dependencies. The
 Buck service-smoke rules already stage compiled runtime output.
+Rejected shared contract vectors must throw `Schema.SchemaError`; malformed
+generated-service requests must fail with `Interop.Input` carrying the expected
+operation. Direct adapter exports instead report their `RUST_INPUT:` host errors.
 
 Direct Cargo/Bun fixture smokes prove adapter, packaging, and runtime behavior.
 They do not prove Buck daemon startup, action execution, or exact production

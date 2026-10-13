@@ -84,7 +84,7 @@ for (const vector of vectors) {
   const codec = codecs[vector.contract]
   const decode = () => ContractJson.decode(codec)(vector.inputJson ?? JSON.stringify(vector.input))
   if (vector.accept === false) {
-    assert.throws(decode, `${label} must be rejected`)
+    assert.throws(decode, Schema.SchemaError, `${label} must be rejected by the contract codec`)
     continue
   }
   assert.equal(
@@ -167,8 +167,11 @@ const program = (transport: 'wasm' | 'native') =>
           )
         }
       }
-      for (const request of [fixture.checkedDivide(10, 4294967297), fixture.add(1.5, 0)]) {
-        assert.ok((yield* request.pipe(Effect.flip)) instanceof Interop.Input)
+      for (const [operation, request] of [
+        ['checkedDivide', fixture.checkedDivide(10, 4294967297)],
+        ['add', fixture.add(1.5, 0)],
+      ] as const) {
+        assertSynchronousInput(request, operation, `${operation} rejects invalid scalar input`)
       }
       assert.equal(yield* fixture.checkedDivide(10, 2), 5)
       assert.equal(yield* fixture.add(1, 2), 3)
@@ -279,11 +282,9 @@ const program = (transport: 'wasm' | 'native') =>
       )
       assert.deepEqual(free, { kind: 'free', orderId: 9007199254740993n })
       // Contract encoding rejects the brand before Rust is called.
-      const invalid = yield* Effect.exit(
+      assertSynchronousInput(
         fixture.quoteOrder({ ...order, sku: 'abc' }, { kind: 'none' }),
-      )
-      assert.ok(
-        Exit.isFailure(invalid) && String(invalid.cause).includes('Input'),
+        'quoteOrder',
         'invalid brand fails with Interop.Input',
       )
       const overflow = yield* fixture

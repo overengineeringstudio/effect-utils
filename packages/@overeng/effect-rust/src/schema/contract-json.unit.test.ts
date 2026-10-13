@@ -3,6 +3,7 @@ import { DateTime, Effect, Schema, SchemaTransformation } from 'effect'
 import { expect, expectTypeOf } from 'vitest'
 
 import { importRustSchema } from '../compiler/import-rust.ts'
+import { AdmissionError } from '../compiler/mod.ts'
 import * as Borsh from './borsh.ts'
 import * as Columns from './columns.ts'
 import * as ContractJson from './contract-json.ts'
@@ -32,9 +33,9 @@ describe('ContractJson control plane', () => {
     expect(Effect.runSync(Schema.decodeEffect(codec)('"5"'))).toBe(5n)
     expect(Effect.runSync(Schema.encodeEffect(codec)(5n))).toBe('"5"')
     for (const value of ['"00"', '"+1"', '"-0"', '"-1"', '"18446744073709551616"', '1'])
-      expect(() => Schema.decodeSync(codec)(value)).toThrow()
+      expect(() => Schema.decodeSync(codec)(value)).toThrow(Schema.SchemaError)
     for (const value of ['"-0"', '"01"', '"-9223372036854775809"'])
-      expect(() => ContractJson.decode(signed64)(value)).toThrow()
+      expect(() => ContractJson.decode(signed64)(value)).toThrow(Schema.SchemaError)
   })
   it('preserves raw omitted, null and present Patch fields', () => {
     const schema = Schema.Struct({ field: Schema.optionalKey(Schema.NullOr(unsigned64)) })
@@ -48,7 +49,7 @@ describe('ContractJson control plane', () => {
       expect(Schema.decodeSync(codec)(text)).toEqual(value)
       expect(Schema.encodeSync(codec)(value)).toBe(text)
     }
-    expect(() => Schema.encodeUnknownSync(codec)({ field: undefined })).toThrow()
+    expect(() => Schema.encodeUnknownSync(codec)({ field: undefined })).toThrow(Schema.SchemaError)
   })
   it('prepares nullable numeric tokens without weakening integer spelling', () => {
     const schema = Schema.Struct({
@@ -63,7 +64,7 @@ describe('ContractJson control plane', () => {
     expect(decode('{"integer":null,"float":null}')).toEqual({ integer: null, float: null })
     expect(decode('{}')).toEqual({})
     for (const token of ['1.0', '1e0', '256']) {
-      expect(() => decode(`{"integer":${token}}`)).toThrow()
+      expect(() => decode(`{"integer":${token}}`)).toThrow(Schema.SchemaError)
     }
     const nullableFloat = Schema.NullOr(EffectRust.F32)
     for (const token of ['0.1', '1e-45', '9007199254740992', '3.4028235e38']) {
@@ -71,8 +72,8 @@ describe('ContractJson control plane', () => {
         Direct.decode(nullableFloat)(Number(token)),
       )
     }
-    expect(() => ContractJson.decode(nullableFloat)('3.4028236e38')).toThrow()
-    expect(() => Direct.decode(nullableFloat)(Number.POSITIVE_INFINITY)).toThrow()
+    expect(() => ContractJson.decode(nullableFloat)('3.4028236e38')).toThrow(Schema.SchemaError)
+    expect(() => Direct.decode(nullableFloat)(Number.POSITIVE_INFINITY)).toThrow(Schema.SchemaError)
   })
   it('keeps Rust-owned nullable binary32 fields required and finite', () => {
     const { ir } = importRustSchema({
@@ -117,7 +118,9 @@ describe('ContractJson control plane', () => {
       inner: { n: 1 },
       strict: { n: 3 },
     })
-    expect(() => Schema.decodeSync(codec)('{"inner":{"n":1},"strict":{"n":3,"extra":4}}')).toThrow()
+    expect(() => Schema.decodeSync(codec)('{"inner":{"n":1},"strict":{"n":3,"extra":4}}')).toThrow(
+      Schema.SchemaError,
+    )
     expect(Schema.encodeUnknownSync(ContractJson.codec(ignored))({ n: 1, extra: 2 })).toBe(
       '{"n":1}',
     )
@@ -132,13 +135,15 @@ describe('ContractJson control plane', () => {
     expect(Schema.encodeSync(codec)({ optional: undefined, required: 'ok', values: {} })).toBe(
       '{"required":"ok","values":{}}',
     )
-    expect(() => Schema.encodeUnknownSync(codec)({ required: undefined, values: {} })).toThrow()
+    expect(() => Schema.encodeUnknownSync(codec)({ required: undefined, values: {} })).toThrow(
+      Schema.SchemaError,
+    )
     expect(() =>
       Schema.encodeUnknownSync(codec)({ required: 'ok', values: { missing: undefined } }),
-    ).toThrow()
+    ).toThrow(Schema.SchemaError)
     expect(() =>
       Schema.encodeUnknownSync(codec)({ optional: null, required: 'ok', values: {} }),
-    ).toThrow()
+    ).toThrow(Schema.SchemaError)
   })
   it('normalizes strict millisecond timestamps and keeps DateTimeUtc values', () => {
     const codec = ContractJson.codec(timestamp)
@@ -154,7 +159,7 @@ describe('ContractJson control plane', () => {
       '2024-01-02T03:04:05',
       '2024-01-02T03:04:60Z',
     ])
-      expect(() => Schema.decodeSync(codec)(JSON.stringify(input))).toThrow()
+      expect(() => Schema.decodeSync(codec)(JSON.stringify(input))).toThrow(Schema.SchemaError)
   })
   it('does not authorize opaque transformations using metadata', () => {
     const opaque = Schema.String.pipe(
@@ -166,7 +171,7 @@ describe('ContractJson control plane', () => {
         }),
       ),
     ).annotate({ [EffectRust.width]: 'u64', [EffectRust.timestampPrecision]: 'millis' })
-    expect(() => ContractJson.codec(opaque)).toThrow()
+    expect(() => ContractJson.codec(opaque)).toThrow(AdmissionError)
   })
   it('rejects duplicate keys, noncanonical integers, invalid Unicode and depth 129', () => {
     for (const input of [
@@ -179,7 +184,7 @@ describe('ContractJson control plane', () => {
       '"\\ud800"',
       '['.repeat(129) + '0' + ']'.repeat(129),
     ])
-      expect(() => ContractJson.parseJson(input)).toThrow()
+      expect(() => ContractJson.parseJson(input)).toThrow(ContractJson.JsonError)
     expect(ContractJson.parseJson('['.repeat(128) + '0' + ']'.repeat(128))).toBeDefined()
     expect(ContractJson.parseJson('{"__proto__":1}')).toEqual(JSON.parse('{"__proto__":1}'))
     expect(ContractJson.canonicalJson({ b: 2, _tag: 'T', a: { z: 0, a: 1 } })).toBe(
@@ -206,14 +211,14 @@ describe('ContractJson control plane', () => {
       expect(ContractJson.encode(envelope)(ContractJson.decode(envelope)(text))).toBe(canonical)
     expect(() =>
       ContractJson.decode(envelope)('{"code":1,"reason":{"kind":"Closed"},"_tag":"Unknown"}'),
-    ).toThrow()
+    ).toThrow(Schema.SchemaError)
   })
   it('rejects engine-specific regex features and terminal-newline ambiguity', () => {
     for (const source of ['a', '^(?=a)a$', '^(a)\\1$', '^\\d+$', '^.$', '^[a&&b]+$'])
-      expect(() => EffectRust.pattern(source)).toThrow()
+      expect(() => EffectRust.pattern(source)).toThrow(AdmissionError)
     const schema = Schema.String.check(EffectRust.pattern('^abc$', 'iu'))
     expect(ContractJson.decode(schema)('"ABC"')).toBe('ABC')
-    expect(() => ContractJson.decode(schema)('"abc\\n"')).toThrow()
+    expect(() => ContractJson.decode(schema)('"abc\\n"')).toThrow(Schema.SchemaError)
   })
 })
 
@@ -232,7 +237,7 @@ describe('Borsh frames and Columns', () => {
       new Uint8Array([0, 0, 0, 0, 2, 0]),
       new Uint8Array([...codec.encode({ n: 1, text: '', counter: 0n }), 0]),
     ])
-      expect(() => codec.decode(bytes)).toThrow()
+      expect(() => codec.decode(bytes)).toThrow(Borsh.FrameError)
   })
   it('keeps binary32 rounding and non-finite rejection across frames and columns', () => {
     const framed = Borsh.frame(EffectRust.F32, { contractId: 7, version: 1 })
@@ -247,19 +252,19 @@ describe('Borsh frames and Columns', () => {
       Number.NEGATIVE_INFINITY,
       3.4028236e38,
     ]) {
-      expect(() => framed.encode(value)).toThrow()
-      expect(() => framed.trusted.encode(value)).toThrow()
+      expect(() => framed.encode(value)).toThrow(Schema.SchemaError)
+      expect(() => framed.trusted.encode(value)).toThrow(Borsh.FrameError)
     }
     for (const bits of [0x7f800000, 0xff800000, 0x7fc00000]) {
       const bytes = framed.encode(0)
       new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint32(6, bits, true)
-      expect(() => framed.decode(bytes)).toThrow()
-      expect(() => framed.trusted.decode(bytes)).toThrow()
+      expect(() => framed.decode(bytes)).toThrow(Borsh.FrameError)
+      expect(() => framed.trusted.decode(bytes)).toThrow(Borsh.FrameError)
     }
     const columns = Columns.make(Schema.Struct({ value: EffectRust.F32 }))
     columns.validate({ value: new Float32Array([0.1, 1e-45, -0]) })
     for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-      expect(() => columns.validate({ value: new Float32Array([value]) })).toThrow()
+      expect(() => columns.validate({ value: new Float32Array([value]) })).toThrow(Borsh.FrameError)
     }
   })
   it('infers smallest signed widths and honors a wider layout pin', () => {
@@ -271,18 +276,18 @@ describe('Borsh frames and Columns', () => {
     })
     expect(Array.from(inferred.encode(-12))).toEqual([1, 0, 0, 0, 1, 0, 244])
     expect(Array.from(pinned.encode(-12))).toEqual([1, 0, 0, 0, 2, 0, 244, 255])
-    expect(() => pinned.decode(inferred.encode(-12))).toThrow()
-    expect(() => inferred.encode(13)).toThrow()
-    expect(() => inferred.decode(inferred.trusted.encode(13))).toThrow()
+    expect(() => pinned.decode(inferred.encode(-12))).toThrow(Borsh.FrameError)
+    expect(() => inferred.encode(13)).toThrow(Schema.SchemaError)
+    expect(() => inferred.decode(inferred.trusted.encode(13))).toThrow(Schema.SchemaError)
   })
   it('validates refinements by default and exposes explicit trusted bypass', () => {
     const constrained = Schema.String.check(EffectRust.pattern('^[a-z]+$')).annotate({
       identifier: 'Name',
     })
     const framed = Borsh.frame(Schema.Struct({ name: constrained }), { contractId: 1, version: 1 })
-    expect(() => framed.encode({ name: 'BAD' })).toThrow()
+    expect(() => framed.encode({ name: 'BAD' })).toThrow(Schema.SchemaError)
     const bytes = framed.trusted.encode({ name: 'BAD' })
-    expect(() => framed.decode(bytes)).toThrow()
+    expect(() => framed.decode(bytes)).toThrow(Schema.SchemaError)
     expect(framed.trusted.decode(bytes)).toEqual({ name: 'BAD' })
   })
   it('preserves raw Patch states and Rust Unicode map ordering', () => {
@@ -321,9 +326,9 @@ describe('Borsh frames and Columns', () => {
     expect(ContractJson.encode(safe)(Number.MAX_SAFE_INTEGER)).toBe('9007199254740991')
     expect(ContractJson.encode(unsigned64)(9007199254740991n)).toBe('"9007199254740991"')
     const unsafe = new Uint8Array([5, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 32, 0])
-    expect(() => framed.decode(unsafe)).toThrow()
-    expect(() => framed.trusted.decode(unsafe)).toThrow()
-    expect(() => framed.trusted.encode(Number.MAX_SAFE_INTEGER + 1)).toThrow()
+    expect(() => framed.decode(unsafe)).toThrow(Borsh.FrameError)
+    expect(() => framed.trusted.decode(unsafe)).toThrow(Borsh.FrameError)
+    expect(() => framed.trusted.encode(Number.MAX_SAFE_INTEGER + 1)).toThrow(Borsh.FrameError)
     const signed = Schema.Int.check(
       Schema.isBetween({ minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER }),
     )
@@ -343,14 +348,14 @@ describe('Borsh frames and Columns', () => {
         delta: new BigInt64Array([-9007199254740991n]),
         counter: new BigUint64Array([18446744073709551615n]),
       }),
-    ).toThrow()
+    ).toThrow(Borsh.FrameError)
     expect(() =>
       columns.validate({
         count: new BigUint64Array([9007199254740991n]),
         delta: new BigInt64Array([-9007199254740992n]),
         counter: new BigUint64Array([18446744073709551615n]),
       }),
-    ).toThrow()
+    ).toThrow(Borsh.FrameError)
   })
   it('derives column widths and validates row alignment and semantic bounds', () => {
     const columns = Columns.make(Schema.Struct({ id: unsigned64, count: unsigned16 }))
@@ -359,13 +364,17 @@ describe('Borsh frames and Columns', () => {
     columns.validate(value)
     expect(() =>
       columns.validate({ id: new BigUint64Array(2), count: new Uint16Array(3) }),
-    ).toThrow()
-    expect(() => columns.validate({ id: new Uint32Array(3), count: new Uint16Array(3) })).toThrow()
+    ).toThrow(Borsh.FrameError)
+    expect(() => columns.validate({ id: new Uint32Array(3), count: new Uint16Array(3) })).toThrow(
+      Borsh.FrameError,
+    )
     const signed = Columns.make(
       Schema.Struct({ delta: Schema.Int.check(Schema.isBetween({ minimum: -12, maximum: 12 })) }),
     )
     expect(signed.allocate(1).delta).toBeInstanceOf(Int8Array)
-    expect(() => signed.validate({ delta: new Int8Array([13]) })).toThrow()
-    expect(() => Columns.make(Schema.Struct({ optional: Schema.optionalKey(unsigned8) }))).toThrow()
+    expect(() => signed.validate({ delta: new Int8Array([13]) })).toThrow(Borsh.FrameError)
+    expect(() => Columns.make(Schema.Struct({ optional: Schema.optionalKey(unsigned8) }))).toThrow(
+      Borsh.FrameError,
+    )
   })
 })
