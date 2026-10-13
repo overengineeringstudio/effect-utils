@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+  darwinUnsandboxedCategories,
   localMaterializationCategories,
   type ActionInvocation,
   type ActionRecord,
@@ -131,10 +132,11 @@ describe('native Buck cache evidence projection', () => {
       }),
     ).toThrow('Cache admission aggregate mismatch')
     const second = project(
-      events.map((event) => ({
-        ...event,
-        Event: { ...event.Event, trace_id: 'second-build' },
-      })),
+      events.map((event) =>
+        Object.assign({}, event, {
+          Event: { ...event.Event, trace_id: 'second-build' },
+        }),
+      ),
     )
     expect(mergeCacheEvidence({ previous: merged, next: second }).admissionFallbacks).toEqual({
       reapi: 1,
@@ -200,9 +202,12 @@ describe('native Buck cache evidence projection', () => {
         const outcome =
           executionKind === 3 ? 'remote-hit' : executionKind === 10 ? 'local-cache' : 'local'
         expect(summary.counts[outcome]).toBe(1)
-        expect(summary.excludedByDesign).toEqual({ 'local-materialization-policy': 1 })
+        expect(summary.excludedByDesign).toEqual({
+          'local-materialization-policy': 1,
+          'darwin-unsandboxed': 0,
+        })
         expect(summary.invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
-        expect(invocations[0]?.excludedByDesign).toEqual({ 'local-materialization-policy': 1 })
+        expect(invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
         expect(rows[0]).toMatchObject({
           category,
           executionKind,
@@ -216,8 +221,45 @@ describe('native Buck cache evidence projection', () => {
     const eligible = project([
       nativeEvent('SpanEnd', actionEnd({ name: { category: 'tsgo_emit' } })),
     ])
-    expect(eligible.excludedByDesign).toEqual({ 'local-materialization-policy': 0 })
+    expect(eligible.excludedByDesign).toEqual({
+      'local-materialization-policy': 0,
+      'darwin-unsandboxed': 0,
+    })
     expect(eligible.actions[0]?.exclusionReason).toBeNull()
+  })
+
+  it('names Darwin TS exclusion without excluding Linux TS or unrelated Darwin actions', () => {
+    const summaries = darwinUnsandboxedCategories.map((category, index) =>
+      decodeCacheEvidence(
+        project([
+          nativeEvent(
+            'SpanEnd',
+            actionEnd({
+              name: { category },
+              execution_kind: 1,
+              cache_upload_result: 0,
+            }),
+            index,
+            `darwin-${index}`,
+          ),
+        ]),
+      ),
+    )
+    for (const summary of summaries) {
+      expect(summary.excludedByDesign).toEqual({
+        'local-materialization-policy': 0,
+        'darwin-unsandboxed': 1,
+      })
+      expect(summary.actions[0]?.exclusionReason).toBe('darwin-unsandboxed')
+      expect(summary.counts.local).toBe(1)
+    }
+    const merged = summaries.reduce((previous, next) => mergeCacheEvidence({ previous, next }))
+    expect(merged.excludedByDesign?.['darwin-unsandboxed']).toBe(darwinUnsandboxedCategories.length)
+    expect(decodeCacheEvidence(merged)).toEqual(merged)
+    for (const category of ['tsgo_typecheck', 'tsgo_emit', 'rust_compile']) {
+      const summary = project([nativeEvent('SpanEnd', actionEnd({ name: { category } }))])
+      expect(summary.actions[0]?.exclusionReason).toBeNull()
+    }
   })
 
   it('preserves exclusion counts through bounded decoding and duplicate-aware merging', () => {
@@ -246,11 +288,14 @@ describe('native Buck cache evidence projection', () => {
     const next = summaries[1]!
     expect(first.actions).toHaveLength(5)
     const merged = mergeCacheEvidence({ previous: first, next })
-    expect(merged.excludedByDesign).toEqual({ 'local-materialization-policy': 200 })
+    expect(merged.excludedByDesign).toEqual({
+      'local-materialization-policy': 200,
+      'darwin-unsandboxed': 0,
+    })
     expect(merged.counts['remote-hit']).toBe(200)
     expect(merged.invocations.map((invocation) => invocation.excludedByDesign)).toEqual([
-      { 'local-materialization-policy': 100 },
-      { 'local-materialization-policy': 100 },
+      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0 },
+      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0 },
     ])
     expect(decodeCacheEvidence(merged)).toEqual(merged)
     expect(mergeCacheEvidence({ previous: merged, next })).toEqual(merged)
@@ -733,7 +778,7 @@ describe('native Buck cache evidence projection', () => {
         context: 'populate',
         freshRoot: true,
         actionCount: 100,
-        excludedByDesign: { 'local-materialization-policy': 0 },
+        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
         complete: true,
         startedAt: 1700000000000,
         completedAt: 1700000003000,

@@ -395,11 +395,18 @@ const cloneProjectFileWithoutReferences = ({
   writeFileSync(destination, `${JSON.stringify(project, null, 2)}\n`)
 }
 
-/** Assembles one complete package tree from declared package and dependency artifacts. */
+const clearOutputContents = (output: string): void => {
+  for (const entry of readdirSync(output)) {
+    rmSync(join(output, entry), { recursive: true, force: true })
+  }
+}
+
+/** Assembles a complete package tree, retaining the output directory even if assembly fails. */
 export const assemblePackageTree = (options: PackageTreeOptions): void => {
   const output = resolve(options.output)
-  rmSync(output, { recursive: true, force: true })
   mkdirSync(output, { recursive: true })
+  // The declared output may be a writable bind mount: remove entries, never its root.
+  clearOutputContents(output)
   try {
     const allowedExternalLinks = new Set<string>()
     const workspacePackages = new Set(
@@ -506,7 +513,7 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
       root: output,
     })
   } catch (error) {
-    rmSync(output, { recursive: true, force: true })
+    clearOutputContents(output)
     throw error
   }
 }
