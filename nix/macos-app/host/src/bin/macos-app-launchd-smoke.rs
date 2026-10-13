@@ -1,7 +1,7 @@
 //! Explicit, user-level real-launchd acceptance test. Never built into production primitives.
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, error::Error, ffi::c_void, fs::{self, File, OpenOptions}, io::{BufRead, BufReader, Read, Write}, os::unix::{fs::{MetadataExt, PermissionsExt}, io::{AsRawFd, FromRawFd}, net::UnixStream, process::CommandExt}, path::{Path, PathBuf}, process::{Command, Output, Stdio}, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
+use std::{collections::BTreeMap, error::Error, ffi::c_void, fs::{self, File, OpenOptions}, io::{BufRead, BufReader, Read, Write}, os::unix::{fs::{MetadataExt, PermissionsExt}, io::{AsRawFd, FromRawFd}, net::UnixStream, process::{CommandExt, ExitStatusExt}}, path::{Path, PathBuf}, process::{Command, ExitStatus, Output, Stdio}, sync::atomic::{AtomicI32, Ordering}, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 type Ref = *const c_void;
 const LABEL: &str = "dev.overeng.macos-app.smoke";
@@ -22,6 +22,74 @@ unsafe extern "C" {
 unsafe extern "C" { fn SessionGetInfo(session: u32, id: *mut u32, attributes: *mut u32) -> i32; }
 fn ensure(ok: bool, message: impl Into<String>) -> Result<()> { if ok { Ok(()) } else { Err(message.into().into()) } }
 fn text(path: &Path) -> &str { path.to_str().expect("smoke paths are UTF-8") }
+static STOP: AtomicI32 = AtomicI32::new(0);
+extern "C" fn on_signal(signal: libc::c_int) { STOP.store(signal, Ordering::SeqCst); }
+fn signal_name(signal: i32) -> &'static str {
+    match signal { libc::SIGINT => "SIGINT", libc::SIGTERM => "SIGTERM", libc::SIGHUP => "SIGHUP", libc::SIGKILL => "SIGKILL", _ => "signal" }
+}
+/// SIGINT/SIGTERM/SIGHUP only record the request; the control flow stops the active child and runs
+/// the owned-job cleanup. SIGKILL is unrecoverable in-process; the next run's sweep handles it.
+fn install_signal_handlers() -> Result<()> {
+    for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
+        // SAFETY: the handler only stores into an atomic, which is async-signal-safe.
+        unsafe {
+            let mut action: libc::sigaction = std::mem::zeroed();
+            action.sa_sigaction = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
+            action.sa_flags = libc::SA_RESTART;
+            libc::sigemptyset(&mut action.sa_mask);
+            if libc::sigaction(signal, &action, std::ptr::null_mut()) != 0 { return Err(std::io::Error::last_os_error().into()); }
+        }
+    }
+    Ok(())
+}
+fn interrupted() -> Result<()> {
+    match STOP.load(Ordering::SeqCst) { 0 => Ok(()), signal => Err(format!("interrupted by {}", signal_name(signal)).into()) }
+}
+/// Polls an observable state; launchd can still report a job for a while after bootout returns.
+fn retry_until<T>(timeout: Duration, interval: Duration, mut probe: impl FnMut() -> Result<T>) -> Result<T> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match probe() {
+            Ok(value) => return Ok(value),
+            Err(error) if Instant::now() >= deadline => return Err(error),
+            Err(_) => thread::sleep(interval),
+        }
+    }
+}
+/// Attempts every teardown and the scratch removal even after failures, then names what remains.
+fn cleanup_all(targets: &[String], work: &Path, mut teardown: impl FnMut(&str) -> Result<()>) -> Result<()> {
+    let (mut errors, mut left) = (Vec::new(), Vec::new());
+    for target in targets {
+        if let Err(error) = teardown(target) { errors.push(format!("{target}: {error}")); left.push(target.clone()); }
+    }
+    if let Err(error) = fs::remove_dir_all(work) && error.kind() != std::io::ErrorKind::NotFound { errors.push(format!("{}: {error}", work.display())); }
+    if work.exists() { left.push(work.display().to_string()); }
+    if errors.is_empty() && left.is_empty() { return Ok(()); }
+    Err(format!("cleanup incomplete: {}; left behind: {}", errors.join("; "), left.join(", ")).into())
+}
+/// Serializes runs on the scratch directory. Children inherit the lock, so an orphan of a
+/// SIGKILLed run keeps it until it exits and the next run's sweep never races it.
+fn acquire_lock(scratch: &Path) -> Result<File> {
+    let lock = File::open(scratch)?;
+    // SAFETY: lock owns this descriptor; clearing FD_CLOEXEC only affects inheritance.
+    ensure(unsafe { libc::fcntl(lock.as_raw_fd(), libc::F_SETFD, 0) } == 0, "Cannot make the run lock inheritable")?;
+    let deadline = Instant::now() + Duration::from_secs(90);
+    loop {
+        interrupted()?;
+        // SAFETY: lock is a live descriptor.
+        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 { return Ok(lock); }
+        ensure(Instant::now() < deadline, "Another smoke run, or an orphaned child of one, held tmp/ for 90s")?;
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+fn smoke_dirs(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut dirs = Vec::new();
+    for entry in fs::read_dir(root.join("tmp"))? {
+        let path = entry?.path();
+        if path.is_dir() && path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.starts_with("macos-app-smoke-")) { dirs.push(path); }
+    }
+    Ok(dirs)
+}
 fn security_window() -> Result<bool> {
     // SAFETY: CoreGraphics returns a retained array; borrowed dictionaries/strings live until release.
     unsafe {
@@ -42,10 +110,14 @@ fn security_window() -> Result<bool> {
 struct Smoke {
     root: PathBuf, work: PathBuf, assets: PathBuf, ctl: PathBuf,
     password: Vec<u8>, claimed: Vec<String>, command_number: u32,
+    /// Set once cleanup starts: pending signals no longer abort its commands.
+    cleaning: bool,
+    _lock: File,
 }
 impl Drop for Smoke { fn drop(&mut self) { self.password.fill(0); } }
 impl Smoke {
     fn command(&mut self, program: &Path, args: &[&str], password: bool, watch: bool) -> Result<Output> {
+        if !self.cleaning { interrupted()?; }
         if watch { ensure(!security_window()?, "ABORT before command: SecurityAgent window present")?; }
         self.command_number += 1;
         let stdout_path = self.work.join(format!("command-{}.out", self.command_number));
@@ -69,7 +141,8 @@ impl Smoke {
         drop(password_file);
         let deadline = Instant::now() + Duration::from_secs(60);
         let status = loop {
-            if (watch && security_window().unwrap_or(true)) || Instant::now() >= deadline {
+            let stop = !self.cleaning && STOP.load(Ordering::SeqCst) != 0;
+            if stop || (watch && security_window().unwrap_or(true)) || Instant::now() >= deadline {
                 // SAFETY: child is not yet reaped and owns this process group. Let ctl relock first.
                 unsafe { libc::kill(child.id() as i32, libc::SIGTERM); }
                 let grace = Instant::now() + Duration::from_secs(2);
@@ -83,6 +156,7 @@ impl Smoke {
                     }
                     thread::sleep(Duration::from_millis(10));
                 }
+                if stop { interrupted()?; }
                 return Err("ABORT: SecurityAgent window or command deadline; smoke stopped".into());
             }
             if let Some(status) = child.try_wait()? { break status; }
@@ -110,15 +184,41 @@ impl Smoke {
         let error = String::from_utf8_lossy(&out.stderr);
         ensure(out.status.code() == Some(113) && error.contains("Could not find service"), format!("Expected exit 113 for absent smoke label {target}: {error}"))
     }
+    /// Bootout's own status is irrelevant (the label may already be gone); the observed state decides.
+    fn teardown(&mut self, target: &str, watch: bool) -> Result<()> {
+        self.command(Path::new("/bin/launchctl"), &["bootout", target], false, watch)?;
+        retry_until(Duration::from_secs(10), Duration::from_millis(100), || self.absent(target, watch))
+    }
     fn cleanup(&mut self) -> Result<()> {
-        while let Some(target) = self.claimed.pop() {
-            self.command(Path::new("/bin/launchctl"), &["bootout", &target], false, false)?;
-            self.absent(&target, false)?;
+        self.cleaning = true;
+        let targets = std::mem::take(&mut self.claimed);
+        let work = self.work.clone();
+        cleanup_all(&targets, &work, |target| {
+            self.teardown(target, false)?;
             println!("PASS cleanup {target}: launchctl print exit 113");
-        }
-        fs::remove_dir_all(&self.work)?;
-        ensure(!self.work.exists(), "Smoke left scratch files behind")?;
+            Ok(())
+        })?;
         println!("PASS cleanup: launchctl print reports not found; plist, bundle, state, socket and K removed");
+        Ok(())
+    }
+    /// Removes what a SIGKILLed run left: the reserved label, only when loaded from a smoke scratch
+    /// plist, and stale scratch dirs (the held lock proves no other run owns them).
+    fn sweep(&mut self, targets: &[String]) -> Result<()> {
+        for target in targets {
+            let out = self.command(Path::new("/bin/launchctl"), &["print", target], false, true)?;
+            if out.status.code() == Some(113) { continue; }
+            ensure(out.status.success(), format!("Cannot inspect {target} for a stale smoke job: {}", String::from_utf8_lossy(&out.stderr)))?;
+            let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+            let path = stdout.lines().find_map(|line| line.trim().strip_prefix("path = ")).unwrap_or_default().to_owned();
+            ensure(path.contains("/tmp/macos-app-smoke-"), format!("Refusing to sweep {target}: loaded from {path:?}, not a smoke scratch plist"))?;
+            self.teardown(target, true)?;
+            println!("SWEEP {target}: stale smoke job from {path} booted out; launchctl print exit 113");
+        }
+        for path in smoke_dirs(&self.root)? {
+            if path == self.work { continue; }
+            fs::remove_dir_all(&path)?;
+            println!("SWEEP removed {} (stale scratch and K)", path.strip_prefix(&self.root)?.display());
+        }
         Ok(())
     }
     fn session(&mut self, domain: &str) -> Result<String> {
@@ -132,6 +232,7 @@ impl Smoke {
     fn wire(&self, socket: &Path, generation: &str, expected_session: &str) -> Result<Value> {
         let until = Instant::now() + Duration::from_secs(15);
         loop {
+            interrupted()?;
             ensure(!security_window()?, "ABORT during readiness: SecurityAgent window present")?;
             let read = (|| -> Result<Value> {
                 // Relative to the runner's cwd (the checkout root), as for ctl and the host; an
@@ -228,24 +329,25 @@ impl Smoke {
         ensure(self.fingerprint(&app)? == fingerprint, "Host rollback did not restore original bytes/cdhash")?;
         println!("PASS {domain}: host change re-signed; restore-host restored original bytes/cdhash and generation");
         let target = format!("{domain}/{LABEL}");
-        self.checked(Path::new("/bin/launchctl"), &["bootout", &target])?;
-        self.absent(&target, true)?;
+        self.teardown(&target, true)?;
         fs::remove_dir_all(&folder)?;
         ensure(!folder.exists(), "Per-domain plist/bundle/state/socket remain")?;
         println!("PASS {domain}: bootout, not-found print, no per-domain files");
         Ok(())
     }
-    fn run(&mut self) -> Result<()> {
+    fn run(&mut self, sweep_only: bool) -> Result<()> {
         let uid = unsafe { libc::geteuid() };
         ensure(uid != 0, "Run the smoke as an unprivileged user, never sudo")?;
         let user = format!("user/{uid}");
         let gui = format!("gui/{uid}");
-        self.absent(&format!("{user}/{LABEL}"), true)?;
         let gui_exists = self.command(Path::new("/bin/launchctl"), &["print", &gui], false, true)?.status.success();
-        if gui_exists { self.absent(&format!("{gui}/{LABEL}"), true)?; }
+        let mut targets = vec![format!("{user}/{LABEL}")];
+        if gui_exists { targets.push(format!("{gui}/{LABEL}")); }
+        self.sweep(&targets)?;
+        if sweep_only { return Ok(()); }
+        for target in &targets { self.absent(target, true)?; }
         // Both labels were absent: cleanup owns both possible user-level targets, even on failure.
-        self.claimed.push(format!("{user}/{LABEL}"));
-        if gui_exists { self.claimed.push(format!("{gui}/{LABEL}")); }
+        self.claimed = targets;
         let search = self.checked(Path::new("/usr/bin/security"), &["list-keychains", "-d", "user"])?.stdout;
         let keychain = self.work.join("Library/Keychains/smoke.keychain-db");
         fs::create_dir_all(keychain.parent().unwrap())?;
@@ -287,29 +389,128 @@ fn snapshots(paths: &[&Path]) -> Result<BTreeMap<PathBuf, (u64, i64, i64, u32, S
     for path in paths { visit(path, &mut result)?; }
     Ok(result)
 }
-fn main() {
+/// Runs the runner as a child, interrupting it with `signal` once the user-domain job is loaded.
+fn interrupt_run(exe: &Path, assets: &str, signal: i32) -> Result<(ExitStatus, String, String)> {
+    let mut child = Command::new(exe).arg(assets).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let mut stdout = BufReader::new(child.stdout.take().ok_or("Runner stdout missing")?);
+    let mut seen = String::new();
+    loop {
+        let mut line = String::new();
+        if stdout.read_line(&mut line)? == 0 { child.wait()?; return Err(format!("Runner exited before a job was loaded: {seen}").into()); }
+        seen.push_str(&line);
+        // Printed once the user-domain job is bootstrapped, verified and serving the wire.
+        if line.starts_with("PASS user/") && line.contains("wire generation=") { break; }
+    }
+    // SAFETY: the child is unreaped, so its PID cannot be reused.
+    unsafe { libc::kill(child.id() as i32, signal); }
+    stdout.read_to_string(&mut seen)?;
+    let mut stderr = String::new();
+    child.stderr.take().ok_or("Runner stderr missing")?.read_to_string(&mut stderr)?;
+    Ok((child.wait()?, seen, stderr))
+}
+fn print_status(target: &str) -> Result<Option<i32>> { Ok(Command::new("/bin/launchctl").args(["print", target]).output()?.status.code()) }
+fn assert_clean(root: &Path, targets: &[String]) -> Result<()> {
+    for target in targets { ensure(print_status(target)? == Some(113), format!("{target} is still known to launchd"))?; }
+    let left = smoke_dirs(root)?;
+    ensure(left.is_empty(), format!("Smoke scratch left behind: {left:?}"))
+}
+/// Interrupts real runs with SIGTERM/SIGINT/SIGHUP (in-process cleanup) and SIGKILL (next-run sweep).
+fn signal_matrix(assets: &str) -> Result<()> {
+    let exe = std::env::current_exe()?;
+    let root = std::env::current_dir()?;
+    let uid = unsafe { libc::geteuid() };
+    let user = format!("user/{uid}/{LABEL}");
+    let mut targets = vec![user.clone()];
+    if print_status(&format!("gui/{uid}"))? == Some(0) { targets.push(format!("gui/{uid}/{LABEL}")); }
     let result = (|| -> Result<()> {
+        assert_clean(&root, &targets)?;
+        for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+            let name = signal_name(signal);
+            let (status, stdout, stderr) = interrupt_run(&exe, assets, signal)?;
+            ensure(status.code() == Some(1) && stderr.contains(&format!("interrupted by {name}")), format!("{name}: unexpected exit {status}: {stderr}"))?;
+            for target in &targets { ensure(stdout.contains(&format!("PASS cleanup {target}: launchctl print exit 113")), format!("{name}: no cleanup proof for {target}: {stdout}"))?; }
+            ensure(stdout.contains("PASS cleanup: "), format!("{name}: scratch cleanup missing: {stdout}"))?;
+            assert_clean(&root, &targets)?;
+            println!("PASS {name} mid-run: child stopped, claimed labels booted out (print exit 113), scratch and K removed");
+        }
+        let (status, _, _) = interrupt_run(&exe, assets, libc::SIGKILL)?;
+        ensure(status.signal() == Some(libc::SIGKILL), format!("SIGKILL run ended with {status}"))?;
+        ensure(print_status(&user)? == Some(0), "SIGKILL left no loaded job; nothing proves the sweep")?;
+        ensure(smoke_dirs(&root)?.len() == 1, "SIGKILL did not leave exactly one scratch dir")?;
+        println!("PASS SIGKILL mid-run left {user} loaded and its scratch dir behind");
+        let next = Command::new(&exe).arg(assets).stdin(Stdio::null()).output()?;
+        let stdout = String::from_utf8_lossy(&next.stdout);
+        ensure(next.status.success(), format!("Run after SIGKILL failed: {stdout}{}", String::from_utf8_lossy(&next.stderr)))?;
+        ensure(stdout.contains(&format!("SWEEP {user}: stale smoke job")) && stdout.contains("SWEEP removed tmp/macos-app-smoke-"), format!("Next run did not sweep: {stdout}"))?;
+        print!("{stdout}");
+        assert_clean(&root, &targets)?;
+        println!("PASS next run swept the SIGKILLed job and scratch, then passed in full");
+        Ok(())
+    })();
+    if result.is_err() { let _ = Command::new(&exe).args([assets, "--sweep-only"]).stdin(Stdio::null()).status(); }
+    result
+}
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(2).map(String::as_str) == Some("--signal-matrix") {
+        if let Err(error) = signal_matrix(&args[1]) { eprintln!("macOS real-launchd smoke signal matrix: FAIL: {error}"); std::process::exit(1); }
+        println!("macOS real-launchd smoke signal matrix: PASS");
+        return;
+    }
+    let result = (|| -> Result<()> {
+        install_signal_handlers()?;
         ensure(!security_window()?, "ABORT before smoke: SecurityAgent window present")?;
+        let sweep_only = match args.get(2).map(String::as_str) { None => false, Some("--sweep-only") => true, Some(other) => return Err(format!("Unknown option {other}").into()) };
         let root = std::env::current_dir()?;
-        let assets = PathBuf::from(std::env::args().nth(1).ok_or("Missing smoke assets argument")?);
+        let assets = PathBuf::from(args.get(1).ok_or("Missing smoke assets argument")?);
         let scratch = root.join("tmp");
         fs::create_dir_all(&scratch)?;
+        let lock = acquire_lock(&scratch)?;
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let work = scratch.join(format!("macos-app-smoke-{}-{nonce}", std::process::id()));
         fs::create_dir(&work)?;
         fs::set_permissions(&work, fs::Permissions::from_mode(0o700))?;
-        writeln!(OpenOptions::new().create(true).append(true).open(scratch.join("TEMPORARY_FILES.md"))?, "\n- `{}`: real-launchd smoke app/plists/state, throwaway K and command evidence; removed by the runner on exit.", work.strip_prefix(&root)?.display())?;
+        writeln!(OpenOptions::new().create(true).append(true).open(scratch.join("TEMPORARY_FILES.md"))?, "\n- `{}`: real-launchd smoke app/plists/state, throwaway K and command evidence; removed by the runner on exit or by the next run's sweep.", work.strip_prefix(&root)?.display())?;
         let mut random = [0_u8; 32];
         File::open("/dev/urandom")?.read_exact(&mut random)?;
         let password = format!("{:x}\n", Sha256::digest(random)).into_bytes();
         random.fill(0);
-        let mut smoke = Smoke { root, work, ctl: assets.join("primitives/bin/macos-app-ctl"), assets, password, claimed: Vec::new(), command_number: 0 };
-        let run = smoke.run();
-        let cleanup = smoke.cleanup();
-        cleanup?;
-        run?;
-        println!("macOS real-launchd smoke: PASS");
+        let mut smoke = Smoke { root, work, ctl: assets.join("primitives/bin/macos-app-ctl"), assets, password, claimed: Vec::new(), command_number: 0, cleaning: false, _lock: lock };
+        let run = smoke.run(sweep_only);
+        match (run, smoke.cleanup()) {
+            (Err(run), Err(cleanup)) => return Err(format!("{run}; {cleanup}").into()),
+            (run, cleanup) => { cleanup?; run?; }
+        }
+        println!("macOS real-launchd smoke{}: PASS", if sweep_only { " sweep" } else { "" });
         Ok(())
     })();
     if let Err(error) = result { eprintln!("macOS real-launchd smoke: FAIL: {error}"); std::process::exit(1); }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn cleanup_attempts_every_step_and_names_leftovers() {
+        let work = std::env::temp_dir().join(format!("macos-app-smoke-cleanup-test-{}", std::process::id()));
+        fs::create_dir_all(work.join("Library/Keychains")).unwrap();
+        let targets = vec!["gui/1/x".to_owned(), "user/1/x".to_owned()];
+        let mut attempted = Vec::new();
+        let error = cleanup_all(&targets, &work, |target| {
+            attempted.push(target.to_owned());
+            ensure(target != "gui/1/x", "still loaded after 10s")
+        }).unwrap_err().to_string();
+        assert_eq!(attempted, targets);
+        assert!(!work.exists());
+        assert!(error.contains("gui/1/x: still loaded after 10s") && error.ends_with("left behind: gui/1/x"), "{error}");
+        cleanup_all(&targets, &work, |_| Ok(())).unwrap();
+    }
+    #[test]
+    fn removal_wait_tolerates_async_teardown_and_is_bounded() {
+        let mut polls = 0;
+        retry_until(Duration::from_secs(5), Duration::from_millis(1), || { polls += 1; ensure(polls >= 3, "still loaded") }).unwrap();
+        assert_eq!(polls, 3);
+        let start = Instant::now();
+        assert!(retry_until(Duration::from_millis(50), Duration::from_millis(5), || ensure(false, "still loaded")).is_err());
+        assert!(start.elapsed() < Duration::from_secs(2));
+    }
 }

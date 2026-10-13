@@ -430,7 +430,15 @@ the real system `launchctl`. This is a live, user-level smoke, not the fake
 launchctl integration suite: macOS may show a background-item notification.
 It never uses sudo or launches an application window.
 
-The runner refuses an existing `dev.overeng.macos-app.smoke` job. All bundles,
+The runner holds an exclusive lock on `tmp/` (inherited by its children, so an
+orphan of a killed run keeps it until it exits). Under that lock it first
+sweeps what a killed run left: a `dev.overeng.macos-app.smoke` job is booted
+out only when `launchctl print` shows it was loaded from a
+`tmp/macos-app-smoke-*` plist (any other job under the label is refused), and
+stale `tmp/macos-app-smoke-*` scratch directories are removed.
+`-- --sweep-only` runs just this sweep. After the sweep, the label must be
+absent in both domains.
+All bundles,
 plists, generation pointers, GC roots and the partition-capable test keychain
 live beneath its private `tmp/` directory; the password travels through an
 inherited pipe, not argv, environment or a file. The test-only self-signed
@@ -453,8 +461,18 @@ otherwise GUI coverage is explicitly skipped.
 The runner passes an explicit `--domain user` or `--domain gui`; it does not
 use background-agent's auto resolution, which prefers GUI on interactive hosts.
 
-After the initial absent-label guards, success and failure cleanup boot out
-the smoke label in both existing user and GUI domains, independent of the
-run's returned domain. Both `launchctl print` checks must report exit 113.
-Cleanup removes the plist, bundle, state, socket and keychain. Scratch
-ownership is logged in `tmp/TEMPORARY_FILES.md`.
+After the absent-label guards, success and failure cleanup boot out the smoke
+label in both existing user and GUI domains, independent of the run's
+returned domain, and wait up to 10 seconds per domain for `launchctl print` to
+report exit 113. Cleanup attempts every domain and the removal of the plist,
+bundle, state, socket and keychain even after an earlier step fails, then
+exits nonzero naming what was left behind. SIGINT, SIGTERM and SIGHUP stop the
+in-flight child's process group and run the same cleanup; SIGKILL cannot, so
+the next run's sweep handles it. Scratch ownership is logged in
+`tmp/TEMPORARY_FILES.md`.
+
+`nix run .#macos-app-launchd-smoke -- --signal-matrix` exercises this
+against real launchd. It interrupts runs with SIGTERM, SIGINT and SIGHUP once
+the user-domain job is loaded and proves cleanup for each. It then SIGKILLs a
+run, confirms the job and scratch were left behind, and requires the next full
+run to sweep both and pass.

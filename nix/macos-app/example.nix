@@ -184,7 +184,7 @@ let
   launchdSmoke = pkgs.writeShellScriptBin "macos-app-launchd-smoke" ''
     # Deliberately real system launchctl/codesign, never integration PATH shims.
     export PATH="/usr/bin:/bin:${pkgs.nix}/bin"
-    exec ${testPrimitives}/bin/macos-app-launchd-smoke ${smokeAssets}
+    exec ${testPrimitives}/bin/macos-app-launchd-smoke ${smokeAssets} "$@"
   '';
 in
 {
