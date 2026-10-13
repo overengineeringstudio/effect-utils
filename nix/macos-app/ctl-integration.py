@@ -308,6 +308,28 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert imported['imported'] and imported['identity'] and imported['subject'] == identity
     assert not key_call('import-signing-cert', keychain, '--cert', work / 'signing.pem')['result']['imported']
     leaf = imported['certificateSha1']
+    # A not-yet-pinned key with a foreign ACL record must refuse before even the
+    # test-build sentinel is spawned. Preparation must not "repair" unknown ACLs.
+    fixture = work / 'Fixture.app'
+    shutil.copytree(desired, fixture)
+    nested = fixture / 'Contents/Helpers/Nested.app'
+    shutil.copytree(desired, nested)
+    for path in [fixture, *fixture.rglob('*')]:
+        if not path.is_symlink(): path.chmod(path.stat().st_mode | 0o200)
+    inventory_file = work / 'fixture-inventory.json'
+    inventory_file.write_text(json.dumps(['Contents/Helpers/Nested.app']))
+    fixture_requirement = f'identifier "dev.example.synthetic-host" and certificate leaf = H"{leaf}"'
+    before_codesign = (work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else ''
+    record_path.write_text(json.dumps(dict(record, keychain='foreign')))
+    try:
+        refusal = key_call('sign-fixture', keychain, '--certificate-sha1', leaf,
+                           '--requirement', fixture_requirement, '--target', fixture, code=64)
+        assert refusal['error']['kind'] == 'invalid-input' and 'ACL record' in refusal['error']['reason'], refusal
+        assert ((work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else '') == before_codesign
+        assert not unlocked()
+    finally:
+        record_path.write_text(json.dumps(record))
+    print('PASS unpinned fixture key with foreign ACL record refuses before sentinel codesign starts', flush=True)
     # A CA-issued test leaf with no system anchor must fail before codesign; no K search-list
     # membership or system trust change is permitted. Self-signed test leaves use a per-evaluation
     # anchor in the feature build only.
@@ -371,6 +393,14 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert proof['lockedAfterWindow'] and proof['lockOnSleep'] and proof['lockIntervalSeconds'] == 300, proof
     assert not unlocked()
     print(f'PASS signing-key proof: {json.dumps(proof, sort_keys=True)}', flush=True)
+    sealed = key_call('sign-fixture', keychain, '--certificate-sha1', leaf,
+                      '--requirement', fixture_requirement, '--target', fixture,
+                      '--inventory', inventory_file)['result']
+    assert sealed['signedPaths'] == [str(nested), str(fixture)], sealed
+    for target in (nested, fixture):
+        assert tool('/usr/bin/codesign', '--verify', '--strict', f'-R={fixture_requirement}', str(target)).returncode == 0
+    assert not unlocked()
+    print('PASS pinned fixture signs through ctl and verifies with the declared requirement', flush=True)
 
     # The fake signer pauses only after ctl has unlocked K and passed its exact guard.
     (work / 'sign-slow').touch()

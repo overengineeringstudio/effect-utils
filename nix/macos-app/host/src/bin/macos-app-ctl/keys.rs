@@ -907,6 +907,64 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
     keychain.finish(result)
 }
 
+/// Fixture sealing has the same password-authorized pin, non-extractability readback and
+/// exact ACL/chain preflight as the key proof. Inventory entries are relative descendants;
+/// sorting by depth seals leaves before containers, never using codesign's `--deep`.
+pub(super) fn sign_fixture(ctl: &Ctl) -> Result<Value> {
+    let path = dedicated_keychain(ctl)?;
+    let sha1 = ctl.arg("certificate-sha1")?;
+    if sha1.len() != 40 || !sha1.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(fail(64, "invalid-input", "A certificate SHA1 is required"));
+    }
+    let target = fs::canonicalize(ctl.arg("target")?)?;
+    let requirement = canonical_requirement(ctl.arg("requirement")?)?;
+    let mut inventory = Vec::new();
+    if let Some(file) = ctl.args.get("inventory") {
+        let entries: Vec<String> = serde_json::from_slice(&fs::read(file)?)?;
+        for entry in entries {
+            let relative = Path::new(&entry);
+            if relative.is_absolute() || relative.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+                return Err(fail(64, "invalid-input", "Inventory entries must be relative descendants"));
+            }
+            let child = fs::canonicalize(target.join(relative))?;
+            if child == target || !child.starts_with(&target) {
+                return Err(fail(64, "invalid-input", "Inventory entry escapes the fixture"));
+            }
+            inventory.push(child);
+        }
+    }
+    inventory.sort_unstable_by(|a, b| b.components().count().cmp(&a.components().count()).then_with(|| a.cmp(b)));
+    inventory.dedup();
+    inventory.push(target.clone());
+    let keychain = Keychain::open_locked(&path)?;
+    let result = (|| {
+        let password = Password::read(ctl.password_fd()?)?;
+        let window = keychain.unlock(&password)?;
+        let (key, _) = named_identity(&keychain, sha1)?;
+        if key_extractable(key.0)? != Some(false) {
+            return Err(fail(22, "verification-failed", "Fixture signing requires a non-extractable key"));
+        }
+        // Read the recorded ACL before changing anything. Missing/foreign records refuse.
+        let guard = codesign_guard(&path, key.0)?;
+        if !guard.ready { pin_partition(key.0, &password)?; }
+        drop(password);
+        require_codesign_ready(&path, &keychain, sha1)?;
+        for item in &inventory {
+            // Recheck immediately before every spawn, including nested code.
+            require_codesign_ready(&path, &keychain, sha1)?;
+            let signed = bounded_codesign(&["--force", "--keychain", text(&path)?, "--sign", sha1,
+                "--requirements", &format!("=designated => {requirement}"), text(item)?])?;
+            if !signed.status.success() {
+                return Err(signing("sign-failed", String::from_utf8_lossy(&signed.stderr).trim().to_owned()));
+            }
+            ctl.signature_with(item, &requirement)?;
+        }
+        window.close()?;
+        Ok(json!({"target": target, "signedPaths": inventory, "certificateSha1": sha1, "requirement": requirement}))
+    })();
+    keychain.finish(result)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

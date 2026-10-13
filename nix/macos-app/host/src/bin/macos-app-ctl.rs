@@ -620,7 +620,8 @@ fn known_option(key: &str) -> bool {
     if key == "test-self-signed-cert-out" { return true; }
     matches!(key, "config" | "app-dir" | "state" | "socket" | "plist-dir" | "domain" |
         "desired" | "generation" | "keychain" | "keychain-password-fd" | "common-name-hint" |
-        "csr-out" | "cert" | "restore-host" | "signing-auth-pending" | "replace" | "no-sign")
+        "csr-out" | "cert" | "restore-host" | "signing-auth-pending" | "replace" | "no-sign" |
+        "certificate-sha1" | "requirement" | "target" | "inventory")
 }
 fn run() -> Result<Value> {
     let _signals = install_signal_handlers()?;
@@ -642,6 +643,7 @@ fn run() -> Result<Value> {
     let result = match action.as_str() {
         "install-host" => ctl.install(), "select-generation" => ctl.generation(), "converge-launchd" => ctl.converge(), "verify" => ctl.verify(), "rollback" => ctl.rollback(), "status" => ctl.status(),
         "provision-signing-key" => keys::provision(&ctl), "import-signing-cert" => keys::import_certificate(&ctl), "prove-signing-key" => keys::prove(&ctl),
+        "sign-fixture" => keys::sign_fixture(&ctl),
         _ => Err(fail(64, "invalid-input", "Unknown primitive")),
     }?;
     cancellation()?;

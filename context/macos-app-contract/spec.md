@@ -298,8 +298,8 @@ can only force a failure or a crash, never make a check pass.
   keyless record fails with `invalid-input`. The provisioning `ctl` store path
   must stay live: the consumer roots it as a GC root. If it does not, the
   check still works, but the ACL entry names a path that no longer exists.
-- **Codesign guard.** Before any signing `codesign` (in `install-host` and in
-  `prove-signing-key`), `ctl` reads the key's ACLs inside the unlock window.
+- **Codesign guard.** Before any signing `codesign` (in `install-host`,
+  `sign-fixture` and `prove-signing-key`), `ctl` reads the key's ACLs inside the unlock window.
   It requires a partition-capable `K`, a partition list equal to `[apple:]` and
   signing ACLs equal to `{/usr/bin/codesign, recorded ctl}`. Anything wider or
   different fails with `verification-failed` and runs no `codesign`. Each
@@ -421,6 +421,27 @@ self-issued leaf as an anchor only for its ephemeral `SecTrust` evaluation,
 never adding system trust or changing a keychain search list. A CA-issued
 test leaf without a system anchor is a negative case (`chain-incomplete`,
 no codesign).
+
+### Fixture signing and agent process rules
+
+Agents sign only through `ctl`, including test and fixture bundles. Use
+`sign-fixture --keychain K --keychain-password-fd N --certificate-sha1 SHA1
+--requirement REQ --target APP [--inventory FILE]` with the usual `--config`.
+It reads back non-extractability, performs the password-authorized partition
+pin preparation, and runs the exact ACL guard and trust-chain preflight before
+spawning codesign. A missing or foreign ACL record refuses before preparation;
+other unsafe ACLs refuse before codesign. The password never reaches a child.
+The optional inventory is a JSON array of relative nested-code paths beneath
+the target. Entries are canonicalized and checked for containment, deduplicated,
+then signed deepest-first before the outer target, without `--deep`. Each
+signature is verified against the supplied requirement.
+
+The accepted residual is that invoking `/usr/bin/codesign` or `/usr/bin/security`
+by absolute path bypasses host PATH wrappers. This is covered by agent process
+rules, not technical enforcement: wrappers are not a sandbox. Production ctl
+does not accept runtime overrides of its codesign executable; only the separate
+test-feature build admits the recording/sentinel shim.
+
 
 ### Opt-in real-launchd smoke
 
