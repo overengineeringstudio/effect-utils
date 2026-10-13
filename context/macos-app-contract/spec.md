@@ -99,7 +99,7 @@ Install (consumer activation)
 ## Unsigned builder and host
 
 `effectUtils.lib.mkMacosApp { pkgs, name, bundleId, displayName, teamId,
-statusAllowedUids, actions }` returns `hostApp`, `generation`, `requirement`
+statusAllowedUids, actions, socketMode ? 438 }` returns `hostApp`, `generation`, `requirement`
 and `hostSourceHash`. `hostApp` contains the generic executable and a
 product-specific background-only Info.plist. It has no Team-ID signature;
 the Darwin toolchain's execution-required ad-hoc seal is not a product identity.
@@ -113,6 +113,21 @@ Each action declares `executable` (a Nix store path), fixed `argv`, ordered
 payload bytes into the manifest. The host authenticates the socket peer UID,
 reads the active pointer for each request, validates arguments and verifies
 the payload hash before spawning without responsibility disclaim.
+
+`socketMode` declares filesystem reachability, not authentication. Supported
+modes are decimal `384` (0600), `432` (0660) and `438` (0666, the default).
+0666 permits a daemon's declared non-owner UIDs to connect; `getpeereid` and
+the action/status allow-lists authorize every request regardless of socket mode.
+Consumers must own the socket's parent directory, prevent untrusted path
+replacement and permit directory traversal for intended callers. Socket mode
+is read at startup; changing it requires a host restart.
+
+The host admits at most 32 concurrent connections and gives the entire request
+frame an absolute five-second read deadline. Excess connections are closed;
+transient accept/resource errors are retried without exiting. A live listener
+or a non-socket file at the requested path blocks startup. A stale socket
+(`ECONNREFUSED`) is removed before binding, and SIGTERM removes the host's
+socket on orderly shutdown without unlinking a replacement path.
 
 The versioned request, result, status and error shapes are defined in
 [`wire.schema.json`](../../nix/macos-app/wire.schema.json). Transport is one

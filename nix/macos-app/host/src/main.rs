@@ -9,10 +9,11 @@ use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -22,6 +23,10 @@ const MAX_REQUEST_FRAME: usize = 65536;
 // JSON escaping can expand both 16-KiB output tails by six times.
 const MAX_RESPONSE_FRAME: usize = 262144;
 const TAIL_LIMIT: usize = 16384;
+const MAX_CONNECTIONS: usize = 32;
+const READ_TIMEOUT: Duration = Duration::from_secs(5);
+static STOP: AtomicBool = AtomicBool::new(false);
+extern "C" fn stop(_: libc::c_int) { STOP.store(true, Ordering::Relaxed); }
 #[derive(Debug)]
 struct Failure { code: &'static str, message: String }
 type Result<T, E = Failure> = std::result::Result<T, E>;
@@ -33,7 +38,7 @@ impl From<serde_json::Error> for Failure { fn from(e: serde_json::Error) -> Self
 struct Request { #[serde(rename = "wireVersion")] wire_version: u32, action: String, args: BTreeMap<String, Value> }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct Manifest { manifest_version: u32, generation: String, actions: BTreeMap<String, Action>, status_allowed_uids: Vec<u32> }
+struct Manifest { manifest_version: u32, generation: String, actions: BTreeMap<String, Action>, status_allowed_uids: Vec<u32>, socket_mode: u32 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct Action { executable: PathBuf, sha256: String, argv: Vec<String>, args: Vec<Arg>, allowed_uids: Vec<u32>, timeout_ms: u64, concurrency: u32 }
@@ -75,11 +80,28 @@ impl Arg {
         Ok(result)
     }
 }
-fn read_frame(stream: &UnixStream, limit: usize) -> Result<Vec<u8>> {
-    let mut reader = BufReader::new(stream.take((limit + 1) as u64));
-    let mut bytes = Vec::new(); reader.read_until(b'\n', &mut bytes)?;
-    if bytes.len() > limit || bytes.last() != Some(&b'\n') { return Err(failure("invalidRequest", "Incomplete or oversized frame")); }
-    Ok(bytes)
+fn read_frame(stream: &UnixStream, limit: usize, deadline: Option<Instant>) -> Result<Vec<u8>> {
+    let mut reader = BufReader::new(stream);
+    let mut bytes = Vec::new();
+    loop {
+        if let Some(end) = deadline {
+            let remaining = end.checked_duration_since(Instant::now()).filter(|d| !d.is_zero())
+                .ok_or_else(|| failure("requestTimeout", "Frame read deadline exceeded"))?;
+            stream.set_read_timeout(Some(remaining))?;
+        }
+        let available = reader.fill_buf().map_err(|error| {
+            if deadline.is_some() && matches!(error.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock) {
+                failure("requestTimeout", "Frame read deadline exceeded")
+            } else { error.into() }
+        })?;
+        if available.is_empty() { return Err(failure("invalidRequest", "Incomplete frame")); }
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let count = newline.map_or(available.len(), |index| index + 1);
+        if bytes.len() + count > limit { return Err(failure("invalidRequest", "Oversized frame")); }
+        bytes.extend_from_slice(&available[..count]);
+        reader.consume(count);
+        if newline.is_some() { return Ok(bytes); }
+    }
 }
 fn write_frame(mut stream: &UnixStream, response: &Value) -> Result<()> {
     serde_json::to_writer(&mut stream, response)?; stream.write_all(b"\n")?; Ok(())
@@ -187,7 +209,7 @@ impl Drop for Permit<'_> { fn drop(&mut self) { self.server.running.lock().remov
 impl Server {
     fn respond(&self, request: Request, uid: u32) -> Result<Value> {
         if request.wire_version != 1 || !request.args.values().all(|v| v.is_string() || v.as_i64().is_some()) { return Err(failure("invalidRequest", "Unsupported wire version or argument value")); }
-        let manifest: Manifest = serde_json::from_reader(File::open(self.pointer.join("manifest.json"))?).map_err(|e| failure("manifest", e.to_string()))?;
+        let manifest = load_manifest(&self.pointer)?;
         if manifest.manifest_version != 1 { return Err(failure("manifest", "Unsupported manifest version")); }
         if request.action == "status" {
             if !manifest.status_allowed_uids.contains(&uid) { return Err(failure("unauthorized", "Caller UID not allowed")); }
@@ -212,26 +234,94 @@ impl Server {
         Ok(json!({"wireVersion": 1, "ok": true, "result": result}))
     }
 }
+fn load_manifest(pointer: &Path) -> Result<Manifest> {
+    serde_json::from_reader(File::open(pointer.join("manifest.json"))?)
+        .map_err(|e| failure("manifest", e.to_string()))
+}
+struct SocketGuard { path: PathBuf, device: u64, inode: u64 }
+impl Drop for SocketGuard {
+    fn drop(&mut self) {
+        if let Ok(metadata) = fs::symlink_metadata(&self.path) {
+            if metadata.dev() == self.device && metadata.ino() == self.inode {
+                let _ = fs::remove_file(&self.path);
+            }
+        }
+    }
+}
+fn bind_socket(path: &Path) -> Result<(UnixListener, SocketGuard)> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if !metadata.file_type().is_socket() { return Err(failure("socket", "Existing path is not a socket")); }
+            match UnixStream::connect(path) {
+                Ok(_) => return Err(failure("socket", "A listener already owns the socket")),
+                Err(error) if error.raw_os_error() == Some(libc::ECONNREFUSED) => {
+                    let current = fs::symlink_metadata(path)?;
+                    if current.dev() != metadata.dev() || current.ino() != metadata.ino() {
+                        return Err(failure("socket", "Socket changed during stale-listener check"));
+                    }
+                    fs::remove_file(path)?;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    let listener = UnixListener::bind(path)?;
+    let metadata = fs::symlink_metadata(path)?;
+    Ok((listener, SocketGuard { path: path.to_owned(), device: metadata.dev(), inode: metadata.ino() }))
+}
+struct ConnectionPermit(Arc<AtomicUsize>);
+impl Drop for ConnectionPermit {
+    fn drop(&mut self) { self.0.fetch_sub(1, Ordering::Relaxed); }
+}
 fn main_impl() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.len() < 3 || args[1] != "--socket" { return Err(failure("usage", "serve --socket PATH --generation-pointer PATH | call --socket PATH ACTION [--arg k=v]")); }
     match args[0].as_str() {
         "serve" => {
             if args.len() != 5 || args[3] != "--generation-pointer" { return Err(failure("usage", "Missing generation pointer")); }
-            let listener = UnixListener::bind(&args[2])?;
-            fs::set_permissions(&args[2], fs::Permissions::from_mode(0o600))?;
-            let server = Arc::new(Server { pointer: PathBuf::from(&args[4]), running: Mutex::new(HashSet::new()) });
-            for connection in listener.incoming() {
-                let stream = connection?; let server = Arc::clone(&server);
-                thread::spawn(move || {
+            let pointer = PathBuf::from(&args[4]);
+            let manifest = load_manifest(&pointer)?;
+            if ![0o600, 0o660, 0o666].contains(&manifest.socket_mode) {
+                return Err(failure("manifest", "Unsupported socket mode"));
+            }
+            // SAFETY: the handler only stores a lock-free atomic flag.
+            unsafe { libc::signal(libc::SIGTERM, stop as *const () as libc::sighandler_t); }
+            let (listener, _socket_guard) = bind_socket(Path::new(&args[2]))?;
+            fs::set_permissions(&args[2], fs::Permissions::from_mode(manifest.socket_mode))?;
+            listener.set_nonblocking(true)?;
+            let server = Arc::new(Server { pointer, running: Mutex::new(HashSet::new()) });
+            let connections = Arc::new(AtomicUsize::new(0));
+            while !STOP.load(Ordering::Relaxed) {
+                let stream = match listener.accept() {
+                    Ok((stream, _)) => stream,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(20)); continue;
+                    }
+                    Err(error) if matches!(error.raw_os_error(), Some(libc::EINTR | libc::ECONNABORTED | libc::EMFILE | libc::ENFILE | libc::ENOBUFS | libc::ENOMEM)) => {
+                        thread::sleep(Duration::from_millis(100)); continue;
+                    }
+                    Err(error) => return Err(error.into()),
+                };
+                if connections.load(Ordering::Relaxed) >= MAX_CONNECTIONS { continue; }
+                connections.fetch_add(1, Ordering::Relaxed);
+                let permit = ConnectionPermit(Arc::clone(&connections));
+                let server = Arc::clone(&server);
+                let deadline = Instant::now() + READ_TIMEOUT;
+                if thread::Builder::new().spawn(move || {
+                    let _permit = permit;
                     let result = (|| {
                         let uid = peer_uid(&stream)?;
-                        stream.set_read_timeout(Some(Duration::from_secs(5)))?; stream.set_write_timeout(Some(Duration::from_secs(5)))?;
-                        server.respond(serde_json::from_slice(&read_frame(&stream, MAX_REQUEST_FRAME)?)?, uid)
+                        stream.set_nonblocking(false)?;
+                        stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+                        server.respond(serde_json::from_slice(&read_frame(&stream, MAX_REQUEST_FRAME, Some(deadline))?)?, uid)
                     })();
                     let response = match result { Ok(value) => value, Err(e) => json!({"wireVersion": 1, "ok": false, "error": {"code": e.code, "message": e.message}}) };
                     let _ = write_frame(&stream, &response);
-                });
+                }).is_err() {
+                    thread::sleep(Duration::from_millis(100));
+                }
             }
         }
         "call" => {
@@ -244,7 +334,7 @@ fn main_impl() -> Result<()> {
             }
             let stream = UnixStream::connect(&args[2])?;
             write_frame(&stream, &json!({"wireVersion": 1, "action": args[3], "args": values}))?;
-            let response: Value = serde_json::from_slice(&read_frame(&stream, MAX_RESPONSE_FRAME)?)?;
+            let response: Value = serde_json::from_slice(&read_frame(&stream, MAX_RESPONSE_FRAME, None)?)?;
             println!("{response}");
             if response["ok"] != true { std::process::exit(1); }
         }

@@ -11,8 +11,10 @@
   actions,
   statusAllowedUids,
   teamId,
+  socketMode ? 438, # 0666: reachability is separate from peer-UID authorization.
 }:
 let
+  # Only owner/group/world read-write modes are supported; never executable sockets.
   inherit (pkgs) lib;
   hostSourceHash = builtins.hashString "sha256" (
     builtins.readFile ./host/src/main.rs
@@ -45,7 +47,8 @@ let
       sign "$out/bin/macos-app-host"
     '';
   };
-  actionData = lib.mapAttrs (actionName: action:
+  actionData = lib.mapAttrs (
+    actionName: action:
     assert actionName != "status";
     assert (action.concurrency or 1) == 1;
     assert action.timeoutMs > 0;
@@ -58,12 +61,15 @@ let
       timeoutMs = action.timeoutMs;
       concurrency = 1;
       sha256 = "";
-    }) actions;
-  manifestInput = pkgs.writeText "macos-app-manifest-input.json" (builtins.toJSON {
-    manifestVersion = 1;
-    actions = actionData;
-    inherit statusAllowedUids;
-  });
+    }
+  ) actions;
+  manifestInput = pkgs.writeText "macos-app-manifest-input.json" (
+    builtins.toJSON {
+      manifestVersion = 1;
+      actions = actionData;
+      inherit statusAllowedUids socketMode;
+    }
+  );
   generation = pkgs.runCommand "${name}-generation" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     mkdir -p "$out"
     python3 - '${manifestInput}' "$out/manifest.json" <<'PY'
@@ -77,20 +83,27 @@ let
     with open(sys.argv[2], 'w') as f: json.dump(manifest, f, sort_keys=True)
     PY
   '';
-  plist = pkgs.writeText "Info.plist" (lib.generators.toPlist { escape = true; } {
-    CFBundleIdentifier = bundleId;
-    CFBundleDisplayName = displayName;
-    CFBundleName = displayName;
-    CFBundleExecutable = "macos-app-host";
-    CFBundlePackageType = "APPL";
-    CFBundleVersion = "1";
-    LSBackgroundOnly = true;
-  });
+  plist = pkgs.writeText "Info.plist" (
+    lib.generators.toPlist { escape = true; } {
+      CFBundleIdentifier = bundleId;
+      CFBundleDisplayName = displayName;
+      CFBundleName = displayName;
+      CFBundleExecutable = "macos-app-host";
+      CFBundlePackageType = "APPL";
+      CFBundleVersion = "1";
+      LSBackgroundOnly = true;
+    }
+  );
 in
 assert pkgs.stdenv.hostPlatform.isDarwin;
 assert builtins.match "[A-Za-z0-9._-]+" name != null;
 assert builtins.match "[A-Za-z0-9.-]+" bundleId != null;
 assert builtins.match "[A-Z0-9]+" teamId != null;
+assert builtins.elem socketMode [
+  384
+  432
+  438
+]; # 0600, 0660, 0666
 {
   inherit generation hostSourceHash;
   requirement = ''identifier "${bundleId}" and anchor apple generic and certificate leaf[subject.OU] = "${teamId}"'';

@@ -11,6 +11,8 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import resource
+import stat
 import socket
 import subprocess
 import sys
@@ -54,6 +56,10 @@ def generation(source, name):
 
 first, first_manifest = generation(example / 'generation', 'first')
 second, second_manifest = generation(example / 'secondGeneration', 'second')
+# Filesystem reachability must include manifest-declared non-owner callers.
+first_manifest['statusAllowedUids'].append(uid + 1)
+first_manifest['actions']['echo']['allowedUids'].append(uid + 1)
+(first / 'manifest.json').write_text(json.dumps(first_manifest))
 pointer = work / 'current'
 
 def select(destination):
@@ -66,7 +72,14 @@ os.chdir(root)
 # sockaddr_un paths are limited to 104 bytes, independently of worktree depth.
 sock = work.relative_to(root) / 'host.sock'
 log = (work / 'server.log').open('wb')
-server = subprocess.Popen([str(host), 'serve', '--socket', str(sock), '--generation-pointer', str(pointer)], stdout=log, stderr=log)
+def start_server(fd_limit=None):
+    def limit_descriptors():
+        resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
+    return subprocess.Popen(
+        [str(host), 'serve', '--socket', str(sock), '--generation-pointer', str(pointer)],
+        stdout=log, stderr=log, preexec_fn=limit_descriptors if fd_limit else None)
+
+server = start_server()
 
 def request(action, args=None):
     value = {'wireVersion': 1, 'action': action, 'args': args or {}}
@@ -85,23 +98,62 @@ def rejected(action, args, code):
     assert response['ok'] is False and response['error']['code'] == code, response
     print(f'PASS {code}', flush=True)
 
-valid = {'choice': 'alpha', 'text': 'hello', 'count': 2}
-try:
+def wait_ready():
     deadline = time.monotonic() + 10
     while True:
         if server.poll() is not None:
             raise RuntimeError((work / 'server.log').read_text())
         try:
-            status = request('status')['status']
-            break
+            return request('status')['status']
         except (FileNotFoundError, ConnectionRefusedError):
-            # bind creates the path before listen makes the endpoint ready.
             if time.monotonic() >= deadline:
                 raise TimeoutError('Host socket did not become ready')
             time.sleep(0.02)
+
+valid = {'choice': 'alpha', 'text': 'hello', 'count': 2}
+try:
+    status = wait_ready()
     assert status['pid'] == server.pid and status['generation'] == first_manifest['generation']
     assert status['hostVersion'] == '1' and status['session'] == 'unknown'
     assert status['hostSourceHash'] == expected_source_hash
+    assert first_manifest['socketMode'] == 0o666
+    assert stat.S_IMODE(sock.stat().st_mode) == 0o666
+    print('PASS declared non-owner UID socket reachability mode', flush=True)
+    held = []
+    try:
+        for _ in range(32):
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client.settimeout(2)
+            client.connect(str(sock))
+            held.append(client)
+        time.sleep(0.2)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as excess:
+            excess.settimeout(2)
+            excess.connect(str(sock))
+            try:
+                assert excess.recv(1) == b''
+            except ConnectionResetError:
+                pass
+    finally:
+        for client in held:
+            client.close()
+    time.sleep(0.2)
+    assert request('status')['status']['pid'] == server.pid
+    print('PASS global connection cap and capacity recovery', flush=True)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as slow:
+        slow.settimeout(10)
+        slow.connect(str(sock))
+        started = time.monotonic()
+        slow.sendall(b'{')
+        for _ in range(4):
+            time.sleep(1)
+            slow.sendall(b' ')
+        with slow.makefile('rb') as response:
+            decoded = json.loads(response.readline())
+        validator.validate(decoded)
+        assert decoded['error']['code'] == 'requestTimeout', decoded
+        assert time.monotonic() - started < 6.5
+    print('PASS absolute whole-frame deadline against slowloris', flush=True)
     print('PASS status', flush=True)
     result = request('echo', valid)['result']
     assert result['exitCode'] == 0 and result['stdoutTail'] == 'first:alpha:hello:2\n' and result['stderrTail'] == '', result
@@ -151,13 +203,45 @@ try:
     status = request('status')['status']
     assert status['pid'] == server.pid and status['generation'] == second_manifest['generation']
     print('PASS pointer swap without restart', flush=True)
+    duplicate = subprocess.run(
+        [str(host), 'serve', '--socket', str(sock), '--generation-pointer', str(pointer)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+    assert duplicate.returncode != 0 and sock.exists()
+    assert request('status')['status']['pid'] == server.pid
+    print('PASS live listener refuses duplicate startup', flush=True)
+    server.kill()
+    server.wait(timeout=5)
+    assert sock.exists(), 'SIGKILL should leave a stale socket for the restart test'
+    server = start_server(fd_limit=24)
+    assert wait_ready()['pid'] == server.pid
+    print('PASS SIGKILL stale-socket restart', flush=True)
+    exhausted = []
+    try:
+        # 24 total descriptors cannot accept all 40 connections; accept hits EMFILE.
+        for _ in range(40):
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client.settimeout(2)
+            client.connect(str(sock))
+            exhausted.append(client)
+        time.sleep(0.3)
+        assert server.poll() is None
+    finally:
+        for client in exhausted:
+            client.close()
+    time.sleep(0.5)
+    assert request('status')['status']['pid'] == server.pid
+    print('PASS EMFILE accept recovery without host exit', flush=True)
+    server.terminate()
+    assert server.wait(timeout=5) == 0
+    assert not sock.exists(), 'Orderly shutdown must remove the socket itself'
+    print('PASS SIGTERM socket cleanup', flush=True)
     print('macOS app integration: PASS', flush=True)
 finally:
-    server.terminate()
+    if server.poll() is None:
+        server.terminate()
     try:
         server.wait(timeout=5)
     except subprocess.TimeoutExpired:
         server.kill()
         server.wait()
     log.close()
-    sock.unlink(missing_ok=True)
