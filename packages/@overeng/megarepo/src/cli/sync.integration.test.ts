@@ -1667,7 +1667,10 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
           MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
         }
         const mount = (root: string, name: string) =>
-          `${root.endsWith('/') === true ? root : `${root}/`}repos/${name}`
+          EffectPath.ops.join(
+            EffectPath.unsafe.absoluteDir(root.endsWith('/') === true ? root : `${root}/`),
+            EffectPath.unsafe.relativeDir(`repos/${name}/`),
+          )
         const applyArgs = [
           '--output',
           'json',
