@@ -8,6 +8,57 @@ Shared Effect utilities for the overeng ecosystem.
 bun add @overeng/utils
 ```
 
+## GitHub App authentication (Node)
+
+`@overeng/utils/node/github-app` provides `makeGitHubApp`, `GitHubApp.layer`,
+and `installationHttpClientLayer`. Supply an App client ID, a redacted RSA PEM,
+an Effect `HttpClient` transport, and a stable `consumer` name for telemetry.
+
+```ts
+import { GitHubApp, installationHttpClientLayer } from '@overeng/utils/node/github-app'
+import { Layer, Redacted } from 'effect'
+
+const app = GitHubApp.layer({
+  config: { identity: { clientID }, privateKey: Redacted.make(privateKeyPem) },
+  options: { consumer: 'ci-reader' },
+})
+const authenticated = installationHttpClientLayer({
+  installationID,
+  repositories: { _tag: 'Selected', names: ['my-repository'] },
+  permissions: { actions: 'read' },
+}).pipe(Layer.provide(app))
+```
+
+Repository names are nonempty, installation-relative names without `/`.
+`{ _tag: 'AllInstallation' }` explicitly requests installation-wide access and
+is accepted only when every requested permission is `read`. Permissions must
+be nonempty. Broad write scopes are rejected by `InstallationScope` before
+any exchange; writes must use `Selected`.
+
+Tokens are cached by installation, normalized repository selection and
+permissions, refreshed before expiry, and minted single-flight per scope.
+Authenticated clients reject off-origin requests. A 401 invalidates the
+rejected token without replaying the request, including when a status-filtered
+transport returns it as an error; callers decide whether retrying is safe.
+Credentials are redacted and excluded from errors and telemetry.
+Transport failures retain only safe method, path, reason and optional status.
+Response body access remains lazy/streaming; decoding failures carry a fresh,
+credential-free request and response metadata without the original cause.
+Sanitized response requests retain an absolute trusted origin and pathname
+without userinfo or query parameters, allowing same-origin `HttpClient.followRedirects` composition.
+
+Schema-backed telemetry contracts cover construction, minting and authorization. Metrics are
+`github_app_mints_total`, `github_app_mint_failures_total`,
+`github_app_token_expiry_seconds` (Unix expiry time), and
+`github_app_rate_limit_remaining` (per GitHub rate-limit resource), attributed
+to App client ID, installation ID and consumer. Provide a scoped lifetime for
+the App layer shared by the consuming service.
+
+The real loopback HTTP integration suites belong to the source-side
+`test:utils:unbounded` and `test:gh-ci-utils:unbounded` lanes, not the bounded
+Buck unit-test collection. `vitest.github-app.config.ts` runs the focused
+authentication and consumer regressions together.
+
 ## Browser build identity (Vite)
 
 ```ts
