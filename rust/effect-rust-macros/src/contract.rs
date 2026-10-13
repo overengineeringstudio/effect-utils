@@ -153,11 +153,14 @@ fn wire_field(field: &mut syn::Field) -> syn::Result<()> {
     }
     field.attrs = rest;
     let name = type_name(&field.ty);
+    let nullable_f32 = name == "Option"
+        && matches!(super::generic_types(&field.ty).as_slice(), [inner] if type_name(inner) == "f32");
     match wire {
         Some((kind, attr)) => {
             let (serde_with, schema_with, accepted) = match kind.to_string().as_str() {
                 "u64" => ("::effect_rust::wire::u64_decimal", "::effect_rust::contract::U64", name == "u64"),
                 "i64" => ("::effect_rust::wire::i64_decimal", "::effect_rust::contract::I64", name == "i64"),
+                "f32" if nullable_f32 => ("::effect_rust::wire::f32::nullable", "::effect_rust::contract::Required<::core::option::Option<::effect_rust::contract::F32>>", true),
                 "f32" => ("::effect_rust::wire::f32", "::effect_rust::contract::F32", name == "f32"),
                 "timestamp_millis" => ("::effect_rust::wire::timestamp_millis", "::effect_rust::TimestampMillis", name == "DateTime"),
                 _ => return Err(syn::Error::new_spanned(attr, "unknown wire codec: use #[wire(u64)], #[wire(i64)], #[wire(f32)] or #[wire(timestamp_millis)]")),
@@ -169,6 +172,8 @@ fn wire_field(field: &mut syn::Field) -> syn::Result<()> {
                         "#[wire({kind})] applies to a field of type {}",
                         if kind == "timestamp_millis" {
                             "chrono::DateTime<Utc>"
+                        } else if kind == "f32" {
+                            "f32 or Option<f32>"
                         } else {
                             "matching integer width"
                         }
@@ -606,13 +611,19 @@ mod tests {
             (quote!(#[wire(u64)] id: u64), true),
             (quote!(#[wire(i64)] id: i64), true),
             (quote!(#[wire(f32)] ratio: f32), true),
+            (quote!(#[wire(f32)] ratio: Option<f32>), true),
+            (quote!(#[wire(f32)] ratio: std::option::Option<f32>), true),
             (quote!(id: u64), false),
             (quote!(ids: Vec<i64>), false),
             (quote!(size: usize), false),
             (quote!(ratio: Option<f64>), false),
             (quote!(ratio: f32), false),
+            (quote!(ratio: Option<f32>), false),
             (quote!(#[wire(u64)] id: u32), false),
             (quote!(#[wire(f32)] ratio: f64), false),
+            (quote!(#[wire(f32)] ratio: Option<f64>), false),
+            (quote!(#[wire(f32)] ratio: Vec<f32>), false),
+            (quote!(#[wire(f32)] ratio: Option<Option<f32>>), false),
         ] {
             let result = expand(
                 quote!(),

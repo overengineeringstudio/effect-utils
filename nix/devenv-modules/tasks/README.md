@@ -31,6 +31,13 @@ tasks."repo:typecheck".exec = "pnpm exec tsc --noEmit";
 select their own aggregate explicitly (for example, `buck2:quick` and
 `buck2:all`).
 
+pnpm source-input staging resolves `repos/<member>/...` with genie's
+bootstrap-safe member resolver. The initiating workspace's `megarepo.lock`
+selects the member source, not the potentially newer tracking symlink.
+Explicit `GENIE_MEMBER_OVERRIDE_MAP` overrides have the same precedence as
+genie imports. Materialize pinned sources with
+`mr apply --worktree-mode commit --lock-sync off` before staging.
+
 ## Observability
 
 Import the sibling observability module once to capture native devenv spans
@@ -146,6 +153,81 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
     historical `v11/files` bridge under the exclusive cache lease; normal
     installs and unknown bridges fail closed.
+  - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
+    reports historical root-local store retirement in a read-only dry-run.
+    The collector is Linux-only. On other platforms it exits nonzero before
+    filesystem input access with `pnpm-store-gc: unsupported platform (Linux only; Darwin census not implemented)`.
+    Repeat `--root` for explicitly selected worktrees; there is no fleet traversal.
+    It never targets `$HOME/.local/share/pnpm` or `PNPM_SHARED_STORE_DIR`.
+    Before ownership admission or lease creation, resolved paths and inode
+    identities reject candidates overlapping either default shared store or
+    `PNPM_SHARED_STORE_DIR`. Mount inventory also rejects mount points at the
+    candidate root or below it, including same-filesystem bind mounts.
+    Directory mount IDs define traversal containment; `st_dev` remains part of
+    inode accounting only. Overlayfs payloads can expose differing backing
+    device IDs without crossing a mount, so device-number inequality is not
+    grounds to reject an otherwise contained historical cache.
+    `--observe` records eligible roots without deleting payloads; after 24 hours,
+    repeat the dry-run, then opt in to `--apply` to retire eligible payloads.
+    An initial `--apply` only establishes the observation, never skips grace.
+  - Eligibility requires the root to be absent from Git's worktree registry
+    **and** have no `.git` marker, or its own checkout to have stopped owning
+    the historical store. For effect-utils this is proved by HEAD containing
+    `727cb7544bea32ec031c9f6e5e840cbe717e772a` (#1794). Consumer checkouts can
+    prove resolved selection through matching `pnpm-storage-state` receipts
+    and `.modules.yaml` metadata naming the default shared store (or the
+    operator's `PNPM_SHARED_STORE_DIR`). Any projection still naming a
+    worktree-local store protects the cache. Unknown metadata, incomplete
+    ownership evidence, and Git worktree locks fail closed; PR closure alone
+    does not prove a checkout stopped referencing its store.
+  - The collector requires no own-UID cwd/open-fd references under the
+    historical **store**, not the entire checkout, using Linux `/proc`.
+    Other-UID processes are outside the normal
+    user-owned-cache flow; the CLI states this assumption explicitly. Unreadable
+    own-UID processes fail closed, except the explicit Linux privileged-broker
+    allowlist. SSH brokers (`sshd-session`, Tailscale SSH's
+    `.tailscaled-wrapped` executable or truncated `.tailscaled-wra` comm)
+    require a root-owned fd directory. The `systemd` user-manager exception
+    requires `PPid=1` and nonzero permitted capabilities. Its `(sd-pam)` child
+    shares the same exception only when its PPid identifies that same approved,
+    same-UID manager. Only `ESRCH` or disappearance of the PID directory proves
+    a process gone. A live PID with missing leader cwd/fd evidence requires
+    inventory of its remaining tasks; unreadable task evidence fails closed.
+    Other unreadable process classes fail closed. Every exception prints the PID,
+    comm, executable
+    (or its read error), parent, permitted capabilities, and the normal-flow
+    assumption that privileged brokers do not use pnpm stores. The invoking UID
+    must own the store; no privileged observer or GitHub/API access is needed.
+    It rechecks checkout ownership, process references, and every payload inode's
+    size/link-count/mtime/ctime under a proved exclusive Store Cache lease before
+    retirement. Changed observed eligibility resets the 24-hour grace.
+    The candidate is opened once at admission: its directory descriptor and
+    inode/mount identity remain held through lease acquisition, proofs, and
+    retirement. The lease is opened relative to that descriptor, and its locked
+    open-file description remains held in the same collector process. Pathname
+    replacement aborts rather than admitting a replacement directory; deletion
+    never reopens the root path and verifies its identity again at the end.
+    Linux retirement walks held directory descriptors with `O_NOFOLLOW` and
+    compares each opened directory's mount ID before descending or unlinking;
+    a newly inserted mount or replacement symlink cannot redirect the walk.
+    Observations live in `$XDG_STATE_HOME/effect-utils/pnpm-store-gc` (default
+    `$HOME/.local/state/...`); the stable store directory and maintenance-lock
+    inode remain, so cooperating pnpm mutations cannot bypass the lease.
+  - Output lists `would-free`, `grace`, `protected`, or `absent` per root and a
+    `would-free-total` in bytes. Reclaim estimates count allocated blocks once
+    per inode and exclude payload inodes still hardlinked outside the selected
+    store; `allocated=` also reports the gross store footprint. These are not
+    physical reclaim guarantees on compressed, snapshotted, or clone-sharing
+    filesystems. Unmanaged processes can start after a census: stop/unpin root
+    users first; process evidence does not replace lifecycle ownership.
+  - Historical attribution: `8c5bc8e6be49440f03b9b0bb9504264352d47bd8`
+    (#692) introduced the `pure-v1` namespace for lifecycle-free, integrity-
+    checked frozen installs, not because Buck/Nix required worktree-local CAS.
+    `4514099e0` (#922) selected a complete shared Store Cache with root-owned
+    topology. `727cb7544bea32ec031c9f6e5e840cbe717e772a` (#1794) stopped
+    treating ambient `CI=1` as job isolation; ordinary dev-host tasks now share
+    the cache even in non-watch CI mode. Copies created before that selection
+    change can be historical, but age alone does not authorize their retirement.
   - Frozen installs and `pnpm:update` both use the current guarded pnpm
     runtime: pnpm 12 is outside the 11.5.2-11.14.0 `hasBin` window that
     required a separate lock mutator, so the dedicated pin is retired while
@@ -198,10 +280,15 @@ They assume the effect-utils repo structure and are not exported in flake.nix.
 
 ### Module shell-test scheduling
 
-`devenv-modules:test` discovers every `shared/tests/*.test.sh`; it does not
-filter the suite. `local/devenv-module-tests.sh` runs unaudited and shared-checkout
-state scripts serially before starting a bounded worker pool for explicitly
-admitted scripts. Only admitted scripts are ordered longest-first, with lexical
+`devenv-modules:test` discovers every `shared/tests/*.test.sh` and requires each
+script to appear exactly once in `genie/ci-workflow/test-platforms.json`'s
+`moduleScripts` classification. The Nix import and shell dispatcher both reject
+missing, stale, duplicate or overlapping entries before dispatch. Darwin runs
+only Darwin-sensitive scripts; Linux and an unset platform run the complete
+catalog. Platform classification is independent of parallel-safety admission.
+`local/devenv-module-tests.sh` runs selected unaudited and shared-checkout state
+scripts serially before starting a bounded worker pool for explicitly admitted
+scripts. Only admitted scripts are ordered longest-first, with lexical
 ties and weight one for scripts without a declared duration. Both phases keep
 running after failures. The aggregate fails if any script fails, and stderr
 records each script's UTC start/end timestamp, scheduling class, and original
@@ -214,8 +301,8 @@ for the complete pool on ordinary failures and on INT/TERM to the supervisor.
 
 #### Isolation admission audit
 
-The admission list is fail-closed: a new script still runs, but runs serially
-until its side effects have been reviewed. The audit at
+The parallel admission list is fail-closed: a newly platform-classified script
+runs serially until its side effects have been reviewed. The audit at
 [`1f4b2947`](https://github.com/overengineeringstudio/effect-utils/commit/1f4b2947b8cfe2617e34ade8e5fafb63fd2c5587)
 admitted 42 of the original 43 scripts. Every admitted script runs in a
 separate Bash process, preserving cwd/environment isolation. Their ownership

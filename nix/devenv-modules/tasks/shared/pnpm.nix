@@ -115,8 +115,14 @@ let
   nodeModulesProjectionScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
+  memberSourceResolverScript = pkgs.writeText "sync-resolver.ts" (
+    builtins.readFile (../../../../packages + "/@overeng/genie/src/core/import-map/sync-resolver.ts")
+  );
   stageSourceInputsScript = pkgs.writeText "stage-pnpm-source-inputs.mjs" (
-    builtins.readFile ./stage-pnpm-source-inputs.mjs
+    builtins.replaceStrings
+      [ "../../../../packages/@overeng/genie/src/core/import-map/sync-resolver.ts" ]
+      [ "${memberSourceResolverScript}" ]
+      (builtins.readFile ./stage-pnpm-source-inputs.mjs)
   );
   sourceStagePath = ".devenv/pnpm-source-inputs";
   pnpmInstallPolicy = import ../../../workspace-tools/lib/pnpm-install-policy.nix { inherit lib; };
@@ -905,10 +911,12 @@ assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
 '';
 assert lib.assertMsg (!sourceInputPathsOverlap) "sourceInputPaths entries must not overlap";
 {
-  packages = cliGuard.fromTasks {
-    tasks = selectedTasks;
-    reals = lib.optionalAttrs (pnpmPkg != null) { pnpm = pnpmPkg; };
-  };
+  packages =
+    cliGuard.fromTasks {
+      tasks = selectedTasks;
+      reals = lib.optionalAttrs (pnpmPkg != null) { pnpm = pnpmPkg; };
+    }
+    ++ [ (import ./pnpm-store-gc.nix { inherit pkgs; }) ];
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"

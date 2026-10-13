@@ -675,7 +675,11 @@ ok({
     prebuildBranchOffset !== -1 &&
     prebuildBranchOffset < collectionGateSource.indexOf('const sourceTasksPath =') &&
     prebuildBranchOffset < collectionGateSource.indexOf('const testFiles =') &&
-    collectionGateSource.includes('const buildPlan = collectionBuildPlan({ lanes })') &&
+    collectionGateSource.includes(
+      'const buildPlan = collectionBuildPlan({ lanes: selectedLanes })',
+    ) &&
+    collectionGateSource.indexOf('const selectedLanes = selectTestLanes(') < prebuildBranchOffset &&
+    collectionGateSource.includes('ownershipForFile({ file, lanes })') &&
     collectionGateSource.includes('const collectionBuildError = await') &&
     collectionGateSource.includes('const built = await buildCollectionArtifacts()'),
   name: 'prebuild shares the final current-input plan without reading or caching source verdicts',
