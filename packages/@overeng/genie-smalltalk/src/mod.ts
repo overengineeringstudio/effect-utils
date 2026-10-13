@@ -996,7 +996,7 @@ const ownedDeclarationNodes = (input: {
   readonly subscriptions?: readonly (typeof SubscriptionSchema.Encoded)[]
 }): Node[] => [
   ...(input.resources ?? []).map(resource),
-  ...(input.docs ?? []).map(document),
+  ...(input.docs ?? []).map(renderDocument),
   ...(input.observers ?? []).map(observer),
   ...(input.subscriptions ?? []).map(subscription),
 ]
