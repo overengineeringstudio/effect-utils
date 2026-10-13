@@ -2638,9 +2638,19 @@ describe('editor view publisher', () => {
         const captured = await withPublisherTelemetry(
           fixture,
           async (children) => {
-            // Keep the real exporter children alive until the publisher has returned.
-            // Only their global timeout is controlled; publication I/O remains real.
-            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+            // Hold only delivery deadlines behind a barrier; publication I/O and
+            // event-loop turns stay real, without unsupported Bun fake-timer APIs.
+            const released = Promise.withResolvers<void>()
+            const nativeTimeout = globalThis.setTimeout
+            const deadlines = vi
+              .spyOn(globalThis, 'setTimeout')
+              .mockImplementation((handler, delay, ...args) =>
+                delay === 1_000
+                  ? nativeTimeout(() => {
+                      void released.promise.then(() => handler(...args))
+                    }, delay)
+                  : nativeTimeout(handler, delay, ...args),
+              )
             try {
               const now = performance.timeOrigin + performance.now()
               const span = {
@@ -2669,14 +2679,8 @@ describe('editor view publisher', () => {
                 expect(child.signalCode).toBeNull()
               }
             } finally {
-              try {
-                const spawned = Promise.withResolvers<void>()
-                setImmediate(spawned.resolve)
-                await spawned.promise
-                await vi.advanceTimersByTimeAsync(1_000)
-              } finally {
-                vi.useRealTimers()
-              }
+              released.resolve()
+              deadlines.mockRestore()
             }
           },
           { hang: true },
