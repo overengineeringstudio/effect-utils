@@ -118,7 +118,8 @@ const optionalChild = ({
 
 const Text = Schema.NonEmptyString
 
-const SubjectId = Schema.String.pipe(
+/** An st subject ID, e.g. a seat or mission path; seats are addressed as `agent/<id>`. */
+export const SubjectId = Schema.String.pipe(
   Schema.refine(
     (s): s is string =>
       s.length <= 512 &&
@@ -128,7 +129,11 @@ const SubjectId = Schema.String.pipe(
     { message: 'invalid st subject ID' },
   ),
   Schema.brand('SubjectId'),
+  Schema.annotate({ identifier: 'St.SubjectId' }),
 )
+
+/** A validated st subject ID. */
+export type SubjectId = typeof SubjectId.Type
 
 const LocalId = Schema.String.pipe(
   Schema.refine(
@@ -180,6 +185,38 @@ const UtcAnchor = Schema.String.pipe(
   ),
   Schema.brand('UtcAnchor'),
 )
+
+/** A local 24-hour calendar time, without a weekday or UTC offset. */
+export const CalendarTimeSchema = Schema.String.pipe(
+  Schema.refine((s): s is string => /^(?:[01]\d|2[0-3]):[0-5]\d$/u.test(s), {
+    message: 'calendar at must be a valid 24-hour HH:MM',
+  }),
+  Schema.brand('CalendarTime'),
+  Schema.annotate({ identifier: 'St.CalendarTime' }),
+)
+
+/** A named IANA timezone; st validates against its bundled chrono-tz data at publication. */
+export const IanaTimezoneSchema = Schema.String.pipe(
+  Schema.refine(
+    (s): s is string => {
+      if (/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z0-9._+-]+)*$/u.test(s) === false) return false
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: s })
+        return true
+      } catch {
+        return false
+      }
+    },
+    { message: 'unknown IANA timezone' },
+  ),
+  Schema.brand('IanaTimezone'),
+  Schema.annotate({ identifier: 'St.IanaTimezone' }),
+)
+
+/** st supports one weekly day, not a set of days. */
+export const CalendarDaysSchema = Schema.Tuple([
+  Schema.Literals(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']),
+]).annotate({ identifier: 'St.CalendarDays' })
 
 const Revision = Schema.String.pipe(
   Schema.refine(
@@ -847,20 +884,51 @@ export const LoopSchema = Schema.Struct({
   ),
 }).annotate({ identifier: 'St.Loop' })
 
-/** The mission revision and workspace a schedule starts. */
-export const WorkSchema = Schema.Struct({ mission: Revision, workspace: Text }).annotate({
+/**
+ * Scheduled work names an exact `mission@revision`, or an unpinned mission ID whose ready
+ * published head st resolves at each occurrence. st reads any `@` as a pinned reference.
+ */
+const ScheduledMission = Schema.Union([
+  Revision,
+  MissionId.pipe(
+    Schema.refine((s): s is typeof s => s.includes('@') === false, {
+      message: 'expected mission@64-hex revision or unpinned mission ID',
+    }),
+  ),
+])
+
+/** The mission, pinned or unpinned, and workspace a schedule starts. */
+export const WorkSchema = Schema.Struct({ mission: ScheduledMission, workspace: Text }).annotate({
   identifier: 'St.Work',
 })
 
-/** A recurring schedule with latest-only catch-up. */
-export const ScheduleSchema = Schema.Struct({
+const scheduleFields = {
   id: LocalId,
   host: Schema.Literal('local'),
-  every: Duration,
-  anchor: UtcAnchor,
   catchUp: Schema.Literal('latest'),
   work: WorkSchema,
-}).annotate({ identifier: 'St.Schedule' })
+}
+
+/** An elapsed-time interval; omitted tags preserve existing every/anchor declarations. */
+export const EveryScheduleSchema = Schema.Struct({
+  ...scheduleFields,
+  _tag: Schema.optionalKey(Schema.Literal('every')),
+  every: Duration,
+  anchor: UtcAnchor,
+}).annotate({ identifier: 'St.EverySchedule' })
+
+/** A daily or single-weekday wall-clock schedule in an explicit IANA timezone. */
+export const CalendarScheduleSchema = Schema.TaggedStruct('calendar', {
+  ...scheduleFields,
+  at: CalendarTimeSchema,
+  timezone: IanaTimezoneSchema,
+  days: Schema.optionalKey(CalendarDaysSchema),
+}).annotate({ identifier: 'St.CalendarSchedule' })
+
+/** A recurring schedule with latest-only catch-up. */
+export const ScheduleSchema = Schema.Union([EveryScheduleSchema, CalendarScheduleSchema]).annotate({
+  identifier: 'St.Schedule',
+})
 
 /**
  * Reference an imported agent declaration without copying its launch configuration.
@@ -1016,8 +1084,20 @@ export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
     args: [s.id],
     children: [
       child({ name: 'host', value: s.host }),
-      child({ name: 'every', value: s.every }),
-      child({ name: 'anchor', value: s.anchor }),
+      ...(s._tag === 'calendar'
+        ? [
+            block({
+              name: 'calendar',
+              children: [
+                child({
+                  name: 'at',
+                  value: s.days === undefined ? s.at : `${s.days[0]} ${s.at}`,
+                }),
+                child({ name: 'timezone', value: s.timezone }),
+              ],
+            }),
+          ]
+        : [child({ name: 'every', value: s.every }), child({ name: 'anchor', value: s.anchor })]),
       child({ name: 'catch-up', value: s.catchUp }),
       block({
         name: 'work',

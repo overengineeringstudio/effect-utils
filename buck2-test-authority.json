@@ -419,7 +419,8 @@
         "src/child-missions.unit.test.ts",
         "src/gate-constructors.unit.test.ts",
         "src/mod.unit.test.ts",
-        "src/run-values.unit.test.ts"
+        "src/run-values.unit.test.ts",
+        "src/tree.unit.test.ts"
       ],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/genie-smalltalk:test",
@@ -429,7 +430,8 @@
         "src/child-missions.unit.test.ts",
         "src/gate-constructors.unit.test.ts",
         "src/mod.unit.test.ts",
-        "src/run-values.unit.test.ts"
+        "src/run-values.unit.test.ts",
+        "src/tree.unit.test.ts"
       ],
       "unboundedAfter": [],
       "unboundedFiles": []
@@ -698,6 +700,7 @@
         "src/json-wire-baseline.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
+        "src/store/store-buck-daemons.unit.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-fs-atomic.unit.test.ts",
         "src/store/store-gc-config.unit.test.ts",
@@ -756,6 +759,7 @@
         "src/json-wire-baseline.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
+        "src/store/store-buck-daemons.unit.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-fs-atomic.unit.test.ts",
         "src/store/store-gc-config.unit.test.ts",
@@ -1951,6 +1955,7 @@
         "src/node/stylex/next.build.test.ts",
         "src/node/stylex/next.unit.test.ts",
         "src/node/vite-build-identity.build.test.ts",
+        "src/node/vite-build-identity.unit.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "sourceOwners": {
@@ -1986,6 +1991,7 @@
         "src/node/stylex/next.build.test.ts",
         "src/node/stylex/next.unit.test.ts",
         "src/node/vite-build-identity.build.test.ts",
+        "src/node/vite-build-identity.unit.test.ts",
         "src/node/watch.unit.test.ts"
       ],
       "unboundedAfter": [],
