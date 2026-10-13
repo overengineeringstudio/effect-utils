@@ -171,8 +171,11 @@ for outer tasks that must complete before the nested devenv process can evaluate
     allowlist. SSH brokers (`sshd-session`, Tailscale SSH's
     `.tailscaled-wrapped` executable or truncated `.tailscaled-wra` comm)
     require a root-owned fd directory. The `systemd` user-manager exception
-    requires `PPid=1` and nonzero permitted capabilities. No other unreadable
-    process class is excluded. Every exception prints the PID, comm, executable
+    requires `PPid=1` and nonzero permitted capabilities. Its `(sd-pam)` child
+    shares the same exception only when its PPid identifies that same approved,
+    same-UID manager. Exited processes (`ENOENT`/`ESRCH`) are not live references;
+    other unreadable process classes fail closed. Every exception prints the PID,
+    comm, executable
     (or its read error), parent, permitted capabilities, and the normal-flow
     assumption that privileged brokers do not use pnpm stores. The invoking UID
     must own the store; no privileged observer or GitHub/API access is needed.

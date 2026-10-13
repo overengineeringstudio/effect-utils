@@ -212,16 +212,49 @@ fn user_manager_exception_allowed(comm: &str, exe: Option<&Path>, parent: u32, p
         && (comm == "systemd" || exe.and_then(Path::file_name).is_some_and(|name| name == "systemd"))
 }
 
+fn process_gone(pid_dir: &Path, error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(3)
+        || fs::metadata(pid_dir).is_err_and(|error| error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(3))
+}
+
+fn status_parent_and_permitted(status: &str) -> (u32, u64) {
+    let parent = status.lines().find_map(|line| line.strip_prefix("PPid:")).and_then(|value| value.trim().parse::<u32>().ok()).unwrap_or(0);
+    let permitted = status.lines().find_map(|line| line.strip_prefix("CapPrm:")).and_then(|value| u64::from_str_radix(value.trim(), 16).ok()).unwrap_or(0);
+    (parent, permitted)
+}
+
+fn pam_broker_exception_allowed(proc_root: &Path, uid: u32, comm: &str, parent: u32) -> Result<bool> {
+    if comm != "(sd-pam)" || parent == 0 { return Ok(false); }
+    let manager = proc_root.join(parent.to_string());
+    let status = match fs::read_to_string(manager.join("status")) {
+        Ok(status) => status,
+        Err(error) if process_gone(&manager, &error) => return Ok(false),
+        Err(error) => return Err(format!("cannot classify PAM broker parent: {error}")),
+    };
+    let uids = status.lines().find_map(|line| line.strip_prefix("Uid:")).unwrap_or_default();
+    if uids.split_whitespace().count() != 4 || !uids.split_whitespace().all(|value| value.parse::<u32>() == Ok(uid)) {
+        return Ok(false);
+    }
+    let comm = fs::read_to_string(manager.join("comm")).unwrap_or_default();
+    let exe = fs::read_link(manager.join("exe")).ok();
+    let (parent, permitted) = status_parent_and_permitted(&status);
+    Ok(user_manager_exception_allowed(comm.trim(), exe.as_deref(), parent, permitted))
+}
+
 fn exclude_privileged_broker(pid_dir: &Path, uid: u32, status: &str) -> Result<bool> {
-    let fd_owner = fs::metadata(pid_dir.join("fd")).map_err(|error| error.to_string())?.uid();
+    let fd_owner = match fs::metadata(pid_dir.join("fd")) {
+        Ok(metadata) => metadata.uid(),
+        Err(error) if process_gone(pid_dir, &error) => return Ok(true),
+        Err(error) => return Err(error.to_string()),
+    };
     let comm = fs::read_to_string(pid_dir.join("comm")).unwrap_or_default();
     let exe = fs::read_link(pid_dir.join("exe"));
     let executable = exe.as_ref().ok().map(PathBuf::as_path);
-    let parent = status.lines().find_map(|line| line.strip_prefix("PPid:")).and_then(|value| value.trim().parse::<u32>().ok()).unwrap_or(0);
-    let permitted = status.lines().find_map(|line| line.strip_prefix("CapPrm:")).and_then(|value| u64::from_str_radix(value.trim(), 16).ok()).unwrap_or(0);
+    let (parent, permitted) = status_parent_and_permitted(status);
     let ssh_broker = broker_exception_allowed(uid, fd_owner, comm.trim(), executable);
     let user_manager = user_manager_exception_allowed(comm.trim(), executable, parent, permitted);
-    if !ssh_broker && !user_manager { return Ok(false); }
+    let pam_broker = pam_broker_exception_allowed(pid_dir.parent().ok_or("process has no census parent")?, uid, comm.trim(), parent)?;
+    if !ssh_broker && !user_manager && !pam_broker { return Ok(false); }
     let exe = match exe {
         Ok(path) => path.display().to_string(),
         Err(error) => format!("<unreadable: {error}>"),
@@ -239,7 +272,7 @@ fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
         let pid_dir = entry.path();
         let status = match fs::read_to_string(pid_dir.join("status")) {
             Ok(status) => status,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) if process_gone(&pid_dir, &error) => continue,
             Err(error) => return Err(format!("cannot classify process ownership: {error}")),
         };
         let fields = status.lines().find_map(|line| line.strip_prefix("Uid:")).ok_or("process status has no UID evidence")?;
@@ -256,18 +289,22 @@ fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
         match fs::read_link(&cwd) {
             Ok(target) if reference_under(&target, root) => return Err(format!("live process reference: {} -> {}", cwd.display(), target.display())),
             Ok(_) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) if process_gone(&pid_dir, &error) => continue,
             Err(error) if error.kind() == io::ErrorKind::PermissionDenied && exclude_privileged_broker(&pid_dir, uid, &status)? => continue,
             Err(error) => return Err(format!("process visibility incomplete at {}: {error}", cwd.display())),
         }
         let descriptors = match fs::read_dir(&fd_dir) {
             Ok(descriptors) => descriptors,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) if process_gone(&pid_dir, &error) => continue,
             Err(error) if error.kind() == io::ErrorKind::PermissionDenied && exclude_privileged_broker(&pid_dir, uid, &status)? => continue,
             Err(error) => return Err(format!("process visibility incomplete at {}: {error}", fd_dir.display())),
         };
         for descriptor in descriptors {
-            let path = descriptor.map_err(|error| error.to_string())?.path();
+            let path = match descriptor {
+                Ok(descriptor) => descriptor.path(),
+                Err(error) if process_gone(&pid_dir, &error) => break,
+                Err(error) => return Err(error.to_string()),
+            };
             match fs::read_link(&path) {
                 Ok(target) => {
                     // Only our retained maintenance lease is not a payload reader.
@@ -276,7 +313,7 @@ fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
                         return Err(format!("live process reference: {} -> {}", path.display(), target.display()));
                     }
                 }
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) if process_gone(&pid_dir, &error) => {}
                 Err(error) if error.kind() == io::ErrorKind::PermissionDenied && exclude_privileged_broker(&pid_dir, uid, &status)? => break,
                 Err(error) => return Err(format!("process visibility incomplete at {}: {error}", path.display())),
             }
@@ -531,6 +568,35 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         root
     }
+
+    #[test]
+    fn exited_processes_are_gone_not_unobservable() {
+        let root = fixture("exited-process");
+        let live = root.join("123");
+        fs::create_dir_all(&live).unwrap();
+        assert!(process_gone(&live, &io::Error::from_raw_os_error(3)));
+        assert!(process_gone(&live, &io::Error::from_raw_os_error(2)));
+        assert!(!process_gone(&live, &io::Error::from_raw_os_error(13)));
+        assert!(process_gone(&root.join("gone"), &io::Error::from_raw_os_error(13)));
+    }
+
+    #[test]
+    fn pam_exception_requires_the_same_approved_user_manager() {
+        let root = fixture("pam-parent");
+        let manager = root.join("123");
+        fs::create_dir_all(&manager).unwrap();
+        fs::write(manager.join("comm"), "systemd\n").unwrap();
+        let uid = own_uid().unwrap();
+        fs::write(manager.join("status"), format!("Uid:\t{uid}\t{uid}\t{uid}\t{uid}\nPPid:\t1\nCapPrm:\t0000000800000000\n")).unwrap();
+        assert!(pam_broker_exception_allowed(&root, uid, "(sd-pam)", 123).unwrap());
+        assert!(!pam_broker_exception_allowed(&root, uid, "pnpm", 123).unwrap());
+        assert!(!pam_broker_exception_allowed(&root, uid, "(sd-pam)", 456).unwrap());
+        fs::write(manager.join("status"), format!("Uid:\t{uid}\t{uid}\t{uid}\t{uid}\nPPid:\t1\nCapPrm:\t0000000000000000\n")).unwrap();
+        assert!(!pam_broker_exception_allowed(&root, uid, "(sd-pam)", 123).unwrap());
+        fs::write(manager.join("status"), format!("Uid:\t{uid}\t{uid}\t{uid}\t{uid}\nPPid:\t2\nCapPrm:\t0000000800000000\n")).unwrap();
+        assert!(!pam_broker_exception_allowed(&root, uid, "(sd-pam)", 123).unwrap());
+    }
+
     #[test]
     #[cfg(target_os = "linux")]
     fn real_open_descriptor_protects_a_root() {
