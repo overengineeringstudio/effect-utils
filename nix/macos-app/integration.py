@@ -44,8 +44,12 @@ expected_session = audit_session()
 with (example / 'hostApp/SyntheticHost.app/Contents/Info.plist').open('rb') as file:
     plist = plistlib.load(file)
 assert plist['CFBundleIdentifier'] == 'dev.example.synthetic-host' and plist['LSBackgroundOnly'] is True
-expected_source_hash = hashlib.sha256(b''.join((Path(__file__).parent / relative).read_bytes() for relative in
-    ['host/src/main.rs', 'host/Cargo.toml', 'host/Cargo.lock'])).hexdigest()
+runtime_sources = Path(__file__).parent / 'host/src'
+runtime_bytes = b''.join(path.name.encode() + b'\n' + path.read_bytes()
+                         for path in sorted(runtime_sources.glob('*.rs')))
+expected_source_hash = hashlib.sha256(runtime_bytes + b''.join(
+    (Path(__file__).parent / relative).read_bytes()
+    for relative in ['host/Cargo.toml', 'host/Cargo.lock'])).hexdigest()
 print('PASS host bytes identical across payload generations', flush=True)
 scratch = root / 'tmp'
 scratch.mkdir(exist_ok=True)

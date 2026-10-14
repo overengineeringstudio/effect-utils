@@ -271,8 +271,11 @@ fn main_impl() -> Result<()> {
             unsafe { libc::signal(libc::SIGTERM, stop as *const () as libc::sighandler_t); }
             // SAFETY: geteuid has no pointer arguments and selects the actual service owner.
             let owner_uid = unsafe { libc::geteuid() };
+            let socket_path = Path::new(&args[2]);
+            let socket_path = if socket_path.is_absolute() { socket_path.to_owned() }
+                else { std::env::current_dir()?.join(socket_path) };
             let (listener, _socket_guard) = macos_app_host::endpoint::bind(
-                Path::new(&args[2]),
+                &socket_path,
                 macos_app_host::endpoint::EndpointPolicy { owner_uid, socket_mode: manifest.socket_mode },
             ).map_err(|e| failure("socket", e.to_string()))?;
             listener.set_nonblocking(true)?;
