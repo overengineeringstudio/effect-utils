@@ -170,6 +170,10 @@ impl Ctl {
         if artifact::describe(&stage, &self.config)? != descriptor || artifact::artifact_revision(&stage)? != candidate.sealed_revision {
             return Err(mismatch("Staged artifact content or sealed revision differs"));
         }
+        // Darwin requires write access to a directory moved between parents.
+        // Installed owner-write bits are excluded from the artifact revision;
+        // retained incumbents are frozen again by publish_archive.
+        checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
         if app.exists() {
             let txn = json!({"stage": stage, "stageInode": inode(&stage), "generation": pointer(&self.state()?.join("current")), "immutable": true});
             atomic_write(&transaction_record(&app), &serde_json::to_vec(&txn)?)?;
