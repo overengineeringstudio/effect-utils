@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-rpc-explorer/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:090648a5844a51e4573a8272bf28e304a2f20b9680dad2fc31804a761db9d368
+# Semantic fingerprint: sha256:934b7c71c5e96247719b2a550bd19a4e43f666a53bb7d144dedad69d7c85c115
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -21,6 +21,8 @@ export_file(
 )
 
 export_materialization_inputs([
+    "src/client.ts",
+    "src/client.unit.test.ts",
     "src/descriptor-set.ts",
     "src/descriptor-set.unit.test.ts",
     "src/descriptor.ts",
@@ -29,7 +31,6 @@ export_materialization_inputs([
     "src/explorer.unit.test.ts",
     "src/inspector.ts",
     "src/inspector.unit.test.ts",
-    "src/middleware.ts",
     "src/middleware.unit.test.ts",
     "src/mod.ts",
     "src/model.ts",
@@ -82,6 +83,8 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rpc_explorer_0ce9c9212c35",
     files = {
         "package.json": "package.json",
+        "src/client.ts": "src/client.ts",
+        "src/client.unit.test.ts": "src/client.unit.test.ts",
         "src/descriptor-set.ts": "src/descriptor-set.ts",
         "src/descriptor-set.unit.test.ts": "src/descriptor-set.unit.test.ts",
         "src/descriptor.ts": "src/descriptor.ts",
@@ -90,7 +93,6 @@ package_view(
         "src/explorer.unit.test.ts": "src/explorer.unit.test.ts",
         "src/inspector.ts": "src/inspector.ts",
         "src/inspector.unit.test.ts": "src/inspector.unit.test.ts",
-        "src/middleware.ts": "src/middleware.ts",
         "src/middleware.unit.test.ts": "src/middleware.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/model.ts": "src/model.ts",
@@ -105,10 +107,13 @@ package_view(
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
+        "node_modules/@overeng/effect-rpc-observer/dist": "//packages/@overeng/effect-rpc-observer:dist",
+        "node_modules/@overeng/effect-rpc-observer/package.json": "//packages/@overeng/effect-rpc-observer:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/effect-rpc-observer/node_modules": "//packages/@overeng/effect-rpc-observer:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -121,6 +126,8 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rpc_explorer_0ce9c9212c35",
     files = {
         "package.json": "package.json",
+        "src/client.ts": "src/client.ts",
+        "src/client.unit.test.ts": "src/client.unit.test.ts",
         "src/descriptor-set.ts": "src/descriptor-set.ts",
         "src/descriptor-set.unit.test.ts": "src/descriptor-set.unit.test.ts",
         "src/descriptor.ts": "src/descriptor.ts",
@@ -129,7 +136,6 @@ package_view(
         "src/explorer.unit.test.ts": "src/explorer.unit.test.ts",
         "src/inspector.ts": "src/inspector.ts",
         "src/inspector.unit.test.ts": "src/inspector.unit.test.ts",
-        "src/middleware.ts": "src/middleware.ts",
         "src/middleware.unit.test.ts": "src/middleware.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/model.ts": "src/model.ts",
@@ -145,10 +151,13 @@ package_view(
         "vitest.config.ts": "vitest.config.ts",
     },
     workspace_dist = {
+        "node_modules/@overeng/effect-rpc-observer/dist": "//packages/@overeng/effect-rpc-observer:dist",
+        "node_modules/@overeng/effect-rpc-observer/package.json": "//packages/@overeng/effect-rpc-observer:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/effect-rpc-observer/node_modules": "//packages/@overeng/effect-rpc-observer:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -184,6 +193,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
+        "//packages/@overeng/effect-rpc-observer:package.json",
         "//packages/@overeng/otel-contract:package.json",
     ],
     output = "overeng-effect-rpc-explorer.tgz",

@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:af95face3bc8f186d188e35c8c315ddcd3f6bdafaaf62f892203a387d595222e
+# Semantic fingerprint: sha256:033b35d9f876f6d383ff3eaeeaf92a25f40d0c8b6c3626f917aca889baf811a1
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -39,6 +39,9 @@ export_materialization_inputs([
     "src/browser/opfs.ts",
     "src/browser/pretty-bytes.ts",
     "src/browser/web-lock.ts",
+    "src/build-identity-types.d.ts",
+    "src/build-identity.js",
+    "src/build-identity.unit.test.ts",
     "src/cuid/cuid.browser.ts",
     "src/cuid/cuid.node.ts",
     "src/cuid/mod.ts",
@@ -180,6 +183,9 @@ package_view(
         "src/browser/opfs.ts": "src/browser/opfs.ts",
         "src/browser/pretty-bytes.ts": "src/browser/pretty-bytes.ts",
         "src/browser/web-lock.ts": "src/browser/web-lock.ts",
+        "src/build-identity-types.d.ts": "src/build-identity-types.d.ts",
+        "src/build-identity.js": "src/build-identity.js",
+        "src/build-identity.unit.test.ts": "src/build-identity.unit.test.ts",
         "src/cuid/cuid.browser.ts": "src/cuid/cuid.browser.ts",
         "src/cuid/cuid.node.ts": "src/cuid/cuid.node.ts",
         "src/cuid/mod.ts": "src/cuid/mod.ts",
@@ -309,6 +315,9 @@ package_view(
         "src/browser/opfs.ts": "src/browser/opfs.ts",
         "src/browser/pretty-bytes.ts": "src/browser/pretty-bytes.ts",
         "src/browser/web-lock.ts": "src/browser/web-lock.ts",
+        "src/build-identity-types.d.ts": "src/build-identity-types.d.ts",
+        "src/build-identity.js": "src/build-identity.js",
+        "src/build-identity.unit.test.ts": "src/build-identity.unit.test.ts",
         "src/cuid/cuid.browser.ts": "src/cuid/cuid.browser.ts",
         "src/cuid/cuid.node.ts": "src/cuid/cuid.node.ts",
         "src/cuid/mod.ts": "src/cuid/mod.ts",
@@ -438,6 +447,7 @@ tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
     declaration_sources = {
+        "src/build-identity-types.d.ts": "src/build-identity-types.d.ts",
         "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",
         "src/node/stylex/next-types.d.ts": "src/node/stylex/next-types.d.ts",
         "src/node/vite-build-identity-types.d.ts": "src/node/vite-build-identity-types.d.ts",

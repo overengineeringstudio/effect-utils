@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/otel-contract/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:5c9c3c0c11b587f5a7e30a55aaaa29ef7e82cc77dc8e532da53b8f13fcaf4b26
+# Semantic fingerprint: sha256:09cf85ca15d120df784062e0a8d0ccd066fe3406ae8af8aa508b6215bfe51e56
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -23,6 +23,7 @@ export_file(
 export_materialization_inputs([
     "src/Traceparent.ts",
     "src/Traceparent.unit.test.ts",
+    "src/agent.contract.ts",
     "src/mod.ts",
     "src/mod.unit.test.ts",
     "src/otel-scrape/profile-link.ts",
@@ -80,6 +81,7 @@ package_view(
         "package.json": "package.json",
         "src/Traceparent.ts": "src/Traceparent.ts",
         "src/Traceparent.unit.test.ts": "src/Traceparent.unit.test.ts",
+        "src/agent.contract.ts": "src/agent.contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/otel-scrape/profile-link.ts": "src/otel-scrape/profile-link.ts",
@@ -121,6 +123,7 @@ package_view(
         "package.json": "package.json",
         "src/Traceparent.ts": "src/Traceparent.ts",
         "src/Traceparent.unit.test.ts": "src/Traceparent.unit.test.ts",
+        "src/agent.contract.ts": "src/agent.contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/otel-scrape/profile-link.ts": "src/otel-scrape/profile-link.ts",

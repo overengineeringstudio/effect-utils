@@ -189,9 +189,22 @@ export const registryFromMembers = (args: RegistryFromMembersArgs): RegistryComp
   const definedKeys = new Set<string>()
   for (const f of fragments) for (const a of f.attributes) definedKeys.add(a.id)
   const upstreamNamespaces = new Set<string>()
-  const dependencies: Dependency[] = []
-  for (const u of args.upstream ?? []) {
-    dependencies.push(u.dependency)
+  const dependencies = new Map<string, Dependency>()
+  for (const u of [...(args.upstream ?? []), ...fragments.flatMap((f) => f.upstream ?? [])]) {
+    const prior = dependencies.get(u.dependency.name)
+    if (
+      prior !== undefined &&
+      (prior.registry_path !== u.dependency.registry_path ||
+        prior.schema_url !== u.dependency.schema_url)
+    ) {
+      issues.push({
+        severity: 'error',
+        packageName: args.name,
+        dependency: u.dependency.name,
+        rule: 'weaver/conflicting-upstream',
+        message: `conflicting upstream registry ${JSON.stringify(u.dependency.name)}`,
+      })
+    } else dependencies.set(u.dependency.name, u.dependency)
     for (const ns of u.providesNamespaces) upstreamNamespaces.add(ns)
   }
 
@@ -224,7 +237,7 @@ export const registryFromMembers = (args: RegistryFromMembersArgs): RegistryComp
     name: args.name,
     description: args.description,
     schemaUrl: args.schemaUrl,
-    dependencies: dependencies.toSorted((a, b) => a.name.localeCompare(b.name)),
+    dependencies: [...dependencies.values()].toSorted((a, b) => a.name.localeCompare(b.name)),
     groups,
     signals,
   }

@@ -41,6 +41,10 @@ export default packageJson(
         { types: './dist/src/registry.d.ts', default: './src/registry.ts' },
         { environment: 'isomorphic-es2024' },
       ),
+      './agent': exportEntry(
+        { types: './dist/src/agent.contract.d.ts', default: './src/agent.contract.ts' },
+        { environment: 'isomorphic-es2024' },
+      ),
       './Traceparent': exportEntry(
         { types: './dist/src/Traceparent.d.ts', default: './src/Traceparent.ts' },
         { environment: 'isomorphic-es2024' },
@@ -51,6 +55,10 @@ export default packageJson(
       exports: {
         '.': { types: './dist/src/mod.d.ts', default: './dist/src/mod.js' },
         './registry': { types: './dist/src/registry.d.ts', default: './dist/src/registry.js' },
+        './agent': {
+          types: './dist/src/agent.contract.d.ts',
+          default: './dist/src/agent.contract.js',
+        },
         './Traceparent': {
           types: './dist/src/Traceparent.d.ts',
           default: './dist/src/Traceparent.js',

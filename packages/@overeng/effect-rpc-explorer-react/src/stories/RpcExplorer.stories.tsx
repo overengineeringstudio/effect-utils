@@ -4,9 +4,9 @@ import * as React from 'react'
 import { Button } from 'react-aria-components'
 import { expect, userEvent, waitFor, within } from 'storybook/test'
 
+import type { ExplorerClient } from '@overeng/effect-rpc-explorer'
 import { spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
-import type { ExplorerClient } from '../projection.ts'
 import { RpcExplorer } from '../RpcExplorer.tsx'
 import {
   denseSnapshot,

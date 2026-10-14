@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:be52ef8dea5f20b50bc7f08a69fa2d42fcc9e3367d429203a52ab5261976561d
+// fingerprint: sha256:291a717728338507752a350ba79eb549a4a51e799179ebcc23428fc044fb5680
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -13,6 +13,18 @@ pub mod attribute {
     pub const ACME_PROBE_NAME: &str = "acme.probe.name";
     pub const ACME_REGION: &str = "acme.region";
     pub const ACME_REQUEST_HEADER: &str = "acme.request.header";
+    pub const AGENT_ACTOR_ID: &str = "agent.actor.id";
+    pub const AGENT_HARNESS_SESSION_ID: &str = "agent.harness.session.id";
+    pub const AGENT_HARNESS_TOOL: &str = "agent.harness.tool";
+    pub const AGENT_HARNESS_VERSION: &str = "agent.harness.version";
+    pub const AGENT_MISSION_NAME: &str = "agent.mission.name";
+    pub const AGENT_MISSION_RUN_ID: &str = "agent.mission.run.id";
+    pub const AGENT_MODEL_EFFORT: &str = "agent.model.effort";
+    pub const AGENT_PERSONA: &str = "agent.persona";
+    pub const AGENT_PRINCIPAL_ID: &str = "agent.principal.id";
+    pub const AGENT_STEP_NAME: &str = "agent.step.name";
+    pub const AGENT_STEP_RUN_ID: &str = "agent.step.run.id";
+    pub const AGENT_SUPERVISOR_ID: &str = "agent.supervisor.id";
     pub const CI_TOOLS_DEPLOY_ATTEMPT: &str = "ci_tools.deploy.attempt";
     pub const CI_TOOLS_DEPLOY_CLEANUP_ID: &str = "ci_tools.deploy.cleanup_id";
     pub const CI_TOOLS_DEPLOY_CLEANUP_STATUS: &str = "ci_tools.deploy.cleanup_status";
@@ -331,6 +343,18 @@ pub mod attribute {
         "acme.probe.name",
         "acme.region",
         "acme.request.header",
+        "agent.actor.id",
+        "agent.harness.session.id",
+        "agent.harness.tool",
+        "agent.harness.version",
+        "agent.mission.name",
+        "agent.mission.run.id",
+        "agent.model.effort",
+        "agent.persona",
+        "agent.principal.id",
+        "agent.step.name",
+        "agent.step.run.id",
+        "agent.supervisor.id",
         "ci_tools.deploy.attempt",
         "ci_tools.deploy.cleanup_id",
         "ci_tools.deploy.cleanup_status",
@@ -721,6 +745,7 @@ pub mod span {
     pub const PTY_SESSION_MAKE: &str = "pty-session.make";
     pub const PW_WAIT_UNTIL: &str = "pw.wait.until";
     pub const SPAN_ACME_PROBE: &str = "span.acme.probe";
+    pub const AGENT_ACTIVITY: &str = "span.agent.activity";
     pub const SPAN_NOTION_REACT_SYNC: &str = "span.notion-react.sync";
 
     pub const ALL: &[&str] = &[
@@ -798,6 +823,7 @@ pub mod span {
         "pty-session.make",
         "pw.wait.until",
         "span.acme.probe",
+        "span.agent.activity",
         "span.notion-react.sync",
     ];
 }
