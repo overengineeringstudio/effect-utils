@@ -156,6 +156,15 @@ jq -e --arg digest "$module_digest" --arg integrity "$integrity" --arg size "$si
 ' <<<"$valid" >/dev/null
 echo "javascript-product-import-test: GREEN tracked descriptor imports"
 
+# GREEN: an explicit `sourceImport = null` selects published mode.
+write_case "$tmp/explicit-null-source.nix" "$tmp/product.json" 'sourceImport = null;'
+eval_case "$tmp/explicit-null-source.nix" | jq -e '.name == "fixture-buck2-candidate"' >/dev/null
+echo "javascript-product-import-test: GREEN explicit null sourceImport selects published mode"
+
+# RED: a parameter neither mode declares is rejected.
+write_case "$tmp/unexpected-arg.nix" "$tmp/product.json" 'notAParameter = true;'
+expect_failure "unexpected argument" "unexpected argument(s): notAParameter" "$tmp/unexpected-arg.nix"
+
 # GREEN: the wrapper contract the consumer declares reaches the installer —
 # environment, PATH packages, and the linked native module family.
 write_descriptor "$tmp/native-modules.json" fixture cli javascript-esm \

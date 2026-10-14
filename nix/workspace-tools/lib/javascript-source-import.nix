@@ -6,8 +6,8 @@
 
 {
   sourceImport,
-  artifact,
-  descriptor,
+  artifact ? null,
+  descriptor ? null,
   expectedExternalCapabilities ? [ ],
   expectedExternalModules ? [ ],
   expectedProductKind,
