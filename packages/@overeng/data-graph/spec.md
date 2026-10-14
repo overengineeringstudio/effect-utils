@@ -74,3 +74,11 @@ DATA_GRAPH_SCALE_10K=1 CI=1 ../../../node_modules/.bin/vitest run src/scale.inte
 ```
 
 Timings are printed by the actual run; they are workload/environment observations, not portable performance guarantees.
+
+### Warm pull integrity and bounded work
+
+Node resolution is memoized by NodeId within each pull, including multiple references to a shared upstream. Internal immutable CAS reads are verified once per complete descriptor per pull and retained only for that pull; executor-facing `GraphStore.get` remains uncached. A fresh pull re-verifies objects, so corruption cannot hide behind a previous cache hit. Descriptor metadata participates in the memoization key, not only the digest.
+
+Recipe/action descriptors are computed without publishing objects during selection/cache lookup. Their bytes/manifests are persisted only when execution is needed. Reusing the already selected deterministic materialization does not rewrite its recipe/action objects, head, or status pins. This both removes redundant warm I/O and prevents action construction from repairing a corrupt selected action before it is checked. Cache hits still verify manifest closure, declared output set, action binding, and content integrity.
+
+The scale test profiles warm CAS reads, unique read digests, immutable object writes, pins, and pin lookups. `src/cache.integration.test.ts` checks once-per-pull verification, shared-input resolution, zero warm publications, and fail-closed output/action corruption on subsequent pulls. Warm profiling is linear in nodes and declared edges; an index remains outside this contract.
