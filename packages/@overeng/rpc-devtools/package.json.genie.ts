@@ -18,7 +18,17 @@ const deps = catalog.compose({
   devDependencies: {
     external: catalog.pick(...peers, 'typescript', 'vitest', '@effect/vitest', '@types/react'),
   },
-  peerDependencies: { external: catalog.pick(...peers) },
+  peerDependencies: {
+    external: {
+      ...catalog.pick(...peers),
+      /**
+       * React 19.2.3 is the lowest React 19.2 release verified by a consumer.
+       * Catalog-derived peers over-constrain hosts whose React cannot move in lockstep.
+       */
+      react: '^19.2.3',
+      'react-dom': '^19.2.3',
+    },
+  },
 })
 export default packageJson(
   {
