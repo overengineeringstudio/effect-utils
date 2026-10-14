@@ -122,7 +122,17 @@ const checkRegistry = async ({
     const manifest = join(scratchRegistry, 'manifest.yaml')
     await chmod(manifest, 0o600)
     const contents = await readFile(manifest, 'utf8')
-    const rewritten = contents.replace(/^([ \t]*registry_path:[ \t]*).+$/mu, `$1${semconvModel}`)
+    const paths = JSON.parse(
+      await readFile(join(semconvModel, 'registry-paths.json'), 'utf8'),
+    ) as Record<string, string>
+    const rewritten = contents.replace(
+      /^([ \t]*- name: (.+)\n[ \t]*registry_path: ).+$/gmu,
+      (_match, prefix: string, dependencyName: string) => {
+        const path = paths[dependencyName]
+        if (path === undefined) throw new Error(`No hermetic model for registry ${dependencyName}`)
+        return `${prefix}${path}`
+      },
+    )
     if (rewritten === contents) throw new Error('Registry manifest has no upstream registry_path')
     await writeFile(manifest, rewritten)
     // Stable policy mode: `--future` promotes the pinned upstream registry's own experimental

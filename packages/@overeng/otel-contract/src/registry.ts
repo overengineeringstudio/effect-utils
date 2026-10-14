@@ -171,6 +171,16 @@ export type SignalDef =
       readonly attributes: ReadonlyArray<AttrRef>
     } & SignalMeta)
 
+/** An upstream registry required by this contract; resolution is delegated to Weaver. */
+export type UpstreamDependency = {
+  readonly dependency: {
+    readonly name: string
+    readonly registry_path: string
+    readonly schema_url: string
+  }
+  readonly providesNamespaces: ReadonlyArray<string>
+}
+
 /** One member’s registry slice (mirrors genie Layer-1 `RegistryFragment`). */
 export type RegistryFragment = {
   readonly namespace: string
@@ -179,6 +189,7 @@ export type RegistryFragment = {
   readonly attributes: ReadonlyArray<AttrDef>
   readonly foreignRefs: ReadonlyArray<string>
   readonly signals: ReadonlyArray<SignalDef>
+  readonly upstream?: ReadonlyArray<UpstreamDependency>
 }
 
 // ---------------------------------------------------------------------------
@@ -749,6 +760,7 @@ export type OtelContract = {
   readonly displayName: string
   readonly signals: ReadonlyArray<Signal>
   readonly docOnlyAttributes: ReadonlyArray<Attribute>
+  readonly upstream?: ReadonlyArray<UpstreamDependency>
   /**
    * Contract-level metadata defaults (mirror-elimination). `owner` is naturally contract-uniform
    * and `source` is often per-file; both are applied to every projected entry that does NOT carry
@@ -822,6 +834,7 @@ export const defineOtelContract = (o: {
   displayName: string
   signals: ReadonlyArray<Signal>
   docOnlyAttributes?: ReadonlyArray<Attribute>
+  upstream?: ReadonlyArray<UpstreamDependency>
   /** Contract-level metadata defaults; see {@link OtelContract}. Applied in {@link fragment}. */
   defaultOwner?: string
   defaultSource?: string
@@ -839,6 +852,7 @@ export const defineOtelContract = (o: {
     displayName: o.displayName,
     signals: o.signals,
     docOnlyAttributes: doc,
+    ...(o.upstream !== undefined ? { upstream: o.upstream } : {}),
     ...(o.defaultOwner !== undefined ? { defaultOwner: o.defaultOwner } : {}),
     ...(o.defaultSource !== undefined ? { defaultSource: o.defaultSource } : {}),
   }
@@ -895,5 +909,6 @@ export const fragment = (contract: OtelContract): RegistryFragment => {
     attributes: ownCatalog,
     foreignRefs: [...foreignRefs].toSorted((a, b) => a.localeCompare(b)),
     signals: contract.signals.map((s) => applyMetaDefaults({ entry: s.signal(), ...defaults })),
+    ...(contract.upstream !== undefined ? { upstream: contract.upstream } : {}),
   }
 }

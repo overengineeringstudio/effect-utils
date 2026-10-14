@@ -21,6 +21,13 @@ principal values in public artifacts or metric labels. Actor, supervisor,
 mission-run, step-run, and harness-session IDs are high-cardinality trace/log
 context, not metric labels.
 
+`AgentActivity` references upstream `gen_ai.request.model` as recommended.
+The contract carries its pinned GenAI registry dependency through `fragment` and
+`registryFromMembers`; consumers do not add a namespace allowlist or dependency
+manually. The hermetic `semconv-model` capability includes a `registry-paths.json`
+map by dependency name; check, diff, and live-check resolve each dependency to its
+own local model, including the GenAI registry's transitive core dependency.
+
 ## System Stack Assumptions
 
 The devenv module auto-detects a system-level OTEL stack by checking for the `OTEL_STATE_DIR` session variable. When set, the devenv module trusts the system-provided env vars (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_GRAFANA_URL`, etc.) instead of starting its own services.
