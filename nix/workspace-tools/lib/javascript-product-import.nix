@@ -41,6 +41,10 @@
 }:
 
 if sourceImport != null then
+  # No independent descriptor pin: trust comes from the producer build identity
+  # (sourceDigest/producerCommit). Static per-field facts and integrity/size
+  # checks against payload bytes catch transit tampering. The runtime-closure
+  # digest is only a self-consistency check.
   let
     lib = pkgs.lib;
     facts = sourceImport.facts;

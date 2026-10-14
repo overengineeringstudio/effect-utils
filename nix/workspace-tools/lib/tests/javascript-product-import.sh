@@ -392,4 +392,54 @@ jq '.expectedProducerCommit = null' "$facts" >"$tmp/missing-commit.json"
 cp "$tmp/missing-commit.json" "$facts"
 source_failure missing-producer-commit "$tmp/source-valid.json"
 
+# Exercise the emitted source installer, including the real runtime-tree
+# verifier, rather than duplicating its error mapping in the fixture.
+closure="$tmp/runtime-closure"
+mkdir -p "$closure/importers/fixture/node_modules"
+printf 'original closure payload\n' >"$closure/importers/fixture/node_modules/fixture.js"
+ln -s importers/fixture/node_modules "$closure/node_modules"
+closure_digest="$(node --input-type=module -e '
+  const { digestRuntimeClosure } = await import(process.argv[1]);
+  process.stdout.write(await digestRuntimeClosure(process.argv[2]));
+' "$repo_root/buck2/dependencies/runtime-closure.ts" "$closure")"
+jq -n --arg digest "$closure_digest" \
+  '{schema:"effect-utils/pnpm-runtime-closure/v1",digest:$digest,importers:["fixture"],primary:"fixture"}' \
+  >"$closure/descriptor.json"
+cp "$tmp/source-valid.json" "$tmp/descriptor.json"
+cp "$tmp/good-provenance.json" "$tmp/provenance.json"
+node_package="$(dirname "$(dirname "$(command -v node)")")"
+cat >"$tmp/source-closure.nix" <<NIX
+let
+  pkgs = (import $tmp/stub.nix) // { nodejs = "$node_package"; };
+in (import $repo_root/nix/workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
+  artifact = "$module";
+  descriptor = "$tmp/descriptor.json";
+  expectedProductKind = "cli";
+  expectedProductName = "fixture";
+  sourceImport = {
+    product = "$tmp";
+    hasRuntimeClosure = true;
+    facts = {
+      expectedModulePath = "tool.js";
+      expectedRuntimeKind = "node";
+      expectedRuntimeContract = "javascript-esm";
+      expectedRuntimeContractVersion = "v1";
+      checkProducerCommit = false;
+    };
+  };
+}
+NIX
+nix eval --impure --raw --option allow-import-from-derivation false \
+  --file "$tmp/source-closure.nix" --apply 'candidate: candidate.script' >"$tmp/source-install.sh"
+out="$tmp/valid-closure-import" bash "$tmp/source-install.sh"
+echo "javascript-product-import-test: GREEN source runtime closure imports"
+printf 'tampered closure payload\n' >"$closure/importers/fixture/node_modules/fixture.js"
+if out="$tmp/tampered-closure-import" bash "$tmp/source-install.sh" >"$tmp/closure-failure.log" 2>&1; then
+  echo "javascript-product-import-test: expected tampered closure to fail" >&2
+  exit 1
+fi
+grep -F '{"error":"javascript-product-import","check":"runtime-closure"}' \
+  "$tmp/closure-failure.log" >/dev/null
+echo "javascript-product-import-test: RED source runtime-closure"
+
 echo "javascript-product-import: OK"

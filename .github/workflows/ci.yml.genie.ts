@@ -598,6 +598,12 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
           ),
         },
         {
+          name: 'Check published and source JavaScript import contracts',
+          run: withCiSourceRoot(
+            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"',
+          ),
+        },
+        {
           name: 'Enforce root changelog retirement',
           run: withCiSourceRoot(
             [
