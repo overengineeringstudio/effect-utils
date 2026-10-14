@@ -151,14 +151,14 @@ let
     | .[].name
   '';
 
-  mkMrStatusCheck = recursive: ''
+  mkMrStatusCheck = { recursive, checkRootOnCacheHit ? false }: ''
     # Use the already-installed source CLI here. `nix run ...#megarepo` adds a
     # second eval/build hop to every warm status check.
     if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
       exit 0
     fi
 
-    ${lib.optionalString (!recursive) ''
+    ${lib.optionalString (!recursive && !checkRootOnCacheHit) ''
       if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
         ${checkWorkspaceMembersScript}
         exit 0
@@ -196,7 +196,7 @@ let
     '') setupCommitMembers)}
     exit 0
   '';
-  mrStatusCheck = mkMrStatusCheck false;
+  mrStatusCheck = mkMrStatusCheck { recursive = false; };
 
   allTasks = {
     "mr:bootstrap" = {
@@ -259,7 +259,12 @@ let
         fi
         ${recordWorkspaceMembers}
       '';
-      status = trace.status "mr:setup" "binary" (mkMrStatusCheck setupNestedTrees);
+      status = trace.status "mr:setup" "binary" (mkMrStatusCheck {
+        recursive = setupNestedTrees;
+        # External edits can change canonical HEAD or dirtiness without moving
+        # the root mount. Presence alone cannot prove exact-lock readiness.
+        checkRootOnCacheHit = true;
+      });
     };
 
     "mr:fetch-apply" = {

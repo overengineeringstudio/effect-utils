@@ -231,6 +231,8 @@ inside each listed, non-skipped member that has its own megarepo configuration,
 including on the outer setup cache-hit path. Unlisted nested trees do not affect
 local readiness because local exec does not prepare them. The option is empty
 by default, leaving `mr:setup` a plain tracking apply.
+Even with an empty selection, root status runs on outer cache hits: a canonical
+branch can change `HEAD` or become dirty without changing its member symlink.
 
 CI setup (`CI=true`, the same predicate as `--worktree-mode auto`) never uses
 tracking worktrees: `mr:setup` applies `--worktree-mode commit`, and with a

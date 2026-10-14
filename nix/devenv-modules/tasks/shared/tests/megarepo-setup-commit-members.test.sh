@@ -94,9 +94,10 @@ grep -qx 'apply --worktree-mode tracking --lock-sync off' "$calls" \
   || fail "unset setup must run the plain tracking apply"
 [ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 run_script "$status_unset")" = 0 ] \
   || fail "unset cache-hit readiness must pass on root mounts"
-if grep -q '^status' "$calls"; then
-  fail "unset cache-hit readiness must not query mr status"
-fi
+grep -qx 'status --output json' "$calls" \
+  || fail "unset cache-hit readiness must query exact-lock root status"
+[ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 MR_ROOT_APPLY_NEEDED=true run_script "$status_unset")" = 1 ] \
+  || fail "root drift must invalidate unset setup even on cache hits"
 [ "$(run_script "$status_unset")" = 0 ] || fail "unset readiness failed"
 grep -qx 'status --output json' "$calls" || fail "unset readiness must stay root-only"
 echo "  ok"
