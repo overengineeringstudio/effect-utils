@@ -6,8 +6,9 @@ so securityd's partition checks are real) provisioned by the ctl primitives: a n
 a feature-built self-signed test certificate and the codesign pin. An unanchored CA-issued leaf is
 a negative chain-preflight case. Keychains never enter the search list; login is never touched.
 A fake launchctl on PATH starts real hosts directly, so no background item is registered.
-Every keychain operation has a timeout; each ctl call checks a zero SecurityAgent window baseline
-before it starts and is watched for a new window. A hang or window aborts the run loudly.
+Every keychain operation is bounded and watched for new SecurityAgent windows.
+A missing window server is accepted only with read-only audit-session evidence
+that graphics and console access are absent; it is never reported as zero windows.
 
 From the Darwin checkout root:
   nix run .#macos-app-ctl-integration --option builders '' --option max-jobs 2
@@ -56,10 +57,7 @@ for source, target in [(example / 'generation', first), (example / 'secondGenera
 
 PROMPT_TIMEOUT = 15
 def tool(*args, check=True):
-    try:
-        result = subprocess.run(list(args), capture_output=True, text=True, timeout=PROMPT_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        sys.exit(f'ABORT: {args[0]} {args[1]} hung; a keychain UI prompt may be pending. Stopping.')
+    result = watched(list(args), timeout=PROMPT_TIMEOUT)
     if check and result.returncode != 0:
         raise RuntimeError(f'{args}: {result.stderr}')
     return result
@@ -79,8 +77,29 @@ core_foundation.CFStringGetCString.restype = ctypes.c_bool
 core_foundation.CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32]
 core_foundation.CFRelease.argtypes = [ctypes.c_void_p]
 owner_key = ctypes.c_void_p.in_dll(core_graphics, 'kCGWindowOwnerName').value
+libc = ctypes.CDLL(None, use_errno=True)
+class AuditMask(ctypes.Structure):
+    _fields_ = [('success', ctypes.c_uint32), ('failure', ctypes.c_uint32)]
+class AuditTerminal(ctypes.Structure):
+    _fields_ = [('port', ctypes.c_int32), ('type', ctypes.c_uint32), ('address', ctypes.c_uint32 * 4)]
+class AuditSession(ctypes.Structure):
+    _fields_ = [('uid', ctypes.c_uint32), ('mask', AuditMask), ('terminal', AuditTerminal),
+                ('session', ctypes.c_int32), ('flags', ctypes.c_uint64)]
+libc.getaudit_addr.argtypes = [ctypes.POINTER(AuditSession), ctypes.c_int]
+libc.getaudit_addr.restype = ctypes.c_int
+def no_ui_session():
+    audit = AuditSession()
+    if libc.getaudit_addr(ctypes.byref(audit), ctypes.sizeof(audit)) != 0:
+        raise RuntimeError('ABORT: unavailable window list and unreadable audit session')
+    # SDK AU_SESSION_FLAG_HAS_GRAPHIC_ACCESS / HAS_CONSOLE_ACCESS.
+    if audit.flags & (0x0010 | 0x2000):
+        raise RuntimeError('ABORT: unavailable window list in a graphics/console-capable session')
+    return audit.flags
 def security_agent_windows():
     windows = core_graphics.CGWindowListCopyWindowInfo(1, 0)  # on-screen only
+    if not windows:
+        no_ui_session()  # Reprove absence of UI capability on every observation.
+        return None
     try:
         names = []
         for i in range(core_foundation.CFArrayGetCount(windows)):
@@ -91,32 +110,79 @@ def security_agent_windows():
     finally:
         core_foundation.CFRelease(windows)
 agent_baseline = security_agent_windows()
-if agent_baseline != 0:
+if agent_baseline not in (0, None):
     sys.exit('ABORT before keychain tests: SecurityAgent window baseline must be zero')
-def watched(argv, terminate_when=None, **kwargs):
-    """Runs argv, killing its process group and aborting if a SecurityAgent window appears."""
-    if security_agent_windows() != 0:
-        sys.exit(f'ABORT before {argv[1]}: SecurityAgent window present')
+print(f'SecurityAgent before: {agent_baseline}' if agent_baseline is not None else
+      f'SecurityAgent before: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
+def watched(argv, terminate_when=None, timeout=60, observer=None, **kwargs):
+    """Every monitor failure tears down the reserved process group before unwinding."""
+    observe = observer or security_agent_windows
+    if observe() != agent_baseline:
+        raise RuntimeError(f'ABORT before {argv[1]}: SecurityAgent window present')
     process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                start_new_session=True, **kwargs)
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + timeout
     terminated = False
-    while process.poll() is None:
-        if security_agent_windows() > agent_baseline or time.monotonic() > deadline:
-            process.send_signal(signal.SIGTERM)
-            try:
-                process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-            sys.exit(f'ABORT: {argv[1]} raised a SecurityAgent window or hung; a keychain prompt was requested. Stopping.')
-        if terminate_when is not None and terminate_when.exists() and not terminated:
-            process.send_signal(signal.SIGTERM)
-            terminated = True
-        time.sleep(0.1)
+    try:
+        # WNOWAIT reserves the leader PID/PGID until group teardown has completed.
+        while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+            if observe() != agent_baseline or time.monotonic() > deadline:
+                raise RuntimeError(f'ABORT: {argv[1]} changed the window observation or hung')
+            if terminate_when is not None and terminate_when.exists() and not terminated:
+                os.killpg(process.pid, signal.SIGTERM)
+                terminated = True
+            time.sleep(0.1)
+        if observe() != agent_baseline:
+            raise RuntimeError(f'ABORT: {argv[1]} changed the window observation')
+    except BaseException:
+        # Observer exceptions, audit failures and cancellation take the same path.
+        # Kill all descendants before reaping the leader or draining inherited pipes.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            # Protected platform children may reject signals even after exit.
+            # Still drain/wait below; never unwind into keychain cleanup first.
+            pass
+        process.communicate()
+        raise
+    # A successful leader must not leave descendants holding our pipes open either.
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        # The leader was observed terminal without reaping. macOS can return
+        # EPERM for signalling an exited protected Apple binary.
+        pass
     stdout, stderr = process.communicate()
-    assert security_agent_windows() <= agent_baseline, f'{argv[1]} left a SecurityAgent window'
     return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+
+def observer_failure_test():
+    """Real child, deterministic observer exception: it must be killed and reaped."""
+    pid_file = work / 'observer-child.pid'
+    def observe():
+        baseline = security_agent_windows()
+        if pid_file.exists():
+            raise RuntimeError('observer self-test failure')
+        return baseline
+    try:
+        watched([sys.executable, '-c',
+                 'import os,time; from pathlib import Path; '
+                 f'Path({str(pid_file)!r}).write_text(str(os.getpid())); time.sleep(60)'],
+                observer=observe)
+    except RuntimeError as error:
+        assert str(error) == 'observer self-test failure', error
+    else:
+        raise AssertionError('Observer failure did not abort the child')
+    pid = int(pid_file.read_text())
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        pass
+    else:
+        raise AssertionError('Observer failure left a child running or unreaped')
+    pid_file.unlink()
+    print('PASS observer exception kills and reaps the watched child before unwinding', flush=True)
+
+observer_failure_test()
 
 # Throwaway signing keychains; the password is test-only and may appear in test argv.
 search_list = tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout
@@ -125,6 +191,7 @@ keychains.mkdir(parents=True)
 keychain = keychains / 'signing.keychain-db'
 unpinned = keychains / 'unpinned.keychain-db'
 chain_missing = keychains / 'chain-missing.keychain-db'
+fixture_keychain = keychains / 'fixture.keychain-db'
 password = 'macos-app-ctl-test-' + os.urandom(8).hex()
 identity = 'macos-app-ctl test signer'
 # A test CA issues the code-signing certificates from the CSRs the ctl primitives write.
@@ -143,9 +210,10 @@ def cleanup():
             try: os.kill(job['pid'], signal.SIGTERM)
             except ProcessLookupError: pass
     # File removal only: the keychains were never on the search list.
-    for path in (keychain, unpinned, chain_missing):
+    for path in (keychain, unpinned, chain_missing, fixture_keychain):
         path.unlink(missing_ok=True)
         Path(f'{path}.acl.json').unlink(missing_ok=True)
+        Path(f'{path}.fixture-identity.json').unlink(missing_ok=True)
     (work / 'ca.key').unlink(missing_ok=True)
     assert tool('/usr/bin/security', 'list-keychains', '-d', 'user').stdout == search_list
 
@@ -308,6 +376,107 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert imported['imported'] and imported['identity'] and imported['subject'] == identity
     assert not key_call('import-signing-cert', keychain, '--cert', work / 'signing.pem')['result']['imported']
     leaf = imported['certificateSha1']
+    key_call('provision-signing-key', fixture_keychain, '--common-name-hint', 'fixture signer',
+             '--csr-out', work / 'fixture.csr', '--test-self-signed-cert-out', work / 'fixture.pem')
+    fixture_leaf = key_call('import-signing-cert', fixture_keychain, '--cert', work / 'fixture.pem')['result']['certificateSha1']
+    fixture_record_path = Path(f'{fixture_keychain}.acl.json')
+    fixture_record = json.loads(fixture_record_path.read_text())
+    # A not-yet-pinned key with a foreign ACL record must refuse before even the
+    # test-build sentinel is spawned. Preparation must not "repair" unknown ACLs.
+    fixture = work / 'Fixture.app'
+    shutil.copytree(desired, fixture)
+    for path in [fixture, *fixture.rglob('*')]:
+        if not path.is_symlink(): path.chmod(path.stat().st_mode | 0o200)
+    nested = fixture / 'Contents/Helpers/Nested.app'
+    shutil.copytree(desired, nested)
+    for path in [fixture, *fixture.rglob('*')]:
+        if not path.is_symlink(): path.chmod(path.stat().st_mode | 0o200)
+    inventory_file = work / 'fixture-inventory.json'
+    inventory_file.write_text(json.dumps(['Contents/Helpers/Nested.app']))
+    fixture_identifier = 'dev.overeng.macos-app.fixture.synthetic-host'
+    fixture_requirement = f'identifier "{fixture_identifier}" and certificate leaf = H"{fixture_leaf}"'
+    production_requirements = work / 'production-requirements.json'
+    production_requirements.write_text('[]')
+    fixture_options = ['--certificate-sha1', fixture_leaf, '--identifier', fixture_identifier,
+                       '--target', fixture, '--production-requirements', production_requirements]
+    # These refusals require no password or usable signing identity.
+    refused = key_call('sign-fixture', fixture_keychain, *fixture_options,
+                      '--requirement', config['requirement'], code=64, secret=None)
+    assert 'ctl-constructed' in refused['error']['reason'], refused
+    refused = key_call('sign-fixture', fixture_keychain, '--certificate-sha1', fixture_leaf,
+                      '--identifier', 'dev.example.production', '--target', fixture, code=64, secret=None)
+    assert 'fixture.' in refused['error']['reason'], refused
+    refused = key_call('sign-fixture', fixture_keychain, '--certificate-sha1', leaf, code=64, secret=None)
+    assert 'fixture identity' in refused['error']['reason'], refused
+    write_config(signer={'teamId': 'TEST', 'identity': fixture_leaf})
+    try:
+        refused = key_call('sign-fixture', fixture_keychain, *fixture_options, code=64, secret=None)
+        assert 'production signer' in refused['error']['reason'], refused
+    finally:
+        write_config()
+    # The production key's SHA1 and public-key hash stay genuine; only the
+    # allowlist subject is forged. Refusal must use the actual locked certificate.
+    forged_record_path = Path(f'{keychain}.fixture-identity.json')
+    original_fixture_record = forged_record_path.read_text()
+    forged_record = json.loads(original_fixture_record)
+    forged_record['subject'] = 'forged fixture subject'
+    forged_record_path.write_text(json.dumps(forged_record))
+    signing_before = (work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else ''
+    try:
+        refused = key_call('sign-fixture', keychain, '--certificate-sha1', leaf,
+                          '--identifier', fixture_identifier, '--target', fixture,
+                          '--production-requirements', production_requirements, code=64, secret=None)
+        assert 'production signer' in refused['error']['reason'], refused
+        assert not unlocked()
+        assert ((work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else '') == signing_before
+    finally:
+        forged_record_path.write_text(original_fixture_record)
+    print('PASS forged allowlist subject cannot authorize the actual production certificate before unlock/codesign', flush=True)
+    production_requirements.write_text(json.dumps([fixture_requirement.replace(' and ', '\n and ')]))
+    try:
+        refused = key_call('sign-fixture', fixture_keychain, *fixture_options, code=64, secret=None)
+        assert 'production designated requirement' in refused['error']['reason'], refused
+    finally:
+        production_requirements.write_text('[]')
+    assert not unlocked(fixture_keychain)
+    print('PASS fixture namespace, unlisted/production identity and compiled-equivalent production DR refuse before unlocking', flush=True)
+    before_codesign = (work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else ''
+    fixture_record_path.write_text(json.dumps(dict(fixture_record, keychain='foreign')))
+    try:
+        refusal = key_call('sign-fixture', fixture_keychain, *fixture_options, code=64)
+        assert refusal['error']['kind'] == 'invalid-input' and 'ACL record' in refusal['error']['reason'], refusal
+        assert ((work / 'codesign.log').read_text() if (work / 'codesign.log').exists() else '') == before_codesign
+        assert not unlocked(fixture_keychain)
+    finally:
+        fixture_record_path.write_text(json.dumps(fixture_record))
+    print('PASS unpinned fixture key with foreign ACL record refuses before sentinel codesign starts', flush=True)
+    bad_inventory = work / 'bad-inventory.json'
+    bad_inventory.write_text('{}')
+    escaping_inventory = work / 'escaping-inventory.json'
+    (fixture / 'Contents/escaped').symlink_to(work, target_is_directory=True)
+    escaping_inventory.write_text(json.dumps(['Contents/escaped']))
+    fixture_inputs = [
+        ([], 64),
+        (['--certificate-sha1', 'bad'], 64),
+        (['--certificate-sha1', fixture_leaf], 64),
+        (['--certificate-sha1', fixture_leaf, '--target', work / 'absent.app'], 23),
+        (['--certificate-sha1', fixture_leaf, '--target', fixture], 64),
+        (['--certificate-sha1', fixture_leaf, '--target', fixture, '--identifier', 'not-a-fixture'], 64),
+        ([*fixture_options, '--inventory', bad_inventory], 64),
+        ([*fixture_options, '--inventory', escaping_inventory], 64),
+    ]
+    try:
+        for args, code in fixture_inputs:
+            unlock_for_test(fixture_keychain)
+            key_call('sign-fixture', fixture_keychain, *args, code=code)
+            assert not unlocked(fixture_keychain), f'Fixture input refusal left the interrupted keychain unlocked: {args}'
+        unlock_for_test(fixture_keychain)
+        refused = key_call('sign-fixture', fixture_keychain, '--certificate-sha1', 'bad', code=20, failpoint='relock')
+        assert refused['error']['category'] == 'relock-failed', refused
+        assert not unlocked(fixture_keychain)
+    finally:
+        (fixture / 'Contents/escaped').unlink()
+    print('PASS fixture input failures relock interrupted K and report a checked final-lock failure', flush=True)
     # A CA-issued test leaf with no system anchor must fail before codesign; no K search-list
     # membership or system trust change is permitted. Self-signed test leaves use a per-evaluation
     # anchor in the feature build only.
@@ -363,6 +532,18 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     dry = key_call('prove-signing-key', keychain, '--no-sign')['result']
     assert dry['guardReady'] and dry['signOk'] is None and dry['signSkipped'], dry
     assert dry['exportAttempted'] and dry['exportRefused'] and dry['exportStatus'] == -25316, dry
+    if agent_baseline is None:
+        # The per-evaluation test anchor in ctl does not grant trust to codesign.
+        # Prove the expected trust limitation rather than skipping other failures.
+        valid = tool('/usr/bin/security', 'find-identity', '-v', '-p', 'codesigning', str(keychain)).stdout
+        matching = tool('/usr/bin/security', 'find-identity', '-p', 'codesigning', str(keychain)).stdout
+        untrusted = any(leaf.lower() in line.lower() and 'CSSMERR_TP_NOT_TRUSTED' in line
+                        for line in matching.splitlines())
+        assert leaf.lower() not in valid.lower() and untrusted, (valid, matching)
+        print('NOT RUN: untrusted test identity in no-UI session: positive sign-fixture, '
+              'prove-signing-key codesign, and signing-dependent install/verify/rollback/IPC cases', flush=True)
+        print('PASS no-UI refusal and non-signing integration cases; positive signing is NOT VERIFIED', flush=True)
+        raise SystemExit(0)
     proof = key_call('prove-signing-key', keychain)['result']
     assert proof['partitionCapable'] and proof['guardReady'] and proof['signOk'] is True, proof
     assert proof['partitionList'] == ['apple:'] and proof['signAclExact'] and proof['recordedCtlPath'] == ctl_path, proof
@@ -371,6 +552,14 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert proof['lockedAfterWindow'] and proof['lockOnSleep'] and proof['lockIntervalSeconds'] == 300, proof
     assert not unlocked()
     print(f'PASS signing-key proof: {json.dumps(proof, sort_keys=True)}', flush=True)
+    key_call('prove-signing-key', fixture_keychain, '--no-sign')
+    sealed = key_call('sign-fixture', fixture_keychain, *fixture_options,
+                      '--inventory', inventory_file)['result']
+    assert sealed['signedPaths'] == [str(nested), str(fixture)], sealed
+    for target in (nested, fixture):
+        assert tool('/usr/bin/codesign', '--verify', '--strict', f'-R={fixture_requirement}', str(target)).returncode == 0
+    assert not unlocked(fixture_keychain)
+    print('PASS pinned fixture signs through ctl and verifies with the declared requirement', flush=True)
 
     # The fake signer pauses only after ctl has unlocked K and passed its exact guard.
     (work / 'sign-slow').touch()
@@ -755,5 +944,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     print('PASS host-only rollback works without a previous generation', flush=True)
 finally:
     cleanup()
-print('PASS throwaway keychains removed; user search list unchanged')
+    print('PASS throwaway keychains removed; user search list unchanged')
+    print(f'SecurityAgent after: {security_agent_windows()}' if agent_baseline is not None else
+          f'SecurityAgent after: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
 print(f'PASS primitive integration; scratch: {work.relative_to(root)}')

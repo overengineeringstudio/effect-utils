@@ -298,8 +298,8 @@ can only force a failure or a crash, never make a check pass.
   keyless record fails with `invalid-input`. The provisioning `ctl` store path
   must stay live: the consumer roots it as a GC root. If it does not, the
   check still works, but the ACL entry names a path that no longer exists.
-- **Codesign guard.** Before any signing `codesign` (in `install-host` and in
-  `prove-signing-key`), `ctl` reads the key's ACLs inside the unlock window.
+- **Codesign guard.** Before any signing `codesign` (in `install-host`,
+  `sign-fixture` and `prove-signing-key`), `ctl` reads the key's ACLs inside the unlock window.
   It requires a partition-capable `K`, a partition list equal to `[apple:]` and
   signing ACLs equal to `{/usr/bin/codesign, recorded ctl}`. Anything wider or
   different fails with `verification-failed` and runs no `codesign`. Each
@@ -421,6 +421,75 @@ self-issued leaf as an anchor only for its ephemeral `SecTrust` evaluation,
 never adding system trust or changing a keychain search list. A CA-issued
 test leaf without a system anchor is a negative case (`chain-incomplete`,
 no codesign).
+The harness observes a zero SecurityAgent window baseline and aborts on changes.
+If CGWindowList is unavailable, it accepts only an audit session whose graphics
+and console-access flags are both absent, rechecked before and throughout every
+keychain child. It reports that evidence as a no-UI session, never as zero windows;
+an unavailable observer in a UI-capable session aborts before keychain operations.
+Observer and audit failures during a child run kill the entire child process
+group and reap its leader before aborting or deleting any throwaway keychain.
+The transient ctl anchor does not make the test identity trusted by the codesign
+child. In no-UI mode the harness proves that the fixture identity exists but is
+`CSSMERR_TP_NOT_TRUSTED`, runs refusal and non-signing cases, and explicitly
+prints `NOT RUN: untrusted test identity in no-UI session` for positive fixture
+signing, the codesign key proof and dependent host-signing cases. Exit zero means
+only that every case run passed; positive signing remains unverified. The default
+GUI mode still runs the full suite. Positive-path proof requires a human-present
+session with an appropriately trusted test identity; the harness never bootstraps
+trust or treats that prerequisite as a passing signature test.
+
+### Fixture signing and agent process rules
+
+Agents sign only through `ctl`, including test and fixture bundles. Use
+`sign-fixture --keychain K --keychain-password-fd N --certificate-sha1 SHA1
+--identifier ID --production-requirements FILE --target APP [--inventory FILE]`
+with the usual `--config`. `ID` must be in `dev.overeng.macos-app.fixture.` with
+a nonempty identifier-character suffix. Every signed item gets that explicit
+codesign identifier, overriding bundle metadata. ctl constructs the requirement
+as `identifier "<ID>" and certificate leaf = H"<SHA1>"`; caller-supplied
+requirements and identifiers outside the fixture namespace refuse before unlock.
+This keeps fixture code outside production designated requirements and their TCC
+grants, even when host and fixture keychains are controlled by the same account.
+
+The certificate must be explicitly allowlisted by `<K>.fixture-identity.json`,
+a regular 0600 file owned by the current user, naming K and its fixture
+certificate SHA1, subject and public-key SHA256. Only deliberate test-feature
+provisioning with `--test-self-signed-cert-out` writes this record; production
+provisioning never does. The record is only an allowlist, not an authority for a
+certificate's subject or key. Before unlocking, ctl reads actual certificate
+SHA1s, subjects and public keys from the locked keychain. It rejects the configured
+production identity by actual SHA1/subject and rejects a different certificate for
+that production key by actual public-key hash. The selected certificate's actual
+public-key hash must also match the allowlist. Forging the sidecar subject cannot
+authorize a production signer. Missing/foreign records and unlisted SHA1s also
+refuse before unlock. Each product ctl config pins one production requirement,
+not a repository-wide product inventory, so the mandatory
+`--production-requirements` file supplies that inventory as a JSON array of DR
+strings. ctl adds its configured product requirement and refuses a canonical,
+compiled-equivalent match before unlock. The inventory must enumerate all
+production DRs the caller protects.
+
+The same shared helper as `prove-signing-key` reads back non-extractability and
+requires export refusal `errSecDataNotAvailable` (-25316) before pinning. A key
+already passing the exact pin/ACL guard uses its non-extractable readback instead,
+because attempting export from ctl's excluded partition could request approval.
+The signer then performs the password-authorized partition
+pin preparation, and runs the exact ACL guard and trust-chain preflight before
+spawning codesign. A missing or foreign ACL record refuses before preparation;
+other unsafe ACLs refuse before codesign. The password never reaches a child.
+Once the dedicated keychain path is validated, ctl opens and locks it before
+validating the remaining fixture inputs. Input failures therefore relock a
+previously interrupted signing window and pass through the checked final lock.
+The optional inventory is a JSON array of relative nested-code paths beneath
+the target. Entries are canonicalized and checked for containment, deduplicated,
+then signed deepest-first before the outer target, without `--deep`. Each
+signature is verified against the ctl-constructed fixture requirement.
+
+The accepted residual is that invoking `/usr/bin/codesign` or `/usr/bin/security`
+by absolute path bypasses host PATH wrappers. This is covered by agent process
+rules, not technical enforcement: wrappers are not a sandbox. Production ctl
+does not accept runtime overrides of its codesign executable; only the separate
+test-feature build admits the recording/sentinel shim.
 
 ### Opt-in real-launchd smoke
 

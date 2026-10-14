@@ -43,8 +43,6 @@ import { withGitHubSpan } from './observability.ts'
 type AuthenticatedClient = HttpClient.HttpClient.With<GitHubApiError, Scope.Scope>
 const transportFailure = (cause: GitHubAppError | HttpClientError) =>
   new GitHubApiError({ message: 'Authenticated GitHub transport failed', cause })
-const GITHUB_API_BASE = 'https://api.github.com'
-const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
 
 /**
  * GitHub rejects REST requests without a User-Agent header (403), so every
@@ -189,10 +187,15 @@ export const selectRunForVerdict = ({
 export interface GitHubClientOptions {
   readonly consumer: string
   readonly permissions: InstallationScope['permissions']
+  /** GitHub API origin; defaults to the public API. */
+  readonly apiBase?: URL
 }
 
 /** Service wrapping the GitHub REST API with rate-limit tracking */
 const makeGitHubClient = Effect.fn('github-client.make')(function* (options: GitHubClientOptions) {
+  const apiBase = options.apiBase ?? new URL('https://api.github.com')
+  const GITHUB_API_BASE = apiBase.origin
+  const GITHUB_GRAPHQL_URL = new URL('/graphql', apiBase).href
   const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.withScope)
   const spawner = yield* ChildProcessSpawner
   const auth = yield* GitHubAuthConfigTag
@@ -202,7 +205,7 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
   const rateLimitRef = yield* Ref.make<Option.Option<RateLimitInfo>>(Option.none())
   /** GraphQL bucket — a separate budget with its own reset, never mixed with REST. */
   const graphqlRateLimitRef = yield* Ref.make<Option.Option<RateLimitInfo>>(Option.none())
-  /** Every request issued, across both buckets. */
+  /** API requests issued across both buckets; excludes internal App token exchanges. */
   const requestCountRef = yield* Ref.make(0)
   /** Subset of {@link requestCountRef} billed to the GraphQL bucket. */
   const graphqlRequestCountRef = yield* Ref.make(0)
@@ -267,22 +270,9 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
           identity: { clientID: auth.clientID },
           privateKey: Redacted.make(privateKey),
         },
-        { userAgent: GITHUB_USER_AGENT, consumer: options.consumer },
+        { userAgent: GITHUB_USER_AGENT, consumer: options.consumer, apiBase },
       ).pipe(
-        Effect.provideService(
-          HttpClient.HttpClient,
-          rawHttpClient.pipe(
-            HttpClient.transform((response) =>
-              response.pipe(
-                Effect.tap((value) =>
-                  value.request.url.endsWith('/access_tokens')
-                    ? Ref.update(requestCountRef, (count) => count + 1)
-                    : Effect.void,
-                ),
-              ),
-            ),
-          ),
-        ),
+        Effect.provideService(HttpClient.HttpClient, rawHttpClient),
         Effect.mapError((cause) => new GitHubAuthError({ message: cause.message, cause })),
       )
     }),

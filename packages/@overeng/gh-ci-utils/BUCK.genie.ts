@@ -31,8 +31,8 @@ export const buck2TypeScriptAdmission = {
     {
       name: 'test',
       runner: 'vitest',
-      // The shared App-auth integration fixture binds a real loopback HTTP server.
-      excludes: ['src/node/GitHubClient.integration.test.ts'],
+      // App-auth fixtures use the library-owned platform transport against loopback servers.
+      excludes: ['src/node/GitHubClient.integration.test.ts', 'test/GitHubClient.test.ts'],
     },
   ],
 } as const satisfies Buck2TypeScriptAdmission
