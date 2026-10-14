@@ -3747,7 +3747,9 @@ describe('mr lock', () => {
                   : `${store.storePath}example.com/acme/lib/refs/commits/${lockedCommit}`,
               )
               expect(yield* runGitCommand(mount, 'rev-parse', 'HEAD')).toBe(lockedCommit)
-              expect(yield* runGitCommand(bareRepoPath, 'rev-parse', 'refs/heads/main')).toBe(refBefore)
+              expect(yield* runGitCommand(bareRepoPath, 'rev-parse', 'refs/heads/main')).toBe(
+                refBefore,
+              )
               if (state === 'absent') {
                 expect(yield* fs.exists(mainWorktree)).toBe(false)
               } else {
@@ -3755,7 +3757,9 @@ describe('mr lock', () => {
                 expect(yield* runGitCommand(mainWorktree, 'branch', '--show-current')).toBe(
                   state === 'detached' ? '' : 'main',
                 )
-                expect(yield* runGitCommand(mainWorktree, 'status', '--porcelain')).toBe(dirtyBefore)
+                expect(yield* runGitCommand(mainWorktree, 'status', '--porcelain')).toBe(
+                  dirtyBefore,
+                )
               }
               expect(yield* fs.readFileString(lockPath)).toBe(lockBefore)
               const status = yield* runMrCommand({
