@@ -227,16 +227,31 @@ impl Ctl {
     #[cfg(feature = "test-signing-cert")]
     pub(super) fn seal_fixture_artifact(&self) -> Result<Value> {
         if ["keychain", "keychain-password-fd"].iter().any(|key| self.args.contains_key(*key)) { return Err(fail(64, "invalid-input", "Ad-hoc test release accepts no keychain")); }
-        let descriptor = desired(self)?;
+        let source = Path::new(self.arg("desired")?);
+        let descriptor = artifact::describe(source, &self.config)?;
+        self.verify_bundle(source)?;
         let output = PathBuf::from(self.arg("output")?);
-        let app = output.join("host.app");
-        self.verify_bundle(&app)?;
-        checked("/bin/chmod", &["-R", "a-w", text(&app)?])?;
-        let receipt = artifact::create_receipt(&app, &descriptor, &self.config)?;
-        atomic_write(&output.join("descriptor.json"), &serde_json::to_vec(&descriptor)?)?;
-        atomic_write(&output.join("receipt.json"), &serde_json::to_vec(&receipt)?)?;
-        checked("/bin/chmod", &["-R", "a-w", text(&output)?])?;
-        Ok(json!({"descriptor": descriptor, "receipt": receipt}))
+        let parent = output.parent().ok_or_else(|| fail(64, "invalid-input", "Release requires a parent"))?;
+        destination(parent, false)?;
+        let stage = parent.join(format!(".fixture-release-{}", std::process::id()));
+        fs::create_dir(&stage)?;
+        let result = (|| {
+            let app = stage.join("host.app");
+            checked("/bin/cp", &["-R", text(source)?, text(&app)?])?;
+            self.verify_bundle(&app)?;
+            checked("/bin/chmod", &["-R", "a-w", text(&app)?])?;
+            let receipt = artifact::create_receipt(&app, &descriptor, &self.config)?;
+            atomic_write(&stage.join("descriptor.json"), &serde_json::to_vec(&descriptor)?)?;
+            atomic_write(&stage.join("receipt.json"), &serde_json::to_vec(&receipt)?)?;
+            checked("/bin/chmod", &["-R", "a-w", text(&stage)?])?;
+            publish_exclusive(&stage, &output)?;
+            Ok(json!({"descriptor": descriptor, "receipt": receipt}))
+        })();
+        if result.is_err() && stage.exists() {
+            checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
+            fs::remove_dir_all(stage)?;
+        }
+        result
     }
 }
 
