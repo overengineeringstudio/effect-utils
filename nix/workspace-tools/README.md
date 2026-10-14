@@ -13,7 +13,10 @@ dependency archives and imports or reconstructs the pinned Buck product graph.
     runtime inspection delegated to the admitted runtime-specific inspectors.
   - `buck2-runtime-inspect-*.nix` — observation-only runtime verification.
   - `buck2-product-candidates.nix` — package candidates backed by Buck products.
-  - `javascript-product-import.nix` — JavaScript module and runtime-tree import.
+  - `javascript-product-import.nix` — JavaScript module and runtime-tree import;
+    dispatches to `javascript-published-import.nix` (eval-time validation of
+    the pinned descriptor) or `javascript-source-import.nix` (build-time
+    validation for from-source products).
   - `mk-cli-packages.nix` — the retained Buck-backed CLI package wrapper.
   - Buck capability, archive, source-identity, and release helpers and tests.
   - `cli-build-stamp.nix` — shared build stamp helper for CLIs.
@@ -36,6 +39,16 @@ lib.cliBuildStamp
 Downstream package consumers should make their root `nixpkgs` and `flake-utils`
 follow `effect-utils/nixpkgs` and `effect-utils/flake-utils` to share the canonical
 build graph.
+
+Source JavaScript recipes expose `importJavaScript` on the derivation returned
+by `nix/buck2-products/from-source.nix`. Consumers supply the product name/kind,
+module path, runtime kind/contract/version and exact external capability/module
+sets as static facts. Descriptor, payload, provenance and runtime-closure reads
+and checks happen inside the importing build, so evaluating a Darwin package
+on Linux does not realize a Darwin source product. Revision-bound consumers
+set `checkProducerCommit = true` and supply the selected revision; an absent or
+mismatched revision fails the build. Published products retain their independent
+descriptor digest and evaluation-time validation unchanged.
 
 The Genie product wrapper realizes the pinned descriptor's capabilities through
 a closed provider registry. It supplies `gh` on PATH when the published product
