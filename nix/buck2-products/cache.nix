@@ -238,8 +238,15 @@ assert lib.assertMsg (
     declaredProductNames
     publishedProductNames
     fullyPublished
+    missingProductNames
+    undeclaredProductNames
     ;
   # The cheap pre-merge guard evaluates only inventory names, never product downloads.
+  assertDeclaredProducts =
+    assert lib.assertMsg (undeclaredProductNames == [ ]) (
+      "buck2-products: manifest contains undeclared products: " + builtins.toJSON undeclaredProductNames
+    );
+    true;
   assertFullyPublished =
     assert lib.assertMsg fullyPublished (
       "buck2-products: manifest inventory differs; missing products: "

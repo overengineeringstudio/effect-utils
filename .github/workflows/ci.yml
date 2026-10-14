@@ -679,10 +679,28 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
-      - name: Assert every declared product is published
+      - name: Check published product inventory against the PR diff
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix eval --impure --expr ''let flake = builtins.getFlake ("git+file://" + toString ./.); in (import ./nix/buck2-products/cache.nix { pkgs.lib = flake.inputs.nixpkgs.lib; fromSourceProducts = {}; }).assertFullyPublished'''
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          export MANIFEST_CHANGED=false
+          if [ "${GITHUB_EVENT_NAME:-}" = pull_request ]; then
+            if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+              git fetch --no-tags --unshallow origin
+            fi
+            git fetch --no-tags origin "${PR_BASE_SHA:?PR base SHA is required}"
+            merge_base="$(git merge-base "$PR_BASE_SHA" HEAD)"
+            changed="$(git diff --name-only "$merge_base"...HEAD)"
+            if grep -Fxq nix/buck2-products/manifest.json <<<"$changed"; then
+              export MANIFEST_CHANGED=true
+            fi
+          fi
+          missing="$(nix eval --impure --json --expr 'let flake = builtins.getFlake ("git+file://" + toString ./.); loaded = import ./nix/buck2-products/cache.nix { pkgs.lib = flake.inputs.nixpkgs.lib; fromSourceProducts = {}; }; in assert loaded.assertDeclaredProducts; assert (builtins.getEnv "MANIFEST_CHANGED" != "true" || loaded.assertFullyPublished); loaded.missingProductNames')"
+          if [ "$missing" != "[]" ]; then
+            echo "::notice::Missing products: $missing; expected on source PRs; publish-products completes them after merge"
+          fi
       - name: Check shared megarepo task flags against the published CLI
         env:
           GITHUB_TOKEN: ${{ github.token }}

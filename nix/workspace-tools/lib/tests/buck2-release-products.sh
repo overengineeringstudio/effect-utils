@@ -371,7 +371,7 @@ cat >"$tmp/products/manifest.json" <<EOF
 }
 EOF
 
-loader_expr="let
+loader_bindings="let
   mkPath = path: attrs: attrs // { outPath = path; __toString = self: self.outPath; };
   recipe = mkPath \"$store_path\" {
     artifactName = \"fixture.js\";
@@ -392,7 +392,12 @@ loader_expr="let
     runCommand = name: attrs: script: mkPath \"/nix/store/validated-fixture\" (attrs // { inherit name script; });
     writeText = name: text: mkPath \"/nix/store/text-fixture\" { inherit name text; };
   };
-  loaded = import $tmp/products { inherit pkgs; fromSourceProducts.fixture = recipe; };
+  loaded = import $tmp/products { inherit pkgs; fromSourceProducts.fixture = recipe; };"
+inventory_expr="$loader_bindings
+in assert loaded.assertDeclaredProducts;
+assert (builtins.getEnv \"MANIFEST_CHANGED\" != \"true\" || loaded.assertFullyPublished);
+loaded.missingProductNames"
+loader_expr="$loader_bindings
 in assert loaded.assertFullyPublished; {
   inherit (loaded) declaredProductNames publishedProductNames fullyPublished assertFullyPublished;
   artifactUrl = loaded.products.fixture.artifactUrl;
@@ -409,13 +414,17 @@ jq -e --arg storePath "$store_path" --arg artifactUrl "$artifact_url" '
   .artifactUrl == $artifactUrl
 ' <<<"$summary" >/dev/null
 
-# RED: completeness uses the loader's name-only guard, without realizing recipes.
+# GREEN: a source PR may declare a new product before post-merge publication.
 cp "$tmp/products/cache-targets.json" "$tmp/products/cache-targets.exact.json"
 jq '.products += [.products[0] | .name = "missing-fixture"]' \
   "$tmp/products/cache-targets.json" >"$tmp/products/cache-targets.missing.json"
 mv "$tmp/products/cache-targets.missing.json" "$tmp/products/cache-targets.json"
-if nix eval --impure --json --expr "$loader_expr" >"$tmp/missing.log" 2>&1; then
-  echo "buck2-cache-products-test: loader accepted a missing product" >&2
+MANIFEST_CHANGED=false nix eval --impure --json --expr "$inventory_expr" |
+  jq -e '. == ["missing-fixture"]' >/dev/null
+
+# RED: a PR editing the manifest must publish the entire declared inventory.
+if MANIFEST_CHANGED=true nix eval --impure --json --expr "$inventory_expr" >"$tmp/missing.log" 2>&1; then
+  echo "buck2-cache-products-test: manifest PR accepted a missing product" >&2
   exit 1
 fi
 grep -F 'missing products: ["missing-fixture"]; undeclared products: []' "$tmp/missing.log" >/dev/null
@@ -426,15 +435,17 @@ cp "$tmp/products/manifest.json" "$tmp/products/manifest.exact.json"
 jq '.products += [.products[0] | .name = "undeclared-fixture"]' \
   "$tmp/products/manifest.json" >"$tmp/products/manifest.undeclared.json"
 mv "$tmp/products/manifest.undeclared.json" "$tmp/products/manifest.json"
-if nix eval --impure --json --expr "$loader_expr" >"$tmp/undeclared.log" 2>&1; then
-  echo "buck2-cache-products-test: loader accepted an undeclared product" >&2
+if MANIFEST_CHANGED=false nix eval --impure --json --expr "$inventory_expr" >"$tmp/undeclared.log" 2>&1; then
+  echo "buck2-cache-products-test: source PR accepted an undeclared manifest product" >&2
   exit 1
 fi
-grep -F 'missing products: []; undeclared products: ["undeclared-fixture"]' "$tmp/undeclared.log" >/dev/null
+grep -F 'manifest contains undeclared products: ["undeclared-fixture"]' "$tmp/undeclared.log" >/dev/null
 cp "$tmp/products/manifest.exact.json" "$tmp/products/manifest.json"
 
 # GREEN: restoring the exact inventory/manifest match satisfies the same guard.
 nix eval --impure --json --expr "$loader_expr" | jq -e '.assertFullyPublished == true' >/dev/null
+MANIFEST_CHANGED=true nix eval --impure --json --expr "$inventory_expr" |
+  jq -e '. == []' >/dev/null
 
 cp "$tmp/products/manifest.json" "$tmp/products/manifest.v2.json"
 jq '.schema = "effect-utils/buck-cache-products/v3"' \

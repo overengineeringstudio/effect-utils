@@ -591,10 +591,36 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       timeoutMinutes: 90,
       extraSteps: [
         {
-          name: 'Assert every declared product is published',
-          env: githubTokenEnv(),
+          name: 'Check published product inventory against the PR diff',
+          env: {
+            ...githubTokenEnv(),
+            PR_BASE_SHA: '${{ github.event.pull_request.base.sha }}',
+          },
           run: withCiSourceRoot(
-            `nix eval --impure --expr 'let flake = builtins.getFlake ("git+file://" + toString ./.); in (import ./nix/buck2-products/cache.nix { pkgs.lib = flake.inputs.nixpkgs.lib; fromSourceProducts = {}; }).assertFullyPublished'`,
+            [
+              'set -euo pipefail',
+              'export MANIFEST_CHANGED=false',
+              'if [ "${GITHUB_EVENT_NAME:-}" = pull_request ]; then',
+              // Like weaver:diff, the merge-base comparison needs more than the
+              // default shallow checkout. Fetch the event's exact base, not a
+              // moving origin/main, and fail closed if its history is unavailable.
+              '  if [ "$(git rev-parse --is-shallow-repository)" = true ]; then',
+              '    git fetch --no-tags --unshallow origin',
+              '  fi',
+              '  git fetch --no-tags origin "${PR_BASE_SHA:?PR base SHA is required}"',
+              '  merge_base="$(git merge-base "$PR_BASE_SHA" HEAD)"',
+              '  changed="$(git diff --name-only "$merge_base"...HEAD)"',
+              '  if grep -Fxq nix/buck2-products/manifest.json <<<"$changed"; then',
+              '    export MANIFEST_CHANGED=true',
+              '  fi',
+              'fi',
+              // Every PR must keep manifest entries declared. Completeness is
+              // only required when that PR actually edits the manifest.
+              `missing="$(nix eval --impure --json --expr 'let flake = builtins.getFlake ("git+file://" + toString ./.); loaded = import ./nix/buck2-products/cache.nix { pkgs.lib = flake.inputs.nixpkgs.lib; fromSourceProducts = {}; }; in assert loaded.assertDeclaredProducts; assert (builtins.getEnv "MANIFEST_CHANGED" != "true" || loaded.assertFullyPublished); loaded.missingProductNames')"`,
+              'if [ "$missing" != "[]" ]; then',
+              '  echo "::notice::Missing products: $missing; expected on source PRs; publish-products completes them after merge"',
+              'fi',
+            ].join('\n'),
           ),
         },
         {
