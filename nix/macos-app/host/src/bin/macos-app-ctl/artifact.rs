@@ -110,16 +110,18 @@ fn entitlement_dictionary(bytes: &[u8]) -> Result<Value> {
 /// Verify actual signed entitlement semantics, not a candidate's receipt. An
 /// absent policy means no entitlement keys; an empty signed dictionary is fine.
 /// This is a read-only codesign invocation through the existing bounded guard.
-pub fn verify_entitlements(app: &Path, entry: &SigningEntry) -> Result<()> {
+/// The caller must invoke it for every selector returned by code_architectures.
+pub fn verify_entitlements(app: &Path, entry: &SigningEntry, architecture: &str) -> Result<()> {
+    if !matches!(architecture,"arm64" | "arm64e" | "x86_64" | "x86_64h") { return Err(mismatch("Unknown entitlement architecture selector")); }
     let object = app.join(&entry.path);
-    let output = super::keys::bounded_codesign(&["-d","--entitlements",":-",super::text(&object)?])?;
+    let output = super::keys::bounded_codesign(&["-d","--architecture",architecture,"--entitlements",":-",super::text(&object)?])?;
     if !output.status.success() { return Err(mismatch("Cannot read signed entitlements")); }
     let actual = entitlement_dictionary(&output.stdout)?;
     let desired = match &entry.entitlements {
         Some(path) => entitlement_dictionary(&fs::read(path)?)?,
         None => json!({}),
     };
-    if actual != desired { return Err(mismatch(format!("Signed entitlements differ from pinned policy: {}",entry.path))); }
+    if actual != desired { return Err(mismatch(format!("Signed entitlements differ from pinned policy: {} ({architecture})",entry.path))); }
     Ok(())
 }
 
@@ -212,6 +214,74 @@ fn bundle_metadata(app: &Path, object: &str, identifier: &str) -> Result<String>
     relative(&executable)?;
     if executable.contains('/') { return Err(mismatch("Bundle executable must be a basename")); }
     Ok(if framework { format!("{object}/{executable}") } else if object.is_empty() { format!("Contents/MacOS/{executable}") } else { format!("{object}/Contents/MacOS/{executable}") })
+}
+
+fn architecture_name(cpu: u32, subtype: u32) -> Result<&'static str> {
+    // Capability bits do not change codesign's architecture selector. Two
+    // slices collapsing to one selector are refused, never silently skipped.
+    match (cpu,subtype & 0x00ff_ffff) {
+        (0x0100_0007,3) => Ok("x86_64"),
+        (0x0100_0007,8) => Ok("x86_64h"),
+        (0x0100_000c,0) => Ok("arm64"),
+        (0x0100_000c,2) => Ok("arm64e"),
+        _ => Err(mismatch(format!("Unsupported native architecture: CPU {cpu:#x}, subtype {subtype:#x}"))),
+    }
+}
+fn architecture_headers(bytes: &[u8]) -> Result<Vec<String>> {
+    fn thin_header(bytes: &[u8]) -> Result<(u32,u32)> {
+        let magic = word(bytes,0,false)?;
+        if !matches!(magic,0xfeedface | 0xfeedfacf | 0xcefaedfe | 0xcffaedfe) { return Err(mismatch("Architecture slice is not thin Mach-O")); }
+        let little = matches!(magic,0xcefaedfe | 0xcffaedfe);
+        let header = if matches!(magic,0xfeedfacf | 0xcffaedfe) {32usize} else {28usize};
+        let size = usize::try_from(word(bytes,20,little)?).map_err(|_| mismatch("Mach-O command size overflow"))?;
+        if header.checked_add(size).is_none_or(|end| end > bytes.len()) { return Err(mismatch("Truncated architecture header/load commands")); }
+        Ok((word(bytes,4,little)?,word(bytes,8,little)?))
+    }
+    let magic = word(bytes,0,false)?;
+    if !matches!(magic,0xcafebabe | 0xbebafeca | 0xcafebabf | 0xbfbafeca) {
+        let (cpu,subtype) = thin_header(bytes)?;
+        return Ok(vec![architecture_name(cpu,subtype)?.to_owned()]);
+    }
+    let little = matches!(magic,0xbebafeca | 0xbfbafeca);
+    let fat64 = matches!(magic,0xcafebabf | 0xbfbafeca);
+    let count = usize::try_from(word(bytes,4,little)?).map_err(|_| mismatch("Fat count overflow"))?;
+    if count == 0 || count > 64 { return Err(mismatch("Invalid fat architecture count")); }
+    let width = if fat64 {32} else {20};
+    let table_end = 8 + count * width;
+    if table_end > bytes.len() { return Err(mismatch("Truncated architecture table")); }
+    let mut names = BTreeSet::new();
+    let mut ranges = vec![(0,table_end)];
+    for index in 0..count {
+        let base = 8 + index * width;
+        let cpu = word(bytes,base,little)?;
+        let subtype = word(bytes,base+4,little)?;
+        let offset = if fat64 {wide(bytes,base+8,little)?} else {u64::from(word(bytes,base+8,little)?)};
+        let length = if fat64 {wide(bytes,base+16,little)?} else {u64::from(word(bytes,base+12,little)?)};
+        let start = usize::try_from(offset).map_err(|_| mismatch("Fat architecture offset overflow"))?;
+        let end = usize::try_from(offset.checked_add(length).ok_or_else(|| mismatch("Fat architecture range overflow"))?).map_err(|_| mismatch("Fat architecture range overflow"))?;
+        if start >= end || end > bytes.len() || ranges.iter().any(|&(a,b)| start < b && end > a) { return Err(mismatch("Overlapping architecture slices")); }
+        if thin_header(&bytes[start..end])? != (cpu,subtype) { return Err(mismatch("Architecture table/slice identity mismatch")); }
+        if !names.insert(architecture_name(cpu,subtype)?.to_owned()) { return Err(mismatch("Duplicate codesign architecture selector")); }
+        ranges.push((start,end));
+    }
+    Ok(names.into_iter().collect())
+}
+/// Exact architecture selectors for the declared code object's native executable.
+/// Unknown architectures and multiple slices sharing a selector fail closed.
+/// No external inspection tool or native-machine architecture inference is used.
+pub fn code_architectures(app: &Path, entry: &SigningEntry, config: &Value) -> Result<Vec<String>> {
+    if !entry.path.is_empty() { relative(&entry.path)?; }
+    let object = app.join(&entry.path);
+    let metadata = fs::symlink_metadata(&object)?;
+    let executable = if metadata.is_dir() {
+        let executable = bundle_metadata(app,&entry.path,&entry.identifier)?;
+        if entry.path.is_empty() && executable != format!("Contents/MacOS/{}",required(config,"hostExecutable")?) { return Err(mismatch("Outer architecture executable mismatch")); }
+        app.join(executable)
+    } else { object };
+    let metadata = fs::symlink_metadata(&executable)?;
+    if !metadata.is_file() || !safe_layout(metadata.mode(),metadata.nlink(),false) { return Err(mismatch("Unsafe architecture executable")); }
+    let (bytes,_) = read_object(&executable,&metadata)?;
+    architecture_headers(&bytes)
 }
 
 fn word(bytes: &[u8], offset: usize, little: bool) -> Result<u32> {
@@ -561,10 +631,15 @@ fn receipt_from_items(app: &Path, desired: &Value, config: &Value, items: &[Item
     let sealed_revision = digest(&serde_json::to_vec(&files)?);
     Ok(json!({"schema":"macos-app-release","version":VERSION,"hostRevision":desired["hostRevision"],"sealedRevision":sealed_revision,"files":files}))
 }
+pub struct VerifiedRelease {
+    pub app: PathBuf,
+    pub sealed_revision: String,
+}
+
 /// Read-only verification of exactly release/{host.app,descriptor.json,receipt.json}.
 /// The desired descriptor is supplied independently, never obtained from release.
 /// Signature and compiled-requirement verification remains mandatory in the caller.
-pub fn verify_release(release: &Path, desired: &Value, config: &Value) -> Result<PathBuf> {
+pub fn verify_release(release: &Path, desired: &Value, config: &Value) -> Result<VerifiedRelease> {
     checked_descriptor(desired,config)?;
     let all = inventory(release,true)?;
     let top = all.iter().filter(|item| !item.path.contains('/')).map(|item| item.path.as_str()).collect::<BTreeSet<_>>();
@@ -579,7 +654,7 @@ pub fn verify_release(release: &Path, desired: &Value, config: &Value) -> Result
         Some(item)
     }).collect::<Vec<_>>();
     if receipt != receipt_from_items(&app,desired,config,&items)? { return Err(mismatch("Release receipt/actual sealed bytes mismatch")); }
-    Ok(app)
+    Ok(VerifiedRelease { app, sealed_revision: required(&receipt, "sealedRevision")?.to_owned() })
 }
 
 #[cfg(test)]
@@ -696,5 +771,36 @@ mod tests {
         assert!(!safe_layout(file | 0o444,2,true));
         assert!(!safe_layout(u32::from(libc::S_IFLNK) | 0o777,1,false));
         assert!(!safe_layout(u32::from(libc::S_IFIFO) | 0o444,1,true));
+    }
+    #[test]
+    fn architecture_selectors_are_exact_and_unknowns_refused() {
+        assert_eq!(architecture_name(0x0100_0007,3).ok(),Some("x86_64"));
+        assert_eq!(architecture_name(0x0100_0007,8).ok(),Some("x86_64h"));
+        assert_eq!(architecture_name(0x0100_000c,0).ok(),Some("arm64"));
+        assert_eq!(architecture_name(0x0100_000c,0x8000_0002).ok(),Some("arm64e"));
+        assert!(architecture_name(0x0100_000c,1).is_err());
+        assert!(architecture_name(0,0).is_err());
+        let mut bytes = thin(false);
+        put_word(&mut bytes,8,3,true);
+        assert_eq!(architecture_headers(&bytes).ok(),Some(vec!["x86_64".to_owned()]));
+        assert!(architecture_headers(&bytes[..24]).is_err());
+    }
+    #[test]
+    fn every_fat_architecture_is_selected_and_aliases_refused() {
+        let mut fat = vec![0u8;384];
+        put_word(&mut fat,0,0xcafebabe,false); put_word(&mut fat,4,2,false);
+        for (base,offset,cpu,subtype) in [(8,128,0x0100_0007,3),(28,256,0x0100_000c,0)] {
+            let mut slice = thin(false);
+            put_word(&mut slice,4,cpu,true); put_word(&mut slice,8,subtype,true);
+            put_word(&mut fat,base,cpu,false); put_word(&mut fat,base+4,subtype,false);
+            put_word(&mut fat,base+8,offset,false); put_word(&mut fat,base+12,128,false);
+            fat[offset as usize..offset as usize+128].copy_from_slice(&slice);
+        }
+        assert_eq!(architecture_headers(&fat).ok(),Some(vec!["arm64".to_owned(),"x86_64".to_owned()]));
+        put_word(&mut fat,28,0x0100_0007,false); put_word(&mut fat,32,0x8000_0003,false);
+        put_word(&mut fat,260,0x0100_0007,true); put_word(&mut fat,264,0x8000_0003,true);
+        assert!(architecture_headers(&fat).is_err());
+        put_word(&mut fat,36,128,false);
+        assert!(architecture_headers(&fat).is_err());
     }
 }

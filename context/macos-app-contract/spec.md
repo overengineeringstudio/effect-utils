@@ -107,7 +107,7 @@ Install (consumer activation)
 
 `effectUtils.lib.mkMacosApp { pkgs, name, bundleId, displayName, session,
 launchd, signer, statusAllowedUids, actions, host ? null, hostBundle ? null,
-requirement ? <new-identity default>, socketMode ? 438 }`
+requirement ? <new-identity default>, lifecycleLockPath ? null, socketMode ? 438 }`
 returns `hostApp`, `generation`, `requirement`, `hostSourceHash`,
 `desiredDescriptor`, `ctl`, `ctlConfig` and `primitives`. The minimal constructor
 puts the host executable, product-specific Info.plist and
@@ -130,6 +130,7 @@ by the descriptor's `hostRevision`.
 | `host`    | `null` selects the generic host. A product-supplied host is a package with `meta.mainProgram` and a `hostSourceHash` attribute; it must be product-data independent and answer the wire `status` action with that hash.          |
 | `requirement` | Explicit pinned code requirement for an incumbent identity; the default below is only appropriate for a genuinely new identity. |
 | `hostBundle` | `{ path; executable; hostSourceHash; nestedCode ? []; entitlements ? null; signingOptions ? []; }`. `path` names the unsigned `.app`; `executable` is its relative native entrypoint. |
+| `lifecycleLockPath` | `null` for unprotected legacy callers, or the explicit absolute private lock-file path; configured mutations require `--lifecycle-fd`. |
 
 The new-identity default for `requirement` is `identifier "<bundleId>" and
 anchor apple generic and certificate leaf[subject.OU] = "<teamId>"`.
@@ -272,25 +273,30 @@ serialization) and calls one primitive per step:
 | `rollback`          | `--app-dir --state --socket --plist-dir [--restore-host]`                                               | Resumes a pending `D.rollback.json` first, whatever the flag. Without `--restore-host`, a generation rollback: points `S/current` at `S/previous` and converges (no restart unless `socketMode` differs). With `--restore-host`, a host-only rollback that the consumer passes when its own record shows the host was swapped (below). Both finish with `verify`.                                                                                                                                                                                                                                                                                                                                                                             |
 | `status`            | `--app-dir --state --socket`                                                                            | Host hash, bundle-metadata digest, DR validity, active and previous generation, `hostArchive`, `hostArchiveGeneration`, `interruptedTransaction`, `interruptedRollback`, socket mode, launchd domain/loaded/PID, session (`gui`, `background-only`, `no-session`), `signingFailure` marker and the running host's IPC status.                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
-### Consumer-held lifecycle exclusion
+### Consumer lifecycle exclusion
 
-Every mutating verb accepts optional `--lifecycle-fd N`, including key
-provisioning/import/proof and fixture signing; sign-only `seal-host` is the
-exception. A supplied fd is validated before mutation against
-`S/lifecycle.lock`: private regular file, current effective-UID owner, matching
-path/inode and the same inherited open-file description holding exclusive
-exclusion. Unlocked descriptors, shared locks, another file description and
-unsafe path/file metadata are refused. ctl never acquires a substitute lock
-and never treats the presence of a descriptor as proof of exclusion.
+Every mutating verb accepts `--lifecycle-fd N`, including key provisioning,
+import/proof and fixture signing; sign-only `seal-host` is the exception.
+`lifecycleLockPath` pins the absolute lock-file path in ctl configuration.
+A configured path requires the descriptor on mutations; legacy unprotected
+configuration leaves it null. The inherited fd must refer to that path's
+device/inode and a private, singly linked regular file owned by the current
+effective UID, under protected no-follow ancestry without ACL grants.
 
-The consumer holds the descriptor through exchange, generation selection,
-rollback and job changes. Protected native products must supply it for these
-operations; omission remains permitted for legacy unprotected callers.
-Product admission takes shared exclusion before capturing its generation and
-holds it for the operation, not an immortal resident's lifetime. Lock order
-with product receipt locks remains consumer-owned; no conflicting upgrade,
-generic drain verb or kill fallback is introduced. A selected generation is
-not proof that an active invocation changed its captured generation.
+ctl takes `flock(LOCK_EX | LOCK_NB)` on the inherited open-file description.
+An already held exclusive lock succeeds trivially; a competing file description
+refuses with typed `restart-deferred`. An unlocked inherited description can
+acquire exclusion. ctl retains its descriptor through the entire mutation and
+marks inherited descriptors close-on-exec so spawned commands do not prolong it.
+
+**Residual: acquire-present-exclusive is not proof of a previously held interval.**
+Darwin's [XNU flock implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_descrip.c)
+exposes set/unlock, not a non-acquiring same-description ownership query.
+The consumer must cover its preceding pre-checks and preserve the lock inode.
+Product admission takes shared exclusion before capturing the generation and
+holds it for the operation. Receipt-lock ordering remains consumer-owned;
+no conflicting upgrade, generic drain or kill fallback is introduced.
+A selected generation is not proof that an active invocation changed its pin.
 
 ### Consumer-supplied launchd plists
 
@@ -591,10 +597,10 @@ child. In no-UI mode the harness proves that the fixture identity exists but is
 `CSSMERR_TP_NOT_TRUSTED`, runs refusal and non-signing cases, and explicitly
 prints `NOT RUN: untrusted test identity in no-UI session` for positive fixture
 signing, the codesign key proof and dependent host-signing cases. Exit zero means
-only that every case run passed; positive signing remains unverified. The default
-GUI mode still runs the full suite. Positive-path proof requires a human-present
-session with an appropriately trusted test identity; the harness never bootstraps
-trust or treats that prerequisite as a passing signature test.
+only that every case run passed; positive keyed signing remains unverified.
+The harness refuses graphics/console-capable audit sessions before operations.
+Positive keyed proof needs a separately authorized trusted test identity; the
+harness never bootstraps trust or treats that prerequisite as a passing test.
 
 ### Fixture signing and agent process rules
 
@@ -726,13 +732,17 @@ any product's end-to-end authorization flow.
 
 `endpoint::bind` with `EndpointPolicy { owner_uid, socket_mode }` returns a
 listener and cleanup guard. It validates no-follow ancestors, root/selected
-ownership, absence of group/world writes and ACL grants, and an owned final
-parent. It rejects live listeners and non-sockets. A stale socket is removed
+ownership, absence of unsafe writable ancestry and ACL grants, and an owned
+non-shared final parent. Root-owned sticky ancestors are allowed only above
+protected owned children. It rejects live listeners and non-sockets. A stale socket is removed
 only after `ECONNREFUSED` and a same-inode check; cleanup likewise must not
 unlink a replacement. Native startup calls this helper so ephemeral parents
 can be recreated after boot; activation-only mkdir is not endpoint safety.
 ACL checks permit deny-only entries (including a home directory's default
 deny-delete ACL), but reject allow or unknown entries.
+The generic host resolves legacy relative socket arguments before this check.
+The resolved absolute path must fit Darwin's Unix-socket address limit;
+symlinked or unsafe writable ancestors are now refused rather than trusted.
 `endpoint::verify_acl_no_grants(&File)` exposes that check;
 `endpoint::validate_directory(&Path, owner_uid)` checks existing destination
 and ancestry as a snapshot, not proof of mutation exclusion.

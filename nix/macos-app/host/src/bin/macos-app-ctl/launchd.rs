@@ -11,6 +11,7 @@ pub(super) struct Validated {
     pub(super) bytes: Vec<u8>,
     pub(super) label: String,
     pub(super) program: PathBuf,
+    pub(super) disabled: bool,
 }
 
 fn invalid(reason: impl Into<String>) -> Failure { fail(64, "invalid-input", reason) }
@@ -187,7 +188,8 @@ pub(super) fn validate(ctl: &Ctl) -> Result<Validated> {
     let label = ctl.label()?;
     validate_value(&value, &Input { session: ctl.field("session")?, domain, target_uid, evidence, label, program: &program, generic_argv,
         user_name: names.as_ref().map(|n| n.0.as_str()), group_name: names.as_ref().map(|n| n.1.as_str()) })?;
-    Ok(Validated { domain: domain.to_owned(), target_uid, evidence: evidence.to_owned(), bytes, label: label.to_owned(), program })
+    if value.get("Disabled").is_some_and(|disabled| !disabled.is_boolean()) { return Err(invalid("Disabled must be a boolean")); }
+    Ok(Validated { domain: domain.to_owned(), target_uid, evidence: evidence.to_owned(), bytes, label: label.to_owned(), program, disabled: value["Disabled"] == true })
 }
 
 #[cfg(test)]

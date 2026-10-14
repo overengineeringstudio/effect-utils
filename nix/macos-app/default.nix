@@ -16,6 +16,7 @@
   session ? "background-agent",
   launchd,
   signer,
+  lifecycleLockPath ? null,
   socketMode ? 438, # 0666: reachability is separate from peer-UID authorization.
 }:
 let
@@ -95,6 +96,7 @@ let
         hostExecutable
         requirement
         signer
+        lifecycleLockPath
         ;
       inherit nestedCode signingOptions;
       entitlements = if entitlements == null then null else toString entitlements;
@@ -209,6 +211,7 @@ assert builtins.length (map (entry: entry.identifier) nestedCode)
 assert lib.all (entry: entry.identifier != bundleId) nestedCode;
 assert host == null || hostBundle == null;
 assert validRequirement requirement;
+assert lifecycleLockPath == null || (builtins.isString lifecycleLockPath && lib.hasPrefix "/" lifecycleLockPath);
 assert validEntitlements entitlements;
 assert validOptions signingOptions;
 assert builtins.length nestedPaths == builtins.length (lib.unique nestedPaths);

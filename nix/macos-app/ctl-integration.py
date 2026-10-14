@@ -15,6 +15,7 @@ From the Darwin checkout root:
 An existing macos-app-example store path can be passed as the first argument.
 """
 import ctypes
+from concurrent.futures import ThreadPoolExecutor
 import fcntl
 import hashlib
 import json
@@ -58,7 +59,10 @@ for source, target in [(example / 'generation', first), (example / 'secondGenera
 
 PROMPT_TIMEOUT = 15
 def tool(*args, check=True):
-    result = watched(list(args), timeout=PROMPT_TIMEOUT)
+    if Path(args[0]).name == 'codesign' and any(flag in args for flag in ('-s', '--sign')):
+        assert '-s' in args and args[args.index('-s') + 1] == '-'
+        assert '--sign' not in args and '--keychain' not in args, 'Direct signing must be keyless explicit -s -'
+    result = watched(list(args), timeout=PROMPT_TIMEOUT, env=globals().get('env'))
     if check and result.returncode != 0:
         raise RuntimeError(f'{args}: {result.stderr}')
     return result
@@ -157,7 +161,9 @@ def watched(argv, terminate_when=None, timeout=60, observer=None, **kwargs):
         # EPERM for signalling an exited protected Apple binary.
         pass
     stdout, stderr = process.communicate()
-    return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+    result = subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+    result.pid = process.pid  # Kernel peer identity oracle for the helper probe.
+    return result
 
 def observer_failure_test():
     """Real child, deterministic observer exception: it must be killed and reaped."""
@@ -442,9 +448,9 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         thin_config_path.write_text(json.dumps(thin_config))
         # Strict nested verification must evaluate the declared object predicate,
         # not merely accept a structurally valid outer signature.
-        tool(str(codesign), '--force', '--sign', '-', '--identifier',
+        tool(str(codesign), '--force', '-s', '-', '--identifier',
              'dev.example.wrong-helper', str(helper))
-        tool(str(codesign), '--force', '--sign', '-', '--identifier',
+        tool(str(codesign), '--force', '-s', '-', '--identifier',
              thin_config['bundleId'], str(unsigned))
         thin_config_path.write_text(json.dumps(dict(thin_config, nestedCode=[nested_policy])))
         invoke('seal-fixture-artifact', '--desired', unsigned,
@@ -463,7 +469,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
 
         # A matching predicate need not equal the embedded diagnostic DR.
         signed = copy_bundle('ThinSigned.app')
-        tool(str(codesign), '--force', '--sign', '-', '--identifier', thin_config['bundleId'],
+        tool(str(codesign), '--force', '-s', '-', '--identifier', thin_config['bundleId'],
              str(signed))
         diagnostic = tool(str(codesign), '-d', '-r-', str(signed))
         assert 'cdhash' in diagnostic.stdout + diagnostic.stderr
@@ -479,6 +485,18 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
                '--output', work / 'must-not-publish-wrong-release', refusal=True)
         thin_config_path.write_text(json.dumps(thin_config))
         assert describe(signed)['result'] == descriptor
+        # Policy hashes are not proof that the real CodeDirectory carries the
+        # declared flags: this ad-hoc signature was made without --options hard.
+        hard_config = work / 'thin-hard-config.json'
+        hard_config.write_text(json.dumps(dict(thin_config, signingOptions=['hard'])))
+        hard_descriptor = invoke('describe-host', '--desired', signed,
+                                 config_override=hard_config)['result']
+        assert hard_descriptor['hostRevision'] != descriptor['hostRevision']
+        invoke('seal-fixture-artifact', '--desired', signed,
+               '--output', work / 'must-not-publish-hard-release',
+               config_override=hard_config, refusal=True)
+        assert not (work / 'must-not-publish-hard-release').exists()
+        print('PASS required signing flag absent from real signature refuses despite matching policy descriptor', flush=True)
         release = work / 'thin-release'
         invoke('seal-fixture-artifact', '--desired', signed, '--output', release)
         assert (release / 'host.app').is_dir() and (release / 'descriptor.json').is_file()
@@ -525,6 +543,45 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         assert (work / 'sign.log').read_text() == signing_before
         print('PASS verify-only import rejects credentials, missing/tampered artifacts without fallback or installed mutation', flush=True)
         print('NOT RUN: root-to-user artifact destination (requires parent-owned root execution)', flush=True)
+        # Crash before exchange leaves an immutable candidate inode in the stage,
+        # not at D. Reconcile must restore owner writability only to discard it.
+        abandoned = thin_app.parent / '.SyntheticHost.app.stage-public-fixture'
+        shutil.copytree(release / 'host.app', abandoned)
+        incumbent_inode = thin_app.stat().st_ino
+        incumbent_revision = invoke('status', '--desired', descriptor_path,
+                                    '--artifact', release)['result']['sealedRevision']
+        journal = thin_app.with_suffix('.txn.json')
+        journal.write_text(json.dumps({'stage': str(abandoned),
+                                       'stageInode': abandoned.stat().st_ino,
+                                       'generation': None, 'immutable': True}))
+        reconciled = invoke('install-host', '--desired', descriptor_path,
+                            '--artifact', release)['result']
+        assert reconciled['changed'] is False and reconciled['reconciled'] == 'stage-discarded', reconciled
+        assert not abandoned.exists() and not journal.exists()
+        assert thin_app.stat().st_ino == incumbent_inode
+        assert invoke('status', '--desired', descriptor_path, '--artifact', release)['result']['sealedRevision'] == incumbent_revision
+        print('PASS immutable unexchanged transaction stage discarded with incumbent inode and revision preserved', flush=True)
+
+        # Two valid embedded DRs can satisfy the same independently pinned
+        # predicate and unsigned descriptor while carrying different sealed bytes.
+        signed_again = work / 'ThinSignedAgain.app'
+        shutil.copytree(signed, signed_again)
+        tool(str(codesign), '--force', '-s', '-', '--identifier', thin_config['bundleId'],
+             '--requirements', '=designated => ' + thin_config['requirement'], str(signed_again))
+        assert describe(signed_again)['result'] == descriptor
+        second_release = work / 'thin-second-release'
+        invoke('seal-fixture-artifact', '--desired', signed_again, '--output', second_release)
+        second_receipt = json.loads((second_release / 'receipt.json').read_text())
+        assert second_receipt['hostRevision'] == receipt['hostRevision']
+        assert second_receipt['sealedRevision'] != receipt['sealedRevision']
+        replaced = invoke('install-host', '--desired', descriptor_path,
+                          '--artifact', second_release)['result']
+        assert replaced['changed'] is True, replaced
+        exact = invoke('status', '--desired', descriptor_path, '--artifact', second_release)['result']
+        assert exact['artifactValid'] and exact['sealedRevision'] == second_receipt['sealedRevision'], exact
+        # Restore the first exact release for the subsequent lock/no-op fixtures.
+        invoke('install-host', '--desired', descriptor_path, '--artifact', release)
+        print('PASS distinct sealed signatures for identical unsigned content require exact artifact replacement', flush=True)
 
         # Validate ordinary consumer plists offline; never load a launchd job.
         plist_path = work / 'thin-job.plist'
@@ -557,6 +614,8 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         thin_state.mkdir(exist_ok=True)
         lock_path.touch(exist_ok=True)
         lock_path.chmod(0o600)
+        thin_config['lifecycleLockPath'] = str(lock_path)
+        thin_config_path.write_text(json.dumps(thin_config))
         borrowed = os.open(lock_path, os.O_RDWR)
         other = os.open(lock_path, os.O_RDWR)
         foreign = os.open(work / 'wrong-lifecycle.lock', os.O_RDWR | os.O_CREAT, 0o600)
@@ -565,9 +624,10 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
                           '--lifecycle-fd', fd, refusal=refusal, fds=(fd,) if fd != 999 else ())
         try:
             locked_install(999)
-            locked_install(borrowed)
+            locked_install(borrowed, refusal=False)  # ctl may acquire on this inherited OFD.
+            fcntl.flock(borrowed, fcntl.LOCK_UN)
             fcntl.flock(borrowed, fcntl.LOCK_SH)
-            locked_install(borrowed)
+            locked_install(borrowed, refusal=False)  # Own shared lock can upgrade when uncontended.
             fcntl.flock(borrowed, fcntl.LOCK_UN)
             fcntl.flock(borrowed, fcntl.LOCK_EX)
             locked_install(other)
@@ -595,10 +655,73 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         finally:
             for fd in (borrowed, other, foreign):
                 os.close(fd)
-        print('PASS lifecycle missing/unlocked/shared/other-OFD/wrong-inode refusal and inherited exclusive descriptor success', flush=True)
-        print('NOT RUN: real kernel audit-token exec/stale/incarnation probe; helper unit evidence '
-              'is cargo test --lib (UID conjunction, token incarnation, requirement syntax, '
-              'endpoint unsafe/symlink/writable paths and stale owned-socket inode checks)', flush=True)
+        print('PASS lifecycle configured path/inode and missing inherited FD refusal; '
+              'unlocked/shared-own acquisition, competing OFD refusal and held exclusive success', flush=True)
+        print('NOT VERIFIED: inherited descriptor proves present exclusivity, not a prior consumer-held interval', flush=True)
+        # Real kernel peer tokens, not mocked process IDs or UID-only sockets.
+        display = tool(str(codesign), '-d', '-r-', str(ctl))
+        predicates = [line.partition('designated => ')[2]
+                      for line in (display.stdout + '\n' + display.stderr).splitlines()
+                      if 'designated => ' in line]
+        assert len(predicates) == 1 and predicates[0], (display.stdout, display.stderr)
+        caller_requirement = predicates[0]
+        endpoint_parent = work / 'helper-endpoint'
+        endpoint_parent.mkdir(mode=0o700)
+        endpoint_parent.chmod(0o700)
+        def probe_command(mode, socket_path, evidence, target_uid, requirement):
+            no_ui_session()  # Reprove independently for each concurrent launch.
+            return watched([str(ctl), 'test-security-helper', '--config', str(thin_config_path),
+                            '--mode', mode, '--socket', str(socket_path),
+                            '--evidence', evidence, '--target-uid', str(target_uid),
+                            '--requirement', requirement], env=env, timeout=10)
+        def probe_reply(result):
+            lines = result.stdout.splitlines()
+            assert len(lines) == 1, (result.returncode, result.stdout, result.stderr)
+            return json.loads(lines[0])
+        cases = [('fresh', uid, caller_requirement, False),
+                 ('wrong-uid', uid + 1, caller_requirement, True),
+                 ('wrong-requirement', uid, 'identifier "dev.example.forbidden-helper"', True),
+                 ('exit', uid, caller_requirement, False),
+                 ('exec', uid, caller_requirement, False)]
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            for name, target_uid, requirement, refused in cases:
+                evidence_kind = name if name in ('exit', 'exec') else 'fresh'
+                probe_socket = endpoint_parent / f'{name}.sock'
+                server_future = executor.submit(probe_command, 'server', probe_socket,
+                                                evidence_kind, target_uid, requirement)
+                deadline = time.monotonic() + 4
+                while not probe_socket.exists():
+                    if server_future.done():
+                        failed = server_future.result()
+                        raise AssertionError(('server failed before bind', failed.stdout, failed.stderr))
+                    if time.monotonic() >= deadline:
+                        raise AssertionError('Helper socket did not become ready within bound')
+                    time.sleep(0.01)
+                client = probe_command('client', probe_socket, evidence_kind, uid, caller_requirement)
+                server = server_future.result(timeout=10)
+                server_reply = probe_reply(server)
+                if refused:
+                    assert server.returncode != 0 and client.returncode != 0, (server, client)
+                    assert server_reply['error']['kind'] == 'helper-authentication-failed', server_reply
+                    assert 'error' in probe_reply(client)
+                else:
+                    assert server.returncode == 0 and client.returncode == 0, (server, client)
+                    identity = server_reply['result']
+                    assert identity['effectiveUid'] == uid and identity['realUid'] == uid, identity
+                    assert identity['pid'] == client.pid and identity['pidVersion'] > 0, (identity, client.pid)
+                    if evidence_kind == 'fresh':
+                        assert identity['authenticated'] is True, identity
+                        assert probe_reply(client)['result']['clientCompleted'] is True
+                    else:
+                        assert identity['staleRejected'] is True and identity['evidence'] == evidence_kind, identity
+                        if evidence_kind == 'exit':
+                            assert probe_reply(client)['result']['clientExiting'] is True
+                        else:
+                            assert client.stdout == '', 'Fixed exec oracle must replace ctl at the same PID'
+                assert not probe_socket.exists(), 'Owned probe endpoint was not cleaned up'
+        print('PASS real kernel audit-token UID+DR conjunction, exited-token refusal and same-PID exec incarnation refusal', flush=True)
+        print('NOT RUN: helper pure unit suite in this harness; parent runs cargo test --lib '
+              'for unsafe/ACL/symlink/writable paths and stale owned-socket inode cases', flush=True)
 
     thin_contract_cases()
 

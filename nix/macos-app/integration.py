@@ -83,7 +83,7 @@ def select(destination):
 
 select(first)
 os.chdir(root)
-# sockaddr_un paths are limited to 104 bytes, independently of worktree depth.
+# The resolved absolute endpoint must also fit Darwin's 104-byte sockaddr_un limit.
 sock = work.relative_to(root) / 'host.sock'
 log = (work / 'server.log').open('wb')
 def start_server(fd_limit=None):

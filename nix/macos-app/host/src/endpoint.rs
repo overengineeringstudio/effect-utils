@@ -56,7 +56,11 @@ fn identity(a: &libc::stat, b: &libc::stat) -> bool { a.st_dev == b.st_dev && a.
 fn directory_policy(stat: &libc::stat, owner: u32, final_parent: bool) -> Result<()> {
     if stat.st_mode & libc::S_IFMT != libc::S_IFDIR { return Err(SecurityError::EndpointPolicy("Endpoint ancestor is not a directory")); }
     if stat.st_uid != 0 && stat.st_uid != owner { return Err(SecurityError::EndpointPolicy("Untrusted endpoint ancestor owner")); }
-    if stat.st_mode & 0o022 != 0 { return Err(SecurityError::EndpointPolicy("Writable endpoint ancestor")); }
+    // A root-owned sticky ancestor cannot be used by an unrelated UID to replace
+    // the next protected, owned component. The endpoint's immediate parent is
+    // never allowed to be a shared writable directory.
+    let sticky_ancestor = !final_parent && stat.st_uid == 0 && stat.st_mode & 0o1000 != 0;
+    if stat.st_mode & 0o022 != 0 && !sticky_ancestor { return Err(SecurityError::EndpointPolicy("Writable endpoint ancestor")); }
     if final_parent && stat.st_uid != owner { return Err(SecurityError::EndpointPolicy("Endpoint parent must belong to selected owner")); }
     Ok(())
 }
@@ -245,6 +249,9 @@ mod tests {
         let mut link = directory(501, 0o700); link.st_mode = libc::S_IFLNK | 0o700;
         assert!(directory_policy(&link, 501, true).is_err());
         assert!(directory_policy(&directory(501, 0o700), 501, true).is_ok());
+        assert!(directory_policy(&directory(0, 0o1777), 501, false).is_ok());
+        assert!(directory_policy(&directory(0, 0o1777), 0, true).is_err());
+        assert!(directory_policy(&directory(502, 0o1777), 501, false).is_err());
     }
     #[test]
     fn stale_cleanup_requires_owned_socket_mode_and_inode() {

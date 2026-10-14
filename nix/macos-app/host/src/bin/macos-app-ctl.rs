@@ -106,6 +106,9 @@ mod launchd;
 mod supplied;
 #[path = "macos-app-ctl/lifecycle.rs"]
 mod lifecycle;
+#[cfg(feature = "test-signing-cert")]
+#[path = "macos-app-ctl/helper_probe.rs"]
+mod helper_probe;
 
 // A nonblocking self-pipe wakes the owning thread. The handler only stores a lock-free
 // atomic and writes one byte; child teardown and checked locks happen outside the handler.
@@ -356,7 +359,7 @@ impl Ctl {
                     "--sign".to_owned(), identity.to_owned(), "--identifier".to_owned(), entry.identifier.clone(),
                     "--requirements".to_owned(), format!("=designated => {}", entry.requirement)];
                 if let Some(entitlements) = &entry.entitlements { arguments.extend(["--entitlements".to_owned(), entitlements.clone()]); }
-                if !entry.options.is_empty() { arguments.extend(["--options".to_owned(), entry.options.join(",")]); }
+                arguments.extend(["--options".to_owned(), if entry.options.is_empty() { "0".to_owned() } else { entry.options.join(",") }]);
                 arguments.push(text(&target)?.to_owned());
                 let borrowed = arguments.iter().map(String::as_str).collect::<Vec<_>>();
                 let signed = keys::bounded_codesign(&borrowed)?;
@@ -399,7 +402,14 @@ impl Ctl {
             if stage.exists() && inode(app) == txn["stageInode"].as_u64() {
                 return Ok((Some("archive-published"), self.publish_archive(app, &txn)?));
             }
-            if stage.exists() { fs::remove_dir_all(&stage)?; }
+            if stage.exists() {
+                let metadata = fs::symlink_metadata(&stage)?;
+                if !metadata.is_dir() || metadata.uid() != unsafe { libc::geteuid() } {
+                    return Err(mismatch("Abandoned stage is not an owned directory"));
+                }
+                checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
+                fs::remove_dir_all(&stage)?;
+            }
             remove_if_present(&record)?;
             return Ok((Some("stage-discarded"), None));
         }
@@ -643,7 +653,7 @@ impl Ctl {
 }
 fn known_option(key: &str) -> bool {
     #[cfg(feature = "test-signing-cert")]
-    if key == "test-self-signed-cert-out" { return true; }
+    if matches!(key, "test-self-signed-cert-out" | "mode") { return true; }
     matches!(key, "config" | "app-dir" | "state" | "socket" | "plist-dir" | "domain" |
         "desired" | "generation" | "keychain" | "keychain-password-fd" | "common-name-hint" |
         "csr-out" | "cert" | "restore-host" | "signing-auth-pending" | "replace" | "no-sign" |
@@ -671,7 +681,8 @@ fn run() -> Result<Value> {
     let status = unsafe { SecKeychainSetUserInteractionAllowed(0) };
     if status != 0 { return Err(fail(23, "operation-failed", format!("SecKeychainSetUserInteractionAllowed status {status}"))); }
     let _lifecycle = if matches!(action.as_str(), "install-host" | "select-generation" | "converge-launchd" | "rollback" |
-        "provision-signing-key" | "import-signing-cert" | "prove-signing-key" | "sign-fixture") {
+        "provision-signing-key" | "import-signing-cert" | "prove-signing-key" | "sign-fixture") &&
+        !(action == "converge-launchd" && ctl.args.contains_key("validate-only") && !ctl.args.contains_key("lifecycle-fd")) {
         lifecycle::verify(&ctl)?
     } else { None };
     let result = match action.as_str() {
@@ -688,6 +699,8 @@ fn run() -> Result<Value> {
         "sign-fixture" => keys::sign_fixture(&ctl),
         #[cfg(feature = "test-signing-cert")]
         "seal-fixture-artifact" => ctl.seal_fixture_artifact(),
+        #[cfg(feature = "test-signing-cert")]
+        "test-security-helper" => helper_probe::run(&ctl),
         _ => Err(fail(64, "invalid-input", "Unknown primitive")),
     }?;
     cancellation()?;

@@ -13,7 +13,7 @@ fn desired(ctl: &Ctl) -> Result<Value> {
 
 /// Mutable destination directories never traverse a symlink or another user's
 /// writable directory. Root-owned read-only ancestors are acceptable for users.
-fn destination(path: &Path, create: bool) -> Result<()> {
+pub(super) fn destination(path: &Path, create: bool) -> Result<()> {
     if !path.is_absolute() || path.components().any(|p| matches!(p, std::path::Component::ParentDir | std::path::Component::CurDir)) {
         return Err(fail(64, "invalid-input", "Destination must be an absolute normalized path"));
     }
@@ -53,6 +53,25 @@ fn publish_exclusive(stage: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
+fn verify_options(diagnostic: &str, options: &[String]) -> Result<()> {
+    // Embedded CodeDirectory option bits, defined by Apple's CSCommon.h.
+    let expected = options.iter().try_fold(0u32, |flags, option| {
+        Ok(flags | match option.as_str() {
+            "host" => 0x0001, "hard" => 0x0100, "kill" => 0x0200,
+            "expires" => 0x0400, "restrict" => 0x0800, "library" => 0x2000,
+            "runtime" => 0x10000,
+            _ => return Err(fail(64, "invalid-input", "Unsupported signing option")),
+        })
+    })?;
+    let actual = diagnostic.split_whitespace().find_map(|word| word.strip_prefix("flags="))
+        .and_then(|word| word.split('(').next()).and_then(|word| word.strip_prefix("0x"))
+        .and_then(|word| u32::from_str_radix(word, 16).ok())
+        .ok_or_else(|| mismatch("Cannot read candidate CodeDirectory signing flags"))?;
+    // Ad-hoc/linker seal flags describe the signing mechanism, not declared options.
+    if actual & !(0x0002 | 0x20000) != expected { return Err(mismatch("Candidate signing options differ from pinned policy")); }
+    Ok(())
+}
+
 impl Ctl {
     pub(super) fn describe_host(&self) -> Result<Value> { artifact::describe(Path::new(self.arg("desired")?), &self.config) }
 
@@ -60,14 +79,14 @@ impl Ctl {
         for entry in artifact::signing_entries(&self.config)? {
             let path = if entry.path.is_empty() { app.to_owned() } else { app.join(&entry.path) };
             self.signature_with(&path, &entry.requirement)?;
-            artifact::verify_entitlements(app, &entry)?;
-            let details = keys::bounded_codesign(&["-d", "--verbose=4", text(&path)?])?;
-            let diagnostic = String::from_utf8_lossy(&details.stderr);
-            if !details.status.success() || !diagnostic.lines().any(|line| line == format!("Identifier={}", entry.identifier)) {
-                return Err(mismatch("Code identifier differs from the independently pinned inventory"));
-            }
-            if entry.options.iter().any(|option| option == "runtime") && !diagnostic.lines().any(|line| line.starts_with("flags=") && line.contains("runtime")) {
-                return Err(mismatch("Candidate lacks the declared hardened-runtime signing option"));
+            for architecture in artifact::code_architectures(app, &entry, &self.config)? {
+                artifact::verify_entitlements(app, &entry, &architecture)?;
+                let details = keys::bounded_codesign(&["-d", "--verbose=4", "--architecture", &architecture, text(&path)?])?;
+                let diagnostic = String::from_utf8_lossy(&details.stderr);
+                if !details.status.success() || !diagnostic.lines().any(|line| line == format!("Identifier={}", entry.identifier)) {
+                    return Err(mismatch("Code identifier differs from the independently pinned inventory"));
+                }
+                verify_options(&diagnostic, &entry.options)?;
             }
         }
         Ok(())
@@ -79,9 +98,9 @@ impl Ctl {
         let descriptor = artifact::describe(unsigned, &self.config)?;
         let output = PathBuf::from(self.arg("output")?);
         if output.exists() {
-            let app = artifact::verify_release(&output, &descriptor, &self.config)?;
-            self.verify_bundle(&app)?;
-            return Ok(json!({"changed": false, "release": output, "descriptor": descriptor}));
+            let release = artifact::verify_release(&output, &descriptor, &self.config)?;
+            self.verify_bundle(&release.app)?;
+            return Ok(json!({"changed": false, "release": output, "descriptor": descriptor, "sealedRevision": release.sealed_revision}));
         }
         let keychain_arg = PathBuf::from(self.arg("keychain")?);
         if is_login_keychain(&fs::canonicalize(&keychain_arg).unwrap_or_else(|_| keychain_arg.clone())) {
@@ -101,7 +120,6 @@ impl Ctl {
             checked("/bin/cp", &["-R", text(unsigned)?, text(&app)?])?;
             checked("/bin/chmod", &["-R", "u+w", text(&app)?])?;
             self.sign(&keychain_path, &keychain, &app)?;
-            self.verify_bundle(&app)?;
             checked("/bin/chmod", &["-R", "a-w", text(&app)?])?;
             let receipt = artifact::create_receipt(&app, &descriptor, &self.config)?;
             atomic_write(&stage.join("descriptor.json"), &serde_json::to_vec(&descriptor)?)?;
@@ -125,7 +143,7 @@ impl Ctl {
         let descriptor = desired(self)?;
         let release = Path::new(self.arg("artifact")?);
         let candidate = artifact::verify_release(release, &descriptor, &self.config)?;
-        self.verify_bundle(&candidate)?;
+        self.verify_bundle(&candidate.app)?;
         let app = self.app()?;
         let parent = app.parent().ok_or_else(|| fail(64, "invalid-input", "App requires parent"))?;
         let archive = PathBuf::from(self.arg("archive-dir")?);
@@ -137,8 +155,9 @@ impl Ctl {
             return Err(fail(64, "invalid-input", "App and immutable archive must share a filesystem for atomic exchange"));
         }
         let (reconciled, _) = self.reconcile(&app)?;
-        if app.exists() && artifact::describe(&app, &self.config)? == descriptor && self.verify_bundle(&app).is_ok() {
-            return Ok(json!({"changed": false, "descriptor": descriptor, "reconciled": reconciled}));
+        if app.exists() && artifact::describe(&app, &self.config)? == descriptor && self.verify_bundle(&app).is_ok() &&
+            artifact::artifact_revision(&app)? == candidate.sealed_revision {
+            return Ok(json!({"changed": false, "descriptor": descriptor, "sealedRevision": candidate.sealed_revision, "reconciled": reconciled}));
         }
         if app.exists() && (!fs::symlink_metadata(&app)?.is_dir() || fs::symlink_metadata(&app)?.uid() != unsafe { libc::geteuid() }) {
             return Err(fail(64, "invalid-input", "Installed app is not an owned directory"));
@@ -146,16 +165,18 @@ impl Ctl {
         if app.exists() { self.signature(&app)?; }
         let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| fail(23, "operation-failed", e.to_string()))?.as_nanos();
         let stage = archive.join(format!("retained-{}-{nonce}.app", std::process::id()));
-        checked("/bin/cp", &["-R", text(&candidate)?, text(&stage)?])?;
+        checked("/bin/cp", &["-R", text(&candidate.app)?, text(&stage)?])?;
         self.verify_bundle(&stage)?;
-        if artifact::describe(&stage, &self.config)? != descriptor { return Err(mismatch("Staged artifact content differs")); }
+        if artifact::describe(&stage, &self.config)? != descriptor || artifact::artifact_revision(&stage)? != candidate.sealed_revision {
+            return Err(mismatch("Staged artifact content or sealed revision differs"));
+        }
         if app.exists() {
             let txn = json!({"stage": stage, "stageInode": inode(&stage), "generation": pointer(&self.state()?.join("current")), "immutable": true});
             atomic_write(&transaction_record(&app), &serde_json::to_vec(&txn)?)?;
             exchange(&stage, &app)?;
             self.publish_archive(&app, &txn)?;
         } else { publish_exclusive(&stage, &app)?; }
-        Ok(json!({"changed": true, "descriptor": descriptor, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled}))
+        Ok(json!({"changed": true, "descriptor": descriptor, "sealedRevision": candidate.sealed_revision, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled}))
     }
 
     pub(super) fn verify_artifact(&self) -> Result<Value> {
@@ -163,8 +184,9 @@ impl Ctl {
         let candidate = artifact::verify_release(Path::new(self.arg("artifact")?), &descriptor, &self.config)?;
         let app = self.app()?;
         self.verify_bundle(&app)?;
+        let sealed_revision = artifact::artifact_revision(&app)?;
         if artifact::describe(&app, &self.config)? != descriptor ||
-            artifact::artifact_revision(&app)? != artifact::artifact_revision(&candidate)? {
+            sealed_revision != candidate.sealed_revision {
             return Err(mismatch("Installed signed artifact differs from the independently pinned release"));
         }
         let state = self.state()?;
@@ -172,7 +194,7 @@ impl Ctl {
         if pointer(&state.join("current")).as_deref() != Some(generation) { return Err(mismatch("Generation pointer differs")); }
         let manifest: Value = serde_json::from_slice(&fs::read(generation.join("manifest.json"))?)?;
         let live = if self.args.contains_key("plist") { Some(self.supplied_evidence()?) } else { None };
-        Ok(json!({"verified": true, "descriptor": descriptor, "sealedRevision": artifact::artifact_revision(&app)?,
+        Ok(json!({"verified": true, "descriptor": descriptor, "sealedRevision": sealed_revision,
             "generation": generation, "generationDigest": manifest["generation"], "launchd": live}))
     }
 
@@ -193,7 +215,7 @@ impl Ctl {
         let actual = artifact::describe(&app, &self.config)?;
         let sealed_revision = artifact::artifact_revision(&app)?;
         let valid = self.verify_bundle(&app).is_ok() && actual == descriptor &&
-            sealed_revision == artifact::artifact_revision(&candidate)?;
+            sealed_revision == candidate.sealed_revision;
         let generation = pointer(&self.state()?.join("current"));
         let manifest = generation.as_ref().map(|path| read_json(&path.join("manifest.json"))).transpose()?.flatten();
         let live = if self.args.contains_key("plist") { Some(self.supplied_evidence()?) } else { None };
@@ -215,5 +237,22 @@ impl Ctl {
         atomic_write(&output.join("receipt.json"), &serde_json::to_vec(&receipt)?)?;
         checked("/bin/chmod", &["-R", "a-w", text(&output)?])?;
         Ok(json!({"descriptor": descriptor, "receipt": receipt}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn refuses_missing_extra_or_unreadable_signing_flags() {
+        for (name, bit) in [("host", 0x0001), ("hard", 0x0100), ("kill", 0x0200),
+            ("expires", 0x0400), ("restrict", 0x0800), ("library", 0x2000), ("runtime", 0x10000)] {
+            let options = vec![name.to_owned()];
+            assert!(verify_options("CodeDirectory flags=0x2(adhoc)", &options).is_err());
+            assert!(verify_options(&format!("CodeDirectory flags=0x{:x}(test)", bit | 2), &options).is_ok());
+        }
+        assert!(verify_options("CodeDirectory flags=0x1000(enforcement)", &[]).is_err());
+        assert!(verify_options("CodeDirectory unreadable", &[]).is_err());
+        assert!(verify_options("CodeDirectory flags=0x20002(adhoc,linker-signed)", &[]).is_ok());
     }
 }

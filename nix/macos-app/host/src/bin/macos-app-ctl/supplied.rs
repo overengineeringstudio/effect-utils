@@ -39,25 +39,31 @@ impl Ctl {
         let validated = launchd::validate(self)?;
         let digest = format!("{:x}", sha2::Sha256::digest(&validated.bytes));
         if self.args.contains_key("validate-only") { return self.supplied_summary(&validated, false, false, None); }
+        let directory = PathBuf::from(self.arg("plist-dir")?);
+        let state = self.state()?;
+        if validated.evidence == "resident" { self.arg("socket")?; }
         self.signature(&self.app()?)?;
         // A missing explicit GUI domain is a structured non-mutation outcome.
         if validated.domain.starts_with("gui/") && !command("launchctl", &["print", &validated.domain])?.status.success() {
             return Err(fail(21, "gui-absent", "Explicit GUI domain is absent; no job operation attempted"));
         }
-        let disabled = command("launchctl", &["print-disabled", &validated.domain])?;
+        let disabled = checked("launchctl", &["print-disabled", &validated.domain])?;
         let disabled_text = String::from_utf8_lossy(&disabled.stdout);
-        if disabled_text.lines().any(|line| line.trim() == format!("\"{}\" => true", validated.label)) || self.config["launchd"]["held"] == true {
+        if validated.disabled || disabled_text.lines().any(|line| line.trim() == format!("\"{}\" => true", validated.label)) || self.config["launchd"]["held"] == true {
             let (loaded, pid) = self.job(&validated.domain)?;
             let mut evidence = self.supplied_summary(&validated, false, loaded, pid)?;
             evidence["held"] = json!(true);
             return Ok(evidence);
         }
-        let state = self.state()?;
-        let record = state.join(format!("launched-{}.json", validated.label));
+        releases::destination(&directory, true)?;
+        releases::destination(&state, true)?;
+        let path = directory.join(format!("{}.plist", validated.label));
+        let record = state.join(format!("launched-{}-{}-{}.json", validated.domain.replace('/', "-"), validated.target_uid, validated.label));
         let app_inode = inode(&self.app()?);
         let previous = read_json(&record)?;
         let (loaded, pid) = self.job(&validated.domain)?;
-        if loaded && previous.as_ref().is_some_and(|old| old["plistDigest"] == digest && old["appInode"].as_u64() == app_inode) {
+        if loaded && previous.as_ref().is_some_and(|old| old["domain"] == validated.domain &&
+            old["targetUid"] == validated.target_uid && old["plistDigest"] == digest && old["appInode"].as_u64() == app_inode) {
             if validated.evidence == "resident" && pid.is_none() { return Err(fail(75, "restart-deferred", "Resident is configured but not running")); }
             return self.supplied_summary(&validated, false, true, pid);
         }
@@ -70,13 +76,9 @@ impl Ctl {
                 std::thread::sleep(Duration::from_millis(100));
             }
         }
-        let directory = PathBuf::from(self.arg("plist-dir")?);
-        fs::create_dir_all(&directory)?;
-        let path = directory.join(format!("{}.plist", validated.label));
         atomic_write(&path, &validated.bytes)?;
         checked("launchctl", &["bootstrap", &validated.domain, text(&path)?])?;
-        fs::create_dir_all(&state)?;
-        atomic_write(&record, &serde_json::to_vec(&json!({"plistDigest": digest, "appInode": app_inode}))?)?;
+        atomic_write(&record, &serde_json::to_vec(&json!({"domain": validated.domain, "targetUid": validated.target_uid, "plistDigest": digest, "appInode": app_inode}))?)?;
         let (loaded, pid) = self.job(&validated.domain)?;
         if !loaded { return Err(mismatch("Configured job is not loaded")); }
         if validated.evidence == "resident" && pid.is_none() { return Err(fail(75, "restart-deferred", "Resident is configured but not running")); }
