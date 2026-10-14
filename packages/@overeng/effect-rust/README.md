@@ -360,6 +360,8 @@ Do not keep a service beyond the Scope that acquired it.
 The direct value codec compiles strict struct/array/nullable/tagged-union walks
 at construction and fuses optional-field omission into encoding; Effect remains
 the reference for leaf validation, unsupported shapes, and exact failure issues.
+Traversal snapshots and accessor/proxy defects follow Effect's parser semantics;
+candidate domains that cannot be proven equivalent stay on the reference path.
 
 ### Interruption and host capabilities
 

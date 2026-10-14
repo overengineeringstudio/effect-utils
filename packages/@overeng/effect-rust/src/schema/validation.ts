@@ -5,12 +5,12 @@ import { excess, width } from './effect-rust.ts'
 import { JsonError, JsonNumber } from './json.ts'
 import { makeOptionalOmitter } from './value-codec.ts'
 
-const needsPreparation = (root: SchemaAST.AST): boolean => {
+const hasNode = (root: SchemaAST.AST, predicate: (ast: SchemaAST.AST) => boolean): boolean => {
   const seen = new Set<SchemaAST.AST>()
   const visit = (ast: SchemaAST.AST): boolean => {
     if (seen.has(ast) === true) return false
     seen.add(ast)
-    if (Schema.resolveAnnotations(Schema.make(ast))?.[excess] === 'ignore') return true
+    if (predicate(ast)) return true
     if (ast.encoding !== undefined) return visit(SchemaAST.toEncoded(ast))
     if (ast._tag === 'Suspend') return visit(ast.thunk())
     if (ast._tag === 'Objects')
@@ -24,6 +24,16 @@ const needsPreparation = (root: SchemaAST.AST): boolean => {
   }
   return visit(root)
 }
+const needsPreparation = (root: SchemaAST.AST): boolean =>
+  hasNode(root, (ast) => Schema.resolveAnnotations(Schema.make(ast))?.[excess] === 'ignore')
+const needsUnfusedOmission = (root: SchemaAST.AST): boolean =>
+  hasNode(
+    root,
+    (ast) =>
+      ast._tag === 'Objects' &&
+      ast.propertySignatures.length === 0 &&
+      ast.indexSignatures.length === 0,
+  )
 /** Per-object ignore is explicit; every other object remains strict at the boundary. */
 export const prepare = ({
   ast,
@@ -133,8 +143,9 @@ export const encodeReference = <TSchema extends Schema.ConstraintEncoder<unknown
 export const decode = <TSchema extends Schema.ConstraintDecoder<unknown>>(schema: TSchema) => {
   const reference = decodeReference(schema)
   if (needsPreparation(schema.ast) === true) return reference
-  const compiled = makeCompiledCodec({ ast: schema.ast, direction: 'decode', reference })
-  return (input: unknown): TSchema['Type'] => compiled(input) as TSchema['Type']
+  const compiled = makeCompiledCodec({ ast: schema.ast, direction: 'decode' })
+  return (input: unknown, options?: SchemaAST.ParseOptions): TSchema['Type'] =>
+    options === undefined ? (compiled(input) as TSchema['Type']) : reference(input, options)
 }
 
 /** Optional omission is fused into the same successful encode walk. */
@@ -143,11 +154,14 @@ export const encode = <TSchema extends Schema.ConstraintEncoder<unknown>>(
   { omitOptional = false }: { omitOptional?: boolean } = {},
 ) => {
   const reference = encodeReference(schema, { omitOptional })
-  if (needsPreparation(SchemaAST.toType(schema.ast)) === true) return reference
+  if (
+    needsPreparation(SchemaAST.toType(schema.ast)) === true ||
+    (omitOptional && needsUnfusedOmission(SchemaAST.toEncoded(schema.ast)))
+  )
+    return reference
   const compiled = makeCompiledCodec({
     ast: schema.ast,
     direction: 'encode',
-    reference,
     omitOptional,
   })
   return (input: TSchema['Type']): unknown => compiled(input)

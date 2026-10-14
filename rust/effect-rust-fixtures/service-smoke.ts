@@ -89,24 +89,29 @@ for (const vector of vectors) {
   const decode = () => ContractJson.decode(codec)(vector.inputJson ?? JSON.stringify(vector.input))
   if (vector.accept === false) {
     assert.throws(decode, Schema.SchemaError, `${label} must be rejected by the contract codec`)
-    if (vector.contract === 'NestedMatchInput' || vector.contract === 'NestedMatchResult') {
-      const value = vector.inputJson === undefined ? vector.input : JSON.parse(vector.inputJson)
-      const reference = Schema.decodeUnknownSync(Direct.codec(codec), { onExcessProperty: 'error' })
-      let referenceIssue: Schema.SchemaError | undefined
+    // JSON syntax and numeric spelling are transport checks, not Direct codec checks.
+    let value = vector.input
+    if (vector.inputJson !== undefined) {
       try {
-        reference(value)
+        value = JSON.parse(vector.inputJson)
       } catch (cause) {
-        assert.ok(cause instanceof Schema.SchemaError, `${label} reference rejection`)
-        referenceIssue = cause
+        if (!(cause instanceof SyntaxError)) throw cause
       }
-      assert.ok(referenceIssue, `${label} reference must reject`)
-      const expectedIssue = referenceIssue
-      assert.throws(
-        () => Direct.decode(codec)(value),
-        (cause) => cause instanceof Schema.SchemaError && cause.message === expectedIssue.message,
-        `${label} compiled direct rejection agrees`,
-      )
     }
+    const reference = Schema.decodeUnknownSync(Direct.codec(codec), { onExcessProperty: 'error' })
+    const outcome = (parse: (input: unknown) => unknown) => {
+      try {
+        return { value: parse(value) }
+      } catch (cause) {
+        assert.ok(cause instanceof Schema.SchemaError, `${label} schema rejection`)
+        return { error: cause.message }
+      }
+    }
+    assert.deepEqual(
+      outcome(Direct.decode(codec)),
+      outcome(reference),
+      `${label} compiled direct outcome agrees`,
+    )
     continue
   }
   assert.equal(
@@ -119,6 +124,17 @@ for (const vector of vectors) {
     vector.canonicalJson ?? canonical(vector.canonical ?? vector.input),
     `${label} direct codec agrees`,
   )
+  const value = decode()
+  const directCodec = Direct.codec(codec)
+  const referenceDecode = Schema.decodeUnknownSync(directCodec, { onExcessProperty: 'error' })
+  const referenceEncode = Schema.encodeUnknownSync(directCodec, { onExcessProperty: 'error' })
+  const wire = Direct.encode(codec)(value)
+  assert.deepEqual(
+    Direct.decode(codec)(wire),
+    referenceDecode(wire),
+    `${label} reference decode agrees`,
+  )
+  assert.deepEqual(wire, referenceEncode(value), `${label} reference encode agrees`)
 }
 
 const order = {

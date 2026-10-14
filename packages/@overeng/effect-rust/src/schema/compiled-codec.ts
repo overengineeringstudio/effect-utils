@@ -1,20 +1,44 @@
-import { Predicate, Schema, SchemaAST, SchemaIssue } from 'effect'
+import { Cause, Exit, Predicate, Schema, SchemaAST, SchemaIssue } from 'effect'
 
 import { makeOptionalOmitter } from './value-codec.ts'
 
 type Walk = (value: unknown) => unknown
 const options = { onExcessProperty: 'error' } as const
+const runtimeTypeOf = (value: unknown) =>
+  value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+
+// Private failures distinguish parser rejection from user code throwing SchemaError.
+class ParseFailure {
+  readonly issue: SchemaIssue.Issue
+  constructor(issue: SchemaIssue.Issue) {
+    this.issue = issue
+  }
+}
+class DefectFailure {
+  readonly cause: Cause.Cause<unknown>
+  constructor(cause: Cause.Cause<unknown>) {
+    this.cause = cause
+  }
+}
+const protect =
+  (walk: Walk): Walk =>
+  (value) => {
+    try {
+      return walk(value)
+    } catch (cause) {
+      if (cause instanceof ParseFailure || cause instanceof DefectFailure) throw cause
+      throw new DefectFailure(Cause.die(cause))
+    }
+  }
 
 /** Compile admitted containers while retaining Effect leaves and native issue structure. */
 export const makeCompiledCodec = ({
   ast,
   direction,
-  reference,
   omitOptional = false,
 }: {
   ast: SchemaAST.AST
   direction: 'decode' | 'encode'
-  reference: Walk
   omitOptional?: boolean
 }): Walk => {
   const seen = new Map<SchemaAST.AST, Walk>()
@@ -24,24 +48,35 @@ export const makeCompiledCodec = ({
     const schema = Schema.make<Schema.Codec<unknown>>(node)
     const parser =
       direction === 'decode'
-        ? Schema.decodeUnknownSync(schema, options)
-        : Schema.encodeUnknownSync(schema, options)
+        ? Schema.decodeUnknownExit(schema, options)
+        : Schema.encodeUnknownExit(schema, options)
     const omit = omitOptional
       ? makeOptionalOmitter(SchemaAST.toEncoded(node))
       : (value: unknown) => value
-    const fallback: Walk = node === ast ? reference : (value) => omit(parser(value))
+    const fallback: Walk = (value) => {
+      const exit = parser(value)
+      if (Exit.isSuccess(exit)) return omit(exit.value)
+      let issue: SchemaIssue.Issue | undefined
+      for (const reason of exit.cause.reasons) {
+        if (Cause.isFailReason(reason) === false || Schema.isSchemaError(reason.error) === false)
+          throw new DefectFailure(exit.cause)
+        issue ??= reason.error.issue
+      }
+      if (issue === undefined) throw new DefectFailure(exit.cause)
+      throw new ParseFailure(issue)
+    }
     let implementation: Walk = fallback
     const run: Walk = (value) => implementation(value)
     seen.set(node, run)
     const issueAst = direction === 'decode' ? node : SchemaAST.flip(node)
     const fail = (issue: SchemaIssue.Issue): never => {
-      throw new Schema.SchemaError(issue)
+      throw new ParseFailure(issue)
     }
     const at = (key: PropertyKey, input: unknown, visit: Walk, item: unknown): unknown => {
       try {
         return visit(item)
       } catch (cause) {
-        if (cause instanceof Schema.SchemaError === false) throw cause
+        if (cause instanceof ParseFailure === false) throw cause
         return fail(
           new SchemaIssue.Composite(
             issueAst,
@@ -71,7 +106,7 @@ export const makeCompiledCodec = ({
         const keys = new Set(
           fields.map((field) => (typeof field.name === 'number' ? String(field.name) : field.name)),
         )
-        implementation = (value) => {
+        implementation = protect((value) => {
           if (typeof value !== 'object' || value === null || Array.isArray(value) === true)
             return fallback(value)
           // Exactly Effect's local ordering and own-enumerable symbol policy.
@@ -127,16 +162,17 @@ export const makeCompiledCodec = ({
             }
           }
           return out
-        }
+        })
       } else if (node._tag === 'Arrays' && node.elements.length === 0 && node.rest.length === 1) {
         const item = compile(node.rest[0]!)
-        implementation = (value) => {
+        implementation = protect((value) => {
           if (Array.isArray(value) === false) return fallback(value)
-          const out = new Array<unknown>(value.length)
-          for (let index = 0; index < value.length; index++)
+          const length = value.length
+          const out = new Array<unknown>(length)
+          for (let index = 0; index < length; index++)
             out[index] = at(index, value, item, value[index])
           return out
-        }
+        })
       } else if (
         node._tag === 'Union' &&
         node.options?.mode !== 'oneOf' &&
@@ -150,17 +186,23 @@ export const makeCompiledCodec = ({
             : direction === 'decode'
               ? SchemaAST.toEncoded(other)
               : SchemaAST.toType(other)
-        let select: ((value: unknown) => Walk | undefined) | undefined
+        let select: ((value: unknown) => ReadonlyArray<Walk>) | undefined
         if (
           node.types.length === 2 &&
           nullish !== undefined &&
           effective !== undefined &&
-          other !== undefined
+          other !== undefined &&
+          other.encoding === undefined &&
+          nullish.encoding === undefined
         ) {
           const nullishRun = compile(nullish)
           const otherRun = compile(other)
           const tag = effective._tag
           const runtimeType = tag.toLowerCase()
+          const nullishCandidates = node.types.map(compile)
+          const nullishOnly = [nullishRun]
+          const otherOnly = [otherRun]
+          const empty: ReadonlyArray<Walk> = []
           const hasDiscriminator =
             effective._tag === 'Objects' &&
             effective.propertySignatures.some(
@@ -168,8 +210,10 @@ export const makeCompiledCodec = ({
                 field.type._tag === 'Literal' && SchemaAST.isOptional(field.type) === false,
             )
           if (
-            (tag === 'Objects' && hasDiscriminator === false) ||
-            tag === 'Arrays' ||
+            (tag === 'Objects' &&
+              effective.propertySignatures.length + effective.indexSignatures.length > 0 &&
+              hasDiscriminator === false) ||
+            (tag === 'Arrays' && effective.elements.length === 0 && effective.rest.length === 1) ||
             tag === 'String' ||
             tag === 'Number' ||
             tag === 'Boolean' ||
@@ -177,20 +221,23 @@ export const makeCompiledCodec = ({
             tag === 'Suspend'
           ) {
             select = (value) => {
-              if (nullish._tag === 'Null' ? value === null : value === undefined) return nullishRun
+              const actual = runtimeTypeOf(value)
+              if (nullish._tag === 'Null' ? value === null : value === undefined)
+                return tag === 'Suspend' ? nullishCandidates : nullishOnly
               // Effect treats a suspended union member as a runtime-type fallback.
-              if (tag === 'Suspend') return otherRun
+              if (tag === 'Suspend') return otherOnly
               const matches =
                 tag === 'Objects'
-                  ? typeof value === 'object' && value !== null && Array.isArray(value) === false
+                  ? actual === 'object'
                   : tag === 'Arrays'
-                    ? Array.isArray(value)
-                    : typeof value === runtimeType
-              return matches ? otherRun : undefined
+                    ? actual === 'array'
+                    : actual === runtimeType
+              return matches ? otherOnly : empty
             }
           }
         } else {
           const members = node.types.map((type) => {
+            if (type.encoding !== undefined) return undefined
             const candidate =
               direction === 'decode' ? SchemaAST.toEncoded(type) : SchemaAST.toType(type)
             if (candidate._tag !== 'Objects') return undefined
@@ -200,47 +247,50 @@ export const makeCompiledCodec = ({
             )
             const field = tags[0]
             if (tags.length !== 1 || field?.type._tag !== 'Literal') return undefined
-            return { key: field.name, literal: field.type.literal, run: compile(type) }
+            if (type._tag !== 'Objects') return undefined
+            const source = type.propertySignatures.find((property) => property.name === field.name)
+            if (source?.type.encoding !== undefined) return undefined
+            return { key: field.name, literal: field.type.literal, runs: [compile(type)] }
           })
           const first = members[0]
           if (
             first !== undefined &&
             members.every((member) => member !== undefined && member.key === first.key)
           ) {
-            const byTag = new Map(members.map((member) => [member!.literal, member!.run]))
+            const byTag = new Map(members.map((member) => [member!.literal, member!.runs]))
             if (byTag.size === members.length) {
+              const empty: ReadonlyArray<Walk> = []
               select = (value) => {
-                if (Predicate.isObjectKeyword(value) === false) return undefined
+                if (Predicate.isObjectKeyword(value) === false) return empty
                 const present =
                   first.key === '__proto__' ? Object.hasOwn(value, first.key) : first.key in value
-                return present ? byTag.get(Reflect.get(value, first.key)) : undefined
+                return present ? (byTag.get(Reflect.get(value, first.key)) ?? empty) : empty
               }
             }
+          }
+        }
+        if (
+          select === undefined &&
+          node.types.length > 0 &&
+          node.types.every((type) => type._tag === 'Suspend')
+        ) {
+          // Suspended alternatives are all candidates in Effect's declaration order.
+          const members = node.types.map(compile)
+          select = (value) => {
+            // Classification can itself throw for a revoked proxy, before parsing.
+            runtimeTypeOf(value)
+            return members
           }
         }
         if (select !== undefined) {
           const choose = select
           implementation = (value) => {
-            const member = choose(value)
-            if (member === undefined)
-              return fail(new SchemaIssue.AnyOf(issueAst, [], value, options))
-            try {
-              return member(value)
-            } catch (cause) {
-              if (cause instanceof Schema.SchemaError === false) throw cause
-              return fail(new SchemaIssue.AnyOf(issueAst, [cause.issue], value, options))
-            }
-          }
-        } else if (node.types.every((type) => type._tag === 'Suspend')) {
-          // Suspended alternatives are all candidates in Effect's declaration order.
-          const members = node.types.map(compile)
-          implementation = (value) => {
             let issues: Array<SchemaIssue.Issue> | undefined
-            for (const member of members) {
+            for (const member of choose(value)) {
               try {
                 return member(value)
               } catch (cause) {
-                if (cause instanceof Schema.SchemaError === false) throw cause
+                if (cause instanceof ParseFailure === false) throw cause
                 ;(issues ??= []).push(cause.issue)
               }
             }
@@ -251,5 +301,15 @@ export const makeCompiledCodec = ({
     }
     return run
   }
-  return compile(ast)
+  const root = compile(ast)
+  return (value) => {
+    try {
+      return root(value)
+    } catch (cause) {
+      if (cause instanceof ParseFailure) throw new Schema.SchemaError(cause.issue)
+      if (cause instanceof DefectFailure)
+        throw new Error('Sync adapter can only throw schema errors', { cause: cause.cause })
+      throw cause
+    }
+  }
 }
