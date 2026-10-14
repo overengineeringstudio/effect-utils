@@ -206,10 +206,10 @@ export const Devbar = ({
 }: DevbarProps): React.ReactNode => {
   const panelId = React.useId()
   const toggleRef = React.useRef<HTMLButtonElement>(null)
-  const panelRef = React.useRef<HTMLElement>(null)
   /** Ephemeral toggle bookkeeping only; never selection state or persistence. */
   const lastPanel = React.useRef<string | undefined>(undefined)
   const restoreFocus = React.useRef(false)
+  const escapeFocus = React.useRef<Element | undefined>(undefined)
 
   const selected = panels.find((panel) => panel.id === openPanel)
   const selectedId = selected?.id
@@ -227,28 +227,35 @@ export const Devbar = ({
 
   // Capture focus before React removes a panel, including host-controlled closes.
   const attachPanel = React.useCallback((panel: HTMLElement | null) => {
-    panelRef.current = panel
     if (panel === null) return
     return () => {
-      if (panel.contains(document.activeElement) === true) restoreFocus.current = true
-      panelRef.current = null
+      const focused = document.activeElement
+      restoreFocus.current =
+        panel.contains(focused) === true ||
+        (focused === escapeFocus.current && panel.parentElement?.contains(focused) === true)
+      escapeFocus.current = undefined
     }
   }, [])
 
-  const propose = (next: string | undefined) => {
-    if (next === undefined && panelRef.current?.contains(document.activeElement) === true) {
-      restoreFocus.current = true
-    }
+  const propose = ({
+    next,
+    restoreFrom,
+  }: {
+    next: string | undefined
+    restoreFrom?: Element | undefined
+  }) => {
+    restoreFocus.current = false
+    escapeFocus.current = restoreFrom
     onOpenPanelChange(next)
   }
 
   const proposeToggle = () => {
     if (selected !== undefined) {
-      propose(undefined)
+      propose({ next: undefined })
       return
     }
     const next = panels.find((panel) => panel.id === lastPanel.current)?.id ?? panels[0]?.id
-    if (next !== undefined) propose(next)
+    if (next !== undefined) propose({ next })
   }
 
   const latest = React.useRef(proposeToggle)
@@ -287,8 +294,7 @@ export const Devbar = ({
           selected !== undefined
         ) {
           event.preventDefault()
-          restoreFocus.current = true
-          propose(undefined)
+          propose({ next: undefined, restoreFrom: document.activeElement ?? undefined })
         }
       }}
     >
@@ -305,7 +311,7 @@ export const Devbar = ({
               type="button"
               aria-label={`Close ${selected.label} panel`}
               aria-controls={panelId}
-              onClick={() => propose(undefined)}
+              onClick={() => propose({ next: undefined })}
               {...stylex.props(styles.button)}
             >
               Close
@@ -337,7 +343,7 @@ export const Devbar = ({
                 type="button"
                 aria-expanded={isSelected}
                 aria-controls={isSelected === true ? panelId : undefined}
-                onClick={() => propose(isSelected === true ? undefined : panel.id)}
+                onClick={() => propose({ next: isSelected === true ? undefined : panel.id })}
                 {...stylex.props(styles.button, isSelected === true && styles.active)}
               >
                 {panel.label}
@@ -456,7 +462,8 @@ const SegmentGroup = ({
     position,
     toggle,
     onToggle,
-  } = useAnchoredPopover({ overflow: true, enabled: hidden.length > 0 })
+    onKeyDown,
+  } = useAnchoredPopover({ enabled: hidden.length > 0 })
   const natural =
     widths.reduce((total, segment) => total + segment.width, 0) +
     Math.max(0, segments.length - 1) * (measurements?.gap ?? 0)
@@ -506,6 +513,7 @@ const SegmentGroup = ({
           aria-controls={popoverId}
           aria-haspopup="dialog"
           onClick={toggle}
+          onKeyDown={onKeyDown}
           {...stylex.props(styles.button, styles.overflow)}
         >
           +{hidden.length}
@@ -520,6 +528,7 @@ const SegmentGroup = ({
         aria-label="More status items"
         tabIndex={-1}
         onToggle={onToggle}
+        onKeyDown={onKeyDown}
         {...stylex.props(
           anchoredPopoverStyles.surface,
           anchoredPopoverStyles.position(

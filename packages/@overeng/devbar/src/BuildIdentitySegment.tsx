@@ -131,22 +131,16 @@ const IdentityView = ({
       })
     }
   }, [visible])
-  React.useLayoutEffect(() => {
-    if (visible === false) return
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || event.defaultPrevented === true) return
-      event.preventDefault()
-      // Dismiss hover-only disclosures before Escape reaches the shell's root handler.
-      event.stopPropagation()
-      setDismissed(true)
-    }
-    document.addEventListener('keydown', onKeyDown, true)
-    return () => document.removeEventListener('keydown', onKeyDown, true)
-  }, [visible])
   const short = formatBuildIdentityShort({ identity, now })
   return (
     <span
       {...stylex.props(styles.root, style)}
+      onKeyDown={(event) => {
+        if (visible === false || event.key !== 'Escape' || event.defaultPrevented === true) return
+        event.preventDefault()
+        event.stopPropagation()
+        setDismissed(true)
+      }}
       onMouseEnter={() => {
         setHovered(true)
         show()

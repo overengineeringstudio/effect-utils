@@ -51,6 +51,7 @@ export const AnchoredDisclosure = ({
         aria-controls={disclosure.id}
         aria-haspopup="dialog"
         onClick={disclosure.toggle}
+        onKeyDown={disclosure.onKeyDown}
         {...triggerProps}
         {...stylex.props(styles.trigger, style)}
       >
@@ -66,6 +67,7 @@ export const AnchoredDisclosure = ({
         tabIndex={-1}
         data-devbar-disclosure={disclosure.expanded === true ? '' : undefined}
         onToggle={disclosure.onToggle}
+        onKeyDown={disclosure.onKeyDown}
         {...stylex.props(
           anchoredPopoverStyles.surface,
           anchoredPopoverStyles.position(
@@ -124,11 +126,9 @@ export const anchoredPopoverStyles = stylex.create({
 export const useAnchoredPopover = ({
   onOpenChange,
   enabled = true,
-  overflow = false,
 }: {
   readonly onOpenChange?: ((open: boolean) => void) | undefined
   readonly enabled?: boolean | undefined
-  readonly overflow?: boolean | undefined
 }) => {
   const triggerRef = React.useRef<HTMLButtonElement>(null)
   const popoverRef = React.useRef<HTMLDivElement>(null)
@@ -184,26 +184,11 @@ export const useAnchoredPopover = ({
     const observer = new ResizeObserver(positionPopover)
     observer.observe(popover)
     window.addEventListener('resize', positionPopover)
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || event.defaultPrevented === true) return
-      // Nested disclosures and identity tooltips consume Escape before overflow.
-      if (
-        overflow === true &&
-        (document.querySelector('[data-devbar-disclosure]') !== null ||
-          document.querySelector('[data-devbar-identity-tooltip]') !== null)
-      )
-        return
-      event.preventDefault()
-      event.stopPropagation()
-      close(true)
-    }
-    document.addEventListener('keydown', onKeyDown, true)
     return () => {
       observer.disconnect()
       window.removeEventListener('resize', positionPopover)
-      document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [expanded, overflow])
+  }, [expanded])
   React.useLayoutEffect(
     () => () => {
       if (openRef.current === true) {
@@ -220,6 +205,12 @@ export const useAnchoredPopover = ({
     expanded,
     position,
     toggle: (): void => (expanded === true ? close(true) : change(true)),
+    onKeyDown: (event: React.KeyboardEvent): void => {
+      if (expanded === false || event.key !== 'Escape' || event.defaultPrevented === true) return
+      event.preventDefault()
+      event.stopPropagation()
+      close(true)
+    },
     onToggle: (event: React.ToggleEvent<HTMLDivElement>): void => {
       // Toggle events are coalesced by the browser; use the current native state.
       change(event.currentTarget.matches(':popover-open'))

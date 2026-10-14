@@ -294,6 +294,39 @@ describe('Devbar interaction', () => {
     )
     expect(document.activeElement).toBe(outside)
   })
+
+  it.each([false, true])(
+    'does not restore stale focus after a rejected close (switchPanel=%s)',
+    (switchPanel) => {
+      const onOpenPanelChange = vi.fn()
+      const view = ({ openPanel }: { openPanel: string | undefined }) => (
+        <>
+          <textarea aria-label="Host input" />
+          <Devbar
+            panels={panels}
+            openPanel={openPanel}
+            onOpenPanelChange={onOpenPanelChange}
+          />
+        </>
+      )
+      const { rerender } = render(view({ openPanel: 'performance' }))
+      const inner = screen.getByRole('button', { name: 'Inspect frame' })
+      act(() => inner.focus())
+      fireEvent.keyDown(inner, { key: 'Escape' })
+      expect(onOpenPanelChange).toHaveBeenCalledExactlyOnceWith(undefined)
+      expect(screen.getByRole('region', { name: 'Performance' })).toBeDefined()
+      expect(document.activeElement).toBe(inner)
+      if (switchPanel === true) {
+        pointerClick(screen.getByRole('button', { name: 'Logs' }))
+        rerender(view({ openPanel: 'logs' }))
+      }
+      const outside = screen.getByRole('textbox', { name: 'Host input' })
+      act(() => outside.focus())
+      rerender(view({ openPanel: undefined }))
+      expect(screen.queryByRole('region')).toBeNull()
+      expect(document.activeElement).toBe(outside)
+    },
+  )
 })
 
 describe('Devbar composition and geometry', () => {

@@ -142,11 +142,14 @@ width when any segment has an alert. A hidden build's overflow copy remains
 keyboard-operable and can open its anchored disclosure. Fitting away overflow
 closes it without stealing focus and unmounts its interactive content.
 
-Escape ordering is disclosure, identity tooltip, overflow, then panel. The
-overflow handler ignores events while an open `data-devbar-disclosure` surface
-or identity tooltip exists, including when focus has moved elsewhere. Each
-layer consumes its own Escape once in document capture, before the shell root's
-bubbling handler; disclosure and overflow close restore their respective trigger focus.
+Escape follows React bubbling ancestry from the innermost focused layer: a host
+popover, disclosure or identity tooltip, enclosing overflow, then panel. Each
+layer uses an element-level `onKeyDown` on its content or trigger, respects
+`defaultPrevented`, and consumes its own Escape once. Host-owned portals retain
+React ancestry so nested handlers run first; unrelated host inputs do not reach
+these handlers. Disclosure and overflow close restore their respective trigger
+focus. A hovered tooltip does not intercept Escape from elsewhere in the bar
+or host app.
 
 The `Narrow600` story supplies version (`1`), websocket (`4`), HTTP (`3`), subscriptions (`2`), and message-rate (`0`) priorities with deterministic realistic text. Its play assertions check the 600px host geometry, intact visible segments wholly within the row, priority ordering, the hidden-ID accessible name, complete overflow contents, and Escape/focus restoration.
 
@@ -213,8 +216,8 @@ aria-hidden dot updates live. `render()` runs only while open; opening can
 notify the host to mark entries seen without remounting the dialog. The identity
 tooltip remains available on hover and focus, but is suppressed while the dialog
 is open. Opening and closing dismiss the current tooltip; subsequent hover or
-focus can reveal it again. The existing tooltip Escape handler stays installed
-only while visible, consumes Escape before the panel, and preserves focus.
+focus can reveal it again. The tooltip's element-level Escape handler acts only
+while visible, consumes Escape before enclosing layers, and preserves focus.
 
 Live segments share one sixty-second clock while at least one segment is mounted.
 Unmounting the final subscriber clears the interval; import alone schedules
@@ -258,6 +261,12 @@ freeze -> meter renderer state only
 Traces: DT.BAR-R05–R07.
 
 Panel buttons expose `aria-expanded`; the open panel has a stable generated DOM ID and accessible label, and its corresponding controls expose `aria-controls`. Buttons remain native keyboard-operable controls, not incorrectly labelled ARIA tabs without implementing a tablist keyboard model. Ctrl or Meta plus unmodified Backquote toggles globally while mounted, respects `defaultPrevented`, and removes its window listener on unmount. Escape is handled by the shell root's bubbling `onKeyDown` only when it is unconsumed and the root physically contains the event target; outside focus and portalled content cannot close the panel. Escape from the row or panel closes it and returns focus to the toggle. Any close, including pointer actions and host-controlled closes, returns focus to the toggle if focus was inside the removed panel; closes with focus outside the panel do not steal focus.
+
+Focus restoration is determined immediately before the actual panel removal,
+not retained from a rejected close proposal. Each new proposal clears pending
+restoration intent. For Escape from the row, the focused element at the proposal
+must still be focused inside the bar when the panel is removed; moving focus to
+the host app before a later controlled close prevents focus theft.
 
 The meter renderer owns DOM focus targets, text equivalents, and tooltips. `MeterStrip.onOpenDetail({ id })` delegates click and Enter/Space activation to the host; focus alone shows a tooltip without opening a panel. Tooltip access remains possible without hover. Freeze is a distinct named button/action and affects rendering, not source collection or headless readers. A repeated activation of the already-open meter keeps its panel open.
 
