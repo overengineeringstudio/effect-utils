@@ -13,7 +13,10 @@ dependency archives and imports or reconstructs the pinned Buck product graph.
     runtime inspection delegated to the admitted runtime-specific inspectors.
   - `buck2-runtime-inspect-*.nix` — observation-only runtime verification.
   - `buck2-product-candidates.nix` — package candidates backed by Buck products.
-  - `javascript-product-import.nix` — JavaScript module and runtime-tree import.
+  - `javascript-product-import.nix` — JavaScript module and runtime-tree import;
+    dispatches to `javascript-published-import.nix` (eval-time validation of
+    the pinned descriptor) or `javascript-source-import.nix` (build-time
+    validation for from-source products).
   - `mk-cli-packages.nix` — the retained Buck-backed CLI package wrapper.
   - Buck capability, archive, source-identity, and release helpers and tests.
   - `cli-build-stamp.nix` — shared build stamp helper for CLIs.

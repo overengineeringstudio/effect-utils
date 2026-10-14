@@ -353,20 +353,36 @@ let
           pathPackages ? [ ],
           smokeTestArgs ? null,
         }:
-        assert lib.assertMsg (product.kind == "javascript")
-          "buck2-products: importJavaScript requires a JavaScript product";
+        assert lib.assertMsg (
+          product.kind == "javascript"
+        ) "buck2-products: importJavaScript requires a JavaScript product";
         (import ../workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
-          inherit expectedProductKind expectedProductName expectedExternalCapabilities
-            expectedExternalModules binaryName environment generateCompletions
-            nativeNodePackages pathPackages smokeTestArgs;
+          inherit
+            expectedProductKind
+            expectedProductName
+            expectedExternalCapabilities
+            expectedExternalModules
+            binaryName
+            environment
+            generateCompletions
+            nativeNodePackages
+            pathPackages
+            smokeTestArgs
+            ;
           artifact = "${sourceProduct}/${outputName}";
           descriptor = "${sourceProduct}/descriptor.json";
           sourceImport = {
             product = sourceProduct;
             hasRuntimeClosure = runtimeClosureTarget != null;
             facts = {
-              inherit expectedModulePath expectedRuntimeKind expectedRuntimeContract
-                expectedRuntimeContractVersion expectedProducerCommit checkProducerCommit;
+              inherit
+                expectedModulePath
+                expectedRuntimeKind
+                expectedRuntimeContract
+                expectedRuntimeContractVersion
+                expectedProducerCommit
+                checkProducerCommit
+                ;
             };
           };
         };
