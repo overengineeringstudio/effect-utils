@@ -52,3 +52,11 @@ CI=1 ../../../node_modules/.bin/vitest run --config vitest.config.ts
 ## Non-goals
 
 Durable Workflow execution, retries, background scheduling, dynamic dependencies, transport, parallel node execution, multi-writer arbitration, query/UI inventory, automatic GC, semantic canonicalization, consumer authorization, and external-service determinism. Consumer services are closed over or provided before node registration. Typed output builders and alternative storage adapters must not weaken the persisted contract.
+
+## Selection status and freshness tiers
+
+`getSelectionStatus(ref)` is a read-only, serialized snapshot of selected-head acceptance and the latest durable attempt. It computes the current recipe/input action from selected upstream heads without executing nodes, propagates stale upstream acceptance, and returns `Missing`, `Current`, or `StaleAction`. A selected historical head is not current acceptance after an action change. `latestAttempt` survives layer/process restart through a `data-graph/attempts/<node identity digest hex>` pin targeting a status manifest. Failed/rejected attempts retain their action, reason and attempt manifest; successful selections replace the status with `Accepted`. Status and head pins are individually atomic, not transactional.
+
+`checkFreshness({ status, now, maxAge })` is a read/publication gate: only current acceptance with an unexpired selected-head confirmation passes. Expiry is evaluated without graph execution. Serving historical content after rejection is an explicit consumer choice, not implicit renewed acceptance.
+
+`planRefresh({ now, heads, policy, compareTiers, budget })` uses a consumer-supplied observation inventory. Policy returns `{ tier, maxAge }`; tier is opaque, and `compareTiers` supplies its priority (negative means the left tier is scheduled first). Stale requests rank by tier priority, then overdue age, then NodeId, within the integer budget. Planning neither reads storage nor executes nodes.
