@@ -325,7 +325,7 @@ def no_ui_session():
 base = Path(os.environ['MACOS_APP_TEST_WORK'])
 args = sys.argv[1:]
 with (base / 'codesign.log').open('a') as log: log.write(json.dumps({'argv': args, 'env': sorted(os.environ.items())}) + '\n')
-if '--sign' in args:
+if '--sign' in args or '-s' in args:
     with (base / 'sign.log').open('a') as log: log.write('sign\n')
     if (base / 'sign-fail').exists():
         print('test-injected signing failure', file=sys.stderr)
