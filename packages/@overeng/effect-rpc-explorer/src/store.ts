@@ -317,7 +317,7 @@ const isTerminalState = (state: RecordState): boolean => {
 }
 
 const stateForTerminal = (
-  outcome: 'success' | 'typedFailure' | 'defect' | 'interrupted',
+  outcome: 'success' | 'typedFailure' | 'defect' | 'interrupted' | 'transportFailure',
 ): RecordState => {
   switch (outcome) {
     case 'success':
@@ -328,6 +328,8 @@ const stateForTerminal = (
       return 'defect'
     case 'interrupted':
       return 'interrupted'
+    case 'transportFailure':
+      return 'uncertain'
   }
 }
 
@@ -715,8 +717,39 @@ export const makeExplorerStore = ({
       standaloneEventIds.push(eventId)
       operations.push({ _tag: 'AppendEvent', event })
 
-      for (const record of active.values()) {
+      // Canonical observer terminals settle first. Attach their following fault
+      // without reopening records or attributing later faults to old calls.
+      for (const record of completed.values()) {
         if (record.key.connectionId !== input.connectionId) continue
+        if (input.observerSide !== undefined && record.key.observerSide !== input.observerSide)
+          continue
+        const lastEventId = record.events.at(-1)
+        const lastEvent = lastEventId === undefined ? undefined : events.get(lastEventId)
+        const transportTerminal =
+          lastEvent?._tag === 'TerminalObserved' && lastEvent.outcome === 'transportFailure'
+        const failedSend = input.fault === 'sendFailure' && lastEvent?._tag === 'SendFailed'
+        if (transportTerminal === false && failedSend === false) continue
+        setRecord({
+          bucket: 'completed',
+          record: {
+            ...record,
+            lastAt: input.at,
+            events: [...record.events, eventId],
+            evidence: [
+              ...record.evidence,
+              { _tag: 'ConnectionFault', faultId: input.faultId, fault: input.fault },
+            ],
+          },
+          operations,
+        })
+      }
+
+      for (const record of active.values()) {
+        // These faults concern a single canonical terminal, not every request on the connection.
+        if (input.fault === 'capacity' || input.fault === 'sendFailure') continue
+        if (record.key.connectionId !== input.connectionId) continue
+        if (input.observerSide !== undefined && record.key.observerSide !== input.observerSide)
+          continue
         removeRecord({ bucket: 'active', record, operations })
         const uncertain: RpcRecord = {
           ...record,

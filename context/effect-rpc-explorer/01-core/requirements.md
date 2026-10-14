@@ -4,8 +4,10 @@
 
 The core package realizes capture and inspection for the
 [Effect RPC Explorer requirements](../requirements.md). It owns descriptors,
-observation seams, safe normalization, correlation, bounded state, the inspector
-protocol, and pipeline telemetry. It has no React surface.
+safe capture normalization, bounded inspection state, the inspector protocol,
+and pipeline telemetry. Shared lifecycle observation and correlation are owned
+by [effect-rpc-observer](../../devtools/03-rpc-observer/requirements.md).
+The core has no React surface.
 
 ## Assumptions
 
@@ -31,7 +33,7 @@ protocol, and pipeline telemetry. It has no React surface.
 ### Must expose one composable core
 
 - **RPCX.CORE-R01 Package boundary:**
-  `@overeng/effect-rpc-explorer` must expose capture decorators, middleware,
+  `@overeng/effect-rpc-explorer` must expose a shared-observer capture sink,
   descriptor construction, store, inspector group, schemas, and configuration
   without depending on React or starting a transport.
   Refines: RPCX-R01, RPCX-R03, RPCX-R04.
@@ -68,18 +70,18 @@ protocol, and pipeline telemetry. It has no React surface.
 
 ### Must observe complete lifecycle seams
 
-- **RPCX.CORE-R08 Middleware semantics:** Server middleware must record decoded
-  request metadata and one correlated handler terminal cause. Client middleware
-  must not be treated as proof that a response completed.
+- **RPCX.CORE-R08 Middleware semantics:** The capture sink must retain decoded
+  request metadata and correlated handler terminal evidence supplied by shared
+  server observer middleware, without introducing a second lifecycle.
   Refines: RPCX-R05, RPCX-R06, RPCX-R08.
-- **RPCX.CORE-R09 Protocol transparency:** Client and server Protocol decorators
-  must forward `run`, `send`, lifecycle effects, codec, capability booleans,
-  initial message, client IDs, disconnect stream, transferables, and errors with
-  application-visible behavior unchanged.
+- **RPCX.CORE-R09 Protocol transparency:** Explorer capture must compose with
+  the shared observer's client/server Protocol decorators without changing
+  application-visible transport behavior or adding a second wrapper.
   Refines: RPCX-R05, RPCX-R06.
-- **RPCX.CORE-R10 Encoded vocabulary:** Decorators must observe Request, Chunk,
-  Ack, Interrupt, Exit, notification, EOF/disconnect, protocol fault, send
-  attempt, send success, and send failure without assuming one transport codec.
+- **RPCX.CORE-R10 Encoded vocabulary:** The capture sink must consume canonical
+  lifecycle callbacks and borrowed Request, Chunk, Ack, Interrupt, Exit,
+  notification, EOF/disconnect, fault, and send evidence without assuming one
+  transport codec or duplicating lifecycle accounting.
   Refines: RPCX-R05, RPCX-R09.
 - **RPCX.CORE-R11 Batch accounting:** One Chunk envelope containing N values must
   increment envelope count by one and stream-value count by N, retaining only
