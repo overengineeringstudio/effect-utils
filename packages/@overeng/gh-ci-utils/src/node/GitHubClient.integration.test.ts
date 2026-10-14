@@ -4,7 +4,7 @@ import { createServer } from 'node:http'
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
 import { Effect, FileSystem, Layer, Schema } from 'effect'
-import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/http'
+import { FetchHttpClient } from 'effect/http'
 import { expect } from 'vitest'
 
 import { GitHubAuthConfigTag } from './Config.ts'
@@ -50,30 +50,28 @@ it.live('keeps gh-ci-utils App auth on the shared minter with repository-scoped 
     const address = server.address()
     if (address === null || typeof address === 'string')
       return yield* Effect.die('Expected fixture TCP address')
-    const transport = Layer.effect(
-      HttpClient.HttpClient,
-      Effect.map(HttpClient.HttpClient, (client) =>
-        client.pipe(
-          HttpClient.mapRequest((request) => {
-            const url = new URL(request.url)
-            url.protocol = 'http:'
-            url.hostname = '127.0.0.1'
-            url.port = String(address.port)
-            return HttpClientRequest.setUrl(request, url)
-          }),
-        ),
-      ),
-    ).pipe(Layer.provide(FetchHttpClient.layer))
+    const apiBase = new URL(`http://127.0.0.1:${address.port}`)
     yield* Effect.gen(function* () {
       const client = yield* GitHubClient
       yield* client.listWorkflowRunsByStatus({ repo: 'schickling/dotfiles', status: 'completed' })
       yield* client.listWorkflowRunsByStatus({ repo: 'schickling/dotfiles', status: 'completed' })
+      expect(yield* client.getRequestCount).toBe(2)
+      expect(yield* client.getRestRequestCount).toBe(2)
     }).pipe(
       Effect.provide(
-        GitHubClient.Default.pipe(
+        GitHubClient.layer({
+          consumer: 'gh-ci-utils',
+          permissions: {
+            actions: 'write',
+            checks: 'read',
+            contents: 'read',
+            pull_requests: 'read',
+          },
+          apiBase,
+        }).pipe(
           Layer.provide(
             Layer.mergeAll(
-              transport,
+              FetchHttpClient.layer,
               NodeServices.layer,
               Layer.succeed(GitHubAuthConfigTag, {
                 _tag: 'github-app',
