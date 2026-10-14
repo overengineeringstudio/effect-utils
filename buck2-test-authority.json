@@ -179,7 +179,8 @@
       "selectedTestFiles": [
         "src/identity.unit.test.ts",
         "src/mod.integration.test.ts",
-        "src/properties.integration.test.ts"
+        "src/properties.integration.test.ts",
+        "src/selection.integration.test.ts"
       ],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/data-graph:test",
@@ -187,7 +188,8 @@
       "testFiles": [
         "src/identity.unit.test.ts",
         "src/mod.integration.test.ts",
-        "src/properties.integration.test.ts"
+        "src/properties.integration.test.ts",
+        "src/selection.integration.test.ts"
       ],
       "unboundedAfter": [],
       "unboundedFiles": []
