@@ -113,12 +113,14 @@ in
               "$git" -C "$root" show "$base_commit:$f" > "$base/$(${pkgs.coreutils}/bin/basename "$f")"
             done
         $chmod -R u+w "$base"
-        $sed -i "s|registry_path: .*|registry_path: $model|" "$base/manifest.yaml"
+        REGISTRY_PATHS="$model/registry-paths.json" ${pkgs.yq-go}/bin/yq -i \
+          'with(.dependencies[]; .name as $name | .registry_path = (load(strenv(REGISTRY_PATHS))[$name] // error("No hermetic registry model")))' "$base/manifest.yaml"
 
         # Current: the actually-emitted registry.
         $cp "$reg"/*.yaml "$cur/"
         $chmod -R u+w "$cur"
-        $sed -i "s|registry_path: .*|registry_path: $model|" "$cur/manifest.yaml"
+        REGISTRY_PATHS="$model/registry-paths.json" ${pkgs.yq-go}/bin/yq -i \
+          'with(.dependencies[]; .name as $name | .registry_path = (load(strenv(REGISTRY_PATHS))[$name] // error("No hermetic registry model")))' "$cur/manifest.yaml"
 
         # Weaver 0.26 requires dependency schema_url. Normalize a pre-0.26 baseline to the
         # current pinned dependency identity so this migration does not mask first-party changes.

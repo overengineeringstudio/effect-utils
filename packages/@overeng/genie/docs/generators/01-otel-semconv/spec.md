@@ -318,8 +318,13 @@ bindings that didn't change.
   `OtelAttrs.defineSync` path; `span.label` stays runtime-only and is filtered
   from the registry projection (SC-T03) — `OtelSpan.define` is not used for derivation since it
   mandates a non-namespaced `span.label` attribute.
-- **TS-constants scope:** own-namespace keys only; upstream-referenced keys
+- **Constants scope:** TS and Rust emit own-namespace keys only; upstream-referenced keys
   (`http.request.method`) come from upstream's own generated constants, not ours.
+  Import reusable builders and renderers from `@overeng/genie/weaver`.
+  An entry's `constName` overrides the complete generated identifier verbatim in both
+  languages; without it, attributes retain their derived names and TS signals retain
+  their `SPAN_` / `METRIC_` prefixes. Final identifiers must be valid and unique in the
+  TS output namespace or their Rust kind module (including the reserved `ALL` slice).
 - **Policy annotations:** emitted under `annotations.overeng_policy.{cardinality,encode}`
   (weaver-ignored, machine-readable for our gates).
 
