@@ -9,8 +9,7 @@ use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -253,39 +252,6 @@ fn load_manifest(pointer: &Path) -> Result<Manifest> {
     serde_json::from_reader(File::open(pointer.join("manifest.json"))?)
         .map_err(|e| failure("manifest", e.to_string()))
 }
-struct SocketGuard { path: PathBuf, device: u64, inode: u64 }
-impl Drop for SocketGuard {
-    fn drop(&mut self) {
-        if let Ok(metadata) = fs::symlink_metadata(&self.path) {
-            if metadata.dev() == self.device && metadata.ino() == self.inode {
-                let _ = fs::remove_file(&self.path);
-            }
-        }
-    }
-}
-fn bind_socket(path: &Path) -> Result<(UnixListener, SocketGuard)> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) => {
-            if !metadata.file_type().is_socket() { return Err(failure("socket", "Existing path is not a socket")); }
-            match UnixStream::connect(path) {
-                Ok(_) => return Err(failure("socket", "A listener already owns the socket")),
-                Err(error) if error.raw_os_error() == Some(libc::ECONNREFUSED) => {
-                    let current = fs::symlink_metadata(path)?;
-                    if current.dev() != metadata.dev() || current.ino() != metadata.ino() {
-                        return Err(failure("socket", "Socket changed during stale-listener check"));
-                    }
-                    fs::remove_file(path)?;
-                }
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
-    }
-    let listener = UnixListener::bind(path)?;
-    let metadata = fs::symlink_metadata(path)?;
-    Ok((listener, SocketGuard { path: path.to_owned(), device: metadata.dev(), inode: metadata.ino() }))
-}
 struct ConnectionPermit(Arc<AtomicUsize>);
 impl Drop for ConnectionPermit {
     fn drop(&mut self) { self.0.fetch_sub(1, Ordering::Relaxed); }
@@ -303,8 +269,15 @@ fn main_impl() -> Result<()> {
             }
             // SAFETY: the handler only stores a lock-free atomic flag.
             unsafe { libc::signal(libc::SIGTERM, stop as *const () as libc::sighandler_t); }
-            let (listener, _socket_guard) = bind_socket(Path::new(&args[2]))?;
-            fs::set_permissions(&args[2], fs::Permissions::from_mode(manifest.socket_mode))?;
+            // SAFETY: geteuid has no pointer arguments and selects the actual service owner.
+            let owner_uid = unsafe { libc::geteuid() };
+            let socket_path = Path::new(&args[2]);
+            let socket_path = if socket_path.is_absolute() { socket_path.to_owned() }
+                else { std::env::current_dir()?.join(socket_path) };
+            let (listener, _socket_guard) = macos_app_host::endpoint::bind(
+                &socket_path,
+                macos_app_host::endpoint::EndpointPolicy { owner_uid, socket_mode: manifest.socket_mode },
+            ).map_err(|e| failure("socket", e.to_string()))?;
             listener.set_nonblocking(true)?;
             let server = Arc::new(Server { pointer, running: Mutex::new(HashSet::new()) });
             let connections = Arc::new(AtomicUsize::new(0));
