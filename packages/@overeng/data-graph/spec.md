@@ -60,3 +60,15 @@ Durable Workflow execution, retries, background scheduling, dynamic dependencies
 `checkFreshness({ status, now, maxAge })` is a read/publication gate: only current acceptance with an unexpired selected-head confirmation passes. Expiry is evaluated without graph execution. Serving historical content after rejection is an explicit consumer choice, not implicit renewed acceptance.
 
 `planRefresh({ now, heads, policy, compareTiers, budget })` uses a consumer-supplied observation inventory. Policy returns `{ tier, maxAge }`; tier is opaque, and `compareTiers` supplies its priority (negative means the left tier is scheduled first). Stale requests rank by tier priority, then overdue age, then NodeId, within the integer budget. Planning neither reads storage nor executes nodes.
+
+## Crash recovery and scale evidence
+
+`src/recovery.integration.test.ts` interrupts publication at the action/head pin boundaries while retaining real immutable filesystem writes. It checks that unpinned objects are not selected, deterministic action-only publication recovers without executing again, and a corrupted published materialization fails closed without selecting a head.
+
+`src/scale.integration.test.ts` exercises 1,000 generic opaque observation scopes plus one deterministic aggregate in the default CI suite. It records cold build, warm all-`Reused` pull, persisted-head inventory reading, and tier-prioritized `planRefresh` timings. There is no SQLite index. The 10,000-scope case is runnable but opt-in:
+
+```sh
+DATA_GRAPH_SCALE_10K=1 CI=1 ../../../node_modules/.bin/vitest run src/scale.integration.test.ts --config vitest.config.ts -t 'benchmarks 10k'
+```
+
+Timings are printed by the actual run; they are workload/environment observations, not portable performance guarantees.
