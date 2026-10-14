@@ -500,11 +500,11 @@ lib  ref changed but old worktree has 1 uncommitted changes (use --force to over
 
 **Worktree modes** (`--worktree-mode`):
 
-| Mode       | Worktree path | Behavior |
-| ---------- | ------------- | -------- |
-| `commit`   | `refs/commits/<sha>/` | Deterministic — exact locked commit |
+| Mode       | Worktree path                                   | Behavior                                                          |
+| ---------- | ----------------------------------------------- | ----------------------------------------------------------------- |
+| `commit`   | `refs/commits/<sha>/`                           | Deterministic — exact locked commit                               |
 | `tracking` | `refs/heads/<branch>/` or `refs/commits/<sha>/` | Clean exact-lock branch only; otherwise immutable commit fallback |
-| `auto`     | (depends) | `commit` in CI; `tracking` locally |
+| `auto`     | (depends)                                       | `commit` in CI; `tracking` locally                                |
 
 In `tracking` mode, any branch `HEAD` mismatch (ahead or behind), dirty tree,
 or branch-identity mismatch selects `refs/commits/<locked-commit>`. A missing
