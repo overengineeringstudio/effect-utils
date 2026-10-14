@@ -133,6 +133,22 @@ def root_remote_cache_enabled():
 def root_allow_cache_uploads():
     return read_root_config("buck2", "allow_cache_uploads", "true") == "true"
 
+def rust_native_sandbox_platforms():
+    """Registers the Linux-native candidate executor only behind its rollback flag.
+
+    This is target-wide admission, not command-wide admission. Callers must not
+    select it until every run action in that configured target is audited.
+    """
+    enabled = read_root_config("rust_native_sandbox", "enabled", "false")
+    if enabled not in ["true", "false"]:
+        fail("rust_native_sandbox.enabled must be true or false")
+    if enabled == "false":
+        return []
+    host = host_info()
+    if not host.os.is_linux or not host.arch.is_x86_64:
+        return []
+    return ["@rules//buck2/platforms:exec_linux_x86_64_rust_sandbox"]
+
 def cache_guarded_rule(impl, attrs, cache_eligible = None, **kwargs):
     """Owns shared-cache admission at rule definition, never at a call site."""
     rule_attrs = dict(attrs)
@@ -231,7 +247,7 @@ def _native_execution_platform_impl(ctx):
         platform,
         PlatformInfo(label = str(ctx.label.raw_target()), configuration = configuration),
         ExecutionPlatformRegistrationInfo(
-            platforms = [platform] + ([ctx.attrs.hermetic_platform[ExecutionPlatformInfo]] if ctx.attrs.hermetic_platform != None else []),
+            platforms = [platform] + ([ctx.attrs.hermetic_platform[ExecutionPlatformInfo]] if ctx.attrs.hermetic_platform != None else []) + [dep[ExecutionPlatformInfo] for dep in ctx.attrs.additional_platforms],
             exec_marker_constraint = get_exec_platform_marker(),
         ),
     ]
@@ -242,6 +258,7 @@ native_execution_platform = rule(
         "constraint_values": attrs.list(attrs.dep(providers = [ConstraintValueInfo])),
         "cache_hermetic": attrs.bool(default = False),
         "hermetic_platform": attrs.option(attrs.dep(providers = [ExecutionPlatformInfo]), default = None),
+        "additional_platforms": attrs.list(attrs.dep(providers = [ExecutionPlatformInfo]), default = []),
     },
 )
 

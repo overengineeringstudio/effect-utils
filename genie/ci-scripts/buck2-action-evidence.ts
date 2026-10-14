@@ -19,9 +19,12 @@ export const darwinUnsandboxedCategories = [
   'tsgo_emit_darwin_unsandboxed',
   'package_tree_darwin_unsandboxed',
 ] as const
+/** Only admitted Linux x86_64 native Rust commands retain cache-eligible categories. */
+export const rustLocalOnlyCategories = ['rustc_excluded', 'rustc_deps_excluded'] as const
 export const actionExclusionReasons = [
   'local-materialization-policy',
   'darwin-unsandboxed',
+  'rust-local-only',
 ] as const
 export type ActionExclusionReason = (typeof actionExclusionReasons)[number]
 export type ActionExclusionCounts = Record<ActionExclusionReason, number>
@@ -30,12 +33,15 @@ export const actionExclusionReason = (
 ): ActionExclusionReason | null =>
   darwinUnsandboxedCategories.some((excluded) => excluded === category) === true
     ? 'darwin-unsandboxed'
-    : localMaterializationCategories.some((excluded) => excluded === category) === true
-      ? 'local-materialization-policy'
-      : null
+    : rustLocalOnlyCategories.some((excluded) => excluded === category) === true
+      ? 'rust-local-only'
+      : localMaterializationCategories.some((excluded) => excluded === category) === true
+        ? 'local-materialization-policy'
+        : null
 export const zeroActionExclusionCounts = (): ActionExclusionCounts => ({
   'local-materialization-policy': 0,
   'darwin-unsandboxed': 0,
+  'rust-local-only': 0,
 })
 export const countActionExclusions = (
   actions: readonly { category: string | null }[],
@@ -147,4 +153,104 @@ export const outcomeFor = ({
     default:
       return 'other'
   }
+}
+
+export type NativeRustCohortAction = {
+  targetTriple: string
+  commandKind: string
+  target: string
+  configuration: string
+  digest: string
+}
+export type NativeRustCohortManifest = {
+  headSha: string
+  actions: readonly NativeRustCohortAction[]
+}
+export type NativeRustAdmissionViolation = {
+  reason:
+    | 'incomplete-action-artifact'
+    | 'invalid-native-cohort-manifest'
+    | 'remote-action-outside-native-cohort'
+  action?: ActionRecord
+}
+
+/**
+ * Audits a cohort-only q33 invocation, including its local prerequisites.
+ *
+ * The manifest must come from the analyzed, declared graph at this head, never
+ * from filtering observed cache hits. Digest binding preserves the compiler
+ * variant identity that q33's category/target/configuration alone cannot carry.
+ * This detects a violation after remote access; it does not prevent that access
+ * and cannot replace executor-level read/write exclusion.
+ */
+export const auditNativeRustCacheAdmission = ({
+  artifact,
+  manifest,
+}: {
+  artifact: ActionArtifact
+  manifest: NativeRustCohortManifest
+}): readonly NativeRustAdmissionViolation[] => {
+  const violations: NativeRustAdmissionViolation[] = []
+  if (
+    artifact.header.status !== 'collected' ||
+    artifact.header.complete !== true ||
+    artifact.header.evidenceGaps.length !== 0 ||
+    artifact.header.droppedActionCount !== 0 ||
+    artifact.header.rows !== artifact.actions.length ||
+    artifact.header.actionCount !== artifact.actions.length ||
+    artifact.header.invocations.some((invocation) => invocation.complete !== true)
+  )
+    violations.push({ reason: 'incomplete-action-artifact' })
+
+  const allowed = new Map<string, NativeRustCohortAction>()
+  let compilerCount = 0
+  let dependencyCount = 0
+  let invalidManifest = false
+  for (const entry of manifest.actions) {
+    if (
+      entry.targetTriple !== 'x86_64-unknown-linux-gnu' ||
+      (entry.commandKind !== 'rustc' && entry.commandKind !== 'deps') ||
+      /^[a-f0-9]{64}:[0-9]+$/u.test(entry.digest) !== true ||
+      entry.target.length === 0 ||
+      entry.configuration.length === 0 ||
+      allowed.has(entry.digest) === true
+    )
+      invalidManifest = true
+    if (entry.commandKind === 'rustc') compilerCount++
+    if (entry.commandKind === 'deps') dependencyCount++
+    allowed.set(entry.digest, entry)
+  }
+  if (
+    invalidManifest === true ||
+    compilerCount !== 89 ||
+    dependencyCount !== 89 ||
+    /^[a-f0-9]{40}$/u.test(manifest.headSha) !== true ||
+    manifest.headSha !== artifact.header.metadata.headSha
+  )
+    violations.push({ reason: 'invalid-native-cohort-manifest' })
+
+  for (const action of artifact.actions) {
+    const remoteRead =
+      action.executionKind === 2 ||
+      action.executionKind === 3 ||
+      action.executionKind === 9 ||
+      action.executionKind === 11
+    const remoteWrite =
+      action.cacheUploadResult === 1 ||
+      (action.cacheUploadResult >= 9 && action.cacheUploadResult <= 15)
+    if (remoteRead === false && remoteWrite === false) continue
+    const entry = action.digest === null ? undefined : allowed.get(action.digest)
+    if (
+      invalidManifest === true ||
+      entry === undefined ||
+      action.commandAction !== true ||
+      action.exclusionReason !== null ||
+      actionExclusionReason(action.category) !== null ||
+      action.target !== entry.target ||
+      action.configuration !== entry.configuration ||
+      action.category !== entry.commandKind
+    )
+      violations.push({ reason: 'remote-action-outside-native-cohort', action })
+  }
+  return violations
 }

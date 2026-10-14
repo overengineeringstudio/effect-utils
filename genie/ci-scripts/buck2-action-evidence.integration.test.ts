@@ -6,7 +6,11 @@ import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
-import { actionsArtifactName, localMaterializationCategories } from './buck2-action-evidence.ts'
+import {
+  actionsArtifactName,
+  localMaterializationCategories,
+  rustLocalOnlyCategories,
+} from './buck2-action-evidence.ts'
 import type { CacheEvidence } from './buck2-cache-evidence.ts'
 import { decodeEvidence } from './buck2-cache-warm99.ts'
 
@@ -102,7 +106,11 @@ describe('complete normalized action artifact CLI', () => {
       const events = join(directory, 'native.jsonl')
       const output = join(directory, 'buck2-cache-evidence.json')
       const actions = join(directory, actionsArtifactName)
-      for (const [index, category] of [...localMaterializationCategories, 'tsgo_emit'].entries()) {
+      for (const [index, category] of [
+        ...localMaterializationCategories,
+        ...rustLocalOnlyCategories,
+        'tsgo_emit',
+      ].entries()) {
         await Bun.write(events, nativeLog(`policy-${index}`, 0, false, category, 3))
         const child = Bun.spawn(
           [
@@ -131,24 +139,34 @@ describe('complete normalized action artifact CLI', () => {
       const summary: CacheEvidence = await Bun.file(output).json()
       const bytes = new Uint8Array(await Bun.file(actions).arrayBuffer())
       const full = decodeEvidence({ compressed: bytes, summary, expectedLane: 'main-writer' })
-      expect(summary.actionCount).toBe(600)
-      expect(summary.actions).toHaveLength(6)
-      expect(summary.counts['remote-hit']).toBe(600)
+      expect(summary.actionCount).toBe(800)
+      expect(summary.actions).toHaveLength(8)
+      expect(summary.counts['remote-hit']).toBe(800)
       expect(summary.excludedByDesign).toEqual({
         'local-materialization-policy': 500,
         'darwin-unsandboxed': 0,
+        'rust-local-only': 200,
       })
       expect(full.header.excludedByDesign).toEqual(summary.excludedByDesign)
       expect(full.header.invocations.map((invocation) => invocation.excludedByDesign)).toEqual([
         ...localMaterializationCategories.map(() => ({
           'local-materialization-policy': 100,
           'darwin-unsandboxed': 0,
+          'rust-local-only': 0,
         })),
-        { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+        ...rustLocalOnlyCategories.map(() => ({
+          'local-materialization-policy': 0,
+          'darwin-unsandboxed': 0,
+          'rust-local-only': 100,
+        })),
+        { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0, 'rust-local-only': 0 },
       ])
       expect(
         full.actions.filter((action) => action.exclusionReason === 'local-materialization-policy'),
       ).toHaveLength(500)
+      expect(
+        full.actions.filter((action) => action.exclusionReason === 'rust-local-only'),
+      ).toHaveLength(200)
       expect(
         full.actions
           .filter((action) => action.category === 'tsgo_emit')

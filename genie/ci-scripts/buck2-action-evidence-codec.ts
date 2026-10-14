@@ -55,13 +55,15 @@ export const list = (value: unknown): unknown[] =>
   Array.isArray(value) === true ? value : invalid()
 export const decodeActionExclusionCounts = (value: unknown): ActionExclusionCounts => {
   const darwinCount = field({ value: value, key: 'darwin-unsandboxed' })
+  const rustCount = field({ value: value, key: 'rust-local-only' })
   return {
     'local-materialization-policy': integer(
       field({ value: value, key: 'local-materialization-policy' }),
     ),
-    // Retained artifacts predate Darwin-specific categories; full rows still
-    // validate this zero against the current category policy below.
+    // Retained artifacts predate platform-specific categories; full rows still
+    // validate these zeros against the current category policy below.
     'darwin-unsandboxed': darwinCount === undefined ? 0 : integer(darwinCount),
+    'rust-local-only': rustCount === undefined ? 0 : integer(rustCount),
   }
 }
 const nullableText = ({

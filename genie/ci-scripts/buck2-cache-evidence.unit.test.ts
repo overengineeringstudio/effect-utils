@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   darwinUnsandboxedCategories,
   localMaterializationCategories,
+  rustLocalOnlyCategories,
   type ActionInvocation,
   type ActionRecord,
 } from './buck2-action-evidence.ts'
@@ -202,10 +203,7 @@ describe('native Buck cache evidence projection', () => {
         const outcome =
           executionKind === 3 ? 'remote-hit' : executionKind === 10 ? 'local-cache' : 'local'
         expect(summary.counts[outcome]).toBe(1)
-        expect(summary.excludedByDesign).toEqual({
-          'local-materialization-policy': 1,
-          'darwin-unsandboxed': 0,
-        })
+        expect(summary.excludedByDesign).toEqual({ 'local-materialization-policy': 1, 'darwin-unsandboxed': 0, 'rust-local-only': 0 })
         expect(summary.invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
         expect(invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
         expect(rows[0]).toMatchObject({
@@ -221,10 +219,7 @@ describe('native Buck cache evidence projection', () => {
     const eligible = project([
       nativeEvent('SpanEnd', actionEnd({ name: { category: 'tsgo_emit' } })),
     ])
-    expect(eligible.excludedByDesign).toEqual({
-      'local-materialization-policy': 0,
-      'darwin-unsandboxed': 0,
-    })
+    expect(eligible.excludedByDesign).toEqual({ 'local-materialization-policy': 0, 'darwin-unsandboxed': 0, 'rust-local-only': 0 })
     expect(eligible.actions[0]?.exclusionReason).toBeNull()
   })
 
@@ -246,10 +241,7 @@ describe('native Buck cache evidence projection', () => {
       ),
     )
     for (const summary of summaries) {
-      expect(summary.excludedByDesign).toEqual({
-        'local-materialization-policy': 0,
-        'darwin-unsandboxed': 1,
-      })
+      expect(summary.excludedByDesign).toEqual({ 'local-materialization-policy': 0, 'darwin-unsandboxed': 1, 'rust-local-only': 0 })
       expect(summary.actions[0]?.exclusionReason).toBe('darwin-unsandboxed')
       expect(summary.counts.local).toBe(1)
     }
@@ -259,6 +251,43 @@ describe('native Buck cache evidence projection', () => {
     for (const category of ['tsgo_typecheck', 'tsgo_emit', 'rust_compile']) {
       const summary = project([nativeEvent('SpanEnd', actionEnd({ name: { category } }))])
       expect(summary.actions[0]?.exclusionReason).toBeNull()
+    }
+  })
+
+  it('reports only explicit Rust exclusions while preserving raw hit and upload outcomes', () => {
+    for (const category of rustLocalOnlyCategories) {
+      for (const [executionKind, cacheUploadResult, outcome] of [
+        [1, 0, 'local'],
+        [3, 0, 'remote-hit'],
+        [8, 9, 'local'],
+        [10, 0, 'local-cache'],
+        [1, 1, 'uploaded'],
+      ] as const) {
+        const rows: ActionRecord[] = []
+        const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+        projector.add(
+          nativeEvent('SpanEnd', actionEnd({
+            name: { category },
+            execution_kind: executionKind,
+            cache_upload_result: cacheUploadResult,
+          })),
+        )
+        const summary = decodeCacheEvidence(projector.finish())
+        expect(summary.excludedByDesign).toEqual({
+          'local-materialization-policy': 0,
+          'darwin-unsandboxed': 0,
+          'rust-local-only': 1,
+        })
+        expect(summary.invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
+        expect(summary.actions[0]?.exclusionReason).toBe('rust-local-only')
+        expect(rows[0]).toMatchObject({ category, executionKind, cacheUploadResult, outcome })
+        expect(summary.counts[outcome]).toBe(1)
+      }
+    }
+    for (const category of ['rustc', 'deps', 'rustc_deps', 'rust_compile', 'rustc_excluded_extra']) {
+      const summary = project([nativeEvent('SpanEnd', actionEnd({ name: { category } }))])
+      expect(summary.actions[0]?.exclusionReason).toBeNull()
+      expect(summary.excludedByDesign?.['rust-local-only']).toBe(0)
     }
   })
 
@@ -288,14 +317,11 @@ describe('native Buck cache evidence projection', () => {
     const next = summaries[1]!
     expect(first.actions).toHaveLength(5)
     const merged = mergeCacheEvidence({ previous: first, next })
-    expect(merged.excludedByDesign).toEqual({
-      'local-materialization-policy': 200,
-      'darwin-unsandboxed': 0,
-    })
+    expect(merged.excludedByDesign).toEqual({ 'local-materialization-policy': 200, 'darwin-unsandboxed': 0, 'rust-local-only': 0 })
     expect(merged.counts['remote-hit']).toBe(200)
     expect(merged.invocations.map((invocation) => invocation.excludedByDesign)).toEqual([
-      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0 },
-      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0 },
+      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0, 'rust-local-only': 0 },
+      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0, 'rust-local-only': 0 },
     ])
     expect(decodeCacheEvidence(merged)).toEqual(merged)
     expect(mergeCacheEvidence({ previous: merged, next })).toEqual(merged)
@@ -778,7 +804,7 @@ describe('native Buck cache evidence projection', () => {
         context: 'populate',
         freshRoot: true,
         actionCount: 100,
-        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0, 'rust-local-only': 0 },
         complete: true,
         startedAt: 1700000000000,
         completedAt: 1700000003000,

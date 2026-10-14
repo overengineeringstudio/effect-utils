@@ -2,8 +2,11 @@ import { describe, expect, it } from 'bun:test'
 
 import { classifyCacheAction, decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import {
+  auditNativeRustCacheAdmission,
   darwinUnsandboxedCategories,
   localMaterializationCategories,
+  rustLocalOnlyCategories,
+  type NativeRustCohortManifest,
 } from './buck2-action-evidence.ts'
 import {
   actionFixture,
@@ -13,6 +16,7 @@ import {
   manifestFixture,
 } from './buck2-cache-warm99.fixtures.ts'
 import { decodeEvidence, decodeManifest, evaluateWarm99 } from './buck2-cache-warm99.ts'
+import { decodeNativeRustCohortManifest } from './buck2-rust-native-admission.ts'
 
 const rawArtifact = (artifact = artifactFixture()): string =>
   `${[artifact.header, ...artifact.actions].map((item) => JSON.stringify(item)).join('\n')}\n`
@@ -94,17 +98,14 @@ describe('strict action boundary', () => {
       `${[historical, ...rows].map((row) => JSON.stringify(row)).join('\n')}\n`,
     )
     expect(decoded).toEqual(artifact)
-    expect(decoded.header.excludedByDesign).toEqual({
-      'local-materialization-policy': 5,
-      'darwin-unsandboxed': 0,
-    })
+    expect(decoded.header.excludedByDesign).toEqual({ 'local-materialization-policy': 5, 'darwin-unsandboxed': 0, 'rust-local-only': 0 })
     expect(decoded.actions.map((action) => action.outcome)).toEqual(Array(6).fill('remote-hit'))
     expect(() =>
       decodeEvidence({
         compressed: encoded.compressed,
         summary: {
           ...encoded.summary,
-          excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+          excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0, 'rust-local-only': 0 },
         },
         expectedLane: 'main-reader',
       }),
@@ -116,10 +117,7 @@ describe('strict action boundary', () => {
           ...encoded.summary,
           invocations: encoded.summary.invocations.map((invocation) =>
             Object.assign({}, invocation, {
-              excludedByDesign: {
-                'local-materialization-policy': 0,
-                'darwin-unsandboxed': 0,
-              },
+              excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0, 'rust-local-only': 0 },
             }),
           ),
         },
@@ -151,10 +149,7 @@ describe('strict action boundary', () => {
         expectedLane: 'main-reader',
       }),
     ).toEqual(artifact)
-    expect(artifact.header.excludedByDesign).toEqual({
-      'local-materialization-policy': 0,
-      'darwin-unsandboxed': darwinUnsandboxedCategories.length,
-    })
+    expect(artifact.header.excludedByDesign).toEqual({ 'local-materialization-policy': 0, 'darwin-unsandboxed': darwinUnsandboxedCategories.length, 'rust-local-only': 0 })
     for (const action of artifact.actions) {
       expect(action.exclusionReason).toBe('darwin-unsandboxed')
       expect(
@@ -166,7 +161,7 @@ describe('strict action boundary', () => {
         compressed: encoded.compressed,
         summary: {
           ...encoded.summary,
-          excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+          excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0, 'rust-local-only': 0 },
         },
         expectedLane: 'main-reader',
       }),
@@ -176,6 +171,49 @@ describe('strict action boundary', () => {
         encoded.raw.replace('"exclusionReason":"darwin-unsandboxed"', '"exclusionReason":null'),
       ),
     ).toThrow()
+  })
+
+  it('roundtrips Rust exclusion identity and rejects conflicting policy evidence', () => {
+    const artifact = artifactFixture(false, rustLocalOnlyCategories.map((category) =>
+      actionFixture({ category, executionKind: 1, cacheUploadResult: 0 }),
+    ))
+    const encoded = encodedFixture(artifact)
+    expect(decodeEvidence({
+      compressed: encoded.compressed,
+      summary: encoded.summary,
+      expectedLane: 'main-reader',
+    })).toEqual(artifact)
+    expect(artifact.header.excludedByDesign['rust-local-only']).toBe(2)
+    for (const action of artifact.actions) {
+      expect(action.exclusionReason).toBe('rust-local-only')
+      expect(classifyCacheAction({
+        action,
+        invocation: artifact.header.invocations[0],
+      })).toBe('other')
+    }
+    expect(() => decodeActionArtifact(encoded.raw.replace(
+      '"exclusionReason":"rust-local-only"', '"exclusionReason":null',
+    ))).toThrow()
+    expect(() => decodeEvidence({
+      compressed: encoded.compressed,
+      summary: {
+        ...encoded.summary,
+        excludedByDesign: { ...artifact.header.excludedByDesign, 'rust-local-only': 0 },
+      },
+      expectedLane: 'main-reader',
+    })).toThrow()
+    for (const category of ['rustc', 'deps', 'rustc_deps', 'rustc_excluded_extra']) {
+      const action = actionFixture({
+        category,
+        executionKind: 1,
+        buildId: artifact.header.invocations[0]!.buildId,
+      })
+      expect(action.exclusionReason).toBeNull()
+      expect(classifyCacheAction({
+        action,
+        invocation: artifact.header.invocations[0],
+      })).toBe('fresh-local-execution')
+    }
   })
 
   it('preserves unsupported raw enums only in explicitly incomplete artifacts', () => {
@@ -226,7 +264,7 @@ describe('strict action boundary', () => {
   })
 })
 describe('warm99 identity acceptance', () => {
-  it('keeps materialization and Darwin TS outside eligible, cold, changed and upload-failure cohorts', () => {
+  it('keeps materialization, Darwin TS and local-only Rust outside eligible, cold, changed and upload-failure cohorts', () => {
     for (const executionKind of [1, 3, 8, 10]) {
       const manifest = manifestFixture()
       const loaded = loadedFixture(manifest)
@@ -243,7 +281,11 @@ describe('warm99 identity acceptance', () => {
               endTime: 100,
               uploadCompletedAt: 100,
             }),
-            ...[...localMaterializationCategories, ...darwinUnsandboxedCategories].flatMap(
+            ...[
+              ...localMaterializationCategories,
+              ...darwinUnsandboxedCategories,
+              ...rustLocalOnlyCategories,
+            ].flatMap(
               (category) => [
                 actionFixture({
                   category,
@@ -268,7 +310,11 @@ describe('warm99 identity acceptance', () => {
         item.readers = [
           artifactFixture(false, [
             actionFixture({ category: 'tsgo_emit' }),
-            ...[...localMaterializationCategories, ...darwinUnsandboxedCategories].flatMap(
+            ...[
+              ...localMaterializationCategories,
+              ...darwinUnsandboxedCategories,
+              ...rustLocalOnlyCategories,
+            ].flatMap(
               (category) => [
                 actionFixture({ category, executionKind }),
                 actionFixture({ category, executionKind, digest: 'ffff:12' }),
@@ -290,8 +336,12 @@ describe('warm99 identity acceptance', () => {
         eligible: 1,
         remoteHits: 1,
         hitRate: 1,
-        excluded: 24,
-        excludedByDesign: { 'local-materialization-policy': 15, 'darwin-unsandboxed': 9 },
+        excluded: 30,
+        excludedByDesign: {
+          'local-materialization-policy': 15,
+          'darwin-unsandboxed': 9,
+          'rust-local-only': 6,
+        },
         cold: 0,
         changed: 0,
         noncacheable: 0,
@@ -417,7 +467,7 @@ describe('warm99 identity acceptance', () => {
         completedAt: 300,
         freshRoot: false,
         actionCount: 1,
-        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0, 'rust-local-only': 0 },
         complete: true,
       })
       item.readers = [reader]
@@ -657,5 +707,124 @@ describe('cache lane posture', () => {
       }
       expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(mode === 'queue')
     }
+  })
+})
+
+describe('native Rust cohort-only admission audit', () => {
+  const cohort = (): NativeRustCohortManifest => ({
+    headSha: 'a'.repeat(40),
+    actions: Array.from({ length: 178 }, (_, index) => ({
+      targetTriple: 'x86_64-unknown-linux-gnu',
+      commandKind: index < 89 ? 'rustc' : 'deps',
+      target: `effect_utils//rust/third-party:crate-${index % 89}`,
+      configuration: 'effect_utils//buck2/platforms:linux_x86_64#a312ca1b',
+      digest: `${index.toString(16).padStart(64, '0')}:123`,
+    })),
+  })
+
+  it('decodes the explicit manifest schema and rejects missing policy identity', () => {
+    const manifest = cohort()
+    expect(decodeNativeRustCohortManifest({ schemaVersion: 1, ...manifest })).toEqual(manifest)
+    expect(() => decodeNativeRustCohortManifest({ schemaVersion: 2, ...manifest })).toThrow()
+    expect(() =>
+      decodeNativeRustCohortManifest({
+        schemaVersion: 1,
+        headSha: manifest.headSha,
+        actions: [{ targetTriple: 'x86_64-unknown-linux-gnu' }],
+      }),
+    ).toThrow()
+  })
+
+  it('accepts exactly the graph-declared 89 compiler and 89 dependency identities', () => {
+    const manifest = cohort()
+    const artifact = artifactFixture(
+      true,
+      manifest.actions.map((entry, index) =>
+        actionFixture({
+          category: entry.commandKind,
+          target: entry.target,
+          configuration: entry.configuration,
+          digest: entry.digest,
+          executionKind: index < 89 ? 3 : 1,
+          cacheUploadResult: index < 89 ? 0 : 1,
+        }),
+      ),
+    )
+    expect(auditNativeRustCacheAdmission({ artifact, manifest })).toEqual([])
+  })
+
+  it('rejects changed compiler keys even when category, target and configuration match', () => {
+    const manifest = cohort()
+    const entry = manifest.actions[0]!
+    const artifact = artifactFixture(false, [
+      actionFixture({
+        category: entry.commandKind,
+        target: entry.target,
+        configuration: entry.configuration,
+        digest: `${'f'.repeat(64)}:123`,
+      }),
+    ])
+    expect(auditNativeRustCacheAdmission({ artifact, manifest })).toMatchObject([
+      { reason: 'remote-action-outside-native-cohort' },
+    ])
+  })
+
+  it('does not hide excluded remote hits or upload attempts behind warm-rate exclusions', () => {
+    const manifest = cohort()
+    const entry = manifest.actions[0]!
+    for (const category of rustLocalOnlyCategories) {
+      for (const scenario of [
+        { executionKind: 3, cacheUploadResult: 0 },
+        { executionKind: 1, cacheUploadResult: 1 },
+        { executionKind: 1, cacheUploadResult: 9 },
+      ]) {
+        const artifact = artifactFixture(false, [
+          actionFixture({
+            category,
+            target: entry.target,
+            configuration: entry.configuration,
+            digest: entry.digest,
+            ...scenario,
+          }),
+        ])
+        expect(auditNativeRustCacheAdmission({ artifact, manifest })).toMatchObject([
+          { reason: 'remote-action-outside-native-cohort' },
+        ])
+      }
+      const artifact = artifactFixture(false, [
+        actionFixture({ category, executionKind: 1, cacheUploadResult: 0 }),
+      ])
+      expect(auditNativeRustCacheAdmission({ artifact, manifest })).toEqual([])
+    }
+  })
+
+  it('fails closed for excluded triples, unknown commands, duplicate identities and stale heads', () => {
+    const artifact = artifactFixture(false, [])
+    for (const targetTriple of ['wasm32-unknown-unknown', 'aarch64-unknown-linux-gnu', 'aarch64-apple-darwin']) {
+      const manifest = cohort()
+      manifest.actions[0]!.targetTriple = targetTriple
+      expect(auditNativeRustCacheAdmission({ artifact, manifest })).toMatchObject([
+        { reason: 'invalid-native-cohort-manifest' },
+      ])
+    }
+    const malformed = cohort()
+    malformed.actions[0]!.commandKind = 'clippy'
+    const duplicate = cohort()
+    duplicate.actions[1]!.digest = duplicate.actions[0]!.digest
+    const smaller = cohort()
+    const stale = cohort()
+    stale.headSha = 'b'.repeat(40)
+    for (const manifest of [malformed, duplicate, { ...smaller, actions: smaller.actions.slice(1) }, stale])
+      expect(auditNativeRustCacheAdmission({ artifact, manifest })).toMatchObject([
+        { reason: 'invalid-native-cohort-manifest' },
+      ])
+  })
+
+  it('rejects incomplete q33 evidence instead of treating missing actions as local-only', () => {
+    const artifact = artifactFixture(false, [])
+    artifact.header.complete = false
+    expect(auditNativeRustCacheAdmission({ artifact, manifest: cohort() })).toEqual([
+      { reason: 'incomplete-action-artifact' },
+    ])
   })
 })
