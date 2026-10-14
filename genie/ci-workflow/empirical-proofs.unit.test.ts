@@ -53,7 +53,14 @@ const admitted = (
       'contains',
       'success',
       'cancelled',
-      `return (${condition(jobId).replace('github.event.pull_request.labels.*.name', 'github.event.pull_request.labels.map(label => label.name)')})`,
+      // Model an already-tested main tree; this matrix tests queue admission,
+      // not the separate fallback path for an untested main push.
+      `return (${condition(jobId)
+        .replace(
+          'github.event.pull_request.labels.*.name',
+          'github.event.pull_request.labels.map(label => label.name)',
+        )
+        .replace('needs.tested-tree.outputs.tested', "'true'")})`,
     )(
       {
         event_name: eventName,
