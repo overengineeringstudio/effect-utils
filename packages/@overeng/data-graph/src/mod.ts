@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
+import { resolve } from 'node:path'
 
-import { Clock, Context, Effect, Layer, Option, Schema } from 'effect'
+import { Clock, Context, Effect, Layer, Option, Schema, Semaphore } from 'effect'
 
 import {
   ContentDescriptor,
@@ -56,6 +57,9 @@ export type GraphFailure =
 
 /** Store operations preserve the content-address package's descriptor and pin contracts. */
 export interface GraphStoreApi {
+  readonly withWriteLock: <TValue, TError, TEnvironment>(
+    effect: Effect.Effect<TValue, TError, TEnvironment>,
+  ) => Effect.Effect<TValue, TError, TEnvironment>
   readonly put: (
     bytes: Uint8Array,
     mediaType: string,
@@ -74,12 +78,22 @@ export interface GraphStoreApi {
     name: string,
   ) => Effect.Effect<Option.Option<ContentDescriptor>, ContentAddressError>
 }
+// Separate layers for the same filesystem root share one process-local writer.
+const writers = new Map<string, Semaphore.Semaphore>()
 export class GraphStore extends Context.Service<GraphStore, GraphStoreApi>()(
   'DataGraph.GraphStore',
 ) {
   static fileSystem(root: string): Layer.Layer<GraphStore> {
     const store = makeFileSystemContentStore({ root })
+    const identity = resolve(root)
+    let writer = writers.get(identity)
+    if (writer === undefined) {
+      writer = Semaphore.makeUnsafe(1)
+      writers.set(identity, writer)
+    }
+    const lock = writer
     return Layer.succeed(this, {
+      withWriteLock: (effect) => lock.withPermits(1)(effect),
       put: (bytes, mediaType, codec, schemaVersion) =>
         putBytes({
           store,
@@ -155,6 +169,32 @@ const hex = (digest: ContentDigest): string => digest.slice('sha256:'.length)
 const headPin = (key: NodeKey): string => `data-graph/heads/${hex(nodeIdDigest(key))}`
 const manifest = (role: string, entries: ReadonlyArray<ContentManifestEntry>): ContentManifest =>
   ContentManifest.make({ schemaVersion: 1, role, entries })
+const actionManifest = (
+  recipe: ContentDescriptor,
+  inputs: Readonly<Record<string, ContentDescriptor>>,
+): ContentManifest =>
+  manifest('data-graph.action', [
+    { role: 'recipe', descriptor: recipe },
+    ...Object.keys(inputs).toSorted().map((name) => ({
+      role: 'input',
+      logicalPath: name,
+      descriptor: inputs[name]!,
+    })),
+  ])
+
+/** Pure action identity, using exactly the descriptors persisted during a pull. */
+export const actionKey = (
+  recipe: Recipe,
+  inputs: Readonly<Record<string, ContentDescriptor>>,
+): ContentDigest =>
+  descriptorForCanonicalJson({
+    schema: ContentManifest,
+    value: actionManifest(
+      descriptorForCanonicalJson({ schema: Recipe, value: recipe, schemaVersion: 1 }),
+      inputs,
+    ),
+    schemaVersion: 1,
+  }).digest
 const decoder = new TextDecoder()
 const readJson = Effect.fn('DataGraph.readJson')(function* <TSchema extends Schema.Codec<unknown>>(
   schema: TSchema,
@@ -297,8 +337,8 @@ const outputsOf = Effect.fn('DataGraph.outputsOf')(function* (
   return outputs
 })
 
-/** One sequential pull run; explicit refresh IDs authorize observations, never time-based hashes. */
-export const materialize = Effect.fn('DataGraph.materialize')(function* (
+/** Serialized pull; explicit refresh IDs authorize observations, never time-based hashes. */
+const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function* (
   target: NodeRef,
   options: { readonly refresh?: ReadonlyArray<string> } = {},
 ) {
@@ -348,12 +388,7 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
       if (recipe.kind !== node.kind) return yield* invalid('Recipe kind must match node kind')
       const recipeDescriptor = yield* writeJson(Recipe, recipe)
       const action = yield* store.manifest(
-        manifest('data-graph.action', [
-          { role: 'recipe', descriptor: recipeDescriptor },
-          ...Object.keys(inputs)
-            .toSorted()
-            .map((name) => ({ role: 'input', logicalPath: name, descriptor: inputs[name]! })),
-        ]),
+        actionManifest(recipeDescriptor, inputs),
       )
       const previous = yield* getHead(key)
       const finish = (
@@ -473,6 +508,14 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
   return { ...result, output, trace } satisfies MaterializeResult
 })
 
+export const materialize = Effect.fn('DataGraph.materialize')(function* (
+  target: NodeRef,
+  options: { readonly refresh?: ReadonlyArray<string> } = {},
+) {
+  const store = yield* GraphStore
+  return yield* store.withWriteLock(materializeUnlocked(target, options))
+})
+
 export interface RefreshRequest {
   readonly _tag: 'Refresh'
   readonly key: NodeKey
@@ -517,6 +560,7 @@ export const DataGraph = {
   ref,
   materialize,
   nodeId,
+  actionKey,
   nodeIdDigest,
   getHead,
   isStale,
