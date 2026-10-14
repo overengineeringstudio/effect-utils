@@ -665,9 +665,9 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
                       if 'designated => ' in line]
         assert len(predicates) == 1 and predicates[0], (display.stdout, display.stderr)
         caller_requirement = predicates[0]
-        endpoint_parent = work / 'helper-endpoint'
-        endpoint_parent.mkdir(mode=0o700)
-        endpoint_parent.chmod(0o700)
+        # Darwin's AF_UNIX limit applies to the resolved absolute path, not cwd.
+        endpoint_temp = tempfile.TemporaryDirectory(prefix='macos-peer-', dir='/private/tmp')
+        endpoint_parent = Path(endpoint_temp.name)
         def probe_command(mode, socket_path, evidence, target_uid, requirement):
             no_ui_session()  # Reprove independently for each concurrent launch.
             return watched([str(ctl), 'test-security-helper', '--config', str(thin_config_path),
@@ -719,8 +719,9 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
                         else:
                             assert client.stdout == '', 'Fixed exec oracle must replace ctl at the same PID'
                 assert not probe_socket.exists(), 'Owned probe endpoint was not cleaned up'
+        endpoint_temp.cleanup()
         print('PASS real kernel audit-token UID+DR conjunction, exited-token refusal and same-PID exec incarnation refusal', flush=True)
-        print('NOT RUN: helper pure unit suite in this harness; parent runs cargo test --lib '
+        print('NOTE: helper pure unit suite runs separately in the macos-app-host Nix check '
               'for unsafe/ACL/symlink/writable paths and stale owned-socket inode cases', flush=True)
 
     thin_contract_cases()
