@@ -101,8 +101,16 @@ before emitting `allowedVersions["<dependent>><peer>"]`. A mismatch, missing
 version, or syntax the shared semver checker cannot fully evaluate fails
 generation with the edge, range, and projected version. The supported subset
 is stable complete versions, caret and tilde ranges over complete versions,
-`>=X.Y.Z`, `>=X.Y.Z <A.B.C`, dotted wildcards, `*`, and their `||` unions;
-prereleases, build metadata, protocols, and other operators fail closed.
+`>=X.Y.Z`, `>=X.Y.Z <A.B.C`, dotted wildcards with at most three components,
+`*`, and their `||` unions. Every union branch must be supported before any
+branch is evaluated; prereleases, build metadata, protocols, and other
+operators fail closed.
+
+Peer validation prefers full package manifests over name-only
+`workspaceClosureReference` entries, independent of traversal order. If a
+projected package has only a closure reference, generation fails closed:
+the reference's missing peer declarations do not establish an empty peer
+contract.
 
 pnpm 12.7.0 checks a local peer's `file:` identity rather than its manifest
 version. Each generated allowance therefore pins the exact projected `file:`

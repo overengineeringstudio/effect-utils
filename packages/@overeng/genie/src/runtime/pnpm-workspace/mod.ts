@@ -1174,7 +1174,7 @@ export const pnpmSourceInputStagePath = '.devenv/pnpm-source-inputs/current'
 const stableVersionPattern = String.raw`(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)`
 const projectedPeerVersionPattern = new RegExp(`^${stableVersionPattern}$`)
 const projectedPeerRangePattern = new RegExp(
-  `^(?:[~^]?${stableVersionPattern}|>=${stableVersionPattern}(?:\\s+<${stableVersionPattern})?|\\*|(?:0|[1-9]\\d*)(?:\\.(?:0|[1-9]\\d*))?\\.[xX*](?:\\.[xX*])?)$`,
+  `^(?:[~^]?${stableVersionPattern}|>=${stableVersionPattern}(?:\\s+<${stableVersionPattern})?|\\*|(?:0|[1-9]\\d*)\\.(?:[xX*](?:\\.[xX*])?|(?:0|[1-9]\\d*)\\.[xX*]))$`,
 )
 
 /** Project foreign workspace dependencies into one root-local source generation. */
@@ -1187,11 +1187,13 @@ export const projectPnpmSourceInputs = ({
 }) => {
   const byName = new Map<string, string>()
   const projectedPackages = new Map<string, WorkspacePackageLike>()
-  const visited = new Set<string>()
+  // Closure references retain graph identity but strip manifest behavior. Visit
+  // every distinct representation so a reference cannot hide a later manifest.
+  const visited = new Set<WorkspacePackageLike>()
   const visit = (pkg: WorkspacePackageLike) => {
     const key = `${pkg.meta.workspace.repoName}:${pkg.meta.workspace.memberPath}`
-    if (visited.has(key) === true) return
-    visited.add(key)
+    if (visited.has(pkg) === true) return
+    visited.add(pkg)
 
     if (pkg.meta.workspace.repoName !== repoName) {
       const name = pkg.data.name
@@ -1207,7 +1209,10 @@ export const projectPnpmSourceInputs = ({
         throw new Error(`Workspace package ${name} maps to both ${previous} and ${sourcePath}`)
       }
       byName.set(name, sourcePath)
-      projectedPackages.set(name, pkg)
+      const previousPackage = projectedPackages.get(name)
+      if (previousPackage === undefined || Object.keys(previousPackage.data).length === 1) {
+        projectedPackages.set(name, pkg)
+      }
     }
 
     for (const dep of pkg.meta.workspace.deps) visit(dep)
@@ -1245,6 +1250,15 @@ export const projectPnpmSourceInputs = ({
       // pnpm 12 compares file: identity, not package.json version, for local peers.
       // Validate the semver contract above before admitting this specific edge.
       allowedVersions[`${name}>${peer}`] = `file:${pnpmSourceInputStagePath}/${byName.get(peer)!}`
+    }
+  }
+  // A name-only closure reference cannot establish that a package has no peers.
+  // Known peer edges are checked first to retain their precise diagnostics.
+  for (const [name, pkg] of projectedPackages) {
+    if (Object.keys(pkg.data).length === 1) {
+      throw new Error(
+        `Projected package ${name} requires a full manifest to validate peer dependencies`,
+      )
     }
   }
   return {

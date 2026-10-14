@@ -4,9 +4,9 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { packageJson, type GenieContext } from '../mod.ts'
+import { packageJson, workspaceClosureReference, type GenieContext } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
-import type { WorkspacePackage, WorkspacePackageLike } from '../package-json/mod.ts'
+import type { NamedWorkspacePackageLike, WorkspacePackage } from '../package-json/mod.ts'
 import {
   pnpmWorkspaceYaml,
   projectPnpmPackageClosure,
@@ -55,11 +55,11 @@ const workspace = ({
 describe('projected source peer rules', () => {
   // Same a@0.1.0 / b -> a@^0.1.0 graph as the pnpm file-peer repro.
   const fixture = ({ version = '0.1.0', range = '^0.1.0', includePeer = true } = {}) => {
-    const a: WorkspacePackageLike = {
+    const a: NamedWorkspacePackageLike = {
       data: { name: 'a', version },
       meta: { workspace: { repoName: 'library', memberPath: 'a', deps: [] } },
     }
-    const b: WorkspacePackageLike = {
+    const b: NamedWorkspacePackageLike = {
       data: {
         name: 'b',
         version: '0.1.0',
@@ -99,8 +99,12 @@ describe('projected source peer rules', () => {
     })
     const yaml = workspaceFile.stringify(mockGenieContext)
     expect(yaml).toContain('strictPeerDependencies: true')
-    expect(yaml).toContain('allowedVersions:')
-    expect(yaml).toContain('b>a:')
+    expect(yaml).toContain(
+      "overrides:\n  a: 'file:.devenv/pnpm-source-inputs/current/repos/library/a'\n  b: 'file:.devenv/pnpm-source-inputs/current/repos/library/b'",
+    )
+    expect(yaml).toContain(
+      "peerDependencyRules:\n  allowedVersions:\n    b>a: 'file:.devenv/pnpm-source-inputs/current/repos/library/a'",
+    )
     expect(yaml).not.toContain('allowAny')
     expect(yaml).not.toContain('ignoreMissing')
   })
@@ -110,6 +114,102 @@ describe('projected source peer rules', () => {
     expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
       'b peer a ^0.2.0 vs projected 0.1.0',
     )
+  })
+
+  it('fails closed with the peer edge when the target version is missing', () => {
+    const { a, b } = fixture()
+    delete a.data.version
+    expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
+      'b peer a ^0.1.0 vs projected (missing version)',
+    )
+  })
+
+  it('validates a required peer also present in dependencies', () => {
+    const { b } = fixture()
+    delete b.data.peerDependenciesMeta
+    b.data.dependencies = { a: 'workspace:^' }
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: { 'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a' },
+    })
+  })
+
+  it('scopes the allowance to scoped dependent and peer names', () => {
+    const { a, b } = fixture()
+    a.data.name = '@test/a'
+    b.data.name = '@test/b'
+    b.data.peerDependencies = { '@test/a': '^0.1.0' }
+    b.data.peerDependenciesMeta = { '@test/a': { optional: true } }
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: {
+        '@test/b>@test/a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a',
+      },
+    })
+  })
+
+  it('emits separate sorted allowances for multiple dependents of the same peer', () => {
+    const { a, b } = fixture()
+    const c: NamedWorkspacePackageLike = {
+      data: { name: 'c', version: '0.1.0', peerDependencies: { a: '~0.1.0' } },
+      meta: { workspace: { repoName: 'library', memberPath: 'c', deps: [a] } },
+    }
+    expect(
+      projectPnpmSourceInputs({ packages: [c, b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: {
+        'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a',
+        'c>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a',
+      },
+    })
+  })
+
+  it.each([true, false])(
+    'prefers full manifests over closure references independent of order (reference first: %s)',
+    (referenceFirst) => {
+      const { a, b } = fixture()
+      const reference = workspaceClosureReference(b)
+      const packages = referenceFirst === true ? [reference, b, a] : [b, a, reference]
+      expect(projectPnpmSourceInputs({ packages, repoName: 'consumer' })).toEqual(
+        projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }),
+      )
+      a.data.version = '0.2.0'
+      expect(() => projectPnpmSourceInputs({ packages, repoName: 'consumer' })).toThrow(
+        'b peer a ^0.1.0 vs projected 0.2.0',
+      )
+    },
+  )
+
+  it.each([true, false])(
+    'fails closed if a projected dependent only has a closure reference (reference first: %s)',
+    (referenceFirst) => {
+      const { a, b } = fixture()
+      const reference = workspaceClosureReference(b)
+      const packages = referenceFirst === true ? [reference, a] : [a, reference]
+      expect(() => projectPnpmSourceInputs({ packages, repoName: 'consumer' })).toThrow(
+        'Projected package b requires a full manifest to validate peer dependencies',
+      )
+    },
+  )
+
+  it.each([
+    '~0.1.0',
+    '0.1.0',
+    '>=0.1.0',
+    '>=0.1.0 <0.2.0',
+    '0.1.x',
+    '0.x.x',
+    '0.x',
+    '^0.2.0 || ~0.1.0',
+  ])('validates supported stable range grammar: %s', (range) => {
+    const { b } = fixture({ range })
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: { 'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a' },
+    })
   })
 
   it('rechecks the peer contract when the projected version changes at the same file path', () => {
@@ -146,6 +246,13 @@ describe('projected source peer rules', () => {
     { version: '0.1.0', range: '<=0.2.0' },
     { version: '0.1.0', range: 'workspace:^0.1.0' },
     { version: '0.1.0', range: 'file:../a' },
+    { version: '0.1.0', range: '0.1.0 - 0.2.0' },
+    { version: '0.1.0', range: '0.1.x.x' },
+    { version: '0.1.0', range: '^0.1.0 || 1.2.x.x' },
+    { version: '0.1.0', range: '1.2.x.x || ^0.1.0' },
+    { version: '0.1.0', range: '^0.1.0 || file:../a' },
+    { version: '0.1.0+build', range: '^0.1.0' },
+    { version: '0.1.0', range: '^0.1.0 || >=9007199254740992.0.0' },
   ])('rejects semver syntax the shared checker cannot fully evaluate: %j', (input) => {
     const { b } = fixture(input)
     expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
