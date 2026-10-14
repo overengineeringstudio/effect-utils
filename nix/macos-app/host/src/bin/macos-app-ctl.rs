@@ -674,6 +674,9 @@ fn run() -> Result<Value> {
         let value = argv.next().ok_or_else(|| fail(64, "invalid-input", "Missing option value"))?;
         if args.insert(key.to_owned(), value).is_some() { return Err(fail(64, "invalid-input", "Duplicate option")); }
     }
+    if args.contains_key("validate-only") && (action != "converge-launchd" || !args.contains_key("plist")) {
+        return Err(fail(64, "invalid-input", "--validate-only requires converge-launchd --plist"));
+    }
     let config_path = args.get("config").ok_or_else(|| fail(64, "invalid-input", "Missing --config"))?;
     let config = serde_json::from_slice(&fs::read(config_path)?)?; let ctl = Ctl { config, args };
     // Keychain calls in this process fail instead of showing UI (errSecInteractionNotAllowed).
@@ -682,7 +685,7 @@ fn run() -> Result<Value> {
     if status != 0 { return Err(fail(23, "operation-failed", format!("SecKeychainSetUserInteractionAllowed status {status}"))); }
     let _lifecycle = if matches!(action.as_str(), "install-host" | "select-generation" | "converge-launchd" | "rollback" |
         "provision-signing-key" | "import-signing-cert" | "prove-signing-key" | "sign-fixture") &&
-        !(action == "converge-launchd" && ctl.args.contains_key("validate-only") && !ctl.args.contains_key("lifecycle-fd")) {
+        !(action == "converge-launchd" && ctl.args.contains_key("plist") && ctl.args.contains_key("validate-only") && !ctl.args.contains_key("lifecycle-fd")) {
         lifecycle::verify(&ctl)?
     } else { None };
     let result = match action.as_str() {

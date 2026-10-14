@@ -637,6 +637,14 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         lock_path.chmod(0o600)
         thin_config['lifecycleLockPath'] = str(lock_path)
         thin_config_path.write_text(json.dumps(thin_config))
+        def mutation_snapshot():
+            return {str(path.relative_to(work)): (path.lstat().st_ino, path.lstat().st_mode,
+                    path.lstat().st_size, path.lstat().st_mtime_ns) for path in work.rglob('*')}
+        before_invalid_validation = mutation_snapshot()
+        refused = invoke('converge-launchd', '--validate-only', refusal=True)
+        assert refused['error']['kind'] == 'invalid-input' and '--plist' in refused['error']['reason'], refused
+        assert mutation_snapshot() == before_invalid_validation, 'Invalid offline form performed I/O mutations'
+        print('PASS validate-only without supplied plist refuses before file writes or launchctl despite configured lock', flush=True)
         borrowed = os.open(lock_path, os.O_RDWR)
         other = os.open(lock_path, os.O_RDWR)
         foreign = os.open(work / 'wrong-lifecycle.lock', os.O_RDWR | os.O_CREAT, 0o600)
