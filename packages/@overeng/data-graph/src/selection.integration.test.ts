@@ -4,7 +4,7 @@ import { Effect, FileSystem, Option, Schema } from 'effect'
 import * as TestClock from 'effect/testing/TestClock'
 import { expect } from 'vitest'
 
-import { utf8Bytes } from '@overeng/content-address'
+import { ContentManifest, objectPathForDigest, utf8Bytes } from '@overeng/content-address'
 
 import { DataGraph, GraphExecutionError, GraphStore, NodeKind, type NodeDef } from './mod.ts'
 
@@ -151,6 +151,131 @@ it.effect(
         })
         expect(planned.map((request) => request.key.scope)).toEqual(['high-old', 'high-new'])
         expect(planned.map((request) => request.tier)).toEqual(['primary', 'primary'])
+      }).pipe(Effect.provide(GraphStore.fileSystem(root)))
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  { timeout: 60_000 },
+)
+
+it.effect.each(['corrupt', 'remove'])(
+  'fails closed on a %s receipt referenced by a durable rejected attempt',
+  (damage) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-attempt-receipt-' })
+      const kind = Schema.decodeUnknownSync(NodeKind)('receipt-rejection')
+      let version = '1'
+      yield* Effect.gen(function* () {
+        const store = yield* GraphStore
+        const receipt = yield* store.put(utf8Bytes('opaque receipt'), 'text/plain')
+        const node: NodeDef = {
+          _tag: 'Observe',
+          kind,
+          outputs: ['value'],
+          inputs: () => ({}),
+          recipe: () => ({ kind, version, config: {} }),
+          execute: () =>
+            Effect.succeed(
+              version === '1'
+                ? {
+                    _tag: 'Accepted',
+                    receipts: [],
+                    outputs: {
+                      value: { bytes: utf8Bytes('accepted'), mediaType: 'text/plain' },
+                    },
+                  }
+                : { _tag: 'Rejected', reason: 'denied', receipts: [receipt] },
+            ),
+        }
+        const target = DataGraph.ref(node, {}, 'value')
+        const refresh = { refresh: [DataGraph.nodeId({ kind, scope: {} })] }
+        yield* DataGraph.materialize(target, refresh)
+        version = '2'
+        yield* DataGraph.materialize(target, refresh)
+        expect(
+          Option.getOrThrow((yield* DataGraph.getSelectionStatus(target)).latestAttempt)._tag,
+        ).toBe('Rejected')
+        const path = `${root}/${objectPathForDigest(receipt.digest)}`
+        if (damage === 'remove') yield* fs.remove(path)
+        else yield* fs.writeFileString(path, 'corrupt receipt')
+        // Reconstruct the service so the status is read only from durable CAS/pins.
+        const result = yield* DataGraph.getSelectionStatus(target).pipe(
+          Effect.provide(GraphStore.fileSystem(root)),
+          Effect.result,
+        )
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure')
+          expect(result.failure._tag).toBe(
+            damage === 'remove' ? 'ContentObjectMissingError' : 'ContentDescriptorMismatchError',
+          )
+      }).pipe(Effect.provide(GraphStore.fileSystem(root)))
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  { timeout: 60_000 },
+)
+
+it.effect.each(['recipe', 'input'])(
+  'verifies the %s objects of a rejected action distinct from the selected and current actions',
+  (role) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-attempt-action-' })
+      yield* Effect.gen(function* () {
+        const store = yield* GraphStore
+        const sourceKind = Schema.decodeUnknownSync(NodeKind)('attempt-input')
+        const kind = Schema.decodeUnknownSync(NodeKind)('action-rejection')
+        const source: NodeDef = {
+          _tag: 'Derive',
+          kind: sourceKind,
+          outputs: ['value'],
+          inputs: () => ({}),
+          recipe: (scope) => ({ kind: sourceKind, version: '1', config: scope }),
+          execute: ({ scope }) =>
+            Effect.succeed({
+              _tag: 'Accepted',
+              receipts: [],
+              outputs: {
+                value: { bytes: utf8Bytes(`input:${scope}`), mediaType: 'text/plain' },
+              },
+            }),
+        }
+        for (const scope of ['a', 'b', 'c'])
+          yield* DataGraph.materialize(DataGraph.ref(source, scope, 'value'))
+        let version = 'a'
+        const node: NodeDef = {
+          _tag: 'Observe',
+          kind,
+          outputs: ['value'],
+          inputs: () => ({ signal: DataGraph.ref(source, version, 'value') }),
+          recipe: () => ({ kind, version, config: {} }),
+          execute: () =>
+            Effect.succeed(
+              version === 'a'
+                ? {
+                    _tag: 'Accepted',
+                    receipts: [],
+                    outputs: {
+                      value: { bytes: utf8Bytes('selected'), mediaType: 'text/plain' },
+                    },
+                  }
+                : { _tag: 'Rejected', reason: 'denied', receipts: [] },
+            ),
+        }
+        const target = DataGraph.ref(node, {}, 'value')
+        const refresh = { refresh: [DataGraph.nodeId({ kind, scope: {} })] }
+        yield* DataGraph.materialize(target, refresh)
+        version = 'b'
+        yield* DataGraph.materialize(target, refresh)
+        const status = Option.getOrThrow(
+          (yield* DataGraph.getSelectionStatus(target)).latestAttempt,
+        )
+        const action = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ContentManifest))(
+          new TextDecoder().decode(yield* store.get(status.action)),
+        )
+        const descriptor = action.entries.find((entry) => entry.role === role)!.descriptor
+        version = 'c'
+        yield* fs.remove(`${root}/${objectPathForDigest(descriptor.digest)}`)
+        const result = yield* DataGraph.getSelectionStatus(target).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure') expect(result.failure._tag).toBe('ContentObjectMissingError')
       }).pipe(Effect.provide(GraphStore.fileSystem(root)))
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   { timeout: 60_000 },
