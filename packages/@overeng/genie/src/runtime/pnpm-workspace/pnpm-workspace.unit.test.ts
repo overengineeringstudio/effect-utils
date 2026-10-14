@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import { packageJson, type GenieContext } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
-import type { WorkspacePackage } from '../package-json/mod.ts'
+import type { WorkspacePackage, WorkspacePackageLike } from '../package-json/mod.ts'
 import {
   pnpmWorkspaceYaml,
   projectPnpmPackageClosure,
@@ -50,6 +50,108 @@ const workspace = ({
   repoName,
   memberPath,
   ...(pnpmPackageClosure !== undefined ? { pnpmPackageClosure } : {}),
+})
+
+describe('projected source peer rules', () => {
+  // Same a@0.1.0 / b -> a@^0.1.0 graph as the pnpm file-peer repro.
+  const fixture = ({ version = '0.1.0', range = '^0.1.0', includePeer = true } = {}) => {
+    const a: WorkspacePackageLike = {
+      data: { name: 'a', version },
+      meta: { workspace: { repoName: 'library', memberPath: 'a', deps: [] } },
+    }
+    const b: WorkspacePackageLike = {
+      data: {
+        name: 'b',
+        version: '0.1.0',
+        peerDependencies: { a: range },
+        peerDependenciesMeta: { a: { optional: true } },
+      },
+      meta: {
+        workspace: {
+          repoName: 'library',
+          memberPath: 'b',
+          deps: includePeer === true ? [a] : [],
+        },
+      },
+    }
+    return { a, b }
+  }
+
+  it('validates satisfied peers and emits identity-pinned edge rules alongside overrides', () => {
+    const { b } = fixture()
+    const projection = projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })
+    expect(projection).toEqual({
+      sourceInputPaths: ['repos/library/a', 'repos/library/b'],
+      overrides: {
+        a: 'file:.devenv/pnpm-source-inputs/current/repos/library/a',
+        b: 'file:.devenv/pnpm-source-inputs/current/repos/library/b',
+      },
+      peerDependencyRules: {
+        allowedVersions: { 'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a' },
+      },
+    })
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [],
+      repoName: 'consumer',
+      strictPeerDependencies: true,
+      overrides: projection.overrides,
+      peerDependencyRules: projection.peerDependencyRules,
+    })
+    const yaml = workspaceFile.stringify(mockGenieContext)
+    expect(yaml).toContain('strictPeerDependencies: true')
+    expect(yaml).toContain('allowedVersions:')
+    expect(yaml).toContain('b>a:')
+    expect(yaml).not.toContain('allowAny')
+    expect(yaml).not.toContain('ignoreMissing')
+  })
+
+  it('fails closed on an unsatisfied projected peer range', () => {
+    const { b } = fixture({ range: '^0.2.0' })
+    expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
+      'b peer a ^0.2.0 vs projected 0.1.0',
+    )
+  })
+
+  it('rechecks the peer contract when the projected version changes at the same file path', () => {
+    const { a, b } = fixture()
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: { 'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a' },
+    })
+    a.data.version = '0.2.0'
+    expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
+      'b peer a ^0.1.0 vs projected 0.2.0',
+    )
+  })
+
+  it('emits no rule for an absent optional peer', () => {
+    const { b } = fixture({ includePeer: false })
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({ allowedVersions: {} })
+  })
+
+  it('emits no rule for a registry peer', () => {
+    const { b } = fixture()
+    b.data.peerDependencies = { registry: '^1.0.0' }
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({ allowedVersions: {} })
+  })
+
+  it.each([
+    { version: '0.1.0-rc.1', range: '^0.1.0' },
+    { version: '0.1.0', range: '^0.1.0-rc.1' },
+    { version: '0.1.0', range: '<=0.2.0' },
+    { version: '0.1.0', range: 'workspace:^0.1.0' },
+    { version: '0.1.0', range: 'file:../a' },
+  ])('rejects semver syntax the shared checker cannot fully evaluate: %j', (input) => {
+    const { b } = fixture(input)
+    expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
+      `b peer a ${input.range} vs projected ${input.version}: unsupported semver version or range`,
+    )
+  })
 })
 
 describe('metadata-based workspace projections', () => {
@@ -175,6 +277,7 @@ describe('metadata-based workspace projections', () => {
       overrides: {
         '@foreign/shared': `file:.devenv/pnpm-source-inputs/current/repos/${foreignRepo.repoName}/packages/shared`,
       },
+      peerDependencyRules: { allowedVersions: {} },
     })
   })
 
