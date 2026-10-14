@@ -20,9 +20,17 @@ integration token.
 ## Live Corpus Refresh
 
 The checked fidelity corpus in `src/corpus/fidelity-corpus.ts` is captured from
-real Notion through the same block-observation renderer used by `pullPage`.
+real Notion through the same canonical block-observation path used by `pullPage`.
 Normal verification compares the checked corpus values against a fresh live
-capture.
+capture byte-for-byte; semantic equality alone does not refresh the golden data.
+
+The 2026-10-14 refresh is grounded in the live capture diff from CI job
+`116017226912`: four June fixture values still used raw-renderer spacing and
+markers, while observations now return canonical Markdown (tight lists,
+underscore emphasis, and incrementing ordered-list labels). All six other
+entries were unchanged. The offline corpus tests pin the canonical body form and
+verify that those earlier captured spellings retain their semantic relation;
+the live golden comparison and all equal/distinct shape assertions remain strict.
 
 To intentionally refresh the checked corpus values, run:
 

@@ -29,7 +29,7 @@ export const CorpusEntry = Schema.Struct({
   description: Schema.String,
   /** What a user authors locally. */
   authored: Schema.String,
-  /** The block-tree-rendered body a real Notion round-trip produces. */
+  /** The canonical block-tree-rendered body a real Notion round-trip produces. */
   notion_round_trip: Schema.String,
   relation: CorpusRelation,
   /** For `distinct_from`, the sibling entry id whose canonical form must differ. */
