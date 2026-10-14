@@ -8,6 +8,8 @@ publisher="$repo_root/nix/buck2-products/publish.sh"
 targets="$repo_root/nix/buck2-products/cache-targets.json"
 workflow="$repo_root/.github/workflows/ci.yml"
 
+bash "$repo_root/genie/ci-scripts/buck2-manifest-inventory.test.sh" "$repo_root"
+
 jq -e '
   .schema == "effect-utils/buck-cache-targets/v1" and
   (.products | length > 0) and
