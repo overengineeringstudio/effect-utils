@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/data-graph/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:3ed4da92ebd9d31fa534683f9a6681cd8000ad9e5b113e5905619d94db48eebd
+# Semantic fingerprint: sha256:2da239bc55148d129456cec1b6160694ed0ed48a5e162d20cb1ac3e3554217d5
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -21,10 +21,13 @@ export_file(
 )
 
 export_materialization_inputs([
+    "src/cache.integration.test.ts",
     "src/identity.unit.test.ts",
     "src/mod.integration.test.ts",
     "src/mod.ts",
     "src/properties.integration.test.ts",
+    "src/recovery.integration.test.ts",
+    "src/scale.integration.test.ts",
     "src/scenario.ts",
     "src/selection.integration.test.ts",
     "src/spike.ts",
@@ -69,10 +72,13 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_data_graph_71f8ed469693",
     files = {
         "package.json": "package.json",
+        "src/cache.integration.test.ts": "src/cache.integration.test.ts",
         "src/identity.unit.test.ts": "src/identity.unit.test.ts",
         "src/mod.integration.test.ts": "src/mod.integration.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/properties.integration.test.ts": "src/properties.integration.test.ts",
+        "src/recovery.integration.test.ts": "src/recovery.integration.test.ts",
+        "src/scale.integration.test.ts": "src/scale.integration.test.ts",
         "src/scenario.ts": "src/scenario.ts",
         "src/selection.integration.test.ts": "src/selection.integration.test.ts",
         "src/spike.ts": "src/spike.ts",
@@ -101,10 +107,13 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_data_graph_71f8ed469693",
     files = {
         "package.json": "package.json",
+        "src/cache.integration.test.ts": "src/cache.integration.test.ts",
         "src/identity.unit.test.ts": "src/identity.unit.test.ts",
         "src/mod.integration.test.ts": "src/mod.integration.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/properties.integration.test.ts": "src/properties.integration.test.ts",
+        "src/recovery.integration.test.ts": "src/recovery.integration.test.ts",
+        "src/scale.integration.test.ts": "src/scale.integration.test.ts",
         "src/scenario.ts": "src/scenario.ts",
         "src/selection.integration.test.ts": "src/selection.integration.test.ts",
         "src/spike.ts": "src/spike.ts",
