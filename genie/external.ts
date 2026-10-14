@@ -305,6 +305,7 @@ export const catalog = defineCatalog({
   // the `effect` core package (mostly under `effect/*`); only these
   // packages remain separate.
   effect: '4.0.0',
+  '@number0/iroh': '1.1.0',
   '@effect/ai-openai-compat': '4.0.0',
   '@effect/ai-typesafe': '4.0.0',
   '@effect/platform-node': '4.0.0',
@@ -1032,6 +1033,7 @@ export {
   installMegarepoStep,
   installNixStep,
   namespaceRunner,
+  type NamespacePrivilege,
   nixDiagnosticsArtifactStep,
   runDevenvTasksBefore,
   validateNixStoreStep,

@@ -124,6 +124,16 @@ schema-first `OtelMetric` contracts, preserving their exported metric identities
 - **OTEL spans** - Automatic tracing with cross-process trace propagation
 - **Test helpers** - `withTestCtx` for automatic layer provision in Playwright tests
 
+### Peer-to-peer QUIC
+
+Effect 4 bindings for authenticated peer-to-peer QUIC and schema-framed messages
+in Node and Bun desktop/server applications.
+See the [package README](./packages/@overeng/effect-iroh/README.md) for usage and limitations.
+
+| Package                                                 | Description                         |
+| ------------------------------------------------------- | ----------------------------------- |
+| [@overeng/effect-iroh](./packages/@overeng/effect-iroh) | Effect wrapper for the iroh binding |
+
 ### Utilities
 
 | Package                                     | Description                                          |
@@ -190,6 +200,9 @@ devenv tasks run test:run
 devenv tasks run test:utils
 devenv tasks run test:genie
 
+# Rust interop generator integration tests (Bun)
+devenv tasks run buck2:rust:generators:test
+
 # Integration tests (requires NOTION_API_TOKEN for Notion packages)
 NOTION_API_TOKEN=secret_xxx devenv tasks run test:integration
 
@@ -198,18 +211,36 @@ devenv tasks run test:watch
 ```
 
 The aggregate starts `test:buck2:unit` after `genie:check`, independently of
-editor dependency publication. It first prebuilds every declared Vitest collection
-product from `buck2-test-authority.json`, then executes the bounded lanes in the
-existing single Buck test invocation. The prebuild performs no source tests and
+editor dependency publication. It first prebuilds the selected Vitest collection
+products from `buck2-test-authority.json`, then executes the selected bounded lanes
+in the existing single Buck test invocation. The prebuild performs no source tests and
 does not cache source reports or coverage verdicts.
 
 After the source suites and bounded verdicts finish, `test:run` still invokes
 the baseline-collection gate. That gate resolves the identical collection targets
 with the same local-only host-platform Buck build, so current inputs are checked
 even when the products are warm. It then validates the complete filesystem census,
-each bounded selection's exact inventory, source-task ownership and baseline counts.
-Prebuilding changes scheduling only: missing or malformed products, coverage drift,
-failed bounded execution and missing source evidence still fail the aggregate.
+each selected bounded lane's exact inventory, source-task ownership and baseline counts.
+Missing or malformed products, coverage drift, failed bounded execution and missing
+selected source evidence still fail the aggregate.
+
+`genie/ci-workflow/test-platforms.json` classifies aggregate source tasks, individual
+bounded Buck lanes, and every shared module shell script as Darwin-sensitive or
+platform-neutral, with a rationale for each. The required macOS lane sets
+`EFFECT_UTILS_TEST_PLATFORM=darwin` and runs only the Darwin subsets; Linux and an
+unset platform run both subsets. Disjointness and completeness are enforced against
+the generated Buck authority and discovered module scripts. The complete ownership
+authority is retained even when collection products and baseline evidence are scoped.
+Editor publication follows the selected source suites and module fixtures rather
+than publishing neutral-only package views. macOS still builds and smokes the native
+and compiled products to cover Darwin artifacts.
+
+Infrastructure Bun suites outside package source roots run through source tasks
+rather than `buck2-test-authority.json`: `genie:buck2:test` covers the Buck projection
+suite, and `buck2:rust:generators:test` covers every test under `buck2/rust/`, including
+the interop service and wasm guest packager integration tests. Both tasks participate
+in `test:run`; the platform-neutral Rust generator suite runs in the Linux CI partition,
+while the Darwin partition retains only host-sensitive suites.
 
 ### Type Checking
 
@@ -230,6 +261,23 @@ Audit cross-cell Buck provider identity separately:
 ```bash
 devenv tasks run buck2:providers:check
 ```
+
+Generated TypeScript package and root aggregate `BUCK` files record their projection
+source, generator, schema version, semantic fingerprint, and regeneration command.
+They deliberately do not enumerate the workspace-wide generator inputs: unrelated
+package additions must not rewrite package-local headers. Follow the projection source
+and its imports for the authoring provenance; the package projection reads the owning
+repository's Genie registry to resolve workspace dependencies and nested package exclusions.
+The fingerprint hashes the canonical projection data, not an enumerated list of filenames
+or the bytes of every source file. Freshness is enforced independently by
+`devenv tasks run genie:check`, which loads the generators and compares their complete
+formatted output with the committed files (`packages/@overeng/genie/src/core/generation.ts`).
+The warm `genie:run` task fingerprint separately covers generator sources, configured
+extra input globs, generated bytes, and CLI identity in
+`nix/devenv-modules/tasks/shared/genie.nix`; it does not parse these comments.
+Buck action/cache identity continues to come from declared target inputs, dependencies,
+and toolchain capabilities; no rule interprets the header as a dependency manifest or
+cache key. Rules that explicitly stage a `BUCK` file still hash its complete bytes.
 
 ### Consumer Buck Roots
 
@@ -296,6 +344,15 @@ The consumer's Nix source closure must supply the same cell, package bytes, and
 target declarations. The root continues to ignore `.devenv` wholesale. Unmapped
 workspace packages retain their conventional same-cell `:package_tree` labels;
 mapped labels participate in the projection fingerprint.
+
+Dependency-view availability is derived from the complete required resolver
+context, not just a package's own platform fields. Required native dependencies
+retain their edges on supported machine platforms; their owners and importer
+views have no `javascript_portable` configuration. Generation still succeeds,
+but selecting an unsupported configuration fails analysis before execution.
+Optional native packages retain platform filtering. The normalized store schema
+is `effect-utils/buck2-pnpm-store/v2`; importer `platforms` lists supported
+configurations and `variants` covers only that set.
 
 Put the effect-utils flake's pinned `packages.<system>.buck2` on `PATH` (or use
 its `bin/buck2` as `BUCK2_BIN`). Direct commands, agents and devenv tasks then

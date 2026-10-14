@@ -246,6 +246,38 @@
     "accept": false
   },
   {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 null",
+    "input": { "value": null },
+    "accept": true
+  },
+  {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 rounding",
+    "input": { "value": 0.1 },
+    "accept": true,
+    "canonicalJson": "{\"value\":0.10000000149011612}"
+  },
+  {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 missing",
+    "input": {},
+    "accept": false
+  },
+  {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 overflow",
+    "input": { "value": 3.5e38 },
+    "accept": false
+  },
+  {
+    "contract": "NullableFloatSample",
+    "name": "required nullable binary32 non-finite",
+    "input": { "value": "Infinity" },
+    "inputJson": "{\"value\":Infinity}",
+    "accept": false
+  },
+  {
     "contract": "FloatSample",
     "name": "binary32 decimal rounding",
     "input": { "value": 0.1 },

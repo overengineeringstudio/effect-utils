@@ -1,8 +1,47 @@
 import { describe, expect, it } from 'bun:test'
 
-import { cargoNextestStep, nixDevelopStep, plainFlakeSetupSteps } from './rust.ts'
+import {
+  cargoClippyJob,
+  cargoFmtJob,
+  cargoNextestJob,
+  cargoNextestStep,
+  nixDevelopStep,
+  plainFlakeGenieCheckJob,
+  plainFlakeJob,
+  plainFlakeSetupSteps,
+} from './rust.ts'
+import { namespaceRunner } from './setup.ts'
 
 describe('plain-flake Rust CI', () => {
+  it('propagates each explicit privilege mode through every default Namespace job', () => {
+    for (const namespacePrivilege of ['always', 'trusted', 'never'] as const) {
+      const opts = { namespacePrivilege }
+      const jobs = [
+        plainFlakeJob({ ...opts, step: { run: 'nix build' } }),
+        cargoFmtJob(opts),
+        cargoClippyJob(opts),
+        cargoNextestJob(opts),
+        plainFlakeGenieCheckJob(opts),
+      ]
+      for (const job of jobs) {
+        expect(job['runs-on']).toEqual(
+          namespaceRunner({
+            profile: 'namespace-profile-linux-x86-64',
+            runId: '${{ github.run_id }}',
+            privileged: namespacePrivilege,
+          }),
+        )
+        expect(job).not.toHaveProperty('namespacePrivilege')
+      }
+    }
+  })
+
+  it('retains an explicit runner override without changing the Nix command', () => {
+    const job = cargoFmtJob({ namespacePrivilege: 'trusted', runsOn: 'ubuntu-latest' })
+    expect(job['runs-on']).toBe('ubuntu-latest')
+    expect(job.steps.at(-1)?.run).toBe('nix develop -c cargo fmt --all -- --check')
+  })
+
   it('keeps spaces, quotes, empty arguments and shell metacharacters inside argv', () => {
     expect(
       nixDevelopStep({

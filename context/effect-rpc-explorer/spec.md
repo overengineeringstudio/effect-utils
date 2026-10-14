@@ -31,11 +31,14 @@ RPC replay tool, or RPC runtime.
 ## Architecture and Packages
 
 ```text
-host RpcGroup + Protocol services + host policy
-                    |
-                    v
+host RpcGroup + host policy       public Protocol + server middleware
+             |                                  |
+             |                    @overeng/effect-rpc-observer
+             |                         scoped coordinator
+             +------------------+---------------+
+                                v
  @overeng/effect-rpc-explorer
- + descriptors       + middleware/protocol decorators
+ + descriptors       + transient capture sink
  + bounded model     + typed inspector RpcGroup (excluded)
  + snapshot/watch    + pipeline telemetry
                     |
@@ -46,10 +49,10 @@ host RpcGroup + Protocol services + host policy
  + client projection + accessible dense UI + Storybook
 ```
 
-`@overeng/effect-rpc-explorer` is the only package allowed to know Effect RPC
-wire messages. It has no React dependency. It exposes composable Layers and
-pure descriptors/model types, but it does not start a server, select a
-transport, persist events, or assign `service.name`.
+`@overeng/effect-rpc-explorer` consumes the shared observer's capture callbacks
+and borrowed wire envelopes. It has no React dependency. It exposes a scoped
+constructor and pure descriptors/model types, but does not start a server,
+select a transport, persist events, or assign `service.name`.
 
 `@overeng/effect-rpc-explorer-react` depends on the core protocol/model types.
 It does not decorate Protocol services, decode Effect schemas, or own capture
@@ -68,36 +71,39 @@ sequenceDiagram
   participant G as Host RpcGroup
   participant C as Explorer core
   participant P as Client/server Protocol
+  participant O as Shared protocol observer
   participant I as Inspector RpcGroup
   participant U as React UI
-  H->>C: group + decorated Protocol + config
+  H->>C: group + capture policy/config
   C->>G: enumerate public Rpc descriptors
-  P-->>C: encoded lifecycle envelopes
-  G-->>C: decoded middleware context/cause
+  H->>O: scoped observer with explorer capture sink
+  P-->>O: encoded lifecycle envelopes
+  G-->>O: decoded server middleware context/cause
+  O-->>C: canonical lifecycle and borrowed raw attachments
   C->>C: policy -> normalize -> ordered mutation
   U->>I: snapshot/watch request
   I-->>U: NDJSON snapshot then deltas
   Note over C,I: inspector group has observation include=false
 ```
 
-The host composes both observation seams:
+The host composes one scoped observer from
+`@overeng/effect-rpc-observer` with
+`explorer.makeCaptureSink({ side, encodedDecodersByTag? })` registered as
+`capture: true`, then decorates the public client/server Protocol once. Decoded
+server middleware, when selected, shares this same observer coordinator.
+Standalone explorer needs neither RPC devtools nor devbar.
 
-1. Server `RpcMiddleware` supplies decoded payload/headers, the `Rpc` value, and
-   the correlated terminal handler cause. Client middleware may enrich decoded
-   dispatch metadata but is not treated as a response-lifecycle hook.
-2. Public `RpcClient.Protocol` and `RpcServer.Protocol` decorators observe
-   actual encoded send/run traffic, including chunks, acknowledgements,
-   interrupts, exits, send failures, disconnects, and connection faults. Every
-   field and capability of the wrapped Protocol is forwarded unchanged.
-
-Neither seam is complete by itself. The model joins their complementary facts
-at the ordered mutation boundary. Connection-level faults without request IDs
-remain connection records and mark all active observations on that connection
-`uncertain`; they are never guessed onto one request.
+The [observer contract](../devtools/03-rpc-observer/spec.md) owns public seams,
+correlation, clocks, connection identities, bounded deduplication, faults, and
+terminal truth. Explorer owns inclusion, capture policy, codec-bound decoding,
+normalization, retention, and inspection. Canonical `transportFailure` becomes
+explicit uncertainty, not an application error; failed-send evidence retains
+`sendFailed`. Connection evidence is side-specific, and capacity/send failures
+never settle unrelated calls.
 
 The explorer's inspector API is itself an Effect `RpcGroup`. Its RPCs carry the
-package-owned observation annotation `exclude`. The Protocol decorator also
-rejects its group key before event construction. The annotation is deliberately
+package-owned observation annotation `exclude`. The capture sink applies that
+descriptor's inclusion before constructing explorer events. The annotation is deliberately
 independent from capture policy: exclusion controls whether an RPC produces
 records; capture policy controls which content an included RPC may retain.
 

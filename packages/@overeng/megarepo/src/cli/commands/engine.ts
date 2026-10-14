@@ -247,13 +247,42 @@ export const syncMegarepo = <R = never>({
     // Load config
     const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
 
-    // Top-level apply may mount into the invoking workspace and fetch may also rewrite its lock;
-    // the guard grants this only for non-default branch worktrees. Nested roots stay shared caches.
+    // Top-level apply owns only its root and mount: an author branch, or an exact
+    // commit workspace with lock sync off. Nested roots need invocation-local freshness.
     const ownsTopLevelRoot = depth === 0 && (isApplyMode === true || isFetchMode === true)
     if (dryRun === false) {
+      let commitApplyRoot: string | undefined
+      const pathCommit = resolvedRoot.match(/\/refs\/commits\/([0-9a-f]{40})$/)?.[1]
+      if (
+        depth === 0 &&
+        isApplyMode === true &&
+        (options.lockSyncMode ?? 'off') === 'off' &&
+        pathCommit !== undefined
+      ) {
+        const identity = yield* Git.runCommand({
+          args: ['rev-parse', '--show-toplevel', 'HEAD'],
+          cwd: megarepoRoot,
+        }).pipe(Effect.orElseSucceed(() => ''))
+        const [gitRoot, head] = identity.split('\n')
+        if (
+          gitRoot !== undefined &&
+          head === pathCommit &&
+          (yield* fs.realPath(gitRoot)) === resolvedRoot
+        ) {
+          commitApplyRoot = resolvedRoot
+        }
+      }
+      // Materialization permission never authorizes generators, including outputs
+      // aliased outside the store. Reject before changing any member mounts.
+      if (commitApplyRoot !== undefined && getEnabledGenerators(config).length > 0) {
+        yield* assertCanonicalMutationAllowed({ target: megarepoRoot })
+      }
       const authorization =
         ownsTopLevelRoot === true
-          ? { materializationRoot: megarepoRoot }
+          ? {
+              materializationRoot: megarepoRoot,
+              ...(commitApplyRoot !== undefined ? { commitApplyRoot } : {}),
+            }
           : isApplyMode === true &&
               (options.lockSyncMode ?? 'off') === 'off' &&
               createdWorktrees.has(resolvedRoot) === true
@@ -750,6 +779,7 @@ export const runCommand = ({
   worktreeMode,
   lockSyncMode,
   commitMembers,
+  commitAllMembers = false,
 }: {
   mode: SyncMode
   output: OutputModeValue
@@ -769,6 +799,8 @@ export const runCommand = ({
   lockSyncMode?: LockSyncMode
   /** Root members applied as commit worktrees with their nested trees prepared recursively. */
   commitMembers?: Option.Option<string>
+  /** Selects every root member as a commit member, without a lossy name list. */
+  commitAllMembers?: boolean
 }) =>
   Effect.gen(function* () {
     const json = output === 'json' || output === 'ndjson'
@@ -784,20 +816,28 @@ export const runCommand = ({
       })
     }
 
-    const nestedCommitMembers =
+    const listedCommitMembers =
       commitMembers !== undefined && Option.isSome(commitMembers) === true
         ? parseMemberList(commitMembers.value)
         : []
-    if (nestedCommitMembers.length > 0 && all === true) {
+    if (listedCommitMembers.length > 0 && commitAllMembers === true) {
       return yield* new InvalidOptionsError({
-        message: '--commit-members and --all are mutually exclusive',
+        message: '--commit-members and --commit-all-members are mutually exclusive',
+      })
+    }
+    const commitSelectorFlag =
+      commitAllMembers === true ? '--commit-all-members' : '--commit-members'
+    const commitSelected = listedCommitMembers.length > 0 || commitAllMembers === true
+    if (commitSelected === true && all === true) {
+      return yield* new InvalidOptionsError({
+        message: `${commitSelectorFlag} and --all are mutually exclusive`,
       })
     }
     // Recursive population is authorized only for fresh commit worktrees, which lock sync
     // never receives (see context/megarepo/spec.md, recursive materialization ownership).
-    if (nestedCommitMembers.length > 0 && (lockSyncMode ?? 'off') !== 'off') {
+    if (commitSelected === true && (lockSyncMode ?? 'off') !== 'off') {
       return yield* new InvalidOptionsError({
-        message: '--commit-members requires --lock-sync off',
+        message: `${commitSelectorFlag} requires --lock-sync off`,
       })
     }
 
@@ -812,6 +852,7 @@ export const runCommand = ({
     const { config } = yield* readMegarepoConfig(root.value)
     yield* rejectRetiredRootConfig({ megarepoRoot: root.value, config })
     const memberNames = Object.keys(config.members)
+    const nestedCommitMembers = commitAllMembers === true ? memberNames : listedCommitMembers
     const unknownCommitMembers = nestedCommitMembers.filter(
       (memberName) => memberNames.includes(memberName) === false,
     )

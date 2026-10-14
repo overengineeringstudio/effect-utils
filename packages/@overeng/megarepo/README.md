@@ -208,34 +208,48 @@ agent activations wrap their builds in `mr store lease --owner-path <worktree>`,
 protected only by the process veto; lease wrapping of activations is tracked in
 [the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
 
-### Root activity snapshot
+### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
 strict process probe reports `unknown` (and keeps) whenever foreign processes exist. A host can
-close that gap with a root oneshot that writes a producer-neutral manifest:
+close that gap with a collector that has full process visibility:
 
 ```bash
+# Capture only: exact manifest JSON on stdout, no manifest file writes.
+mr store activity snapshot --stdout
+
+# Trusted publication: retain the root-controlled directory requirement.
 mr store activity snapshot --output /run/megarepo/workspace-activity.json
 ```
 
-The command writes `megarepo.workspace-activity.v2` with producer `mr-process`, the host epoch,
-`capturedAt` and `expiresAt` (at most 5 minutes later), `complete`, `errors`, and one claim with
-source `process` per path under the store root referenced by any process cwd, root, open file, or
-mapped file. It runs no hooks or external commands. Without full visibility of every process
-(not root, or any unreadable `/proc` entry) it still writes the manifest, with `complete: false`
-and the errors, which consumers treat as `unknown`. `--output` is a file path, not an output mode.
+Both destinations emit the same `megarepo.workspace-activity.v2` JSON with producer `mr-process`,
+the host epoch, `capturedAt` and `expiresAt` (at most 5 minutes later), `complete`, `errors`,
+`processCoverage: "all-uids"`, `processRoots`, `processIdentities`, and one claim with source
+`process` per path under the store root referenced by any process cwd, root, open file, or mapped
+file. It runs no hooks or external commands. Without full visibility of every process it still
+emits the manifest, with `complete: false` and the errors, which consumers treat as `unknown`.
+Specify exactly one of `--stdout` or `--output`; `--output` is a normalized absolute file path,
+not an output mode, and still publishes atomically with mode 0644.
 
-The host owner (for example a dotfiles systemd oneshot run as root before each hygiene plan and
-apply) owns the output: the file and its directory are root-owned and not writable by the store
-owner, but readable by it. The store owner admits it through `gc-config.json`
-`generatedArtifacts.manifestPath` and `agentLivenessProducers: ["mr-process"]`. Plan and apply use
+`--stdout` performs capture only: it does not check publication-directory ownership or grant
+trust to the output. A dedicated non-root Linux collector with sufficient `/proc` access
+(for example ambient `CAP_SYS_PTRACE` and `CAP_DAC_READ_SEARCH`) can redirect it into its own
+private staging directory. A separate root publisher must validate the untrusted capture and
+copy it into the root-controlled final location; merely capturing or redirecting it does not
+make it admissible. Splitting capture from publication avoids giving the host-PID collector
+UID-0 write authority through `/proc/<pid>/root`.
+
+The host owner owns the published file and its directory as root, not writable by the store
+owner, but readable by it. Readers retain these ownership checks regardless of capture mode.
+The store owner admits it through `gc-config.json` `generatedArtifacts.manifestPath` and
+`agentLivenessProducers: ["mr-process"]`. Plan and apply use
 the manifest for foreign-process evidence and still inspect owner-UID processes freshly.
 An unreadable owner-UID process is covered only when its current PID and kernel start-time
 match a `processIdentities` entry in the unexpired root snapshot; the snapshot's full path
 claims still apply. A new unreadable process, PID reuse, or missing, expired, foreign-host,
 or incomplete manifest keeps every candidate.
 
-Run as root, point `MEGAREPO_STORE` at the owner's store so the claims cover that store root.
+Point `MEGAREPO_STORE` at the owner's store so the claims cover that store root.
 
 ### Merged worktree worklog teardown
 
@@ -255,14 +269,55 @@ windows, live-set veto, lossless floor) and additionally HEAD is reachable from
 status is clean apart from the worklog, and ignored content outside it is rebuildable output. A
 planning-time failed or unknown check falls back to archiving; a check failing under the lock keeps
 the worktree. Parked, closed, or unmerged worktrees are never torn down. Under the worktree lock and the owner's deletion lease, the policy is reloaded and must
-keep the same SHA-256, the live set is re-checked, admitted activity must be available and show
-no agent, PTY, or process claim (unavailable activity keeps with `agent-liveness-unavailable`), the
-strict cwd/root/fd/maps probe must pass (foreign processes covered by an admitted root snapshot),
-and every teardown check is re-run; then the
-worklog is measured, and one `git worktree remove --force` removes the worktree (force only covers
-the proven worklog and rebuildable output; the branch ref is retained). The result reports
+keep the same SHA-256, the live set is re-checked, and admitted activity must be available and show
+no agent, PTY, or non-Buck process claim (unavailable activity keeps with `agent-liveness-unavailable`).
+Every teardown check is re-run and the worklog is measured before idle Buck daemons are stopped.
+Only the exact discovered Buck daemon/forkserver process lifetimes are deferred from the local
+activity scan to shutdown and the strict probe; immutable manifest claims and all other holders
+still veto before shutdown, even when they refer to the same path.
+The strict cwd/root/fd/maps probe must pass (foreign processes covered by an admitted root
+snapshot), and refreshed activity/process claims must still be clear. Linux fd-pinned deletion
+removes the worktree and Git prunes its registration; the branch ref is retained. The result reports
 `status: "reaped"`, `reason: "merged-worklog-teardown"`, `worklogBytesRemoved` (allocated bytes,
 estimated in `--dry-run`), `worklogPolicyPath`, and `worklogPolicySha256`.
+
+### Buck2 daemons at worktree retirement
+
+On Linux, whole-worktree GC stops the current user's idle Buck2 daemons before renaming or
+removing the root: cold archive, clean ref-mismatch archive, merged-worklog teardown, legacy
+whole-worktree sweep, and their targeted plan applications. The hook runs under the existing
+worktree lock (and deletion lease where present), after the path's existing keep checks and
+immediately before its process-in-use probe or deletion. The legacy sweep retains its existing
+protection checks without adding a process probe or status reclassification.
+It discovers same-UID Buck daemons in `/proc`, using the same path-containment predicate as the
+existing probes. Isolation comes from daemon argv; the project
+root is its cwd with a trailing `/buck-out/<isolation>` stripped, or the cwd itself when that suffix
+is absent (for example a daemon started by LSP may stay at the project root).
+
+`buck2 --isolation-dir <isolation> status` must return the identical PID and daemon ID and an empty
+`active_commands` list before `buck2 --isolation-dir <isolation> kill` runs from that project root.
+Each command has a 30-second deadline. GC never signals a daemon. Active, mismatched, unreadable,
+or unkillable daemons remain for paths with an existing in-use probe to veto; the legacy sweep's
+pre-existing deletion contract is unchanged. This is not atomic with new Buck commands: a command
+can attach between status and kill; the worktree lock/lease only excludes cooperating worktree
+activations, not every Buck client.
+
+JSON worktree receipts include `buckDaemonsStopped` (root, daemon ID, PID, isolation, cwd path,
+and `freedKiB`: pre-kill RSS + VmSwap of the daemon and its forkserver), even if a later probe or
+mutation keeps/fails. Targeted application retains its error contract and includes any stopped
+daemon's PID, daemon ID, root and `freedKiB` in the error message.
+`buckDaemonsUnreachable` records identity, cwd, memory and reason. `buck2 kill` has no
+conditional form: the final status and event-log read is immediately followed by the kill, and a
+stop that met another daemon pid or a command's new event log carries `raced` and logs a warning.
+A command starting in that sub-second window fails loudly and restarts the daemon. Already
+archived roots are report-only (`archived-root`): Buck's address is keyed to the original root,
+so GC never tries status or kill from the renamed archive path. Their in-use probe still keeps
+held archives. `--dry-run` never invokes the hook. `MEGAREPO_GC_BUCK2_BIN` selects the executable
+(default `buck2`); an empty string disables the hook.
+
+Budget/generated-artifact deletion inside a surviving worktree, `mr store fix`, and the separate
+idle-daemon reaper are unchanged. Implementation: `src/store/store-buck-daemons.ts`; GC ordering
+and receipts: `src/cli/commands/store/mod.ts` and `src/cli/renderers/StoreOutput/schema.ts`.
 
 ### Deletion lease
 

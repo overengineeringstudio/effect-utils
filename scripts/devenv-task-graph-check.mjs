@@ -322,6 +322,20 @@ if (typeof genieBuckTestCommand === 'string') {
     detail: genieBuckTestCommand,
   })
 }
+const rustGeneratorTestCommand = requireTask('buck2:rust:generators:test').command
+if (typeof rustGeneratorTestCommand === 'string') {
+  const commandBody =
+    existsSync(rustGeneratorTestCommand) === true
+      ? readFileSync(rustGeneratorTestCommand, 'utf8')
+      : ''
+  ok({
+    condition:
+      commandBody.includes(' test ./buck2/rust/') &&
+      commandBody.includes(' test buck2/rust/') === false,
+    name: 'Rust generator tests use an explicit source directory without excluding integration files',
+    detail: rustGeneratorTestCommand,
+  })
+}
 const collectionGateCommand = requireTask('test:run').command
 if (typeof collectionGateCommand === 'string') {
   const commandBody =
@@ -415,7 +429,11 @@ ok({
 // Aggregate-only aliases use the union publisher. Direct source tasks publish
 // only their own execution view and the generator bootstrap closure.
 const sourceTestAggregate = 'test:run'
-const sourceTestExtraSuites = ['devenv-modules:test', 'genie:buck2:test']
+const sourceTestExtraSuites = [
+  'devenv-modules:test',
+  'genie:buck2:test',
+  'buck2:rust:generators:test',
+]
 const sourceTestChainPrefix = `${sourceTestAggregate}:chain:`
 const chainExecutionPattern = /^test:run:chain:(\d+):/
 const sourceTestTasks = [...dependencies.keys()].filter((name) => chainExecutionPattern.test(name))
@@ -521,8 +539,12 @@ const scopedPublisherContracts = {
     packagePaths: ['packages/@overeng/otel-contract'],
   },
   'buck2:editor:publish:playwright': {
-    consumers: ['test:pw:tui-react', 'test:pw:utils'],
-    packagePaths: ['packages/@overeng/tui-react', 'packages/@overeng/utils'],
+    consumers: ['test:pw:meters', 'test:pw:tui-react', 'test:pw:utils'],
+    packagePaths: [
+      'packages/@overeng/meters',
+      'packages/@overeng/tui-react',
+      'packages/@overeng/utils',
+    ],
   },
   'buck2:editor:publish:test': {
     // check:all's observability profile names the test publisher among its prerequisites.
@@ -675,7 +697,11 @@ ok({
     prebuildBranchOffset !== -1 &&
     prebuildBranchOffset < collectionGateSource.indexOf('const sourceTasksPath =') &&
     prebuildBranchOffset < collectionGateSource.indexOf('const testFiles =') &&
-    collectionGateSource.includes('const buildPlan = collectionBuildPlan({ lanes })') &&
+    collectionGateSource.includes(
+      'const buildPlan = collectionBuildPlan({ lanes: selectedLanes })',
+    ) &&
+    collectionGateSource.indexOf('const selectedLanes = selectTestLanes(') < prebuildBranchOffset &&
+    collectionGateSource.includes('ownershipForFile({ file, lanes })') &&
     collectionGateSource.includes('const collectionBuildError = await') &&
     collectionGateSource.includes('const built = await buildCollectionArtifacts()'),
   name: 'prebuild shares the final current-input plan without reading or caching source verdicts',

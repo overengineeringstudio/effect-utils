@@ -4,13 +4,30 @@
  * Supports either `gh auth token` or GitHub App installation tokens and
  * uses Effect's HTTP client for data fetching with schema validation.
  */
-import { createPrivateKey, createSign } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 
-import { Context, Duration, Effect, Layer, Option, Ref, Schema } from 'effect'
+import { NodeFileSystem } from '@effect/platform-node'
+import {
+  Context,
+  Duration,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Redacted,
+  Ref,
+  Schema,
+  type Scope,
+} from 'effect'
 import { HttpClient, HttpClientRequest } from 'effect/http'
+import type { HttpClientError } from 'effect/http/HttpClientError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
+
+import {
+  makeGitHubApp,
+  type GitHubAppError,
+  type InstallationScope,
+} from '@overeng/utils/node/github-app'
 
 import { GitHubApiError, GitHubAuthError, LogsUnavailableError } from '../isomorphic/Errors.ts'
 import type { WorkflowJobsResponse } from '../isomorphic/GitHubSchemas.ts'
@@ -22,8 +39,10 @@ import { GitHubAuthConfigTag } from './Config.ts'
 import type { GitHubAppAuthConfig } from './Config.ts'
 import { withGitHubSpan } from './observability.ts'
 
-const GITHUB_API_BASE = 'https://api.github.com'
-const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
+/** One client contract regardless of CLI or App authentication source. */
+type AuthenticatedClient = HttpClient.HttpClient.With<GitHubApiError, Scope.Scope>
+const transportFailure = (cause: GitHubAppError | HttpClientError) =>
+  new GitHubApiError({ message: 'Authenticated GitHub transport failed', cause })
 
 /**
  * GitHub rejects REST requests without a User-Agent header (403), so every
@@ -47,11 +66,6 @@ const RATE_LIMIT_RESERVE = 25
 
 /** Budget below which every response logs a warning. */
 const RATE_LIMIT_WARN = 100
-
-interface InstallationTokenInfo {
-  readonly token: string
-  readonly expiresAt: Date
-}
 
 /** Detects Azure Blob Storage XML error responses that GitHub returns instead of log content */
 export const isAzureBlobError = (text: string): boolean =>
@@ -91,8 +105,6 @@ export const selectAppAuthSource = ({
     ? { _tag: 'cli-token-fallback', owner }
     : { _tag: 'app-installation', owner, installationID }
 }
-
-const base64urlJson = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
 
 /** Returns whether a workflow run has not yet reached GitHub's completed state. */
 export const isRunActive = (run: Pick<GH.WorkflowRun, 'status'>): boolean =>
@@ -171,41 +183,29 @@ export const selectRunForVerdict = ({
     : { run: fallback, expectedWorkflow: preferWorkflow, matchedExpectedWorkflow: false }
 }
 
-/** Create a signed RS256 JWT for GitHub App authentication (valid for ~9 minutes) */
-export const createGitHubAppJwt = ({
-  clientID,
-  privateKeyPem,
-  now = new Date(),
-}: {
-  clientID: string
-  privateKeyPem: string
-  now?: Date
-}) => {
-  const issuedAtSeconds = Math.floor((now.getTime() - 60_000) / 1000)
-  const expiresAtSeconds = Math.floor((now.getTime() + 9 * 60_000) / 1000)
-  const unsignedToken = `${base64urlJson({ alg: 'RS256', typ: 'JWT' })}.${base64urlJson({
-    iat: issuedAtSeconds,
-    exp: expiresAtSeconds,
-    iss: clientID,
-  })}`
-  const signature = createSign('RSA-SHA256')
-  signature.update(unsignedToken)
-  signature.end()
-  return `${unsignedToken}.${signature.sign(createPrivateKey(privateKeyPem)).toString('base64url')}`
+/** Stable consumer identity and explicit installation permissions for CI operations. */
+export interface GitHubClientOptions {
+  readonly consumer: string
+  readonly permissions: InstallationScope['permissions']
+  /** GitHub API origin; defaults to the public API. */
+  readonly apiBase?: URL
 }
 
 /** Service wrapping the GitHub REST API with rate-limit tracking */
-const makeGitHubClient = Effect.gen(function* () {
+const makeGitHubClient = Effect.fn('github-client.make')(function* (options: GitHubClientOptions) {
+  const apiBase = options.apiBase ?? new URL('https://api.github.com')
+  const GITHUB_API_BASE = apiBase.origin
+  const GITHUB_GRAPHQL_URL = new URL('/graphql', apiBase).href
   const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.withScope)
   const spawner = yield* ChildProcessSpawner
   const auth = yield* GitHubAuthConfigTag
-  const installationTokenRef = yield* Ref.make<Map<string, InstallationTokenInfo>>(new Map())
-  const privateKeyRef = yield* Ref.make<Option.Option<string>>(Option.none())
+  const rawHttpClient = yield* HttpClient.HttpClient
+  const fs = yield* FileSystem.FileSystem
   /** REST bucket, as reported by `api.github.com` REST responses. */
   const rateLimitRef = yield* Ref.make<Option.Option<RateLimitInfo>>(Option.none())
   /** GraphQL bucket — a separate budget with its own reset, never mixed with REST. */
   const graphqlRateLimitRef = yield* Ref.make<Option.Option<RateLimitInfo>>(Option.none())
-  /** Every request issued, across both buckets. */
+  /** API requests issued across both buckets; excludes internal App token exchanges. */
   const requestCountRef = yield* Ref.make(0)
   /** Subset of {@link requestCountRef} billed to the GraphQL bucket. */
   const graphqlRequestCountRef = yield* Ref.make(0)
@@ -249,117 +249,34 @@ const makeGitHubClient = Effect.gen(function* () {
     }),
   )
 
-  const loadPrivateKey = (appAuth: GitHubAppAuthConfig) =>
+  const getApp = yield* Effect.cached(
     Effect.gen(function* () {
-      const cached = yield* Ref.get(privateKeyRef)
-      if (Option.isSome(cached)) return cached.value
-
-      const privateKey = yield* Effect.try({
-        try: () => readFileSync(appAuth.privateKeyPath, 'utf8'),
-        catch: (cause) =>
-          new GitHubAuthError({
-            message: `Failed to read GitHub App private key: ${appAuth.privateKeyPath}`,
-            cause,
-          }),
-      })
-
-      yield* Ref.set(privateKeyRef, Option.some(privateKey))
-      return privateKey
-    })
-
-  const getInstallationToken = ({
-    owner: installationName,
-    installationID,
-    auth: appAuth,
-  }: {
-    owner: string
-    installationID: number
-    auth: GitHubAppAuthConfig
-  }) =>
-    Effect.gen(function* () {
-      const now = Date.now()
-      const cachedTokens = yield* Ref.get(installationTokenRef)
-      const cached = cachedTokens.get(installationName)
-      if (cached !== undefined && cached.expiresAt.getTime() - now > 60_000) {
-        return cached.token
-      }
-
-      const privateKeyPem = yield* loadPrivateKey(appAuth)
-      const appJwt = yield* Effect.try({
-        try: () => createGitHubAppJwt({ clientID: appAuth.clientID, privateKeyPem }),
-        catch: (cause) =>
-          new GitHubAuthError({
-            message: 'Failed to create GitHub App JWT',
-            cause,
-          }),
-      })
-
-      yield* Ref.update(requestCountRef, (count) => count + 1)
-
-      const response = yield* httpClient
-        .execute(
-          HttpClientRequest.post(
-            `${GITHUB_API_BASE}/app/installations/${installationID}/access_tokens`,
-          ).pipe(
-            HttpClientRequest.setHeaders({
-              Authorization: `Bearer ${appJwt}`,
-              Accept: 'application/vnd.github+json',
-              'User-Agent': GITHUB_USER_AGENT,
-              'X-GitHub-Api-Version': '2022-11-28',
-            }),
-          ),
-        )
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new GitHubApiError({
-                message: `GitHub App installation token request failed for ${installationName}`,
-                cause,
-              }),
-          ),
-        )
-
-      if (response.status < 200 || response.status >= 300) {
-        const text = yield* response.text.pipe(Effect.orElseSucceed(() => '<no body>'))
-        return yield* new GitHubApiError({
-          message: `GitHub App installation token request failed (${String(response.status)}): ${text}`,
-          cause: text,
+      if (auth._tag !== 'github-app')
+        return yield* new GitHubAuthError({
+          message: 'GitHub App auth is not configured',
+          cause: 'auth mode',
         })
-      }
-
-      const json = yield* response.json.pipe(
+      const privateKey = yield* fs.readFileString(auth.privateKeyPath).pipe(
         Effect.mapError(
           (cause) =>
-            new GitHubApiError({
-              message: `Failed to parse installation token response for ${installationName}`,
+            new GitHubAuthError({
+              message: `Failed to read GitHub App private key: ${auth.privateKeyPath}`,
               cause,
             }),
         ),
       )
-
-      const token = yield* Schema.decodeUnknownEffect(
-        Schema.Struct({
-          token: Schema.String,
-          expires_at: Schema.DateFromString,
-        }),
-      )(json).pipe(
-        Effect.mapError(
-          (cause) =>
-            new GitHubApiError({
-              message: `Invalid installation token response for ${installationName}`,
-              cause,
-            }),
-        ),
+      return yield* makeGitHubApp(
+        {
+          identity: { clientID: auth.clientID },
+          privateKey: Redacted.make(privateKey),
+        },
+        { userAgent: GITHUB_USER_AGENT, consumer: options.consumer, apiBase },
+      ).pipe(
+        Effect.provideService(HttpClient.HttpClient, rawHttpClient),
+        Effect.mapError((cause) => new GitHubAuthError({ message: cause.message, cause })),
       )
-
-      yield* Ref.update(installationTokenRef, (tokens) => {
-        const next = new Map(tokens)
-        next.set(installationName, { token: token.token, expiresAt: token.expires_at })
-        return next
-      })
-
-      return token.token
-    }).pipe(Effect.scoped)
+    }),
+  )
 
   /**
    * Resolve the credential every read and write goes through.
@@ -371,16 +288,31 @@ const makeGitHubClient = Effect.gen(function* () {
    * installation token and is already on the agent's PATH as `gh`, so it grants
    * no new authority.
    */
-  const getTokenForRepo = Effect.fn('github-client.get-token-for-repo')(function* (repo: string) {
-    if (auth._tag === 'gh-cli') return yield* getCliToken
+  const getClientForRepo = Effect.fn('github-client.get-client-for-repo')(function* (repo: string) {
+    if (auth._tag === 'gh-cli') {
+      const token = yield* getCliToken
+      const client: AuthenticatedClient = HttpClient.transformResponse(
+        httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))),
+        (response) => response.pipe(Effect.mapError(transportFailure)),
+      )
+      return client
+    }
 
     const source = selectAppAuthSource({ auth, repo })
     if (source._tag === 'app-installation') {
-      return yield* getInstallationToken({
-        owner: source.owner,
-        installationID: source.installationID,
-        auth,
-      })
+      const app = yield* getApp
+      const repository = repo.slice(repo.indexOf('/') + 1)
+      const client: AuthenticatedClient = HttpClient.transformResponse(
+        app
+          .client({
+            installationID: source.installationID,
+            repositories: { _tag: 'Selected', names: [repository] },
+            permissions: options.permissions,
+          })
+          .pipe(HttpClient.withScope),
+        (response) => response.pipe(Effect.mapError(transportFailure)),
+      )
+      return client
     }
 
     // `Ref.modify` claims the owner and reports whether this fiber is the one
@@ -395,7 +327,7 @@ const makeGitHubClient = Effect.gen(function* () {
       )
     }
 
-    return yield* getCliToken.pipe(
+    const token = yield* getCliToken.pipe(
       Effect.mapError(
         (cause) =>
           new GitHubAuthError({
@@ -404,6 +336,11 @@ const makeGitHubClient = Effect.gen(function* () {
           }),
       ),
     )
+    const client: AuthenticatedClient = HttpClient.transformResponse(
+      httpClient.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(token))),
+      (response) => response.pipe(Effect.mapError(transportFailure)),
+    )
+    return client
   })
 
   /**
@@ -481,15 +418,14 @@ const makeGitHubClient = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       yield* awaitBudget('rest')
-      const token = yield* getTokenForRepo(repo)
+      const client = yield* getClientForRepo(repo)
       const cache = yield* Ref.get(etagCache)
       const cached = useETag ? cache.get(path) : undefined
 
-      const response = yield* httpClient
+      const response = yield* client
         .execute(
           HttpClientRequest.get(`${GITHUB_API_BASE}${path}`).pipe(
             HttpClientRequest.setHeaders({
-              Authorization: `Bearer ${token}`,
               Accept: 'application/vnd.github+json',
               'User-Agent': GITHUB_USER_AGENT,
               'X-GitHub-Api-Version': '2022-11-28',
@@ -573,10 +509,9 @@ const makeGitHubClient = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       yield* awaitBudget('rest')
-      const token = yield* getTokenForRepo(repo)
+      const client = yield* getClientForRepo(repo)
       const baseRequest = HttpClientRequest.post(`${GITHUB_API_BASE}${path}`).pipe(
         HttpClientRequest.setHeaders({
-          Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
           'User-Agent': GITHUB_USER_AGENT,
           'X-GitHub-Api-Version': '2022-11-28',
@@ -585,7 +520,7 @@ const makeGitHubClient = Effect.gen(function* () {
       const request =
         body === undefined ? baseRequest : HttpClientRequest.bodyJsonUnsafe(body)(baseRequest)
 
-      const response = yield* httpClient.execute(request).pipe(
+      const response = yield* client.execute(request).pipe(
         Effect.mapError(
           (cause) =>
             new GitHubApiError({
@@ -619,8 +554,8 @@ const makeGitHubClient = Effect.gen(function* () {
     }).pipe(Effect.scoped)
 
   /** Make an authenticated POST request for a GitHub mutation with no response payload. */
-  const apiPost = (options: { repo: string; path: string; body?: unknown }) =>
-    apiPostResponse({ ...options, readJson: false }).pipe(Effect.asVoid)
+  const apiPost = (requestOptions: { repo: string; path: string; body?: unknown }) =>
+    apiPostResponse({ ...requestOptions, readJson: false }).pipe(Effect.asVoid)
 
   /** Make an authenticated POST request and decode its JSON response. */
   const apiPostJson = <TValue, TEncoded>({
@@ -659,14 +594,13 @@ const makeGitHubClient = Effect.gen(function* () {
   const apiGetText = ({ repo, path }: { repo: string; path: string }) =>
     Effect.gen(function* () {
       yield* awaitBudget('rest')
-      const token = yield* getTokenForRepo(repo)
+      const client = yield* getClientForRepo(repo)
       const requestUrl = `${GITHUB_API_BASE}${path}`
 
-      const response = yield* httpClient
+      const response = yield* client
         .execute(
           HttpClientRequest.get(requestUrl).pipe(
             HttpClientRequest.setHeaders({
-              Authorization: `Bearer ${token}`,
               Accept: 'application/vnd.github+json',
               'User-Agent': GITHUB_USER_AGENT,
               'X-GitHub-Api-Version': '2022-11-28',
@@ -810,6 +744,31 @@ const makeGitHubClient = Effect.gen(function* () {
         attributes: { repo, status },
       }),
     )
+
+  /** Completed history page, optionally bounded by GitHub's inclusive created-date range. */
+  const listWorkflowRunsPage = ({
+    repo,
+    perPage,
+    page,
+    created,
+  }: {
+    repo: string
+    perPage: number
+    page: number
+    created?: { readonly from: string; readonly to: string }
+  }) => {
+    const query = new URLSearchParams({
+      status: 'completed',
+      per_page: String(perPage),
+      page: String(page),
+    })
+    if (created !== undefined) query.set('created', `${created.from}..${created.to}`)
+    return apiGet({
+      repo,
+      path: `/repos/${repo}/actions/runs?${query}`,
+      schema: GH.WorkflowRunsResponse,
+    }).pipe(withGitHubSpan({ name: 'github-client.listWorkflowRunsPage', attributes: { repo } }))
+  }
 
   /** Get a single workflow run by ID. */
   const getWorkflowRun = ({ repo, runId }: { repo: string; runId: number }) =>
@@ -1158,13 +1117,12 @@ const makeGitHubClient = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       yield* awaitBudget('graphql')
-      const token = yield* getTokenForRepo(repo)
+      const client = yield* getClientForRepo(repo)
 
-      const response = yield* httpClient
+      const response = yield* client
         .execute(
           HttpClientRequest.post(GITHUB_GRAPHQL_URL).pipe(
             HttpClientRequest.setHeaders({
-              Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
               'User-Agent': GITHUB_USER_AGENT,
             }),
@@ -1385,6 +1343,7 @@ const makeGitHubClient = Effect.gen(function* () {
   return {
     listActiveRuns,
     listWorkflowRunsByStatus,
+    listWorkflowRunsPage,
     getWorkflowRun,
     getWorkflowJob,
     listWorkflowJobs,
@@ -1409,11 +1368,22 @@ const makeGitHubClient = Effect.gen(function* () {
   } as const
 })
 
+const defaultGitHubClient = makeGitHubClient({
+  consumer: 'gh-ci-utils',
+  permissions: { actions: 'write', checks: 'read', contents: 'read', pull_requests: 'read' },
+})
+
 /** Runtime shape of the GitHub CI client. */
-export type GitHubClientShape = Effect.Success<typeof makeGitHubClient>
+export type GitHubClientShape = Effect.Success<typeof defaultGitHubClient>
+/** Failures exposed by authenticated GitHub CI operations. */
+export type GitHubClientError = GitHubApiError | GitHubAuthError | LogsUnavailableError
 /** Context service providing authenticated GitHub CI operations. */
 export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShape>()(
   'gh-ci-utils/GitHubClient',
 ) {
-  static readonly Default = Layer.effect(GitHubClient, makeGitHubClient)
+  static readonly layer = (options: GitHubClientOptions) =>
+    Layer.effect(GitHubClient, makeGitHubClient(options)).pipe(Layer.provide(NodeFileSystem.layer))
+  static readonly Default = Layer.effect(GitHubClient, defaultGitHubClient).pipe(
+    Layer.provide(NodeFileSystem.layer),
+  )
 }

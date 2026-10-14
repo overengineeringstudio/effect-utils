@@ -86,7 +86,10 @@ jobs:
   deploy-preview:
     needs: [resolve-preview]
     if: ${{ needs.resolve-preview.outputs.deploy == 'true' }}
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true',
+      ]
     timeout-minutes: 30
     permissions:
       actions: read
@@ -113,6 +116,23 @@ jobs:
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Log Linux sandbox prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          BUCK2_TS_PRIVILEGE_ALLOWED: 'true'
+        run: |
+          set -euo pipefail
+          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
+            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
+            exit 1
+          fi
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "unshare -Ur true: passed"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -237,7 +257,10 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
   publish-preview-comment:
     needs: [resolve-preview, deploy-preview]
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true',
+      ]
     timeout-minutes: 30
     permissions:
       contents: read
@@ -263,6 +286,23 @@ jobs:
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Log Linux sandbox prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          BUCK2_TS_PRIVILEGE_ALLOWED: 'true'
+        run: |
+          set -euo pipefail
+          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
+            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
+            exit 1
+          fi
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "unshare -Ur true: passed"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:

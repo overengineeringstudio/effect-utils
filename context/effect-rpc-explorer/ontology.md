@@ -6,8 +6,11 @@
 Effect RPC activity into a bounded inspection model. _Avoid:_ collector,
 tracer, debugger.
 
-**Observer.** The core component attached to supported middleware and Protocol
-seams that turns one runtime signal into an event candidate.
+**Observer.** The shared, content-free coordinator that joins public middleware
+and Protocol evidence into one correlated lifecycle for independent consumers.
+
+**Capture sink.** Explorer's transient observer adapter that applies inclusion
+and content policy before constructing normalized inspection events.
 
 **Observation inclusion.** The independent decision whether a logical RPC may
 produce explorer observations. _Avoid:_ capture policy; exclusion hides the
@@ -83,6 +86,7 @@ RpcGroup
 
 physical envelope + middleware context
   -> Observer
+  -> Capture sink / Observation inclusion
   -> policy resolution per Capture channel
   -> Normalization
   -> Event

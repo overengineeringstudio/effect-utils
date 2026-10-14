@@ -41,12 +41,15 @@ export const assertCanonicalMutationAllowed = ({
   target,
   materializationRoot,
   materializedRoot,
+  commitApplyRoot,
   lockFile,
 }: {
   target: string
   materializationRoot?: string
   /** Physical identity of a commit worktree freshly created by this apply invocation. */
   materializedRoot?: string
+  /** Exact physical commit root whose Git root and HEAD top-level apply proved, with lock sync off. */
+  commitApplyRoot?: string
   /** Top-level fetch also owns the invoking branch workspace's own lock file (a direct child of it). */
   lockFile?: string
 }): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
@@ -91,11 +94,13 @@ export const assertCanonicalMutationAllowed = ({
     }
     if (
       materializedRoot !== undefined ||
+      commitApplyRoot !== undefined ||
       /\/refs\/(?:commits|heads|tags)\/.+/.test(resolvedPath) === true
     ) {
-      if (materializedRoot !== undefined) {
-        const root = path.resolve(materializedRoot)
-        const workspacePath = path.resolve(materializationRoot ?? materializedRoot)
+      const commitRoot = materializedRoot ?? commitApplyRoot
+      if (commitRoot !== undefined) {
+        const root = path.resolve(commitRoot)
+        const workspacePath = path.resolve(materializationRoot ?? commitRoot)
         const targetPath = path.resolve(target)
         const destination = path.join(resolvedPath, missingPath)
         if (

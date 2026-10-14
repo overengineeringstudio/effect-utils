@@ -8,6 +8,81 @@ Shared Effect utilities for the overeng ecosystem.
 bun add @overeng/utils
 ```
 
+## GitHub App authentication (Node)
+
+`@overeng/utils/node/github-app` provides `makeGitHubApp`, `GitHubApp.layer`,
+and `installationHttpClientLayer`. Supply an App client ID, a redacted RSA PEM,
+an Effect `HttpClient` transport, and a stable `consumer` name for telemetry.
+
+```ts
+import { GitHubApp, installationHttpClientLayer } from '@overeng/utils/node/github-app'
+import { Layer, Redacted } from 'effect'
+
+const app = GitHubApp.layer({
+  config: { identity: { clientID }, privateKey: Redacted.make(privateKeyPem) },
+  options: { consumer: 'ci-reader' },
+})
+const authenticated = installationHttpClientLayer({
+  installationID,
+  repositories: { _tag: 'Selected', names: ['my-repository'] },
+  permissions: { actions: 'read' },
+}).pipe(Layer.provide(app))
+```
+
+`yield* (yield* GitHubApp).identity` returns a schema-decoded `GitHubAppIdentity`:
+`{ appId: number, slug: string, botLogin: string, botUserId: number }`, with
+`botLogin` equal to `${slug}[bot]`. The service fetches `/app` with its internal
+App JWT and resolves the bot ID through the public, unauthenticated
+`/users/{botLogin}` endpoint; no installation or permissions are required.
+Successful identity lookups are cached single-flight for the service lifetime.
+Failures are not cached and use `GitHubAppError` with operation `identity`.
+Identity's JWT-bearing request never follows redirects. JWTs remain in library
+custody: neither a JWT signer nor a general App-authenticated client is exposed.
+
+JWT-bearing `/app` and installation-token exchange requests use a library-owned
+Effect FetchHttpClient over the platform `fetch`, with redirects disabled.
+Injected HttpClient middleware (including `followRedirects`) cannot replay these
+requests. Transport customizations such as proxies, dispatchers, custom Fetch
+implementations and RequestInit settings do not apply to JWT requests.
+Installation-token clients and the public bot lookup keep using the injected
+HttpClient; the public lookup preserves Fetch RequestInit settings except for
+its `redirect: 'manual'` override.
+
+Repository names are nonempty, installation-relative names without `/`.
+`{ _tag: 'AllInstallation' }` explicitly requests installation-wide access and
+is accepted only when every requested permission is `read`. Permissions must
+be nonempty. Broad write scopes are rejected by `InstallationScope` before
+any exchange; writes must use `Selected`.
+
+Tokens are cached by installation, normalized repository selection and
+permissions, refreshed before expiry, and minted single-flight per scope.
+Authenticated clients reject off-origin requests. A 401 invalidates the
+rejected token without replaying the request, including when a status-filtered
+transport returns it as an error; callers decide whether retrying is safe.
+Credentials are redacted and excluded from errors and telemetry.
+Transport failures retain only safe method, path, reason and optional status.
+Response body access remains lazy/streaming; decoding failures carry a fresh,
+credential-free request and response metadata without the original cause.
+Sanitized response requests retain an absolute trusted origin and pathname
+without userinfo or query parameters, allowing same-origin `HttpClient.followRedirects` composition.
+
+Schema-backed telemetry contracts cover construction, identity, minting and authorization. Metrics are
+`github_app_mints_total`, `github_app_mint_failures_total`,
+`github_app_token_expiry_seconds` (Unix expiry time), and
+`github_app_rate_limit_remaining` (per GitHub rate-limit resource), attributed
+to App client ID, installation ID and consumer. Provide a scoped lifetime for
+the App layer shared by the consuming service.
+
+The real loopback HTTP integration suites belong to the source-side
+`test:utils:unbounded` and `test:gh-ci-utils:unbounded` lanes, not the bounded
+Buck unit-test collection. `vitest.github-app.config.ts` runs the focused
+authentication and consumer regressions together.
+
+The `gh-ci-utils` consumer accepts an optional `GitHubClientOptions.apiBase` for
+the App, REST and GraphQL endpoints (default `https://api.github.com`).
+Its request counters cover its REST/GraphQL API calls, excluding token exchanges
+owned by this authentication library.
+
 ## Browser build identity (Vite)
 
 ```ts
@@ -38,7 +113,24 @@ root instead of trusting a stale shell stamp, and report `dev (HMR)`.
 The local dirty flag covers tracked changes only, not untracked files. In dev
 mode, Git reads are asynchronous, debounced and single-flight. Only the served
 worktree's HEAD, current branch ref and index are watched; sibling worktree
-commits do not recompute its identity.
+commits do not recompute its identity. Loose refs, packed refs and linked-worktree
+metadata are read directly from Git's files while the tracked `git status`
+subprocess runs concurrently. Worktree-private symbolic refs resolve in the
+worktree gitdir; shared refs resolve in the commondir. Reftable and unreadable
+detached objects use Git as the fallback authority, installing watches before
+reading the revision and revalidating the symbolic target afterward. Events
+received during a snapshot coalesce into one follow-up snapshot rather than
+starting overlapping Git processes.
+
+After observing a source or Git watcher event, `plugin.api.waitForRefresh()`
+awaits the requested snapshot and any events coalesced while it runs. This is
+an observation barrier: it does not initiate a refresh or wait for future
+watcher events. Integration probes can then assert the served snapshot without
+racing the debounce or Git subprocesses against an arbitrary polling deadline.
+Fixtures canonicalize temporary roots before comparing watch subscriptions and
+source-event paths, and look up watched directories with Vite's resolved root.
+Git's absolute paths and Vite resolve filesystem aliases such as macOS `/var`
+to `/private/var`; the spelling returned by `tmpdir()` need not match either.
 
 For packaged apps, the static host injects `globalThis.__BUILD_DEPLOYMENT_ID__`
 before browser modules execute. It identifies the serving package's real Nix

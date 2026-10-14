@@ -229,7 +229,13 @@ const TerminalObservedEvent = Schema.TaggedStruct('TerminalObserved', {
   revision: Revision,
   at: Timestamp,
   request: RequestIdentity,
-  outcome: Schema.Literals(['success', 'typedFailure', 'defect', 'interrupted']),
+  outcome: Schema.Literals([
+    'success',
+    'typedFailure',
+    'defect',
+    'interrupted',
+    'transportFailure',
+  ]),
   observations: EventObservations,
 })
 
@@ -238,7 +244,15 @@ const ConnectionFaultEvent = Schema.TaggedStruct('ConnectionFault', {
   revision: Revision,
   at: Timestamp,
   connectionId: Schema.NonEmptyString,
-  fault: Schema.Literals(['defect', 'clientProtocolError', 'disconnect', 'eof']),
+  observerSide: Schema.optionalKey(ObserverSide),
+  fault: Schema.Literals([
+    'defect',
+    'clientProtocolError',
+    'disconnect',
+    'eof',
+    'sendFailure',
+    'capacity',
+  ]),
   faultId: Schema.NonEmptyString,
 })
 
@@ -303,7 +317,14 @@ export const RecordEvidence = Schema.Union([
   }),
   Schema.TaggedStruct('ConnectionFault', {
     faultId: Schema.NonEmptyString,
-    fault: Schema.Literals(['defect', 'clientProtocolError', 'disconnect', 'eof']),
+    fault: Schema.Literals([
+      'defect',
+      'clientProtocolError',
+      'disconnect',
+      'eof',
+      'sendFailure',
+      'capacity',
+    ]),
   }),
   Schema.TaggedStruct('RetentionExpired', {
     reason: Schema.Literals(['count', 'age']),

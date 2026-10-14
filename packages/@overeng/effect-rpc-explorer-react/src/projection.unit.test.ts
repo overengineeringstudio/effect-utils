@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type {
+  ExplorerClient,
   InspectorSnapshotFrame,
   RequestIdentity,
   RpcRecord,
@@ -13,7 +14,6 @@ import {
   projectionFromSnapshot,
   recordIdentityKey,
   reduceFrame,
-  type ExplorerClient,
 } from './projection.ts'
 
 const numberIdentity: RequestIdentity = {

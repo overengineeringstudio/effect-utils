@@ -137,6 +137,18 @@ pub fn round_trip_float(env: contract::FloatSample) -> contract::FloatSample {
     env
 }
 
+#[effect_rust::export(name = "roundTripScore")]
+pub fn round_trip_score(input: contract::NullableScore) -> contract::NullableScore {
+    input
+}
+
+#[effect_rust::export(name = "roundTripNullableFloat")]
+pub fn round_trip_nullable_float(
+    env: contract::NullableFloatSample,
+) -> contract::NullableFloatSample {
+    env
+}
+
 #[effect_rust::export(name = "roundTripWide")]
 pub fn round_trip_wide(input: contract::WideSample) -> contract::WideSample {
     input

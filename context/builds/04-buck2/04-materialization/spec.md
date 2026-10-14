@@ -24,7 +24,7 @@ translate (genie, freshness-gated)
   -> per package version: fetch target (url, sha256 from generated sidecar)
                           extract target (tarball -> package tree artifact)
   -> per importer:        node_modules assembly target
-  -> platform constraints on optional/platform packages (select())
+  -> per-configuration required-edge availability and optional filtering (select())
 
 fetch     download_file, remote-cacheable, network only here (BUILD.BUCK.MAT-R08)
 extract   tar -> package tree, local-materialization-policy (no AC reads/uploads)
@@ -72,6 +72,82 @@ The package-tree API projects declared workspace files into the output for
 cacheable consumers; the editor-surface realization provides BUILD.BUCK.MAT-R03
 live-source links outside the cacheable package tree without weakening
 BUILD.BUCK.MAT-R02.
+
+## Resolver-Context Platform Availability
+
+```text
+own package cpu/os/libc gates
+  -> initial snapshot/importer availability
+  -> required-edge removal to a fixed point (including cycles)
+  -> supported entry/view variants + unsupported-configuration reasons
+  -> configured Buck selection
+       supported: materialize the complete filtered resolver context
+       unsupported: fail before registering actions
+```
+
+This realizes BUILD.BUCK.MAT-R02, BUILD.BUCK.MAT-R07, and
+BUILD.BUCK.MAT-R08 under
+[decision 0040](../../.decisions/0040-required-edge-transitive-platform-availability.md).
+Portability is a property of the complete required resolver context; own
+package gates are only initial constraints. Unsupported configurations are
+representable and rejected when selected; required obligations are never
+omitted to manufacture a supported tree.
+
+The dependency projection evaluates four configurations: `javascript_portable`,
+`linux_aarch64`, `linux_x86_64`, and `macos_aarch64`. The native configurations
+use the tuples in [the platform spec](../02-platforms-toolchains/spec.md#platforms).
+`javascript_portable` requires an ungated package: any cpu, os, or libc
+restriction excludes it, rather than borrowing the generator host's tuple.
+
+Availability is computed over resolved snapshot and importer nodes before
+projecting store edges:
+
+1. Seed each snapshot with the configurations allowed by its package's own
+   metadata gates; seed importers with all four configurations.
+2. For each required resolved dependency, remove a configuration from its
+   owner whenever the dependency is unavailable in that configuration.
+   Required workspace references participate through their importer context
+   when the lockfile represents it; externally declared workspace trees remain
+   first-party Buck dependencies. Peer-suffixed snapshots retain exact resolution.
+3. Propagate removals through required predecessors until no set changes.
+   This descending fixed point preserves a required strongly connected
+   component when every member and external required dependency is available.
+   A restriction in any member or external required dependency propagates
+   through the cycle; traversal order must not affect the result.
+4. Project edges only for surviving owner configurations. A required edge
+   remains present in every such configuration. An optional edge is retained
+   only when its resolved dependency is available there, including that
+   dependency's own required closure; its absence does not remove the owner.
+   Linked and injected optional workspace references use their resolved importer
+   availability when represented in the lockfile. Importer `workspace_trees`
+   and `workspace_dependencies` declarations select only that configuration's
+   surviving edges; an omitted optional workspace must not remain a Buck
+   dependency that triggers analysis of an unavailable workspace closure.
+
+Missing referenced package or snapshot metadata, integrity, or patch metadata remains a
+global generation error, including for an unavailable configuration or an
+optional edge. Platform exclusion is not permission to accept an unresolved
+reference or bypass hash verification.
+
+Store-entry `platforms` records the transitively constrained availability set.
+The normalized projection schema is `effect-utils/buck2-pnpm-store/v2`; adding
+the view availability set changes the versioned metadata and store fingerprint,
+not the identity of unchanged supported view rules.
+Each `PnpmStoreView` independently records `platforms: readonly PnpmPlatform[]`;
+its variants cover supported configurations only. Equal supported projections
+may share a variant. SCC assembly likewise projects only supported member
+contexts; it cannot restore a removed configuration. An empty availability set
+is a valid projection, not a reason to omit the target or fail generation.
+
+Restricted entries and views emit `unavailable_by_platform`, a repository-local
+Starlark attribute mapping all four exact lowercase configuration keys to a
+nonempty diagnostic reason when unavailable and an empty string when supported.
+Unrestricted entries and views omit the attribute, preserving their existing
+generated bytes and identities. Shared rules select the diagnostic for the
+configured platform and fail at the beginning of implementation, before any
+actions are registered. Thus generation of a mixed-platform graph succeeds,
+while selecting an unsupported dependency context fails explicitly rather than
+linking an incomplete tree. Supported, unrelated view bytes remain unchanged.
 
 ## Editor Surface
 
@@ -302,6 +378,78 @@ root, and removes it. Missing roots are a no-op; external dependency targets and
 source files are untouched. Exact-token recovery remains required for a stale
 lock. Package first-hop links can remain dangling until the retired worktree is
 removed or publication recreates its root.
+
+Every tool that removes a worktree runs root-scoped `buck2 kill` for each of the
+root's isolations before removal. A Buck daemon's cwd can be the root itself or
+`<root>/buck-out/<isolation>`, so a live daemon holds the worktree for in-use probes.
+Once the directory is renamed or gone the CLI can no longer address it. `worktree:teardown`
+follows this rule. On Linux, `mr store gc` discovers the current user's daemons
+inside an eligible worktree and runs `buck2 --isolation-dir <i> kill` from each
+daemon's project root only after root-scoped status proves the same PID/daemon
+ID and no active commands. This happens under the worktree lock (and lease where
+present), after the path's existing keep/activity checks and before its in-use
+probe or deletion, for cold and ref-mismatch archives, merged-worklog teardown,
+legacy whole-root deletion, and targeted applications. The legacy sweep adds no
+process probe or status reclassification. Receipts record every stop and the
+daemon + forkserver's pre-kill RSS + VmSwap KiB; targeted application errors
+include stopped daemon identities and memory estimates in their message.
+Status/kill failures degrade to unreachable evidence; paths with an existing
+probe still veto held roots. Already-moved archive entries are
+report-only/unreachable, never killed from the new path. Budget and generated
+artifact evictions inside a surviving root do not stop Buck; `mr store fix` is
+unchanged. See `packages/@overeng/megarepo/src/store/store-buck-daemons.ts` and
+`packages/@overeng/megarepo/src/cli/commands/store/mod.ts`.
+
+## Idle Daemon Reaping
+
+```text
+scripts/buck2-daemon-reaper.ts --buck2 <raw buck2> [--idle-seconds 10800]
+  -> the user's live daemon processes: argv daemon id + isolation, cwd <root>[/buck-out/<i>]
+  -> per daemon: root gone           -> report-gone (pid, daemon id, root, RSS + swap)
+                 status fails/differs -> keep-unreachable (reason)
+                 active command      -> keep-active
+                 idle < threshold    -> keep-recent
+                 idle >= threshold   -> recheck from root -> buck2 --isolation-dir <i> kill
+```
+
+The pinned `[buck2] daemon_idle_timeout_s` counts command arrivals rather than
+running work, so it can stop a build that runs longer than the timeout or an
+attached `buck2 lsp`. It stays at Buck's default; the reaper owns idle exit.
+Daemons are found from `/proc` rather than `buck2 status --all`, which probes
+every historical `~/.buck/buckd` entry and stalled past a 180 s test timeout on a busy host.
+Each daemon's status is read from its own root with a 30 s timeout and must
+report the same pid and daemon id; anything else keeps the daemon.
+Idle time runs from the later of the daemon's `start_time` and the newest event-log
+file under `<root>/buck-out/<isolation>/log`, where every streamed command writes its
+event log. `buck2 status` writes no event log, and `buck2 kill` only adds a
+directory there. A daemon reporting any
+`active_commands` entry, which includes an attached editor session, is kept
+regardless of age. Memory is sampled first; the final status read from the
+daemon's root, together with the newest event-log write, is then immediately
+followed by `buck2 kill`. The kill is aborted on a changed daemon id or pid, a
+new command, or an event-log write since the deciding observation. After the
+kill, an exited pid other than the observed one, or an event log written during
+the kill, is reported loudly as `raced`.
+
+Accepted residual: `buck2 kill` has no conditional form and the daemon has no
+admission API, so a client cannot make the idle check and the shutdown atomic.
+A command that starts within the sub-second window between the final read and
+the kill, after at least three hours of idleness, fails loudly with the daemon
+killed; the next client invocation restarts the daemon. Buck2's state is
+crash-consistent, so the residual is a visible failed command, never silent
+corruption. `mr store gc`'s teardown stop uses the same order, the same residual
+and a `raced` receipt field; its window follows the retiring worktree's keep
+checks instead of the three-hour threshold.
+
+The reaper never signals a process. A daemon whose root no longer exists is
+report-only. The default threshold of three hours outlasts an agent's usual
+pause between commands on one worktree, so active worktrees keep a warm daemon;
+a longer pause only costs a cold daemon start on the next command. A merged or
+abandoned worktree's daemon is stopped at most one run interval after its last
+command plus the threshold.
+`--root-prefix` limits a run to roots under the given prefixes, and `--dry-run`
+prints decisions without stopping anything. Host scheduling belongs to the host
+configuration; the script holds no state between runs.
 
 ## Relationship to Exact Closure Materialization
 

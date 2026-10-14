@@ -8,6 +8,7 @@
       "packages/@overeng/effect-rust",
       "packages/@overeng/genie",
       "packages/@overeng/genie-smalltalk",
+      "packages/@overeng/kdl",
       "packages/@overeng/otel-contract",
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",
@@ -24,14 +25,25 @@
     ".": {
       "types": "./dist/src/mod.d.ts",
       "default": "./src/mod.ts"
+    },
+    "./testing": {
+      "types": "./dist/src/testing.d.ts",
+      "default": "./src/testing.ts"
+    },
+    "./tree": {
+      "types": "./dist/src/tree.d.ts",
+      "default": "./src/tree.ts"
     }
   },
   "dependencies": {
+    "@noble/hashes": "2.4.0",
     "@overeng/genie": "workspace:^",
+    "@overeng/kdl": "workspace:^",
     "effect": "4.0.0"
   },
   "devDependencies": {
     "@effect/opentelemetry": "4.0.0",
+    "@effect/platform-node": "4.0.0",
     "@effect/vitest": "4.0.0",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
@@ -44,6 +56,14 @@
       ".": {
         "types": "./dist/src/mod.d.ts",
         "default": "./dist/src/mod.js"
+      },
+      "./testing": {
+        "types": "./dist/src/testing.d.ts",
+        "default": "./dist/src/testing.js"
+      },
+      "./tree": {
+        "types": "./dist/src/tree.d.ts",
+        "default": "./dist/src/tree.js"
       }
     }
   }

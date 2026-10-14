@@ -3,6 +3,8 @@ import * as Fs from 'node:fs/promises'
 import * as Path from 'node:path'
 import process from 'node:process'
 
+import { resolveMegarepoMemberSpecifierSync } from '../../../../packages/@overeng/genie/src/core/import-map/sync-resolver.ts'
+
 const [mode, workspaceArg, stageArg, ...sourcePaths] = process.argv.slice(2)
 if (
   !['check', 'gc', 'publish'].includes(mode) ||
@@ -60,7 +62,14 @@ for (const sourcePath of normalizedSources) {
     throw new Error(`source escapes workspace: ${sourcePath}`)
   if (isWithin(stageRoot, lexicalPath) || isWithin(lexicalPath, stageRoot))
     throw new Error(`source overlaps reserved staging state: ${sourcePath}`)
-  const resolvedPath = await Fs.realpath(lexicalPath)
+  const memberSource = sourcePath.startsWith('repos/')
+    ? resolveMegarepoMemberSpecifierSync({
+        specifier: `#mr/${sourcePath.slice('repos/'.length)}`,
+        importerPath: Path.join(workspaceRoot, 'package.json'),
+        workspaceRoot,
+      })
+    : undefined
+  const resolvedPath = await Fs.realpath(memberSource ?? lexicalPath)
   if (isWithin(stageRoot, resolvedPath) || isWithin(resolvedPath, stageRoot))
     throw new Error(`resolved source overlaps reserved staging state: ${sourcePath}`)
   if (!(await Fs.stat(resolvedPath)).isDirectory())

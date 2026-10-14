@@ -2,6 +2,8 @@
 # mr:setup option contract: without setupCommitMembers, setup is the plain
 # tracking apply with root-only readiness; with it, setup prepares the listed
 # members' nested trees and readiness covers nested mounts on every path.
+# Under CI=true, setup uses commit worktrees and prepares every tree that
+# readiness inspects.
 set -euo pipefail
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -43,6 +45,8 @@ esac
 EOF
 chmod +x "$tmpdir/bin/mr"
 export PATH="$tmpdir/bin:$PATH" MR_ROOT="$workspace" MR_CALLS="$calls"
+# Local cases must not inherit the runner's CI marker.
+unset CI
 
 # Runs a task script in the fixture workspace; prints its exit code.
 run_script() {
@@ -93,6 +97,18 @@ echo "Test 3: readiness is recursive, including the outer cache-hit path"
 grep -qx 'status --all --output json' "$calls" || fail "cache-hit readiness must use mr status --all"
 [ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 MR_APPLY_NEEDED=true run_script "$status_set")" = 1 ] \
   || fail "missing nested mounts must make setup run despite the outer cache hit"
+echo "  ok"
+
+echo "Test 4: CI applies commit worktrees and prepares every root member's tree"
+[ "$(CI=true run_script "$exec_unset")" = 0 ] || fail "unset CI setup exec failed"
+grep -qx 'apply --worktree-mode commit --lock-sync off' "$calls" \
+  || fail "unset CI setup must apply commit worktrees"
+[ "$(CI=true run_script "$exec_set")" = 0 ] || fail "set CI setup exec failed"
+grep -qx 'apply --worktree-mode commit --commit-all-members --lock-sync off' "$calls" \
+  || fail "set CI setup must prepare every member that mr status --all inspects"
+if grep -q 'tracking' "$calls"; then
+  fail "CI setup must never use tracking worktrees"
+fi
 echo "  ok"
 
 echo "All megarepo setup commit-members tests passed"

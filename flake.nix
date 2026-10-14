@@ -47,6 +47,10 @@ rec {
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        macosAppExample = import ./nix/macos-app/example.nix {
+          inherit pkgs;
+          nixpkgsRevision = nixpkgs.rev;
+        };
         weaverPackages =
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
@@ -202,9 +206,18 @@ rec {
           inherit pkgs buck2 pnpmArchives;
           src = ./.;
         };
+        buck2Bubblewrap = import ./nix/bubblewrap.nix { inherit pkgs; };
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;
           src = ./.;
+          extraCapabilities = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            bubblewrap = {
+              kind = "executable";
+              package = buck2Bubblewrap;
+              executable = "bin/bwrap";
+              protocol = "containers/bubblewrap/v1";
+            };
+          };
         };
         # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products {
@@ -320,6 +333,14 @@ rec {
       in
       {
         buckProducts = trackedBuck2Products;
+        checks = pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          macos-app-host-stability = macosAppExample.check;
+          macos-app-primitives = macosAppExample.primitives;
+          macos-app-appkit-link = import ./nix/macos-app/appkit-link-check.nix {
+            inherit pkgs;
+            nixpkgsRevision = nixpkgs.rev;
+          };
+        };
         packages =
           cliPackages
           // providerCliPackages
@@ -352,6 +373,15 @@ rec {
             );
             oxlint-npm = oxlintNpm;
             node-pty-native = nodePtyNative;
+          }
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            buck2-bubblewrap = buck2Bubblewrap;
+          }
+          // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+            macos-app-example = macosAppExample.example;
+            macos-app-integration = macosAppExample.integration;
+            macos-app-ctl-integration = macosAppExample.ctlIntegration;
+            macos-app-launchd-smoke = macosAppExample.launchdSmoke;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             buck2-vite-runtime-closure-fixture = viteRuntimeFixture;
@@ -472,7 +502,8 @@ rec {
           base = self.packages.${pkgs.stdenv.hostPlatform.system}.buck2-capabilities;
         in
         import ./nix/buck2-capabilities.nix {
-          inherit pkgs extraCapabilities;
+          inherit pkgs;
+          extraCapabilities = base.passthru.extraCapabilities // extraCapabilities;
           inherit (base.passthru) capabilityPackages src;
         };
 
@@ -546,6 +577,13 @@ rec {
       # Standalone otel-span CLI (run + emit subcommands).
       # Can be added to devenv packages without importing the full OTEL module.
       lib.mkOtelSpan = { pkgs }: import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+
+      lib.mkMacosApp =
+        args:
+        import ./nix/macos-app/default.nix {
+          pkgs = args.pkgs;
+          nixpkgsRevision = nixpkgs.rev;
+        } (builtins.removeAttrs args [ "pkgs" ]);
 
       # Convenience helper for bundling the common genie/megarepo CLIs from
       # this effect-utils revision's tracked Buck products. An explicit

@@ -21,7 +21,9 @@
   "type": "module",
   "private": true,
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./node/config": "./src/node/Config.ts",
+    "./node/github-client": "./src/node/GitHubClient.ts"
   },
   "dependencies": {
     "@effect/atom-react": "4.0.0",
@@ -89,7 +91,9 @@
       "gh-ci-utils": "./dist/bin/gh-ci-utils.js"
     },
     "exports": {
-      ".": "./dist/src/mod.js"
+      ".": "./dist/src/mod.js",
+      "./node/github-client": "./dist/src/node/GitHubClient.js",
+      "./node/config": "./dist/src/node/Config.js"
     }
   }
 }

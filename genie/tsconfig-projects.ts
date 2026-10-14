@@ -12,10 +12,12 @@ import devbarTsconfig from '../packages/@overeng/devbar/tsconfig.json.genie.ts'
 import effectAiClaudeCliTsconfig from '../packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts'
 import effectAiGatewayTsconfig from '../packages/@overeng/effect-ai-gateway/tsconfig.json.genie.ts'
 import effectDistributedLockTsconfig from '../packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts'
+import effectIrohTsconfig from '../packages/@overeng/effect-iroh/tsconfig.json.genie.ts'
 import effectPathTsconfig from '../packages/@overeng/effect-path/tsconfig.json.genie.ts'
 import effectReactTsconfig from '../packages/@overeng/effect-react/tsconfig.json.genie.ts'
 import effectRpcExplorerReactTsconfig from '../packages/@overeng/effect-rpc-explorer-react/tsconfig.json.genie.ts'
 import effectRpcExplorerTsconfig from '../packages/@overeng/effect-rpc-explorer/tsconfig.json.genie.ts'
+import effectRpcObserverTsconfig from '../packages/@overeng/effect-rpc-observer/tsconfig.json.genie.ts'
 import effectRpcTanstackBasicTsconfig from '../packages/@overeng/effect-rpc-tanstack/examples/basic/tsconfig.json.genie.ts'
 import effectRpcTanstackTsconfig from '../packages/@overeng/effect-rpc-tanstack/tsconfig.json.genie.ts'
 import effectRustFixtureConsumerTsconfig from '../packages/@overeng/effect-rust-fixture-consumer/tsconfig.json.genie.ts'
@@ -29,6 +31,7 @@ import ghCiUtilsTsconfig from '../packages/@overeng/gh-ci-utils/tsconfig.json.ge
 import kdlEffectTsconfig from '../packages/@overeng/kdl-effect/tsconfig.json.genie.ts'
 import kdlTsconfig from '../packages/@overeng/kdl/tsconfig.json.genie.ts'
 import megarepoTsconfig from '../packages/@overeng/megarepo/tsconfig.json.genie.ts'
+import metersTsconfig from '../packages/@overeng/meters/tsconfig.json.genie.ts'
 import notionCliTsconfig from '../packages/@overeng/notion-cli/tsconfig.json.genie.ts'
 import notionCoreTsconfig from '../packages/@overeng/notion-core/tsconfig.json.genie.ts'
 import notionDatasourceSyncTsconfig from '../packages/@overeng/notion-datasource-sync/tsconfig.json.genie.ts'
@@ -46,6 +49,7 @@ import ptyEffectTsconfig from '../packages/@overeng/pty-effect/tsconfig.json.gen
 import reactInspectorTsconfig from '../packages/@overeng/react-inspector/tsconfig.json.genie.ts'
 import reactInspectorStrictConsumerTsconfig from '../packages/@overeng/react-inspector/tsconfig.strict-consumer.json.genie.ts'
 import restateEffectTsconfig from '../packages/@overeng/restate-effect/tsconfig.json.genie.ts'
+import rpcDevtoolsTsconfig from '../packages/@overeng/rpc-devtools/tsconfig.json.genie.ts'
 import stylexTokensTsconfig from '../packages/@overeng/stylex-tokens/tsconfig.json.genie.ts'
 import tuiCoreTsconfig from '../packages/@overeng/tui-core/tsconfig.json.genie.ts'
 import tuiReactTsconfig from '../packages/@overeng/tui-react/tsconfig.json.genie.ts'
@@ -120,13 +124,17 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/ci-tools': { tsconfig: ciToolsTsconfig },
     'packages/@overeng/content-address': { tsconfig: contentAddressTsconfig },
     'packages/@overeng/devbar': { tsconfig: devbarTsconfig },
+    'packages/@overeng/meters': { tsconfig: metersTsconfig },
     'packages/@overeng/effect-ai-claude-cli': { tsconfig: effectAiClaudeCliTsconfig },
     'packages/@overeng/effect-ai-gateway': { tsconfig: effectAiGatewayTsconfig },
     'packages/@overeng/effect-distributed-lock': { tsconfig: effectDistributedLockTsconfig },
+    'packages/@overeng/effect-iroh': { tsconfig: effectIrohTsconfig },
     'packages/@overeng/effect-path': { tsconfig: effectPathTsconfig },
     'packages/@overeng/effect-react': { tsconfig: effectReactTsconfig },
     'packages/@overeng/effect-rpc-explorer': { tsconfig: effectRpcExplorerTsconfig },
     'packages/@overeng/effect-rpc-explorer-react': { tsconfig: effectRpcExplorerReactTsconfig },
+    'packages/@overeng/effect-rpc-observer': { tsconfig: effectRpcObserverTsconfig },
+    'packages/@overeng/rpc-devtools': { tsconfig: rpcDevtoolsTsconfig },
     'packages/@overeng/effect-rpc-tanstack': { tsconfig: effectRpcTanstackTsconfig },
     'packages/@overeng/effect-rpc-tanstack/examples/basic': {
       tsconfig: effectRpcTanstackBasicTsconfig,

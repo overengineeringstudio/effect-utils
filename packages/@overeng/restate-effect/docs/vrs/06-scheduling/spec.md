@@ -97,7 +97,10 @@ retry mechanism:
   cycle opens a fresh awakeable, persists its id (`wakeId`, a SHARED read-only
   handler so a webhook can read it under the held lock), and threads the wake reason
   to the next cycle as `wokenBy`. An ingress `resolveAwakeable` cuts the wait short.
-  The id ROTATES per cycle; a stale id resolves harmlessly. TRADEOFF: wake mode
+  The id ROTATES through a single State write: the previous id remains published
+  until the next cycle replaces it, with no empty state between running cycles.
+  It is cleared on stop, completion, or failure; before the first publication it
+  is empty. A stale id resolves harmlessly but does not wake a newer cycle. TRADEOFF: wake mode
   HOLDS the write lock during the wait, so exclusive `stop`/`start` queue behind it
   (bounded by the sleep leg) — pair with short `retryAfter` floors; the default
   no-wake shape is wedge-free. The two shapes are materialized as two distinct

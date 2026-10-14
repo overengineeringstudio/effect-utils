@@ -95,22 +95,6 @@ const weaverRootBuckTargets =
   'weaver_checks(\n    name = "weaver",\n    registry = {\n        "attributes.yaml": "genie/weaver-registry/attributes.yaml",\n        "manifest.yaml": "genie/weaver-registry/manifest.yaml",\n        "signals.yaml": "genie/weaver-registry/signals.yaml",\n    },\n    flake_nix = "nix/weaver-flake/flake.nix",\n    registry_source = "genie/weaver-registry/registry.ts",\n    visibility = ["PUBLIC"],\n)'
 export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan> => {
   const data = planRootBuckAggregates()
-  const packageInputs = [
-    ...new Set(
-      authoritativeBuck2TypeScriptProjects.map((project) => `${project.packagePath}/BUCK.genie.ts`),
-    ),
-  ].toSorted()
-  const semanticInputs = [
-    'BUCK.genie.ts',
-    'genie/buck2/mod.ts',
-    'genie/buck2/root-aggregate-projection.ts',
-    'genie/buck2/typescript-admissions.ts',
-    'rust/effect-rust-fixtures/BUCK.genie.ts',
-    'buck2/check_aggregate.bzl',
-    'buck2/weaver.bzl',
-    'packages/@overeng/buck2-tools/src/weaver-check-runner.ts',
-    ...packageInputs,
-  ]
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-root-aggregate-projection',
     schemaVersion: 1,
@@ -125,7 +109,6 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
         '# Projection schema version: 1',
         '# Projection generator: effect-utils/genie/buck2-root-aggregate-projection',
         `# Semantic fingerprint: ${fingerprint}`,
-        `# Semantic inputs: ${semanticInputs.join(', ')}`,
         `# Regenerate: ${regenerationCommand}`,
         weaverRootBuckLoad,
         aggregateRootBuckLoad,

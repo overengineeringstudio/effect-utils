@@ -38,12 +38,26 @@ let
   classifiedTestTasks = darwinTestTasks ++ map (suite: suite.task) testPlatforms.neutral;
   extraSourceTestTasks = [
     "devenv-modules:test"
+    "buck2:rust:generators:test"
     "genie:buck2:test"
     "genie:ci-workflow:test"
   ];
   selectedTestTask = task: testPlatform != "darwin" || builtins.elem task darwinTestTasks;
   buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
+  tsSandboxTestEnvironment = lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
+    ${publishBuckCapabilities}
+    cd "$root"
+    export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
+    export BUN_BIN=${flakePkgs.bun}/bin/bun
+    export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
+    probe_outputs="$("$BUCK2_BIN" build \
+      --target-platforms effect_utils//buck2/platforms:host_platform \
+      --show-full-json-output effect_utils//buck2/tests/ts_sandbox:probe)"
+    export TS_SANDBOX_PROBE_OUTPUT="$(printf '%s' "$probe_outputs" | \
+      ${pkgs.jq}/bin/jq -er '."effect_utils//buck2/tests/ts_sandbox:probe"')"
+    export TS_SANDBOX_LAUNCHER="''${TS_SANDBOX_PROBE_OUTPUT%/receipt/summary.json}/ts-sandbox.sh"
+  '';
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
   restatePkgs = import repoFlake.inputs.nixpkgs {
@@ -97,6 +111,8 @@ let
     devenv-module-tests = import ./nix/devenv-modules/tasks/local/devenv-module-tests.nix {
       workerCount = testScheduling.workers;
       scriptWeights = testScheduling.moduleScriptSeconds;
+      inherit testPlatform;
+      moduleScriptPlatforms = testPlatforms.moduleScripts;
     };
   };
   # Repository CLIs come from the reviewed Buck product boundary, not from a
@@ -356,6 +372,21 @@ let
       ${lib.concatMapStringsSep ", " (lane: lane.packagePath) buck2TestLanesWithoutSources}
     '';
     buck2TestAuthorityLanes;
+  classifiedBuck2TestTasks = map (suite: suite.task) (
+    testPlatforms.bounded.darwin ++ testPlatforms.bounded.neutral
+  );
+  darwinBuck2TestTasks = map (suite: suite.task) testPlatforms.bounded.darwin;
+  selectedBuck2TestLanes =
+    assert lib.assertMsg (
+      builtins.sort builtins.lessThan classifiedBuck2TestTasks
+      == builtins.sort builtins.lessThan (map (lane: lane.taskName) buck2TestLanes)
+    ) "test-platforms.json must classify every bounded test lane exactly once";
+    builtins.filter (
+      lane: testPlatform != "darwin" || builtins.elem lane.taskName darwinBuck2TestTasks
+    ) buck2TestLanes;
+  boundedTestScope = pkgs.writeText "test-bounded-scope.json" (
+    builtins.toJSON (map (lane: lane.taskName) selectedBuck2TestLanes)
+  );
   buck2TestLanePackagePaths = map (lane: lane.packagePath) buck2TestLanes;
   # Buck executes every admitted bounded lane. Source Vitest keeps packages absent from the
   # authority and each lane's exact generic complement; explicit live/e2e owners run separately.
@@ -403,16 +434,21 @@ let
       path = lane.packagePath;
       name = lib.removePrefix "test:" lane.taskName;
     }) (builtins.filter (lane: !(lane ? unboundedTaskName)) buck2TestLanes);
-  # Editor views the source-side test partition executes through: every source test package,
-  # the repository root (`genie:buck2:test` runs `bun test genie/buck2/` from it), and the
-  # packages `devenv-modules:test` runs from source (Genie's compiled-staging proof and the
-  # ci-tools deploy/report task e2e fixtures).
+  # Publish selected source packages plus the views the selected module scripts execute
+  # through. Neutral module scripts must not keep an unrelated view on Darwin's prerequisite.
   testPublicationPackagePaths = lib.unique (
-    [
-      "."
-      "packages/@overeng/ci-tools"
-      "packages/@overeng/genie"
-    ]
+    lib.optional (selectedTestTask "genie:buck2:test") "."
+    ++ lib.optional (selectedTestTask "devenv-modules:test") "packages/@overeng/genie"
+    ++ lib.optional (
+      testPlatform != "darwin"
+      || builtins.any (
+        suite:
+        builtins.elem suite.script [
+          "deploy-task-e2e.test.sh"
+          "workflow-report-task-e2e.test.sh"
+        ]
+      ) testPlatforms.moduleScripts.darwin
+    ) "packages/@overeng/ci-tools"
     ++ map (pkg: pkg.path) sourceTestPackages
   );
   typescriptPublicationRootPredicate = ''
@@ -479,6 +515,7 @@ let
           --root "$root" \
           --buck2 "$BUCK2_BIN" \
           --buck2-cwd "$root" \
+          ${lib.optionalString (testPlatform == "darwin") "--bounded-tasks-file ${boundedTestScope}"} \
           --prebuild-only
       ''}
       cd "$root"
@@ -580,6 +617,12 @@ let
       path = "packages/@overeng/devbar";
       name = "devbar";
       port = 6018;
+      playTests = true;
+    }
+    {
+      path = "packages/@overeng/meters";
+      name = "meters";
+      port = 6019;
       playTests = true;
     }
   ];
@@ -819,6 +862,10 @@ in
         {
           path = "packages/@overeng/tui-react";
           name = "tui-react";
+        }
+        {
+          path = "packages/@overeng/meters";
+          name = "meters";
         }
       ];
     })
@@ -1095,11 +1142,14 @@ in
       export CP_BIN=${pkgs.coreutils}/bin/cp
       export MV_BIN=${pkgs.coreutils}/bin/mv
       export FALSE_BIN=${pkgs.coreutils}/bin/false
+      export BUN_BIN=${pkgs.bun}/bin/bun
+      export PS_BIN=${if pkgs.stdenv.isDarwin then "/bin/ps" else "${pkgs.procps}/bin/ps"}
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
+      ${tsSandboxTestEnvironment}
       cd "$root/packages/@overeng/buck2-tools"
-      exec ${pkgs.bun}/bin/bun test src/*.test.ts
+      exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
     ''
   );
 
@@ -1110,7 +1160,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # `./` makes these exact paths; bare arguments are suffix filters that
       # also match the copies Buck stages under buck-out.
-      exec ${pkgs.bun}/bin/bun test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts
     '';
     execIfModified = [
       "genie/ci-workflow/**/*.ts"
@@ -1124,7 +1174,7 @@ in
     exec = trace.exec "buck2:cache-posture:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun test \
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
         ./scripts/buck2-entrypoint.integration.test.ts \
         ./scripts/buck2-cache-posture.integration.test.ts
     '';
@@ -1148,12 +1198,27 @@ in
       export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
       export NIX_FLAKE_REF="git+file://$PWD?shallow=1"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}:$PATH
-      ${pkgs.bun}/bin/bun test ./scripts/buck2-capability-publish.unit.test.ts
+      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.unit.test.ts
       ${pkgs.bash}/bin/bash \
         nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh
       exec ${pkgs.bash}/bin/bash \
         nix/devenv-modules/tasks/shared/tests/buck2-capability-daemon.test.sh
     '';
+  };
+
+  tasks."buck2:daemon-reaper:test" = {
+    description = "Prove the idle Buck daemon reaper stops only idle daemons and reports gone roots";
+    exec = trace.exec "buck2:daemon-reaper:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun test \
+        ./scripts/buck2-daemon-reaper.unit.test.ts \
+        ./scripts/buck2-daemon-reaper.integration.test.ts
+    '';
+    execIfModified = [
+      "nix/buck2.nix"
+      "scripts/buck2-daemon-reaper.*"
+    ];
   };
 
   tasks."worktree:teardown:test" = {
@@ -1189,7 +1254,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
-      exec ${pkgs.bun}/bin/bun test ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts
     '';
     execIfModified = [
       "BUCK"
@@ -1200,6 +1265,25 @@ in
       "scripts/editor-view-authority.unit.test.ts"
       "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
       "packages/@overeng/buck2-tools/src/**/*.ts"
+    ];
+  };
+
+  # Like genie:buck2:test, these Bun suites live outside the package test census.
+  # Keep them beside the generators and include their source task in test:run.
+  tasks."buck2:rust:generators:test" = {
+    description = "Run the Rust interop service and wasm guest generator integration tests";
+    after = [ "buck2:editor:publish:test" ];
+    exec = trace.exec "buck2:rust:generators:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      export PATH=${lib.makeBinPath [ pkgs.gnutar ]}:$PATH
+      exec ${pkgs.bun}/bin/bun test ./buck2/rust/
+    '';
+    execIfModified = [
+      "buck2/rust/**/*.ts"
+      "packages/@overeng/effect-rust/src/**/*.ts"
+      "package.json"
+      "pnpm-lock.yaml"
     ];
   };
 
@@ -1249,7 +1333,7 @@ in
         cd rust
         cargo test --locked --package 'buck2-*'
       )
-      ${pkgs.bun}/bin/bun test buck2/swift/compile.unit.test.ts
+      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test buck2/swift/compile.unit.test.ts
     '';
   };
 
@@ -1267,6 +1351,10 @@ in
         cargo clippy --locked --workspace --all-targets -- -D warnings
         cargo fmt --all --check
       )
+      cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+        --target-dir rust/target
+      cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+        --target-dir rust/target --target wasm32-unknown-unknown
     '';
   };
 
@@ -1447,6 +1535,7 @@ in
   tasks."buck2:editor:publish:playwright" = scopedEditorViewPublisher {
     description = "Atomically publish the shared Playwright editor dependency views";
     packagePaths = [
+      "packages/@overeng/meters"
       "packages/@overeng/tui-react"
       "packages/@overeng/utils"
     ];
@@ -1540,11 +1629,30 @@ in
   };
 
   tasks."buck2:cache-admission:check" = {
-    description = "Reject unadmitted cache execution constraints using real Buck analysis";
+    description = "Reject unadmitted cache execution constraints and prove fresh Darwin TS output ownership";
     exec = trace.exec "buck2:cache-admission:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
+      export CP_BIN=${pkgs.coreutils}/bin/cp JQ_BIN=${pkgs.jq}/bin/jq
       exec ${pkgs.bash}/bin/bash "$root/scripts/buck2-cache-admission-check.sh" "$root"
+    '';
+  };
+
+  tasks."buck2:ts-sandbox:test" = {
+    description = "Prove Linux TS action containment and missing/unusable Bubblewrap fail-closed behavior";
+    after = [ "buck2:providers:check" ];
+    exec = trace.exec "buck2:ts-sandbox:test" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      ${lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
+        ${tsSandboxTestEnvironment}
+        exec ${pkgs.bun}/bin/bun test \
+          ./packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts
+      ''}
+      ${lib.optionalString flakePkgs.stdenv.hostPlatform.isDarwin ''
+        printf '%s\n' 'TS sandbox admission excluded: darwin-unsandboxed (jd5hbf, 2026-10-11)'
+      ''}
     '';
   };
 
@@ -1575,7 +1683,10 @@ in
 
   tasks."buck2:quick" = {
     description = "Build the admitted quick Buck aggregate";
-    after = [ "buck2:providers:check" ];
+    after = [
+      "buck2:providers:check"
+      "buck2:ts-sandbox:test"
+    ];
     # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
     exec = buck2AggregateExec "buck2:quick" "//:quick";
   };
@@ -1607,6 +1718,7 @@ in
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
     "buck2:cache-posture:test"
+    "buck2:daemon-reaper:test"
     "buck2:capabilities:test"
     "worktree:teardown:test"
     "cargo:proto-bindings:check"
@@ -1614,16 +1726,16 @@ in
     "nix:check:quick"
     "otel:pipeline-run:test"
   ];
-  # Prebuild every collection product after genie freshness alongside editor publication,
-  # then execute every admitted bounded lane in one Buck test invocation. The per-lane tasks
+  # Prebuild selected collection products after genie freshness alongside editor publication,
+  # then execute the platform's bounded lanes in one Buck test invocation. The per-lane tasks
   # remain standalone-only, so neither bounded nor source verdicts are scheduled twice.
   tasks."test:buck2:unit" = {
-    description = "Prebuild collection products and execute every admitted bounded unit-test lane";
+    description = "Prebuild collection products and execute the selected bounded unit-test lanes";
     after = [ "genie:check" ];
     # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
       name = "test:buck2:unit";
-      targets = map (lane: lane.target) buck2TestLanes;
+      targets = map (lane: lane.target) selectedBuck2TestLanes;
       prebuildCollection = true;
     };
   };
@@ -1633,7 +1745,7 @@ in
     "dependency-materialization:evidence:check"
   ];
 
-  # `test:run` is the aggregate: the single Buck invocation for every bounded lane, plus the
+  # `test:run` is the aggregate: one Buck invocation for the selected bounded lanes, plus the
   # source-only and unbounded-complement Vitest tasks the shared module wired into its `after`.
   # The baseline-collection gate runs last, resolves the same (now warm) Buck products against
   # current inputs, and validates both bounded inventory and completed source evidence.
@@ -1652,7 +1764,9 @@ in
         --root "$root" \
         --buck2 "$BUCK2_BIN" \
         --buck2-cwd "$root" \
-        ${lib.optionalString (testPlatform == "darwin") "--source-tasks-file ${sourceTestScope}"}
+        ${lib.optionalString (
+          testPlatform == "darwin"
+        ) "--source-tasks-file ${sourceTestScope} --bounded-tasks-file ${boundedTestScope}"}
     ''
   );
 

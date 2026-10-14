@@ -1,10 +1,11 @@
+import * as ChildProcess from 'node:child_process'
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
   affectedPackagePaths,
@@ -18,6 +19,26 @@ import {
   type WatchChangeSource,
   type WatchLoopStatus,
 } from './buck-watch.ts'
+
+// Stable forwarding exports observe the named imports used by Bun's native modules.
+const nativeChildProcess = { ...ChildProcess }
+const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
+vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
+
+const savedWatchTraceContext = {
+  TRACEPARENT: process.env.TRACEPARENT,
+  OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
+}
+beforeAll(() => {
+  // Only explicit telemetry fixtures may consume the process-wide exporter slots.
+  delete process.env.TRACEPARENT
+  delete process.env.OTEL_TASK_TRACEPARENT
+})
+afterAll(() => {
+  for (const [key, value] of Object.entries(savedWatchTraceContext))
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+})
 
 /** Every gate input the OTEL helpers read; tests pin each one explicitly. */
 type OtelGateEnvironment = Record<
@@ -47,6 +68,40 @@ const restoreOtelGate = (saved: OtelGateEnvironment): void => {
   for (const [key, value] of Object.entries(saved))
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
+}
+
+/** Observe real exporter requests and reaping; no runtime caller joins these children. */
+const observeExporters = (bin: string) => {
+  const children: ChildProcess.ChildProcess[] = []
+  const exits: Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>[] =
+    []
+  const spawned = childProcessMocks.spawn.mockImplementation((...args) => {
+    const child = Reflect.apply(
+      nativeChildProcess.spawn,
+      ChildProcess,
+      args,
+    ) as ChildProcess.ChildProcess
+    if (String(args[0]) === bin) {
+      children.push(child)
+      const exited = Promise.withResolvers<{
+        readonly code: number | null
+        readonly signal: NodeJS.Signals | null
+      }>()
+      child.once('close', (code, signal) => exited.resolve({ code, signal }))
+      exits.push(exited.promise)
+    }
+    return child
+  })
+  return {
+    children,
+    settle: async () => {
+      const turn = Promise.withResolvers<void>()
+      setImmediate(turn.resolve)
+      await turn.promise
+      return Promise.all(exits)
+    },
+    restore: () => spawned.mockReset().mockImplementation(nativeChildProcess.spawn),
+  }
 }
 
 const plan: BuckWatchPlan = {
@@ -423,6 +478,7 @@ describe('Buck watch reconciliation', () => {
     process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
     process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
     const savedEnvironment = hermeticOtelGate()
+    const telemetry = observeExporters(otelSpan)
     try {
       const manifest = join(root, 'editor-inputs.json')
       await writeFile(
@@ -464,6 +520,8 @@ describe('Buck watch reconciliation', () => {
       expect(invocations[0]?.args[0]).toBe('build')
       expect(invocations[1]?.command).toBe('/tools/bun')
       expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
+      await telemetry.settle()
+      expect(telemetry.children).toHaveLength(2)
       const captured = readFileSync(capture, 'utf8')
       expect(captured).toContain('emit-span effect-utils-devenv buck2.build')
       expect(captured).toContain('--attr-int buck2.targets=1')
@@ -472,6 +530,8 @@ describe('Buck watch reconciliation', () => {
       expect(captured).toContain('--attr-int exit.code=0')
       expect(captured).toContain('--status-code ok')
     } finally {
+      await telemetry.settle()
+      telemetry.restore()
       process.env.PATH = savedPath
       if (savedTraceparent === undefined) delete process.env.TRACEPARENT
       else process.env.TRACEPARENT = savedTraceparent
@@ -483,11 +543,16 @@ describe('Buck watch reconciliation', () => {
     }
   })
 
-  it('keeps the build and every publication green when the telemetry CLI fails', async () => {
+  it.each(['fails', 'hangs'])('keeps watch cycles green when telemetry %s', async (delivery) => {
     const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
     const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
     const otelSpan = join(otelDirectory, 'otel-span')
-    writeFileSync(otelSpan, '#!/bin/sh\nexit 3\n')
+    writeFileSync(
+      otelSpan,
+      delivery === 'hangs'
+        ? `#!${process.execPath}\nimport { watch } from 'node:fs'\nwatch(${JSON.stringify(otelSpan)}, () => {})\nawait Promise.withResolvers().promise\n`
+        : '#!/bin/sh\nexit 3\n',
+    )
     chmodSync(otelSpan, 0o755)
     const savedPath = process.env.PATH
     const savedTraceparent = process.env.TRACEPARENT
@@ -496,6 +561,7 @@ describe('Buck watch reconciliation', () => {
     process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
     process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
     const savedEnvironment = hermeticOtelGate()
+    const telemetry = observeExporters(otelSpan)
     try {
       const manifest = join(root, 'editor-inputs.json')
       await writeFile(
@@ -508,32 +574,70 @@ describe('Buck watch reconciliation', () => {
         })}\n`,
       )
       const commands: string[] = []
-      await reconcileBuckViews({
-        request: {
-          packagePaths: ['packages/app'],
-          changedPaths: [],
-          buildTargets: ['//packages/app:editor_view_inputs'],
-        },
-        options: {
-          plan,
-          mode: 'publish',
-          repoRoot: root,
-          workspaceRoot: root,
-          buck2: '/tools/buck2',
-          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-          workspaceAuthority: '/repo/authority.json',
-          cp: '/tools/cp',
-          fingerprintTool: '/tools/buck2-fingerprint',
-          mv: '/tools/mv',
-          snapshotRetention: 3,
-          run: async ({ command }) => {
-            commands.push(command)
-            return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-          },
+      const source = new ControlledChanges()
+      const abort = new AbortController()
+      const statuses: WatchLoopStatus[] = []
+      await runBuckWatchLoop({
+        plan,
+        signal: abort.signal,
+        openChanges: async () => source,
+        reconcile: (request) =>
+          reconcileBuckViews({
+            request,
+            options: {
+              plan,
+              mode: 'publish',
+              repoRoot: root,
+              workspaceRoot: root,
+              buck2: '/tools/buck2',
+              editorViewCommand: ['/tools/bun', '/tools/editor-view'],
+              workspaceAuthority: '/repo/authority.json',
+              cp: '/tools/cp',
+              fingerprintTool: '/tools/buck2-fingerprint',
+              mv: '/tools/mv',
+              snapshotRetention: 3,
+              run: async ({ command }) => {
+                commands.push(command)
+                return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+              },
+            },
+          }),
+        writeStatus: async (status) => {
+          statuses.push(status)
+          if (status.phase !== 'idle') return
+          if (status.generation === 1) source.emit(['packages/app/src/main.ts'])
+          else abort.abort()
         },
       })
-      expect(commands).toEqual(['/tools/buck2', '/tools/bun'])
+      expect(commands).toEqual(['/tools/buck2', '/tools/bun', '/tools/buck2', '/tools/bun'])
+      expect(
+        statuses.filter((status) => status.phase === 'idle').map(({ generation }) => generation),
+      ).toEqual([1, 2])
+      const turn = Promise.withResolvers<void>()
+      setImmediate(turn.resolve)
+      await turn.promise
+      expect(telemetry.children).toHaveLength(4)
+      expect(telemetry.children.map((child) => child.spawnargs[3])).toEqual([
+        'buck2.build',
+        'editor-view.publish',
+        'buck2.build',
+        'editor-view.publish',
+      ])
+      for (const child of telemetry.children) {
+        expect(child.spawnargs).toEqual(expect.arrayContaining(['exit.code=0', 'ok']))
+        if (delivery === 'hangs') {
+          expect(child.exitCode).toBeNull()
+          expect(child.signalCode).toBeNull()
+        }
+      }
+      expect(await telemetry.settle()).toEqual(
+        Array.from({ length: 4 }, () =>
+          delivery === 'hangs' ? { code: null, signal: 'SIGKILL' } : { code: 3, signal: null },
+        ),
+      )
     } finally {
+      await telemetry.settle()
+      telemetry.restore()
       process.env.PATH = savedPath
       if (savedTraceparent === undefined) delete process.env.TRACEPARENT
       else process.env.TRACEPARENT = savedTraceparent
