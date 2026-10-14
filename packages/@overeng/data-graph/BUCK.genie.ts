@@ -1,0 +1,31 @@
+import type { Buck2TypeScriptAdmission } from '../../../genie/buck2/typescript-admissions.ts'
+import { buck2TypeScriptPackageProjection } from '../../../genie/buck2/typescript-package-projection.ts'
+
+export const buck2TypeScriptAdmission = {
+  dependencyImporter: '//buck2/dependencies:importer_packages_overeng_data_graph_71f8ed469693',
+  packageName: '@overeng/data-graph',
+  packagePath: 'packages/@overeng/data-graph',
+  projectionSource: 'packages/@overeng/data-graph/BUCK.genie.ts',
+  sourceRoots: ['src'],
+  workspaceSiblings: [
+    {
+      packageName: '@overeng/content-address',
+      packagePath: 'packages/@overeng/content-address',
+      distTarget: '//packages/@overeng/content-address:dist',
+    },
+    {
+      packageName: '@overeng/utils-dev',
+      packagePath: 'packages/@overeng/utils-dev',
+      distTarget: '//packages/@overeng/utils-dev:dist',
+    },
+  ],
+  authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
+  tests: [
+    {
+      name: 'test',
+      runner: 'vitest',
+    },
+  ],
+} as const satisfies Buck2TypeScriptAdmission
+
+export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)
