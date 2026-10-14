@@ -12,6 +12,7 @@ set -euo pipefail
 # Supplied by devenv for both task execution and direct shell-based CI calls.
 # Keep the digest tool independent of the caller's ambient PATH.
 openssl_bin="${JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN:?devenv must provide the OpenSSL binary}"
+export PATH="$(dirname "$openssl_bin"):$PATH"
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 tmp="$(mktemp -d)"
@@ -52,6 +53,8 @@ cat >"$tmp/stub.nix" <<'NIX'
   makeWrapper = "/stub/make-wrapper";
   nodejs = "/stub/nodejs";
   openssl = "/stub/openssl";
+  jq = "/stub/jq";
+  writeText = name: text: builtins.toFile name text;
   runCommand = name: attrs: script: {
     type = "derivation";
     outPath = "/nix/store/test-${name}";
@@ -296,5 +299,77 @@ write_descriptor "$tmp/hostile.json" fixture cli javascript-esm \
   "$portable" '[]' '[]' 'x/../../etc/passwd'
 write_case "$tmp/hostile.nix" "$tmp/hostile.json"
 expect_failure "unsafe module path" "unsafe module path" "$tmp/hostile.nix"
+
+write_descriptor "$tmp/unsupported-runtime.json" fixture cli javascript-esm "$portable" '[]' '[]' tool.js deno
+write_case "$tmp/unsupported-runtime.nix" "$tmp/unsupported-runtime.json"
+expect_failure "unsupported runtime kind" "unsupported JavaScript runtime" "$tmp/unsupported-runtime.nix"
+
+# Source mode must evaluate without opening producer outputs. Its build gate
+# is exercised directly with the same fixtures as the published-mode tests.
+cat >"$tmp/source.nix" <<NIX
+let
+  pkgs = import $tmp/stub.nix;
+in (import $repo_root/nix/workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
+  artifact = "/absent/source/tool.js";
+  descriptor = "/absent/source/descriptor.json";
+  expectedProductKind = "cli";
+  expectedProductName = "fixture";
+  sourceImport = {
+    product = "/absent/source";
+    hasRuntimeClosure = false;
+    facts = {
+      expectedModulePath = "tool.js";
+      expectedRuntimeKind = "node";
+      expectedRuntimeContract = "javascript-esm";
+      expectedRuntimeContractVersion = "v1";
+      checkProducerCommit = true;
+      expectedProducerCommit = "0000000000000000000000000000000000000000";
+    };
+  };
+}
+NIX
+nix eval --impure --json --option allow-import-from-derivation false \
+  --file "$tmp/source.nix" >/dev/null
+echo "javascript-product-import-test: GREEN source evaluation never reads outputs"
+source_product="$tmp"
+artifact="$module"
+facts="$tmp/facts.json"
+jq -n '{expectedProductName:"fixture",expectedProductKind:"cli",expectedModulePath:"tool.js",
+  expectedRuntimeKind:"node",expectedRuntimeContract:"javascript-esm",
+  expectedRuntimeContractVersion:"v1",expectedExternalCapabilities:[],expectedExternalModules:[],
+  checkProducerCommit:true,expectedProducerCommit:"0000000000000000000000000000000000000000"}' >"$facts"
+jq -n --arg digest "$module_digest" \
+  '{productDigest:$digest,producerCommit:"0000000000000000000000000000000000000000"}' >"$tmp/provenance.json"
+validate_source() {
+  descriptor="$1"
+  ( source "$repo_root/nix/workspace-tools/lib/javascript-source-import-validate.sh" )
+}
+write_descriptor "$tmp/source-valid.json"
+validate_source "$tmp/source-valid.json"
+echo "javascript-product-import-test: GREEN source build validation"
+source_failure() {
+  if validate_source "$2" >"$tmp/source-failure.log" 2>&1; then
+    echo "expected source validation failure: $1" >&2
+    exit 1
+  fi
+  jq -e --arg check "$1" '.error == "javascript-product-import" and .check == $check' \
+    "$tmp/source-failure.log" >/dev/null
+  echo "javascript-product-import-test: RED source $1"
+}
+source_failure product-name "$tmp/other-name.json"
+write_descriptor "$tmp/source-runtime.json" fixture cli javascript-esm "$portable" '[]' '[]' tool.js bun
+source_failure runtime-kind "$tmp/source-runtime.json"
+write_descriptor "$tmp/source-external.json" fixture cli javascript-esm "$portable" '[]' '["undeclared"]'
+source_failure external-modules "$tmp/source-external.json"
+jq '.productDigest = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"' \
+  "$tmp/provenance.json" >"$tmp/bad-provenance.json"
+cp "$tmp/bad-provenance.json" "$tmp/provenance.json"
+source_failure module-digest "$tmp/source-valid.json"
+jq -n --arg digest "$module_digest" \
+  '{productDigest:$digest,producerCommit:"1111111111111111111111111111111111111111"}' >"$tmp/provenance.json"
+source_failure producer-commit "$tmp/source-valid.json"
+jq '.expectedProducerCommit = null' "$facts" >"$tmp/missing-commit.json"
+cp "$tmp/missing-commit.json" "$facts"
+source_failure missing-producer-commit "$tmp/source-valid.json"
 
 echo "javascript-product-import: OK"

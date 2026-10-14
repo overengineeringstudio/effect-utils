@@ -332,6 +332,44 @@ let
       inherit productName;
       productKind = product.kind;
       expectedProductSha256 = expectedSha256;
+      # The only source JavaScript import entry point. Consumer facts are
+      # static; no descriptor or provenance output is read during evaluation.
+      importJavaScript =
+        {
+          expectedProductKind,
+          expectedProductName,
+          expectedModulePath,
+          expectedRuntimeKind,
+          expectedRuntimeContract,
+          expectedRuntimeContractVersion,
+          expectedExternalCapabilities,
+          expectedExternalModules,
+          expectedProducerCommit ? producerCommit,
+          checkProducerCommit ? producerCommit != null,
+          binaryName ? null,
+          environment ? { },
+          generateCompletions ? binaryName != null,
+          nativeNodePackages ? [ ],
+          pathPackages ? [ ],
+          smokeTestArgs ? null,
+        }:
+        assert lib.assertMsg (product.kind == "javascript")
+          "buck2-products: importJavaScript requires a JavaScript product";
+        (import ../workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
+          inherit expectedProductKind expectedProductName expectedExternalCapabilities
+            expectedExternalModules binaryName environment generateCompletions
+            nativeNodePackages pathPackages smokeTestArgs;
+          artifact = "${sourceProduct}/${outputName}";
+          descriptor = "${sourceProduct}/descriptor.json";
+          sourceImport = {
+            product = sourceProduct;
+            hasRuntimeClosure = runtimeClosureTarget != null;
+            facts = {
+              inherit expectedModulePath expectedRuntimeKind expectedRuntimeContract
+                expectedRuntimeContractVersion expectedProducerCommit checkProducerCommit;
+            };
+          };
+        };
     };
   };
 in

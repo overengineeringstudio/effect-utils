@@ -37,6 +37,16 @@ Downstream package consumers should make their root `nixpkgs` and `flake-utils`
 follow `effect-utils/nixpkgs` and `effect-utils/flake-utils` to share the canonical
 build graph.
 
+Source JavaScript recipes expose `importJavaScript` on the derivation returned
+by `nix/buck2-products/from-source.nix`. Consumers supply the product name/kind,
+module path, runtime kind/contract/version and exact external capability/module
+sets as static facts. Descriptor, payload, provenance and runtime-closure reads
+and checks happen inside the importing build, so evaluating a Darwin package
+on Linux does not realize a Darwin source product. Revision-bound consumers
+set `checkProducerCommit = true` and supply the selected revision; an absent or
+mismatched revision fails the build. Published products retain their independent
+descriptor digest and evaluation-time validation unchanged.
+
 The Genie product wrapper realizes the pinned descriptor's capabilities through
 a closed provider registry. It supplies `gh` on PATH when the published product
 requires repository-settings reconciliation; old products do not acquire that
