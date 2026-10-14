@@ -74,6 +74,12 @@ GitHub creates a check run for each materialized job and groups runs from one wo
 
 The main-only exclusion is deliberate and fixes the absent-check failure mode: requiring `test-integration-notion`, `test-live-deploy-ci-tools`, or `deploy-storybooks` on a pull request would leave branch protection waiting for check runs that the workflow never creates.
 
+`test-integration-notion` also supports a collaborator-triggered branch proof:
+dispatch `ci.yml` on the branch with `run_notion_integration_on_branch=true`.
+The input defaults to false and only admits `workflow_dispatch`; pull requests
+and merge groups cannot select this credentialed lane. Main push and dispatch
+behavior is unchanged. Baseline-measurement dispatches still exclude the lane.
+
 `.github/repo-settings.json.genie.ts` derives the repository ruleset directly from `requiredCIJobs` (the expanded `REQUIRED_CI_JOB_NAMES` plus `STANDALONE_REQUIRED_CI_JOB_NAMES`). The same ruleset requires GitHub's native merge queue with `SQUASH`, `ALLGREEN`, build concurrency one, merge limit one, and a 180-minute check-response timeout. Required contexts are unchanged by the queue cutover: a PR's skipped heavy checks permit queue admission, not direct merge; the native queue must obtain successful real heavy-job results on its synthetic combined head. There are no admission labels, sentinel successes, or per-PR heavy cohorts.
 
 Linux `test` and Darwin `test-macos` are physical workflow jobs with static check names `test (namespace-profile-linux-x86-64)` and `test (namespace-profile-macos-arm64)`. Both retain canonical pipeline job `test` with their respective runner dimension, so queue validation and historical trace identities agree. Darwin retains its native/compiled product smoke after unit tests.
