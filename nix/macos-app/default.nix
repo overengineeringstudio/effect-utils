@@ -25,11 +25,11 @@ let
   # Runtime modules live at src's root; controller-only bin sources are excluded.
   runtimeSources = builtins.readDir ./host/src;
   genericHostSourceHash = builtins.hashString "sha256" (
-    lib.concatMapStrings (
-      file: file + "\n" + builtins.readFile (./host/src + "/${file}")
-    ) (lib.filter (
-      file: runtimeSources.${file} == "regular" && lib.hasSuffix ".rs" file
-    ) (builtins.attrNames runtimeSources))
+    lib.concatMapStrings (file: file + "\n" + builtins.readFile (./host/src + "/${file}")) (
+      lib.filter (file: runtimeSources.${file} == "regular" && lib.hasSuffix ".rs" file) (
+        builtins.attrNames runtimeSources
+      )
+    )
     + builtins.readFile ./host/Cargo.toml
     + builtins.readFile ./host/Cargo.lock
   );
@@ -43,16 +43,35 @@ let
     && lib.all (part: part != "" && part != "." && part != "..") (lib.splitString "/" path)
     && builtins.match ".*[\n\r].*" path == null;
   validRequirement = value: builtins.isString value && value != "";
-  validEntitlements =
-    value: value == null || lib.hasPrefix "/nix/store/" (toString value);
+  validEntitlements = value: value == null || lib.hasPrefix "/nix/store/" (toString value);
   validOptions =
     options:
     builtins.isList options
-    && lib.all (option: builtins.elem option [ "runtime" "hard" "kill" "restrict" "library" "host" "expires" ]) options
+    && lib.all (
+      option:
+      builtins.elem option [
+        "runtime"
+        "hard"
+        "kill"
+        "restrict"
+        "library"
+        "host"
+        "expires"
+      ]
+    ) options
     && builtins.length options == builtins.length (lib.unique options);
   nestedCode = map (
     entry:
-    assert lib.all (key: builtins.elem key [ "path" "identifier" "requirement" "entitlements" "options" ]) (builtins.attrNames entry);
+    assert lib.all (
+      key:
+      builtins.elem key [
+        "path"
+        "identifier"
+        "requirement"
+        "entitlements"
+        "options"
+      ]
+    ) (builtins.attrNames entry);
     assert validRelativePath entry.path;
     assert lib.hasPrefix "Contents/" entry.path;
     assert entry.path != bundleExecutable;
@@ -71,16 +90,21 @@ let
   signingOptions = bundlePolicy.signingOptions or [ ];
   # Custom hosts declare the compiled revision they report via wire status.
   hostSourceHash =
-    if hostBundle != null then hostBundle.hostSourceHash
-    else if host == null then genericHostSourceHash
-    else host.hostSourceHash;
+    if hostBundle != null then
+      hostBundle.hostSourceHash
+    else if host == null then
+      genericHostSourceHash
+    else
+      host.hostSourceHash;
   bundleExecutable =
-    if hostBundle != null then hostBundle.executable
-    else "Contents/MacOS/${hostExecutable}";
+    if hostBundle != null then hostBundle.executable else "Contents/MacOS/${hostExecutable}";
   hostExecutable =
-    if hostBundle != null then builtins.baseNameOf hostBundle.executable
-    else if host == null then "macos-app-host"
-    else builtins.baseNameOf (lib.getExe host);
+    if hostBundle != null then
+      builtins.baseNameOf hostBundle.executable
+    else if host == null then
+      "macos-app-host"
+    else
+      builtins.baseNameOf (lib.getExe host);
   hostPath = if host == null then "${genericHost}/bin/macos-app-host" else lib.getExe host;
   launchdData = {
     inherit (launchd) label;
@@ -184,16 +208,19 @@ let
     }
   );
   hostApp = pkgs.runCommand "${name}-unsigned-app" { } (
-    if hostBundle != null then ''
-      mkdir -p "$out"
-      cp -R ${lib.escapeShellArg (toString hostBundle.path)} "$out/${name}.app"
-    '' else ''
-      mkdir -p "$out/${name}.app/Contents/MacOS"
-      mkdir -p "$out/${name}.app/Contents/Resources"
-      cp '${hostPath}' "$out/${name}.app/Contents/MacOS/${hostExecutable}"
-      printf '%s\n' '${hostSourceHash}' > "$out/${name}.app/Contents/Resources/host-source-hash"
-      cp '${plist}' "$out/${name}.app/Contents/Info.plist"
-    ''
+    if hostBundle != null then
+      ''
+        mkdir -p "$out"
+        cp -R ${lib.escapeShellArg (toString hostBundle.path)} "$out/${name}.app"
+      ''
+    else
+      ''
+        mkdir -p "$out/${name}.app/Contents/MacOS"
+        mkdir -p "$out/${name}.app/Contents/Resources"
+        cp '${hostPath}' "$out/${name}.app/Contents/MacOS/${hostExecutable}"
+        printf '%s\n' '${hostSourceHash}' > "$out/${name}.app/Contents/Resources/host-source-hash"
+        cp '${plist}' "$out/${name}.app/Contents/Info.plist"
+      ''
   );
   # One shared byte-normalization implementation binds sealing and installation.
   desiredDescriptor = pkgs.runCommand "${name}-desired-host.json" { } ''
@@ -206,24 +233,39 @@ assert builtins.match "[A-Za-z0-9._-]+" name != null;
 assert builtins.match "[A-Za-z0-9.-]+" bundleId != null;
 assert builtins.match "[A-Z0-9]+" signer.teamId != null;
 assert signer.identity != "" && signer.identity != "-";
-assert builtins.length (map (entry: entry.identifier) nestedCode)
+assert
+  builtins.length (map (entry: entry.identifier) nestedCode)
   == builtins.length (lib.unique (map (entry: entry.identifier) nestedCode));
 assert lib.all (entry: entry.identifier != bundleId) nestedCode;
 assert host == null || hostBundle == null;
 assert validRequirement requirement;
-assert lifecycleLockPath == null || (builtins.isString lifecycleLockPath && lib.hasPrefix "/" lifecycleLockPath);
+assert
+  lifecycleLockPath == null
+  || (builtins.isString lifecycleLockPath && lib.hasPrefix "/" lifecycleLockPath);
 assert validEntitlements entitlements;
 assert validOptions signingOptions;
 assert builtins.length nestedPaths == builtins.length (lib.unique nestedPaths);
-assert hostBundle == null || (
-  lib.all (key: builtins.elem key [ "path" "executable" "hostSourceHash" "nestedCode" "entitlements" "signingOptions" ]) (builtins.attrNames hostBundle)
-  && lib.hasPrefix "/nix/store/" (toString hostBundle.path)
-  && lib.hasSuffix ".app" (toString hostBundle.path)
-  && validRelativePath hostBundle.executable
-  && builtins.match "Contents/MacOS/[A-Za-z0-9._+-]+" hostBundle.executable != null
-  && builtins.isString hostBundle.hostSourceHash
-  && hostBundle.hostSourceHash != ""
-);
+assert
+  hostBundle == null
+  || (
+    lib.all (
+      key:
+      builtins.elem key [
+        "path"
+        "executable"
+        "hostSourceHash"
+        "nestedCode"
+        "entitlements"
+        "signingOptions"
+      ]
+    ) (builtins.attrNames hostBundle)
+    && lib.hasPrefix "/nix/store/" (toString hostBundle.path)
+    && lib.hasSuffix ".app" (toString hostBundle.path)
+    && validRelativePath hostBundle.executable
+    && builtins.match "Contents/MacOS/[A-Za-z0-9._+-]+" hostBundle.executable != null
+    && builtins.isString hostBundle.hostSourceHash
+    && hostBundle.hostSourceHash != ""
+  );
 assert builtins.elem session [
   "gui-agent"
   "background-agent"
