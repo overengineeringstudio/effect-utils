@@ -159,3 +159,50 @@ it.effect(
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   { timeout: 60_000 },
 )
+
+it.effect(
+  'serializes concurrent pulls across layers sharing one store root',
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-concurrent-' })
+      const kind = Schema.decodeUnknownSync(NodeKind)('concurrent')
+      let calls = 0
+      const node: NodeDef = {
+        _tag: 'Derive',
+        kind,
+        outputs: ['value'],
+        inputs: () => ({}),
+        recipe: () => ({ kind, version: '1', config: {} }),
+        execute: Effect.fn('Concurrent.execute')(function* () {
+          calls++
+          yield* Effect.yieldNow
+          return {
+            _tag: 'Accepted',
+            receipts: [],
+            outputs: {
+              value: { bytes: utf8Bytes('deterministic'), mediaType: 'text/plain' },
+            },
+          }
+        }),
+      }
+      const target = DataGraph.ref(node, {}, 'value')
+      const results = yield* Effect.all(
+        Array.from({ length: 8 }, () =>
+          DataGraph.materialize(target).pipe(Effect.provide(GraphStore.fileSystem(root))),
+        ),
+        { concurrency: 'unbounded' },
+      )
+      expect(calls).toBe(1)
+      expect(results.filter((result) => result.outcome._tag === 'Executed')).toHaveLength(1)
+      expect(results.filter((result) => result.outcome._tag === 'Reused')).toHaveLength(7)
+      expect(new Set(results.map((result) => result.materialization.digest)).size).toBe(1)
+      const head = Option.getOrThrow(
+        yield* DataGraph.getHead({ kind, scope: {} }).pipe(
+          Effect.provide(GraphStore.fileSystem(root)),
+        ),
+      )
+      expect(head.materialization.digest).toBe(results[0]!.materialization.digest)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  { timeout: 60_000 },
+)
