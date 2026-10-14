@@ -1,6 +1,6 @@
 # Generic host bytes depend only on host/, its version and the pinned toolchain.
 # Product identity lives in Info.plist; payloads and policy live in the generation.
-# signer declares an identity string, never key material; signing happens at activation.
+# signer declares an identity string, never key material; seal-host alone signs.
 # args are ordered { name, kind = "enum"|"string"|"integer", ... } declarations.
 # All arguments are required; no shell interpolation or generic exec is exposed.
 { pkgs, nixpkgsRevision }:
@@ -11,6 +11,8 @@
   actions,
   statusAllowedUids,
   host ? null,
+  hostBundle ? null,
+  requirement ? ''identifier "${bundleId}" and anchor apple generic and certificate leaf[subject.OU] = "${signer.teamId}"'',
   session ? "background-agent",
   launchd,
   signer,
@@ -19,16 +21,66 @@
 let
   # Only owner/group/world read-write modes are supported; never executable sockets.
   inherit (pkgs) lib;
+  # Runtime modules live at src's root; controller-only bin sources are excluded.
+  runtimeSources = builtins.readDir ./host/src;
   genericHostSourceHash = builtins.hashString "sha256" (
-    builtins.readFile ./host/src/main.rs
+    lib.concatMapStrings (
+      file: file + "\n" + builtins.readFile (./host/src + "/${file}")
+    ) (lib.filter (
+      file: runtimeSources.${file} == "regular" && lib.hasSuffix ".rs" file
+    ) (builtins.attrNames runtimeSources))
     + builtins.readFile ./host/Cargo.toml
     + builtins.readFile ./host/Cargo.lock
   );
-  # Custom hosts declare the product-independent hash they report via wire status.
-  hostSourceHash = if host == null then genericHostSourceHash else host.hostSourceHash;
-  hostExecutable = if host == null then "macos-app-host" else builtins.baseNameOf (lib.getExe host);
+  # A complete product bundle is copied intact, never reconstructed from a recipe.
+  bundlePolicy = if hostBundle == null then { } else hostBundle;
+  validRelativePath =
+    path:
+    builtins.isString path
+    && path != ""
+    && !lib.hasPrefix "/" path
+    && lib.all (part: part != "" && part != "." && part != "..") (lib.splitString "/" path)
+    && builtins.match ".*[\n\r].*" path == null;
+  validRequirement = value: builtins.isString value && value != "";
+  validEntitlements =
+    value: value == null || lib.hasPrefix "/nix/store/" (toString value);
+  validOptions =
+    options:
+    builtins.isList options
+    && lib.all (option: builtins.elem option [ "runtime" "hard" "kill" "restrict" "library" "host" "expires" ]) options
+    && builtins.length options == builtins.length (lib.unique options);
+  nestedCode = map (
+    entry:
+    assert lib.all (key: builtins.elem key [ "path" "identifier" "requirement" "entitlements" "options" ]) (builtins.attrNames entry);
+    assert validRelativePath entry.path;
+    assert lib.hasPrefix "Contents/" entry.path;
+    assert entry.path != bundleExecutable;
+    assert builtins.match "[A-Za-z0-9.-]+" entry.identifier != null;
+    assert validRequirement entry.requirement;
+    assert validEntitlements (entry.entitlements or null);
+    assert validOptions (entry.options or [ ]);
+    {
+      inherit (entry) path identifier requirement;
+      entitlements = if (entry.entitlements or null) == null then null else toString entry.entitlements;
+      options = entry.options or [ ];
+    }
+  ) (bundlePolicy.nestedCode or [ ]);
+  nestedPaths = map (entry: entry.path) nestedCode;
+  entitlements = bundlePolicy.entitlements or null;
+  signingOptions = bundlePolicy.signingOptions or [ ];
+  # Custom hosts declare the compiled revision they report via wire status.
+  hostSourceHash =
+    if hostBundle != null then hostBundle.hostSourceHash
+    else if host == null then genericHostSourceHash
+    else host.hostSourceHash;
+  bundleExecutable =
+    if hostBundle != null then hostBundle.executable
+    else "Contents/MacOS/${hostExecutable}";
+  hostExecutable =
+    if hostBundle != null then builtins.baseNameOf hostBundle.executable
+    else if host == null then "macos-app-host"
+    else builtins.baseNameOf (lib.getExe host);
   hostPath = if host == null then "${genericHost}/bin/macos-app-host" else lib.getExe host;
-  requirement = ''identifier "${bundleId}" and anchor apple generic and certificate leaf[subject.OU] = "${signer.teamId}"'';
   launchdData = {
     inherit (launchd) label;
     keepAlive = launchd.keepAlive or true;
@@ -44,6 +96,8 @@ let
         requirement
         signer
         ;
+      inherit nestedCode signingOptions;
+      entitlements = if entitlements == null then null else toString entitlements;
       launchd = launchdData;
     }
   );
@@ -127,12 +181,46 @@ let
       LSBackgroundOnly = session != "gui-agent";
     }
   );
+  hostApp = pkgs.runCommand "${name}-unsigned-app" { } (
+    if hostBundle != null then ''
+      mkdir -p "$out"
+      cp -R ${lib.escapeShellArg (toString hostBundle.path)} "$out/${name}.app"
+    '' else ''
+      mkdir -p "$out/${name}.app/Contents/MacOS"
+      mkdir -p "$out/${name}.app/Contents/Resources"
+      cp '${hostPath}' "$out/${name}.app/Contents/MacOS/${hostExecutable}"
+      printf '%s\n' '${hostSourceHash}' > "$out/${name}.app/Contents/Resources/host-source-hash"
+      cp '${plist}' "$out/${name}.app/Contents/Info.plist"
+    ''
+  );
+  # One shared byte-normalization implementation binds sealing and installation.
+  desiredDescriptor = pkgs.runCommand "${name}-desired-host.json" { } ''
+    '${genericHost}/bin/macos-app-ctl' describe-host \
+      --config '${ctlConfig}' --desired '${hostApp}/${name}.app' > "$out"
+  '';
 in
 assert pkgs.stdenv.hostPlatform.isDarwin;
 assert builtins.match "[A-Za-z0-9._-]+" name != null;
 assert builtins.match "[A-Za-z0-9.-]+" bundleId != null;
 assert builtins.match "[A-Z0-9]+" signer.teamId != null;
 assert signer.identity != "" && signer.identity != "-";
+assert builtins.length (map (entry: entry.identifier) nestedCode)
+  == builtins.length (lib.unique (map (entry: entry.identifier) nestedCode));
+assert lib.all (entry: entry.identifier != bundleId) nestedCode;
+assert host == null || hostBundle == null;
+assert validRequirement requirement;
+assert validEntitlements entitlements;
+assert validOptions signingOptions;
+assert builtins.length nestedPaths == builtins.length (lib.unique nestedPaths);
+assert hostBundle == null || (
+  lib.all (key: builtins.elem key [ "path" "executable" "hostSourceHash" "nestedCode" "entitlements" "signingOptions" ]) (builtins.attrNames hostBundle)
+  && lib.hasPrefix "/nix/store/" (toString hostBundle.path)
+  && lib.hasSuffix ".app" (toString hostBundle.path)
+  && validRelativePath hostBundle.executable
+  && builtins.match "Contents/MacOS/[A-Za-z0-9._+-]+" hostBundle.executable != null
+  && builtins.isString hostBundle.hostSourceHash
+  && hostBundle.hostSourceHash != ""
+);
 assert builtins.elem session [
   "gui-agent"
   "background-agent"
@@ -163,14 +251,9 @@ assert builtins.elem socketMode [
     requirement
     ctl
     ctlConfig
+    hostApp
+    desiredDescriptor
     ;
   # Unwrapped host + ctl binaries; its build runs the crate's unit tests.
   primitives = genericHost;
-  hostApp = pkgs.runCommand "${name}-unsigned-app" { } ''
-    mkdir -p "$out/${name}.app/Contents/MacOS"
-    mkdir -p "$out/${name}.app/Contents/Resources"
-    cp '${hostPath}' "$out/${name}.app/Contents/MacOS/${hostExecutable}"
-    printf '%s\n' '${hostSourceHash}' > "$out/${name}.app/Contents/Resources/host-source-hash"
-    cp '${plist}' "$out/${name}.app/Contents/Info.plist"
-  '';
 }

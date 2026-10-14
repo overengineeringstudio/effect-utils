@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use std::{collections::BTreeMap, ffi::{c_char, c_void, CString}, fs::{self, File}, io::{self, BufRead, BufReader, Read, Write}, os::{fd::{AsRawFd, FromRawFd}, unix::{fs::{symlink, MetadataExt, PermissionsExt}, net::UnixStream}}, path::{Path, PathBuf}, process::{Command, Output}, time::{Duration, Instant}};
 
 type Result<T, E = Failure> = std::result::Result<T, E>;
+#[derive(Debug)]
 struct Failure { code: i32, kind: &'static str, category: Option<&'static str>, reason: String }
 fn fail(code: i32, kind: &'static str, reason: impl Into<String>) -> Failure { Failure { code, kind, category: None, reason: reason.into() } }
 fn signing(category: &'static str, reason: impl Into<String>) -> Failure { Failure { code: 20, kind: "signing-failed", category: Some(category), reason: reason.into() } }
@@ -95,6 +96,16 @@ fn apply_launchd_session_type(object: &mut serde_json::Map<String, Value>, kind:
 // A crate root's `mod` resolves beside it, where Cargo would also treat a file as a binary.
 #[path = "macos-app-ctl/keys.rs"]
 mod keys;
+#[path = "macos-app-ctl/artifact.rs"]
+mod artifact;
+#[path = "macos-app-ctl/releases.rs"]
+mod releases;
+#[path = "macos-app-ctl/launchd.rs"]
+mod launchd;
+#[path = "macos-app-ctl/supplied.rs"]
+mod supplied;
+#[path = "macos-app-ctl/lifecycle.rs"]
+mod lifecycle;
 
 // A nonblocking self-pipe wakes the owning thread. The handler only stores a lock-free
 // atomic and writes one byte; child teardown and checked locks happen outside the handler.
@@ -291,16 +302,18 @@ impl Ctl {
     fn app(&self) -> Result<PathBuf> { Ok(PathBuf::from(self.arg("app-dir")?)) }
     fn state(&self) -> Result<PathBuf> { Ok(PathBuf::from(self.arg("state")?)) }
     fn password_fd(&self) -> Result<i32> { self.arg("keychain-password-fd")?.parse::<i32>().map_err(|_| fail(64, "invalid-input", "Invalid password fd")) }
-    fn signature(&self, app: &Path) -> Result<String> { self.signature_with(app, &canonical_requirement(self.field("requirement")?)?) }
-    /// Runs only codesign, so it is admissible inside the unlocked signing window.
+    fn signature(&self, app: &Path) -> Result<String> { self.signature_with(app, self.field("requirement")?) }
+    /// Evaluate the pinned predicate against the candidate, not its diagnostic DR text.
     fn signature_with(&self, app: &Path, requirement: &str) -> Result<String> {
+        let predicate = macos_app_host::CompiledRequirement::compile(requirement)
+            .map_err(|e| fail(64, "invalid-input", e.to_string()))?;
+        predicate.verify_path(app).map_err(|e| mismatch(e.to_string()))?;
         let path = text(app)?;
         let strict = keys::bounded_codesign(&["--verify", "--strict", path])?;
-        let matches = keys::bounded_codesign(&["-v", &format!("-R={requirement}"), path])?;
         let details = keys::bounded_codesign(&["-d", "-r-", path])?;
         let details_text = format!("{}\n{}", String::from_utf8_lossy(&details.stdout), String::from_utf8_lossy(&details.stderr));
         let dr = details_text.lines().find_map(|line| line.strip_prefix("designated => ").map(str::to_owned)).unwrap_or_default();
-        if !strict.status.success() || !matches.status.success() || !details.status.success() || dr != requirement { return Err(mismatch(format!("Signature/DR mismatch: {dr}"))); }
+        if !strict.status.success() || !details.status.success() { return Err(mismatch(format!("Invalid candidate signature: {dr}"))); }
         Ok(dr)
     }
     fn session(&self) -> Result<&'static str> {
@@ -324,32 +337,44 @@ impl Ctl {
         let manifest: Value = serde_json::from_slice(&fs::read(self.state()?.join("current/manifest.json"))?)?;
         manifest["socketMode"].as_u64().and_then(|m| u32::try_from(m).ok()).ok_or_else(|| fail(64, "invalid-input", "Manifest lacks socketMode"))
     }
-    /// Signs the staged bundle. The identity lookup, requirement canonicalization and password
-    /// read finish while the keychain is locked; inside the unlock window only the in-process
-    /// codesign guard (ACL reads) and `codesign` itself run, the latter only if the guard holds.
+    /// Signs the staged bundle. Identity lookup, predicate compilation and password
+    /// read finish while locked; the unlocked interval preserves the codesign guards.
     fn sign(&self, keychain_path: &Path, keychain: &Keychain, stage: &Path) -> Result<()> {
         let identity = self.config["signer"]["identity"].as_str().filter(|s| !s.is_empty() && *s != "-").ok_or_else(|| fail(64, "invalid-input", "A certificate identity is required; ad-hoc signing is refused"))?;
         if !identity_in_keychain(keychain_path, identity)? { return Err(signing("identity-missing", "Identity not present in the dedicated keychain")); }
-        let declared = self.field("requirement")?;
-        let requirement = canonical_requirement(declared)?;
+        let entries = artifact::signing_entries(&self.config)?;
+        let predicates = entries.iter().map(|entry| macos_app_host::CompiledRequirement::compile(&entry.requirement)
+            .map_err(|e| fail(64, "invalid-input", e.to_string()))).collect::<Result<Vec<_>>>()?;
         let password = Password::read(self.password_fd()?)?;
         let window = keychain.unlock(&password)?;
         drop(password);
         let result = (|| {
-            keys::require_codesign_ready(keychain_path, keychain, identity)?;
-            let signed = keys::bounded_codesign(&["--force", "--keychain", text(keychain_path)?, "--sign", identity, "--requirements", &format!("=designated => {declared}"), text(stage)?])?;
-            if !signed.status.success() { return Err(signing("sign-failed", String::from_utf8_lossy(&signed.stderr).trim().to_owned())); }
-            let verified = self.signature_with(stage, &requirement);
-            verified.map(|_| ()).map_err(|e| signing("dr-mismatch", e.reason))
+            for (entry, predicate) in entries.iter().zip(&predicates) {
+                keys::require_codesign_ready(keychain_path, keychain, identity)?;
+                let target = if entry.path.is_empty() { stage.to_owned() } else { stage.join(&entry.path) };
+                let mut arguments = vec!["--force".to_owned(), "--keychain".to_owned(), text(keychain_path)?.to_owned(),
+                    "--sign".to_owned(), identity.to_owned(), "--identifier".to_owned(), entry.identifier.clone(),
+                    "--requirements".to_owned(), format!("=designated => {}", entry.requirement)];
+                if let Some(entitlements) = &entry.entitlements { arguments.extend(["--entitlements".to_owned(), entitlements.clone()]); }
+                if !entry.options.is_empty() { arguments.extend(["--options".to_owned(), entry.options.join(",")]); }
+                arguments.push(text(&target)?.to_owned());
+                let borrowed = arguments.iter().map(String::as_str).collect::<Vec<_>>();
+                let signed = keys::bounded_codesign(&borrowed)?;
+                if !signed.status.success() { return Err(signing("sign-failed", String::from_utf8_lossy(&signed.stderr).trim().to_owned())); }
+                predicate.verify_path(&target).map_err(|e| signing("dr-mismatch", e.to_string()))?;
+            }
+            Ok(())
         })();
         window.close()?;
-        result
+        result?;
+        self.verify_bundle(stage).map_err(|e| signing("dr-mismatch", e.reason))
     }
     /// Roll-forward publication after the exchange, which is the install commit point. Every step
     /// is idempotent and `D.txn.json` is removed last, so a failure or crash here is completed by
     /// `reconcile`, never undone. Removing the superseded archive is post-commit cleanup.
     fn publish_archive(&self, app: &Path, txn: &Value) -> Result<Option<PathBuf>> {
         let stage = PathBuf::from(txn["stage"].as_str().ok_or_else(|| fail(64, "invalid-input", "Corrupt transaction record"))?);
+        if txn["immutable"] == true { checked("/bin/chmod", &["-R", "a-w", text(&stage)?])?; }
         let state = self.state()?;
         fs::create_dir_all(&state)?;
         let recorded = state.join("host-previous-generation");
@@ -359,7 +384,8 @@ impl Ctl {
         // A signed host is now installed, so an earlier signing failure no longer describes D.
         remove_if_present(&signing_failure_marker(app))?;
         remove_if_present(&transaction_record(app))?;
-        // Exactly one archive is kept; the superseded one is no longer reachable by rollback.
+        // Legacy local-sign installs retain one archive; artifact imports omit
+        // superseded and preserve every consumer-selected immutable incumbent.
         Ok(txn["superseded"].as_str().map(PathBuf::from).filter(|old| *old != stage).and_then(|old| remove_leftover(&old)))
     }
     /// Completes or discards an install exchange interrupted by a failure or crash. Runs before
@@ -621,7 +647,8 @@ fn known_option(key: &str) -> bool {
     matches!(key, "config" | "app-dir" | "state" | "socket" | "plist-dir" | "domain" |
         "desired" | "generation" | "keychain" | "keychain-password-fd" | "common-name-hint" |
         "csr-out" | "cert" | "restore-host" | "signing-auth-pending" | "replace" | "no-sign" |
-        "certificate-sha1" | "requirement" | "target" | "inventory" | "identifier" | "production-requirements")
+        "certificate-sha1" | "requirement" | "target" | "inventory" | "identifier" | "production-requirements" |
+        "artifact" | "archive-dir" | "output" | "plist" | "target-uid" | "evidence" | "validate-only" | "lifecycle-fd")
 }
 fn run() -> Result<Value> {
     let _signals = install_signal_handlers()?;
@@ -630,7 +657,10 @@ fn run() -> Result<Value> {
     while let Some(flag) = argv.next() {
         let key = flag.strip_prefix("--").ok_or_else(|| fail(64, "invalid-input", "Expected --option"))?;
         if !known_option(key) { return Err(fail(64, "invalid-input", format!("Unknown option --{key}"))); }
-        if matches!(key, "restore-host" | "signing-auth-pending" | "replace" | "no-sign") { args.insert(key.to_owned(), String::new()); continue; }
+        if matches!(key, "restore-host" | "signing-auth-pending" | "replace" | "no-sign" | "validate-only") {
+            if args.insert(key.to_owned(), String::new()).is_some() { return Err(fail(64, "invalid-input", "Duplicate option")); }
+            continue;
+        }
         let value = argv.next().ok_or_else(|| fail(64, "invalid-input", "Missing option value"))?;
         if args.insert(key.to_owned(), value).is_some() { return Err(fail(64, "invalid-input", "Duplicate option")); }
     }
@@ -640,10 +670,24 @@ fn run() -> Result<Value> {
     // SAFETY: a plain flag setter for this process's Security framework client state.
     let status = unsafe { SecKeychainSetUserInteractionAllowed(0) };
     if status != 0 { return Err(fail(23, "operation-failed", format!("SecKeychainSetUserInteractionAllowed status {status}"))); }
+    let _lifecycle = if matches!(action.as_str(), "install-host" | "select-generation" | "converge-launchd" | "rollback" |
+        "provision-signing-key" | "import-signing-cert" | "prove-signing-key" | "sign-fixture") {
+        lifecycle::verify(&ctl)?
+    } else { None };
     let result = match action.as_str() {
-        "install-host" => ctl.install(), "select-generation" => ctl.generation(), "converge-launchd" => ctl.converge(), "verify" => ctl.verify(), "rollback" => ctl.rollback(), "status" => ctl.status(),
+        "describe-host" => ctl.describe_host(), "seal-host" => ctl.seal_host(),
+        "install-host" if ctl.args.contains_key("artifact") => ctl.install_artifact(),
+        "install-host" => ctl.install(), "select-generation" => ctl.generation(),
+        "converge-launchd" if ctl.args.contains_key("plist") => ctl.converge_supplied(),
+        "converge-launchd" => ctl.converge(),
+        "verify" if ctl.args.contains_key("artifact") => ctl.verify_artifact(),
+        "rollback" if ctl.args.contains_key("artifact") => ctl.rollback_artifact(),
+        "status" if ctl.args.contains_key("artifact") => ctl.status_artifact(),
+        "verify" => ctl.verify(), "rollback" => ctl.rollback(), "status" => ctl.status(),
         "provision-signing-key" => keys::provision(&ctl), "import-signing-cert" => keys::import_certificate(&ctl), "prove-signing-key" => keys::prove(&ctl),
         "sign-fixture" => keys::sign_fixture(&ctl),
+        #[cfg(feature = "test-signing-cert")]
+        "seal-fixture-artifact" => ctl.seal_fixture_artifact(),
         _ => Err(fail(64, "invalid-input", "Unknown primitive")),
     }?;
     cancellation()?;

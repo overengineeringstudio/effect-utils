@@ -15,6 +15,7 @@ From the Darwin checkout root:
 An existing macos-app-example store path can be passed as the first argument.
 """
 import ctypes
+import fcntl
 import hashlib
 import json
 import os
@@ -116,6 +117,9 @@ print(f'SecurityAgent before: {agent_baseline}' if agent_baseline is not None el
       f'SecurityAgent before: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
 def watched(argv, terminate_when=None, timeout=60, observer=None, **kwargs):
     """Every monitor failure tears down the reserved process group before unwinding."""
+    # Fail closed before any child can reach Security.framework or codesign,
+    # including indirect ctl calls. Window observations alone are not this gate.
+    no_ui_session()
     observe = observer or security_agent_windows
     if observe() != agent_baseline:
         raise RuntimeError(f'ABORT before {argv[1]}: SecurityAgent window present')
@@ -220,10 +224,12 @@ def cleanup():
 try:
     security = ctypes.CDLL('/System/Library/Frameworks/Security.framework/Security')
     def unlocked(path=keychain):
+        no_ui_session()
         reference = ctypes.c_void_p()
         assert security.SecKeychainOpen(str(path).encode(), ctypes.byref(reference)) == 0
         status = ctypes.c_uint32()
         # SecKeychainGetStatus reads state only; it never shows UI.
+        no_ui_session()
         assert security.SecKeychainGetStatus(reference, ctypes.byref(status)) == 0
         return bool(status.value & 1)
     def unlock_for_test(path=keychain):
@@ -295,6 +301,21 @@ jobs_file.write_text(json.dumps(jobs))
     codesign.write_text(f'#!{sys.executable}\n' + r'''
 import json, os, subprocess, sys, time
 from pathlib import Path
+import ctypes
+class AuditMask(ctypes.Structure):
+    _fields_ = [('success', ctypes.c_uint32), ('failure', ctypes.c_uint32)]
+class AuditTerminal(ctypes.Structure):
+    _fields_ = [('port', ctypes.c_int32), ('type', ctypes.c_uint32), ('address', ctypes.c_uint32 * 4)]
+class AuditSession(ctypes.Structure):
+    _fields_ = [('uid', ctypes.c_uint32), ('mask', AuditMask), ('terminal', AuditTerminal),
+                ('session', ctypes.c_int32), ('flags', ctypes.c_uint64)]
+def no_ui_session():
+    libc = ctypes.CDLL(None, use_errno=True)
+    audit = AuditSession()
+    libc.getaudit_addr.argtypes = [ctypes.POINTER(AuditSession), ctypes.c_int]
+    libc.getaudit_addr.restype = ctypes.c_int
+    if libc.getaudit_addr(ctypes.byref(audit), ctypes.sizeof(audit)) != 0 or audit.flags & (0x0010 | 0x2000):
+        sys.exit('ABORT codesign shim: no-UI audit evidence unavailable or graphics/console present')
 base = Path(os.environ['MACOS_APP_TEST_WORK'])
 args = sys.argv[1:]
 with (base / 'codesign.log').open('a') as log: log.write(json.dumps({'argv': args, 'env': sorted(os.environ.items())}) + '\n')
@@ -318,6 +339,7 @@ if '--sign' in args:
         (base / 'slow-ready').touch()
         time.sleep(60)
 # exec keeps the pid, so ctl's signing deadline kills the real codesign, not just this shim.
+no_ui_session()
 os.execv('/usr/bin/codesign', ['codesign'] + args)
 ''')
     codesign.chmod(0o755)
@@ -352,6 +374,233 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     def install(desired_app, secret=password, *extra, code=0, failpoint=None):
         return call('install-host', '--desired', desired_app, '--keychain', keychain, *extra, code=code,
                     secret=secret, failpoint=failpoint)
+
+    def thin_contract_cases():
+        """Public fixtures only: real signatures/bytes, offline launchd, no signing key."""
+        thin_config = dict(base_config, requirement=f'identifier "{base_config["bundleId"]}"',
+                           nestedCode=[], entitlements=None, signingOptions=[])
+        thin_config_path = work / 'thin-config.json'
+        thin_state = work / 'thin-state'
+        thin_app = work / 'thin-apps/SyntheticHost.app'
+        archive = work / 'thin-archive'
+        thin_config_path.write_text(json.dumps(thin_config))
+        def invoke(action, *args, refusal=False, fds=(), config_override=None):
+            result = watched([str(ctl), action, '--config',
+                              str(config_override or thin_config_path), '--app-dir', str(thin_app),
+                              '--state', str(thin_state), '--archive-dir', str(archive),
+                              '--socket', str(work / 'thin.sock'), *map(str, args)], env=env, pass_fds=fds)
+            lines = result.stdout.splitlines()
+            assert len(lines) == 1, (result.stdout, result.stderr)
+            reply = json.loads(lines[0])
+            if refusal:
+                assert result.returncode != 0 and 'error' in reply, (action, result, reply)
+            else:
+                assert result.returncode == 0 and 'result' in reply, (action, result, reply)
+            return reply
+        def copy_bundle(name):
+            target = work / name
+            shutil.copytree(desired, target)
+            for path in [target, *target.rglob('*')]:
+                if not path.is_symlink():
+                    path.chmod(path.stat().st_mode | 0o200)
+            return target
+        def describe(target, **policy):
+            path = thin_config_path
+            if policy:
+                path = work / 'thin-policy.json'
+                path.write_text(json.dumps(dict(thin_config, **policy)))
+            return invoke('describe-host', '--desired', target, config_override=path)
+        unsigned = copy_bundle('ThinUnsigned.app')
+        descriptor = describe(unsigned)['result']
+        assert descriptor == describe(unsigned)['result'], 'descriptor is nondeterministic'
+        descriptor_path = work / 'thin-descriptor.json'
+        descriptor_path.write_text(json.dumps(descriptor))
+        resource = unsigned / 'Contents/Resources/contract-resource.txt'
+        resource.parent.mkdir(exist_ok=True)
+        resource.write_text('public revision fixture\n')
+        changed = describe(unsigned)['result']
+        assert changed['hostRevision'] != descriptor['hostRevision'], (descriptor, changed)
+        resource.unlink()
+        assert describe(unsigned)['result'] == descriptor
+        print('PASS deterministic descriptor binds actual resource bytes', flush=True)
+
+        nested_path = 'Contents/Helpers/contract-helper'
+        helper = unsigned / nested_path
+        helper.parent.mkdir(exist_ok=True)
+        executable = unsigned / 'Contents/MacOS' / base_config['hostExecutable']
+        shutil.copy2(executable, helper)
+        nested_policy = {'path': nested_path, 'identifier': 'dev.example.synthetic-host.helper',
+                         'requirement': 'identifier "dev.example.synthetic-host.helper"',
+                         'entitlements': None, 'options': []}
+        invoke('describe-host', '--desired', unsigned, refusal=True)
+        describe(unsigned, nestedCode=[nested_policy])
+        for entries in ([nested_policy, nested_policy],
+                        [dict(nested_policy, path='../outside')],
+                        [dict(nested_policy, path='/absolute')]):
+            thin_config_path.write_text(json.dumps(dict(thin_config, nestedCode=entries)))
+            invoke('describe-host', '--desired', unsigned, refusal=True)
+        thin_config_path.write_text(json.dumps(thin_config))
+        # Strict nested verification must evaluate the declared object predicate,
+        # not merely accept a structurally valid outer signature.
+        tool(str(codesign), '--force', '--sign', '-', '--identifier',
+             'dev.example.wrong-helper', str(helper))
+        tool(str(codesign), '--force', '--sign', '-', '--identifier',
+             thin_config['bundleId'], str(unsigned))
+        thin_config_path.write_text(json.dumps(dict(thin_config, nestedCode=[nested_policy])))
+        invoke('seal-fixture-artifact', '--desired', unsigned,
+               '--output', work / 'must-not-publish-nested-release', refusal=True)
+        assert not (work / 'must-not-publish-nested-release').exists()
+        thin_config_path.write_text(json.dumps(thin_config))
+        helper.unlink()
+        escape = unsigned / 'Contents/Helpers/escape'
+        escape.symlink_to(executable)
+        thin_config_path.write_text(json.dumps(dict(thin_config, nestedCode=[
+            dict(nested_policy, path='Contents/Helpers/escape')])))
+        invoke('describe-host', '--desired', unsigned, refusal=True)
+        escape.unlink()
+        thin_config_path.write_text(json.dumps(thin_config))
+        print('PASS undeclared Mach-O, duplicate and escaping inventory refuse', flush=True)
+
+        # A matching predicate need not equal the embedded diagnostic DR.
+        signed = copy_bundle('ThinSigned.app')
+        tool(str(codesign), '--force', '--sign', '-', '--identifier', thin_config['bundleId'],
+             str(signed))
+        diagnostic = tool(str(codesign), '-d', '-r-', str(signed))
+        assert 'cdhash' in diagnostic.stdout + diagnostic.stderr
+        tool(str(codesign), '--verify', '--strict', '-R=' + thin_config['requirement'], str(signed))
+        wrong = tool(str(codesign), '--verify', '--strict',
+                     '-R=identifier "dev.example.wrong-product"', str(signed), check=False)
+        assert wrong.returncode != 0
+        invalid = tool(str(codesign), '--verify', '--strict', '-R=identifier (',
+                       str(signed), check=False)
+        assert invalid.returncode != 0
+        thin_config_path.write_text(json.dumps(dict(thin_config, requirement='identifier "dev.example.wrong-product"')))
+        invoke('seal-fixture-artifact', '--desired', signed,
+               '--output', work / 'must-not-publish-wrong-release', refusal=True)
+        thin_config_path.write_text(json.dumps(thin_config))
+        assert describe(signed)['result'] == descriptor
+        release = work / 'thin-release'
+        invoke('seal-fixture-artifact', '--desired', signed, '--output', release)
+        assert (release / 'host.app').is_dir() and (release / 'descriptor.json').is_file()
+        receipt = json.loads((release / 'receipt.json').read_text())
+        assert receipt['hostRevision'] == descriptor['hostRevision'] and receipt['sealedRevision']
+        assert json.loads((release / 'descriptor.json').read_text()) == descriptor
+        for path in [release, *release.rglob('*')]:
+            if not path.is_symlink():
+                assert path.stat().st_mode & 0o222 == 0, f'mutable published artifact: {path}'
+        signing_before = (work / 'sign.log').read_text()
+        invoke('seal-host', '--desired', signed, '--output', release,
+               '--keychain', work / 'must-not-open.keychain-db', '--keychain-password-fd', '999')
+        assert (work / 'sign.log').read_text() == signing_before
+        print('PASS pinned predicate accepts differing diagnostic DR; wrong predicate rejects; seal reuses verified artifact without signing', flush=True)
+
+        missing_release = work / 'absent-release'
+        invoke('install-host', '--desired', descriptor_path, '--artifact', missing_release,
+               refusal=True)
+        no_receipt = work / 'thin-no-receipt-release'
+        shutil.copytree(release, no_receipt)
+        no_receipt.chmod(0o700)
+        (no_receipt / 'receipt.json').unlink()
+        invoke('install-host', '--desired', descriptor_path, '--artifact', no_receipt, refusal=True)
+        for credential in (['--keychain', work / 'forbidden.keychain-db'],
+                           ['--keychain-password-fd', '999']):
+            invoke('install-host', '--desired', descriptor_path, '--artifact', release,
+                   *credential, refusal=True)
+        assert not thin_app.exists()
+        assert (work / 'sign.log').read_text() == signing_before
+        invoke('install-host', '--desired', descriptor_path, '--artifact', release)
+        installed_bytes = (thin_app / 'Contents/MacOS' / base_config['hostExecutable']).read_bytes()
+        tampered = work / 'thin-tampered-release'
+        shutil.copytree(release, tampered)
+        bad_binary = tampered / 'host.app/Contents/MacOS' / base_config['hostExecutable']
+        bad_binary.chmod(0o700)
+        with bad_binary.open('ab') as output:
+            output.write(b'tamper')
+        invoke('install-host', '--desired', descriptor_path, '--artifact', tampered, refusal=True)
+        assert (thin_app / 'Contents/MacOS' / base_config['hostExecutable']).read_bytes() == installed_bytes
+        unrelated = dict(descriptor, hostRevision='0' * 64)
+        unrelated_path = work / 'thin-unrelated-descriptor.json'
+        unrelated_path.write_text(json.dumps(unrelated))
+        invoke('install-host', '--desired', unrelated_path, '--artifact', release, refusal=True)
+        assert (work / 'sign.log').read_text() == signing_before
+        print('PASS verify-only import rejects credentials, missing/tampered artifacts without fallback or installed mutation', flush=True)
+        print('NOT RUN: root-to-user artifact destination (requires parent-owned root execution)', flush=True)
+
+        # Validate ordinary consumer plists offline; never load a launchd job.
+        plist_path = work / 'thin-job.plist'
+        entrypoint = str(thin_app / 'Contents/MacOS' / base_config['hostExecutable'])
+        argv = [entrypoint]
+        if base_config['hostExecutable'] == 'macos-app-host':
+            argv += ['serve', '--socket', str(work / 'thin.sock'),
+                     '--generation-pointer', str(thin_state / 'current')]
+        job = {'Label': thin_config['bundleId'], 'Program': entrypoint,
+               'ProgramArguments': argv, 'StartInterval': 3600}
+        def validate(value, domain=f'user/{uid}', target=uid, evidence='scheduled', refusal=False):
+            plist_path.write_bytes(plistlib.dumps(value))
+            return invoke('converge-launchd', '--plist', plist_path, '--domain', domain,
+                          '--target-uid', target, '--evidence', evidence, '--validate-only',
+                          refusal=refusal)
+        validate(job)
+        for value in (dict(job, Program='/usr/bin/true'),
+                      dict(job, ProgramArguments=['/usr/bin/true']),
+                      dict(job, ProgramArguments=[entrypoint, '--unknown-operation']),
+                      dict(job, Label='dev.example.other-product')):
+            validate(value, refusal=True)
+        validate(job, domain=f'user/{uid + 1}', refusal=True)
+        validate(job, domain='invalid/0', refusal=True)
+        # Exact scheduled evidence must not claim an offline idle job is running.
+        evidence = validate(job)['result']
+        assert not evidence.get('running') and not evidence.get('pid'), evidence
+        print('PASS supplied plist identity/direct-entrypoint/argv/domain refusals and offline scheduled idle evidence', flush=True)
+
+        lock_path = thin_state / 'lifecycle.lock'
+        thin_state.mkdir(exist_ok=True)
+        lock_path.touch(exist_ok=True)
+        lock_path.chmod(0o600)
+        borrowed = os.open(lock_path, os.O_RDWR)
+        other = os.open(lock_path, os.O_RDWR)
+        foreign = os.open(work / 'wrong-lifecycle.lock', os.O_RDWR | os.O_CREAT, 0o600)
+        def locked_install(fd, refusal=True):
+            return invoke('install-host', '--desired', descriptor_path, '--artifact', release,
+                          '--lifecycle-fd', fd, refusal=refusal, fds=(fd,) if fd != 999 else ())
+        try:
+            locked_install(999)
+            locked_install(borrowed)
+            fcntl.flock(borrowed, fcntl.LOCK_SH)
+            locked_install(borrowed)
+            fcntl.flock(borrowed, fcntl.LOCK_UN)
+            fcntl.flock(borrowed, fcntl.LOCK_EX)
+            locked_install(other)
+            fcntl.flock(foreign, fcntl.LOCK_EX)
+            locked_install(foreign)
+            locked_install(borrowed, refusal=False)
+            for action, args in (
+                ('select-generation', ['--generation', first]),
+                ('converge-launchd', ['--plist', plist_path, '--domain', f'user/{uid}',
+                                     '--target-uid', uid, '--evidence', 'scheduled', '--validate-only']),
+                ('rollback', ['--artifact', release, '--generation', first]),
+                ('provision-signing-key', ['--keychain', work / 'never-open.keychain-db']),
+                ('import-signing-cert', ['--keychain', work / 'never-open.keychain-db']),
+                ('prove-signing-key', ['--keychain', work / 'never-open.keychain-db']),
+                ('sign-fixture', ['--keychain', work / 'never-open.keychain-db']),
+            ):
+                rejected = invoke(action, *args, '--lifecycle-fd', other,
+                                  refusal=True, fds=(other,))
+                assert 'lifecycle' in rejected['error']['reason'].lower(), rejected
+            invoke('select-generation', '--generation', first, '--lifecycle-fd', borrowed,
+                   fds=(borrowed,))
+            invoke('converge-launchd', '--plist', plist_path, '--domain', f'user/{uid}',
+                   '--target-uid', uid, '--evidence', 'scheduled', '--validate-only',
+                   '--lifecycle-fd', borrowed, fds=(borrowed,))
+        finally:
+            for fd in (borrowed, other, foreign):
+                os.close(fd)
+        print('PASS lifecycle missing/unlocked/shared/other-OFD/wrong-inode refusal and inherited exclusive descriptor success', flush=True)
+        print('NOT RUN: real kernel audit-token exec/stale/incarnation probe; helper unit evidence '
+              'is cargo test --lib (UID conjunction, token incarnation, requirement syntax, '
+              'endpoint unsafe/symlink/writable paths and stale owned-socket inode checks)', flush=True)
+
+    thin_contract_cases()
 
     # Provisioning: key and CSR by ctl, certificate by the test CA, then the codesign pin.
     def key_call(action, path, *args, code=0, secret=password, failpoint=None):
@@ -919,8 +1168,8 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     call('select-generation', '--generation', first)
     call('converge-launchd')
     call('verify', '--desired', other, '--generation', first)
-    dr_a = subprocess.run(['/usr/bin/codesign', '-d', '-r-', str(app)], capture_output=True, text=True).stdout
-    dr_b = subprocess.run(['/usr/bin/codesign', '-d', '-r-', str(other_app)], capture_output=True, text=True).stdout
+    dr_a = tool('/usr/bin/codesign', '-d', '-r-', str(app)).stdout
+    dr_b = tool('/usr/bin/codesign', '-d', '-r-', str(other_app)).stdout
     assert 'identifier "dev.example.synthetic-host"' in dr_a and 'identifier "dev.example.other-host"' in dr_b
     jobs = json.loads((work / 'jobs.json').read_text())
     assert len({job['socket'] for job in jobs.values()}) == 2
