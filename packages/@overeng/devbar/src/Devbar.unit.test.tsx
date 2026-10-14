@@ -255,7 +255,8 @@ describe('Devbar interaction', () => {
           {
             id: 'portal',
             label: 'Portal panel',
-            render: () => createPortal(<button type="button">Portalled action</button>, document.body),
+            render: () =>
+              createPortal(<button type="button">Portalled action</button>, document.body),
           },
         ]}
       />,
@@ -302,11 +303,7 @@ describe('Devbar interaction', () => {
       const view = ({ openPanel }: { openPanel: string | undefined }) => (
         <>
           <textarea aria-label="Host input" />
-          <Devbar
-            panels={panels}
-            openPanel={openPanel}
-            onOpenPanelChange={onOpenPanelChange}
-          />
+          <Devbar panels={panels} openPanel={openPanel} onOpenPanelChange={onOpenPanelChange} />
         </>
       )
       const { rerender } = render(view({ openPanel: 'performance' }))

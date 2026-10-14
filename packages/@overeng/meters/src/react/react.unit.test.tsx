@@ -200,7 +200,9 @@ describe('React meter strip', () => {
         expect(screen.getByRole('tooltip').textContent).toBe('Work: n/a (NoSamples)')
         const descriptionId = meter.getAttribute('aria-describedby')!
         expect(descriptionId).not.toBe(screen.getByRole('tooltip').id)
-        expect(document.getElementById(descriptionId)?.textContent).toContain('Work: n/a (NoSamples)')
+        expect(document.getElementById(descriptionId)?.textContent).toContain(
+          'Work: n/a (NoSamples)',
+        )
         expect(selections).toEqual([])
         fireEvent.click(meter)
         fireEvent.keyDown(meter, { key: 'Enter' })
