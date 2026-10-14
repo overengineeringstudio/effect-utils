@@ -91,6 +91,10 @@
       "rationale": "Deployment and workflow-report API/CLI contracts over local fixture servers and shell stubs; no Darwin-specific filesystem, watcher or process-lifecycle assertions."
     },
     {
+      "task": "test:gh-ci-utils:unbounded",
+      "rationale": "Shared GitHub App authentication over a loopback HTTP fixture and scoped temporary key files; no Darwin-specific filesystem, watcher or process-lifecycle branch."
+    },
+    {
       "task": "test:notion-cli:unbounded",
       "rationale": "CLI help, usage, exit-code and output contract snapshots only; no symlink, watcher or Darwin-specific lifecycle fixture."
     }
@@ -400,6 +404,10 @@
       {
         "script": "megarepo-lock-sync.test.sh",
         "rationale": "Pure jq matching of member names and revision identities."
+      },
+      {
+        "script": "megarepo-product-flags.test.sh",
+        "rationale": "Evaluated shared task command/flag contracts against the manifest-backed CLI help; Linux represents the platform-independent grammar without Git/worktree mutation or Darwin lifecycle behavior."
       },
       {
         "script": "megarepo-setup-commit-members.test.sh",

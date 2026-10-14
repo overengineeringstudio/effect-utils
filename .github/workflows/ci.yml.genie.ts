@@ -1,6 +1,7 @@
 import { rootNixSourceGlobs } from '../../genie/buck2/root-aggregate-projection.ts'
 import {
   type RunnerProfile,
+  type NamespacePrivilege,
   bashShellDefaults,
   buck2TrustedCacheWriterStep,
   buck2PublicCacheWriteSecret,
@@ -70,7 +71,7 @@ const binaryCache = readBinaryCacheDescriptors(
 const baseSteps = [
   checkoutStep(),
   installNixStep({ binaryCaches: [binaryCache] }),
-  linuxSandboxPrerequisitesStep,
+  linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
   ciMeasurementBaselineCheckoutStep,
   cachixCliBuildStep,
   trustedCachixStep,
@@ -336,12 +337,14 @@ const measurementReportIf = [
 
 const job = ({
   step,
+  privileged,
   extraSteps = [],
   afterSteps = [],
   laneIf = heavyCiIf,
   timeoutMinutes = jobTimeoutMinutes,
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
+  privileged: NamespacePrivilege
   extraSteps?: readonly any[]
   afterSteps?: readonly any[]
   laneIf?: string
@@ -352,6 +355,7 @@ const job = ({
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
+    privileged,
   }),
   'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
@@ -462,13 +466,20 @@ const withMacosNixSubstituter = <TStep>(steps: readonly TStep[]) => {
 
 // Static names survive GitHub's job-level skip before matrix expansion. Both required
 // runner-qualified contexts must exist on a PR before it can enter the native queue.
-const unitTestJob = (runner: RunnerProfile) => ({
+const unitTestJob = ({
+  runner,
+  privileged,
+}: {
+  runner: RunnerProfile
+  privileged: NamespacePrivilege
+}) => ({
   name: `test (${runner})`,
   if: heavyCiIf,
   needs: ['tested-tree'],
   'runs-on': namespaceRunner({
     profile: runner,
     runId: '${{ github.run_id }}',
+    privileged,
   }),
   'timeout-minutes': 90,
   defaults: bashShellDefaults,
@@ -575,9 +586,17 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   quality: {
     name: 'pr/quality',
     ...job({
+      privileged: 'trusted',
       laneIf: `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}`,
       timeoutMinutes: 90,
       extraSteps: [
+        {
+          name: 'Check shared megarepo task flags against the published CLI',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/devenv-modules/tasks/shared/tests/megarepo-product-flags.test.sh "$PWD"',
+          ),
+        },
         {
           name: 'Enforce root changelog retirement',
           run: withCiSourceRoot(
@@ -653,9 +672,10 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   // live/e2e owners remain separate jobs. The baseline gate reads Buck collection artifacts and
   // retained source summaries, and also proves every lane's recorded census exactly matches its
   // actual collection. CI must not shard this lane: the gate needs both partitions in one job.
-  test: unitTestJob('namespace-profile-linux-x86-64'),
-  'test-macos': unitTestJob('namespace-profile-macos-arm64'),
+  test: unitTestJob({ runner: 'namespace-profile-linux-x86-64', privileged: 'always' }),
+  'test-macos': unitTestJob({ runner: 'namespace-profile-macos-arm64', privileged: 'always' }),
   'test-playwright-utils': job({
+    privileged: 'always',
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'Utils Playwright tests',
@@ -677,6 +697,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
     ],
   }),
   'test-playwright-tui-react': job({
+    privileged: 'always',
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'TUI React Playwright tests',
@@ -698,6 +719,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
     ],
   }),
   'test-megarepo-cold-gc': job({
+    privileged: 'trusted',
     laneIf: empiricalProofLaneIf,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
@@ -708,6 +730,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   }),
 
   cargo: job({
+    privileged: 'always',
     step: {
       name: 'Cargo build + test + clippy + fmt',
       env: githubTokenEnv(),
@@ -720,6 +743,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   //   - weaver:live-check (SC-R12) exercises the subprocess/network OTLP path.
   // The bounded registry and version checks run through Buck's quick aggregate in the same lane.
   weaver: job({
+    privileged: 'always',
     timeoutMinutes: longJobTimeoutMinutes,
     extraSteps: [
       {
@@ -835,6 +859,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'always',
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -962,6 +987,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'always',
     }),
     'timeout-minutes': 120,
     permissions: { contents: 'read' },
@@ -994,6 +1020,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'always',
     }),
     'timeout-minutes': 120,
     permissions: { contents: 'read' },
@@ -1123,6 +1150,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'always',
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1167,6 +1195,7 @@ const extraJobs: Record<string, any> = {
   // succeed. This exercises the exact pre-install path; `bootstrap-closure:check` (in `check:all`) is
   // the static fast-feedback pre-check. Separate lane because it is heavier than the product checks.
   'bootstrap-cold-proof': job({
+    privileged: 'trusted',
     laneIf: empiricalProofLaneIf,
     step: {
       name: 'Bootstrap cold-proof (R32)',
@@ -1180,6 +1209,7 @@ const extraJobs: Record<string, any> = {
       runsOn: namespaceRunner({
         profile: namespaceLinuxX64PairedPerfRunner,
         runId: '${{ github.run_id }}',
+        privileged: 'always',
       }),
       artifactName: 'devenv-perf',
       artifactDir: devenvPerfMeasurementsDir,
@@ -1307,6 +1337,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'trusted',
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1339,6 +1370,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'trusted',
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1399,6 +1431,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'always',
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1475,6 +1508,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'always',
     }),
     'timeout-minutes': 90,
     defaults: bashShellDefaults,
@@ -1519,6 +1553,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'always',
     }),
     'timeout-minutes': 60,
     defaults: bashShellDefaults,
@@ -1544,6 +1579,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'always',
     }),
     'timeout-minutes': 30,
     defaults: bashShellDefaults,
@@ -1566,6 +1602,7 @@ const deployJobs: Record<string, any> = {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
+      privileged: 'always',
     }),
     'timeout-minutes': jobTimeoutMinutes,
     // No `needs` — run in parallel with other jobs for faster feedback
@@ -1637,6 +1674,7 @@ const pipelineTracesJob = {
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
+    privileged: 'trusted',
   }),
   permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
@@ -1666,6 +1704,7 @@ const allCiJobs: Record<string, any> = {
       runsOn: namespaceRunner({
         profile: 'namespace-profile-linux-x86-64',
         runId: '${{ github.run_id }}',
+        privileged: 'trusted',
       }),
       defaultRefs: { 'livestorejs/livestore': 'dev' },
     }),
@@ -1680,6 +1719,7 @@ const allCiJobs: Record<string, any> = {
       runner: namespaceRunner({
         profile: 'namespace-profile-linux-x86-64',
         runId: '${{ github.run_id }}',
+        privileged: 'never',
       }),
     }),
     // Optional lookup failures permit authoritative quality fallback; publication must succeed.
@@ -1715,6 +1755,11 @@ export const empiricalProofJobs: CiWorkflowArgs['jobs'] = {
   'main-source-shape': {
     ...allCiJobs['source-shape'],
     name: 'main/source-shape',
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+      privileged: 'always',
+    }),
     if: "${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}",
   },
   'ci-measurements-report': allCiJobs['ci-measurements-report'],

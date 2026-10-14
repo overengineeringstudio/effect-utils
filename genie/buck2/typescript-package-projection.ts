@@ -9,10 +9,9 @@ import {
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import type { PackageJsonData } from '../../packages/@overeng/genie/src/runtime/package-json/mod.ts'
 import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
-import { javaScriptActionRuntime, packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
+import { packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
 
 const regenerationCommand = 'devenv tasks run genie:run' as const
-const sourceExtensions = ['.css', '.cts', '.js', '.mts', '.ts', '.tsx'] as const
 const sourceExtensionSet: Readonly<Record<string, true>> = {
   '.css': true,
   '.cts': true,
@@ -41,10 +40,6 @@ const collectableTestExtensions = [
 const collectableTestExtensionSet: Readonly<Record<string, true>> = Object.fromEntries(
   collectableTestExtensions.map((extension) => [extension, true as const]),
 )
-/** Collectable test extensions the TypeScript source census does not already admit. */
-const nonSourceCollectableTestExtensions = collectableTestExtensions.filter(
-  (extension) => sourceExtensionSet[extension] !== true,
-)
 const collectableTestStemPattern = /\.(?:spec|test)$/
 const snapshotDirectoryName = '__snapshots__'
 const snapshotExtension = '.snap'
@@ -68,21 +63,6 @@ const snapshotBaselineFor = (testModule: string): string =>
     snapshotDirectoryName,
     `${path.posix.basename(testModule)}${snapshotExtension}`,
   )
-
-const commonSemanticInputs = [
-  'buck2/dependencies/BUCK.genie.ts',
-  'buck2/static_checks.bzl',
-  'buck2/dependencies/pnpm-lock.sha256.json.genie.ts',
-  'genie/buck2/mod.ts',
-  'genie/buck2/typescript-package-projection.ts',
-  'package.json.genie.ts',
-  // The package-tree runner and every module staged with it: a change to any of
-  // them changes the action, so it must refresh the projection fingerprint.
-  ...packageTreeRuntime.modules,
-  // The JavaScript test runner and every module staged with it: the declared
-  // test lanes execute it, so the same rule applies to its closure.
-  ...javaScriptActionRuntime.modules,
-] as const
 
 const compareStrings = ({ left, right }: { left: string; right: string }): number =>
   left < right ? -1 : left > right ? 1 : 0
@@ -730,8 +710,8 @@ export const workspacePackageSourceRoots = ({
     const relativePath = target.startsWith('./') === true ? target.slice(2) : target
     const components = relativePath.split('/')
     if (
-      components.some((component) =>
-        safeSourceSegment(component.replaceAll('*', 'wildcard')) === false,
+      components.some(
+        (component) => safeSourceSegment(component.replaceAll('*', 'wildcard')) === false,
       ) === true ||
       components[0] === 'dist' ||
       components[0] === 'node_modules'
@@ -957,10 +937,9 @@ export const buck2TypeScriptPackageProjection = ({
     '//buck2/dependencies:view_',
   )
   const dependencyLabel = dependencyView ?? dependencyTarget
-  const productDependencyLabel = dependencyView?.replace(
-    '//buck2/dependencies:view_',
-    '//buck2/dependencies:product_view_',
-  ) ?? dependencyTarget
+  const productDependencyLabel =
+    dependencyView?.replace('//buck2/dependencies:view_', '//buck2/dependencies:product_view_') ??
+    dependencyTarget
   const rulesPrefix = rulesCell ?? ''
   const visibility = ['PUBLIC'] as const
   const runtimeEntry = stagedModuleName(packageTreeRuntime.entry)
@@ -1164,10 +1143,11 @@ export const buck2TypeScriptPackageProjection = ({
         member.meta.workspace.memberPath === sibling.packagePath,
     )
     if (workspacePackage === undefined) {
-      throw new Error(`${packagePath}: missing workspace source generator for ${sibling.packageName}`)
+      throw new Error(
+        `${packagePath}: missing workspace source generator for ${sibling.packageName}`,
+      )
     }
-    const productSourceRoots =
-      sibling.sourceRoots ?? workspacePackageSourceRoots(workspacePackage)
+    const productSourceRoots = sibling.sourceRoots ?? workspacePackageSourceRoots(workspacePackage)
     const sources = discoverPackageSources({
       packagePath: sibling.packagePath,
       sourceRoots: productSourceRoots,
@@ -1215,49 +1195,6 @@ export const buck2TypeScriptPackageProjection = ({
     .filter((candidate) => candidate.startsWith(`${packagePath}/`))
     .map((candidate) => `${path.posix.relative(packagePath, candidate)}/**`)
     .toSorted((left, right) => compareStrings({ left, right }))
-  const semanticInputs = [
-    ...commonSemanticInputs,
-    ...(workspacePackages === rootWorkspacePackages ? ['genie/packages.ts'] : []),
-    // The owning repository's registry supplies names, paths and ranges from Genie sources.
-    ...workspacePackages.map(
-      (member) => `${member.meta.workspace.memberPath}/package.json.genie.ts`,
-    ),
-    projectionSource,
-    `${packagePath}/package.json.genie.ts`,
-    `${packagePath}/tsconfig.json.genie.ts`,
-    ...projectFileEntries.map(
-      ([authorityProjectFile]) => `${packagePath}/${authorityProjectFile}.genie.ts`,
-    ),
-    ...projectAuthorities.flatMap(({ projectInputs }) =>
-      projectInputs.map((projectInput) => `${packagePath}/${projectInput}`),
-    ),
-    ...runtimeFileEntries.map(([file]) => `${packagePath}/${file}`),
-    ...sourceRoots.flatMap((sourceRoot) =>
-      sourceExtensions.map((extension) => `${packagePath}/${sourceRoot}/**/*${extension}`),
-    ),
-    // The same source roots also carry the collectable modules and snapshot baselines the
-    // package tree stages, so their globs belong in the projection's input set.
-    ...sourceRoots.flatMap((sourceRoot) => [
-      `${packagePath}/${sourceRoot}/**/${snapshotDirectoryName}/*${snapshotExtension}`,
-      ...nonSourceCollectableTestExtensions.flatMap((extension) => [
-        `${packagePath}/${sourceRoot}/**/*.spec${extension}`,
-        `${packagePath}/${sourceRoot}/**/*.test${extension}`,
-      ]),
-    ]),
-    ...testDataRoots.flatMap((dataRoot) =>
-      dataRoot.extensions.map((extension) => `${packagePath}/${dataRoot.root}/**/*${extension}`),
-    ),
-    ...productWorkspaceSiblingProjections.flatMap((sibling) => [
-      `${sibling.packagePath}/package.json.genie.ts`,
-      ...sibling.sourceRoots.flatMap((sourceRoot) =>
-        sourceExtensions.map(
-          (extension) => `${sibling.packagePath}/${sourceRoot}/**/*${extension}`,
-        ),
-      ),
-    ]),
-    ...[...buckPackagePaths].map((buckPackagePath) => `${buckPackagePath}/BUCK.genie.ts`),
-  ].toSorted((left, right) => compareStrings({ left, right }))
-
   const nestedFileEntries = [...new Map([...packageFileEntries, ...testPackageFileEntries])]
     .filter(([, source]) => source.startsWith('//'))
     .toSorted(([left], [right]) => compareStrings({ left, right }))
@@ -1359,7 +1296,6 @@ export const buck2TypeScriptPackageProjection = ({
       '# Projection schema version: 13',
       '# Projection generator: effect-utils/genie/buck2-typescript-package-projection',
       `# Semantic fingerprint: ${fingerprint}`,
-      `# Semantic inputs: ${semanticInputs.join(', ')}`,
       `# Regenerate: ${regenerationCommand}`,
       '',
       `load("${rulesPrefix}//buck2:materialization.bzl", "export_materialization_inputs", "${dependencyView === undefined ? 'package_tree' : 'package_view'}")`,

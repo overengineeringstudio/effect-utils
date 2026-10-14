@@ -223,16 +223,21 @@ export default githubWorkflow({
   on: { pull_request: githubWorkflowEvent.all, push: { branches: ['main'] } },
   actionlint: defaultActionlintConfig,
   jobs: {
-    fmt: cargoFmtJob(),
-    clippy: cargoClippyJob({ extraArgs: ['--', '-D', 'warnings'] }),
+    fmt: cargoFmtJob({ namespacePrivilege: 'trusted' }),
+    clippy: cargoClippyJob({ namespacePrivilege: 'trusted', extraArgs: ['--', '-D', 'warnings'] }),
     test: cargoNextestJob({
+      namespacePrivilege: 'trusted',
       retries: 2,
       testThreads: 8,
       'timeout-minutes': 30,
       strategy: { matrix: { runner: [...RUNNER_PROFILES] }, 'fail-fast': false },
-      runsOn: namespaceRunner({ profile: '${{ matrix.runner }}', runId: '${{ github.run_id }}' }),
+      runsOn: namespaceRunner({
+        profile: '${{ matrix.runner }}',
+        runId: '${{ github.run_id }}',
+        privileged: 'trusted',
+      }),
     }),
-    freshness: plainFlakeGenieCheckJob(),
+    freshness: plainFlakeGenieCheckJob({ namespacePrivilege: 'trusted' }),
   },
 })
 ```
@@ -241,6 +246,20 @@ Jobs default to the shared Namespace Linux profile with workflow-run affinity.
 Runner matrices use the same `namespaceRunner`, `RUNNER_PROFILES` and actionlint
 configuration as other CI helpers. Job options retain GitHub's gates, environment,
 permissions, defaults, matrix and timeout controls, plus `preSteps`/`postSteps`.
+
+Every Namespace Linux job explicitly selects `privileged: 'always' | 'trusted' |
+'never'`; the generator rejects omission rather than silently granting
+privilege. `never` is only for jobs that cannot build with Nix or run Bubblewrap,
+including cache-miss fallback paths. Build jobs unreachable from PR events use
+`always`; PR-reachable build jobs use `trusted`. Its isolated trust predicate is
+`github.event_name != 'pull_request' ||
+github.event.pull_request.head.repo.full_name == github.repository`.
+Fork PRs select unprivileged runners, and Buck TS setup fails closed with a named
+diagnostic while fork admission policy remains unresolved. Darwin labels never
+receive Linux container privilege.
+The Linux prerequisites guard takes the same explicit policy: only `trusted`
+renders the PR-identity expression. `always` emits literal permission and never
+reads the PR event, preserving the `workflow_run` deployment trust boundary.
 
 `plainFlakeSetupSteps` installs Determinate Nix and accepts an optional public
 `cachix` name for read-only cache access. For custom jobs, compose these setup steps

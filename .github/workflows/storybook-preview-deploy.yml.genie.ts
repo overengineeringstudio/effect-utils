@@ -21,8 +21,13 @@ export default ciWorkflow({
   concurrency: netlifyPreviewDeployConcurrency,
   permissions: {},
   jobs: netlifyPreviewDeployJobs({
-    runsOn: storybookPreviewRunner,
-    setupSteps: storybookPreviewSetupSteps,
+    runsOn: {
+      resolvePreview: storybookPreviewRunner('never'),
+      // Both jobs run storybookPreviewSetupSteps, including the Cachix Nix build.
+      deployPreview: storybookPreviewRunner('always'),
+      publishPreviewComment: storybookPreviewRunner('always'),
+    },
+    setupSteps: storybookPreviewSetupSteps('always'),
     netlifyAuthToken: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
     title: 'Storybook Previews',
     noRecordsMessage: 'No storybooks were deployed.',

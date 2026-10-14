@@ -83,6 +83,13 @@ export default packageJson(
         { types: './dist/src/node/mod.d.ts', default: './src/node/mod.ts' },
         { environment: 'node' },
       ),
+      './node/github-app': exportEntry(
+        {
+          types: './dist/src/node/github-app.d.ts',
+          default: './src/node/github-app.ts',
+        },
+        { environment: 'node' },
+      ),
       './node/cli-help-rewrite': exportEntry(
         {
           types: './dist/src/node/cli-help-rewrite.d.ts',
@@ -180,6 +187,10 @@ export default packageJson(
       exports: {
         '.': { types: './dist/src/isomorphic/mod.d.ts', default: './dist/src/isomorphic/mod.js' },
         './node': { types: './dist/src/node/mod.d.ts', default: './dist/src/node/mod.js' },
+        './node/github-app': {
+          types: './dist/src/node/github-app.d.ts',
+          default: './dist/src/node/github-app.js',
+        },
         './node/cli-help-rewrite': {
           types: './dist/src/node/cli-help-rewrite.d.ts',
           default: './dist/src/node/cli-help-rewrite.js',

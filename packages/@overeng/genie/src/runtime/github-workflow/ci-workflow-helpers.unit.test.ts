@@ -1493,15 +1493,23 @@ describe('storybook preview split build/deploy', () => {
             )
           const resolveStep = deploy.jobs['resolve-preview'].steps.find((s) => s.id === 'pull-request')
           const deployStep = deploy.jobs['deploy-preview'].steps.find((s) => s.id === 'deploy')
-          const stagedRun = netlifyPreviewDeployJobs({
-            runsOn: 'runner',
+          const generatedDeployJobs = netlifyPreviewDeployJobs({
+            runsOn: {
+              resolvePreview: 'resolve-runner',
+              deployPreview: 'deploy-runner',
+              publishPreviewComment: 'publish-runner',
+            },
             setupSteps: [],
             netlifyAuthToken: 'token',
             title: 't',
             noRecordsMessage: 'n',
             stateId: 's',
-          })['deploy-preview'].steps.find((s) => s.id === 'deploy').run
+          })
+          const stagedRun = generatedDeployJobs['deploy-preview'].steps.find((s) => s.id === 'deploy').run
           console.log(JSON.stringify({
+            generatedRunners: Object.fromEntries(
+              Object.entries(generatedDeployJobs).map(([jobId, job]) => [jobId, job['runs-on']]),
+            ),
             buildName: build.name,
             buildTriggers: Object.keys(build.on),
             buildSecretRefs: secretRefs(build),
@@ -1543,6 +1551,14 @@ describe('storybook preview split build/deploy', () => {
     )
     expect(fixture.status, fixture.stderr).toBe(0)
     facts = JSON.parse(fixture.stdout)
+  })
+
+  it('retains the explicit runner selected for each generated helper job', () => {
+    expect(facts.generatedRunners).toEqual({
+      'resolve-preview': 'resolve-runner',
+      'deploy-preview': 'deploy-runner',
+      'publish-preview-comment': 'publish-runner',
+    })
   })
 
   it('builds PR previews in an uncredentialed pull_request job', () => {

@@ -113,6 +113,17 @@ for outer tasks that must complete before the nested devenv process can evaluate
     With `CI=true`, `mr:setup` uses commit worktrees for every member; with a
     non-empty list it passes `mr apply --commit-all-members`, preparing every
     root member's nested tree to match the `mr status --all` readiness check.
+  - `megarepo-product-flags.test.sh` evaluates these task scripts with optional
+    member preparation enabled and checks every emitted command/flag against
+    the manifest-backed Nix `megarepo` product's help. The `pr/quality` gate runs
+    this contract on pull requests and rejects task/source changes that outrun
+    the published CLI; source CLI tests alone cannot prove the consumer contract.
+    Extraction must find flags and include CI nested setup's
+    `mr apply --commit-all-members`, so empty/partial extraction fails closed.
+    Product refreshes come from the protected-main `publish-products` job in
+    `ci.yml` (push or `workflow_dispatch`), which proposes
+    `automation/buck2-products-manifest`. Land its manifest PR before consumers
+    repin task modules requiring new flags; never hand-edit product provenance.
 - `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
   - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`
     selects the lockfiles and only defines `nix:flake-lock:check-duplicates`.
