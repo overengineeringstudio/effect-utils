@@ -117,10 +117,10 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
     const english = render('en')
     const german = render('de')
     const gate = define({
-      name: 'gate',
+      name: 'policy-gate',
       outputs: ['value'],
       inputs: () => ({ evidence: DataGraph.ref({ node: extract, scope, output: 'evidence' }) }),
-      execute: Effect.fn('Scenario.gate')(({ inputs }) =>
+      execute: Effect.fn('Scenario.policyGate')(({ inputs }) =>
         Effect.sync(() => {
           assert.ok(inputs.evidence !== undefined)
           return accepted({ value: jsonOutput({ evidenceDigest: inputs.evidence.digest }) })
@@ -147,7 +147,14 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
     const sourceId = DataGraph.nodeId(key)
     const refresh = { refresh: [sourceId] }
     const target = DataGraph.ref({ node: bundle, scope, output: 'value' })
-    const expectedOrder = ['source-document', 'extract', 'render-en', 'gate', 'render-de', 'bundle']
+    const expectedOrder = [
+      'source-document',
+      'extract',
+      'render-en',
+      'policy-gate',
+      'render-de',
+      'bundle',
+    ]
     const assertRun = ({
       name,
       result,
@@ -177,7 +184,7 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
       'source-document': 1,
       extract: 1,
       'render-en': 1,
-      gate: 1,
+      'policy-gate': 1,
       'render-de': 1,
       bundle: 1,
     })
@@ -188,7 +195,7 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
       'source-document': 1,
       extract: 1,
       'render-en': 1,
-      gate: 1,
+      'policy-gate': 1,
       'render-de': 1,
       bundle: 1,
     })
@@ -227,7 +234,7 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
       'source-document': 4,
       extract: 4,
       'render-en': 2,
-      gate: 2,
+      'policy-gate': 2,
       'render-de': 2,
       bundle: 3,
     })
@@ -257,19 +264,30 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
     const planned = DataGraph.planRefresh({
       now,
       heads: [afterFailure, { ...original, key: { ...key, scope: { document: 'older' } } }],
-      policy: () => 1500,
+      policy: () => ({ tier: 0, maxAge: 1500 }),
+      compareTiers: (left, right) => left - right,
       budget: 1,
     })
     assert.equal(planned.length, 1)
     assert.equal(planned[0]?.nodeId, DataGraph.nodeId({ ...key, scope: { document: 'older' } }))
     assert.deepEqual(
-      DataGraph.planRefresh({ now, heads: [afterFailure], policy: () => 1500, budget: 1 }).map(
-        (request) => request.nodeId,
-      ),
+      DataGraph.planRefresh({
+        now,
+        heads: [afterFailure],
+        policy: () => ({ tier: 0, maxAge: 1500 }),
+        compareTiers: (left, right) => left - right,
+        budget: 1,
+      }).map((request) => request.nodeId),
       [sourceId],
     )
     assert.equal(
-      DataGraph.planRefresh({ now, heads: [afterFailure], policy: () => 1500, budget: 0 }).length,
+      DataGraph.planRefresh({
+        now,
+        heads: [afterFailure],
+        policy: () => ({ tier: 0, maxAge: 1500 }),
+        compareTiers: (left, right) => left - right,
+        budget: 0,
+      }).length,
       0,
     )
     lines.push(
@@ -328,7 +346,7 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
       'source-document': 8,
       extract: 4,
       'render-en': 2,
-      gate: 2,
+      'policy-gate': 2,
       'render-de': 2,
       bundle: 3,
     })
