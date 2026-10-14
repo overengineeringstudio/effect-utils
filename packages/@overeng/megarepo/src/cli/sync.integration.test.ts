@@ -39,6 +39,7 @@ import {
 import {
   createStoreFixture,
   createWorkspaceWithLock,
+  materializeNonDetachedBranchWorktree,
   type StoreFixtureResult,
 } from '../test-utils/store-setup.ts'
 import { makeCanonicalTempDirectoryScoped } from '../test-utils/temp-root.ts'
@@ -3676,6 +3677,14 @@ describe('mr lock', () => {
             const mainWorktree = store.worktreePaths['example.com/acme/lib#main']
             if (mainWorktree === undefined) throw new Error('Missing main worktree')
             const lockedCommit = yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')
+            const bareRepoPath = store.bareRepoPaths['example.com/acme/lib']
+            if (bareRepoPath === undefined) throw new Error('Missing bare repo')
+            yield* materializeNonDetachedBranchWorktree({
+              bareRepoPath,
+              worktreePath: mainWorktree,
+              branch: 'main',
+              commit: lockedCommit,
+            })
             const { workspacePath } = yield* createWorkspaceWithLock({
               members: { lib: 'https://example.com/acme/lib#main' },
               lockEntries: {
