@@ -41,15 +41,21 @@ Every implementation should model the same underlying fields, even if the transp
 | `rev`         | Short VCS revision identifying the selected source closure; the policy below defines C       |
 | `dirty`       | Whether uncommitted changes were present in the built or running source                      |
 | `sourceKind`  | How the process is running, currently `local` or `nix`                                       |
-| `commitTs`    | Commit timestamp for reproducible builds                                                     |
-| `buildTs`     | Optional wall-clock build timestamp for intentionally impure builds                          |
+| `commitTs`    | Commit timestamp of the selected revision, when available                                    |
+| `buildTs`     | Optional wall-clock build or local run-start timestamp                                       |
 
 The current TypeScript/Nix implementation represents these as:
 
-- `LocalStamp`: `type`, `rev`, `ts`, `dirty`
+- `LocalStamp`: `type`, `rev`, `ts`, `dirty`, optional `commitTs`
 - `NixStamp`: `type`, `version`, `rev`, `commitTs`, `dirty`, optional `buildTs`
 
 Field names may vary slightly between implementations, but the semantics should stay aligned.
+
+For local stamps, `ts` is the run-start Unix timestamp and resolves to `buildTs`.
+`commitTs`, when available, is the Unix timestamp read with
+`git log -1 --format=%ct` against the same captured HEAD revision used for `rev`.
+If that Git lookup fails, omit `commitTs`; never substitute the run-start time.
+Readers continue to accept older local stamps without `commitTs`.
 
 ## Derived Outputs
 
@@ -84,6 +90,82 @@ Rules:
 - May include relative time and explanatory prose
 - Should be derived from the same underlying fields as `machineVersion`
 - Must not be the only available version form in systems that need stable machine-readable identity
+- Local source prose prefers `committed X ago` when `commitTs` is available, so
+  the displayed age describes the revision rather than process uptime. Without
+  it, retain the legacy local run-age prose. Neither timestamp changes
+  `machineVersion`.
+
+### Human short and details forms
+
+```text
+canonical build identity -> @overeng/utils/build-identity
+                        -> short status text + structured detail lines
+                        -> @overeng/devbar/build-identity (optional presentation)
+```
+
+Traces: BUILD.ID-R01–R03. `@overeng/utils/build-identity` is the single source
+for human short/details formatting in TypeScript/JavaScript. It is browser-safe,
+dependency-free checked JavaScript, so Node-loaded Vite configurations and browser
+surfaces share it without requiring TypeScript stripping in `node_modules`.
+Hosts pass the identity exposed by `virtual:build-identity` directly; no host
+revision truncation, dirty suffix, age buckets, or detail-string assembly belongs
+outside the shared formatter.
+
+```ts
+interface BuildIdentity {
+  readonly displayVersion: string
+  readonly machineVersion: string
+  readonly dirty: boolean
+  readonly rev?: string
+  readonly commitTs?: number
+  readonly buildTs?: number
+}
+interface BuildIdentityDetail {
+  readonly label: 'displayVersion' | 'machineVersion' | 'deployed'
+  readonly value: string
+}
+declare const formatBuildIdentityShort: (options: {
+  readonly identity: BuildIdentity
+  readonly now: number
+}) => string
+declare const formatBuildIdentityDetails: (options: {
+  readonly identity: BuildIdentity
+  readonly now: number
+}) => readonly BuildIdentityDetail[]
+declare const formatRelativeTime: (options: {
+  readonly ts: number
+  readonly now: number
+  readonly format?: 'short' | 'long'
+}) => string
+```
+
+All timestamps and `now` are Unix seconds. The short form is the first seven
+revision characters, `*` iff dirty, a middle-dot separator, and compact commit
+age: `a7647bb · 3h` or `a7647bb* · 2d`. An absent or empty revision is `n/a`.
+An absent commit timestamp is `n/a`, never replaced by build/deploy time:
+`a7647bb* · n/a`; with both absent, `n/a* · n/a` for a dirty identity.
+
+Details preserve the supplied `displayVersion` and `machineVersion` as separate
+label/value lines. If and only if `buildTs` is supplied, they add the `deployed`
+line with compact age plus `ago` (`deployed 12m ago` when rendered). A reproducible
+commit timestamp is not evidence of deployment time. Invalid non-finite times
+render `n/a`; future clock skew is clamped to zero elapsed seconds.
+
+| Compact bucket | Elapsed range        | Unit length |
+| -------------- | -------------------- | ----------- |
+| `s`            | less than 60 seconds | 1 second    |
+| `m`            | less than 60 minutes | 60 seconds  |
+| `h`            | less than 24 hours   | 60 minutes  |
+| `d`            | less than 30 days    | 24 hours    |
+| `mo`           | less than 365 days   | 30 days     |
+| `y`            | 365 days or more     | 365 days    |
+
+Bucket values are floored. The default `formatRelativeTime` form is compact.
+Its `long` mode preserves existing CLI prose (`just now`, minutes, hours, days,
+weeks, then calendar date after thirty days), without changing CLI `--version`.
+The Node CLI identity resolver imports the same checked-JavaScript implementation;
+the Vite identity plugin already delegates to that resolver and has no separate
+relative-time implementation.
 
 ## Available Implementations
 

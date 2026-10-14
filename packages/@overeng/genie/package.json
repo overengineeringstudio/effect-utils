@@ -39,6 +39,10 @@
     "./sdk": {
       "types": "./dist/src/sdk/mod.d.ts",
       "default": "./src/sdk/mod.ts"
+    },
+    "./weaver": {
+      "types": "./dist/src/runtime/weaver/mod.d.ts",
+      "default": "./src/runtime/weaver/mod.ts"
     }
   },
   "scripts": {
@@ -103,6 +107,10 @@
       "./composition": {
         "types": "./dist/src/runtime/composition/mod.d.ts",
         "default": "./dist/src/runtime/composition/mod.js"
+      },
+      "./weaver": {
+        "types": "./dist/src/runtime/weaver/mod.d.ts",
+        "default": "./dist/src/runtime/weaver/mod.js"
       },
       "./cli": {
         "types": "./dist/src/build/mod.d.ts",

@@ -175,7 +175,19 @@ const localStamp = async ({ root, metadata }) => {
     metadata,
     readGit({ root, args: ['status', '--porcelain=v1', '--untracked-files=no'] }),
   ])
-  return { type: 'local', rev: git.rev, ts: Math.floor(Date.now() / 1000), dirty: status !== '' }
+  const rev = git.rev
+  // Resolve the timestamp against the captured revision, even if HEAD moves meanwhile.
+  const commitTsRaw = await readGit({ root, args: ['log', '-1', '--format=%ct', rev] }).catch(
+    () => '',
+  )
+  const commitTs = commitTsRaw === '' ? undefined : Number(commitTsRaw)
+  return {
+    type: 'local',
+    rev,
+    ts: Math.floor(Date.now() / 1000),
+    ...(commitTs === undefined || Number.isFinite(commitTs) === false ? {} : { commitTs }),
+    dirty: status !== '',
+  }
 }
 
 /**

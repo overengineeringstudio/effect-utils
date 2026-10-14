@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import agentContract from './agent.contract.ts'
+import { fragment } from './registry.ts'
+
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 
 // NOTE: this test lives in `@overeng/otel-contract`, which cannot import `@overeng/genie` (genie
@@ -78,5 +81,76 @@ describe('tree-shaking: ./registry projector stays out of the `.` runtime bundle
     // weaver tree-shake verification step.
     expect(modSource).not.toMatch(/from ['"]\.\/registry(-demo\.contract)?\.ts['"]/)
     expect(modSource).not.toContain('@overeng/genie/weaver/Attr')
+  })
+})
+
+describe('reusable agent contract', () => {
+  const agent = fragment(agentContract)
+  const expectedConstants = {
+    AGENT_ACTOR_ID: 'agent.actor.id',
+    AGENT_PERSONA: 'agent.persona',
+    AGENT_SUPERVISOR_ID: 'agent.supervisor.id',
+    AGENT_MISSION_NAME: 'agent.mission.name',
+    AGENT_MISSION_RUN_ID: 'agent.mission.run.id',
+    AGENT_STEP_NAME: 'agent.step.name',
+    AGENT_STEP_RUN_ID: 'agent.step.run.id',
+    AGENT_HARNESS_TOOL: 'agent.harness.tool',
+    AGENT_HARNESS_VERSION: 'agent.harness.version',
+    AGENT_HARNESS_SESSION_ID: 'agent.harness.session.id',
+    AGENT_MODEL_EFFORT: 'agent.model.effort',
+    AGENT_PRINCIPAL_ID: 'agent.principal.id',
+  }
+
+  it('defines shared string attributes with exact public constant names', () => {
+    expect(Object.fromEntries(agent.attributes.map((a) => [a.constName, a.id]))).toEqual(
+      expectedConstants,
+    )
+    expect(agent.attributes.every((a) => a.type === 'string')).toBe(true)
+    expect(agent.foreignRefs).toEqual(['gen_ai.request.model'])
+    expect(agent.upstream).toEqual(agentContract.upstream)
+    const refs = agent.signals[0]!.attributes
+    expect(refs.find((a) => a.ref === 'agent.principal.id')?.requirement_level).toBe('opt_in')
+    expect(
+      refs
+        .filter((a) => a.ref !== 'agent.principal.id')
+        .every((a) => a.requirement_level === 'recommended'),
+    ).toBe(true)
+    expect(agent.attributes.find((a) => a.id === 'agent.principal.id')?.note).toContain(
+      'Never include principal values in public artifacts or metric labels',
+    )
+    expect(agent.attributes.find((a) => a.id === 'agent.harness.session.id')?.note).toContain(
+      'distinct from a PTY session and from the logical agent actor identity',
+    )
+  })
+
+  it('committed TS and Rust agent constants have exact name-to-value parity', () => {
+    // Filesystem reads avoid the otel-contract → genie project-reference cycle, as above.
+    const ts = readFileSync(
+      new URL('../../../../genie/weaver-registry/constants.ts', import.meta.url),
+      'utf8',
+    )
+    const rust = readFileSync(
+      new URL('../../../../genie/weaver-registry/constants.rs', import.meta.url),
+      'utf8',
+    )
+    const tsConstants = Object.fromEntries(
+      [...ts.matchAll(/export const (\w+) = ['"]((?:span\.)?agent\.[^'"]+)['"]/g)].map((m) => [
+        m[1]!,
+        m[2]!,
+      ]),
+    )
+    const rustConstants = Object.fromEntries(
+      [...rust.matchAll(/pub const (\w+): &str = "((?:span\.)?agent\.[^"]+)";/g)].map((m) => [
+        m[1]!,
+        m[2]!,
+      ]),
+    )
+    const expectedContractConstants = {
+      ...expectedConstants,
+      AGENT_ACTIVITY: 'span.agent.activity',
+    }
+    expect(tsConstants).toEqual(expectedContractConstants)
+    expect(rustConstants).toEqual(expectedContractConstants)
+    expect(tsConstants).toEqual(rustConstants)
   })
 })

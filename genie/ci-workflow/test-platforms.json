@@ -184,6 +184,10 @@
         "rationale": "effect-rpc-explorer bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },
       {
+        "task": "test:effect-rpc-observer",
+        "rationale": "effect-rpc-observer bounded protocol-observer, sink and middleware assertions over in-memory transports; no Darwin-specific host lifecycle regression."
+      },
+      {
         "task": "test:effect-rpc-tanstack",
         "rationale": "effect-rpc-tanstack bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },
@@ -214,6 +218,10 @@
       {
         "task": "test:kdl",
         "rationale": "kdl bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:meters",
+        "rationale": "meters bounded source, series, session, schema and DOM-emulated rendering assertions; no Darwin-specific host lifecycle regression. Real-browser behavior is covered by its Storybook and Playwright lanes."
       },
       {
         "task": "test:notion-cli",
@@ -270,6 +278,10 @@
       {
         "task": "test:react-inspector",
         "rationale": "react-inspector bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:rpc-devtools",
+        "rationale": "rpc-devtools bounded RPC meter and explorer-client wiring assertions over in-memory observers; no Darwin-specific host lifecycle regression."
       },
       {
         "task": "test:restate-effect",

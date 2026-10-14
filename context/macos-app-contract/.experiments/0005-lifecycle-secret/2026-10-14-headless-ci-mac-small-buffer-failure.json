@@ -1,0 +1,45 @@
+{
+  "host": "headless CI Mac",
+  "commandShape": "ssh headless-ci-mac nice -n 19 python3 0005-lifecycle-secret/run.py",
+  "verdict": "FAIL",
+  "suiteExit": 1,
+  "stdout": "PASS exec helper validates inherited lifecycle fd\nPASS helper killed by SIGKILL\nPASS install-host admits parent's inherited --lifecycle-fd\nPASS select-generation admits parent's inherited --lifecycle-fd\nPASS install-host --lifecycle-fd excluded\nPASS select-generation --lifecycle-fd excluded\nPASS parent closes final lock reference\nPASS competitor acquires after final parent close\nPASS competitor acquires after final parent close\nPASS protected action enters critical section\nPASS SIGTERM observed and deferred\nPASS install-host --lifecycle-fd excluded\nPASS select-generation --lifecycle-fd excluded\nPASS protected action commits after cancellation event\nPASS protected worker exits normally\nPASS durable protected commit marker verified after worker exit\nPASS install-host --lifecycle-fd excluded\nPASS competitor acquires after final parent close\nPASS protected action enters critical section\nPASS monotonic deadline expires without aborting action\nPASS install-host --lifecycle-fd excluded\nPASS select-generation --lifecycle-fd excluded\nPASS protected action commits after cancellation event\nPASS protected worker exits normally\nPASS durable protected commit marker verified after worker exit\nPASS install-host --lifecycle-fd excluded\nPASS competitor acquires after final parent close\nPASS protected action enters critical section\nPASS client EOF observed without aborting action\nPASS install-host --lifecycle-fd excluded\nPASS select-generation --lifecycle-fd excluded\nPASS protected action commits after cancellation event\nPASS protected worker exits normally\nPASS durable protected commit marker verified after worker exit\nPASS install-host --lifecycle-fd excluded\nPASS competitor acquires after final parent close\nPASS process argv contains no synthetic secret\nPASS process argv contains no synthetic secret\nPASS single SCM_RIGHTS secret fd accepted\nPASS receiver closes every delivered descriptor\nPASS actual receiver log and ctl JSON contain no secret bytes\nPASS whole secret case restores fd census\nEVIDENCE secret_case=0 fd_before=3 fd_after=3 accepted=1\nPASS missing fd rejected\nPASS receiver closes every delivered descriptor\nPASS actual receiver log and ctl JSON contain no secret bytes\nPASS whole secret case restores fd census\nEVIDENCE secret_case=1 fd_before=3 fd_after=3 accepted=0\nPASS extra fds rejected\nPASS receiver closes every delivered descriptor\nPASS actual receiver log and ctl JSON contain no secret bytes\nPASS whole secret case restores fd census\nEVIDENCE secret_case=2 fd_before=3 fd_after=3 accepted=0\nPASS socket descriptor rejected\nPASS receiver closes every delivered descriptor\nPASS actual receiver log and ctl JSON contain no secret bytes\nPASS whole secret case restores fd census\nEVIDENCE secret_case=3 fd_before=3 fd_after=3 accepted=0\nPASS writable pipe rejected\nPASS receiver closes every delivered descriptor\nPASS actual receiver log and ctl JSON contain no secret bytes\nPASS whole secret case restores fd census\nEVIDENCE secret_case=4 fd_before=3 fd_after=3 accepted=0\nPASS malformed payload rejected\nPASS receiver closes every delivered descriptor\nPASS actual receiver log and ctl JSON contain no secret bytes\nPASS whole secret case restores fd census\nEVIDENCE secret_case=5 fd_before=3 fd_after=3 accepted=0\nPASS truncated ancillary descriptors rejected\n",
+  "stderr": "FAIL receiver closes every delivered descriptor (errno=0)\n",
+  "buildTreeRemoved": true,
+  "argv": [
+    [
+      "/usr/bin/clang",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "<temporary-directory>/m3-experiments.V37kxE/0005-lifecycle-secret/probe.c",
+      "-o",
+      "<temporary-directory>/m3-e5-build-nyq0tfnw/probe"
+    ],
+    [
+      "<temporary-directory>/m3-e5-build-nyq0tfnw/probe",
+      "suite"
+    ]
+  ],
+  "ciChecks": [
+    {
+      "time": 1791942044.5476701,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942045.270873,
+      "activeJobCount": 0
+    }
+  ],
+  "uiChecks": [
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    }
+  ]
+}

@@ -6775,5 +6775,9 @@
       "sizeBytes": 4529
     }
   },
+<<<<<<< HEAD
   "fingerprint": "sha256:5046c3e1d983f1fdb7fbc5856c5d678d42cef17c26ae182a03f23180540d877b"
+=======
+  "fingerprint": "sha256:655cacf9bb36ba8371ade78911551f50afa5a8ee82f94bd38db576b61ea30116"
+>>>>>>> origin/main
 }

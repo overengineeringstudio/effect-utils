@@ -96,9 +96,28 @@
             hash = "sha256-//peesRhGcjkJj8fett8TxLxa/Wc/qavUQvuLmGP+TM=";
           };
 
-          # Just the `model/` subtree — the directory weaver's `registry_path` points at.
-          semconv-model = pkgs.runCommand "semconv-model-${semconvVersion}" { } ''
+          semconvBaseModel = pkgs.runCommand "semconv-model-${semconvVersion}" { } ''
             cp -r ${semconvSrc}/model $out
+          '';
+          genaiSrc = pkgs.fetchFromGitHub {
+            owner = "open-telemetry";
+            repo = "semantic-conventions-genai";
+            rev = "6fd0d763a092db245a54104fc1124031eb3c51d2";
+            hash = "sha256-JT/nIMJ/k5R1rhdfaV9j+94fQ44i5y8lL/ToE1ONiTc=";
+          };
+          genaiModel = pkgs.runCommand "genai-model-${genaiSrc.rev}" { } ''
+            cp -r ${genaiSrc}/model $out
+            chmod -R u+w $out
+            substituteInPlace $out/manifest.yaml --replace-fail \
+              'registry_path: https://github.com/open-telemetry/semantic-conventions.git@v${semconvVersion}[model]' \
+              'registry_path: ${semconvBaseModel}'
+          '';
+          # The existing locator carries all hermetic dependencies, keyed by manifest name.
+          semconv-model = pkgs.runCommand "semconv-model-${semconvVersion}" { } ''
+            cp -r ${semconvBaseModel} $out
+            chmod u+w $out
+            printf '{"otel":"%s","semantic-conventions-genai":"%s"}\n' \
+              "$out" "${genaiModel}" > $out/registry-paths.json
           '';
 
           weaver = pkgs.rustPlatform.buildRustPackage {

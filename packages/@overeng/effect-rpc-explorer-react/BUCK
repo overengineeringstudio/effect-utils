@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:71780dd7640da3742f82d0bc2f219a8a3f7ed5ad9dd98e6cc16e742767964763
+# Semantic fingerprint: sha256:c46de302e544e0593bf4db1831aed48c182819ed75ea0d8e635c48887caf243a
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -103,6 +103,8 @@ package_view(
     workspace_dist = {
         "node_modules/@overeng/effect-rpc-explorer/dist": "//packages/@overeng/effect-rpc-explorer:dist",
         "node_modules/@overeng/effect-rpc-explorer/package.json": "//packages/@overeng/effect-rpc-explorer:package.json",
+        "node_modules/@overeng/effect-rpc-observer/dist": "//packages/@overeng/effect-rpc-observer:dist",
+        "node_modules/@overeng/effect-rpc-observer/package.json": "//packages/@overeng/effect-rpc-observer:package.json",
         "node_modules/@overeng/stylex-tokens/dist": "//packages/@overeng/stylex-tokens:dist",
         "node_modules/@overeng/stylex-tokens/package.json": "//packages/@overeng/stylex-tokens:package.json",
     },
@@ -110,6 +112,7 @@ package_view(
     },
     workspace_dependency_views = {
         "node_modules/@overeng/effect-rpc-explorer/node_modules": "//packages/@overeng/effect-rpc-explorer:package_tree",
+        "node_modules/@overeng/effect-rpc-observer/node_modules": "//packages/@overeng/effect-rpc-observer:package_tree",
         "node_modules/@overeng/stylex-tokens/node_modules": "//packages/@overeng/stylex-tokens:package_tree",
     },
     strip_project_references = True,
@@ -147,6 +150,8 @@ package_view(
     workspace_dist = {
         "node_modules/@overeng/effect-rpc-explorer/dist": "//packages/@overeng/effect-rpc-explorer:dist",
         "node_modules/@overeng/effect-rpc-explorer/package.json": "//packages/@overeng/effect-rpc-explorer:package.json",
+        "node_modules/@overeng/effect-rpc-observer/dist": "//packages/@overeng/effect-rpc-observer:dist",
+        "node_modules/@overeng/effect-rpc-observer/package.json": "//packages/@overeng/effect-rpc-observer:package.json",
         "node_modules/@overeng/stylex-tokens/dist": "//packages/@overeng/stylex-tokens:dist",
         "node_modules/@overeng/stylex-tokens/package.json": "//packages/@overeng/stylex-tokens:package.json",
     },
@@ -154,6 +159,7 @@ package_view(
     },
     workspace_dependency_views = {
         "node_modules/@overeng/effect-rpc-explorer/node_modules": "//packages/@overeng/effect-rpc-explorer:package_tree",
+        "node_modules/@overeng/effect-rpc-observer/node_modules": "//packages/@overeng/effect-rpc-observer:package_tree",
         "node_modules/@overeng/stylex-tokens/node_modules": "//packages/@overeng/stylex-tokens:package_tree",
     },
     strip_project_references = True,
@@ -191,6 +197,7 @@ npm_package_archive(
     typecheck = ":typecheck",
     workspace_manifests = [
         "//packages/@overeng/effect-rpc-explorer:package.json",
+        "//packages/@overeng/effect-rpc-observer:package.json",
         "//packages/@overeng/stylex-tokens:package.json",
         "//packages/@overeng/utils:package.json",
         "//packages/@overeng/utils-storybook:package.json",

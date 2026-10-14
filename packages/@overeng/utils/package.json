@@ -24,6 +24,10 @@
       "types": "./dist/src/browser/mod.d.ts",
       "default": "./src/browser/mod.ts"
     },
+    "./build-identity": {
+      "types": "./src/build-identity-types.d.ts",
+      "default": "./src/build-identity.js"
+    },
     "./cuid": {
       "types": "./dist/src/cuid/mod.d.ts",
       "browser": "./src/cuid/cuid.browser.ts",
@@ -194,6 +198,10 @@
       "./browser": {
         "types": "./dist/src/browser/mod.d.ts",
         "default": "./dist/src/browser/mod.js"
+      },
+      "./build-identity": {
+        "types": "./src/build-identity-types.d.ts",
+        "default": "./src/build-identity.js"
       },
       "./cuid": {
         "types": "./dist/src/cuid/mod.d.ts",
