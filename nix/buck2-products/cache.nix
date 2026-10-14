@@ -11,6 +11,14 @@ let
   declaredProductNames = builtins.sort builtins.lessThan (
     map (product: product.name) targetInventory.products
   );
+  publishedProductNames = builtins.sort builtins.lessThan productNames;
+  fullyPublished = declaredProductNames == publishedProductNames;
+  missingProductNames = builtins.filter (
+    name: !(builtins.elem name publishedProductNames)
+  ) declaredProductNames;
+  undeclaredProductNames = builtins.filter (
+    name: !(builtins.elem name declaredProductNames)
+  ) publishedProductNames;
   targetByName = builtins.listToAttrs (
     map (product: {
       inherit (product) name;
@@ -194,7 +202,7 @@ let
       );
     };
   checkedProducts = map checkedProduct manifest.products;
-  productNames = map (entry: entry.name) checkedProducts;
+  productNames = map (entry: entry.name) manifest.products;
   uniqueProductNames = lib.unique productNames;
 in
 assert lib.assertMsg (
@@ -225,8 +233,27 @@ assert lib.assertMsg (
   builtins.length uniqueProductNames == builtins.length productNames
 ) "buck2-products: product names must be unique";
 {
-  inherit manifest declaredProductNames;
-  publishedProductNames = builtins.sort builtins.lessThan productNames;
+  inherit
+    manifest
+    declaredProductNames
+    publishedProductNames
+    fullyPublished
+    missingProductNames
+    undeclaredProductNames
+    ;
+  # The cheap pre-merge guard evaluates only inventory names, never product downloads.
+  assertDeclaredProducts =
+    assert lib.assertMsg (undeclaredProductNames == [ ]) (
+      "buck2-products: manifest contains undeclared products: " + builtins.toJSON undeclaredProductNames
+    );
+    true;
+  assertFullyPublished =
+    assert lib.assertMsg fullyPublished (
+      "buck2-products: manifest inventory differs; missing products: "
+      + builtins.toJSON missingProductNames
+      + "; undeclared products: "
+      + builtins.toJSON undeclaredProductNames
+    );
+    true;
   products = builtins.listToAttrs checkedProducts;
-  fullyPublished = declaredProductNames == builtins.sort builtins.lessThan productNames;
 }

@@ -591,6 +591,15 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       timeoutMinutes: 90,
       extraSteps: [
         {
+          name: 'Check published product inventory against the gated diff',
+          env: {
+            ...githubTokenEnv(),
+            MANIFEST_BASE_SHA:
+              '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}',
+          },
+          run: withCiSourceRoot('bash genie/ci-scripts/buck2-manifest-inventory.sh'),
+        },
+        {
           name: 'Check shared megarepo task flags against the published CLI',
           env: githubTokenEnv(),
           run: withCiSourceRoot(
@@ -1030,10 +1039,19 @@ const extraJobs: Record<string, any> = {
       privileged: 'always',
     }),
     'timeout-minutes': 120,
-    permissions: { contents: 'read' },
+    permissions: { contents: 'read', 'pull-requests': 'read', statuses: 'write' },
     defaults: bashShellDefaults,
     env: githubTokenEnv(),
     steps: [
+      {
+        name: 'Mark product manifest publication pending',
+        run: [
+          'gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+          '  -f context=buck2-products/manifest-current -f state=pending \\',
+          '  -f description="Checking published product manifest" \\',
+          '  -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+        ].join('\n'),
+      },
       checkoutStep(),
       {
         id: 'publication-scope',
@@ -1050,20 +1068,42 @@ const extraJobs: Record<string, any> = {
           '      break',
           '    fi',
           '  done < <(git diff --name-only HEAD^ HEAD)',
+          // Only skip the bot's own merged manifest proposal when it was built on
+          // this merge's immediate main parent and its manifest bytes are unchanged.
+          // Otherwise an intervening main change or manual edit must be republished.
+          '  if [ "$publish" = false ]; then',
+          '    publish=true',
+          '    published_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq \'[.[] | select(.merged_at != null and .head.ref == "automation/buck2-products-manifest" and .user.login == "overeng-nix-publisher[bot]")] | .[0].head.sha // empty\')"',
+          '    if [ -n "$published_sha" ]; then',
+          '      git fetch --no-tags --depth=2 origin "$published_sha"',
+          '      if [ "$(git rev-parse "$published_sha^")" = "$(git rev-parse HEAD^)" ] && git diff --quiet "$published_sha" HEAD -- nix/buck2-products/manifest.json; then',
+          '        publish=false',
+          '      fi',
+          '    fi',
+          '  fi',
           'fi',
           'echo "publish=$publish" >> "$GITHUB_OUTPUT"',
+          'if [ "$publish" = false ]; then',
+          '  gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+          '    -f context=buck2-products/manifest-current -f state=success \\',
+          '    -f description="Publisher manifest-only merge is current" \\',
+          '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+          'fi',
         ].join('\n'),
       },
       {
         ...installNixStep(),
+        id: 'product-nix',
         if: "steps.publication-scope.outputs.publish == 'true'",
       },
       {
         ...cachixCliBuildStep,
+        id: 'product-cachix-cli',
         if: "steps.publication-scope.outputs.publish == 'true'",
       },
       {
         ...publishingCachixStep,
+        id: 'product-cachix-auth',
         if: `${publishingCachixStep.if} && steps.publication-scope.outputs.publish == 'true'`,
       },
       cachixPushStep({
@@ -1079,12 +1119,36 @@ const extraJobs: Record<string, any> = {
             [
               'set -euo pipefail',
               'proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"',
-              'nix/buck2-products/publish.sh --proposal "$proposal"',
+              'if nix/buck2-products/publish.sh --proposal "$proposal"; then',
+              '  :',
+              'else',
+              '  result=$?',
+              '  echo "cause=publish.sh failed (exit $result): build, network, or Cachix error; inspect run" >> "$GITHUB_OUTPUT"',
+              '  exit "$result"',
+              'fi',
               'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
               '  echo "::notice::The v2 product manifest is already current"',
               '  echo "changed=false" >> "$GITHUB_OUTPUT"',
+              '  gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+              '    -f context=buck2-products/manifest-current -f state=success \\',
+              '    -f description="Published product manifest is current" \\',
+              '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
               'else',
+              '  comparison=$?',
+              '  if [ "$comparison" -ne 1 ]; then',
+              '    echo "::error::Manifest comparison failed (cmp exit $comparison)"',
+              '    echo "cause=Manifest comparison I/O error (cmp exit $comparison)" >> "$GITHUB_OUTPUT"',
+              '    exit "$comparison"',
+              '  fi',
               '  echo "changed=true" >> "$GITHUB_OUTPUT"',
+              '  stale=$(jq -nr --slurpfile old nix/buck2-products/manifest.json --slurpfile new "$proposal" \'[$old[0].products[], $new[0].products[]] | group_by(.name) | map(select(length != 2 or .[0] != .[1]) | .[0].name) | join(", ")\')',
+              // GitHub commit-status descriptions are limited to 140 characters.
+              '  description="Stale products: $stale"',
+              '  gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+              '    -f context=buck2-products/manifest-current -f state=failure \\',
+              '    -f description="${description:0:140}" \\',
+              '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+              '  echo "stale-status=true" >> "$GITHUB_OUTPUT"',
               'fi',
             ].join('\n'),
           ),
@@ -1144,6 +1208,22 @@ const extraJobs: Record<string, any> = {
             'fi',
           ].join('\n'),
         ),
+      },
+      {
+        name: 'Keep interrupted publication pending',
+        if: "failure() && steps.product-publication.outputs.stale-status != 'true'",
+        env: {
+          PUBLICATION_CAUSE:
+            "${{ steps.product-publication.outputs.cause || (steps.product-nix.outcome == 'failure' && 'Nix setup failed') || (steps.product-cachix-cli.outcome == 'failure' && 'Cachix CLI setup failed') || (steps.product-cachix-auth.outcome == 'failure' && 'Cachix authentication failed') || 'Publication network/API or scope error; inspect run' }}",
+        },
+        run: [
+          // Infrastructure/publisher errors are not proof of stale product bytes.
+          // Preserve pending even if setup failed before publish.sh could run.
+          'gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+          '  -f context=buck2-products/manifest-current -f state=pending \\',
+          '  -f description="${PUBLICATION_CAUSE:0:140}" \\',
+          '  -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+        ].join('\n'),
       },
     ],
   },

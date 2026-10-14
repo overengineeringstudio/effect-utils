@@ -679,6 +679,11 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
+      - name: Check published product inventory against the gated diff
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MANIFEST_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/buck2-manifest-inventory.sh'
       - name: Check shared megarepo task flags against the published CLI
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -3257,6 +3262,8 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
+      pull-requests: read
+      statuses: write
       id-token: write
     defaults:
       run:
@@ -3275,6 +3282,12 @@ jobs:
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
     steps:
+      - name: Mark product manifest publication pending
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f context=buck2-products/manifest-current -f state=pending \
+            -f description="Checking published product manifest" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -3320,8 +3333,24 @@ jobs:
                 break
               fi
             done < <(git diff --name-only HEAD^ HEAD)
+            if [ "$publish" = false ]; then
+              publish=true
+              published_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null and .head.ref == "automation/buck2-products-manifest" and .user.login == "overeng-nix-publisher[bot]")] | .[0].head.sha // empty')"
+              if [ -n "$published_sha" ]; then
+                git fetch --no-tags --depth=2 origin "$published_sha"
+                if [ "$(git rev-parse "$published_sha^")" = "$(git rev-parse HEAD^)" ] && git diff --quiet "$published_sha" HEAD -- nix/buck2-products/manifest.json; then
+                  publish=false
+                fi
+              fi
+            fi
           fi
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          if [ "$publish" = false ]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+              -f context=buck2-products/manifest-current -f state=success \
+              -f description="Publisher manifest-only merge is current" \
+              -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         env:
@@ -3334,6 +3363,7 @@ jobs:
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
           summarize: true
+        id: product-nix
         if: steps.publication-scope.outputs.publish == 'true'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -3343,6 +3373,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        id: product-cachix-cli
         if: steps.publication-scope.outputs.publish == 'true'
       - name: Publish to Cachix
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.publication-scope.outputs.publish == 'true'
@@ -3350,6 +3381,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        id: product-cachix-auth
       - id: product-publication
         name: Publish products
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (steps.publication-scope.outputs.publish == 'true')
@@ -3359,12 +3391,35 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
-          nix/buck2-products/publish.sh --proposal "$proposal"
+          if nix/buck2-products/publish.sh --proposal "$proposal"; then
+            :
+          else
+            result=$?
+            echo "cause=publish.sh failed (exit $result): build, network, or Cachix error; inspect run" >> "$GITHUB_OUTPUT"
+            exit "$result"
+          fi
           if cmp -s nix/buck2-products/manifest.json "$proposal"; then
             echo "::notice::The v2 product manifest is already current"
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+              -f context=buck2-products/manifest-current -f state=success \
+              -f description="Published product manifest is current" \
+              -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           else
+            comparison=$?
+            if [ "$comparison" -ne 1 ]; then
+              echo "::error::Manifest comparison failed (cmp exit $comparison)"
+              echo "cause=Manifest comparison I/O error (cmp exit $comparison)" >> "$GITHUB_OUTPUT"
+              exit "$comparison"
+            fi
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            stale=$(jq -nr --slurpfile old nix/buck2-products/manifest.json --slurpfile new "$proposal" '[$old[0].products[], $new[0].products[]] | group_by(.name) | map(select(length != 2 or .[0] != .[1]) | .[0].name) | join(", ")')
+            description="Stale products: $stale"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+              -f context=buck2-products/manifest-current -f state=failure \
+              -f description="${description:0:140}" \
+              -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "stale-status=true" >> "$GITHUB_OUTPUT"
           fi
       - id: publisher-app-config
         name: Check publisher GitHub App configuration
@@ -3411,6 +3466,15 @@ jobs:
               --title 'chore(buck2): update product cache manifest' \
               --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'
           fi
+      - name: Keep interrupted publication pending
+        if: failure() && steps.product-publication.outputs.stale-status != 'true'
+        env:
+          PUBLICATION_CAUSE: ${{ steps.product-publication.outputs.cause || (steps.product-nix.outcome == 'failure' && 'Nix setup failed') || (steps.product-cachix-cli.outcome == 'failure' && 'Cachix CLI setup failed') || (steps.product-cachix-auth.outcome == 'failure' && 'Cachix authentication failed') || 'Publication network/API or scope error; inspect run' }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f context=buck2-products/manifest-current -f state=pending \
+            -f description="${PUBLICATION_CAUSE:0:140}" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
       - name: Collect Buck2 cache evidence
         if: ${{ always() }}
         shell: bash
