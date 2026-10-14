@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import dependencyBuck from '../../buck2/dependencies/BUCK.genie.ts'
+import { rootWorkspacePackages } from '../../package.json.genie.ts'
 import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import {
   buck2TestLanes,
@@ -15,6 +16,7 @@ import {
 import {
   buck2TypeScriptPackageProjection,
   type Buck2TypeScriptPackageProjection,
+  type Buck2WorkspacePackageGenerator,
 } from './typescript-package-projection.ts'
 
 const genieContext: GenieContext = { cwd: process.cwd(), location: '' }
@@ -106,6 +108,69 @@ const admittedPackages = Object.entries(buck2TypeScriptAdmissions).map(([key, ad
   dependencyView: admission.dependencyImporter.replace(':importer_', ':view_'),
   packagePath: admission.packagePath,
 }))
+
+describe('package-local BUCK provenance', () => {
+  const render = (
+    admission: Buck2TypeScriptPackageProjection,
+    workspacePackages: readonly Buck2WorkspacePackageGenerator[] = rootWorkspacePackages,
+  ): string =>
+    buck2TypeScriptPackageProjection({ ...admission, workspacePackages }).stringify(genieContext)
+
+  it('keeps every admitted package BUCK byte-identical when an unrelated package is added', () => {
+    const syntheticPackage = {
+      meta: { workspace: { memberPath: 'packages/@overeng/synthetic-unrelated' } },
+      data: { name: '@overeng/synthetic-unrelated' },
+    }
+    const expandedWorkspace = [...rootWorkspacePackages, syntheticPackage]
+    for (const admission of Object.values(buck2TypeScriptAdmissions)) {
+      const baseline = render(admission)
+      expect(render(admission, expandedWorkspace)).toBe(baseline)
+      expect(baseline).not.toContain('# Semantic inputs:')
+      expect(baseline).toContain(`# Projection source: ${admission.projectionSource}`)
+      expect(baseline).toMatch(/^# Semantic fingerprint: sha256:[a-f0-9]{64}$/m)
+      expect(baseline).toContain('# Regenerate: devenv tasks run genie:run')
+    }
+  })
+
+  it('refreshes the affected projection and fingerprint without changing other package BUCK files', () => {
+    const affected = buck2TypeScriptAdmissions.kdl
+    const workspace: readonly Buck2WorkspacePackageGenerator[] = [
+      ...rootWorkspacePackages,
+      {
+        meta: { workspace: { memberPath: 'packages/@overeng/synthetic-unrelated' } },
+        data: { name: '@overeng/synthetic-unrelated' },
+      },
+    ]
+    const changedWorkspace = workspace.map((member) =>
+      member.meta.workspace.memberPath === affected.packagePath
+        ? {
+            ...member,
+            data: {
+              ...member.data,
+              devDependencies: {
+                ...member.data.devDependencies,
+                '@overeng/synthetic-unrelated': 'workspace:*',
+              },
+            },
+          }
+        : member,
+    )
+    const fingerprint = (output: string): string | undefined =>
+      output.match(/^# Semantic fingerprint: (.+)$/m)?.[1]
+    const changedPackages = []
+    for (const admission of Object.values(buck2TypeScriptAdmissions)) {
+      const baseline = render(admission, workspace)
+      const changed = render(admission, changedWorkspace)
+      if (changed !== baseline) changedPackages.push(admission.packagePath)
+      if (admission.packagePath === affected.packagePath) {
+        expect(fingerprint(changed)).not.toBe(fingerprint(baseline))
+      } else {
+        expect(changed).toBe(baseline)
+      }
+    }
+    expect(changedPackages).toEqual([affected.packagePath])
+  })
+})
 
 // Deliberately re-derived from the working tree with the runners' own default selection
 // (`*.{test,spec}.?(c|m)[jt]s?(x)`) instead of any projection helper: the point is to fail
