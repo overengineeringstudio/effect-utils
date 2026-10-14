@@ -142,9 +142,6 @@ const blockProps = (type: HostType, props: Record<string, unknown>): Record<stri
     p.rich_text = flattenRichText(props.children as ReactNode)
   }
   if (type === 'to_do' && typeof props.checked === 'boolean') p.checked = props.checked
-  // Notion defaults an omitted table-of-contents color to gray, unlike
-  // other blocks. Send our claimed default explicitly for stable readback.
-  if (type === 'table_of_contents') p.color = 'default'
   if (type === 'toggle') {
     // Notion requires `rich_text` for toggle; the component exposes a `title`
     // string prop for ergonomics. Empty string still yields `[]` which Notion
