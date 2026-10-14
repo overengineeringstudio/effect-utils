@@ -656,7 +656,25 @@ export const getSelectionStatus = Effect.fn('DataGraph.getSelectionStatus')(func
         if (wrapper.role !== 'data-graph.selection-status' || status === undefined)
           return yield* new GraphError({ nodeId: id, message: 'Invalid selection status' })
         for (const entry of wrapper.entries) yield* store.get(entry.descriptor)
-        latestAttempt = Option.some(yield* readJson(AttemptStatus, status.descriptor))
+        const decoded = yield* readJson(AttemptStatus, status.descriptor)
+        const attemptedAction = yield* readJson(ContentManifest, decoded.action)
+        if (attemptedAction.role !== 'data-graph.action')
+          return yield* new GraphError({ nodeId: id, message: 'Invalid attempt action manifest' })
+        for (const entry of attemptedAction.entries) yield* store.get(entry.descriptor)
+        if (decoded.attempt !== undefined) {
+          const attempt = yield* readJson(ContentManifest, decoded.attempt)
+          const boundAction = attempt.entries.find((entry) => entry.role === 'action')
+          if (
+            attempt.role !== 'data-graph.attempt' ||
+            boundAction?.descriptor.digest !== decoded.action.digest
+          )
+            return yield* new GraphError({
+              nodeId: id,
+              message: 'Invalid attempt manifest or action binding',
+            })
+          for (const entry of attempt.entries) yield* store.get(entry.descriptor)
+        }
+        latestAttempt = Option.some(decoded)
       }
       const result: SelectionStatus = {
         head,
