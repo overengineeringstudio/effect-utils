@@ -251,19 +251,20 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
     const planned = DataGraph.planRefresh({
       now,
       heads: [afterFailure, { ...original, key: { ...key, scope: { document: 'older' } } }],
-      policy: () => 1500,
+      policy: () => ({ tier: 0, maxAge: 1500 }),
+      compareTiers: (left, right) => left - right,
       budget: 1,
     })
     assert.equal(planned.length, 1)
     assert.equal(planned[0]?.nodeId, DataGraph.nodeId({ ...key, scope: { document: 'older' } }))
     assert.deepEqual(
-      DataGraph.planRefresh({ now, heads: [afterFailure], policy: () => 1500, budget: 1 }).map(
+      DataGraph.planRefresh({ now, heads: [afterFailure], policy: () => ({ tier: 0, maxAge: 1500 }), compareTiers: (left, right) => left - right, budget: 1 }).map(
         (request) => request.nodeId,
       ),
       [sourceId],
     )
     assert.equal(
-      DataGraph.planRefresh({ now, heads: [afterFailure], policy: () => 1500, budget: 0 }).length,
+      DataGraph.planRefresh({ now, heads: [afterFailure], policy: () => ({ tier: 0, maxAge: 1500 }), compareTiers: (left, right) => left - right, budget: 0 }).length,
       0,
     )
     lines.push(

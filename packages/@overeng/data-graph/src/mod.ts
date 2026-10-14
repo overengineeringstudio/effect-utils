@@ -217,8 +217,34 @@ export const writeJson = Effect.fn('DataGraph.writeJson')(function* <
   )
 })
 
+export const AttemptStatus = Schema.Struct({
+  _tag: Schema.Literals(['Accepted', 'Rejected', 'Failed']),
+  action: ContentDescriptor,
+  reason: Schema.optional(Schema.String),
+  materialization: Schema.optional(ContentDescriptor),
+  attempt: Schema.optional(ContentDescriptor),
+})
+export type AttemptStatus = typeof AttemptStatus.Type
+const attemptPin = (key: NodeKey): string => `data-graph/attempts/${hex(nodeIdDigest(key))}`
+const publishStatus = Effect.fn('DataGraph.publishStatus')(function* (
+  key: NodeKey,
+  status: AttemptStatus,
+) {
+  const store = yield* GraphStore
+  const descriptor = yield* writeJson(AttemptStatus, status)
+  const wrapper = yield* store.manifest(manifest('data-graph.selection-status', [
+    { role: 'status', descriptor },
+    { role: 'action', descriptor: status.action },
+    ...(status.attempt === undefined ? [] : [{ role: 'attempt', descriptor: status.attempt }]),
+    ...(status.materialization === undefined ? [] : [
+      { role: 'materialization', descriptor: status.materialization },
+    ]),
+  ]))
+  yield* store.pin(attemptPin(key), wrapper)
+})
 /** Unsuccessful invocations are recorded without publishing a selected head or action pin. */
 const recordAttempt = Effect.fn('DataGraph.recordAttempt')(function* (
+  key: NodeKey,
   action: ContentDescriptor,
   statusTag: 'Failed' | 'Rejected',
   reason: string,
@@ -227,13 +253,15 @@ const recordAttempt = Effect.fn('DataGraph.recordAttempt')(function* (
   const store = yield* GraphStore
   for (const descriptor of receipts) yield* store.get(descriptor)
   const status = yield* writeJson(Schema.Json, { _tag: statusTag, attemptId: randomUUID(), reason })
-  return yield* store.manifest(
+  const attempt = yield* store.manifest(
     manifest('data-graph.attempt', [
       { role: 'action', descriptor: action },
       { role: 'status', descriptor: status },
       ...receipts.map((descriptor) => ({ role: 'receipt', descriptor })),
     ]),
   )
+  yield* publishStatus(key, { _tag: statusTag, action, reason, attempt })
+  return attempt
 })
 
 export const Head = Schema.TaggedStruct('Head', {
@@ -255,6 +283,10 @@ export const getHead = Effect.fn('DataGraph.getHead')(function* (key: NodeKey) {
   const head = yield* readJson(Head, record.descriptor)
   if (nodeId(head.key) !== nodeId(key))
     return yield* new GraphError({ nodeId: nodeId(key), message: 'Head identity mismatch' })
+  const bound = wrapper.entries.find((entry) => entry.role === 'materialization')
+  if (bound?.descriptor.digest !== head.materialization.digest)
+    return yield* new GraphError({ nodeId: nodeId(key), message: 'Head materialization mismatch' })
+  yield* readOutputs(head.materialization, key.kind, head.action)
   return Option.some(head)
 })
 const selectHead = Effect.fn('DataGraph.selectHead')(function* (head: Head) {
@@ -267,6 +299,9 @@ const selectHead = Effect.fn('DataGraph.selectHead')(function* (head: Head) {
     ]),
   )
   yield* store.pin(headPin(head.key), wrapper)
+  yield* publishStatus(head.key, {
+    _tag: 'Accepted', action: head.action, materialization: head.materialization,
+  })
 })
 
 export type Outcome =
@@ -433,11 +468,12 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
       }
       const execution = yield* node.execute({ scope, inputs }).pipe(Effect.result)
       if (execution._tag === 'Failure') {
-        yield* recordAttempt(action, 'Failed', String(execution.failure), [])
+        yield* recordAttempt(key, action, 'Failed', String(execution.failure), [])
         return yield* execution.failure
       }
       if (execution.success._tag === 'Rejected') {
         const attempt = yield* recordAttempt(
+          key,
           action,
           'Rejected',
           execution.success.reason,
@@ -516,45 +552,103 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
   return yield* store.withWriteLock(materializeUnlocked(target, options))
 })
 
-export interface RefreshRequest {
+export interface SelectionStatus {
+  readonly head: Option.Option<Head>
+  readonly action: ContentDigest
+  readonly acceptance: 'Missing' | 'Current' | 'StaleAction'
+  readonly latestAttempt: Option.Option<AttemptStatus>
+}
+
+/** Read-only policy status: never executes a graph or refreshes a confirmation. */
+export const getSelectionStatus = Effect.fn('DataGraph.getSelectionStatus')(function* (
+  target: NodeRef,
+) {
+  const store = yield* GraphStore
+  const visiting = new Set<string>()
+  const completed = new Map<string, SelectionStatus>()
+  const visit = (reference: NodeRef): Effect.Effect<SelectionStatus, GraphFailure, GraphStore> =>
+    Effect.gen(function* () {
+      const { node, scope } = reference
+      const key = { kind: node.kind, scope }
+      const id = nodeId(key)
+      if (visiting.has(id))
+        return yield* new GraphError({ nodeId: id, message: 'Declared dependency cycle' })
+      const prior = completed.get(id)
+      if (prior !== undefined) return prior
+      visiting.add(id)
+      const inputs: Record<string, ContentDescriptor> = Object.create(null)
+      let upstreamCurrent = true
+      for (const [name, upstream] of Object.entries(node.inputs(scope))) {
+        const status = yield* visit(upstream)
+        if (Option.isNone(status.head))
+          return yield* new GraphError({ nodeId: id, message: 'Missing selected upstream' })
+        const outputs = yield* readOutputs(status.head.value.materialization, upstream.node.kind)
+        const output = outputs[upstream.output]
+        if (output === undefined)
+          return yield* new GraphError({ nodeId: id, message: 'Missing selected upstream output' })
+        inputs[name] = output
+        upstreamCurrent &&= status.acceptance === 'Current'
+      }
+      const action = actionKey(node.recipe(scope), inputs)
+      const head = yield* getHead(key)
+      const pinned = yield* store.lookup(attemptPin(key))
+      let latestAttempt = Option.none<AttemptStatus>()
+      if (Option.isSome(pinned)) {
+        const wrapper = yield* readJson(ContentManifest, pinned.value)
+        const status = wrapper.entries.find((entry) => entry.role === 'status')
+        if (wrapper.role !== 'data-graph.selection-status' || status === undefined)
+          return yield* new GraphError({ nodeId: id, message: 'Invalid selection status' })
+        for (const entry of wrapper.entries) yield* store.get(entry.descriptor)
+        latestAttempt = Option.some(yield* readJson(AttemptStatus, status.descriptor))
+      }
+      const result: SelectionStatus = {
+        head, action, latestAttempt,
+        acceptance: Option.isNone(head) ? 'Missing'
+          : upstreamCurrent && head.value.action.digest === action ? 'Current' : 'StaleAction',
+      }
+      visiting.delete(id)
+      completed.set(id, result)
+      return result
+    })
+  return yield* store.withWriteLock(visit(target))
+})
+
+export const checkFreshness = ({
+  status, now, maxAge,
+}: { readonly status: SelectionStatus; readonly now: number; readonly maxAge: number }): boolean =>
+  status.acceptance === 'Current' && Option.isSome(status.head) &&
+  !isStale(status.head.value, now, maxAge)
+
+export interface RefreshRequest<TTier = unknown> {
   readonly _tag: 'Refresh'
   readonly key: NodeKey
   readonly nodeId: string
   readonly overdueBy: number
+  readonly tier: TTier
 }
 export const isStale = (head: Head, now: number, maxAge: number): boolean =>
   head.lastConfirmedAt === undefined || now - head.lastConfirmedAt >= maxAge
-/** Pure oldest-overdue-first planning; callers supply an observation-head inventory. */
-export const planRefresh = ({
-  now,
-  heads,
-  policy,
-  budget,
+/** Consumer-ranked opaque tiers first, then overdue age, then stable node identity. */
+export const planRefresh = <TTier>({
+  now, heads, policy, budget, compareTiers,
 }: {
   readonly now: number
   readonly heads: ReadonlyArray<Head>
-  readonly policy: (key: NodeKey) => number
+  readonly policy: (key: NodeKey) => { readonly tier: TTier; readonly maxAge: number }
+  readonly compareTiers: (left: TTier, right: TTier) => number
   readonly budget: number
-}): ReadonlyArray<RefreshRequest> =>
-  heads
-    .filter((head) => isStale(head, now, policy(head.key)))
-    .map(
-      (head): RefreshRequest => ({
-        _tag: 'Refresh',
-        key: head.key,
-        nodeId: nodeId(head.key),
-        overdueBy:
-          head.lastConfirmedAt === undefined
-            ? Infinity
-            : now - head.lastConfirmedAt - policy(head.key),
-      }),
-    )
-    .toSorted(
-      (left, right) =>
-        right.overdueBy - left.overdueBy ||
-        (left.nodeId < right.nodeId ? -1 : left.nodeId > right.nodeId ? 1 : 0),
-    )
-    .slice(0, Math.max(0, Math.floor(budget)))
+}): ReadonlyArray<RefreshRequest<TTier>> =>
+  heads.flatMap((head): RefreshRequest<TTier>[] => {
+    const { tier, maxAge } = policy(head.key)
+    return isStale(head, now, maxAge) ? [{
+      _tag: 'Refresh', key: head.key, nodeId: nodeId(head.key), tier,
+      overdueBy: head.lastConfirmedAt === undefined ? Infinity
+        : now - head.lastConfirmedAt - maxAge,
+    }] : []
+  }).toSorted((left, right) =>
+    compareTiers(left.tier, right.tier) || right.overdueBy - left.overdueBy ||
+    (left.nodeId < right.nodeId ? -1 : left.nodeId > right.nodeId ? 1 : 0),
+  ).slice(0, Math.max(0, Math.floor(budget)))
 
 export const DataGraph = {
   ref,
@@ -563,6 +657,8 @@ export const DataGraph = {
   actionKey,
   nodeIdDigest,
   getHead,
+  getSelectionStatus,
+  checkFreshness,
   isStale,
   planRefresh,
 } as const
