@@ -2,7 +2,7 @@
 # Source: attributes.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:c89d180db66f915f730f675d1f9a7b5ad796f3beadfcb7bc000c711f95f95a81
+# fingerprint: sha256:d38a7b3f4a6e358828b7586d015861850c76dfdc899e5e13e187ffaf03ed5458
 # regen: devenv tasks run genie:run
 groups:
   - id: registry.acme
@@ -62,6 +62,109 @@ groups:
         stability: development
         brief: Dynamic request header values, keyed by header name.
         examples: [application/json]
+        annotations:
+          overeng_policy:
+            cardinality: high
+  - id: registry.agent
+    type: attribute_group
+    display_name: Agent Attributes
+    brief: Attributes for the agent namespace.
+    attributes:
+      - id: agent.actor.id
+        type: string
+        stability: development
+        brief: Stable logical agent actor identity, independent of any harness session.
+        examples: [actor-001]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: agent.harness.session.id
+        type: string
+        stability: development
+        brief: The provider-native harness session identity.
+        note: A provider-native harness session, distinct from a PTY session and from the logical agent actor identity. Never substitute a PTY identity or actor identity for this value.
+        examples: [harness-session-001]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: agent.harness.tool
+        type: string
+        stability: development
+        brief: The provider-native agent harness tool name.
+        examples: [example-harness]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: agent.harness.version
+        type: string
+        stability: development
+        brief: The agent harness version.
+        examples: [1.0.0]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: agent.mission.name
+        type: string
+        stability: development
+        brief: The mission name.
+        examples: [code-review]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: agent.mission.run.id
+        type: string
+        stability: development
+        brief: The identity of one mission execution.
+        examples: [mission-run-001]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: agent.model.effort
+        type: string
+        stability: development
+        brief: The requested model reasoning effort.
+        examples: [high]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: agent.persona
+        type: string
+        stability: development
+        brief: The agent persona name.
+        examples: [reviewer]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: agent.principal.id
+        type: string
+        stability: development
+        brief: The internal principal identity on whose behalf the agent acts.
+        note: Internal-only, opt-in identity. Never include principal values in public artifacts or metric labels.
+        examples: [principal-001]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: agent.step.name
+        type: string
+        stability: development
+        brief: The mission step name.
+        examples: [inspect]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: agent.step.run.id
+        type: string
+        stability: development
+        brief: The identity of one step execution.
+        examples: [step-run-001]
+        annotations:
+          overeng_policy:
+            cardinality: high
+      - id: agent.supervisor.id
+        type: string
+        stability: development
+        brief: The logical actor identity of the supervising agent.
+        examples: [actor-002]
         annotations:
           overeng_policy:
             cardinality: high

@@ -34,6 +34,7 @@ import notionDatasourceSyncContract from '../../packages/@overeng/notion-datasou
 import notionEffectClientContract from '../../packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts'
 import notionMdContract from '../../packages/@overeng/notion-md/src/notion-md.contract.ts'
 import notionReactContract from '../../packages/@overeng/notion-react/src/notion-react.contract.ts'
+import agentContract from '../../packages/@overeng/otel-contract/src/agent.contract.ts'
 import demoContract from '../../packages/@overeng/otel-contract/src/registry-demo.contract.ts'
 import { fragment } from '../../packages/@overeng/otel-contract/src/registry.ts'
 import ptyContract from '../../packages/@overeng/pty-effect/src/pty.contract.ts'
@@ -64,6 +65,7 @@ export const memberSeamPaths = [
   'packages/@overeng/notion-effect-client/src/notion-effect-client.contract.ts',
   'packages/@overeng/notion-md/src/notion-md.contract.ts',
   'packages/@overeng/notion-react/src/notion-react.contract.ts',
+  'packages/@overeng/otel-contract/src/agent.contract.ts',
   'packages/@overeng/otel-contract/src/registry-demo.contract.ts',
   'packages/@overeng/pty-effect/src/pty.contract.ts',
   'packages/@overeng/restate-effect/src/observability/restate.contract.ts',
@@ -83,6 +85,7 @@ const contracts = [
   notionEffectClientContract,
   notionMdContract,
   notionReactContract,
+  agentContract,
   demoContract,
   ptyContract,
   restateContract,
@@ -133,11 +136,14 @@ const versionInputs = {
 
 /** Identity = the exact names the TS/Rust const targets encode (no doc prose). */
 const identityKeys = registry.groups
-  .flatMap((g) => g.attributes.map((a) => a.id))
-  .toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  .flatMap((g) => g.attributes.map((a) => ({ id: a.id, constName: a.constName })))
+  .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 const identityNames = {
   attributeKeys: identityKeys,
   ...signalNames(registry),
+  signalConstNames: registry.signals
+    .map((s) => ({ id: s.id, constName: s.constName }))
+    .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
 }
 
 /** Doc fingerprint: the FULL registry (brief/stability/examples/notes/deprecated) → YAML headers. */

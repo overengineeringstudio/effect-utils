@@ -95,9 +95,9 @@ export type AttrDef = {
   /**
    * Per-entry catalog metadata carried through composition for downstream consumers (telemetry
    * mirror elimination). All additive/optional and NON-NORMATIVE to weaver — the renderers pick
-   * emitted fields explicitly, so these never enter the generated YAML/TS/Rust. `owner`
-   * (accountable team/person), `source` (originating file/system), `constName` (override for the
-   * derived generated const name). Mirrored by `@overeng/otel-contract` `./registry` Layer 2.
+   * emitted fields explicitly, so owner/source never enter generated output. `owner`
+   * (accountable team/person), `source` (originating file/system), `constName` (exact identifier
+   * override shared by TS/Rust constants, omitted from YAML). Mirrored by `@overeng/otel-contract`.
    */
   readonly owner?: string
   readonly source?: string
@@ -119,8 +119,8 @@ export type Instrument = 'counter' | 'updowncounter' | 'gauge' | 'histogram'
 
 /**
  * Per-entry signal metadata carried through composition for downstream consumers (telemetry mirror
- * elimination). All additive/optional and NON-NORMATIVE to weaver (renderers ignore them, so they
- * never enter generated output). Mirrored by `@overeng/otel-contract` `./registry` Layer 2.
+ * elimination). All additive/optional and NON-NORMATIVE to weaver. Only `constName` affects generated
+ * TS/Rust identifiers; metadata is omitted from YAML. Mirrored by `@overeng/otel-contract` `./registry`.
  */
 type SignalMeta = {
   readonly owner?: string
@@ -465,8 +465,36 @@ const tsConstDeclaration = ({ identifier, value }: { identifier: string; value: 
     : [`export const ${identifier} =`, `  ${sq(value)} as const`]
 }
 
-const ownKeys = (r: Registry): ReadonlyArray<string> =>
-  byId(r.groups.flatMap((g) => g.attributes)).map((a) => a.id)
+type ConstEntry = { readonly name: string; readonly constName?: string }
+
+const constantEntries = (
+  registry: Registry,
+): {
+  readonly attributes: ReadonlyArray<ConstEntry>
+  readonly spans: ReadonlyArray<ConstEntry>
+  readonly metrics: ReadonlyArray<ConstEntry>
+} => ({
+  attributes: byId(registry.groups.flatMap((g) => g.attributes)).map((a) =>
+    a.constName === undefined ? { name: a.id } : { name: a.id, constName: a.constName },
+  ),
+  spans: registry.signals
+    .filter((s): s is Extract<SignalDef, { kind: 'span' }> => s.kind === 'span')
+    // Emit the runtime span name, falling back to the group id for plain spans.
+    .map((s) =>
+      s.constName === undefined
+        ? { name: s.span_name ?? s.id }
+        : { name: s.span_name ?? s.id, constName: s.constName },
+    )
+    .toSorted((a, b) => a.name.localeCompare(b.name)),
+  metrics: registry.signals
+    .filter((s): s is Extract<SignalDef, { kind: 'metric' }> => s.kind === 'metric')
+    .map((s) =>
+      s.constName === undefined
+        ? { name: s.metric_name }
+        : { name: s.metric_name, constName: s.constName },
+    )
+    .toSorted((a, b) => a.name.localeCompare(b.name)),
+})
 
 /** Runtime span names and metric names emitted by TS/Rust producer constants. */
 export const signalNames = (
@@ -474,18 +502,13 @@ export const signalNames = (
 ): {
   readonly spanNames: ReadonlyArray<string>
   readonly metricNames: ReadonlyArray<string>
-} => ({
-  spanNames: registry.signals
-    .filter((s): s is Extract<SignalDef, { kind: 'span' }> => s.kind === 'span')
-    // Emit the RUNTIME span name (what producers actually name spans), not the weaver group id.
-    // Plain spans carry no runtime name, so fall back to the id.
-    .map((s) => s.span_name ?? s.id)
-    .toSorted((a, b) => a.localeCompare(b)),
-  metricNames: registry.signals
-    .filter((s): s is Extract<SignalDef, { kind: 'metric' }> => s.kind === 'metric')
-    .map((s) => s.metric_name)
-    .toSorted((a, b) => a.localeCompare(b)),
-})
+} => {
+  const { spans, metrics } = constantEntries(registry)
+  return {
+    spanNames: spans.map((s) => s.name),
+    metricNames: metrics.map((s) => s.name),
+  }
+}
 
 const assertUniqueIdentifiers = ({
   target,
@@ -496,13 +519,14 @@ const assertUniqueIdentifiers = ({
 }: {
   target: string
   kind: string
-  names: ReadonlyArray<string>
-  identifier: (name: string) => string
+  names: ReadonlyArray<ConstEntry>
+  identifier: (entry: ConstEntry) => string
   valid: RegExp
 }): void => {
-  const seen = new Map<string, string>()
-  for (const name of names) {
-    const id = identifier(name)
+  const seen = new Map<string, string>([['ALL', 'reserved ALL slice']])
+  for (const entry of names) {
+    const { name } = entry
+    const id = identifier(entry)
     if (valid.test(id) === false) {
       throw new Error(
         `weaver ${target} constants ${kind}: generated identifier ${JSON.stringify(id)} for ${JSON.stringify(name)} is invalid`,
@@ -518,32 +542,47 @@ const assertUniqueIdentifiers = ({
   }
 }
 
+/** Reserved bindings in a strict ES module, including strict-mode eval/arguments. */
+const reservedTsBindings: Readonly<Record<string, true>> = Object.fromEntries(
+  (
+    'arguments await break case catch class const continue debugger default delete do else enum ' +
+    'eval export extends false finally for function if implements import in instanceof interface ' +
+    'let new null package private protected public return static super switch this throw true try ' +
+    'typeof var void while with yield'
+  )
+    .split(' ')
+    .map((name) => [name, true]),
+)
+
 const assertUniqueTsConstIdentifiers = ({
-  attributeKeys,
-  spanNames,
-  metricNames,
+  attributes,
+  spans,
+  metrics,
 }: {
-  attributeKeys: ReadonlyArray<string>
-  spanNames: ReadonlyArray<string>
-  metricNames: ReadonlyArray<string>
+  attributes: ReadonlyArray<ConstEntry>
+  spans: ReadonlyArray<ConstEntry>
+  metrics: ReadonlyArray<ConstEntry>
 }): void => {
   const entries = [
-    ...attributeKeys.map((name) => ({
+    ...attributes.map(({ name, constName }) => ({
       source: `attribute key ${JSON.stringify(name)}`,
-      identifier: pascal(name),
+      identifier: constName ?? pascal(name),
     })),
-    ...spanNames.map((name) => ({
+    ...spans.map(({ name, constName }) => ({
       source: `span name ${JSON.stringify(name)}`,
-      identifier: `SPAN_${namePascal(name)}`,
+      identifier: constName ?? `SPAN_${namePascal(name)}`,
     })),
-    ...metricNames.map((name) => ({
+    ...metrics.map(({ name, constName }) => ({
       source: `metric name ${JSON.stringify(name)}`,
-      identifier: `METRIC_${namePascal(name)}`,
+      identifier: constName ?? `METRIC_${namePascal(name)}`,
     })),
   ]
   const seen = new Map<string, string>()
   for (const { source, identifier } of entries) {
-    if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(identifier) === false) {
+    if (
+      /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(identifier) === false ||
+      reservedTsBindings[identifier] === true
+    ) {
       throw new Error(
         `weaver TS constants: generated identifier ${JSON.stringify(identifier)} for ${source} is invalid`,
       )
@@ -563,10 +602,10 @@ const tsConstLines = ({
   names,
 }: {
   prefix: 'METRIC' | 'SPAN'
-  names: ReadonlyArray<string>
+  names: ReadonlyArray<ConstEntry>
 }): ReadonlyArray<string> => {
-  return names.flatMap((name) =>
-    tsConstDeclaration({ identifier: `${prefix}_${namePascal(name)}`, value: name }),
+  return names.flatMap(({ name, constName }) =>
+    tsConstDeclaration({ identifier: constName ?? `${prefix}_${namePascal(name)}`, value: name }),
   )
 }
 
@@ -592,15 +631,17 @@ export const renderTsConstants = ({
   registry: Registry
   provenance: Provenance
 }): string => {
-  const attributeKeys = ownKeys(registry)
-  const { spanNames, metricNames } = signalNames(registry)
-  assertUniqueTsConstIdentifiers({ attributeKeys, spanNames, metricNames })
+  const { attributes, spans, metrics } = constantEntries(registry)
+  const attributeKeys = attributes.map((a) => a.name)
+  const spanNames = spans.map((s) => s.name)
+  const metricNames = metrics.map((s) => s.name)
+  assertUniqueTsConstIdentifiers({ attributes, spans, metrics })
   const lines: string[] = [provenanceComment({ provenance, prefix: '//' }).trimEnd(), '']
-  for (const k of attributeKeys) {
-    lines.push(...tsConstDeclaration({ identifier: pascal(k), value: k }))
+  for (const { name, constName } of attributes) {
+    lines.push(...tsConstDeclaration({ identifier: constName ?? pascal(name), value: name }))
   }
-  lines.push(...tsConstLines({ prefix: 'SPAN', names: spanNames }))
-  lines.push(...tsConstLines({ prefix: 'METRIC', names: metricNames }))
+  lines.push(...tsConstLines({ prefix: 'SPAN', names: spans }))
+  lines.push(...tsConstLines({ prefix: 'METRIC', names: metrics }))
   lines.push(
     '',
     ...unionLines({ typeName: 'AttributeKey', names: attributeKeys }),
@@ -645,24 +686,28 @@ const rustAllSlice = ({
 const rustModule = ({
   name,
   doc,
-  keys,
+  entries,
 }: {
   name: string
   doc: string
-  keys: ReadonlyArray<string>
+  entries: ReadonlyArray<ConstEntry>
 }): string => {
   const indent = '    '
-  if (keys.length === 0) return [`/// ${doc}`, `pub mod ${name} {}`].join('\n')
+  if (entries.length === 0) return [`/// ${doc}`, `pub mod ${name} {}`].join('\n')
   assertUniqueIdentifiers({
     target: 'Rust',
     kind: name,
-    names: keys,
-    identifier: screamingSnake,
+    names: entries,
+    identifier: (entry) => entry.constName ?? screamingSnake(entry.name),
     valid: /^[A-Z_][A-Z0-9_]*$/,
   })
   const lines = [`/// ${doc}`, `pub mod ${name} {`]
-  for (const k of keys) lines.push(`${indent}pub const ${screamingSnake(k)}: &str = ${rustStr(k)};`)
-  lines.push('', ...rustAllSlice({ indent, keys }), '}')
+  for (const entry of entries) {
+    lines.push(
+      `${indent}pub const ${entry.constName ?? screamingSnake(entry.name)}: &str = ${rustStr(entry.name)};`,
+    )
+  }
+  lines.push('', ...rustAllSlice({ indent, keys: entries.map((e) => e.name) }), '}')
   return lines.join('\n')
 }
 
@@ -683,18 +728,17 @@ export const renderRustConstants = ({
   registry: Registry
   provenance: Provenance
 }): string => {
-  const attributeKeys = ownKeys(registry)
-  const { spanNames, metricNames } = signalNames(registry)
+  const { attributes, spans, metrics } = constantEntries(registry)
   return [
     provenanceComment({ provenance, prefix: '//' }).trimEnd(),
     '',
     '//! Generated OpenTelemetry semantic-convention name constants.',
     '',
-    rustModule({ name: 'attribute', doc: 'Attribute keys.', keys: attributeKeys }),
+    rustModule({ name: 'attribute', doc: 'Attribute keys.', entries: attributes }),
     '',
-    rustModule({ name: 'span', doc: 'Span names.', keys: spanNames }),
+    rustModule({ name: 'span', doc: 'Span names.', entries: spans }),
     '',
-    rustModule({ name: 'metric', doc: 'Metric names.', keys: metricNames }),
+    rustModule({ name: 'metric', doc: 'Metric names.', entries: metrics }),
     '',
   ].join('\n')
 }
