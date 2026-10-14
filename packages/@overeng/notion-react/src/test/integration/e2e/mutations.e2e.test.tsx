@@ -305,13 +305,8 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
   // ---------------------------------------------------------------------
   // 8. Cache drift — block archived out-of-band then resync
   // ---------------------------------------------------------------------
-  // Hypothesis: current `sync()` does not revalidate cached block ids
-  // against the server. When a cached block is archived out-of-band, the
-  // diff is {0,0,0,0} so the resync believes the state is in sync — but
-  // the server no longer has that block. This is a documented limitation,
-  // not a test failure; we assert the observed behaviour.
   it(
-    'cache drift: out-of-band archive of a block — sync reports no-op but server is missing the block',
+    'cache drift: out-of-band archive is repaired on resync',
     async () => {
       await withScratchPage('mut-cache-drift', (pageId) =>
         Effect.gen(function* () {
@@ -329,12 +324,23 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
           const res = yield* runE(
             sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
-          // Documented behaviour: identical tree → zero ops; drift is not
-          // detected without an explicit reconcile.
-          expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+          expect(res.appends + res.inserts).toBe(2)
+          expect(res.updates).toBe(0)
+          expect(res.removes).toBe(0)
+          expect(res.fallbackReason).toBe('cache-drift')
 
           const server2 = yield* runE(readPageTree(pageId))
-          expect(findToggleByTitle(server2, 'Phase 2 — Marketing')).toBeUndefined()
+          const restored = findToggleByTitle(server2, 'Phase 2 — Marketing')!
+          expect(restored.id).not.toBe(p2.id)
+          expect(firstPlainText(restored.children[0]!)).toBe('campaign kickoff')
+          expect(server2.filter((b) => b.type === 'toggle').map(firstPlainText)).toEqual(
+            v1.map((phase) => phase.title),
+          )
+          for (const phase of [v1[0]!, v1[2]!]) {
+            expect(findToggleByTitle(server2, phase.title)!.id).toBe(
+              findToggleByTitle(server1, phase.title)!.id,
+            )
+          }
         }),
       )
     },
@@ -362,14 +368,15 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
           const res = yield* runE(
             sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
-          // Same: no drift detection → no ops.
-          expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+          expect(res).toMatchObject({ appends: 1, updates: 0, inserts: 0, removes: 0 })
+          expect(res.fallbackReason).toBe('cache-drift')
 
           const server2 = yield* runE(readPageTree(pageId))
           const p1After = findToggleByTitle(server2, 'Phase 1 — Manufacturing')!
-          // Notion treats child archive as a cascade target; the toggle
-          // still exists but has no children.
-          expect(p1After.children).toHaveLength(0)
+          expect(p1After.id).toBe(p1.id)
+          expect(p1After.children).toHaveLength(1)
+          expect(p1After.children[0]!.id).not.toBe(childParagraph.id)
+          expect(firstPlainText(p1After.children[0]!)).toBe('first batch in production')
         }),
       )
     },
@@ -404,18 +411,26 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
           const res = yield* runE(
             sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
-          // p4 is a new tail toggle (+ paragraph) = 2 ops. p3 appears
-          // unchanged from the cache's perspective.
-          expect(res.appends + res.inserts).toBe(2)
+          // Both the missing p3 subtree and new p4 subtree must land.
+          expect(res.appends + res.inserts).toBe(4)
+          expect(res.updates).toBe(0)
+          expect(res.removes).toBe(0)
+          expect(res.fallbackReason).toBe('cache-drift')
 
           const server2 = yield* runE(readPageTree(pageId))
           const titles = server2.filter((b) => b.type === 'toggle').map((b) => firstPlainText(b))
-          // p3 stays archived (sync didn't resurrect it); p4 present.
+          expect(findToggleByTitle(server2, 'Phase 3 — Retail rollout')!.id).not.toBe(p3.id)
           expect(titles).toEqual([
             'Phase 1 — Manufacturing',
             'Phase 2 — Marketing',
+            'Phase 3 — Retail rollout',
             'Phase 4 — Post-launch review',
           ])
+          for (const phase of [v1[0]!, v1[1]!]) {
+            expect(findToggleByTitle(server2, phase.title)!.id).toBe(
+              findToggleByTitle(server1, phase.title)!.id,
+            )
+          }
         }),
       )
     },
@@ -471,7 +486,8 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
           const childPageId = cp!.id
 
           const res = yield* runE(sync(<ChildPage title="new title" />, { pageId, cache }))
-          expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+          expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+          expect(res.pages).toEqual({ creates: 0, updates: 1, archives: 0, moves: 0, reorders: 0 })
 
           const page = yield* runE(NotionPages.retrieve({ pageId: childPageId }))
           const props = (page as { properties?: Record<string, unknown> }).properties ?? {}
@@ -589,11 +605,11 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
 
   // ---------------------------------------------------------------------
   // 14. Cold sync against existing content — pre-seed blocks on the page,
-  //     then run `sync()` with a cold cache. Documented behaviour: sync
-  //     APPENDS to existing content (does not attempt to reconcile).
+  //     then run `sync()` with a cold cache. The default clean baseline
+  //     archives unowned content before materializing the candidate.
   // ---------------------------------------------------------------------
   it(
-    'cold sync against pre-seeded blocks — renderer appends; existing content untouched',
+    'cold sync against pre-seeded blocks — default clean baseline replaces existing content',
     async () => {
       await withScratchPage('mut-cold-existing', (pageId) =>
         Effect.gen(function* () {
@@ -616,12 +632,12 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
           const cache = InMemoryCache.make()
           const res = yield* runE(sync(<Paragraph>from-sync</Paragraph>, { pageId, cache }))
           expect(res.appends).toBe(1)
+          expect(res.removes).toBe(1)
           expect(res.fallbackReason).toBe('cold-cache')
 
           const server = yield* runE(readPageTree(pageId))
-          expect(server).toHaveLength(2)
-          expect(concatPlainText(server[0]!)).toBe('pre-existing')
-          expect(concatPlainText(server[1]!)).toBe('from-sync')
+          expect(server).toHaveLength(1)
+          expect(concatPlainText(server[0]!)).toBe('from-sync')
         }),
       )
     },

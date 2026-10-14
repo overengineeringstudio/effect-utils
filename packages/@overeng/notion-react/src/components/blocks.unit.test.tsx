@@ -113,6 +113,7 @@ describe('block components', () => {
   it('renders table_of_contents', () => {
     const ops = collect(<TableOfContents />)
     expect(ops[0]!.kind === 'append' && ops[0]!.type).toBe('table_of_contents')
+    expect(ops[0]!.kind === 'append' && ops[0]!.props).toEqual({ color: 'default' })
   })
 
   it('renders bulleted_list_item with nested children', () => {
