@@ -59,11 +59,31 @@ fn protected_metadata(owner: u32, mode: u32, target_uid: u32) -> Result<()> {
 /// No symlink component, including the final file; the consumer supplies canonical paths.
 fn protected_path(path: &Path, target_uid: u32) -> Result<()> {
     safe_path(path)?;
-    for ancestor in path.ancestors() {
-        let metadata = fs::symlink_metadata(ancestor)?;
-        if metadata.file_type().is_symlink() { return Err(invalid(format!("Symlink path refused: {}", text(ancestor)?))); }
-        if ancestor != path && !metadata.is_dir() { return Err(invalid("Path parent is not a directory")); }
+    use std::os::fd::{AsRawFd, FromRawFd};
+    let mut file = fs::OpenOptions::new().read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC).open("/")?;
+    let parts: Vec<_> = path.components().skip(1).collect();
+    let mut retained = Vec::new();
+    for index in 0..=parts.len() {
+        let metadata = file.metadata()?;
         protected_metadata(metadata.uid(), metadata.mode(), target_uid)?;
+        macos_app_host::endpoint::verify_acl_no_grants(&file)
+            .map_err(|error| invalid(format!("Unsafe path ACL: {error}")))?;
+        if index == parts.len() {
+            if !metadata.is_file() && !metadata.is_dir() { return Err(invalid("Protected input must be a regular file or directory")); }
+            break;
+        }
+        if !metadata.is_dir() { return Err(invalid("Path parent is not a directory")); }
+        let name = CString::new(parts[index].as_os_str().as_encoded_bytes())
+            .map_err(|_| invalid("NUL in path"))?;
+        let directory = if index + 1 < parts.len() { libc::O_DIRECTORY } else { 0 };
+        // SAFETY: parent descriptor is retained; nofollow applies to each component.
+        let fd = unsafe { libc::openat(file.as_raw_fd(), name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK | directory) };
+        if fd < 0 { return Err(io::Error::last_os_error().into()); }
+        retained.push(file);
+        // SAFETY: openat returned a uniquely owned descriptor.
+        file = unsafe { fs::File::from_raw_fd(fd) };
     }
     Ok(())
 }
@@ -157,6 +177,8 @@ pub(super) fn validate(ctl: &Ctl) -> Result<Validated> {
     let metadata = file.metadata()?;
     if !metadata.is_file() { return Err(invalid("Plist input must be a regular file")); }
     protected_metadata(metadata.uid(), metadata.mode(), target_uid)?;
+    macos_app_host::endpoint::verify_acl_no_grants(&file)
+        .map_err(|error| invalid(format!("Unsafe captured plist ACL: {error}")))?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
     // Parse exactly the protected snapshot returned to convergence, not a second path read.

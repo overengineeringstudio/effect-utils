@@ -511,6 +511,18 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
                '--keychain', work / 'must-not-open.keychain-db', '--keychain-password-fd', '999')
         assert (work / 'sign.log').read_text() == signing_before
         print('PASS pinned predicate accepts differing diagnostic DR; wrong predicate rejects; seal reuses verified artifact without signing', flush=True)
+        raced = work / 'ThinRaced.app'
+        shutil.copytree(signed, raced)
+        env['MACOS_APP_CTL_TEST_FAILPOINT'] = 'seal-source-after-describe'
+        try:
+            refused = invoke('seal-fixture-artifact', '--desired', raced,
+                             '--output', work / 'must-not-publish-raced-release', refusal=True)
+            assert 'Staged source changed' in refused['error']['reason'], refused
+        finally:
+            env.pop('MACOS_APP_CTL_TEST_FAILPOINT', None)
+        assert not (work / 'must-not-publish-raced-release').exists()
+        assert (work / 'sign.log').read_text() == signing_before
+        print('PASS source mutation after describing refuses before signing or publication', flush=True)
 
         missing_release = work / 'absent-release'
         invoke('install-host', '--desired', descriptor_path, '--artifact', missing_release,
@@ -609,6 +621,15 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         evidence = validate(job)['result']
         assert not evidence.get('running') and not evidence.get('pid'), evidence
         print('PASS supplied plist identity/direct-entrypoint/argv/domain refusals and offline scheduled idle evidence', flush=True)
+        for target in (plist_path, Path(entrypoint), thin_app / 'Contents'):
+            tool('/bin/chmod', '+a', 'everyone allow write', str(target))
+            try:
+                refused = validate(job, refusal=True)
+                assert 'ACL' in refused['error']['reason'], refused
+            finally:
+                tool('/bin/chmod', '-N', str(target))
+            validate(job)
+        print('PASS granting ACLs on plist, installed entrypoint and ancestor refuse', flush=True)
 
         lock_path = thin_state / 'lifecycle.lock'
         thin_state.mkdir(exist_ok=True)

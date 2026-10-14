@@ -220,6 +220,10 @@ immutable release containing exactly `host.app`, `descriptor.json` and
 `receipt.json`. An existing valid release matching desired content and policy
 is reused without re-signing; an invalid or mismatching output is refused,
 not overwritten. No installed app, generation or launchd state changes.
+Sealing copies into a unique mode-0700 staging directory owned by the sealing
+UID, and checks that staged unsigned content equals the pinned descriptor
+before any signing operation. A source change during copying refuses before
+the signing key is used; receipt validation repeats the content check afterward.
 
 The receipt has `schema: "macos-app-release"`, `version: 1`, `hostRevision`,
 `sealedRevision` and `files`. These file records hash actual sealed bytes,
@@ -318,7 +322,9 @@ and rejects reserved identity/domain overrides. The convenience generic host
 must have exactly its closed `serve --socket ... --generation-pointer ...`
 argv; native product argument contracts remain product-owned.
 Input, installed entrypoint and ancestors must be normalized absolute paths,
-non-symlink, owned by root or the target UID, and not group/world writable.
+non-symlink, owned by root or the target UID, not group/world writable, and
+without granting or unknown ACL entries. Descriptor-relative no-follow opens
+check ACLs on every ancestor and the final input; deny-only ACLs remain valid.
 The entrypoint is an executable regular file. System `UserName`/`GroupName`
 must match the target account and primary group; a non-root system target
 requires `UserName`.

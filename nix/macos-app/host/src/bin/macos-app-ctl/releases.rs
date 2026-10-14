@@ -42,6 +42,37 @@ pub(super) fn destination(path: &Path, create: bool) -> Result<()> {
     macos_app_host::endpoint::validate_directory(path, owner).map_err(|e| fail(64, "invalid-input", e.to_string()))
 }
 
+fn private_stage(parent: &Path) -> Result<PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    let mut template = CString::new(text(&parent.join(".sealed-release-XXXXXX"))?)
+        .map_err(|error| fail(64, "invalid-input", error.to_string()))?.into_bytes_with_nul();
+    // SAFETY: mkdtemp receives a writable NUL-terminated template. It atomically
+    // creates a unique directory with mode 0700, independent of ambient umask.
+    if unsafe { libc::mkdtemp(template.as_mut_ptr().cast()) }.is_null() {
+        return Err(io::Error::last_os_error().into());
+    }
+    template.pop();
+    let path = PathBuf::from(std::ffi::OsString::from_vec(template));
+    let metadata = fs::symlink_metadata(&path)?;
+    if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o777 != 0o700 {
+        return Err(mismatch("Sealing stage must be private and owned by the sealing UID"));
+    }
+    Ok(path)
+}
+
+fn copy_pinned_source(source: &Path, app: &Path, descriptor: &Value, config: &Value) -> Result<()> {
+    #[cfg(feature = "test-signing-cert")]
+    if failpoint("seal-source-after-describe") {
+        fs::create_dir_all(source.join("Contents/Resources"))?;
+        fs::write(source.join("Contents/Resources/seal-race.txt"), b"changed after describing\n")?;
+    }
+    checked("/bin/cp", &["-R", text(source)?, text(app)?])?;
+    if artifact::describe(app, config)? != *descriptor {
+        return Err(mismatch("Staged source changed after its unsigned descriptor was pinned"));
+    }
+    Ok(())
+}
+
 fn publish_exclusive(stage: &Path, output: &Path) -> Result<()> {
     let stage = CString::new(text(stage)?).map_err(|e| fail(64, "invalid-input", e.to_string()))?;
     let output = CString::new(text(output)?).map_err(|e| fail(64, "invalid-input", e.to_string()))?;
@@ -113,11 +144,10 @@ impl Ctl {
         let keychain = Keychain::open_locked(&keychain_path)?;
         let parent = output.parent().ok_or_else(|| fail(64, "invalid-input", "Release requires a parent"))?;
         destination(parent, true)?;
-        let stage = parent.join(format!(".sealed-release-{}", std::process::id()));
-        fs::create_dir(&stage)?;
+        let stage = private_stage(parent)?;
         let result = (|| {
             let app = stage.join("host.app");
-            checked("/bin/cp", &["-R", text(unsigned)?, text(&app)?])?;
+            copy_pinned_source(unsigned, &app, &descriptor, &self.config)?;
             checked("/bin/chmod", &["-R", "u+w", text(&app)?])?;
             self.sign(&keychain_path, &keychain, &app)?;
             checked("/bin/chmod", &["-R", "a-w", text(&app)?])?;
@@ -237,11 +267,10 @@ impl Ctl {
         let output = PathBuf::from(self.arg("output")?);
         let parent = output.parent().ok_or_else(|| fail(64, "invalid-input", "Release requires a parent"))?;
         destination(parent, false)?;
-        let stage = parent.join(format!(".fixture-release-{}", std::process::id()));
-        fs::create_dir(&stage)?;
+        let stage = private_stage(parent)?;
         let result = (|| {
             let app = stage.join("host.app");
-            checked("/bin/cp", &["-R", text(source)?, text(&app)?])?;
+            copy_pinned_source(source, &app, &descriptor, &self.config)?;
             self.verify_bundle(&app)?;
             checked("/bin/chmod", &["-R", "a-w", text(&app)?])?;
             let receipt = artifact::create_receipt(&app, &descriptor, &self.config)?;
@@ -262,6 +291,19 @@ impl Ctl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stages_are_private_unique_and_owned() {
+        let parent = fs::canonicalize(std::env::temp_dir()).unwrap();
+        let first = private_stage(&parent).unwrap();
+        let second = private_stage(&parent).unwrap();
+        assert_ne!(first, second);
+        for stage in [first, second] {
+            let metadata = fs::symlink_metadata(&stage).unwrap();
+            assert_eq!(metadata.uid(), unsafe { libc::geteuid() });
+            assert_eq!(metadata.mode() & 0o777, 0o700);
+            fs::remove_dir(stage).unwrap();
+        }
+    }
     #[test]
     fn refuses_missing_extra_or_unreadable_signing_flags() {
         for (name, bit) in [("host", 0x0001), ("hard", 0x0100), ("kill", 0x0200),
