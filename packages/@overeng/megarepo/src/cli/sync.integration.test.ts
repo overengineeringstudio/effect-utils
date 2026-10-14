@@ -3664,60 +3664,96 @@ describe('mr lock', () => {
       { timeout: 15_000 },
     )
 
-    /**
-     * Branch worktrees are the co-development surface: local commits deliberately move HEAD
-     * ahead of the lock. Failing on that would break the normal local loop, so a dirty branch
-     * worktree stays a skip even when its commit disagrees with the lock.
-     */
-    it.effect(
-      'should still skip, not fail, when a dirty branch worktree disagrees with the lock',
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-          const store = yield* createStoreFixture([
-            { host: 'example.com', owner: 'acme', repo: 'lib', branches: ['main'] },
-          ])
-          const mainWorktree = store.worktreePaths['example.com/acme/lib#main']
-          if (mainWorktree === undefined) throw new Error('Missing main worktree')
+    for (const state of ['exact', 'ahead', 'dirty'] as const) {
+      it.effect(
+        `exact-lock tracking ${state}: preserve canonical branch and converge on warm apply`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const store = yield* createStoreFixture([
+              { host: 'example.com', owner: 'acme', repo: 'lib', branches: ['main'] },
+            ])
+            const mainWorktree = store.worktreePaths['example.com/acme/lib#main']
+            if (mainWorktree === undefined) throw new Error('Missing main worktree')
+            const lockedCommit = yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')
+            const { workspacePath } = yield* createWorkspaceWithLock({
+              members: { lib: 'https://example.com/acme/lib#main' },
+              lockEntries: {
+                lib: { url: 'https://example.com/acme/lib', ref: 'main', commit: lockedCommit },
+              },
+            })
+            const env = {
+              CI: 'false',
+              MEGAREPO_STORE: store.storePath.slice(0, -1),
+              MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+            }
+            const args = ['--worktree-mode', 'tracking', '--output', 'json']
+            const initial = yield* runApplyCommand({ cwd: workspacePath, args, env })
+            expect(initial.exitCode).toBe(0)
+            const mount = EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeDir('repos/lib/'),
+            )
+            expect(yield* fs.realPath(mount)).toBe(mainWorktree.slice(0, -1))
+            if (state === 'ahead') {
+              yield* fs.writeFileString(`${mainWorktree}wip.txt`, 'local commit\n')
+              yield* addCommit({ repoPath: mainWorktree, message: 'Local work' })
+            } else if (state === 'dirty') {
+              yield* fs.writeFileString(`${mainWorktree}dirty.txt`, 'uncommitted work\n')
+            }
+            const headBefore = yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')
+            const dirtyBefore = yield* runGitCommand(mainWorktree, 'status', '--porcelain')
+            const lockPath = EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeFile('megarepo.lock'),
+            )
+            const lockBefore = yield* fs.readFileString(lockPath)
+            const before = yield* runMrCommand({
+              cwd: workspacePath,
+              command: ['status'],
+              args: ['--output', 'json'],
+              env,
+            })
+            const beforeStatus = yield* Schema.decodeEffect(
+              Schema.fromJsonString(Schema.Struct({ applyNeeded: Schema.Boolean })),
+            )(before.stdout.trim())
+            expect(beforeStatus.applyNeeded).toBe(state !== 'exact')
 
-          // Advance the branch past the commit the lock will record, so the branch worktree is
-          // legitimately ahead — exactly the co-development shape.
-          const staleCommit = (yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')).trim()
-          yield* fs.writeFileString(
-            EffectPath.ops.join(mainWorktree, EffectPath.unsafe.relativeFile('wip.txt')),
-            'wip\n',
-          )
-          yield* addCommit({ repoPath: mainWorktree, message: 'Local work' })
-
-          const { workspacePath } = yield* createWorkspaceWithLock({
-            members: { lib: 'https://example.com/acme/lib#main' },
-            lockEntries: {
-              lib: { url: 'https://example.com/acme/lib', ref: 'main', commit: staleCommit },
-            },
-          })
-          const env = { MEGAREPO_STORE: store.storePath.slice(0, -1) }
-
-          yield* runApplyCommand({ cwd: workspacePath, args: ['--worktree-mode', 'tracking'], env })
-          yield* fs.writeFileString(
-            EffectPath.ops.join(mainWorktree, EffectPath.unsafe.relativeFile('dirty.txt')),
-            'uncommitted work\n',
-          )
-
-          const result = yield* runApplyCommand({
-            cwd: workspacePath,
-            args: ['--worktree-mode', 'tracking', '--output', 'json'],
-            env,
-          })
-          const json = decodeSyncJsonOutput(result.stdout.trim())
-
-          expect(json.results[0]?.status).not.toBe('error')
-          expect(result.exitCode).toBe(0)
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-      { timeout: 15_000 },
-    )
+            for (const run of ['cold', 'warm'] as const) {
+              const applied = yield* runApplyCommand({ cwd: workspacePath, args, env })
+              expect(applied.exitCode, run).toBe(0)
+              expect(applied.stdout).not.toContain('PermissionDenied')
+              expect(yield* fs.realPath(mount)).toBe(
+                state === 'exact'
+                  ? mainWorktree.slice(0, -1)
+                  : `${store.storePath}example.com/acme/lib/refs/commits/${lockedCommit}`,
+              )
+              expect(yield* runGitCommand(mount, 'rev-parse', 'HEAD')).toBe(lockedCommit)
+              expect(yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')).toBe(headBefore)
+              expect(yield* runGitCommand(mainWorktree, 'branch', '--show-current')).toBe('main')
+              expect(yield* runGitCommand(mainWorktree, 'status', '--porcelain')).toBe(dirtyBefore)
+              expect(yield* fs.readFileString(lockPath)).toBe(lockBefore)
+              const status = yield* runMrCommand({
+                cwd: workspacePath,
+                command: ['status'],
+                args: ['--all', '--output', 'json'],
+                env,
+              })
+              const out = yield* Schema.decodeEffect(
+                Schema.fromJsonString(Schema.Struct({ applyNeeded: Schema.Boolean })),
+              )(status.stdout.trim())
+              expect(out.applyNeeded, run).toBe(false)
+            }
+            if (state === 'dirty') {
+              expect(yield* fs.readFileString(`${mainWorktree}dirty.txt`)).toBe('uncommitted work\n')
+            }
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+        { timeout: 30_000 },
+      )
+    }
 
     it.effect(
       'should allow ref change with --force even if old worktree is dirty',
@@ -4033,9 +4069,9 @@ describe('mr fetch', () => {
     )
   })
 
-  describe('fast-forward branch worktrees', () => {
+  describe('exact-lock branch worktrees', () => {
     it.effect(
-      'should fast-forward existing branch worktree when remote has new commits',
+      'exact-lock tracking falls back when the canonical branch is behind the fetched lock',
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
@@ -4136,35 +4172,33 @@ describe('mr fetch', () => {
           const newCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
           expect(newCommit).not.toBe(initialCommit)
 
-          const refused = yield* runFetchApplyCommand({
+          const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
             args: ['--output', 'json', '--worktree-mode', 'tracking'],
             env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
           })
-          expect(refused.exitCode).toBe(1)
-          expect(decodeSyncJsonOutput(refused.stdout.trim()).results[0]?.message).toContain(
-            'Refusing to mutate canonical worktree',
-          )
+          expect(result.exitCode).toBe(0)
+          const json = decodeSyncJsonOutput(result.stdout.trim())
+          expect(json.results).toHaveLength(1)
+          expect(json.results[0]?.commit).toBe(newCommit)
           expect(yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')).toBe(initialCommit)
-
-          // 6. Run mr fetch --apply with tracking mode (to test branch worktree ff-merge)
-          const result = yield* runFetchApplyCommand({
+          expect(yield* fs.exists(`${worktreePath}new-file.txt`)).toBe(false)
+          const memberMount = EffectPath.ops.join(
+            reposDir,
+            EffectPath.unsafe.relativeDir('test-repo/'),
+          )
+          expect(yield* fs.realPath(memberMount)).toBe(
+            `${repoBasePath}refs/commits/${newCommit}`,
+          )
+          expect(yield* runGitCommand(memberMount, 'rev-parse', 'HEAD')).toBe(newCommit)
+          const warm = yield* runApplyCommand({
             cwd: workspacePath,
             args: ['--output', 'json', '--worktree-mode', 'tracking'],
-            env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '1' },
+            env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
           })
-          const json = decodeSyncJsonOutput(result.stdout.trim())
-
-          // 7. Verify result — applyAfterFetch uses branch worktrees and fast-forwards
-          expect(json.results).toHaveLength(1)
-          const memberResult = json.results[0]!
-          expect(memberResult.status).toBe('updated')
-          expect(memberResult.commit).toBe(newCommit)
-          expect(memberResult.previousCommit).toBe(initialCommit)
-
-          // 8. Verify worktree HEAD is actually updated
-          const worktreeHeadAfter = yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')
-          expect(worktreeHeadAfter).toBe(newCommit)
+          expect(warm.exitCode).toBe(0)
+          expect(yield* fs.realPath(memberMount)).toBe(`${repoBasePath}refs/commits/${newCommit}`)
+          expect(yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')).toBe(initialCommit)
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,

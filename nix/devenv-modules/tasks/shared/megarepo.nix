@@ -24,13 +24,13 @@
 # - disabledTasks: Task names omitted from this module instance. Default: [ ].
 # - setupCommitMembers: Root members that mr:setup materializes as fresh commit
 #   worktrees with their nested megarepo trees prepared in the same invocation
-#   (`mr apply --commit-members ...`); mr:setup readiness then uses
+#   (`mr apply --commit-members ...`); local readiness checks all root members
+#   with `mr status`, then only listed, non-skipped nested megarepos with
 #   `mr status --all`, including on the outer setup cache-hit path. Use it for
 #   members whose own repos/ must exist locally (validation-only nested hooks).
 #   Other members stay on shared tracking worktrees. Default: [ ] (setup
 #   behaves as plain tracking apply). With CI=true, setup uses commit worktrees
-#   for every member; a non-empty list prepares every root member's nested tree,
-#   because `mr status --all` readiness inspects all of them.
+#   for every member; a non-empty list prepares and checks every root's tree.
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add dependencies in their devenv.nix:
@@ -166,12 +166,35 @@ let
     ''}
     ${checkWorkspaceMembersScript}
 
-    # Recursive readiness also covers nested repos/ mounts, so it runs on the
-    # outer setup cache-hit path too: a root symlink alone is not a prepared tree.
-    status_json=$(mr status${lib.optionalString recursive " --all"} --output json 2>/dev/null) || exit 1
+    ${lib.optionalString recursive ''
+      # CI prepares every root tree; local setup prepares only selected trees.
+      # Both scopes must still be checked on the outer setup cache-hit path.
+      if [ "''${CI:-}" = "true" ]; then
+        status_json=$(mr status --all --output json 2>/dev/null) || exit 1
+        echo "$status_json" \
+          | ${jq} -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
+          >/dev/null 2>&1
+        exit $?
+      fi
+    ''}
+    status_json=$(mr status --output json 2>/dev/null) || exit 1
     echo "$status_json" \
       | ${jq} -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
-      >/dev/null 2>&1
+      >/dev/null 2>&1 || exit 1
+
+    ${lib.optionalString recursive (lib.concatMapStringsSep "\n" (member: ''
+      if ! should_skip_member ${lib.escapeShellArg member}; then
+        member_root="$workspace_root/repos/"${lib.escapeShellArg member}
+        # Ordinary repos have no nested megarepo to prepare or inspect.
+        if [ -f "$member_root/megarepo.kdl" ] || [ -f "$member_root/megarepo.json" ]; then
+          status_json=$(cd "$member_root" && mr status --all --output json 2>/dev/null) || exit 1
+          echo "$status_json" \
+            | ${jq} -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
+            >/dev/null 2>&1 || exit 1
+        fi
+      fi
+    '') setupCommitMembers)}
+    exit 0
   '';
   mrStatusCheck = mkMrStatusCheck false;
 

@@ -481,9 +481,10 @@ cannot bring such a worktree to the locked revision — for example because it h
 uncommitted work and `--force` was not given — it reports an **error** naming both
 revisions, not a skip, and exits non-zero.
 
-Branch worktrees are exempt. Co-development deliberately moves `HEAD` ahead of the
-lock, so a branch worktree that disagrees stays a skip. See
-[decision 0009](./decisions/0009-apply-drift-postcondition.md).
+Canonical branch worktrees are preserved rather than reconciled. Tracking apply
+reuses a branch only when it is clean and exactly at the locked commit; otherwise
+it repoints the member to the locked commit worktree without changing the branch
+or its local edits.
 
 This postcondition matters because the drift is otherwise invisible: `repos/` is
 gitignored, so `git status` stays clean, and `mr:lock-sync-check` compares
@@ -499,13 +500,19 @@ lib  ref changed but old worktree has 1 uncommitted changes (use --force to over
 
 **Worktree modes** (`--worktree-mode`):
 
-| Mode       | Worktree path          | Behavior                                                                                                      |
-| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `commit`   | `refs/commits/<sha>/`  | Deterministic, isolated — exact locked commit guaranteed                                                      |
-| `tracking` | `refs/heads/<branch>/` | Branch worktrees for dev convenience; falls back to commit worktree if branch has advanced past locked commit |
-| `auto`     | (depends)              | `commit` in CI; `tracking` locally                                                                            |
+| Mode       | Worktree path | Behavior |
+| ---------- | ------------- | -------- |
+| `commit`   | `refs/commits/<sha>/` | Deterministic — exact locked commit |
+| `tracking` | `refs/heads/<branch>/` or `refs/commits/<sha>/` | Clean exact-lock branch only; otherwise immutable commit fallback |
+| `auto`     | (depends) | `commit` in CI; `tracking` locally |
 
-In `tracking` mode, if the branch worktree is behind the locked commit, it is fast-forwarded. If the branch has advanced past the locked commit (fast-forward not possible), `mr apply` falls back to a commit worktree to ensure correct content without detaching the branch worktree.
+In `tracking` mode, any branch `HEAD` mismatch (ahead or behind), dirty tree,
+or branch-identity mismatch selects `refs/commits/<locked-commit>`. A missing
+canonical branch worktree is created only if its existing local branch already
+resolves to the lock. Apply never checks out, resets, or fast-forwards the
+canonical branch, including when an administrative mutation override is set.
+The old worktree and its edits remain untouched; only the workspace symlink
+changes. A warm rerun reuses the exact-lock mount.
 
 `mr apply --commit-members <a,b>` (apply only, requires `--lock-sync off`, exclusive with `--all`) materializes the listed root members as commit worktrees and applies their nested megarepos recursively in commit mode; unlisted members keep `--worktree-mode` and are not recursed into. `--only`/`--skip` select root members only and never filter a listed member's subtree, so a fresh commit subtree is complete or absent. It is the local path for consumers whose nested hooks only validate prepared trees (devenv option `setupCommitMembers`). Recursion populates only commit worktrees created by the invocation; a preexisting nested commit worktree is accepted when its locked tree is already mounted and refused otherwise.
 
@@ -1089,10 +1096,9 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 ### `mr fetch --apply` Strategy
 
 1. **Fetch:** Get latest refs from remote
-2. **Check dirty:** Fail if worktree has uncommitted changes (unless `--force`)
-3. **Resolve:** Find current commit for the ref
-4. **Fast-forward:** If worktree exists and is a branch, `git merge --ff-only` to update working tree
-5. **Update lock:** Write new commit to lock file
+2. **Resolve:** Find the current remote commit for the ref
+3. **Update lock:** Record the resolved commit without advancing canonical branches
+4. **Apply:** Reuse a clean branch exactly at that commit, or mount its commit worktree
 
 ### `mr apply` Strategy
 

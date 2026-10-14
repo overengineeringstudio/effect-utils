@@ -614,8 +614,8 @@ export const syncMember = <R = never>({
     // legitimately moves them. So if one disagrees with the lock, the workspace is wrong no
     // matter why apply could not fix it.
     //
-    // Branch worktrees are deliberately excluded. Co-development moves HEAD ahead of the lock
-    // on purpose, so failing on that would break the normal local loop.
+    // Branch HEAD is not a pinned identity. Apply preserves the original branch
+    // and selects a locked commit mount when it cannot reuse that branch exactly.
     //
     // The two are compared on different fields: a commit worktree is named by sha, a tag
     // worktree by tag name. Comparing a tag against `lockedMember.commit` would mismatch on
@@ -626,6 +626,18 @@ export const syncMember = <R = never>({
       isApplyMode === true
         ? computePinnedDrift({ symlinkRef: currentSymlinkRef, lockedMember })
         : undefined
+
+    // Repointing a canonical branch mount preserves its worktree and local edits.
+    // Other dirty mounts retain the explicit --force switching policy.
+    const preservesCanonicalBranch =
+      isApplyMode === true &&
+      currentLink !== null &&
+      currentSymlinkRef?.type === 'branch' &&
+      currentLink.replace(/\/$/, '') ===
+        (yield* resolveWorktreePath({
+          ref: currentSymlinkRef.ref,
+          refType: 'branch',
+        })).replace(/\/$/, '')
 
     // In lock and apply modes, if member exists, check if symlink points to correct ref
     if (memberExists === true && (isLockMode === true || isApplyMode === true)) {
@@ -695,7 +707,7 @@ export const syncMember = <R = never>({
       }
 
       // Check if old worktree has uncommitted changes before switching
-      if (force === false && dryRun === false) {
+      if (preservesCanonicalBranch === false && force === false && dryRun === false) {
         const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
           Effect.orElseSucceed(() => ({
             isDirty: false,
@@ -716,28 +728,6 @@ export const syncMember = <R = never>({
       // Fall through to content-aware worktree selection
     }
 
-    // For lock update mode, check if worktree is dirty before making changes
-    if (isApplyMode === true && memberExists === true && dryRun === false) {
-      const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
-        Effect.orElseSucceed(() => ({
-          isDirty: false,
-          hasUnpushed: false,
-          changesCount: 0,
-        })),
-      )
-      if (
-        (worktreeStatus.isDirty === true || worktreeStatus.hasUnpushed === true) &&
-        force === false
-      ) {
-        const reason =
-          worktreeStatus.isDirty === true
-            ? `${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
-            : 'has unpushed commits (use --force to override)'
-        return pinnedDrift !== undefined
-          ? applyDriftError({ name, reason, drift: pinnedDrift })
-          : ({ name, status: 'skipped', message: reason } satisfies MemberSyncResult)
-      }
-    }
 
     if (isLockMode === true && memberExists === false) {
       return {
@@ -1010,23 +1000,43 @@ export const syncMember = <R = never>({
       }
     }
 
-    // Worktree selection in apply mode:
-    // - commit mode (--worktree-mode=commit, CI default): always refs/commits/<sha>/
-    // - tracking mode (default): refs/heads/<branch>/, but if ff-merge later fails
-    //   (branch ahead of locked commit), we switch to a commit worktree rather than
-    //   detaching HEAD (which would break idempotency via ref_mismatch on next run).
+    // Tracking is a read-only choice: reuse a clean branch only at the exact lock.
+    // Otherwise select the immutable commit worktree before materialization.
     type WorktreeSelection =
       | { readonly _tag: 'branch'; readonly ref: string }
       | { readonly _tag: 'commit'; readonly commit: string }
       | { readonly _tag: 'default'; readonly ref: string; readonly refType: RefType }
-    const worktreeSelection: WorktreeSelection =
-      isApplyMode === true && targetCommit !== undefined
-        ? commitMode === true && (actualRefType === 'branch' || actualRefType === 'tag')
-          ? { _tag: 'commit', commit: targetCommit }
-          : actualRefType === 'branch'
-            ? { _tag: 'branch', ref: targetRef }
-            : { _tag: 'default', ref: targetRef, refType: actualRefType }
-        : { _tag: 'default', ref: targetRef, refType: actualRefType }
+    const worktreeSelection: WorktreeSelection = yield* Effect.gen(function* () {
+      if (isApplyMode === false || targetCommit === undefined) {
+        return { _tag: 'default' as const, ref: targetRef, refType: actualRefType }
+      }
+      if (commitMode === true && (actualRefType === 'branch' || actualRefType === 'tag')) {
+        return { _tag: 'commit' as const, commit: targetCommit }
+      }
+      if (actualRefType !== 'branch') {
+        return { _tag: 'default' as const, ref: targetRef, refType: actualRefType }
+      }
+      const branchPath = yield* resolveWorktreePath({ ref: targetRef, refType: 'branch' })
+      if ((yield* worktreePathExists(branchPath)) === true) {
+        const reusable = yield* Effect.gen(function* () {
+          if ((yield* Git.getCurrentCommit(branchPath)) !== targetCommit) return false
+          const branch = yield* Git.getCurrentBranch(branchPath)
+          if (Option.isNone(branch) === true || branch.value !== targetRef) return false
+          return (yield* Git.getWorktreeStatus(branchPath)).isDirty === false
+        }).pipe(Effect.orElseSucceed(() => false))
+        if (reusable === true) return { _tag: 'branch' as const, ref: targetRef }
+      } else if ((yield* fs.exists(branchPath)) === false) {
+        // Creating a missing worktree does not advance the local branch ref.
+        const branchHead = yield* Git.resolveRef({
+          repoPath: bareRepoPath,
+          ref: `refs/heads/${targetRef}`,
+        }).pipe(Effect.option)
+        if (Option.isSome(branchHead) === true && branchHead.value === targetCommit) {
+          return { _tag: 'branch' as const, ref: targetRef }
+        }
+      }
+      return { _tag: 'commit' as const, commit: targetCommit }
+    })
     let worktreeRef: string =
       worktreeSelection._tag === 'commit' ? worktreeSelection.commit : worktreeSelection.ref
     let worktreeRefType: RefType =
@@ -1158,49 +1168,28 @@ export const syncMember = <R = never>({
         )
       })
 
-    // In tracking mode (branch worktrees), ensure the worktree is at the locked commit.
-    // Try ff-merge; if it fails (branch ahead of locked commit), switch to a commit worktree
-    // rather than detaching HEAD (which would break idempotency via ref_mismatch on next run).
-    let remoteUpdated = false
-    let remotePreviousCommit: string | undefined
+    // Re-check branch admission after creation: a concurrently changed canonical
+    // worktree is left untouched and the mount falls back to the locked commit.
     if (
       isApplyMode === true &&
       dryRun === false &&
       worktreeRefType === 'branch' &&
       targetCommit !== undefined
     ) {
-      // Check for ref mismatch before merging — if someone ran `git checkout <other-branch>`
-      // in the worktree, we must not merge into the wrong branch.
+      // Branch identity, exact HEAD, and a clean tree are all required for reuse.
       const worktreeBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
         Effect.orElseSucceed(() => Option.none<string>()),
       )
       const onExpectedBranch =
         Option.isSome(worktreeBranch) === true && worktreeBranch.value === targetRef
 
-      if (onExpectedBranch === true) {
-        const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
-        const currentCommit = Option.getOrUndefined(currentCommitOpt)
-        if (currentCommit !== undefined && currentCommit !== targetCommit) {
-          yield* assertCanonicalMutationAllowed({ target: worktreePath })
-          const mergeResult = yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
-            Effect.map(() => 'ok' as const),
-            Effect.orElseSucceed(() => 'failed' as const),
-          )
-          if (mergeResult === 'ok') {
-            const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
-            if (headAfterMerge !== currentCommit) {
-              remotePreviousCommit = currentCommit
-              remoteUpdated = true
-            }
-          } else {
-            // FF-merge failed (branch ahead of locked commit).
-            // Switch to commit worktree to avoid detaching the branch worktree.
-            yield* ensureCommitWorktree()
-          }
-        }
-      } else {
-        // Ref mismatch: worktree is on a different branch.
-        // Switch to commit worktree instead of reporting error (apply should succeed).
+      const currentCommit = yield* Git.getCurrentCommit(worktreePath)
+      const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath)
+      if (
+        onExpectedBranch === false ||
+        currentCommit !== targetCommit ||
+        worktreeStatus.isDirty === true
+      ) {
         yield* ensureCommitWorktree()
       }
     }
@@ -1218,9 +1207,8 @@ export const syncMember = <R = never>({
       if (existingLink.replace(/\/$/, '') === finalWorktreePath.replace(/\/$/, '')) {
         return {
           name,
-          status: remoteUpdated === true ? 'updated' : 'already_synced',
+          status: 'already_synced',
           commit: targetCommit,
-          previousCommit: remotePreviousCommit,
           ref: targetRef,
         } satisfies MemberSyncResult
       }
