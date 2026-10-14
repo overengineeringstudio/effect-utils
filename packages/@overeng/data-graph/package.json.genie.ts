@@ -1,4 +1,4 @@
-/** @genie-bootstrap */
+// @genie-bootstrap
 import {
   catalog,
   exportEntry,
@@ -12,18 +12,16 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/data-graph' }),
-  dependencies: { workspace: [contentAddressPkg], external: catalog.pick('effect') },
+  dependencies: {
+    workspace: [contentAddressPkg],
+    external: catalog.pick('@effect/platform-node', 'effect'),
+  },
   devDependencies: {
     workspace: [utilsDevPkg],
-    external: catalog.pick(
-      '@effect/platform-node',
-      '@effect/vitest',
-      '@types/node',
-      'typescript',
-      'vitest',
-    ),
+    external: catalog.pick('@effect/vitest', '@types/node', 'typescript', 'vitest'),
   },
 })
+
 export default packageJson(
   {
     name: '@overeng/data-graph',

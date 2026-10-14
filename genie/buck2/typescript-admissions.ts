@@ -6,6 +6,7 @@ import { buck2TypeScriptAdmission as aiGatewayEdgeAdmission } from '../../packag
 import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/@overeng/buck2-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as dataGraphAdmission } from '../../packages/@overeng/data-graph/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as devbarAdmission } from '../../packages/@overeng/devbar/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiClaudeCliAdmission } from '../../packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiGatewayAdmission } from '../../packages/@overeng/effect-ai-gateway/BUCK.genie.ts'
@@ -96,6 +97,7 @@ export const buck2TypeScriptAdmissions = {
   buck2Tools: buck2ToolsAdmission,
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,
+  dataGraph: dataGraphAdmission,
   devbar: devbarAdmission,
   meters: metersAdmission,
   effectRpcObserver: effectRpcObserverAdmission,

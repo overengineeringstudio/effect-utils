@@ -13,5 +13,5 @@ export default tsconfigJson({
     noEmit: true,
   },
   include: ['src/**/*'],
-  references: [{ path: '../content-address' }],
+  // Buck supplies sibling declarations; noEmit source projects cannot be project references.
 } satisfies TSConfigArgs)
