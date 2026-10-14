@@ -63,6 +63,10 @@ describe('root Buck aggregate projection', () => {
     expect(output).toContain('name = "all"')
     expect(output).toContain('check_aggregate(')
     expect(output).toContain('weaver_checks(')
+    expect(output).not.toContain('# Semantic inputs:')
+    expect(output).toContain('# Projection source: BUCK.genie.ts')
+    expect(output).toMatch(/^# Semantic fingerprint: sha256:[a-f0-9]{64}$/m)
+    expect(output).toContain('# Regenerate: devenv tasks run genie:run')
   })
 
   it('checks every fixture TypeScript source against the real package declarations', () => {
@@ -77,9 +81,7 @@ describe('root Buck aggregate projection', () => {
     expect(output).toContain(
       '"node_modules/@overeng/effect-rust/node_modules": "//packages/@overeng/effect-rust:package_tree"',
     )
-    expect(output).toContain(
-      '"effect-rust-fixture": "//rust/effect-rust-fixtures/service:service"',
-    )
+    expect(output).toContain('"effect-rust-fixture": "//rust/effect-rust-fixtures/service:service"')
     expect(fixtureTsconfig.data.include).toEqual(['**/*.ts'])
     expect(fixtureTsconfig.data.exclude).toEqual(['**/*.genie.ts'])
     expect(fixtureTsconfig.data.compilerOptions).toMatchObject({

@@ -679,6 +679,10 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
+      - name: Check shared megarepo task flags against the published CLI
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/devenv-modules/tasks/shared/tests/megarepo-product-flags.test.sh "$PWD"'
       - name: Enforce root changelog retirement
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
