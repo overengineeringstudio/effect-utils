@@ -1,10 +1,7 @@
-# Generated file - DO NOT EDIT
-# Source: BUCK.genie.ts
-
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:21deb314d3cd7122937bb33b5c6b4176e2b71c9154e63f5c65d9f406acd7d793
+# Semantic fingerprint: sha256:300aad6e219d97dc5d38b6adcb7f36bd189894708e5b9710a746207012401b36
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -170,6 +167,7 @@ check_aggregate(
         "//packages/@overeng/buck2-tools:typecheck",
         "//packages/@overeng/ci-tools:typecheck",
         "//packages/@overeng/content-address:typecheck",
+        "//packages/@overeng/data-graph:typecheck",
         "//packages/@overeng/devbar:typecheck",
         "//packages/@overeng/meters:typecheck",
         "//packages/@overeng/effect-rpc-observer:typecheck",
@@ -237,6 +235,7 @@ check_aggregate(
         "//packages/@overeng/buck2-tools:dist",
         "//packages/@overeng/ci-tools:dist",
         "//packages/@overeng/content-address:dist",
+        "//packages/@overeng/data-graph:dist",
         "//packages/@overeng/devbar:dist",
         "//packages/@overeng/meters:dist",
         "//packages/@overeng/effect-rpc-observer:dist",
@@ -288,6 +287,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/ci-tools:test",
         "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api",
         "effect_utils//packages/@overeng/content-address:test",
+        "effect_utils//packages/@overeng/data-graph:test",
         "effect_utils//packages/@overeng/devbar:test",
         "effect_utils//packages/@overeng/effect-ai-claude-cli:test",
         "effect_utils//packages/@overeng/effect-ai-gateway:test",
