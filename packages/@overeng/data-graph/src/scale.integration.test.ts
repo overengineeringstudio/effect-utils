@@ -86,8 +86,40 @@ const scaleScenario = Effect.fn('DataGraph.scaleScenario')(function* (size: numb
     expect(observationCalls).toBe(size)
     expect(aggregateCalls).toBe(1)
 
+    const store = yield* GraphStore
+    let reads = 0
+    let writes = 0
+    let pins = 0
+    let lookups = 0
+    const readDigests = new Set<string>()
+    const profiled = {
+      ...store,
+      get: (descriptor: Parameters<typeof store.get>[0]) => {
+        reads++
+        readDigests.add(descriptor.digest)
+        return store.get(descriptor)
+      },
+      put: (...args: Parameters<typeof store.put>) => {
+        writes++
+        return store.put(...args)
+      },
+      manifest: (...args: Parameters<typeof store.manifest>) => {
+        writes++
+        return store.manifest(...args)
+      },
+      pin: (...args: Parameters<typeof store.pin>) => {
+        pins++
+        return store.pin(...args)
+      },
+      lookup: (...args: Parameters<typeof store.lookup>) => {
+        lookups++
+        return store.lookup(...args)
+      },
+    }
     const warmStart = performance.now()
-    const warm = yield* DataGraph.materialize(target)
+    const warm = yield* DataGraph.materialize(target).pipe(
+      Effect.provideService(GraphStore, profiled),
+    )
     const warmMillis = performance.now() - warmStart
     expect(warm.trace).toHaveLength(size + 1)
     expect(warm.trace.every((entry) => entry.outcome._tag === 'Reused')).toBe(true)
@@ -132,7 +164,9 @@ const scaleScenario = Effect.fn('DataGraph.scaleScenario')(function* (size: numb
       process.stdout.write(
         `data-graph scale scopes=${size} nodes=${size + 1} cold=${coldMillis.toFixed(2)}ms ` +
           `warm-all-reused=${warmMillis.toFixed(2)}ms inventory=${inventoryMillis.toFixed(2)}ms ` +
-          `planRefresh=${planningMillis.toFixed(2)}ms planned=${requests.length}\n`,
+          `planRefresh=${planningMillis.toFixed(2)}ms planned=${requests.length} ` +
+          `warm-cas-gets=${reads} unique-read-digests=${readDigests.size} ` +
+          `warm-object-writes=${writes} pins=${pins} pin-lookups=${lookups}\n`,
       ),
     )
   }).pipe(Effect.provide(GraphStore.fileSystem(root)))
