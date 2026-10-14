@@ -40,6 +40,10 @@ case "$*" in
   'ls --output json') printf '{"_tag":"Success","members":[{"name":"plain"},{"name":"nested"},{"name":"unlisted"}]}\n' ;;
   'status --output json'|'status --all --output json')
     printf '%s: %s\n' "${PWD#"${MR_ROOT:?}"}" "$*" >> "${MR_STATUS_CALLS:?}"
+    if [ "$PWD" = "$MR_ROOT" ] && { [ ! -d "$MR_ROOT/repos/nested" ] || [ -f "$MR_ROOT/repos/nested/drift" ]; }; then
+      printf '%s\n' '{"syncNeeded":true,"applyNeeded":true,"syncReasons":["Member \u0027nested\u0027 commit drift"]}'
+      exit 0
+    fi
     case "$PWD:$*" in
       "$MR_ROOT:status --output json") needed="${MR_ROOT_APPLY_NEEDED:-false}" ;;
       "$MR_ROOT:status --all --output json")
@@ -148,6 +152,14 @@ mv "$workspace/repos/nested" "$tmpdir/nested"
 [ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 MEGAREPO_SKIP_MEMBERS=nested run_script "$status_set")" = 0 ] \
   || fail "skipped selected root mounts may be omitted"
 mv "$tmpdir/nested" "$workspace/repos/nested"
+touch "$workspace/repos/nested/drift"
+for cache_hit in 0 1; do
+  [ "$(DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" MEGAREPO_SKIP_MEMBERS=nested run_script "$status_set")" = 0 ] \
+    || fail "skipped drifted member must not block readiness"
+  [ "$(DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_set")" = 1 ] \
+    || fail "non-skipped drifted member must block readiness"
+done
+rm "$workspace/repos/nested/drift"
 [ "$(MEGAREPO_SKIP_MEMBERS=nested run_script "$exec_set")" = 0 ] || fail "skipped setup exec failed"
 grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off --skip nested' "$calls" \
   || fail "exec must preserve the skip selection"

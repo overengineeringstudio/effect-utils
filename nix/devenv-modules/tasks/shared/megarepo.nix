@@ -165,22 +165,34 @@ let
       fi
     ''}
     ${checkWorkspaceMembersScript}
+    status_is_ready() {
+      ${jq} -e --arg skip "$_mr_skip_csv" '
+        ($skip | split(",") | map(select(length > 0))) as $skipped
+        | if ($skipped | length) == 0 or (.syncReasons | type) != "array" then
+            (.syncNeeded // false) == false and (.applyNeeded // false) == false
+          else
+            [.syncReasons[] | . as $reason
+              | select(any($skipped[];
+                  . as $member | $reason
+                  | startswith("Member \u0027" + $member + "\u0027")
+                    or startswith("Member \u0027" + $member + "/")
+                    or startswith("Lock file has extra member \u0027" + $member + "\u0027")
+                ) | not)] | length == 0
+          end
+      ' >/dev/null 2>&1
+    }
 
     ${lib.optionalString recursive ''
       # CI prepares every root tree; local setup prepares only selected trees.
       # Both scopes must still be checked on the outer setup cache-hit path.
       if [ "''${CI:-}" = "true" ]; then
         status_json=$(mr status --all --output json 2>/dev/null) || exit 1
-        echo "$status_json" \
-          | ${jq} -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
-          >/dev/null 2>&1
+        echo "$status_json" | status_is_ready
         exit $?
       fi
     ''}
     status_json=$(mr status --output json 2>/dev/null) || exit 1
-    echo "$status_json" \
-      | ${jq} -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
-      >/dev/null 2>&1 || exit 1
+    echo "$status_json" | status_is_ready || exit 1
 
     ${lib.optionalString recursive (lib.concatMapStringsSep "\n" (member: ''
       if ! should_skip_member ${lib.escapeShellArg member}; then

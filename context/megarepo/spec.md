@@ -137,6 +137,11 @@ file rather than a symlink is foreign and refused before replacement.
 
 ### Exact-lock tracking selection (MR-R01)
 
+MR-R01's pinned-materialization postcondition governs immutable commit mounts.
+Preserving an author's branch worktree does not exempt the member mount from
+the exact-lock selection rule: when that branch is unsuitable, apply preserves
+it and selects the locked commit rather than leaving a divergent mount.
+
 | Tracking branch state | Member mount |
 | --- | --- |
 | Canonical branch identity, clean tree, `HEAD == lock.commit` | `refs/heads/<branch>` |

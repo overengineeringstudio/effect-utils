@@ -3665,7 +3665,7 @@ describe('mr lock', () => {
       { timeout: 15_000 },
     )
 
-    for (const state of ['exact', 'ahead', 'dirty'] as const) {
+    for (const state of ['exact', 'ahead', 'dirty', 'detached', 'absent'] as const) {
       it.effect(
         `exact-lock tracking ${state}: preserve canonical branch and converge on warm apply`,
         Effect.fnUntraced(
@@ -3704,14 +3704,21 @@ describe('mr lock', () => {
               EffectPath.unsafe.relativeDir('repos/lib/'),
             )
             expect(yield* fs.realPath(mount)).toBe(mainWorktree.slice(0, -1))
-            if (state === 'ahead') {
+            if (state === 'ahead' || state === 'absent') {
               yield* fs.writeFileString(`${mainWorktree}wip.txt`, 'local commit\n')
               yield* addCommit({ repoPath: mainWorktree, message: 'Local work' })
             } else if (state === 'dirty') {
               yield* fs.writeFileString(`${mainWorktree}dirty.txt`, 'uncommitted work\n')
+            } else if (state === 'detached') {
+              yield* runGitCommand(mainWorktree, 'checkout', '--detach')
             }
             const headBefore = yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')
             const dirtyBefore = yield* runGitCommand(mainWorktree, 'status', '--porcelain')
+            const refBefore = yield* runGitCommand(bareRepoPath, 'rev-parse', 'refs/heads/main')
+            if (state === 'absent') {
+              yield* runGitCommand(bareRepoPath, 'worktree', 'remove', mainWorktree)
+              expect(yield* fs.exists(mainWorktree)).toBe(false)
+            }
             const lockPath = EffectPath.ops.join(
               workspacePath,
               EffectPath.unsafe.relativeFile('megarepo.lock'),
@@ -3726,7 +3733,9 @@ describe('mr lock', () => {
             const beforeStatus = yield* Schema.decodeEffect(
               Schema.fromJsonString(Schema.Struct({ applyNeeded: Schema.Boolean })),
             )(before.stdout.trim())
-            expect(beforeStatus.applyNeeded).toBe(state !== 'exact')
+            if (state !== 'detached') {
+              expect(beforeStatus.applyNeeded).toBe(state !== 'exact')
+            }
 
             for (const run of ['cold', 'warm'] as const) {
               const applied = yield* runApplyCommand({ cwd: workspacePath, args, env })
@@ -3738,9 +3747,16 @@ describe('mr lock', () => {
                   : `${store.storePath}example.com/acme/lib/refs/commits/${lockedCommit}`,
               )
               expect(yield* runGitCommand(mount, 'rev-parse', 'HEAD')).toBe(lockedCommit)
-              expect(yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')).toBe(headBefore)
-              expect(yield* runGitCommand(mainWorktree, 'branch', '--show-current')).toBe('main')
-              expect(yield* runGitCommand(mainWorktree, 'status', '--porcelain')).toBe(dirtyBefore)
+              expect(yield* runGitCommand(bareRepoPath, 'rev-parse', 'refs/heads/main')).toBe(refBefore)
+              if (state === 'absent') {
+                expect(yield* fs.exists(mainWorktree)).toBe(false)
+              } else {
+                expect(yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')).toBe(headBefore)
+                expect(yield* runGitCommand(mainWorktree, 'branch', '--show-current')).toBe(
+                  state === 'detached' ? '' : 'main',
+                )
+                expect(yield* runGitCommand(mainWorktree, 'status', '--porcelain')).toBe(dirtyBefore)
+              }
               expect(yield* fs.readFileString(lockPath)).toBe(lockBefore)
               const status = yield* runMrCommand({
                 cwd: workspacePath,
