@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Contract test for the Buck JavaScript product import boundary.
 #
-# The boundary is a pure evaluation contract: every expectation it states about
-# a descriptor is decided before a single byte is fetched. The test therefore
-# evaluates it against a stubbed `pkgs` (no nixpkgs, no build), asserts the
-# accepted case, and asserts that each violated expectation fails with its own
-# diagnostic. The byte-level gates run inside the installer script, so they are
-# proven here by the script text the boundary emits.
+# Published descriptors have a pure evaluation contract. A stubbed pkgs makes
+# accepted and rejected contracts observable without nixpkgs or a build.
+# Source descriptors instead remain unread during evaluation; the exact build
+# validator emitted by that mode is exercised against positive and negative
+# fixtures below. Published byte gates are also asserted in the installer text.
 set -euo pipefail
 
 # Supplied by devenv for both task execution and direct shell-based CI calls.
