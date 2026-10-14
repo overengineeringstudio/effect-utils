@@ -35,6 +35,7 @@ const admitted = (
   label = '',
   baselineRef = '',
   runNotionIntegrationOnBranch = false,
+  headRepository = 'owner/repo',
 ) => {
   const triggers = workflowForJob(jobId).split('\njobs:\n')[0]!
   const trigger = triggers.match(
@@ -65,10 +66,14 @@ const admitted = (
       {
         event_name: eventName,
         ref,
+        repository: 'owner/repo',
         event: {
           action,
           label: { name: label },
-          pull_request: { labels: labels.map((name) => ({ name })) },
+          pull_request: {
+            labels: labels.map((name) => ({ name })),
+            head: { repo: { full_name: headRepository, fork: headRepository !== 'owner/repo' } },
+          },
         },
       },
       {
@@ -89,6 +94,10 @@ test('Notion secrets require main or an explicit branch dispatch, never a PR', (
   for (const ref of ['refs/heads/main', 'refs/heads/feature', 'refs/pull/1/merge']) {
     for (const optIn of [false, true]) {
       expect(select('pull_request', ref, optIn, 'synchronize')).toBe(false)
+      expect(select('pull_request_target', ref, optIn, 'synchronize')).toBe(false)
+      expect(
+        admitted(job, 'pull_request', ref, 'synchronize', [], '', '', optIn, 'fork/repo'),
+      ).toBe(false)
       expect(select('merge_group', ref, optIn, 'checks_requested')).toBe(false)
       expect(select('schedule', ref, optIn)).toBe(false)
     }
