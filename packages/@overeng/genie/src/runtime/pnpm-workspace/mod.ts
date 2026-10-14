@@ -17,7 +17,11 @@ import { satisfiesRange } from '../semver/mod.ts'
 import { joinPath } from '../utils/path.ts'
 import { stringify } from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
-import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
+import {
+  relativeRepoPath,
+  rootWorkspaceMemberPathsFromPackages,
+  workspaceClosureReferenceSource,
+} from '../workspace-graph.ts'
 
 // =============================================================================
 // Settings Types
@@ -1187,8 +1191,8 @@ export const projectPnpmSourceInputs = ({
 }) => {
   const byName = new Map<string, string>()
   const projectedPackages = new Map<string, WorkspacePackageLike>()
-  // Closure references retain graph identity but strip manifest behavior. Visit
-  // every distinct representation so a reference cannot hide a later manifest.
+  // Traverse each representation's graph, but validate reference-only entries
+  // against their original manifests rather than their intentionally stripped data.
   const visited = new Set<WorkspacePackageLike>()
   const visit = (pkg: WorkspacePackageLike) => {
     const key = `${pkg.meta.workspace.repoName}:${pkg.meta.workspace.memberPath}`
@@ -1209,10 +1213,7 @@ export const projectPnpmSourceInputs = ({
         throw new Error(`Workspace package ${name} maps to both ${previous} and ${sourcePath}`)
       }
       byName.set(name, sourcePath)
-      const previousPackage = projectedPackages.get(name)
-      if (previousPackage === undefined || Object.keys(previousPackage.data).length === 1) {
-        projectedPackages.set(name, pkg)
-      }
+      projectedPackages.set(name, pkg.meta[workspaceClosureReferenceSource] ?? pkg)
     }
 
     for (const dep of pkg.meta.workspace.deps) visit(dep)
@@ -1250,15 +1251,6 @@ export const projectPnpmSourceInputs = ({
       // pnpm 12 compares file: identity, not package.json version, for local peers.
       // Validate the semver contract above before admitting this specific edge.
       allowedVersions[`${name}>${peer}`] = `file:${pnpmSourceInputStagePath}/${byName.get(peer)!}`
-    }
-  }
-  // A name-only closure reference cannot establish that a package has no peers.
-  // Known peer edges are checked first to retain their precise diagnostics.
-  for (const [name, pkg] of projectedPackages) {
-    if (Object.keys(pkg.data).length === 1) {
-      throw new Error(
-        `Projected package ${name} requires a full manifest to validate peer dependencies`,
-      )
     }
   }
   return {

@@ -183,16 +183,106 @@ describe('projected source peer rules', () => {
   )
 
   it.each([true, false])(
-    'fails closed if a projected dependent only has a closure reference (reference first: %s)',
+    'validates reference-only dependents independent of order (reference first: %s)',
     (referenceFirst) => {
       const { a, b } = fixture()
       const reference = workspaceClosureReference(b)
       const packages = referenceFirst === true ? [reference, a] : [a, reference]
+      expect(projectPnpmSourceInputs({ packages, repoName: 'consumer' })).toEqual(
+        projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }),
+      )
+      a.data.version = '0.2.0'
       expect(() => projectPnpmSourceInputs({ packages, repoName: 'consumer' })).toThrow(
-        'Projected package b requires a full manifest to validate peer dependencies',
+        'b peer a ^0.1.0 vs projected 0.2.0',
       )
     },
   )
+
+  it('validates a peer mismatch reached exclusively through recursive closure references', () => {
+    const { b } = fixture({ version: '0.2.0' })
+    expect(() =>
+      projectPnpmSourceInputs({
+        packages: [workspaceClosureReference(b)],
+        repoName: 'consumer',
+      }),
+    ).toThrow('b peer a ^0.1.0 vs projected 0.2.0')
+  })
+
+  it('fails closed when a reference-only peer target genuinely has no version', () => {
+    const { a, b } = fixture()
+    delete a.data.version
+    expect(() =>
+      projectPnpmSourceInputs({
+        packages: [workspaceClosureReference(b)],
+        repoName: 'consumer',
+      }),
+    ).toThrow('b peer a ^0.1.0 vs projected (missing version)')
+  })
+
+  it('projects a complete name-only manifest with no peers without requiring a version', () => {
+    const leaf = packageJson(
+      { name: 'leaf' },
+      defineCatalog({}).compose({
+        workspace: { repoName: 'library', memberPath: 'leaf' },
+      }),
+    )
+    expect(leaf.data).toEqual({ name: 'leaf' })
+    expect(projectPnpmSourceInputs({ packages: [leaf], repoName: 'consumer' })).toEqual({
+      sourceInputPaths: ['repos/library/leaf'],
+      overrides: { leaf: 'file:.devenv/pnpm-source-inputs/current/repos/library/leaf' },
+      peerDependencyRules: { allowedVersions: {} },
+    })
+  })
+
+  it('preserves the override closure of a generator with a reference-only storybook dependency', () => {
+    // Mirrors the exported generator package's closure-only storybook edge.
+    // Neither the storybook manifest nor its leaf is separately passed to projection.
+    const catalog = defineCatalog({})
+    const leaf = packageJson(
+      { name: 'leaf' },
+      catalog.compose({ workspace: { repoName: 'library', memberPath: 'leaf' } }),
+    )
+    const storybook = packageJson(
+      { name: 'storybook', version: '0.1.0' },
+      catalog.compose({
+        workspace: { repoName: 'library', memberPath: 'storybook' },
+        dependencies: { workspace: [leaf] },
+        peerDependencies: { external: { react: '^19.0.0' } },
+      }),
+    )
+    const reference = workspaceClosureReference(storybook)
+    const generator = packageJson(
+      { name: 'generator', version: '0.1.0' },
+      catalog.compose({
+        workspace: { repoName: 'library', memberPath: 'generator' },
+        devDependencies: { workspace: [reference] },
+        peerDependencies: { workspace: [reference] },
+      }),
+    )
+    expect(reference.data).toEqual({ name: 'storybook' })
+    expect(Object.keys(reference.meta)).toEqual(['workspace'])
+    expect(JSON.stringify(reference)).not.toContain('peerDependencies')
+    expect(generator.data).toEqual({
+      name: 'generator',
+      version: '0.1.0',
+      devDependencies: { storybook: 'workspace:^' },
+    })
+    const serializedBefore = generator.stringify(mockGenieContext)
+    expect(projectPnpmSourceInputs({ packages: [generator], repoName: 'consumer' })).toEqual({
+      sourceInputPaths: [
+        'repos/library/generator',
+        'repos/library/leaf',
+        'repos/library/storybook',
+      ],
+      overrides: {
+        generator: 'file:.devenv/pnpm-source-inputs/current/repos/library/generator',
+        leaf: 'file:.devenv/pnpm-source-inputs/current/repos/library/leaf',
+        storybook: 'file:.devenv/pnpm-source-inputs/current/repos/library/storybook',
+      },
+      peerDependencyRules: { allowedVersions: {} },
+    })
+    expect(generator.stringify(mockGenieContext)).toBe(serializedBefore)
+  })
 
   it.each([
     '~0.1.0',

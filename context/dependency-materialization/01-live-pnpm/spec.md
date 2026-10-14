@@ -106,11 +106,13 @@ is stable complete versions, caret and tilde ranges over complete versions,
 branch is evaluated; prereleases, build metadata, protocols, and other
 operators fail closed.
 
-Peer validation prefers full package manifests over name-only
-`workspaceClosureReference` entries, independent of traversal order. If a
-projected package has only a closure reference, generation fails closed:
-the reference's missing peer declarations do not establish an empty peer
-contract.
+`workspaceClosureReference` retains a non-enumerable symbol-keyed link to its
+original manifest in metadata. Peer validation uses that provenance, including
+for recursively referenced packages, independent of traversal order. Ordinary
+composition still sees only the stripped reference data; serialized manifests
+and the override closure do not change. Complete no-peer manifests need no
+version, even when their data contains only a name. Missing versions fail
+closed only when required to validate an actual projected peer edge.
 
 pnpm 12.7.0 checks a local peer's `file:` identity rather than its manifest
 version. Each generated allowance therefore pins the exact projected `file:`
