@@ -148,9 +148,9 @@ impl Ctl {
         let parent = app.parent().ok_or_else(|| fail(64, "invalid-input", "App requires parent"))?;
         let archive = PathBuf::from(self.arg("archive-dir")?);
         // Verification above completes before any destination mutation.
-        destination(parent, true)?;
-        destination(&archive, true)?;
-        destination(&self.state()?, true)?;
+        destination(parent, true).map_err(|mut error| { error.reason = format!("Preparing app destination: {}", error.reason); error })?;
+        destination(&archive, true).map_err(|mut error| { error.reason = format!("Preparing archive destination: {}", error.reason); error })?;
+        destination(&self.state()?, true).map_err(|mut error| { error.reason = format!("Preparing state destination: {}", error.reason); error })?;
         if fs::metadata(parent)?.dev() != fs::metadata(&archive)?.dev() {
             return Err(fail(64, "invalid-input", "App and immutable archive must share a filesystem for atomic exchange"));
         }
@@ -175,7 +175,7 @@ impl Ctl {
             atomic_write(&transaction_record(&app), &serde_json::to_vec(&txn)?)?;
             exchange(&stage, &app)?;
             self.publish_archive(&app, &txn)?;
-        } else { publish_exclusive(&stage, &app)?; }
+        } else { publish_exclusive(&stage, &app).map_err(|mut error| { error.reason = format!("Publishing verified artifact: {}", error.reason); error })?; }
         Ok(json!({"changed": true, "descriptor": descriptor, "sealedRevision": candidate.sealed_revision, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled}))
     }
 
