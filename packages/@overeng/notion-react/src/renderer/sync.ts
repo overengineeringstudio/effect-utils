@@ -600,7 +600,9 @@ const foldAtomicContainers = (
   ): Record<string, unknown> => {
     const kids = childrenByParent.get(op.tmpId) ?? []
     const payload: Record<string, unknown> = { ...op.props }
-    if (!ATOMIC_CONTAINERS.has(op.type)) return payload
+    // Columns are only legal inside column_list creation, so they are not
+    // standalone ATOMIC_CONTAINERS but still require their first-level children.
+    if (!ATOMIC_CONTAINERS.has(op.type) && op.type !== 'column') return payload
     if (kids.length > 0) {
       const inlineCount = isTopLevelContainer
         ? Math.min(kids.length, MAX_CHILDREN_PER_APPEND)
