@@ -145,8 +145,8 @@ closes it without stealing focus and unmounts its interactive content.
 Escape ordering is disclosure, identity tooltip, overflow, then panel. The
 overflow handler ignores events while an open `data-devbar-disclosure` surface
 or identity tooltip exists, including when focus has moved elsewhere. Each
-layer consumes its own Escape once, before the shell window listener; disclosure
-and overflow close restore their respective trigger focus.
+layer consumes its own Escape once in document capture, before the shell root's
+bubbling handler; disclosure and overflow close restore their respective trigger focus.
 
 The `Narrow600` story supplies version (`1`), websocket (`4`), HTTP (`3`), subscriptions (`2`), and message-rate (`0`) priorities with deterministic realistic text. Its play assertions check the 600px host geometry, intact visible segments wholly within the row, priority ordering, the hidden-ID accessible name, complete overflow contents, and Escape/focus restoration.
 
@@ -257,7 +257,7 @@ freeze -> meter renderer state only
 
 Traces: DT.BAR-R05–R07.
 
-Panel buttons expose `aria-expanded`; the open panel has a stable generated DOM ID and accessible label, and its corresponding controls expose `aria-controls`. Buttons remain native keyboard-operable controls, not incorrectly labelled ARIA tabs without implementing a tablist keyboard model. Ctrl or Meta plus unmodified Backquote toggles; respect `defaultPrevented`. Unconsumed Escape closes the panel. Keyboard listeners exist only while shell is mounted, and cleanup removes them. Closing after keyboard interaction restores focus to the initiating control if focus was inside removed panel content; pointer activation does not forcibly steal focus.
+Panel buttons expose `aria-expanded`; the open panel has a stable generated DOM ID and accessible label, and its corresponding controls expose `aria-controls`. Buttons remain native keyboard-operable controls, not incorrectly labelled ARIA tabs without implementing a tablist keyboard model. Ctrl or Meta plus unmodified Backquote toggles globally while mounted, respects `defaultPrevented`, and removes its window listener on unmount. Escape is handled by the shell root's bubbling `onKeyDown` only when it is unconsumed and the root physically contains the event target; outside focus and portalled content cannot close the panel. Escape from the row or panel closes it and returns focus to the toggle. Any close, including pointer actions and host-controlled closes, returns focus to the toggle if focus was inside the removed panel; closes with focus outside the panel do not steal focus.
 
 The meter renderer owns DOM focus targets, text equivalents, and tooltips. `MeterStrip.onOpenDetail({ id })` delegates click and Enter/Space activation to the host; focus alone shows a tooltip without opening a panel. Tooltip access remains possible without hover. Freeze is a distinct named button/action and affects rendering, not source collection or headless readers. A repeated activation of the already-open meter keeps its panel open.
 

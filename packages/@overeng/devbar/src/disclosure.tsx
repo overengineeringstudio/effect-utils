@@ -197,11 +197,11 @@ export const useAnchoredPopover = ({
       event.stopPropagation()
       close(true)
     }
-    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('keydown', onKeyDown, true)
     return () => {
       observer.disconnect()
       window.removeEventListener('resize', positionPopover)
-      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('keydown', onKeyDown, true)
     }
   }, [expanded, overflow])
   React.useLayoutEffect(

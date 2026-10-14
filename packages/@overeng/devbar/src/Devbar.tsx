@@ -45,9 +45,6 @@ export interface DevbarProps {
   readonly style?: StyleXStylesWithout<{ position: 'fixed' }>
 }
 
-/** How a proposal was initiated; only keyboard closes restore focus. */
-type Activation = 'keyboard' | 'pointer'
-
 const rowHeight = '32px'
 
 const styles = stylex.create({
@@ -196,9 +193,6 @@ const styles = stylex.create({
   badge: { marginLeft: '0.3rem', color: devbarTokens.mutedText },
 })
 
-const activationOf = (event: React.MouseEvent): Activation =>
-  event.detail === 0 ? 'keyboard' : 'pointer'
-
 /** Hosts supply every panel, the strip, and segments; selection is fully controlled. */
 export const Devbar = ({
   panels,
@@ -215,7 +209,6 @@ export const Devbar = ({
   const panelRef = React.useRef<HTMLElement>(null)
   /** Ephemeral toggle bookkeeping only; never selection state or persistence. */
   const lastPanel = React.useRef<string | undefined>(undefined)
-  const initiator = React.useRef<HTMLElement | undefined>(undefined)
   const restoreFocus = React.useRef(false)
 
   const selected = panels.find((panel) => panel.id === openPanel)
@@ -226,62 +219,46 @@ export const Devbar = ({
   }, [selectedId])
 
   React.useLayoutEffect(() => {
-    if (restoreFocus.current === false) return
-    restoreFocus.current = false
-    if (selectedId !== undefined) return
-    const target =
-      initiator.current !== undefined && initiator.current.isConnected === true
-        ? initiator.current
-        : toggleRef.current
-    target?.focus()
+    if (selectedId === undefined && restoreFocus.current === true) {
+      restoreFocus.current = false
+      toggleRef.current?.focus()
+    }
   }, [selectedId])
 
-  const propose = ({
-    next,
-    activation,
-    source,
-  }: {
-    next: string | undefined
-    activation: Activation
-    source: HTMLElement | undefined
-  }) => {
-    restoreFocus.current = false
-    if (next === undefined) {
-      const panel = panelRef.current
-      restoreFocus.current =
-        activation === 'keyboard' &&
-        panel !== null &&
-        panel.contains(document.activeElement) === true
-    } else if (source !== undefined) {
-      initiator.current = source
+  // Capture focus before React removes a panel, including host-controlled closes.
+  const attachPanel = React.useCallback((panel: HTMLElement | null) => {
+    panelRef.current = panel
+    if (panel === null) return
+    return () => {
+      if (panel.contains(document.activeElement) === true) restoreFocus.current = true
+      panelRef.current = null
+    }
+  }, [])
+
+  const propose = (next: string | undefined) => {
+    if (next === undefined && panelRef.current?.contains(document.activeElement) === true) {
+      restoreFocus.current = true
     }
     onOpenPanelChange(next)
   }
 
-  const proposeToggle = ({
-    activation,
-    source,
-  }: {
-    activation: Activation
-    source: HTMLElement | undefined
-  }) => {
+  const proposeToggle = () => {
     if (selected !== undefined) {
-      propose({ next: undefined, activation, source })
+      propose(undefined)
       return
     }
     const next = panels.find((panel) => panel.id === lastPanel.current)?.id ?? panels[0]?.id
-    if (next !== undefined) propose({ next, activation, source })
+    if (next !== undefined) propose(next)
   }
 
-  const latest = React.useRef({ selected, proposeToggle, propose })
+  const latest = React.useRef(proposeToggle)
   React.useLayoutEffect(() => {
-    latest.current = { selected, proposeToggle, propose }
+    latest.current = proposeToggle
   })
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented === true) return
-      const current = latest.current
       if (
         event.code === 'Backquote' &&
         (event.ctrlKey === true || event.metaKey === true) &&
@@ -289,18 +266,7 @@ export const Devbar = ({
         event.shiftKey === false
       ) {
         event.preventDefault()
-        const focused = document.activeElement
-        const panel = panelRef.current
-        const source =
-          focused instanceof HTMLElement &&
-          focused !== document.body &&
-          (panel === null || panel.contains(focused) === false)
-            ? focused
-            : (toggleRef.current ?? undefined)
-        current.proposeToggle({ activation: 'keyboard', source })
-      } else if (event.key === 'Escape' && current.selected !== undefined) {
-        event.preventDefault()
-        current.propose({ next: undefined, activation: 'keyboard', source: undefined })
+        latest.current()
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -312,10 +278,23 @@ export const Devbar = ({
     <aside
       aria-label="Developer tools"
       {...stylex.props(styles.root, placement === 'container' && styles.contained, style)}
+      onKeyDown={(event) => {
+        if (
+          event.key === 'Escape' &&
+          event.defaultPrevented === false &&
+          event.target instanceof Node &&
+          event.currentTarget.contains(event.target) === true &&
+          selected !== undefined
+        ) {
+          event.preventDefault()
+          restoreFocus.current = true
+          propose(undefined)
+        }
+      }}
     >
       {selected !== undefined && (
         <section
-          ref={panelRef}
+          ref={attachPanel}
           id={panelId}
           aria-label={selected.label}
           {...stylex.props(styles.panel)}
@@ -326,9 +305,7 @@ export const Devbar = ({
               type="button"
               aria-label={`Close ${selected.label} panel`}
               aria-controls={panelId}
-              onClick={(event) =>
-                propose({ next: undefined, activation: activationOf(event), source: undefined })
-              }
+              onClick={() => propose(undefined)}
               {...stylex.props(styles.button)}
             >
               Close
@@ -347,9 +324,7 @@ export const Devbar = ({
             aria-expanded={isOpen}
             aria-controls={isOpen === true ? panelId : undefined}
             disabled={isOpen === false && panels.length === 0}
-            onClick={(event) =>
-              proposeToggle({ activation: activationOf(event), source: event.currentTarget })
-            }
+            onClick={proposeToggle}
             {...stylex.props(styles.button)}
           >
             Dev tools
@@ -362,13 +337,7 @@ export const Devbar = ({
                 type="button"
                 aria-expanded={isSelected}
                 aria-controls={isSelected === true ? panelId : undefined}
-                onClick={(event) =>
-                  propose({
-                    next: isSelected === true ? undefined : panel.id,
-                    activation: activationOf(event),
-                    source: event.currentTarget,
-                  })
-                }
+                onClick={() => propose(isSelected === true ? undefined : panel.id)}
                 {...stylex.props(styles.button, isSelected === true && styles.active)}
               >
                 {panel.label}

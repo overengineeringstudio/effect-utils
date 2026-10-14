@@ -136,12 +136,12 @@ const IdentityView = ({
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || event.defaultPrevented === true) return
       event.preventDefault()
-      // Dismiss hover-only disclosures before Escape reaches the shell's window listener.
+      // Dismiss hover-only disclosures before Escape reaches the shell's root handler.
       event.stopPropagation()
       setDismissed(true)
     }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
   }, [visible])
   const short = formatBuildIdentityShort({ identity, now })
   return (
