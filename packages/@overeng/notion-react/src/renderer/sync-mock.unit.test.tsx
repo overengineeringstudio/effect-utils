@@ -802,7 +802,13 @@ describe('sync() against in-memory fake Notion', () => {
             h(
               'callout',
               null,
-              h('bulleted_list_item', null, 'item', <Paragraph>deep leaf</Paragraph>),
+              h(
+                'bulleted_list_item',
+                null,
+                <>
+                  item<Paragraph>deep leaf</Paragraph>
+                </>,
+              ),
             ),
           )}
         </Column>
