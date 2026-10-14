@@ -728,7 +728,6 @@ export const syncMember = <R = never>({
       // Fall through to content-aware worktree selection
     }
 
-
     if (isLockMode === true && memberExists === false) {
       return {
         name,

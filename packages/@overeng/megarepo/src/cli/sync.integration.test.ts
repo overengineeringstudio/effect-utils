@@ -3745,7 +3745,9 @@ describe('mr lock', () => {
               expect(out.applyNeeded, run).toBe(false)
             }
             if (state === 'dirty') {
-              expect(yield* fs.readFileString(`${mainWorktree}dirty.txt`)).toBe('uncommitted work\n')
+              expect(yield* fs.readFileString(`${mainWorktree}dirty.txt`)).toBe(
+                'uncommitted work\n',
+              )
             }
           },
           Effect.provide(NodeServices.layer),
@@ -4187,9 +4189,7 @@ describe('mr fetch', () => {
             reposDir,
             EffectPath.unsafe.relativeDir('test-repo/'),
           )
-          expect(yield* fs.realPath(memberMount)).toBe(
-            `${repoBasePath}refs/commits/${newCommit}`,
-          )
+          expect(yield* fs.realPath(memberMount)).toBe(`${repoBasePath}refs/commits/${newCommit}`)
           expect(yield* runGitCommand(memberMount, 'rev-parse', 'HEAD')).toBe(newCommit)
           const warm = yield* runApplyCommand({
             cwd: workspacePath,
