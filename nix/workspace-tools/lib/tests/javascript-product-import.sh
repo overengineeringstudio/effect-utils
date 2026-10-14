@@ -361,6 +361,27 @@ write_descriptor "$tmp/source-runtime.json" fixture cli javascript-esm "$portabl
 source_failure runtime-kind "$tmp/source-runtime.json"
 write_descriptor "$tmp/source-external.json" fixture cli javascript-esm "$portable" '[]' '["undeclared"]'
 source_failure external-modules "$tmp/source-external.json"
+source_descriptor_failure() {
+  jq "$2" "$tmp/source-valid.json" >"$tmp/source-mutated.json"
+  source_failure "$1" "$tmp/source-mutated.json"
+}
+source_descriptor_failure descriptor-fields '.unexpected = true'
+source_descriptor_failure schema '.schema = "unknown"'
+source_descriptor_failure product-kind '.productKind = "module"'
+source_descriptor_failure runtime-contract '.runtimeContract = "javascript-cjs"'
+source_descriptor_failure runtime-contract-version '.runtimeContractVersion = "v2"'
+source_descriptor_failure platform '.platform.os = "darwin"'
+source_descriptor_failure module-path '.modulePath = "../tool.js"'
+source_descriptor_failure external-capabilities '.externalCapabilities = ["undeclared"]'
+source_descriptor_failure payload-size '.sizeBytes = 0'
+source_descriptor_failure integrity '.integrity = "invalid"'
+source_descriptor_failure descriptor-integrity '.integrity = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="'
+source_descriptor_failure descriptor-size '.sizeBytes += 1'
+jq '.productDigest = "invalid"' "$tmp/provenance.json" >"$tmp/bad-provenance.json"
+cp "$tmp/provenance.json" "$tmp/good-provenance.json"
+cp "$tmp/bad-provenance.json" "$tmp/provenance.json"
+source_failure provenance-digest "$tmp/source-valid.json"
+cp "$tmp/good-provenance.json" "$tmp/provenance.json"
 jq '.productDigest = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"' \
   "$tmp/provenance.json" >"$tmp/bad-provenance.json"
 cp "$tmp/bad-provenance.json" "$tmp/provenance.json"

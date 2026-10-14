@@ -1,6 +1,6 @@
 # Import one Buck-produced JavaScript product into the Nix store.
 #
-# What is checked is what makes the product usable here: the descriptor schema,
+# Published mode checks what makes the product usable: the descriptor schema,
 # the semantic product/runtime contract, the portable platform it claims, the
 # capabilities this consumer must supply, and the exact bytes. What is NOT
 # checked is who produced it — the producer's Nix store paths and configured
@@ -9,9 +9,10 @@
 # anywhere else. `provenance` is therefore deliberately read but never
 # compared.
 #
-# The descriptor is the immutable release manifest's canonical descriptor file
-# (`nix/buck2-products`), so every expectation stated here is a claim about
-# reviewed, content-addressed data rather than about a live Buck build.
+# Published descriptors come from the immutable release manifest's canonical
+# descriptor file (`nix/buck2-products`). Source mode is constructed only by
+# from-source.nix: its descriptor and revision provenance are validated during
+# the importing build against static consumer facts, never read at evaluation.
 { pkgs }:
 
 {
