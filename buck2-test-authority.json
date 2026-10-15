@@ -61,6 +61,7 @@
         "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts",
         "src/pipeline-report.integration.test.ts",
+        "src/pnpm-deployed.integration.test.ts",
         "src/workflow-report.e2e.test.ts"
       ],
       "packageName": "ci-tools",
@@ -78,6 +79,7 @@
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
         "src/pipeline-waterfall.unit.test.ts",
+        "src/pnpm-deployed.integration.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -97,6 +99,7 @@
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
         "src/pipeline-waterfall.unit.test.ts",
+        "src/pnpm-deployed.integration.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -108,6 +111,7 @@
         "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts",
         "src/pipeline-report.integration.test.ts",
+        "src/pnpm-deployed.integration.test.ts",
         "src/workflow-report.e2e.test.ts"
       ],
       "unboundedTaskName": "test:ci-tools:unbounded"
@@ -134,6 +138,7 @@
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
         "src/pipeline-waterfall.unit.test.ts",
+        "src/pnpm-deployed.integration.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
@@ -150,11 +155,58 @@
         "src/pipeline-report.unit.test.ts",
         "src/pipeline-trace-identity.test.ts",
         "src/pipeline-waterfall.unit.test.ts",
+        "src/pnpm-deployed.integration.test.ts",
         "src/quarantine.test.ts",
         "src/workflow-report.e2e.test.ts",
         "src/workflow-report.test.ts"
       ],
       "unboundedTaskName": "test:ci-tools:test_pipeline_report_local_api:unbounded"
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/ci-tools:test_pnpm_deployed_local_api_collect",
+      "excludes": [],
+      "packageName": "ci-tools",
+      "packagePath": "packages/@overeng/ci-tools",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/pnpm-deployed.integration.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/ci-tools:test_pnpm_deployed_local_api",
+      "taskName": "test:ci-tools:test_pnpm_deployed_local_api",
+      "testFiles": [
+        "src/cli.contract.test.ts",
+        "src/deploy-domain.test.ts",
+        "src/deploy-netlify.e2e.test.ts",
+        "src/deploy-netlify.live.e2e.test.ts",
+        "src/deploy-vercel.e2e.test.ts",
+        "src/deploy-vercel.live.e2e.test.ts",
+        "src/pipeline-attempt-close.test.ts",
+        "src/pipeline-report.integration.test.ts",
+        "src/pipeline-report.unit.test.ts",
+        "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
+        "src/pnpm-deployed.integration.test.ts",
+        "src/quarantine.test.ts",
+        "src/workflow-report.e2e.test.ts",
+        "src/workflow-report.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": [
+        "src/cli.contract.test.ts",
+        "src/deploy-domain.test.ts",
+        "src/deploy-netlify.e2e.test.ts",
+        "src/deploy-netlify.live.e2e.test.ts",
+        "src/deploy-vercel.e2e.test.ts",
+        "src/deploy-vercel.live.e2e.test.ts",
+        "src/pipeline-attempt-close.test.ts",
+        "src/pipeline-report.integration.test.ts",
+        "src/pipeline-report.unit.test.ts",
+        "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-waterfall.unit.test.ts",
+        "src/quarantine.test.ts",
+        "src/workflow-report.e2e.test.ts",
+        "src/workflow-report.test.ts"
+      ],
+      "unboundedTaskName": "test:ci-tools:test_pnpm_deployed_local_api:unbounded"
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/content-address:test_collect",

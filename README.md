@@ -568,6 +568,29 @@ building anything:
 devenv tasks run nix:flake:eval
 ```
 
+### Deployed pnpm Versions
+
+The `pnpm-deployed` CI check validates pnpm declaration changes against the public
+deployed pnpm registry. It compares the authoritative Genie package-manager
+constant, `nix/pnpm.nix`, and the generated root `package.json`; all three must
+agree and the exact version must appear in the registry. Registry fetch or schema
+errors fail closed and include the registry URL.
+
+On pull requests and merge groups, registry access occurs only when a declaring
+file changes. Other changes still receive a successful check without requiring
+the registry to be available. The job uses no secrets and supports fork PRs.
+Make `pnpm-deployed` required in branch protection so declaration changes cannot
+merge without passing this guard.
+
+The public URL is configured by `deployedPnpmRegistryUrl` in
+`packages/@overeng/ci-tools/src/pnpm-deployed.ts`. Local fixture tests may override
+it with `PNPM_DEPLOYED_REGISTRY_URL` when invoking
+`packages/@overeng/ci-tools/bin/check-pnpm-deployed.ts`.
+
+```bash
+CI=1 devenv shell -- bunx vitest run --root packages/@overeng/ci-tools --config vitest.pnpm-deployed.config.ts
+```
+
 ### Linting
 
 ```bash

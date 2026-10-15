@@ -8,7 +8,7 @@ load("//buck2/products:defs.bzl", "build_product", "bun_compiled_product_executa
 # Projection source: packages/@overeng/ci-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:98b7e43597a98d838842ca84964be3dab5a659d980b1456a3001726b68bea441
+# Semantic fingerprint: sha256:df8b34264d1b8c95ec277b35264bf0a822ab0d2ef3b0d56f646f8d8f35ef3c84
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -25,6 +25,7 @@ export_file(
 )
 
 export_materialization_inputs([
+    "bin/check-pnpm-deployed.ts",
     "bin/ci-tools.ts",
     "src/cli-command.ts",
     "src/cli.contract.test.ts",
@@ -49,6 +50,9 @@ export_materialization_inputs([
     "src/pipeline-trace-identity.ts",
     "src/pipeline-waterfall.ts",
     "src/pipeline-waterfall.unit.test.ts",
+    "src/pnpm-declaration-paths.ts",
+    "src/pnpm-deployed.integration.test.ts",
+    "src/pnpm-deployed.ts",
     "src/quarantine.test.ts",
     "src/quarantine.ts",
     "src/workflow-report.e2e.test.ts",
@@ -94,6 +98,7 @@ package_view(
     name = "package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_ci_tools_ed163de971d5",
     files = {
+        "bin/check-pnpm-deployed.ts": "bin/check-pnpm-deployed.ts",
         "bin/ci-tools.ts": "bin/ci-tools.ts",
         "package.json": "package.json",
         "src/cli-command.ts": "src/cli-command.ts",
@@ -119,6 +124,9 @@ package_view(
         "src/pipeline-trace-identity.ts": "src/pipeline-trace-identity.ts",
         "src/pipeline-waterfall.ts": "src/pipeline-waterfall.ts",
         "src/pipeline-waterfall.unit.test.ts": "src/pipeline-waterfall.unit.test.ts",
+        "src/pnpm-declaration-paths.ts": "src/pnpm-declaration-paths.ts",
+        "src/pnpm-deployed.integration.test.ts": "src/pnpm-deployed.integration.test.ts",
+        "src/pnpm-deployed.ts": "src/pnpm-deployed.ts",
         "src/quarantine.test.ts": "src/quarantine.test.ts",
         "src/quarantine.ts": "src/quarantine.ts",
         "src/workflow-report.e2e.test.ts": "src/workflow-report.e2e.test.ts",
@@ -151,6 +159,7 @@ package_view(
     name = "test_package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_ci_tools_ed163de971d5",
     files = {
+        "bin/check-pnpm-deployed.ts": "bin/check-pnpm-deployed.ts",
         "bin/ci-tools.ts": "bin/ci-tools.ts",
         "package.json": "package.json",
         "src/__snapshots__/pipeline-report.unit.test.ts.snap": "src/__snapshots__/pipeline-report.unit.test.ts.snap",
@@ -187,6 +196,9 @@ package_view(
         "src/pipeline-trace-identity.ts": "src/pipeline-trace-identity.ts",
         "src/pipeline-waterfall.ts": "src/pipeline-waterfall.ts",
         "src/pipeline-waterfall.unit.test.ts": "src/pipeline-waterfall.unit.test.ts",
+        "src/pnpm-declaration-paths.ts": "src/pnpm-declaration-paths.ts",
+        "src/pnpm-deployed.integration.test.ts": "src/pnpm-deployed.integration.test.ts",
+        "src/pnpm-deployed.ts": "src/pnpm-deployed.ts",
         "src/quarantine.test.ts": "src/quarantine.test.ts",
         "src/quarantine.ts": "src/quarantine.ts",
         "src/workflow-report.e2e.test.ts": "src/workflow-report.e2e.test.ts",
@@ -195,6 +207,7 @@ package_view(
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
         "vitest.pipeline-report.config.ts": "vitest.pipeline-report.config.ts",
+        "vitest.pnpm-deployed.config.ts": "vitest.pnpm-deployed.config.ts",
     },
     workspace_dist = {
         "node_modules/@overeng/otel-contract/dist": "//packages/@overeng/otel-contract:dist",
@@ -262,6 +275,7 @@ vitest_test(
         "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts",
         "src/pipeline-report.integration.test.ts",
+        "src/pnpm-deployed.integration.test.ts",
         "src/workflow-report.e2e.test.ts",
     ],
     tools = {
@@ -279,6 +293,7 @@ vitest_collect(
         "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts",
         "src/pipeline-report.integration.test.ts",
+        "src/pnpm-deployed.integration.test.ts",
         "src/workflow-report.e2e.test.ts",
     ],
     tools = {
@@ -316,6 +331,32 @@ vitest_collect(
     tools = {
         "BUN_BIN": "//buck2/toolchains:tool_bun",
     },
+    visibility = ["PUBLIC"],
+)
+
+vitest_test(
+    name = "test_pnpm_deployed_local_api",
+    package_tree = ":test_package_tree",
+    config = "vitest.pnpm-deployed.config.ts",
+    labels = [
+        "local-only",
+    ],
+    test_files = [
+        "src/pnpm-deployed.integration.test.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+vitest_collect(
+    name = "test_pnpm_deployed_local_api_collect",
+    package_tree = ":test_package_tree",
+    config = "vitest.pnpm-deployed.config.ts",
+    labels = [
+        "local-only",
+    ],
+    test_files = [
+        "src/pnpm-deployed.integration.test.ts",
+    ],
     visibility = ["PUBLIC"],
 )
 

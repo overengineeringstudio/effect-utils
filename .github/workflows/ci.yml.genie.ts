@@ -59,6 +59,7 @@ import {
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import { pnpmDeclarationPaths } from '../../packages/@overeng/ci-tools/src/pnpm-declaration-paths.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -1855,6 +1856,7 @@ const declaredJobIds = new Set([
   'main-source-shape',
   'pipeline-traces',
   'tested-tree',
+  'pnpm-deployed',
 ])
 for (const ciJobId of declaredJobIds) {
   if (pipelineJobIdentifierSet.has(ciJobId) === false)
@@ -1932,6 +1934,52 @@ export default ciWorkflow({
   permissions: { contents: 'read', 'id-token': 'write' },
   jobs: withBuck2CachePostures({
     jobs: {
+      'pnpm-deployed': {
+        name: 'pnpm-deployed',
+        if: "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}",
+        'runs-on': 'ubuntu-latest',
+        'timeout-minutes': 30,
+        permissions: { contents: 'read' },
+        defaults: bashShellDefaults,
+        steps: [
+          { ...checkoutStep(), with: { 'persist-credentials': false } },
+          installNixStep({ binaryCaches: [binaryCache] }),
+          prepareCiScriptsStep,
+          preparePinnedDevenvStep,
+          validateNixStoreStep,
+        {
+          name: 'Check deployed pnpm declarations',
+          if: "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}",
+          env: {
+            PNPM_DECLARATION_BASE_SHA:
+              '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}',
+          },
+          run: withCiSourceRoot(
+            [
+              'set -euo pipefail',
+              'base="${PNPM_DECLARATION_BASE_SHA:?Missing pnpm declaration diff base}"',
+              'git cat-file -e "$base^{commit}" 2>/dev/null || git fetch --no-tags origin "$base"',
+              `changed="$(git diff --name-only "$base" HEAD -- ${pnpmDeclarationPaths.map((path) => `'${path}'`).join(' ')})"`,
+              'if [ -z "$changed" ]; then',
+              '  echo "No pnpm declarations changed; skipping the deployed pnpm registry."',
+              '  exit 0',
+              'fi',
+              'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
+              'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun packages/@overeng/ci-tools/bin/check-pnpm-deployed.ts',
+            ].join('\n'),
+          ),
+        },
+        {
+          name: 'Deployed pnpm registry fixture tests',
+          run: withCiSourceRoot(
+            [
+              'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
+              'CI=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bunx vitest run --root packages/@overeng/ci-tools --config vitest.pnpm-deployed.config.ts',
+            ].join('\n'),
+          ),
+        },
+        ],
+      },
       // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
       'tested-tree': {
         'runs-on': 'ubuntu-latest',
@@ -1966,6 +2014,7 @@ export default ciWorkflow({
     // Protected queue heads and fallback main pushes warm the cache opportunistically.
     // PR jobs never receive writer credentials; the dedicated main proof remains strict.
     postures: {
+      'pnpm-deployed': 'reader',
       'default-ref-policy': 'reader',
       'tested-tree': 'reader',
       quality: 'trusted-writer',
