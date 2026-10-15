@@ -33,15 +33,18 @@ describe('fidelity corpus — offline replay (R35)', () => {
     ['para-after-list-as-item-756', '- alpha\n\n- beta\n\n- A closing paragraph.'],
     ['emphasis-marker-churn-756', 'a *word* and **bold** here'],
     ['ordered-list-renumber-756', '1. first\n\n1. second\n\n1. third'],
-  ])('canonicalizes the prior raw-rendered live capture without changing fidelity: %s', (id, raw) => {
-    const entry = corpusEntry(id)
-    expect(entry).toBeDefined()
-    if (entry !== undefined) {
-      expect(canonicalizeBlockMarkdown(raw).trim()).toBe(entry.notion_round_trip)
-      expect(semanticEqual({ a: raw, b: entry.notion_round_trip })).toBe(true)
-      expect(semanticEqual({ a: entry.authored, b: raw })).toBe(true)
-    }
-  })
+  ])(
+    'canonicalizes the prior raw-rendered live capture without changing fidelity: %s',
+    (id, raw) => {
+      const entry = corpusEntry(id)
+      expect(entry).toBeDefined()
+      if (entry !== undefined) {
+        expect(canonicalizeBlockMarkdown(raw).trim()).toBe(entry.notion_round_trip)
+        expect(semanticEqual({ a: raw, b: entry.notion_round_trip })).toBe(true)
+        expect(semanticEqual({ a: entry.authored, b: raw })).toBe(true)
+      }
+    },
+  )
 
   const equalEntries = fidelityCorpus.entries.filter((entry) => entry.relation === 'equal')
   it.each(equalEntries.map((entry) => [entry.id, entry] as const))(
