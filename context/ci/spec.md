@@ -261,6 +261,12 @@ The Linux prerequisites guard takes the same explicit policy: only `trusted`
 renders the PR-identity expression. `always` emits literal permission and never
 reads the PR event, preserving the `workflow_run` deployment trust boundary.
 
+Every Linux CI job sets `sandbox-fallback = false` before other steps, preserving
+inherited `NIX_CONFIG`. Fresh Nix installers also apply it to daemon configuration.
+An unavailable sandbox must fail the build rather than silently run unsandboxed;
+this does not grant privileges or bypass existing fork admission guards. The
+setting is conditional on `runner.os == 'Linux'`, leaving Darwin policy unchanged.
+
 `plainFlakeSetupSteps` installs Determinate Nix and accepts an optional public
 `cachix` name for read-only cache access. For custom jobs, compose these setup steps
 with `nixDevelopStep({ name, command })`; `command` is an argv vector, not a shell

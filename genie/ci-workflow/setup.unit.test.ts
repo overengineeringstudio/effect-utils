@@ -3,7 +3,15 @@ import { describe, expect, it } from 'bun:test'
 import { Glob } from 'bun'
 
 import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'json' }
+import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import {
+  ciWorkflow,
+  linuxNixSandboxFallbackConf,
+  linuxNixSandboxFallbackStep,
+} from './shared.ts'
+import {
+  installNixStep,
   linuxSandboxPrerequisitesStep,
   namespacePrivilegeTrustedPredicate,
   namespaceRunner,
@@ -95,6 +103,82 @@ describe('namespaceRunner', () => {
     ).toEqual([
       `\${{ matrix.runner }};github.run-id=\${{ github.run_id }}\${{ (contains(matrix.runner, 'linux') || startsWith(matrix.runner, 'nscloud-ubuntu-')) && (${namespacePrivilegeTrustedPredicate}) && ';container.privileged=true' || '' }}`,
     ])
+  })
+})
+
+describe('Linux Nix sandbox fallback', () => {
+  it('configures fresh installers only on Linux', () => {
+    expect(linuxNixSandboxFallbackConf).toBe(
+      "${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}",
+    )
+    expect(installNixStep().with['extra-conf'].split('\n').at(-1)).toBe(
+      linuxNixSandboxFallbackConf,
+    )
+    const hostedInstall = pipelineCloseJob({}).steps.find(
+      (step) => step.uses === 'cachix/install-nix-action@v31',
+    )
+    expect(hostedInstall?.with?.extra_nix_config).toBe(linuxNixSandboxFallbackConf)
+  })
+
+  it('configures Linux before any command, preserves inherited config, and skips macOS', () => {
+    const macConfig = 'keep-derivations = true'
+    const rendered = ciWorkflow({
+      trustTier: 'public',
+      on: { push: { branches: ['main'] } },
+      jobs: {
+        linux: { 'runs-on': 'ubuntu-latest', steps: [{ run: 'nix build .#product' }] },
+        macos: {
+          'runs-on': 'macos-14',
+          env: { NIX_CONFIG: macConfig },
+          steps: [{ run: 'nix build .#product' }],
+        },
+        matrix: {
+          'runs-on': '${{ matrix.runner }}',
+          strategy: { matrix: { runner: ['ubuntu-latest', 'macos-14'] } },
+          steps: [{ run: 'nix build .#product' }],
+        },
+      },
+    }).data
+    for (const job of Object.values(rendered.jobs)) {
+      expect(job.steps[0]).toEqual(linuxNixSandboxFallbackStep)
+      expect(job.steps[0]?.if).toBe("${{ runner.os == 'Linux' }}")
+    }
+    expect(rendered.jobs.macos?.env?.NIX_CONFIG).toBe(macConfig)
+    expect(linuxNixSandboxFallbackStep.run).toContain('"${NIX_CONFIG:-}"')
+    expect(linuxNixSandboxFallbackStep.run).toContain('sandbox-fallback = false')
+    const recomposed = ciWorkflow({
+      trustTier: 'public',
+      on: { push: { branches: ['main'] } },
+      jobs: rendered.jobs,
+    }).data
+    for (const job of Object.values(recomposed.jobs)) {
+      expect(job.steps.filter((step) => step.id === linuxNixSandboxFallbackStep.id)).toHaveLength(1)
+    }
+  })
+
+  it('covers every generated job, including hosted, API-only, and mixed-platform jobs', async () => {
+    const cwd = `${import.meta.dir}/../../.github/workflows`
+    const paths = [...new Glob('*.yml').scanSync({ cwd, onlyFiles: true })]
+    expect(paths.length).toBeGreaterThan(0)
+    let linuxJobs = 0
+    let macosJobs = 0
+    for (const path of paths) {
+      const workflow: Pick<GitHubWorkflowArgs, 'jobs'> = Bun.YAML.parse(
+        await Bun.file(`${cwd}/${path}`).text(),
+      )
+      for (const [jobId, job] of Object.entries(workflow.jobs)) {
+        const first = job.steps[0]
+        expect(first?.id, `${path}/${jobId}`).toBe(linuxNixSandboxFallbackStep.id)
+        expect(first?.if, `${path}/${jobId}`).toBe("${{ runner.os == 'Linux' }}")
+        expect(first?.run, `${path}/${jobId}`).toContain('sandbox-fallback = false')
+        expect(job.steps.filter((step) => step.id === linuxNixSandboxFallbackStep.id)).toHaveLength(1)
+        const labels = [job['runs-on']].flat().join(';')
+        if (/linux|ubuntu/.test(labels)) linuxJobs++
+        if (/macos|darwin/.test(labels)) macosJobs++
+      }
+    }
+    expect(linuxJobs).toBeGreaterThan(0)
+    expect(macosJobs).toBeGreaterThan(0)
   })
 })
 
