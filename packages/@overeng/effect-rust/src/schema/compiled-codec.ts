@@ -8,16 +8,24 @@ const runtimeTypeOf = (value: unknown) =>
   value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
 
 // Private failures distinguish parser rejection from user code throwing SchemaError.
+const parseFailures = new WeakSet<object>()
+const defectFailures = new WeakSet<object>()
+const isParseFailure = (value: unknown): value is ParseFailure =>
+  typeof value === 'object' && value !== null && parseFailures.has(value)
+const isDefectFailure = (value: unknown): value is DefectFailure =>
+  typeof value === 'object' && value !== null && defectFailures.has(value)
 class ParseFailure {
   readonly issue: SchemaIssue.Issue
   constructor(issue: SchemaIssue.Issue) {
     this.issue = issue
+    parseFailures.add(this)
   }
 }
 class DefectFailure {
   readonly cause: Cause.Cause<unknown>
   constructor(cause: Cause.Cause<unknown>) {
     this.cause = cause
+    defectFailures.add(this)
   }
 }
 const protect =
@@ -26,7 +34,7 @@ const protect =
     try {
       return walk(value)
     } catch (cause) {
-      if (cause instanceof ParseFailure || cause instanceof DefectFailure) throw cause
+      if (isParseFailure(cause) || isDefectFailure(cause)) throw cause
       throw new DefectFailure(Cause.die(cause))
     }
   }
@@ -76,7 +84,7 @@ export const makeCompiledCodec = ({
       try {
         return visit(item)
       } catch (cause) {
-        if (cause instanceof ParseFailure === false) throw cause
+        if (isParseFailure(cause) === false) throw cause
         return fail(
           new SchemaIssue.Composite(
             issueAst,
@@ -168,6 +176,20 @@ export const makeCompiledCodec = ({
         implementation = protect((value) => {
           if (Array.isArray(value) === false) return fallback(value)
           const length = value.length
+          if (
+            typeof length !== 'number' ||
+            Number.isInteger(length) === false ||
+            length < 0 ||
+            length > 4294967295
+          ) {
+            // Do not replay a mutable length trap when delegating coercion to Effect.
+            return fallback(
+              new Proxy(value, {
+                get: (target, key) =>
+                  key === 'length' ? length : Reflect.get(target, key, target),
+              }),
+            )
+          }
           const out = new Array<unknown>(length)
           for (let index = 0; index < length; index++)
             out[index] = at(index, value, item, value[index])
@@ -290,7 +312,7 @@ export const makeCompiledCodec = ({
               try {
                 return member(value)
               } catch (cause) {
-                if (cause instanceof ParseFailure === false) throw cause
+                if (isParseFailure(cause) === false) throw cause
                 ;(issues ??= []).push(cause.issue)
               }
             }
@@ -306,8 +328,8 @@ export const makeCompiledCodec = ({
     try {
       return root(value)
     } catch (cause) {
-      if (cause instanceof ParseFailure) throw new Schema.SchemaError(cause.issue)
-      if (cause instanceof DefectFailure)
+      if (isParseFailure(cause)) throw new Schema.SchemaError(cause.issue)
+      if (isDefectFailure(cause))
         throw new Error('Sync adapter can only throw schema errors', { cause: cause.cause })
       throw cause
     }

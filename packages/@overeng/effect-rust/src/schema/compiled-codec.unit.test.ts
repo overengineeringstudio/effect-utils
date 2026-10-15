@@ -90,6 +90,26 @@ const compareFactory = (schema: Schema.ConstraintCodec<unknown>, create: () => u
   }
 }
 
+// Exotic input rejection details are not contractual; never inspect thrown values.
+const inputOutcome = (run: (value: unknown) => unknown, value: unknown) => {
+  try {
+    return { accepted: true, value: run(value) } as const
+  } catch {
+    return { accepted: false } as const
+  }
+}
+const compareInputFactory = (schema: Schema.ConstraintCodec<unknown>, create: () => unknown) => {
+  const codec = Direct.codec(schema)
+  for (const direction of ['decode', 'encode'] as const) {
+    const fast = direction === 'decode' ? decode(codec) : encode(codec, { omitOptional: true })
+    const reference =
+      direction === 'decode'
+        ? decodeReference(codec)
+        : encodeReference(codec, { omitOptional: true })
+    expect(inputOutcome(fast, create())).toStrictEqual(inputOutcome(reference, create()))
+  }
+}
+
 describe('compiled direct codec equivalence', () => {
   it('retains caller-supplied decoder parse options on the reference path', () => {
     const codec = Direct.codec(Schema.Struct({ first: Schema.String, later: u32 }))
@@ -126,6 +146,183 @@ describe('compiled direct codec equivalence', () => {
           key === 'length' ? (++reads === 1 ? 2 : 1) : Reflect.get(target, key, receiver),
       })
     })
+  })
+
+  it('delegates nonstandard array lengths without replaying the captured length', () => {
+    const schema = Schema.Array(Schema.String)
+    for (const length of [
+      0n,
+      1n,
+      -1n,
+      '0',
+      '1',
+      '2',
+      '',
+      true,
+      false,
+      null,
+      undefined,
+      Symbol('length'),
+      NaN,
+      Infinity,
+      -Infinity,
+      -1,
+      0.5,
+      4294967296,
+    ])
+      for (const shape of [
+        schema,
+        Schema.NullOr(schema),
+        Schema.Struct({ values: schema }),
+      ]) {
+        compareInputFactory(shape, () => {
+          let reads = 0
+          const value = new Proxy(['first', 'second'], {
+            get: (target, key, receiver) =>
+              key === 'length'
+                ? ++reads === 1
+                  ? length
+                  : 2
+                : Reflect.get(target, key, receiver),
+          })
+          return shape === schema || shape.ast._tag === 'Union' ? value : { values: value }
+        })
+      }
+    for (const createLength of [
+      () => ({ valueOf: () => 2 }),
+      () => ({ valueOf: () => 0n }),
+    ])
+      compareInputFactory(schema, () => {
+        const length = createLength()
+        return new Proxy(['first', 'second'], {
+          get: (target, key, receiver) =>
+            key === 'length' ? length : Reflect.get(target, key, receiver),
+        })
+      })
+    let coercionReads = 0
+    const changingLength = { valueOf: () => (++coercionReads === 1 ? 2 : 0) }
+    compareInputFactory(schema, () => {
+      coercionReads = 0
+      return new Proxy(['first', 'second'], {
+        get: (target, key, receiver) =>
+          key === 'length' ? changingLength : Reflect.get(target, key, receiver),
+      })
+    })
+    const codec = Direct.codec(schema)
+    for (const run of [
+      decode(codec),
+      decodeReference(codec),
+      encode(codec, { omitOptional: true }),
+      encodeReference(codec, { omitOptional: true }),
+    ]) {
+      let reads = 0
+      const value = new Proxy(['first', 'second'], {
+        get: (target, key, receiver) =>
+          key === 'length'
+            ? ++reads === 1
+              ? 1n
+              : 2
+            : Reflect.get(target, key, receiver),
+      })
+      expect(inputOutcome(run, value)).toStrictEqual({ accepted: false })
+      expect(reads).toBe(1)
+    }
+  })
+
+  it('rejects thrown revoked proxies and hostile prototype traps without probing them', () => {
+    const revoked = Proxy.revocable({}, {})
+    revoked.revoke()
+    const prototypeTrap = new Proxy(
+      {},
+      {
+        getPrototypeOf: () => {
+          throw 'untrusted prototype'
+        },
+      },
+    )
+    for (const defect of [revoked.proxy, prototypeTrap]) {
+      const codec = Direct.codec(Schema.Struct({ value: Schema.String }))
+      for (const run of [
+        decode(codec),
+        decodeReference(codec),
+        encode(codec, { omitOptional: true }),
+        encodeReference(codec, { omitOptional: true }),
+      ])
+        expect(
+          inputOutcome(run, {
+            get value() {
+              throw defect
+            },
+          }),
+        ).toStrictEqual({ accepted: false })
+      compareInputFactory(Schema.Array(Schema.String), () =>
+        Object.defineProperty(['ok'], 0, {
+          get: () => {
+            throw defect
+          },
+        }),
+      )
+    }
+  })
+
+  it('retains success and admission under stateful input reflection and discriminators', () => {
+    const struct = Schema.Struct({ first: Schema.String, later: Schema.String })
+    for (const trap of ['ownKeys', 'getOwnPropertyDescriptor', 'has', 'get'] as const)
+      compareInputFactory(struct, () => {
+        const value: { first: string; later: string; extra?: boolean } = {
+          first: 'first',
+          later: 'later',
+        }
+        if (trap === 'ownKeys' || trap === 'getOwnPropertyDescriptor') value.extra = true
+        return new Proxy(value, {
+          ownKeys: (target) => {
+            if (trap === 'ownKeys') delete target.extra
+            return Reflect.ownKeys(target)
+          },
+          getOwnPropertyDescriptor: (target, key) => {
+            if (trap === 'getOwnPropertyDescriptor') target.later = 'descriptor changed'
+            return Reflect.getOwnPropertyDescriptor(target, key)
+          },
+          has: (target, key) => {
+            if (trap === 'has') target.later = 'presence changed'
+            return Reflect.has(target, key)
+          },
+          get: (target, key, receiver) => {
+            if (trap === 'get' && key === 'first') target.later = 'read changed'
+            return Reflect.get(target, key, receiver)
+          },
+        })
+      })
+    compareInputFactory(struct, () => {
+      const value = { later: 'later' }
+      return Object.setPrototypeOf(value, {
+        get first() {
+          value.later = 'inherited read changed'
+          return 'first'
+        },
+      })
+    })
+    const tagged = Schema.Union([
+      Schema.TaggedStruct('Item', { value: Schema.String }),
+      Schema.TaggedStruct('Empty', {}),
+    ])
+    for (const secondTag of ['Item', 'Empty', 'unknown'])
+      for (const schema of [tagged, Schema.Struct({ nested: tagged })])
+        compareInputFactory(schema, () => {
+          let reads = 0
+          const value = new Proxy(
+            { _tag: 'Item', value: 'ok' },
+            {
+              get: (target, key, receiver) =>
+                key === '_tag'
+                  ? ++reads === 1
+                    ? 'Item'
+                    : secondTag
+                  : Reflect.get(target, key, receiver),
+            },
+          )
+          return schema === tagged ? value : { nested: value }
+        })
   })
 
   it('retains empty-struct candidate domains and suspended nullable ordering', () => {

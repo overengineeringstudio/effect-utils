@@ -359,9 +359,11 @@ Do not keep a service beyond the Scope that acquired it.
 
 The direct value codec compiles strict struct/array/nullable/tagged-union walks
 at construction and fuses optional-field omission into encoding; Effect remains
-the reference for leaf validation, unsupported shapes, and exact failure issues.
-Traversal snapshots and accessor/proxy defects follow Effect's parser semantics;
-candidate domains that cannot be proven equivalent stay on the reference path.
+the reference for leaf validation and unsupported shapes. Plain own data values,
+genuine arrays, and primitives retain identical success values and failure issues,
+messages, and classes. Input accessors/proxies cannot weaken validation or change
+success values; rejection details may differ. Unmodified realm intrinsics are
+assumed. Candidate domains that cannot be proven equivalent stay interpreted.
 
 ### Interruption and host capabilities
 
