@@ -959,6 +959,7 @@ export const MissionSchema = Schema.Struct({
   assignedTo: Schema.optionalKey(Schema.Union([AgentReferenceSchema, PersonReferenceSchema])),
   timeout: Schema.optionalKey(Duration),
   stalledAfter: Schema.optionalKey(Duration),
+  reportStalls: Schema.optionalKey(Schema.Boolean),
   goal: Goal,
   gates: Schema.optionalKey(
     Gates.pipe(
@@ -2203,6 +2204,7 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
       'report-to': `agent/${m.reportTo.id}`,
       ...(m.timeout === undefined ? {} : { timeout: m.timeout }),
       ...(m.stalledAfter === undefined ? {} : { 'stalled-after': m.stalledAfter }),
+      ...(m.reportStalls === undefined ? {} : { 'report-stalls': m.reportStalls }),
     },
     children: [
       ...(m.inputs ?? []).map((value) =>

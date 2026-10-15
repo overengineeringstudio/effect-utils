@@ -473,6 +473,22 @@ describe('Smalltalk declarations', () => {
       ).toThrow()
     },
   )
+  it.each([true, false])('renders mission reportStalls %j as a native boolean', (reportStalls) => {
+    const input = { ...fanInMission(), reportStalls, stalledAfter: '45m' }
+    expect(Schema.decodeSync(MissionSchema)(input).reportStalls).toBe(reportStalls)
+    const declaration = mission(input)
+    expect(declaration.props['report-stalls']).toBe(reportStalls)
+    expect(emit([declaration])).toContain(`report-stalls=#${reportStalls}`)
+    expect(missionWire(input).reportStalls).toBe(reportStalls)
+  })
+  it('omits report-stalls when the native default is requested', () => {
+    expect(mission(fanInMission()).props).not.toHaveProperty('report-stalls')
+  })
+  it.each(['true', 'false', 0, 1, null])('rejects invalid reportStalls %j', (reportStalls) => {
+    expect(() =>
+      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportStalls }),
+    ).toThrow()
+  })
   it('requires imported objects for step assignment and under targets', () => {
     type AssignedTo = NonNullable<(typeof StepSchema.Encoded)['assignedTo']>
     type UnderTarget = NonNullable<(typeof AgentSchema.Encoded)['under']>[number]['target']
