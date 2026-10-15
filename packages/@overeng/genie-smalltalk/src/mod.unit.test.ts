@@ -448,6 +448,31 @@ describe('Smalltalk declarations', () => {
     expect(emit([declaration])).not.toContain('Mission watcher')
     expect(emit([declaration])).not.toContain('harness')
   })
+  it.each(['1ms', '30s', '45m', '2h', '1d'])(
+    'renders mission stalledAfter %s as a native duration property',
+    (stalledAfter) => {
+      const input = { ...fanInMission(), timeout: '2d', stalledAfter }
+      const decoded = Schema.decodeSync(MissionSchema)(input)
+      expect(decoded.stalledAfter).toBe(stalledAfter)
+      const declaration = mission(input)
+      expect(declaration.props['stalled-after']).toBe(stalledAfter)
+      expect(declaration.props.timeout).toBe('2d')
+      expect(emit([declaration])).toContain(`stalled-after="${stalledAfter}"`)
+      expect(declaration.children?.some((entry) => entry.name === 'stalled-after')).toBe(false)
+      expect(missionWire(input).stalledAfter).toBe(stalledAfter)
+    },
+  )
+  it('omits the native stalled-after property when no duration is authored', () => {
+    expect(mission(fanInMission()).props).not.toHaveProperty('stalled-after')
+  })
+  it.each(['0ms', '0s', '-1m', '1.5h', '45 minutes', '45', '', 45000])(
+    'rejects invalid mission stalledAfter %j',
+    (stalledAfter) => {
+      expect(() =>
+        Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), stalledAfter }),
+      ).toThrow()
+    },
+  )
   it('requires imported objects for step assignment and under targets', () => {
     type AssignedTo = NonNullable<(typeof StepSchema.Encoded)['assignedTo']>
     type UnderTarget = NonNullable<(typeof AgentSchema.Encoded)['under']>[number]['target']
