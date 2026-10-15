@@ -1378,6 +1378,8 @@ const extraJobs: Record<string, any> = {
     env: ciMeasurementSubjectEnv,
     steps: [
       checkoutStep(),
+      installNixStep(),
+      linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
       ciMeasurementBaselineCheckoutStep,
       sourceShapeMeasurementStep({
         artifactDir: `${sourceShapeMeasurementsDir}/current/effect-utils`,
@@ -1707,6 +1709,7 @@ const allCiJobs: Record<string, any> = {
         privileged: 'trusted',
       }),
       defaultRefs: { 'livestorejs/livestore': 'dev' },
+      preSteps: [linuxSandboxPrerequisitesStep({ privileged: 'trusted' })],
     }),
   },
   ...withCiOtelCapture(jobs),

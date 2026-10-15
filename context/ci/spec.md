@@ -261,11 +261,20 @@ The Linux prerequisites guard takes the same explicit policy: only `trusted`
 renders the PR-identity expression. `always` emits literal permission and never
 reads the PR event, preserving the `workflow_run` deployment trust boundary.
 
-Every Linux CI job sets `sandbox-fallback = false` before other steps, preserving
-inherited `NIX_CONFIG`. Fresh Nix installers also apply it to daemon configuration.
-An unavailable sandbox must fail the build rather than silently run unsandboxed;
-this does not grant privileges or bypass existing fork admission guards. The
-setting is conditional on `runner.os == 'Linux'`, leaving Darwin policy unchanged.
+Every Linux CI job sets `sandbox = true` and `sandbox-fallback = false` before
+other steps, preserving unrelated inherited `NIX_CONFIG` settings. Fresh Nix
+installers also apply both settings to daemon configuration. Neither an inherited
+disabled sandbox nor an unavailable sandbox may silently run a build unsandboxed.
+The settings are conditional on `runner.os == 'Linux'`, leaving Darwin policy
+unchanged; they do not grant privileges or bypass fork admission guards.
+
+The source-only `default-ref-policy` and `source-shape` jobs use the declared
+`.#buck2-node` flake output with `--no-update-lock-file`, then invoke its exact
+`bin/node` path. They never select ambient Node or resolve an unpinned registry
+package on a cache miss. Both jobs apply the same `trusted` Linux prerequisites
+guard before realizing tools: fork PRs fail closed rather than attempting an
+unprivileged Nix build. The main source-shape proof inherits this guard; its
+non-PR events are admitted without granting fork PRs privilege.
 
 `plainFlakeSetupSteps` installs Determinate Nix and accepts an optional public
 `cachix` name for read-only cache access. For custom jobs, compose these setup steps

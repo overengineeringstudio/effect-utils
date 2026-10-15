@@ -188,7 +188,9 @@ export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions
     NORMALIZE_GIT_BRANCH_REFS: opts.normalizeGitBranchRefs === true ? '1' : '0',
     ALLOW_LEGACY_MEMBER_COMMIT_REFS: opts.allowLegacyMemberCommitRefs === true ? '1' : '0',
   },
-  run: `nix shell nixpkgs#nodejs_24 -c node <<'NODE'
+  run: `set -euo pipefail
+node_out="$(nix build --no-update-lock-file --no-link --print-out-paths .#buck2-node)"
+"$node_out/bin/node" <<'NODE'
 ${defaultRefPolicyCheckScript}
 NODE`,
   shell: 'bash',

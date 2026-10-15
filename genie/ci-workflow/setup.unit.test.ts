@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 
 import { Glob } from 'bun'
 
+import repositoryCiWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'json' }
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
@@ -53,6 +54,26 @@ describe('namespaceRunner', () => {
     const script = step.run
     expect(script).toContain('untrusted pull_request runs on an unprivileged Namespace runner')
     expect(script.indexOf('exit 1')).toBeLessThan(script.indexOf('nix config show'))
+  })
+
+  it('denies fork PR admission but admits same-repository PRs and non-PR jobs', () => {
+    const allowed = new Function('github', `return (${namespacePrivilegeTrustedPredicate})`)
+    const repository = 'overengineeringstudio/effect-utils'
+    for (const [headRepository, expected] of [
+      [repository, true],
+      ['external-contributor/effect-utils', false],
+    ] as const) {
+      expect(
+        allowed({
+          event_name: 'pull_request',
+          repository,
+          event: { pull_request: { head: { repo: { full_name: headRepository } } } },
+        }),
+      ).toBe(expected)
+    }
+    for (const event_name of ['push', 'merge_group', 'workflow_dispatch', 'workflow_run']) {
+      expect(allowed({ event_name, repository, event: {} })).toBe(true)
+    }
   })
 
   it('does not read PR identity for always or never prerequisite policies', () => {
@@ -109,11 +130,12 @@ describe('namespaceRunner', () => {
 describe('Linux Nix sandbox fallback', () => {
   it('configures fresh installers only on Linux', () => {
     expect(linuxNixSandboxFallbackConf).toBe(
-      "${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}",
+      [
+        "${{ runner.os == 'Linux' && 'sandbox = true' || '' }}",
+        "${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}",
+      ].join('\n'),
     )
-    expect(installNixStep().with['extra-conf'].split('\n').at(-1)).toBe(
-      linuxNixSandboxFallbackConf,
-    )
+    expect(installNixStep().with['extra-conf']).toContain(linuxNixSandboxFallbackConf)
     const hostedInstall = pipelineCloseJob({}).steps.find(
       (step) => step.uses === 'cachix/install-nix-action@v31',
     )
@@ -145,6 +167,9 @@ describe('Linux Nix sandbox fallback', () => {
     }
     expect(rendered.jobs.macos?.env?.NIX_CONFIG).toBe(macConfig)
     expect(linuxNixSandboxFallbackStep.run).toContain('"${NIX_CONFIG:-}"')
+    expect(linuxNixSandboxFallbackStep.run).toContain(
+      'sandbox = true\\nsandbox-fallback = false',
+    )
     expect(linuxNixSandboxFallbackStep.run).toContain('sandbox-fallback = false')
     const recomposed = ciWorkflow({
       trustTier: 'public',
@@ -179,6 +204,40 @@ describe('Linux Nix sandbox fallback', () => {
     }
     expect(linuxJobs).toBeGreaterThan(0)
     expect(macosJobs).toBeGreaterThan(0)
+  })
+
+  it('refuses fork PR tool realization and uses only declared pinned Node in source-only jobs', () => {
+    const jobs = repositoryCiWorkflow.data.jobs
+    for (const [jobId, commandName] of [
+      ['default-ref-policy', 'Check first-party default refs'],
+      ['source-shape', 'Measure source shape: effect-utils'],
+    ] as const) {
+      const job = jobs[jobId]!
+      const guardIndex = job.steps.findIndex(
+        (step) => step.name === 'Log Linux sandbox prerequisites',
+      )
+      const commandIndex = job.steps.findIndex((step) => step.name === commandName)
+      expect(guardIndex, jobId).toBeGreaterThan(-1)
+      expect(commandIndex, jobId).toBeGreaterThan(guardIndex)
+      expect(job.steps[guardIndex]?.env?.BUCK2_TS_PRIVILEGE_ALLOWED).toBe(
+        `\${{ ${namespacePrivilegeTrustedPredicate} }}`,
+      )
+      expect(job.steps[guardIndex]?.run).toContain('exit 1')
+      expect(JSON.stringify(job['runs-on'])).toContain(namespacePrivilegeTrustedPredicate)
+      for (const step of job.steps.slice(0, guardIndex)) {
+        expect(step.run ?? '', jobId).not.toMatch(/\bnix (?:build|shell|run|develop)\b/)
+      }
+      const script = job.steps[commandIndex]?.run ?? ''
+      expect(script).toContain(
+        'node_out="$(nix build --no-update-lock-file --no-link --print-out-paths .#buck2-node)"',
+      )
+      expect(script).toContain('"$node_out/bin/node" <<')
+      expect(script).not.toContain('nixpkgs#')
+      expect(script).not.toContain('command -v')
+      expect(script).not.toContain('ensure_ci_measurement_tool')
+      expect(script).not.toContain('nix shell')
+      expect(script).not.toMatch(/(?:^|\n)node\s/)
+    }
   })
 })
 

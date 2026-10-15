@@ -212,11 +212,12 @@ export type CiWorkflowArgs = GitHubWorkflowArgs & {
   readonly binaryCaches?: readonly BinaryCacheDescriptor[]
 }
 
-const linuxNixSandboxFallbackSetting = 'sandbox-fallback = false'
+const linuxNixSandboxSettings = ['sandbox = true', 'sandbox-fallback = false']
 
 /** Installer/daemon setting; the empty Darwin branch leaves its policy unchanged. */
-export const linuxNixSandboxFallbackConf =
-  `\${{ runner.os == 'Linux' && '${linuxNixSandboxFallbackSetting}' || '' }}`
+export const linuxNixSandboxFallbackConf = linuxNixSandboxSettings
+  .map((setting) => `\${{ runner.os == 'Linux' && '${setting}' || '' }}`)
+  .join('\n')
 
 /** Also covers preinstalled Nix and jobs that do not use the shared installer. */
 export const linuxNixSandboxFallbackStep = {
@@ -226,7 +227,7 @@ export const linuxNixSandboxFallbackStep = {
   shell: 'bash' as const,
   run: [
     'set -euo pipefail',
-    `printf 'NIX_CONFIG<<EOF\\n%s\\n${linuxNixSandboxFallbackSetting}\\nEOF\\n' "\${NIX_CONFIG:-}" >> "$GITHUB_ENV"`,
+    `printf 'NIX_CONFIG<<EOF\\n%s\\n${linuxNixSandboxSettings.join('\\n')}\\nEOF\\n' "\${NIX_CONFIG:-}" >> "$GITHUB_ENV"`,
   ].join('\n'),
 }
 

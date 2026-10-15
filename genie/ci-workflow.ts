@@ -45,7 +45,7 @@ export type DefaultRefPolicyCheckJobOptions = DefaultRefPolicyCheckStepOptions &
   readonly postSteps?: readonly GitHubWorkflowStep[]
 }
 
-/** Keep the trust gate checkout-only: invalid refs must fail before repository code executes. */
+/** Check source refs before devenv/megarepo composition, using the repo's pinned Node output. */
 export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions = {}) => {
   const { name, runsOn, env, permissions, defaults, preSteps, postSteps, ...stepOpts } = opts
 
