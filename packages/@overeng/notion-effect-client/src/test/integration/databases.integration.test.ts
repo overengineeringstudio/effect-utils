@@ -17,7 +17,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionDatabases (integration)'
   afterAll(teardownIntegrationFixtures, 60_000)
 
   Vitest.describe('retrieve', () => {
-    Vitest.it.effect('fetches database by ID', () =>
+    Vitest.it.live('fetches database by ID', () =>
       Effect.gen(function* () {
         const database = yield* NotionDatabases.retrieve({
           databaseId: TEST_IDS.database,
@@ -31,7 +31,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionDatabases (integration)'
   })
 
   Vitest.describe('query', () => {
-    Vitest.it.effect('queries all rows', () =>
+    Vitest.it.live('queries all rows', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
           dataSourceId: TEST_IDS.dataSource,
@@ -42,7 +42,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionDatabases (integration)'
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    Vitest.it.effect('queries with filter', () =>
+    Vitest.it.live('queries with filter', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
           dataSourceId: TEST_IDS.dataSource,
@@ -57,7 +57,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionDatabases (integration)'
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    Vitest.it.effect('queries with sort', () =>
+    Vitest.it.live('queries with sort', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
           dataSourceId: TEST_IDS.dataSource,
@@ -68,7 +68,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionDatabases (integration)'
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    Vitest.it.effect('queries with page size limit', () =>
+    Vitest.it.live('queries with page size limit', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
           dataSourceId: TEST_IDS.dataSource,
@@ -82,7 +82,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionDatabases (integration)'
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    Vitest.it.effect('queries with cursor for pagination', () =>
+    Vitest.it.live('queries with cursor for pagination', () =>
       Effect.gen(function* () {
         // First page
         const firstPage = yield* NotionDatabases.query({
@@ -108,7 +108,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionDatabases (integration)'
   })
 
   Vitest.describe('queryStream', () => {
-    Vitest.it.effect(
+    Vitest.it.live(
       'streams all results across pages',
       () =>
         Effect.gen(function* () {
@@ -130,7 +130,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionDatabases (integration)'
       { timeout: 30000 },
     )
 
-    Vitest.it.effect('streams with filter', () =>
+    Vitest.it.live('streams with filter', () =>
       Effect.gen(function* () {
         const stream = NotionDatabases.queryStream({
           dataSourceId: TEST_IDS.dataSource,
