@@ -785,7 +785,7 @@ Vitest.describe('HttpClient.TracerHeaderFilter span-header allowlist', () => {
 
       // The built-in client span (default SpanNameGenerator) carries ALL header
       // names as attributes, redacting only default-redacted values.
-      const span = trace.spans.find((candidate) => candidate.name === 'http.client GET')
+      const span = trace.spans.find((candidate) => candidate.name === 'GET')
       expect(span).toBeDefined()
       expect(span?.attributes['http.request.header.authorization']).toBe('<redacted>')
       expect(span?.attributes['http.request.header.notion-version']).toBeDefined()
@@ -802,7 +802,7 @@ Vitest.describe('HttpClient.TracerHeaderFilter span-header allowlist', () => {
         Effect.withTracer(trace.tracer),
       )
 
-      const span = trace.spans.find((candidate) => candidate.name === 'http.client GET')
+      const span = trace.spans.find((candidate) => candidate.name === 'GET')
       expect(span).toBeDefined()
       const headerKeys = Object.keys(span?.attributes ?? {})
         .filter(
