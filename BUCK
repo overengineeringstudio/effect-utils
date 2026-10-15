@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:21deb314d3cd7122937bb33b5c6b4176e2b71c9154e63f5c65d9f406acd7d793
+# Semantic fingerprint: sha256:5820beba200bc44b85fee9f18b91e98dd3c90fb24f42f4aa289f56064e5891e9
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -287,6 +287,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/ai-gateway-edge:test",
         "effect_utils//packages/@overeng/ci-tools:test",
         "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api",
+        "effect_utils//packages/@overeng/ci-tools:test_pnpm_deployed_local_api",
         "effect_utils//packages/@overeng/content-address:test",
         "effect_utils//packages/@overeng/devbar:test",
         "effect_utils//packages/@overeng/effect-ai-claude-cli:test",

@@ -51,6 +51,9 @@
             "context": "weaver"
           },
           {
+            "context": "pnpm-deployed"
+          },
+          {
             "context": "source-shape"
           },
           {

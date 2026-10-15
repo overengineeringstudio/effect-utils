@@ -79,6 +79,10 @@
       "rationale": "Generic deploy/report contracts duplicate the main ci-tools source complement; no additional Darwin-specific behavior."
     },
     {
+      "task": "test:ci-tools:test_pnpm_deployed_local_api:unbounded",
+      "rationale": "Generic CI tools source complement; no additional Darwin-specific behavior."
+    },
+    {
       "task": "test:otel-contract:unbounded",
       "rationale": "Telemetry registry equivalence, profile links and Weaver contract validation; no Darwin-specific behavior."
     },
@@ -146,6 +150,10 @@
       {
         "task": "test:ci-tools:test_pipeline_report_local_api",
         "rationale": "ci-tools:test_pipeline_report_local_api bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:ci-tools:test_pnpm_deployed_local_api",
+        "rationale": "Deployed pnpm registry validation against local HTTP fixtures and temporary declarations; no Darwin-specific lifecycle behavior."
       },
       {
         "task": "test:content-address",

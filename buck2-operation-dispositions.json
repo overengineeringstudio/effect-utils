@@ -37,6 +37,9 @@
       "operation": "weaver"
     },
     {
+      "operation": "pnpm-deployed"
+    },
+    {
       "disposition": "outside-by-policy:bootstrap-integration",
       "operation": "bootstrap-cold-proof"
     },
