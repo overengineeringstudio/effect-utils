@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { defaultRefPolicyCheckScript } from './default-ref-policy-script.ts'
 import { githubTokenEnv, shellSingleQuote } from './shared.ts'
 
@@ -174,6 +176,14 @@ export type DefaultRefPolicyCheckStepOptions = {
   readonly allowLegacyMemberCommitRefs?: boolean
 }
 
+// Freeze the upstream tool source into the generated workflow. The trust gate
+// must not evaluate the checkout's flake (or fetch its inputs) before checking refs.
+const defaultRefPolicyNixpkgs: { rev: string; narHash: string } = JSON.parse(
+  readFileSync(new URL('../../flake.lock', import.meta.url), 'utf8'),
+).nodes.nixpkgs.locked
+const defaultRefPolicyNodeInstallable =
+  `github:NixOS/nixpkgs/${defaultRefPolicyNixpkgs.rev}?narHash=${encodeURIComponent(defaultRefPolicyNixpkgs.narHash)}#nodejs_24`
+
 /** Fail before composition when first-party megarepo/flake/devenv inputs target non-default refs. */
 export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions = {}) => ({
   name: 'Check first-party default refs',
@@ -188,7 +198,9 @@ export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions
     NORMALIZE_GIT_BRANCH_REFS: opts.normalizeGitBranchRefs === true ? '1' : '0',
     ALLOW_LEGACY_MEMBER_COMMIT_REFS: opts.allowLegacyMemberCommitRefs === true ? '1' : '0',
   },
-  run: `nix shell nixpkgs#nodejs_24 -c node <<'NODE'
+  run: `set -euo pipefail
+node_out="$(nix build --no-update-lock-file --no-link --print-out-paths ${shellSingleQuote(defaultRefPolicyNodeInstallable)})"
+"$node_out/bin/node" <<'NODE'
 ${defaultRefPolicyCheckScript}
 NODE`,
   shell: 'bash',

@@ -17,6 +17,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 // local, unsandboxed native-action lane.
 type Tools = {
   readonly bubblewrap: string
+  readonly bun: string
   readonly bash: string
   readonly repoRoot: string
   readonly launcherSource: string
@@ -179,7 +180,7 @@ linuxSuite('TS sandbox generated shell (Linux required; Darwin containment unsup
       launcherSource.includes(bubblewrap),
       'BWRAP_BIN must match the exact pinned executable in the generated launcher',
     )
-    tools = { bubblewrap, bash, repoRoot, launcherSource, outputDirectory }
+    tools = { bubblewrap, bun, bash, repoRoot, launcherSource, outputDirectory }
     // Mandatory positive control even when selecting only failure-path tests:
     // an unusable host Bubblewrap must never make the Linux suite look green.
     await withFixture(tools, async (fixture) => {
@@ -214,6 +215,18 @@ linuxSuite('TS sandbox generated shell (Linux required; Darwin containment unsup
       expect(result.status).not.toBe(0)
       expect(result.stderr).toContain(missingBubblewrap)
       expect((await stat(fixture.outputDirectory)).isDirectory()).toBe(true)
+      await expect(access(fixture.output)).rejects.toMatchObject({ code: 'ENOENT' })
+    })
+  })
+
+  it('fails closed when the declared Bun runtime is missing instead of using ambient Bun', async () => {
+    await withFixture(tools, async (fixture) => {
+      const missingBun = '/missing-declared-bun'
+      const source = await readFile(fixture.launcher, 'utf8')
+      await writeFile(fixture.launcher, source.replaceAll(tools.bun, missingBun))
+      const result = await runLauncher(tools, fixture)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain(missingBun)
       await expect(access(fixture.output)).rejects.toMatchObject({ code: 'ENOENT' })
     })
   })

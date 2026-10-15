@@ -4,6 +4,7 @@ import {
   pipelineJobIdentityForName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { linuxNixSandboxFallbackConf } from './shared.ts'
 
 type Job = GitHubWorkflowArgs['jobs'][string]
 const script = 'bash genie/ci-scripts/evidence-job.sh'
@@ -101,7 +102,11 @@ export const pipelineCloseJob = (jobs: Record<string, Job>): Job => ({
   },
   steps: [
     { uses: 'actions/checkout@v6', with: { 'persist-credentials': false } },
-    { name: 'Prepare Nix', uses: 'cachix/install-nix-action@v31' },
+    {
+      name: 'Prepare Nix',
+      uses: 'cachix/install-nix-action@v31',
+      with: { extra_nix_config: linuxNixSandboxFallbackConf },
+    },
     joinTailnetStep,
     {
       name: 'Link started job roots',

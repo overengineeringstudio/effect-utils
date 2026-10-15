@@ -267,6 +267,25 @@ The Linux prerequisites guard takes the same explicit policy: only `trusted`
 renders the PR-identity expression. `always` emits literal permission and never
 reads the PR event, preserving the `workflow_run` deployment trust boundary.
 
+Every Linux CI job sets `sandbox = true` and `sandbox-fallback = false` before
+other steps, preserving unrelated inherited `NIX_CONFIG` settings. Fresh Nix
+installers also apply both settings to daemon configuration. Neither an inherited
+disabled sandbox nor an unavailable sandbox may silently run a build unsandboxed.
+The settings are conditional on `runner.os == 'Linux'`, leaving Darwin policy
+unchanged; they do not grant privileges or bypass fork admission guards.
+
+The source-only `default-ref-policy` job must not evaluate the checkout's flake
+before checking its refs. Genie freezes the root `flake.lock` nixpkgs revision
+and NAR hash into an upstream `github:NixOS/nixpkgs/...#nodejs_24` installable in
+the generated workflow; the running gate never reads the checkout's lockfile to
+resolve its interpreter. `source-shape` explicitly needs `default-ref-policy`
+before realizing the declared `.#buck2-node` output. Both invoke the exact
+realized `bin/node`, use `--no-update-lock-file`, and never select ambient Node
+or an unpinned registry package. Both apply the `trusted` Linux prerequisites
+guard before realizing tools: fork PRs fail closed. The separate main source-shape
+proof inherits that guard but does not depend on the product workflow's gate;
+its main/dispatch-only events are admitted without granting fork PRs privilege.
+
 `plainFlakeSetupSteps` installs Determinate Nix and accepts an optional public
 `cachix` name for read-only cache access. For custom jobs, compose these setup steps
 with `nixDevelopStep({ name, command })`; `command` is an argv vector, not a shell
