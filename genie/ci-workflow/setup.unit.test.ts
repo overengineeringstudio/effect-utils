@@ -2,6 +2,8 @@ import { describe, expect, it } from 'bun:test'
 
 import { Glob } from 'bun'
 
+import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
+import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
 import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'json' }
 import {
   linuxSandboxPrerequisitesStep,
@@ -13,6 +15,64 @@ import testPlatforms from './test-platforms.json' with { type: 'json' }
 describe('namespaceRunner', () => {
   const linux = 'namespace-profile-linux-x86-64'
   const trustedSuffix = `\${{ (${namespacePrivilegeTrustedPredicate}) && ';container.privileged=true' || '' }}`
+
+  it('appends explicit priority beside the other features in both label formats', () => {
+    expect(
+      namespaceRunner({ profile: linux, runId: '42', privileged: 'always', priority: 2 }),
+    ).toEqual([`${linux};github.run-id=42;container.privileged=true;job.priority=2`])
+    const profile = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
+    expect(
+      namespaceRunner({ profile, runId: '42', privileged: 'always', priority: 3 }),
+    ).toEqual([
+      profile,
+      'namespace-features:github.run-id=42;container.privileged=true;job.priority=3',
+    ])
+  })
+
+  it('preserves expression-valued priorities as an interpolated feature value', () => {
+    const priority = "${{ github.event_name == 'merge_group' && 1 || 2 }}"
+    for (const profile of [linux, 'nscloud-ubuntu-24.04-amd64-16x64-with-features']) {
+      const labels = namespaceRunner({
+        profile,
+        runId: '${{ github.run_id }}',
+        privileged: 'never',
+        priority,
+      })
+      expect(labels.at(-1)).toBe(
+        `${profile.endsWith('-with-features') ? 'namespace-features:' : `${profile};`}github.run-id=\${{ github.run_id }};job.priority=${priority}`,
+      )
+    }
+  })
+
+  it('leaves absent priority byte-identical to the previous labels', () => {
+    for (const privileged of ['never', 'always', 'trusted'] as const) {
+      const suffix =
+        privileged === 'never'
+          ? ''
+          : privileged === 'always'
+            ? ';container.privileged=true'
+            : trustedSuffix
+      expect(JSON.stringify(namespaceRunner({ profile: linux, runId: '42', privileged }))).toBe(
+        JSON.stringify([`${linux};github.run-id=42${suffix}`]),
+      )
+      const profile = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
+      expect(JSON.stringify(namespaceRunner({ profile, runId: '42', privileged }))).toBe(
+        JSON.stringify([profile, `namespace-features:github.run-id=42${suffix}`]),
+      )
+    }
+  })
+
+  it('prioritizes generated merge-group producers and required PR checks', () => {
+    expect(ciWorkflow.data.jobs['build-products']!['runs-on']).toEqual([
+      `${linux};github.run-id=\${{ github.run_id }};container.privileged=true;job.priority=1`,
+    ])
+    expect(storybookPlaysWorkflow.data.jobs['test-storybook-plays']!['runs-on']).toEqual([
+      `${linux};github.run-id=\${{ github.run_id }};container.privileged=true;job.priority=1`,
+    ])
+    expect(ciWorkflow.data.jobs.quality!['runs-on']).toEqual([
+      `${linux};github.run-id=\${{ github.run_id }}${trustedSuffix};job.priority=\${{ github.event_name == 'merge_group' && 1 || 2 }}`,
+    ])
+  })
 
   it('requires an explicit privilege choice, even when invoked by an untyped generator', () => {
     for (const profile of [linux, 'nscloud-ubuntu-24.04-amd64-16x64-with-features']) {

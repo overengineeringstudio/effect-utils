@@ -65,11 +65,15 @@ export const storybookPaths = [
 ].toSorted()
 
 /** Each job must classify privilege from its own steps and event gate. */
-export const storybookPreviewRunner = (privileged: NamespacePrivilege): readonly string[] =>
+export const storybookPreviewRunner = (
+  privileged: NamespacePrivilege,
+  priority = 3,
+): readonly string[] =>
   namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
     privileged,
+    priority,
   })
 
 const binaryCache = readBinaryCacheDescriptors(

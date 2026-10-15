@@ -40,7 +40,7 @@ export default ciWorkflow({
   jobs: withBuck2CacheEvidence({
     [playsJobName]: {
       if: "${{ github.event_name == 'merge_group' }}",
-      'runs-on': storybookPreviewRunner('always'),
+      'runs-on': storybookPreviewRunner('always', 1),
       'timeout-minutes': 45,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,

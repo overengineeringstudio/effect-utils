@@ -66,16 +66,19 @@ export const namespacePrivilegeTrustedPredicate =
  * `;key=value` to the profile label itself.
  * Privilege is an explicit per-job choice, never a profile-wide default.
  * Namespace isolates Linux privilege inside each ephemeral per-job VM.
+ * Priority is opt-in: omitting it preserves labels for downstream consumers.
  * @see https://namespace.so/docs/solutions/github-actions/runner-controls
  */
 export const namespaceRunner = ({
   profile,
   runId,
   privileged,
+  priority,
 }: {
   profile: RunnerProfile | (string & {})
   runId: string
   privileged: NamespacePrivilege
+  priority?: number | string
 }): readonly [string] | readonly [string, string] => {
   if (privileged !== 'always' && privileged !== 'trusted' && privileged !== 'never') {
     throw new Error('namespaceRunner requires explicit privileged: always, trusted or never')
@@ -99,7 +102,8 @@ export const namespaceRunner = ({
       : privileged === 'always' && linuxPredicate === undefined
         ? ';container.privileged=true'
         : `\${{ ${privilegePredicate} && ';container.privileged=true' || '' }}`
-  const features = `github.run-id=${runId}${privilegeFeature}`
+  const priorityFeature = priority === undefined ? '' : `;job.priority=${priority}`
+  const features = `github.run-id=${runId}${privilegeFeature}${priorityFeature}`
   return profile.endsWith('-with-features') === true
     ? [profile, `namespace-features:${features}`]
     : [`${profile};${features}`]

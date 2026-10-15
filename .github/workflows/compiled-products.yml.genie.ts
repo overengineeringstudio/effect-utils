@@ -55,6 +55,7 @@ export default ciWorkflow({
               profile: runner,
               runId: '{0}',
               privileged: 'always',
+              priority: 3,
             })[0],
           })),
         },
