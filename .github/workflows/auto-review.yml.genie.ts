@@ -6,5 +6,6 @@ export default autoReviewWorkflow({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
     privileged: 'never',
+    priority: 4,
   }),
 })

@@ -21,7 +21,7 @@ jobs:
     if: ${{ github.event_name == 'merge_group' }}
     runs-on:
       [
-        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true',
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
       ]
     timeout-minutes: 45
     permissions:
