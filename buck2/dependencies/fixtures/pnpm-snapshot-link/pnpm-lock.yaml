@@ -13,9 +13,6 @@ importers:
       file-consumer:
         specifier: file:../../external/file-consumer
         version: file:external/file-consumer
-      workspace-lib:
-        specifier: workspace:*
-        version: link:../lib
 
   packages/lib: {}
 

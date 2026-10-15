@@ -349,6 +349,11 @@ Workspace `link:` dependencies resolve relative to their importer, or relative
 to the lockfile root when pnpm emits them inside a package snapshot. Both forms
 reference the same workspace importer and package tree. Links must remain inside
 the repository; snapshot links must resolve to a known lockfile importer.
+Directory snapshots without their own importer view get a normalized store entry
+backed by their declared source tree. Their snapshot dependencies, including
+workspace links, remain explicit Buck edges rather than being lost behind a
+source-tree reference. Directory snapshots with an importer reuse its workspace
+tree and dependency view.
 
 Dependency-view availability is derived from the complete required resolver
 context, not just a package's own platform fields. Required native dependencies

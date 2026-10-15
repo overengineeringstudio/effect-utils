@@ -141,7 +141,7 @@ describe('translatePnpmLock', () => {
     const snapshotReference =
       metadata.snapshots['file-consumer@file:external/file-consumer']!.dependencies['workspace-lib']
     expect(snapshotReference).toEqual({ kind: 'workspace', path: 'packages/lib' })
-    expect(snapshotReference).toEqual(metadata.importers['packages/app']!.dependencies['workspace-lib'])
+    expect(metadata.importers['packages/app']!.dependencies['workspace-lib']).toBeUndefined()
     expect(metadata.importers['packages/lib']).toBeDefined()
   })
 
@@ -157,6 +157,22 @@ describe('translatePnpmLock', () => {
     ).toThrow(
       'pnpm-lock.yaml.snapshots.file-consumer@file:external/file-consumer.dependencies.workspace-lib workspace link does not resolve to a known importer (packages/unknown)',
     )
+  })
+
+  it.each([
+    ['..', 'workspace link escapes the repository'],
+    ['../lib', 'workspace link escapes the repository'],
+    ['/packages/lib', 'has unsafe workspace link'],
+  ])('rejects unsafe snapshot link %s', (target, error) => {
+    expect(() =>
+      translatePnpmLock({
+        lockfileText: snapshotLinkFixture('pnpm-lock.yaml').replace(
+          'link:packages/lib',
+          `link:${target}`,
+        ),
+        workspaceText: snapshotLinkFixture('pnpm-workspace.yaml'),
+      }),
+    ).toThrow(error)
   })
 
   it('emits sorted platform metadata and stable targets', () => {

@@ -334,6 +334,23 @@ _extract = cache_guarded_rule(
     }),
 )
 
+def _directory_package_impl(ctx):
+    outputs = ctx.attrs.source[DefaultInfo].default_outputs
+    if len(outputs) != 1:
+        fail("pnpm directory package requires exactly one declared source tree")
+    return [
+        DefaultInfo(default_output = outputs[0]),
+        PnpmPackageInfo(bins = {}, package_name = ctx.attrs.package_name, tree = outputs[0]),
+    ]
+
+pnpm_directory_package = cache_guarded_rule(
+    impl = _directory_package_impl,
+    attrs = {
+        "package_name": attrs.string(),
+        "source": attrs.dep(providers = [DefaultInfo]),
+    },
+)
+
 def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches = [], **kwargs):
     """Declares one digest-and-size-pinned acquisition and offline extraction target."""
     _require_url(url)
@@ -517,6 +534,13 @@ def _store_entry_impl(ctx):
     read_root_candidates = [out]
     for name in dependency_keys:
         read_root_candidates.extend(ctx.attrs.dependencies[name][PnpmStoreEntryInfo].read_roots)
+    for name in sorted(ctx.attrs.workspaces.keys()):
+        _require_portable_path(name, "workspace dependency name")
+        if name in ctx.attrs.dependencies:
+            fail("duplicate dependency {}".format(name))
+        workspace = ctx.attrs.workspaces[name]
+        args.add("--workspace-link", name, _workspace_tree(workspace))
+        read_root_candidates.extend(_workspace_roots(workspace))
     read_roots = _unique_artifacts(read_root_candidates)
     for name in dependency_keys:
         dependency = ctx.attrs.dependencies[name]
@@ -576,6 +600,7 @@ _store_entry = cache_guarded_rule(
         "scc": attrs.option(attrs.dep(providers = [PnpmStoreSccInfo]), default = None),
         "store_key": attrs.string(),
         "unavailable": attrs.string(default = ""),
+        "workspaces": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [DefaultInfo]), default = {}),
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
@@ -590,6 +615,8 @@ def pnpm_store_entry(
         runtime,
         dependencies = None,
         dependencies_by_platform = None,
+        workspaces = None,
+        workspaces_by_platform = None,
         package_override = "",
         scc = None,
         unavailable_by_platform = None,
@@ -601,6 +628,11 @@ def pnpm_store_entry(
             dependencies,
             dependencies_by_platform,
             "pnpm_store_entry dependencies",
+        ),
+        workspaces = {} if workspaces == None and workspaces_by_platform == None else _exactly_one(
+            workspaces,
+            workspaces_by_platform,
+            "pnpm_store_entry workspaces",
         ),
         package = package,
         package_override = package_override,

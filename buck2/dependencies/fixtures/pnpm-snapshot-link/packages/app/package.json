@@ -1,1 +1,1 @@
-{"name":"app","version":"1.0.0","dependencies":{"file-consumer":"file:../../external/file-consumer","workspace-lib":"workspace:*"}}
+{"name":"app","version":"1.0.0","dependencies":{"file-consumer":"file:../../external/file-consumer"}}

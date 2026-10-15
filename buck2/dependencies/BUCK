@@ -7513,7 +7513,7 @@ pnpm_package(
     },
 )
 
-load(":defs.bzl", "pnpm_platform_configurations", "pnpm_store_entry", "pnpm_store_scc", "pnpm_store_view")
+load(":defs.bzl", "pnpm_directory_package", "pnpm_platform_configurations", "pnpm_store_entry", "pnpm_store_scc", "pnpm_store_view")
 
 pnpm_platform_configurations()
 
