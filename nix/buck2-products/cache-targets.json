@@ -38,6 +38,15 @@
     },
     {
       "kind": "package",
+      "name": "@overeng/data-graph",
+      "outputName": "overeng-data-graph.tgz",
+      "packagePath": "packages/@overeng/data-graph",
+      "packageTreePath": "packages/@overeng/data-graph",
+      "target": "effect_utils//packages/@overeng/data-graph:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "kind": "package",
       "name": "@overeng/devbar",
       "outputName": "overeng-devbar.tgz",
       "packagePath": "packages/@overeng/devbar",
