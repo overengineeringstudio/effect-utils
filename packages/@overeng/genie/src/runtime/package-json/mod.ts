@@ -11,7 +11,11 @@ import { createGenieOutput } from '../core.ts'
 import type { GenieContext, GenieOutput, Strict } from '../core.ts'
 import type { PnpmPackageClosureConfig } from '../pnpm-workspace/mod.ts'
 import { projectPnpmPackageClosure } from '../pnpm-workspace/mod.ts'
-import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
+import {
+  relativeRepoPath,
+  rootWorkspaceMemberPathsFromPackages,
+  workspaceClosureReferenceSource,
+} from '../workspace-graph.ts'
 import { PackageJsonCompositionBrand, type PackageJsonComposition } from './catalog.ts'
 import { matchesPattern, type ValidationIssue } from './validation.ts'
 import {
@@ -418,6 +422,7 @@ export type AggregatePackageJsonData = {
 /** Package-level metadata wrapper attached to generators that participate in workspace recomposition. */
 export type WorkspaceMeta = {
   workspace: WorkspaceMetadata
+  readonly [workspaceClosureReferenceSource]?: WorkspacePackageLike
 }
 
 /** Minimal shape needed to compose emitted package data with non-emitted workspace metadata. */
@@ -440,12 +445,16 @@ const projectWorkspaceClosureReference = (pkg: WorkspacePackageLike): NamedWorks
 
   return {
     data: { name: pkg.data.name },
-    meta: {
-      workspace: {
-        ...pkg.meta.workspace,
-        deps: pkg.meta.workspace.deps.map(projectWorkspaceClosureReference),
+    meta: Object.defineProperty(
+      {
+        workspace: {
+          ...pkg.meta.workspace,
+          deps: pkg.meta.workspace.deps.map(projectWorkspaceClosureReference),
+        },
       },
-    },
+      workspaceClosureReferenceSource,
+      { value: pkg.meta[workspaceClosureReferenceSource] ?? pkg },
+    ),
   }
 }
 
@@ -456,6 +465,9 @@ const projectWorkspaceClosureReference = (pkg: WorkspacePackageLike): NamedWorks
  * workspace dependency plus the recursive workspace graph needed by
  * projections. Package behavior such as peer contracts and pnpm patch metadata
  * deliberately does not flow through this edge.
+ * Source projection alone can consult non-enumerable provenance to validate
+ * peer edges against the original manifest without exposing those contracts
+ * to ordinary package composition or changing serialized output.
  */
 export const workspaceClosureReference = <const Name extends string>(
   pkg: NamedWorkspacePackageLike<Name>,
