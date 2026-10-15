@@ -107,11 +107,19 @@ describe('namespaceRunner', () => {
         expect(JSON.stringify(job['runs-on'])).toContain(';job.priority=1')
       }
     }
-    for (const row of compiledWorkflow.data.jobs['publish-compiled-products'].strategy.matrix
-      .include) {
-      expect(row.runnerLabel).toContain(';job.priority=1')
-      expect(row.runnerLabel).toContain(';github.run-id={0}')
-    }
+    expect(compiledWorkflow.data.jobs['publish-compiled-products']?.strategy?.matrix).toEqual({
+      include: [
+        {
+          runner: 'namespace-profile-linux-x86-64',
+          runnerLabel:
+            'namespace-profile-linux-x86-64;github.run-id={0};container.privileged=true;job.priority=1',
+        },
+        {
+          runner: 'namespace-profile-macos-arm64',
+          runnerLabel: 'namespace-profile-macos-arm64;github.run-id={0};job.priority=1',
+        },
+      ],
+    })
     expect(JSON.stringify(autoReviewWorkflow.data.jobs['request-review']['runs-on'])).toContain(
       ';job.priority=4',
     )
