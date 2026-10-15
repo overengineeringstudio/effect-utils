@@ -28,9 +28,7 @@
   "installPolicy": {
     "dedupePeerDependents": true,
     "ignoreScripts": true,
-    "minimumReleaseAgeExclude": [
-      "@types/node"
-    ],
+    "minimumReleaseAgeExclude": ["@types/node"],
     "optimisticRepeatInstall": false,
     "packageImportMethod": {
       "live": {
@@ -54,18 +52,9 @@
     "strictPeerDependencies": true,
     "strictStorePkgContentCheck": true,
     "supportedArchitectures": {
-      "cpu": [
-        "x64",
-        "arm64"
-      ],
-      "libc": [
-        "glibc",
-        "musl"
-      ],
-      "os": [
-        "linux",
-        "darwin"
-      ]
+      "cpu": ["x64", "arm64"],
+      "libc": ["glibc", "musl"],
+      "os": ["linux", "darwin"]
     },
     "verifyDepsBeforeRun": false,
     "verifyStoreIntegrity": true
