@@ -273,7 +273,7 @@ or pinned signing identity. It does not prove historical grant continuity.
 Candidate descriptor, receipt, content and signature checks remain unchanged.
 
 Before publishing an artifact-installed bundle, ctl durably records its
-configuration at `S/host-configs/<bundle-inode>.json`, keyed by that bundle's
+configuration at `S/host-configs/<device>-<bundle-inode>.json`, keyed by that bundle's
 inode. Later replacement uses that recorded configuration to describe and
 verify the incumbent's own layout and signatures, rather than imposing the
 new candidate's layout on it. The candidate's pinned outer identity must still
@@ -283,8 +283,14 @@ bypass a record. The consumer retains these records with the state needed for
 its installed and archived bundles.
 
 This is an invocation policy, not a Nix constructor or configuration option.
-The existing `ctl` wrapper forwards consumer arguments unchanged; the Nix
-interface and generated `ctlConfig` schema do not change.
+The existing `ctl` wrapper forwards consumer arguments unchanged; the constructor
+arguments and generated `ctlConfig` schema do not change. The additive library
+capability `effectUtils.lib.macosAppCapabilities.legacyIncumbentImport = true`
+allows consumers to assert support during evaluation before passing the opt-in:
+
+```nix
+assert effectUtils.lib.macosAppCapabilities.legacyIncumbentImport or false;
+```
 
 Artifact `verify --artifact RELEASE --desired DESCRIPTOR --app-dir D
 --state S --generation G` checks the installed descriptor and actual
