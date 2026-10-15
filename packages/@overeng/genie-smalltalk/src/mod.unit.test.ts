@@ -18,6 +18,7 @@ import {
   type HumanGateSchema,
   mission,
   MissionSchema,
+  missionWire,
   node,
   omp,
   person,
