@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/data-graph/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:8091a139120cf69fe8a263e4a8e811da4dc80491be71f4aad777017ac961d08b
+# Semantic fingerprint: sha256:3ed4da92ebd9d31fa534683f9a6681cd8000ad9e5b113e5905619d94db48eebd
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -26,6 +26,7 @@ export_materialization_inputs([
     "src/mod.ts",
     "src/properties.integration.test.ts",
     "src/scenario.ts",
+    "src/selection.integration.test.ts",
     "src/spike.ts",
 ])
 
@@ -73,6 +74,7 @@ package_view(
         "src/mod.ts": "src/mod.ts",
         "src/properties.integration.test.ts": "src/properties.integration.test.ts",
         "src/scenario.ts": "src/scenario.ts",
+        "src/selection.integration.test.ts": "src/selection.integration.test.ts",
         "src/spike.ts": "src/spike.ts",
         "tsconfig.json": "tsconfig.json",
     },
@@ -104,6 +106,7 @@ package_view(
         "src/mod.ts": "src/mod.ts",
         "src/properties.integration.test.ts": "src/properties.integration.test.ts",
         "src/scenario.ts": "src/scenario.ts",
+        "src/selection.integration.test.ts": "src/selection.integration.test.ts",
         "src/spike.ts": "src/spike.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
