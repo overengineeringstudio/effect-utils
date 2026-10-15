@@ -2,7 +2,8 @@
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, ErrorKind};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // Fixed, not CPU-scaled: ~220 concurrent walks caused ZFS dnode lookup livelock
 // on dev3 on 2026-10-15. More CPUs do not increase safe filesystem concurrency.
@@ -15,66 +16,134 @@ pub(crate) fn acquire() -> io::Result<File> {
         .map_err(|error| io::Error::new(error.kind(), format!("fingerprint admission: {error}")))
 }
 
+fn temporary_path(path: &Path) -> io::Result<PathBuf> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let name = path
+        .file_name()
+        .ok_or_else(|| io::Error::other("coordination path needs a file name"))?;
+    Ok(path.with_file_name(format!(
+        ".{}.{}-{}",
+        name.to_string_lossy(),
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed),
+    )))
+}
+
+fn coordination_error(path: &Path, mode: &str, error: io::Error) -> io::Error {
+    io::Error::new(
+        error.kind(),
+        format!(
+            "fingerprint coordination {} requires usable mode {mode}: {error}",
+            path.display(),
+        ),
+    )
+}
+
+fn publish_directory(directory: &Path) -> io::Result<()> {
+    if directory.try_exists()? {
+        return Ok(());
+    }
+    let temporary = loop {
+        let path = temporary_path(directory)?;
+        match fs::create_dir(&path) {
+            Ok(()) => break path,
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+    };
+    let result = (|| {
+        fs::set_permissions(&temporary, fs::Permissions::from_mode(0o1777))?;
+        match fs::rename(&temporary, directory) {
+            Ok(()) => Ok(()),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    ErrorKind::AlreadyExists | ErrorKind::DirectoryNotEmpty
+                ) =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    })();
+    let cleanup = match fs::remove_dir(&temporary) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    };
+    result.and(cleanup)
+}
+
+fn publish_file(path: &Path) -> io::Result<()> {
+    if path.try_exists()? {
+        return Ok(());
+    }
+    let (temporary, file) = loop {
+        let temporary = temporary_path(path)?;
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&temporary)
+        {
+            Ok(file) => break (temporary, file),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+    };
+    let result = (|| {
+        file.set_permissions(fs::Permissions::from_mode(0o666))?;
+        match fs::hard_link(&temporary, path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(()),
+            Err(error) => Err(error),
+        }
+    })();
+    let cleanup = fs::remove_file(&temporary);
+    result.and(cleanup)
+}
+
 fn lock_file(directory: &Path, name: &str) -> io::Result<File> {
     let path = directory.join(name);
-    let before = match fs::symlink_metadata(&path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == ErrorKind::NotFound => {
-            match OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .mode(0o666)
-                .open(&path)
-            {
-                Ok(file) => file.set_permissions(fs::Permissions::from_mode(0o666))?,
-                Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
-                Err(error) => return Err(error),
-            }
-            fs::symlink_metadata(&path)?
+    let open = || {
+        publish_file(&path)?;
+        let before = fs::symlink_metadata(&path)?;
+        if !before.is_file() {
+            return Err(io::Error::other("coordination path must be a regular file"));
         }
-        Err(error) => return Err(error),
+        // flock supports read-only descriptors, including the action's read-only
+        // bind mount. Existing modes need only permit actual open/lock use.
+        let file = File::open(&path)?;
+        let after = file.metadata()?;
+        if before.dev() != after.dev() || before.ino() != after.ino() {
+            return Err(io::Error::other("coordination file changed while opening"));
+        }
+        Ok(file)
     };
-    if !before.is_file() || before.nlink() != 1 || before.mode() & 0o7777 != 0o666 {
-        return Err(io::Error::other(format!(
-            "coordination file {} must be a regular file with one link and mode 0666 (found mode {:04o})",
-            path.display(),
-            before.mode() & 0o7777,
-        )));
-    }
-    // flock works on read-only descriptors on supported Unix hosts. Sandboxed
-    // callers receive a read-only mount even though host files are mode 0666.
-    let file = File::open(path)?;
-    let after = file.metadata()?;
-    if before.dev() != after.dev() || before.ino() != after.ino() {
-        return Err(io::Error::other("coordination file changed while opening"));
-    }
-    Ok(file)
+    open().map_err(|error| coordination_error(&path, "0666", error))
 }
 
 fn acquire_at(directory: &Path) -> io::Result<File> {
-    let metadata = match fs::symlink_metadata(directory) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == ErrorKind::NotFound => {
-            match fs::create_dir(directory) {
-                Ok(()) => fs::set_permissions(directory, fs::Permissions::from_mode(0o1777))?,
-                Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
-                Err(error) => return Err(error),
-            }
-            fs::symlink_metadata(directory)?
-        }
-        Err(error) => return Err(error),
-    };
-    if !metadata.is_dir() || metadata.mode() & 0o7777 != 0o1777 {
-        return Err(io::Error::other(format!(
-            "coordination directory {} must be a directory with mode 1777 (found mode {:04o})",
-            directory.display(),
-            metadata.mode() & 0o7777,
-        )));
+    acquire_at_for_pid(directory, std::process::id(), || {})
+}
+
+fn acquire_at_for_pid(directory: &Path, pid: u32, before_wait: impl FnOnce()) -> io::Result<File> {
+    publish_directory(directory).map_err(|error| coordination_error(directory, "1777", error))?;
+    let metadata = fs::symlink_metadata(directory)
+        .map_err(|error| coordination_error(directory, "1777", error))?;
+    if !metadata.is_dir() {
+        return Err(coordination_error(
+            directory,
+            "1777",
+            io::Error::other("not a directory"),
+        ));
     }
     // Serialize only the scan. Waiters release admission before blocking on
     // PID-distributed slots, so one slow slot does not block the entire queue.
     let admission = lock_file(directory, "admission")?;
-    admission.lock()?;
+    admission
+        .lock()
+        .map_err(|error| coordination_error(&directory.join("admission"), "0666", error))?;
     // Initialize the entire set before admitting a walk, so subsequent users
     // only need read access to the first user's coordination directory.
     let slots: [File; FINGERPRINT_WALK_LIMIT] = [
@@ -83,15 +152,24 @@ fn acquire_at(directory: &Path) -> io::Result<File> {
         lock_file(directory, "slot-2")?,
         lock_file(directory, "slot-3")?,
     ];
-    for slot in slots {
+    for (index, slot) in slots.into_iter().enumerate() {
         match slot.try_lock() {
             Ok(()) => return Ok(slot),
             Err(TryLockError::WouldBlock) => {}
-            Err(TryLockError::Error(error)) => return Err(error),
+            Err(TryLockError::Error(error)) => {
+                return Err(coordination_error(
+                    &directory.join(format!("slot-{index}")),
+                    "0666",
+                    error,
+                ))
+            }
         }
     }
     drop(admission);
-    wait_for_slot(directory, std::process::id())
+    // Tests synchronize here to prove the full scan completed before releasing
+    // a nonzero slot; the production caller supplies an inlined no-op.
+    before_wait();
+    wait_for_slot(directory, pid)
     // Dropping the returned descriptor releases the slot, including on errors,
     // panic or process termination. Never unlink live coordination files.
 }
@@ -99,7 +177,9 @@ fn acquire_at(directory: &Path) -> io::Result<File> {
 fn wait_for_slot(directory: &Path, pid: u32) -> io::Result<File> {
     let index = pid as usize % FINGERPRINT_WALK_LIMIT;
     let slot = lock_file(directory, &format!("slot-{index}"))?;
-    slot.lock()?;
+    slot.lock().map_err(|error| {
+        coordination_error(&directory.join(format!("slot-{index}")), "0666", error)
+    })?;
     Ok(slot)
 }
 
@@ -111,7 +191,33 @@ mod tests {
     use std::thread;
 
     #[test]
-    fn concurrent_independent_acquisitions_never_exceed_fixed_cap() {
+    fn concurrent_cold_start_initialization_all_succeeds() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("locks");
+        let count = FINGERPRINT_WALK_LIMIT + 8;
+        let start = Barrier::new(count + 1);
+        thread::scope(|scope| {
+            let mut workers = Vec::new();
+            for _ in 0..count {
+                workers.push(scope.spawn(|| {
+                    start.wait();
+                    acquire_at(&directory).map(drop)
+                }));
+            }
+            start.wait();
+            for worker in workers {
+                worker.join().unwrap().unwrap();
+            }
+        });
+        assert_eq!(
+            fs::read_dir(&directory).unwrap().count(),
+            FINGERPRINT_WALK_LIMIT + 1
+        );
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn concurrent_acquisitions_never_exceed_fixed_cap() {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("locks");
         drop(acquire_at(&directory).unwrap());
@@ -167,12 +273,15 @@ mod tests {
             ));
         }
         let (tx, rx) = mpsc::channel();
+        let (scanned_tx, scanned_rx) = mpsc::channel();
         thread::scope(|scope| {
             scope.spawn(|| {
-                let permit = wait_for_slot(&directory, 1).unwrap();
+                let permit =
+                    acquire_at_for_pid(&directory, 1, || scanned_tx.send(()).unwrap()).unwrap();
                 tx.send(()).unwrap();
                 drop(permit);
             });
+            scanned_rx.recv().unwrap();
             assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
             drop(permits.remove(1));
             rx.recv().unwrap();
@@ -248,21 +357,15 @@ mod tests {
     }
 
     #[test]
-    fn rejects_existing_permission_mismatches_with_required_modes() {
+    fn existing_usable_modes_do_not_require_exact_permission_bits() {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("locks");
         drop(acquire_at(&directory).unwrap());
         fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(acquire_at(&directory)
-            .unwrap_err()
-            .to_string()
-            .contains("mode 1777"));
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o1777)).unwrap();
-        fs::set_permissions(directory.join("slot-1"), fs::Permissions::from_mode(0o600)).unwrap();
-        assert!(acquire_at(&directory)
-            .unwrap_err()
-            .to_string()
-            .contains("mode 0666"));
+        for name in ["admission", "slot-0", "slot-1", "slot-2", "slot-3"] {
+            fs::set_permissions(directory.join(name), fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        drop(acquire_at(&directory).unwrap());
     }
 
     #[test]

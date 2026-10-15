@@ -47,13 +47,17 @@ busy, a waiter releases the scan-admission lock and blocks on slot `pid % 4`,
 spreading waiters across slots rather than placing every waiter behind slot zero.
 A waiter may still wait while a different slot is idle. Descriptor closure
 (including process death) releases capacity; no stale PID recovery is needed.
-The directory has explicit mode `1777` and the regular coordination files have
-explicit mode `0666`, independent of the initializing user's umask. Sticky
-directory permissions prevent other users from replacing an owner's files;
-the file bytes are unused. Existing paths with mismatched modes or types fail
-with an explanatory error rather than silently creating a different semaphore.
-Do not unlink the coordination
-directory or files while any fingerprint process is alive. Buck's Linux action
+Native initialization prepares mode `1777` directories and mode `0666` regular
+files under unique temporary names before publishing them: directories by
+rename, files by no-replace hard link. Permissions are set before publication,
+independent of umask, so concurrent cold-start callers never see partially
+initialized modes. Losing initializers use the winner's files and remove their
+temporary entries. Sticky directory permissions prevent other users from
+replacing an owner's files; the file bytes are unused. Existing modes are not
+required to match exactly: the caller must be able to open the regular files
+read-only and lock them. An actual access or lock failure names the affected
+path and required sharing mode. Do not unlink the coordination directory or
+files while any fingerprint process is alive. Buck's Linux action
 launcher initializes the host files without truncation and mounts their directory
 read-only into its otherwise private `/tmp`, so independent action sandboxes
 share the same inodes without granting payloads permission to replace them.
