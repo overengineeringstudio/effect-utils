@@ -75,7 +75,7 @@
     },
     {
       "toolId": "pnpm",
-      "protocol": "pnpm/pnpm/v12.7.0",
+      "protocol": "pnpm/pnpm/v12.11.2",
       "flakePackage": "pnpm",
       "executable": "bin/pnpm"
     },
