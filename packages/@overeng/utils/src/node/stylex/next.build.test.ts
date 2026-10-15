@@ -240,7 +240,7 @@ const installFixtureDependencies = (fixtureRoot: string) => {
       {
         name: 'fixture-next',
         private: true,
-        packageManager: 'pnpm@12.7.0',
+        packageManager: 'pnpm@12.11.2',
         dependencies: {
           next: installedVersion('next'),
           react: installedVersion('react'),

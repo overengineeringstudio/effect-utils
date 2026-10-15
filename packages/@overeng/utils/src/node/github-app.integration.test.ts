@@ -42,6 +42,18 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
       exchanges: 0,
       calls: 0,
       mintStatus: 201,
+      mintRateHeaders: {
+        'x-ratelimit-remaining': '4999',
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-reset': '1800000000',
+        'x-ratelimit-resource': 'core',
+      } as Record<string, string>,
+      rateHeaders: {
+        'x-ratelimit-remaining': '4998',
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-reset': '1800000000',
+        'x-ratelimit-resource': 'core',
+      } as Record<string, string>,
       unauthorized: false,
       bodies: [] as unknown[],
       jwts: [] as Array<{ iat: number; exp: number; iss: string; verified: boolean }>,
@@ -118,8 +130,7 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
         })
         response.writeHead(state.mintStatus, {
           'content-type': 'application/json',
-          'x-ratelimit-remaining': '4999',
-          'x-ratelimit-resource': 'core',
+          ...state.mintRateHeaders,
         })
         response.end(
           Schema.encodeSync(Json)({
@@ -155,8 +166,7 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
         }
         response.writeHead(state.unauthorized === true ? 401 : 200, {
           'content-type': 'application/json',
-          'x-ratelimit-remaining': '4998',
-          'x-ratelimit-resource': 'core',
+          ...state.rateHeaders,
         })
         response.end(state.malformed === true ? '{invalid' : '{}')
       }
@@ -361,7 +371,7 @@ it.effect('records safe per-consumer mint/failure, expiry, and bucket metrics', 
     // Effect's registry identity includes the descriptor: inspect emitted snapshots,
     // rather than accidentally constructing another same-name metric without its description.
     const metrics = yield* Metric.snapshot
-    expect(metrics).toHaveLength(4)
+    expect(metrics).toHaveLength(6)
     expect(metrics.find((metric) => metric.id === 'github_app_mints_total')).toMatchObject({
       type: 'Counter',
       attributes,
@@ -382,6 +392,16 @@ it.effect('records safe per-consumer mint/failure, expiry, and bucket metrics', 
         state: { value: 4998 },
       },
     )
+    for (const [id, value] of [
+      ['github_app_rate_limit_limit', 5000],
+      ['github_app_rate_limit_reset_at_seconds', 1800000000],
+    ] as const) {
+      expect(metrics.find((metric) => metric.id === id)).toMatchObject({
+        type: 'Gauge',
+        attributes: { ...attributes, 'github.resource': 'core' },
+        state: { value },
+      })
+    }
     state.unauthorized = true
     yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip)
     expect(
@@ -389,6 +409,113 @@ it.effect('records safe per-consumer mint/failure, expiry, and bucket metrics', 
     ).toMatchObject({ state: { value: 0 } })
   }).pipe(Effect.provideService(Metric.MetricRegistry, new Map())),
 )
+
+for (const responseKind of ['mint', 'request'] as const) {
+  for (const errorResponse of [false, true]) {
+    it.effect(
+      `observes independent limit/reset headers on ${responseKind} ${errorResponse === true ? 'error' : 'success'} responses`,
+      () =>
+        Effect.gen(function* () {
+          const { state, app, apiBase } = yield* fixture()
+          // Isolate the response under test, including when remaining is absent.
+          state.mintRateHeaders = {}
+          state.rateHeaders = {}
+          const headers = {
+            'x-ratelimit-resource': 'graphql',
+            'x-ratelimit-limit': '5000',
+            'x-ratelimit-reset': '1800000000',
+          }
+          if (responseKind === 'mint') {
+            state.mintRateHeaders = headers
+            state.mintStatus = errorResponse === true ? 403 : 201
+            yield* app.token(scope).pipe(Effect.result)
+          } else {
+            state.rateHeaders = headers
+            state.unauthorized = errorResponse
+            yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.result)
+          }
+          const metrics = yield* Metric.snapshot
+          for (const [id, value] of [
+            ['github_app_rate_limit_limit', 5000],
+            ['github_app_rate_limit_reset_at_seconds', 1800000000],
+          ] as const) {
+            expect(metrics.find((metric) => metric.id === id)).toMatchObject({
+              type: 'Gauge',
+              attributes: {
+                'github.app.client_id': 'Iv1.fixture',
+                'github.installation.id': '123',
+                'github.consumer': 'fixture',
+                'github.resource': 'graphql',
+              },
+              state: { value },
+            })
+          }
+          expect(metrics.some((metric) => metric.id === 'github_app_rate_limit_remaining')).toBe(
+            false,
+          )
+        }).pipe(Effect.provideService(Metric.MetricRegistry, new Map())),
+    )
+  }
+  it.effect(`ignores absent, invalid and unbounded rate headers on ${responseKind} responses`, () =>
+    Effect.gen(function* () {
+      const { state, app, apiBase } = yield* fixture()
+      state.mintRateHeaders = {}
+      state.rateHeaders = {}
+      const observe = (headers: Record<string, string>) => {
+        if (responseKind === 'mint') {
+          state.mintRateHeaders = headers
+          state.mintStatus = 403
+          return app.token(scope).pipe(Effect.result)
+        }
+        state.rateHeaders = headers
+        return app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.result)
+      }
+      yield* observe({})
+      for (const invalid of [
+        '',
+        ' ',
+        'invalid',
+        '-1',
+        '1.5',
+        'Infinity',
+        '9007199254740992',
+        '1e3',
+        '0x10',
+      ]) {
+        yield* observe({
+          'x-ratelimit-resource': 'core',
+          'x-ratelimit-limit': invalid,
+          'x-ratelimit-reset': invalid,
+          'x-ratelimit-remaining': invalid,
+        })
+      }
+      for (const resource of [undefined, 'unbounded-resource']) {
+        yield* observe({
+          ...(resource === undefined ? {} : { 'x-ratelimit-resource': resource }),
+          'x-ratelimit-limit': '5000',
+          'x-ratelimit-reset': '1800000000',
+        })
+      }
+      expect(
+        (yield* Metric.snapshot).filter((metric) => metric.id.startsWith('github_app_rate_limit_')),
+      ).toEqual([])
+      yield* observe({
+        'x-ratelimit-resource': 'core',
+        'x-ratelimit-limit': '0',
+        'x-ratelimit-reset': '0',
+      })
+      expect(
+        (yield* Metric.snapshot).filter((metric) => metric.id.startsWith('github_app_rate_limit_')),
+      ).toHaveLength(2)
+      yield* observe({ 'x-ratelimit-resource': 'core', 'x-ratelimit-limit': 'invalid' })
+      for (const metric of (yield* Metric.snapshot).filter((metric) =>
+        metric.id.startsWith('github_app_rate_limit_'),
+      )) {
+        expect(metric.state).toMatchObject({ value: 0 })
+      }
+    }).pipe(Effect.provideService(Metric.MetricRegistry, new Map())),
+  )
+}
 
 it.effect('a late 401 cannot evict the replacement minted during the old request', () =>
   Effect.gen(function* () {
@@ -637,17 +764,40 @@ for (const [name, transport] of [
       const { state, app, apiBase } = yield* fixture(filtered)
       const credential = Redacted.value(yield* app.token(scope))
       state.unauthorized = true
+      state.rateHeaders = {
+        'x-ratelimit-resource': 'core',
+        'x-ratelimit-remaining': '0',
+        'x-ratelimit-limit': '6000',
+        'x-ratelimit-reset': '1800000100',
+      }
       const failure = yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip)
       expect(failure).toMatchObject({ _tag: 'GitHubAppError', operation: 'authorize', status: 401 })
       for (const secret of [credential, 'Bearer', ...state.jwtTokens])
         expectCredentialFree(failure, secret)
+      const metrics = yield* Metric.snapshot
+      for (const [id, value] of [
+        ['github_app_rate_limit_remaining', 0],
+        ['github_app_rate_limit_limit', 6000],
+        ['github_app_rate_limit_reset_at_seconds', 1800000100],
+      ] as const) {
+        expect(metrics.find((metric) => metric.id === id)).toMatchObject({
+          type: 'Gauge',
+          attributes: {
+            'github.app.client_id': 'Iv1.fixture',
+            'github.installation.id': '123',
+            'github.consumer': 'fixture',
+            'github.resource': 'core',
+          },
+          state: { value },
+        })
+      }
       expect(state.calls).toBe(1)
       state.unauthorized = false
       const response = yield* app.client(scope).get(new URL('/probe', apiBase))
       expect(response.status).toBe(200)
       expect(state.exchanges).toBe(2)
       expect(state.authorization).toEqual(['Bearer installation-1', 'Bearer installation-2'])
-    }),
+    }).pipe(Effect.provideService(Metric.MetricRegistry, new Map())),
   )
 
   for (const accessor of [

@@ -66,11 +66,27 @@ credential-free request and response metadata without the original cause.
 Sanitized response requests retain an absolute trusted origin and pathname
 without userinfo or query parameters, allowing same-origin `HttpClient.followRedirects` composition.
 
-Schema-backed telemetry contracts cover construction, identity, minting and authorization. Metrics are
-`github_app_mints_total`, `github_app_mint_failures_total`,
-`github_app_token_expiry_seconds` (Unix expiry time), and
-`github_app_rate_limit_remaining` (per GitHub rate-limit resource), attributed
-to App client ID, installation ID and consumer. Provide a scoped lifetime for
+Schema-backed telemetry contracts cover construction, identity, minting and authorization.
+The owner registry fragment is `src/node/github-app.contract.ts`, registered in
+`genie/weaver-registry/registry.ts`. Its metrics are:
+
+- `github_app_mints_total`: mint attempts, not successes (including signing,
+  transport, HTTP and decoding failures; cache hits do not count).
+- `github_app_mint_failures_total`: failed mint attempts.
+- `github_app_token_expiry_seconds`: earliest cached token expiry as Unix seconds,
+  or zero when invalidated.
+- `github_app_rate_limit_remaining`, `github_app_rate_limit_limit`, and
+  `github_app_rate_limit_reset_at_seconds`: last observed remaining budget, limit,
+  and reset time (Unix seconds), respectively.
+
+All metrics use bounded App client ID, installation ID and consumer attributes
+(`github.app.client_id`, `github.installation.id`, `github.consumer`). Rate-limit
+gauges additionally use the bounded `github.resource` bucket. Prometheus exports
+these label keys as `github_app_client_id`, `github_installation_id`,
+`github_consumer`, and `github_resource`. Headers are observed independently on
+both installation-token mint and authenticated API responses, including HTTP
+errors. Missing or invalid headers and unknown resource buckets do not update
+gauges; they never manufacture a zero observation. Provide a scoped lifetime for
 the App layer shared by the consuming service.
 
 The real loopback HTTP integration suites belong to the source-side

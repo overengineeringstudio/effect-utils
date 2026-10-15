@@ -228,9 +228,12 @@ export type PnpmStoreEntry = {
   readonly platforms: readonly PnpmPlatform[]
   readonly sccIndex: number | undefined
   readonly snapshot: string
+  /** Declared source bytes for a directory snapshot without its own importer view. */
+  readonly sourceTree?: string
   readonly storeKey: string
   readonly target: string
   readonly variants: readonly PnpmStoreEntryVariant[]
+  readonly workspaceTrees?: Readonly<Record<string, string>>
 }
 
 /** One strongly connected component that must be assembled as a single group. */
@@ -277,7 +280,12 @@ const isStorePackage = ({
   if (snapshot === undefined) return fail(`unknown snapshot ${snapshotKey}`)
   const packageMetadata = metadata.packages[snapshot.package]
   if (packageMetadata === undefined) return fail(`snapshot ${snapshotKey} has unknown package`)
-  return packageMetadata.resolution !== 'workspace'
+  // An importer already owns its dependency view. Other directory snapshots
+  // need a store entry so their snapshot dependencies are not discarded.
+  return (
+    packageMetadata.resolution !== 'workspace' ||
+    Object.hasOwn(metadata.importers, packageMetadata.workspacePath ?? '') === false
+  )
 }
 
 /**
@@ -434,7 +442,7 @@ const requiredPlatformAvailability = (
           const pkg = metadata.packages[snapshot.package]
           if (pkg === undefined) return fail(`snapshot ${reference.snapshot} has unknown package`)
           snapshotOptional = snapshot.optional === true
-          if (pkg.resolution === 'workspace') {
+          if (isStorePackage({ metadata, snapshotKey: reference.snapshot }) === false) {
             if (pkg.workspacePath === undefined)
               return fail(`workspace package ${snapshot.package} has no path`)
             if (metadata.importers[pkg.workspacePath] !== undefined)
@@ -513,7 +521,7 @@ const resolveEdge = ({
   const packageMetadata = metadata.packages[snapshot.package]
   if (packageMetadata === undefined)
     return fail(`snapshot ${reference.snapshot} has unknown package`)
-  if (packageMetadata.resolution === 'workspace') {
+  if (isStorePackage({ metadata, snapshotKey: reference.snapshot }) === false) {
     const path = packageMetadata.workspacePath
     if (path === undefined) return fail(`workspace package ${snapshot.package} has no path`)
     if (
@@ -800,6 +808,10 @@ export const makePnpmStoreProjection = ({
 }): PnpmStoreProjection => {
   validatePnpmSha256Sidecar({ metadata, sidecar })
   const availability = requiredPlatformAvailability(metadata)
+  const workspaceTreeTarget = (workspacePath: string): string =>
+    Object.hasOwn(workspaceTreeTargets, workspacePath)
+      ? workspaceTreeTargets[workspacePath]!
+      : `//${workspacePath}:package_tree`
 
   const sccs = computeStoreSccs({ metadata })
   const sccByStoreKey = new Map<string, number>()
@@ -831,17 +843,32 @@ export const makePnpmStoreProjection = ({
         snapshotEdges({ availability, companions, metadata, platform, snapshotKey }),
     }).map((group) => ({ edges: group.value, platforms: group.platforms }))
     const storeKey = snapshot.virtualStoreName
+    const target = pnpmTargetName({ prefix: 'entry', identity: snapshotKey })
+    const sourcePath = packageMetadata.workspacePath
+    if (packageMetadata.resolution === 'workspace' && sourcePath === undefined)
+      return fail(`workspace package ${snapshot.package} has no path`)
+    const workspaceTrees = Object.fromEntries(
+      variants.flatMap((variant) =>
+        sortedEntries(variant.edges).flatMap(([, edge]) =>
+          edge.kind === 'workspace'
+            ? [[edge.workspaceKey, workspaceTreeTarget(edge.workspacePath)]]
+            : [],
+        ),
+      ),
+    )
     const entry: PnpmStoreEntry = {
       bins: sidecar.packages[snapshot.package]?.bins ?? {},
       packageKey: snapshot.package,
       packageName: packageMetadata.name,
-      packageTarget: packageMetadata.target,
+      packageTarget: sourcePath === undefined ? packageMetadata.target : `${target}_source`,
       platforms,
       sccIndex: sccByStoreKey.get(storeKey),
       snapshot: snapshotKey,
+      ...(sourcePath === undefined ? {} : { sourceTree: workspaceTreeTarget(sourcePath) }),
       storeKey,
-      target: pnpmTargetName({ prefix: 'entry', identity: snapshotKey }),
+      target,
       variants,
+      ...(Object.keys(workspaceTrees).length === 0 ? {} : { workspaceTrees }),
     }
     const existing = entryByStoreKey.get(storeKey)
     if (existing !== undefined) return fail(`virtual store identity collision for ${storeKey}`)
@@ -882,11 +909,7 @@ export const makePnpmStoreProjection = ({
           const enqueue = (edges: PnpmStoreEdgeSet): void => {
             for (const [, edge] of sortedEntries(edges)) {
               if (edge.kind === 'workspace') {
-                const workspaceTarget = Object.hasOwn(workspaceTreeTargets, edge.workspacePath)
-                  ? workspaceTreeTargets[edge.workspacePath]
-                  : undefined
-                workspaceTrees[edge.workspaceKey] =
-                  workspaceTarget ?? `//${edge.workspacePath}:package_tree`
+                workspaceTrees[edge.workspaceKey] = workspaceTreeTarget(edge.workspacePath)
                 continue
               }
               if (closure.has(edge.storeKey) === true) continue

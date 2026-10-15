@@ -366,12 +366,7 @@ impl HostState {
             }
             ProbeEvent::Path { note, slot, seen } => self.path.update(note, slot, seen),
             ProbeEvent::Network(info) => self.network = info,
-            ProbeEvent::Boot(boot) => {
-                self.boot = boot.map_or(
-                    crate::uptime::State::Unavailable,
-                    crate::uptime::State::Boot,
-                );
-            }
+            ProbeEvent::Boot(boot) => self.boot = boot,
             ProbeEvent::Egress { generation, info } => self.egress.update(generation, info),
             ProbeEvent::Failed { reason, kind } => {
                 self.status = Status::Failed { reason, kind };

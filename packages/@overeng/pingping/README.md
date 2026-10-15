@@ -73,12 +73,21 @@ Remote uptime is always enabled for known tailnet peers in the TTY view and
 shown as elapsed time since remote boot, such as `up 14d22h`. A background worker
 reads it at startup and at most every ten minutes. It uses the canonical peer
 DNS name from Tailscale status, never arbitrary internet or LAN SSH targets.
-SSH is noninteractive (`BatchMode=yes`, `IdentityAgent=none`, strict existing
-host-key trust), with closed stdin, a three-second connection timeout, an
-eight-second total deadline and bounded output. It cannot prompt for passwords,
-agent approval or host-key enrollment. Unavailable uptime has an explicit
-placeholder; ICMP and rendering never wait for SSH. Plain mode performs no
-uptime SSH reads.
+SSH is noninteractive (`BatchMode=yes`, `IdentityAgent=none`, strict host-key
+checking), with closed stdin, a three-second connection timeout, an eight-second
+total deadline and bounded output. Advertised Tailscale SSH host keys are stored
+in a private temporary known_hosts file for each read, followed by the user's
+configured known_hosts files resolved locally with `ssh -G` once per worker.
+Discovery uses the read's SSH options and remote command, and shares its deadline,
+cancellation and bounded output handling.
+The temporary file is removed after the read. If configuration resolution fails,
+paths contain unsafe SSH syntax, or a non-default configured file is missing,
+the read leaves SSH's own trust configuration unchanged.
+SSH cannot prompt for passwords, agent approval or host-key enrollment and never
+modifies the user's SSH files. Pending reads show `up –`; failed reads show dim
+`up ?`, with a hover explanation (host key unknown, auth refused, timed out,
+unreachable, or failed). ICMP and rendering never wait for SSH. Plain mode
+performs no uptime SSH reads.
 
 ## Installation And Shell Completion
 
