@@ -41,7 +41,9 @@ it.effect.prop(
           kind: consumerKind,
           outputs: names,
           inputs: () =>
-            Object.fromEntries(names.map((key) => [key, DataGraph.ref(source, {}, key)])),
+            Object.fromEntries(
+              names.map((key) => [key, DataGraph.ref({ node: source, scope: {}, output: key })]),
+            ),
           recipe: () => ({ kind: consumerKind, version: '1', config: {} }),
           execute: ({ inputs }) =>
             Effect.sync(() => {
@@ -59,7 +61,7 @@ it.effect.prop(
               }
             }),
         }
-        const target = DataGraph.ref(consumer, {}, name)
+        const target = DataGraph.ref({ node: consumer, scope: {}, output: name })
         const first = yield* DataGraph.materialize(target)
         version = '2'
         const second = yield* DataGraph.materialize(target)

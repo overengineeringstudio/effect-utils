@@ -25,30 +25,38 @@ export const NodeKind = Schema.NonEmptyString.pipe(
   Schema.check(Schema.isTrimmed()),
   Schema.brand('DataGraph.NodeKind'),
 )
+/** Validated, consumer-defined discriminator for a node definition. */
 export type NodeKind = typeof NodeKind.Type
+/** Logical identity includes scope and may select a particular output. */
 export const NodeKey = Schema.Struct({
   kind: NodeKind,
   scope: Schema.Json,
   output: Schema.optional(Schema.NonEmptyString),
 })
+/** Decoded logical identity used by persisted heads and refresh requests. */
 export type NodeKey = typeof NodeKey.Type
+/** Version and configuration determine deterministic execution identity. */
 export const Recipe = Schema.Struct({
   kind: NodeKind,
   version: Schema.NonEmptyString,
   config: Schema.Json,
 })
+/** Decoded recipe included in each action's content-addressed manifest. */
 export type Recipe = typeof Recipe.Type
 
+/** A graph invariant failed before a valid selection could be published. */
 export class GraphError extends Schema.TaggedError<GraphError>()('GraphError', {
   nodeId: Schema.String,
   message: Schema.String,
 }) {}
+/** Executors report expected failures without publishing a new selection. */
 export class GraphExecutionError extends Schema.TaggedError<GraphExecutionError>()(
   'GraphExecutionError',
   {
     message: Schema.String,
   },
 ) {}
+/** Pulls expose graph, executor, storage and schema failures without erasing their causes. */
 export type GraphFailure =
   | GraphError
   | GraphExecutionError
@@ -80,6 +88,7 @@ export interface GraphStoreApi {
 }
 // Separate layers for the same filesystem root share one process-local writer.
 const writers = new Map<string, Semaphore.Semaphore>()
+/** Supplies CAS operations and serializes writers sharing a filesystem root. */
 export class GraphStore extends Context.Service<GraphStore, GraphStoreApi>()(
   'DataGraph.GraphStore',
 ) {
@@ -114,12 +123,14 @@ export class GraphStore extends Context.Service<GraphStore, GraphStoreApi>()(
   }
 }
 
+/** Executors return bytes with the metadata needed for content-addressed publication. */
 export interface OutputBytes {
   readonly bytes: Uint8Array
   readonly mediaType: string
   readonly codec?: string
   readonly schemaVersion?: number
 }
+/** Rejections retain evidence but never replace the selected successful outputs. */
 export type Execution =
   | {
       readonly _tag: 'Accepted'
@@ -131,6 +142,7 @@ export type Execution =
       readonly reason: string
       readonly receipts: ReadonlyArray<ContentDescriptor>
     }
+/** Executors receive only scope and verified descriptors for declared inputs. */
 export interface ExecutionContext {
   readonly scope: Schema.Json
   readonly inputs: Readonly<Record<string, ContentDescriptor>>
@@ -150,51 +162,64 @@ export interface NodeDef {
     GraphStore
   >
 }
+/** Selects an output from one scoped node without changing the node's identity. */
 export interface NodeRef {
   readonly node: NodeDef
   readonly scope: Schema.Json
   readonly output: string
 }
-export const ref = (node: NodeDef, scope: Schema.Json, output: string): NodeRef => ({
-  node,
-  scope,
-  output,
-})
+/** Binds a definition, scope and declared output for a graph pull. */
+export const ref = ({ node, scope, output }: NodeRef): NodeRef => ({ node, scope, output })
 /** Stable node identity excludes the selected output dimension. */
 export const nodeId = ({ kind, scope }: NodeKey): string =>
   canonicalJsonString({ schema: NodeKey, value: { kind, scope } })
+/** Content-addressed node identity is stable across selected output names. */
 export const nodeIdDigest = ({ kind, scope }: NodeKey): ContentDigest =>
   descriptorForCanonicalJson({ schema: NodeKey, value: { kind, scope }, schemaVersion: 1 }).digest
 const hex = (digest: ContentDigest): string => digest.slice('sha256:'.length)
 const headPin = (key: NodeKey): string => `data-graph/heads/${hex(nodeIdDigest(key))}`
-const manifest = (role: string, entries: ReadonlyArray<ContentManifestEntry>): ContentManifest =>
-  ContentManifest.make({ schemaVersion: 1, role, entries })
-const actionManifest = (
-  recipe: ContentDescriptor,
-  inputs: Readonly<Record<string, ContentDescriptor>>,
-): ContentManifest =>
-  manifest('data-graph.action', [
-    { role: 'recipe', descriptor: recipe },
-    ...Object.keys(inputs)
-      .toSorted()
-      .map((name) => ({
-        role: 'input',
-        logicalPath: name,
-        descriptor: inputs[name]!,
-      })),
-  ])
+const manifest = ({
+  role,
+  entries,
+}: {
+  readonly role: string
+  readonly entries: ReadonlyArray<ContentManifestEntry>
+}): ContentManifest => ContentManifest.make({ schemaVersion: 1, role, entries })
+const actionManifest = ({
+  recipe,
+  inputs,
+}: {
+  readonly recipe: ContentDescriptor
+  readonly inputs: Readonly<Record<string, ContentDescriptor>>
+}): ContentManifest =>
+  manifest({
+    role: 'data-graph.action',
+    entries: [
+      { role: 'recipe', descriptor: recipe },
+      ...Object.keys(inputs)
+        .toSorted()
+        .map((name) => ({
+          role: 'input',
+          logicalPath: name,
+          descriptor: inputs[name]!,
+        })),
+    ],
+  })
 
 /** Pure action identity, using exactly the descriptors persisted during a pull. */
-export const actionKey = (
-  recipe: Recipe,
-  inputs: Readonly<Record<string, ContentDescriptor>>,
-): ContentDigest =>
+export const actionKey = ({
+  recipe,
+  inputs,
+}: {
+  readonly recipe: Recipe
+  readonly inputs: Readonly<Record<string, ContentDescriptor>>
+}): ContentDigest =>
   descriptorForCanonicalJson({
     schema: ContentManifest,
-    value: actionManifest(
-      descriptorForCanonicalJson({ schema: Recipe, value: recipe, schemaVersion: 1 }),
-      inputs,
-    ),
+    value: actionManifest({
+      recipe: descriptorForCanonicalJson({ schema: Recipe, value: recipe, schemaVersion: 1 }),
+      inputs: inputs,
+    }),
     schemaVersion: 1,
   }).digest
 const decoder = new TextDecoder()
@@ -207,6 +232,7 @@ const readJson = Effect.fn('DataGraph.readJson')(function* <TSchema extends Sche
     decoder.decode(yield* store.get(descriptor)),
   )
 })
+/** Persists canonical JSON with its schema before exposing its descriptor. */
 export const writeJson = Effect.fn('DataGraph.writeJson')(function* <
   TSchema extends Schema.Codec<unknown>,
 >(schema: TSchema, value: Schema.Schema.Type<TSchema>) {
@@ -230,14 +256,18 @@ const recordAttempt = Effect.fn('DataGraph.recordAttempt')(function* (
   for (const descriptor of receipts) yield* store.get(descriptor)
   const status = yield* writeJson(Schema.Json, { _tag: statusTag, attemptId: randomUUID(), reason })
   return yield* store.manifest(
-    manifest('data-graph.attempt', [
-      { role: 'action', descriptor: action },
-      { role: 'status', descriptor: status },
-      ...receipts.map((descriptor) => ({ role: 'receipt', descriptor })),
-    ]),
+    manifest({
+      role: 'data-graph.attempt',
+      entries: [
+        { role: 'action', descriptor: action },
+        { role: 'status', descriptor: status },
+        ...receipts.map((descriptor) => ({ role: 'receipt', descriptor })),
+      ],
+    }),
   )
 })
 
+/** Selected successful materialization and optional observation confirmation time. */
 export const Head = Schema.TaggedStruct('Head', {
   schemaVersion: Schema.Literal(1),
   key: NodeKey,
@@ -245,11 +275,13 @@ export const Head = Schema.TaggedStruct('Head', {
   action: ContentDescriptor,
   lastConfirmedAt: Schema.optional(Schema.Finite),
 })
+/** Decoded selection record; historical outputs remain independently addressable. */
 export type Head = typeof Head.Type
+/** Resolves a selected head and rejects identity or manifest mismatches. */
 export const getHead = Effect.fn('DataGraph.getHead')(function* (key: NodeKey) {
   const store = yield* GraphStore
   const pinned = yield* store.lookup(headPin(key))
-  if (Option.isNone(pinned)) return Option.none<Head>()
+  if (Option.isNone(pinned) === true) return Option.none<Head>()
   const wrapper = yield* readJson(ContentManifest, pinned.value)
   const record = wrapper.entries.find((entry) => entry.role === 'confirmation')
   if (wrapper.role !== 'data-graph.head' || record === undefined)
@@ -263,18 +295,23 @@ const selectHead = Effect.fn('DataGraph.selectHead')(function* (head: Head) {
   const store = yield* GraphStore
   const record = yield* writeJson(Head, head)
   const wrapper = yield* store.manifest(
-    manifest('data-graph.head', [
-      { role: 'confirmation', descriptor: record },
-      { role: 'materialization', descriptor: head.materialization },
-    ]),
+    manifest({
+      role: 'data-graph.head',
+      entries: [
+        { role: 'confirmation', descriptor: record },
+        { role: 'materialization', descriptor: head.materialization },
+      ],
+    }),
   )
   yield* store.pin(headPin(head.key), wrapper)
 })
 
+/** Records reuse, execution changes or a rejected observation retaining its prior head. */
 export type Outcome =
   | { readonly _tag: 'Reused' }
   | { readonly _tag: 'Executed'; readonly changedOutputs: ReadonlyArray<string> }
   | { readonly _tag: 'Rejected'; readonly attempt: ContentDescriptor }
+/** A node's selected outputs and decision within the dependency-ordered pull trace. */
 export interface NodeOutcome {
   readonly nodeId: string
   readonly kind: NodeKind
@@ -282,6 +319,7 @@ export interface NodeOutcome {
   readonly materialization: ContentDescriptor
   readonly outputs: Readonly<Record<string, ContentDescriptor>>
 }
+/** Includes the requested output and all visited node decisions in dependency order. */
 export interface MaterializeResult extends NodeOutcome {
   readonly output: ContentDescriptor
   readonly trace: ReadonlyArray<NodeOutcome>
@@ -313,7 +351,7 @@ const readOutputs = Effect.fn('DataGraph.readOutputs')(function* (
   for (const entry of record.entries) {
     yield* store.get(entry.descriptor)
     if (entry.role === 'output' && entry.logicalPath !== undefined) {
-      if (Object.hasOwn(outputs, entry.logicalPath))
+      if (Object.hasOwn(outputs, entry.logicalPath) === true)
         return yield* new GraphError({
           nodeId: kind,
           message: 'Duplicate output in materialization',
@@ -356,21 +394,21 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
       const key = { kind: node.kind, scope }
       const id = nodeId(key)
       const invalid = (message: string) => new GraphError({ nodeId: id, message })
-      if (!node.outputs.includes(reference.output))
+      if (node.outputs.includes(reference.output) === false)
         return yield* invalid(`Undeclared output: ${reference.output}`)
       if (
         node.outputs.length === 0 ||
         new Set(node.outputs).size !== node.outputs.length ||
         node.outputs.some(
           (name) => name.trim() !== name || name.length === 0 || name.includes('\0'),
-        )
+        ) === true
       )
         return yield* invalid('Output names must be unique, non-empty, trimmed strings without NUL')
       const registered = definitions.get(node.kind)
       if (registered !== undefined && registered !== node)
         return yield* invalid('Conflicting definitions for one node kind')
       definitions.set(node.kind, node)
-      if (visiting.has(id)) return yield* invalid('Declared dependency cycle')
+      if (visiting.has(id) === true) return yield* invalid('Declared dependency cycle')
       const previousResult = completed.get(id)
       if (previousResult !== undefined) return previousResult
       visiting.add(id)
@@ -389,13 +427,19 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
       const recipe = node.recipe(scope)
       if (recipe.kind !== node.kind) return yield* invalid('Recipe kind must match node kind')
       const recipeDescriptor = yield* writeJson(Recipe, recipe)
-      const action = yield* store.manifest(actionManifest(recipeDescriptor, inputs))
+      const action = yield* store.manifest(
+        actionManifest({ recipe: recipeDescriptor, inputs: inputs }),
+      )
       const previous = yield* getHead(key)
-      const finish = (
-        outcome: Outcome,
-        descriptor: ContentDescriptor,
-        outputs: Readonly<Record<string, ContentDescriptor>>,
-      ): NodeOutcome => {
+      const finish = ({
+        outcome,
+        descriptor,
+        outputs,
+      }: {
+        readonly outcome: Outcome
+        readonly descriptor: ContentDescriptor
+        readonly outputs: Readonly<Record<string, ContentDescriptor>>
+      }): NodeOutcome => {
         const result = {
           nodeId: id,
           kind: node.kind,
@@ -408,27 +452,27 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
         trace.push(result)
         return result
       }
-      if (node._tag === 'Observe' && !refresh.has(id)) {
-        if (Option.isNone(previous))
+      if (node._tag === 'Observe' && refresh.has(id) === false) {
+        if (Option.isNone(previous) === true)
           return yield* invalid(
             'Observation requires an explicit refresh before its first selection',
           )
         if (previous.value.action.digest !== action.digest)
           return yield* invalid('Observation recipe or inputs changed; explicit refresh required')
-        return finish(
-          { _tag: 'Reused' },
-          previous.value.materialization,
-          yield* outputsOf(previous.value.materialization, node, action),
-        )
+        return finish({
+          outcome: { _tag: 'Reused' },
+          descriptor: previous.value.materialization,
+          outputs: yield* outputsOf(previous.value.materialization, node, action),
+        })
       }
       if (node._tag === 'Derive') {
         const cached = yield* store.lookup(`data-graph/actions/${hex(action.digest)}`)
-        if (Option.isSome(cached)) {
+        if (Option.isSome(cached) === true) {
           const outputs = yield* outputsOf(cached.value, node, action)
           yield* selectHead(
             Head.make({ schemaVersion: 1, key, action, materialization: cached.value }),
           )
-          return finish({ _tag: 'Reused' }, cached.value, outputs)
+          return finish({ outcome: { _tag: 'Reused' }, descriptor: cached.value, outputs: outputs })
         }
       }
       const execution = yield* node.execute({ scope, inputs }).pipe(Effect.result)
@@ -445,15 +489,15 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
         )
         if (node._tag === 'Derive')
           return yield* invalid('Deterministic executor rejected its output; attempt recorded')
-        if (Option.isNone(previous))
+        if (Option.isNone(previous) === true)
           return yield* invalid(
             `Observation rejected without a selected head; attempt ${attempt.digest}`,
           )
-        return finish(
-          { _tag: 'Rejected', attempt },
-          previous.value.materialization,
-          yield* readOutputs(previous.value.materialization, node.kind),
-        )
+        return finish({
+          outcome: { _tag: 'Rejected', attempt },
+          descriptor: previous.value.materialization,
+          outputs: yield* readOutputs(previous.value.materialization, node.kind),
+        })
       }
       const accepted = execution.success
       if (
@@ -474,17 +518,21 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
       }
       for (const descriptor of accepted.receipts) yield* store.get(descriptor)
       const descriptor = yield* store.manifest(
-        manifest('data-graph.materialization', [
-          { role: 'action', descriptor: action },
-          ...Object.keys(outputs)
-            .toSorted()
-            .map((name) => ({ role: 'output', logicalPath: name, descriptor: outputs[name]! })),
-          ...accepted.receipts.map((receipt) => ({ role: 'receipt', descriptor: receipt })),
-        ]),
+        manifest({
+          role: 'data-graph.materialization',
+          entries: [
+            { role: 'action', descriptor: action },
+            ...Object.keys(outputs)
+              .toSorted()
+              .map((name) => ({ role: 'output', logicalPath: name, descriptor: outputs[name]! })),
+            ...accepted.receipts.map((receipt) => ({ role: 'receipt', descriptor: receipt })),
+          ],
+        }),
       )
-      const priorOutputs: Record<string, ContentDescriptor> = Option.isSome(previous)
-        ? yield* readOutputs(previous.value.materialization, node.kind)
-        : Object.create(null)
+      const priorOutputs: Record<string, ContentDescriptor> =
+        Option.isSome(previous) === true
+          ? yield* readOutputs(previous.value.materialization, node.kind)
+          : Object.create(null)
       const changedOutputs = [...new Set([...Object.keys(outputs), ...Object.keys(priorOutputs)])]
         .toSorted()
         .filter((name) => outputs[name]?.digest !== priorOutputs[name]?.digest)
@@ -499,7 +547,11 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
           ...(node._tag === 'Observe' ? { lastConfirmedAt: yield* Clock.currentTimeMillis } : {}),
         }),
       )
-      return finish({ _tag: 'Executed', changedOutputs }, descriptor, outputs)
+      return finish({
+        outcome: { _tag: 'Executed', changedOutputs },
+        descriptor: descriptor,
+        outputs: outputs,
+      })
     })
   const result = yield* visit(target)
   const output = result.outputs[target.output]
@@ -508,6 +560,7 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
   return { ...result, output, trace } satisfies MaterializeResult
 })
 
+/** Serializes a pull and publishes only verified successful selections. */
 export const materialize = Effect.fn('DataGraph.materialize')(function* (
   target: NodeRef,
   options: { readonly refresh?: ReadonlyArray<string> } = {},
@@ -516,14 +569,23 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
   return yield* store.withWriteLock(materializeUnlocked(target, options))
 })
 
+/** An overdue observation eligible for an explicitly budgeted refresh. */
 export interface RefreshRequest {
   readonly _tag: 'Refresh'
   readonly key: NodeKey
   readonly nodeId: string
   readonly overdueBy: number
 }
-export const isStale = (head: Head, now: number, maxAge: number): boolean =>
-  head.lastConfirmedAt === undefined || now - head.lastConfirmedAt >= maxAge
+/** Missing confirmation timestamps are stale regardless of the age policy. */
+export const isStale = ({
+  head,
+  now,
+  maxAge,
+}: {
+  readonly head: Head
+  readonly now: number
+  readonly maxAge: number
+}): boolean => head.lastConfirmedAt === undefined || now - head.lastConfirmedAt >= maxAge
 /** Pure oldest-overdue-first planning; callers supply an observation-head inventory. */
 export const planRefresh = ({
   now,
@@ -537,7 +599,7 @@ export const planRefresh = ({
   readonly budget: number
 }): ReadonlyArray<RefreshRequest> =>
   heads
-    .filter((head) => isStale(head, now, policy(head.key)))
+    .filter((head) => isStale({ head: head, now: now, maxAge: policy(head.key) }))
     .map(
       (head): RefreshRequest => ({
         _tag: 'Refresh',
@@ -556,6 +618,7 @@ export const planRefresh = ({
     )
     .slice(0, Math.max(0, Math.floor(budget)))
 
+/** Public graph operations share the same identity, publication and refresh contracts. */
 export const DataGraph = {
   ref,
   materialize,

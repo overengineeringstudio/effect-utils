@@ -30,30 +30,40 @@ it.effect(
           outputs: outputNames,
           inputs: () => ({}),
           recipe: () => ({ kind, version, config: {} }),
-          execute: Effect.fn('Upgrade.extract')(function* () {
-            calls++
-            const outputs: Record<string, OutputBytes> = Object.create(null)
-            for (const name of outputNames)
-              outputs[name] = { bytes: utf8Bytes(name), mediaType: 'text/plain' }
-            return { _tag: 'Accepted', outputs, receipts: [] }
-          }),
+          execute: Effect.fn('Upgrade.extract')(() =>
+            Effect.sync(() => {
+              calls++
+              const outputs: Record<string, OutputBytes> = Object.create(null)
+              for (const name of outputNames)
+                outputs[name] = { bytes: utf8Bytes(name), mediaType: 'text/plain' }
+              return { _tag: 'Accepted' as const, outputs, receipts: [] }
+            }),
+          ),
         })
         const first = yield* DataGraph.materialize(
-          DataGraph.ref(definition('1', ['value']), scope, 'value'),
+          DataGraph.ref({ node: definition('1', ['value']), scope, output: 'value' }),
         )
         expect(first.outcome).toEqual({ _tag: 'Executed', changedOutputs: ['value'] })
         const secondDef = definition('2', ['value', 'evidence'])
-        const second = yield* DataGraph.materialize(DataGraph.ref(secondDef, scope, 'evidence'))
+        const second = yield* DataGraph.materialize(
+          DataGraph.ref({ node: secondDef, scope, output: 'evidence' }),
+        )
         expect(second.outcome).toEqual({ _tag: 'Executed', changedOutputs: ['evidence'] })
         expect(second.outputs.value?.digest).toBe(first.outputs.value?.digest)
-        const secondReused = yield* DataGraph.materialize(DataGraph.ref(secondDef, scope, 'value'))
+        const secondReused = yield* DataGraph.materialize(
+          DataGraph.ref({ node: secondDef, scope, output: 'value' }),
+        )
         expect(secondReused.outcome).toEqual({ _tag: 'Reused' })
         const thirdDef = definition('3', ['value'])
-        const third = yield* DataGraph.materialize(DataGraph.ref(thirdDef, scope, 'value'))
+        const third = yield* DataGraph.materialize(
+          DataGraph.ref({ node: thirdDef, scope, output: 'value' }),
+        )
         expect(third.outcome).toEqual({ _tag: 'Executed', changedOutputs: ['evidence'] })
         expect(Object.keys(third.outputs)).toEqual(['value'])
         expect(third.outputs.value?.digest).toBe(first.outputs.value?.digest)
-        const thirdReused = yield* DataGraph.materialize(DataGraph.ref(thirdDef, scope, 'value'))
+        const thirdReused = yield* DataGraph.materialize(
+          DataGraph.ref({ node: thirdDef, scope, output: 'value' }),
+        )
         expect(thirdReused.outcome).toEqual({ _tag: 'Reused' })
         expect(calls).toBe(3)
       }).pipe(Effect.provide(GraphStore.fileSystem(root)))
@@ -80,48 +90,52 @@ it.effect(
           outputs: ['constructor', '__proto__'],
           inputs: () => ({}),
           recipe: () => ({ kind: sourceKind, version, config: {} }),
-          execute: Effect.fn('Names.source')(function* () {
-            sourceCalls++
-            return {
-              _tag: 'Accepted',
-              receipts: [],
-              outputs: {
-                ['constructor']: { bytes: utf8Bytes('stable'), mediaType: 'text/plain' },
-                ['__proto__']: { bytes: utf8Bytes(version), mediaType: 'text/plain' },
-              },
-            }
-          }),
+          execute: Effect.fn('Names.source')(() =>
+            Effect.sync(() => {
+              sourceCalls++
+              return {
+                _tag: 'Accepted' as const,
+                receipts: [],
+                outputs: {
+                  ['constructor']: { bytes: utf8Bytes('stable'), mediaType: 'text/plain' },
+                  ['__proto__']: { bytes: utf8Bytes(version), mediaType: 'text/plain' },
+                },
+              }
+            }),
+          ),
         }
         const consumer: NodeDef = {
           _tag: 'Derive',
           kind: consumerKind,
           outputs: ['constructor', '__proto__'],
           inputs: () => ({
-            ['constructor']: DataGraph.ref(source, scope, 'constructor'),
-            ['__proto__']: DataGraph.ref(source, scope, '__proto__'),
+            ['constructor']: DataGraph.ref({ node: source, scope, output: 'constructor' }),
+            ['__proto__']: DataGraph.ref({ node: source, scope, output: '__proto__' }),
           }),
           recipe: () => ({ kind: consumerKind, version: '1', config: {} }),
-          execute: Effect.fn('Names.consumer')(function* ({ inputs }) {
-            consumerCalls++
-            expect(Object.keys(inputs).toSorted()).toEqual(['__proto__', 'constructor'])
-            expect(Object.getPrototypeOf(inputs)).toBe(null)
-            return {
-              _tag: 'Accepted',
-              receipts: [],
-              outputs: {
-                ['constructor']: {
-                  bytes: utf8Bytes(inputs['constructor']!.digest),
-                  mediaType: 'text/plain',
+          execute: Effect.fn('Names.consumer')(({ inputs }) =>
+            Effect.sync(() => {
+              consumerCalls++
+              expect(Object.keys(inputs).toSorted()).toEqual(['__proto__', 'constructor'])
+              expect(Object.getPrototypeOf(inputs)).toBe(null)
+              return {
+                _tag: 'Accepted' as const,
+                receipts: [],
+                outputs: {
+                  ['constructor']: {
+                    bytes: utf8Bytes(inputs['constructor']!.digest),
+                    mediaType: 'text/plain',
+                  },
+                  ['__proto__']: {
+                    bytes: utf8Bytes(inputs.__proto__!.digest),
+                    mediaType: 'text/plain',
+                  },
                 },
-                ['__proto__']: {
-                  bytes: utf8Bytes(inputs.__proto__!.digest),
-                  mediaType: 'text/plain',
-                },
-              },
-            }
-          }),
+              }
+            }),
+          ),
         }
-        const target = DataGraph.ref(consumer, scope, 'constructor')
+        const target = DataGraph.ref({ node: consumer, scope, output: 'constructor' })
         const first = yield* DataGraph.materialize(target)
         expect(first.trace.map((entry) => entry.outcome._tag)).toEqual(['Executed', 'Executed'])
         expect(Object.keys(first.outputs).toSorted()).toEqual(['__proto__', 'constructor'])
@@ -186,7 +200,7 @@ it.effect(
           }
         }),
       }
-      const target = DataGraph.ref(node, {}, 'value')
+      const target = DataGraph.ref({ node, scope: {}, output: 'value' })
       const results = yield* Effect.all(
         Array.from({ length: 8 }, () =>
           DataGraph.materialize(target).pipe(Effect.provide(GraphStore.fileSystem(root))),
