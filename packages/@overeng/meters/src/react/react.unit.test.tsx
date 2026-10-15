@@ -93,6 +93,46 @@ describe('React meter strip', () => {
       expect(screen.getByLabelText('Work').textContent).toBe('n/a (NoSamples)')
     }),
   )
+  it.effect('starts accessible names with visible labels and values, including short labels', () =>
+    Effect.gen(function* () {
+      const f = fixture()
+      const blocks = [
+        f.blocks[0]!,
+        numberBlock({ id: 'short-work', series: f.series, shortLabel: 'Jobs' }),
+      ]
+      yield* Effect.promise(() =>
+        act(async () => {
+          render(
+            <MetersProvider meters={f.meters}>
+              <MeterStrip
+                meters={f.meters}
+                blocks={blocks}
+                theme={lightMeterTheme}
+                frozen={false}
+                onFrozenChange={() => {}}
+                onOpenDetail={() => {}}
+                platform={f.canvas.platform}
+              />
+            </MetersProvider>,
+          )
+        }),
+      )
+      act(() => f.host.tick(250))
+      act(() => f.host.tick(250))
+      const value = screen.getAllByLabelText('Work')[0]!.textContent
+      expect(value).not.toContain('n/a')
+      const full = screen.getByRole('button', { name: `Work ${value}` })
+      const short = screen.getByRole('button', { name: `Jobs ${value}` })
+      expect(full.getAttribute('aria-label')?.startsWith(`Work ${value}`)).toBe(true)
+      expect(short.getAttribute('aria-label')?.startsWith(`Jobs ${value}`)).toBe(true)
+      const fullDescription = full.getAttribute('aria-describedby')!
+      const shortDescription = short.getAttribute('aria-describedby')!
+      expect(shortDescription).not.toBe(fullDescription)
+      expect(document.getElementById(shortDescription)?.textContent).toContain(`Work: ${value}`)
+      expect(document.getElementById(shortDescription)?.textContent).toContain('Open meter details')
+      expect(screen.queryByRole('tooltip')).toBeNull()
+    }),
+  )
   it.effect(
     'fills the measured slot, shrinks overlays with the canvas, and keeps freeze compact',
     () =>
@@ -120,7 +160,7 @@ describe('React meter strip', () => {
           }),
         )
         const widths = () =>
-          screen.getAllByRole('button', { name: /^Work:/ }).map((button) => button.style.width)
+          screen.getAllByRole('button', { name: /^Work / }).map((button) => button.style.width)
         expect(widths()).toEqual(['150px', '150px', '150px'])
         expect(document.querySelector('canvas')?.style.width).toBe('454px')
         act(() => f.canvas.setAvailableWidth(304))
@@ -155,10 +195,14 @@ describe('React meter strip', () => {
             )
           }),
         )
-        const meter = screen.getByRole('button', { name: 'Work: n/a (NoSamples)' })
+        const meter = screen.getByRole('button', { name: 'Work n/a (NoSamples)' })
         fireEvent.focus(meter)
         expect(screen.getByRole('tooltip').textContent).toBe('Work: n/a (NoSamples)')
-        expect(meter.getAttribute('aria-describedby')).toBe(screen.getByRole('tooltip').id)
+        const descriptionId = meter.getAttribute('aria-describedby')!
+        expect(descriptionId).not.toBe(screen.getByRole('tooltip').id)
+        expect(document.getElementById(descriptionId)?.textContent).toContain(
+          'Work: n/a (NoSamples)',
+        )
         expect(selections).toEqual([])
         fireEvent.click(meter)
         fireEvent.keyDown(meter, { key: 'Enter' })
@@ -166,6 +210,8 @@ describe('React meter strip', () => {
         expect(selections).toEqual([{ id: 'work' }, { id: 'work' }, { id: 'work' }])
         fireEvent.keyDown(meter, { key: 'Escape' })
         expect(screen.queryByRole('tooltip')).toBeNull()
+        expect(meter.getAttribute('aria-describedby')).toBe(descriptionId)
+        expect(document.getElementById(descriptionId)).not.toBeNull()
         fireEvent.blur(meter)
         expect(screen.queryByRole('tooltip')).toBeNull()
       }),

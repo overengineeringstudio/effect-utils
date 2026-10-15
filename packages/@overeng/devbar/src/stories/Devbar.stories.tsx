@@ -274,6 +274,7 @@ export const KeyboardShortcut: Story = {
     const canvas = within(canvasElement)
     await userEvent.keyboard('{Control>}[Backquote]{/Control}')
     await expect(canvas.getByRole('region', { name: 'Requests' })).toBeVisible()
+    canvas.getByRole('button', { name: 'Toggle developer tools' }).focus()
     await userEvent.keyboard('{Escape}')
     await expect(canvas.queryByRole('region')).toBeNull()
     await expect(args.onOpenPanelChange).toHaveBeenNthCalledWith(1, 'requests')

@@ -17,7 +17,7 @@ concurrency:
 jobs:
   resolve-preview:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' }}
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4']
     timeout-minutes: 5
     permissions:
       pull-requests: read
@@ -88,7 +88,7 @@ jobs:
     if: ${{ needs.resolve-preview.outputs.deploy == 'true' }}
     runs-on:
       [
-        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true',
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=4',
       ]
     timeout-minutes: 30
     permissions:
@@ -259,7 +259,7 @@ jobs:
     needs: [resolve-preview, deploy-preview]
     runs-on:
       [
-        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true',
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=4',
       ]
     timeout-minutes: 30
     permissions:

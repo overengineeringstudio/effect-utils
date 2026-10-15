@@ -57,8 +57,8 @@ pub enum ProbeEvent {
         seen: SystemTime,
     },
     Network(Option<Arc<crate::netinfo::NetInfo>>),
-    /// Tailnet eligibility is known; None means the uptime read is unavailable.
-    Boot(Option<SystemTime>),
+    /// Tailnet uptime eligibility, pending read, or completed result.
+    Boot(crate::uptime::State),
     Egress {
         generation: u64,
         info: Option<crate::egress::Info>,

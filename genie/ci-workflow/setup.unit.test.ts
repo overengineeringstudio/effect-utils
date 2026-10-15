@@ -2,6 +2,12 @@ import { describe, expect, it } from 'bun:test'
 
 import { Glob } from 'bun'
 
+import autoReviewWorkflow from '../../.github/workflows/auto-review.yml.genie.ts'
+import ciWorkflow, { empiricalProofJobs } from '../../.github/workflows/ci.yml.genie.ts'
+import compiledWorkflow from '../../.github/workflows/compiled-products.yml.genie.ts'
+import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
+import previewBuildWorkflow from '../../.github/workflows/storybook-preview-build.yml.genie.ts'
+import previewDeployWorkflow from '../../.github/workflows/storybook-preview-deploy.yml.genie.ts'
 import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'json' }
 import {
   linuxSandboxPrerequisitesStep,
@@ -13,6 +19,113 @@ import testPlatforms from './test-platforms.json' with { type: 'json' }
 describe('namespaceRunner', () => {
   const linux = 'namespace-profile-linux-x86-64'
   const trustedSuffix = `\${{ (${namespacePrivilegeTrustedPredicate}) && ';container.privileged=true' || '' }}`
+
+  it('keeps priority on the machine label in both label formats', () => {
+    expect(
+      namespaceRunner({ profile: linux, runId: '42', privileged: 'always', priority: 2 }),
+    ).toEqual([`${linux};github.run-id=42;container.privileged=true;job.priority=2`])
+    const profile = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
+    expect(namespaceRunner({ profile, runId: '42', privileged: 'always', priority: 3 })).toEqual([
+      `${profile};job.priority=3`,
+      'namespace-features:github.run-id=42;container.privileged=true',
+    ])
+  })
+
+  it('preserves expression-valued priorities as an interpolated feature value', () => {
+    const priority = "${{ github.event_name == 'merge_group' && 1 || 2 }}"
+    for (const profile of [linux, 'nscloud-ubuntu-24.04-amd64-16x64-with-features']) {
+      const labels = namespaceRunner({
+        profile,
+        runId: '${{ github.run_id }}',
+        privileged: 'never',
+        priority,
+      })
+      expect(labels[0]).toContain(`;job.priority=${priority}`)
+      if (labels.length === 2) {
+        expect(labels[1]).toBe('namespace-features:github.run-id=${{ github.run_id }}')
+        expect(labels[1]).not.toContain('job.priority')
+      }
+    }
+  })
+
+  it('leaves absent priority byte-identical to the previous labels', () => {
+    for (const privileged of ['never', 'always', 'trusted'] as const) {
+      const suffix =
+        privileged === 'never'
+          ? ''
+          : privileged === 'always'
+            ? ';container.privileged=true'
+            : trustedSuffix
+      expect(JSON.stringify(namespaceRunner({ profile: linux, runId: '42', privileged }))).toBe(
+        JSON.stringify([`${linux};github.run-id=42${suffix}`]),
+      )
+      const profile = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
+      expect(JSON.stringify(namespaceRunner({ profile, runId: '42', privileged }))).toBe(
+        JSON.stringify([profile, `namespace-features:github.run-id=42${suffix}`]),
+      )
+    }
+  })
+
+  it('prioritizes generated merge-group producers and required PR checks', () => {
+    expect(ciWorkflow.data.jobs['build-products']!['runs-on']).toEqual([
+      `${linux};github.run-id=\${{ github.run_id }};container.privileged=true;job.priority=1`,
+    ])
+    expect(storybookPlaysWorkflow.data.jobs['test-storybook-plays']!['runs-on']).toEqual([
+      `${linux};github.run-id=\${{ github.run_id }};container.privileged=true;job.priority=1`,
+    ])
+    expect(ciWorkflow.data.jobs.quality!['runs-on']).toEqual([
+      `${linux};github.run-id=\${{ github.run_id }}${trustedSuffix};job.priority=1`,
+    ])
+  })
+
+  it('classifies every Namespace product and empirical job by its delivery result', () => {
+    const background = new Set([
+      'test-megarepo-cold-gc',
+      'bootstrap-cold-proof',
+      'devenv-perf',
+      'nix-closure-sizes',
+      'main-source-shape',
+      'ci-measurements-report',
+      'notify-alignment',
+      'pipeline-traces',
+    ])
+    const jobs = { ...ciWorkflow.data.jobs, ...empiricalProofJobs }
+    let namespaceJobs = 0
+    for (const [id, job] of Object.entries(jobs)) {
+      const labels = JSON.stringify(job['runs-on'])
+      if (labels.includes('namespace-profile-') === true || labels.includes('nscloud-') === true) {
+        namespaceJobs++
+        expect(labels).toContain(`;job.priority=${background.has(id) === true ? 4 : 1}`)
+        expect(labels).not.toContain('job.priority=2')
+        expect(labels).not.toContain('job.priority=3')
+      }
+    }
+    expect(namespaceJobs).toBeGreaterThan(20)
+  })
+
+  it('keeps optional previews background and published products delivery', () => {
+    for (const workflow of [previewBuildWorkflow, previewDeployWorkflow]) {
+      for (const job of Object.values(workflow.data.jobs)) {
+        expect(JSON.stringify(job['runs-on'])).toContain(';job.priority=4')
+      }
+    }
+    expect(compiledWorkflow.data.jobs['publish-compiled-products']?.strategy?.matrix).toEqual({
+      include: [
+        {
+          runner: 'namespace-profile-linux-x86-64',
+          runnerLabel:
+            'namespace-profile-linux-x86-64;github.run-id={0};container.privileged=true;job.priority=1',
+        },
+        {
+          runner: 'namespace-profile-macos-arm64',
+          runnerLabel: 'namespace-profile-macos-arm64;github.run-id={0};job.priority=1',
+        },
+      ],
+    })
+    expect(JSON.stringify(autoReviewWorkflow.data.jobs['request-review']['runs-on'])).toContain(
+      ';job.priority=4',
+    )
+  })
 
   it('requires an explicit privilege choice, even when invoked by an untyped generator', () => {
     for (const profile of [linux, 'nscloud-ubuntu-24.04-amd64-16x64-with-features']) {

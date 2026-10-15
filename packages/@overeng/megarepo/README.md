@@ -69,6 +69,10 @@ my-megarepo/
 
 Branch worktrees use raw Git ref paths in the store, for example `feature/foo` becomes `refs/heads/feature/foo/`.
 
+Store enumeration skips non-directory entries in host, owner, repository, and ref namespaces.
+It emits a warning with the entry's path and type instead of aborting `mr store gc`; these
+foreign entries are never removed. Existing symlink handling is unchanged.
+
 ## Generated artifact cleanup
 
 `mr store gc` can plan old generated directories in registered, clean, inactive store worktrees,

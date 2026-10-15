@@ -1,6 +1,22 @@
 //! Signing and verify-only release import. Legacy local-sign installation remains separate.
 use super::*;
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Incumbent {
+    Contract,
+    Legacy,
+}
+
+impl Incumbent {
+    pub(super) fn parse(value: Option<&str>) -> Result<Self> {
+        match value {
+            None => Ok(Self::Contract),
+            Some("legacy") => Ok(Self::Legacy),
+            Some(_) => Err(fail(64, "invalid-input", "--incumbent accepts only legacy")),
+        }
+    }
+}
+
 fn desired(ctl: &Ctl) -> Result<Value> {
     let path = Path::new(ctl.arg("desired")?);
     if path.is_dir() { artifact::describe(path, &ctl.config) }
@@ -107,15 +123,35 @@ impl Ctl {
     pub(super) fn describe_host(&self) -> Result<Value> { artifact::describe(Path::new(self.arg("desired")?), &self.config) }
 
     pub(super) fn verify_bundle(&self, app: &Path) -> Result<()> {
-        for entry in artifact::signing_entries(&self.config)? {
-            let path = if entry.path.is_empty() { app.to_owned() } else { app.join(&entry.path) };
+        self.verify_bundle_with(app, &self.config)
+    }
+
+    fn verify_bundle_with(&self, app: &Path, config: &Value) -> Result<()> {
+        for entry in artifact::signing_entries(config)? {
+            let path = if entry.path.is_empty() {
+                app.to_owned()
+            } else {
+                app.join(&entry.path)
+            };
             self.signature_with(&path, &entry.requirement)?;
-            for architecture in artifact::code_architectures(app, &entry, &self.config)? {
+            for architecture in artifact::code_architectures(app, &entry, config)? {
                 artifact::verify_entitlements(app, &entry, &architecture)?;
-                let details = keys::bounded_codesign(&["-d", "--verbose=4", "--architecture", &architecture, text(&path)?])?;
+                let details = keys::bounded_codesign(&[
+                    "-d",
+                    "--verbose=4",
+                    "--architecture",
+                    &architecture,
+                    text(&path)?,
+                ])?;
                 let diagnostic = String::from_utf8_lossy(&details.stderr);
-                if !details.status.success() || !diagnostic.lines().any(|line| line == format!("Identifier={}", entry.identifier)) {
-                    return Err(mismatch("Code identifier differs from the independently pinned inventory"));
+                if !details.status.success()
+                    || !diagnostic
+                        .lines()
+                        .any(|line| line == format!("Identifier={}", entry.identifier))
+                {
+                    return Err(mismatch(
+                        "Code identifier differs from the independently pinned inventory",
+                    ));
                 }
                 verify_options(&diagnostic, &entry.options)?;
             }
@@ -166,51 +202,148 @@ impl Ctl {
         result
     }
 
-    pub(super) fn install_artifact(&self) -> Result<Value> {
-        if ["keychain", "keychain-password-fd", "signing-auth-pending"].iter().any(|key| self.args.contains_key(*key)) {
-            return Err(fail(64, "invalid-input", "Artifact import accepts no signing credentials and has no signing fallback"));
+    // Configs are retained by bundle inode alongside retained immutable hosts.
+    // Writing before publication makes interrupted exchanges recoverable without
+    // ever interpreting the incumbent through the candidate's code inventory.
+    fn host_config_path(&self, app: &Path) -> Result<PathBuf> {
+        let metadata = fs::metadata(app)?;
+        Ok(self.state()?.join("host-configs").join(format!(
+            "{}-{}.json",
+            metadata.dev(),
+            metadata.ino()
+        )))
+    }
+
+    fn record_host_config(&self, app: &Path) -> Result<()> {
+        destination(&self.state()?.join("host-configs"), true)?;
+        atomic_write(
+            &self.host_config_path(app)?,
+            &serde_json::to_vec(&self.config)?,
+        )
+    }
+
+    fn describe_incumbent(&self, app: &Path, mode: Incumbent) -> Result<Option<Value>> {
+        artifact::verify_bundle_identifier(app, &self.config)?;
+        self.signature(app)?;
+        let record = self.host_config_path(app)?;
+        let config: Option<Value> = match fs::symlink_metadata(&record) {
+            Ok(metadata) => {
+                if !metadata.is_file() {
+                    return Err(mismatch("Recorded host config is not a regular file"));
+                }
+                Some(serde_json::from_slice(&fs::read(&record)?)?)
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+        if let Some(config) = config {
+            let descriptor = artifact::describe(app, &config)?;
+            self.verify_bundle_with(app, &config)?;
+            Ok(Some(descriptor))
+        } else if mode == Incumbent::Legacy {
+            Ok(None)
+        } else {
+            artifact::describe(app, &self.config).map(Some)
         }
+    }
+
+    pub(super) fn install_artifact(&self) -> Result<Value> {
+        if ["keychain", "keychain-password-fd", "signing-auth-pending"]
+            .iter()
+            .any(|key| self.args.contains_key(*key))
+        {
+            return Err(fail(
+                64,
+                "invalid-input",
+                "Artifact import accepts no signing credentials and has no signing fallback",
+            ));
+        }
+        let incumbent = Incumbent::parse(self.args.get("incumbent").map(String::as_str))?;
         let descriptor = desired(self)?;
         let release = Path::new(self.arg("artifact")?);
         let candidate = artifact::verify_release(release, &descriptor, &self.config)?;
         self.verify_bundle(&candidate.app)?;
         let app = self.app()?;
-        let parent = app.parent().ok_or_else(|| fail(64, "invalid-input", "App requires parent"))?;
+        let parent = app
+            .parent()
+            .ok_or_else(|| fail(64, "invalid-input", "App requires parent"))?;
         let archive = PathBuf::from(self.arg("archive-dir")?);
         // Verification above completes before any destination mutation.
-        destination(parent, true).map_err(|mut error| { error.reason = format!("Preparing app destination: {}", error.reason); error })?;
-        destination(&archive, true).map_err(|mut error| { error.reason = format!("Preparing archive destination: {}", error.reason); error })?;
-        destination(&self.state()?, true).map_err(|mut error| { error.reason = format!("Preparing state destination: {}", error.reason); error })?;
+        destination(parent, true).map_err(|mut error| {
+            error.reason = format!("Preparing app destination: {}", error.reason);
+            error
+        })?;
+        destination(&archive, true).map_err(|mut error| {
+            error.reason = format!("Preparing archive destination: {}", error.reason);
+            error
+        })?;
+        destination(&self.state()?, true).map_err(|mut error| {
+            error.reason = format!("Preparing state destination: {}", error.reason);
+            error
+        })?;
         if fs::metadata(parent)?.dev() != fs::metadata(&archive)?.dev() {
-            return Err(fail(64, "invalid-input", "App and immutable archive must share a filesystem for atomic exchange"));
+            return Err(fail(
+                64,
+                "invalid-input",
+                "App and immutable archive must share a filesystem for atomic exchange",
+            ));
         }
         let (reconciled, _) = self.reconcile(&app)?;
-        if app.exists() && artifact::describe(&app, &self.config)? == descriptor && self.verify_bundle(&app).is_ok() &&
-            artifact::artifact_revision(&app)? == candidate.sealed_revision {
-            return Ok(json!({"changed": false, "descriptor": descriptor, "sealedRevision": candidate.sealed_revision, "reconciled": reconciled}));
+        if app.exists() {
+            if !fs::symlink_metadata(&app)?.is_dir()
+                || fs::symlink_metadata(&app)?.uid() != unsafe { libc::geteuid() }
+            {
+                return Err(fail(
+                    64,
+                    "invalid-input",
+                    "Installed app is not an owned directory",
+                ));
+            }
+            if self.describe_incumbent(&app, incumbent)?.as_ref() == Some(&descriptor)
+                && self.verify_bundle(&app).is_ok()
+                && artifact::artifact_revision(&app)? == candidate.sealed_revision
+            {
+                if !self.host_config_path(&app)?.exists() {
+                    self.record_host_config(&app)?;
+                }
+                return Ok(
+                    json!({"changed": false, "descriptor": descriptor, "sealedRevision": candidate.sealed_revision, "reconciled": reconciled}),
+                );
+            }
         }
-        if app.exists() && (!fs::symlink_metadata(&app)?.is_dir() || fs::symlink_metadata(&app)?.uid() != unsafe { libc::geteuid() }) {
-            return Err(fail(64, "invalid-input", "Installed app is not an owned directory"));
-        }
-        if app.exists() { self.signature(&app)?; }
-        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| fail(23, "operation-failed", e.to_string()))?.as_nanos();
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| fail(23, "operation-failed", e.to_string()))?
+            .as_nanos();
         let stage = archive.join(format!("retained-{}-{nonce}.app", std::process::id()));
         checked("/bin/cp", &["-R", text(&candidate.app)?, text(&stage)?])?;
         self.verify_bundle(&stage)?;
-        if artifact::describe(&stage, &self.config)? != descriptor || artifact::artifact_revision(&stage)? != candidate.sealed_revision {
-            return Err(mismatch("Staged artifact content or sealed revision differs"));
+        if artifact::describe(&stage, &self.config)? != descriptor
+            || artifact::artifact_revision(&stage)? != candidate.sealed_revision
+        {
+            return Err(mismatch(
+                "Staged artifact content or sealed revision differs",
+            ));
         }
         // Darwin requires write access to a directory moved between parents.
         // Installed owner-write bits are excluded from the artifact revision;
         // retained incumbents are frozen again by publish_archive.
         checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
+        self.record_host_config(&stage)?;
         if app.exists() {
             let txn = json!({"stage": stage, "stageInode": inode(&stage), "generation": pointer(&self.state()?.join("current")), "immutable": true});
             atomic_write(&transaction_record(&app), &serde_json::to_vec(&txn)?)?;
             exchange(&stage, &app)?;
             self.publish_archive(&app, &txn)?;
-        } else { publish_exclusive(&stage, &app).map_err(|mut error| { error.reason = format!("Publishing verified artifact: {}", error.reason); error })?; }
-        Ok(json!({"changed": true, "descriptor": descriptor, "sealedRevision": candidate.sealed_revision, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled}))
+        } else {
+            publish_exclusive(&stage, &app).map_err(|mut error| {
+                error.reason = format!("Publishing verified artifact: {}", error.reason);
+                error
+            })?;
+        }
+        Ok(
+            json!({"changed": true, "descriptor": descriptor, "sealedRevision": candidate.sealed_revision, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled}),
+        )
     }
 
     pub(super) fn verify_artifact(&self) -> Result<Value> {
@@ -291,6 +424,199 @@ impl Ctl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn incumbent_opt_in_is_explicit_and_typed() {
+        assert_eq!(Incumbent::parse(None).unwrap(), Incumbent::Contract);
+        assert_eq!(Incumbent::parse(Some("legacy")).unwrap(), Incumbent::Legacy);
+        for value in ["", "contract", "true", "LEGACY"] {
+            assert!(Incumbent::parse(Some(value)).is_err());
+        }
+    }
+    #[test]
+    fn legacy_cutover_preserves_identity_and_recorded_inventory() {
+        let root = private_stage(&fs::canonicalize(std::env::temp_dir()).unwrap()).unwrap();
+        let identifier = "dev.example.legacy-cutover";
+        let app = root.join("apps/Host.app");
+        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
+        let source = root.join("host.c");
+        fs::write(&source, b"int main(void) { return 0; }\n").unwrap();
+        let architecture = if cfg!(target_arch = "aarch64") {
+            "arm64"
+        } else {
+            "x86_64"
+        };
+        checked(
+            "/usr/bin/clang",
+            &[
+                "-arch",
+                architecture,
+                text(&source).unwrap(),
+                "-o",
+                text(&app.join("Contents/MacOS/host")).unwrap(),
+            ],
+        )
+        .unwrap();
+        let plist = app.join("Contents/Info.plist");
+        let write_plist = |id: &str| {
+            fs::write(&plist, format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>{id}</string><key>CFBundleExecutable</key><string>host</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>"#
+            )).unwrap();
+        };
+        let sign = |id: &str| {
+            checked(
+                "/usr/bin/codesign",
+                &[
+                    "--force",
+                    "-s",
+                    "-",
+                    "--identifier",
+                    id,
+                    text(&app).unwrap(),
+                ],
+            )
+            .unwrap();
+        };
+        write_plist(identifier);
+        sign(identifier);
+        let legacy_config = json!({"bundleId": identifier, "hostExecutable": "host",
+            "requirement": format!("identifier \"{identifier}\""), "nestedCode": []});
+        let mut candidate_config = legacy_config.clone();
+        candidate_config["nestedCode"] = json!([{"path": "Contents/Helpers/helper",
+            "identifier": "dev.example.legacy-cutover.helper",
+            "requirement": "identifier \"dev.example.legacy-cutover.helper\""}]);
+        let state = root.join("state");
+        let ctl = Ctl {
+            config: candidate_config,
+            args: BTreeMap::from([
+                ("state".into(), text(&state).unwrap().into()),
+                ("app-dir".into(), text(&app).unwrap().into()),
+            ]),
+        };
+        assert!(ctl.describe_incumbent(&app, Incumbent::Contract).is_err());
+        assert!(matches!(
+            ctl.describe_incumbent(&app, Incumbent::Legacy),
+            Ok(None)
+        ));
+        write_plist("dev.example.wrong");
+        sign(identifier);
+        assert!(ctl.describe_incumbent(&app, Incumbent::Legacy).is_err());
+        write_plist(identifier);
+        sign("dev.example.wrong");
+        assert!(ctl.describe_incumbent(&app, Incumbent::Legacy).is_err());
+        sign(identifier);
+        fs::write(app.join("Contents/invalid-resource"), b"not signed").unwrap();
+        assert!(ctl.describe_incumbent(&app, Incumbent::Legacy).is_err());
+        fs::remove_file(app.join("Contents/invalid-resource")).unwrap();
+        sign(identifier);
+        destination(&state, true).unwrap();
+        destination(&state.join("host-configs"), true).unwrap();
+        let record = ctl.host_config_path(&app).unwrap();
+        atomic_write(&record, &serde_json::to_vec(&legacy_config).unwrap()).unwrap();
+        let own_descriptor = artifact::describe(&app, &legacy_config).unwrap();
+        for mode in [Incumbent::Contract, Incumbent::Legacy] {
+            assert_eq!(
+                ctl.describe_incumbent(&app, mode).unwrap().unwrap(),
+                own_descriptor
+            );
+        }
+        // A legacy opt-in never falls back past a recorded contract failure.
+        atomic_write(&record, &serde_json::to_vec(&ctl.config).unwrap()).unwrap();
+        assert!(ctl.describe_incumbent(&app, Incumbent::Legacy).is_err());
+        fs::remove_file(&record).unwrap();
+        let make_release = |name: &str, config: &Value, nested: bool| {
+            let release = root.join(name);
+            fs::create_dir(&release).unwrap();
+            let host = release.join("host.app");
+            checked(
+                "/bin/cp",
+                &["-R", text(&app).unwrap(), text(&host).unwrap()],
+            )
+            .unwrap();
+            if nested {
+                let helper = host.join("Contents/Helpers/helper");
+                fs::create_dir_all(helper.parent().unwrap()).unwrap();
+                fs::copy(app.join("Contents/MacOS/host"), &helper).unwrap();
+                checked(
+                    "/usr/bin/codesign",
+                    &[
+                        "--force",
+                        "-s",
+                        "-",
+                        "--identifier",
+                        "dev.example.legacy-cutover.helper",
+                        text(&helper).unwrap(),
+                    ],
+                )
+                .unwrap();
+                checked(
+                    "/usr/bin/codesign",
+                    &[
+                        "--force",
+                        "-s",
+                        "-",
+                        "--identifier",
+                        identifier,
+                        text(&host).unwrap(),
+                    ],
+                )
+                .unwrap();
+            }
+            let descriptor = artifact::describe(&host, config).unwrap();
+            checked("/bin/chmod", &["-R", "a-w", text(&host).unwrap()]).unwrap();
+            let receipt = artifact::create_receipt(&host, &descriptor, config).unwrap();
+            fs::write(
+                release.join("descriptor.json"),
+                serde_json::to_vec(&descriptor).unwrap(),
+            )
+            .unwrap();
+            fs::write(
+                release.join("receipt.json"),
+                serde_json::to_vec(&receipt).unwrap(),
+            )
+            .unwrap();
+            checked("/bin/chmod", &["-R", "a-w", text(&release).unwrap()]).unwrap();
+            release
+        };
+        let nested_release = make_release("nested-release", &ctl.config, true);
+        let plain_release = make_release("plain-release", &legacy_config, false);
+        let mut ctl = ctl;
+        ctl.args.insert(
+            "archive-dir".into(),
+            text(&root.join("archive")).unwrap().into(),
+        );
+        ctl.args
+            .insert("artifact".into(), text(&nested_release).unwrap().into());
+        ctl.args.insert(
+            "desired".into(),
+            text(&nested_release.join("descriptor.json"))
+                .unwrap()
+                .into(),
+        );
+        let incumbent_inode = inode(&app);
+        assert!(ctl.install_artifact().is_err());
+        assert_eq!(inode(&app), incumbent_inode);
+        ctl.args.insert("incumbent".into(), "legacy".into());
+        assert_eq!(ctl.install_artifact().unwrap()["changed"], true);
+        assert!(app.join("Contents/Helpers/helper").is_file());
+        assert_eq!(
+            read_json(&ctl.host_config_path(&app).unwrap()).unwrap(),
+            Some(ctl.config.clone())
+        );
+        ctl.args.remove("incumbent");
+        ctl.config = legacy_config;
+        ctl.args
+            .insert("artifact".into(), text(&plain_release).unwrap().into());
+        ctl.args.insert(
+            "desired".into(),
+            text(&plain_release.join("descriptor.json")).unwrap().into(),
+        );
+        assert_eq!(ctl.install_artifact().unwrap()["changed"], true);
+        assert!(!app.join("Contents/Helpers/helper").exists());
+        assert_eq!(ctl.install_artifact().unwrap()["changed"], false);
+        checked("/bin/chmod", &["-R", "u+w", text(&root).unwrap()]).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn stages_are_private_unique_and_owned() {
         let parent = fs::canonicalize(std::env::temp_dir()).unwrap();

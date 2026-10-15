@@ -304,6 +304,8 @@ const longJobTimeoutMinutes = 45
 
 const heavyCiIf = `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}`
 const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
+// Branch secrets are available only through a deliberate collaborator dispatch, never a PR event.
+const notionIntegrationCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true)) }}`
 const empiricalProofLaneIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}`
 const publishingCachixStep = cachixPublisherStep({
   name: 'overeng-effect-utils',
@@ -335,9 +337,14 @@ const measurementReportIf = [
   "&& needs.main-source-shape.result != 'failure' }}",
 ].join(' ')
 
+/** Required checks, main verification and publication share the delivery tier. */
+const deliveryJobPriority = 1
+const backgroundJobPriority = 4
+
 const job = ({
   step,
   privileged,
+  priority = deliveryJobPriority,
   extraSteps = [],
   afterSteps = [],
   laneIf = heavyCiIf,
@@ -345,6 +352,7 @@ const job = ({
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
   privileged: NamespacePrivilege
+  priority?: number | string
   extraSteps?: readonly any[]
   afterSteps?: readonly any[]
   laneIf?: string
@@ -356,6 +364,7 @@ const job = ({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
     privileged,
+    priority,
   }),
   'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
@@ -480,6 +489,7 @@ const unitTestJob = ({
     profile: runner,
     runId: '${{ github.run_id }}',
     privileged,
+    priority: deliveryJobPriority,
   }),
   'timeout-minutes': 90,
   defaults: bashShellDefaults,
@@ -587,14 +597,31 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
     name: 'pr/quality',
     ...job({
       privileged: 'trusted',
+      priority: deliveryJobPriority,
       laneIf: `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}`,
       timeoutMinutes: 90,
       extraSteps: [
+        {
+          name: 'Check published product inventory against the gated diff',
+          env: {
+            ...githubTokenEnv(),
+            MANIFEST_BASE_SHA:
+              '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}',
+          },
+          run: withCiSourceRoot('bash genie/ci-scripts/buck2-manifest-inventory.sh'),
+        },
         {
           name: 'Check shared megarepo task flags against the published CLI',
           env: githubTokenEnv(),
           run: withCiSourceRoot(
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/devenv-modules/tasks/shared/tests/megarepo-product-flags.test.sh "$PWD"',
+          ),
+        },
+        {
+          name: 'Check published and source JavaScript import contracts',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"',
           ),
         },
         {
@@ -676,6 +703,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   'test-macos': unitTestJob({ runner: 'namespace-profile-macos-arm64', privileged: 'always' }),
   'test-playwright-utils': job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'Utils Playwright tests',
@@ -698,6 +726,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   }),
   'test-playwright-tui-react': job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'TUI React Playwright tests',
@@ -720,6 +749,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   }),
   'test-megarepo-cold-gc': job({
     privileged: 'trusted',
+    priority: backgroundJobPriority,
     laneIf: empiricalProofLaneIf,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
@@ -731,6 +761,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
 
   cargo: job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     step: {
       name: 'Cargo build + test + clippy + fmt',
       env: githubTokenEnv(),
@@ -744,6 +775,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   // The bounded registry and version checks run through Buck's quick aggregate in the same lane.
   weaver: job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     timeoutMinutes: longJobTimeoutMinutes,
     extraSteps: [
       {
@@ -860,6 +892,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -988,6 +1021,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 120,
     permissions: { contents: 'read' },
@@ -1021,12 +1055,22 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 120,
-    permissions: { contents: 'read' },
+    permissions: { contents: 'read', 'pull-requests': 'read', statuses: 'write' },
     defaults: bashShellDefaults,
     env: githubTokenEnv(),
     steps: [
+      {
+        name: 'Mark product manifest publication pending',
+        run: [
+          'gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+          '  -f context=buck2-products/manifest-current -f state=pending \\',
+          '  -f description="Checking published product manifest" \\',
+          '  -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+        ].join('\n'),
+      },
       checkoutStep(),
       {
         id: 'publication-scope',
@@ -1043,20 +1087,42 @@ const extraJobs: Record<string, any> = {
           '      break',
           '    fi',
           '  done < <(git diff --name-only HEAD^ HEAD)',
+          // Only skip the bot's own merged manifest proposal when it was built on
+          // this merge's immediate main parent and its manifest bytes are unchanged.
+          // Otherwise an intervening main change or manual edit must be republished.
+          '  if [ "$publish" = false ]; then',
+          '    publish=true',
+          '    published_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq \'[.[] | select(.merged_at != null and .head.ref == "automation/buck2-products-manifest" and .user.login == "overeng-nix-publisher[bot]")] | .[0].head.sha // empty\')"',
+          '    if [ -n "$published_sha" ]; then',
+          '      git fetch --no-tags --depth=2 origin "$published_sha"',
+          '      if [ "$(git rev-parse "$published_sha^")" = "$(git rev-parse HEAD^)" ] && git diff --quiet "$published_sha" HEAD -- nix/buck2-products/manifest.json; then',
+          '        publish=false',
+          '      fi',
+          '    fi',
+          '  fi',
           'fi',
           'echo "publish=$publish" >> "$GITHUB_OUTPUT"',
+          'if [ "$publish" = false ]; then',
+          '  gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+          '    -f context=buck2-products/manifest-current -f state=success \\',
+          '    -f description="Publisher manifest-only merge is current" \\',
+          '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+          'fi',
         ].join('\n'),
       },
       {
         ...installNixStep(),
+        id: 'product-nix',
         if: "steps.publication-scope.outputs.publish == 'true'",
       },
       {
         ...cachixCliBuildStep,
+        id: 'product-cachix-cli',
         if: "steps.publication-scope.outputs.publish == 'true'",
       },
       {
         ...publishingCachixStep,
+        id: 'product-cachix-auth',
         if: `${publishingCachixStep.if} && steps.publication-scope.outputs.publish == 'true'`,
       },
       cachixPushStep({
@@ -1072,12 +1138,36 @@ const extraJobs: Record<string, any> = {
             [
               'set -euo pipefail',
               'proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"',
-              'nix/buck2-products/publish.sh --proposal "$proposal"',
+              'if nix/buck2-products/publish.sh --proposal "$proposal"; then',
+              '  :',
+              'else',
+              '  result=$?',
+              '  echo "cause=publish.sh failed (exit $result): build, network, or Cachix error; inspect run" >> "$GITHUB_OUTPUT"',
+              '  exit "$result"',
+              'fi',
               'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
               '  echo "::notice::The v2 product manifest is already current"',
               '  echo "changed=false" >> "$GITHUB_OUTPUT"',
+              '  gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+              '    -f context=buck2-products/manifest-current -f state=success \\',
+              '    -f description="Published product manifest is current" \\',
+              '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
               'else',
+              '  comparison=$?',
+              '  if [ "$comparison" -ne 1 ]; then',
+              '    echo "::error::Manifest comparison failed (cmp exit $comparison)"',
+              '    echo "cause=Manifest comparison I/O error (cmp exit $comparison)" >> "$GITHUB_OUTPUT"',
+              '    exit "$comparison"',
+              '  fi',
               '  echo "changed=true" >> "$GITHUB_OUTPUT"',
+              '  stale=$(jq -nr --slurpfile old nix/buck2-products/manifest.json --slurpfile new "$proposal" \'[$old[0].products[], $new[0].products[]] | group_by(.name) | map(select(length != 2 or .[0] != .[1]) | .[0].name) | join(", ")\')',
+              // GitHub commit-status descriptions are limited to 140 characters.
+              '  description="Stale products: $stale"',
+              '  gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+              '    -f context=buck2-products/manifest-current -f state=failure \\',
+              '    -f description="${description:0:140}" \\',
+              '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+              '  echo "stale-status=true" >> "$GITHUB_OUTPUT"',
               'fi',
             ].join('\n'),
           ),
@@ -1138,6 +1228,22 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
+      {
+        name: 'Keep interrupted publication pending',
+        if: "failure() && steps.product-publication.outputs.stale-status != 'true'",
+        env: {
+          PUBLICATION_CAUSE:
+            "${{ steps.product-publication.outputs.cause || (steps.product-nix.outcome == 'failure' && 'Nix setup failed') || (steps.product-cachix-cli.outcome == 'failure' && 'Cachix CLI setup failed') || (steps.product-cachix-auth.outcome == 'failure' && 'Cachix authentication failed') || 'Publication network/API or scope error; inspect run' }}",
+        },
+        run: [
+          // Infrastructure/publisher errors are not proof of stale product bytes.
+          // Preserve pending even if setup failed before publish.sh could run.
+          'gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+          '  -f context=buck2-products/manifest-current -f state=pending \\',
+          '  -f description="${PUBLICATION_CAUSE:0:140}" \\',
+          '  -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+        ].join('\n'),
+      },
     ],
   },
   /**
@@ -1151,6 +1257,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1196,6 +1303,7 @@ const extraJobs: Record<string, any> = {
   // the static fast-feedback pre-check. Separate lane because it is heavier than the product checks.
   'bootstrap-cold-proof': job({
     privileged: 'trusted',
+    priority: backgroundJobPriority,
     laneIf: empiricalProofLaneIf,
     step: {
       name: 'Bootstrap cold-proof (R32)',
@@ -1210,6 +1318,7 @@ const extraJobs: Record<string, any> = {
         profile: namespaceLinuxX64PairedPerfRunner,
         runId: '${{ github.run_id }}',
         privileged: 'always',
+        priority: backgroundJobPriority,
       }),
       artifactName: 'devenv-perf',
       artifactDir: devenvPerfMeasurementsDir,
@@ -1338,6 +1447,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'trusted',
+      priority: backgroundJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1371,6 +1481,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'trusted',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1432,6 +1543,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: backgroundJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1504,11 +1616,12 @@ const extraJobs: Record<string, any> = {
   },
   /** Integration tests for Notion API (requires package-specific Notion token secrets) */
   'test-integration-notion': {
-    if: trustedSecretCiIf,
+    if: notionIntegrationCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 90,
     defaults: bashShellDefaults,
@@ -1554,6 +1667,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 60,
     defaults: bashShellDefaults,
@@ -1580,6 +1694,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 30,
     defaults: bashShellDefaults,
@@ -1603,6 +1718,7 @@ const deployJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     // No `needs` — run in parallel with other jobs for faster feedback
@@ -1675,6 +1791,7 @@ const pipelineTracesJob = {
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
     privileged: 'trusted',
+    priority: backgroundJobPriority,
   }),
   permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
@@ -1705,6 +1822,7 @@ const allCiJobs: Record<string, any> = {
         profile: 'namespace-profile-linux-x86-64',
         runId: '${{ github.run_id }}',
         privileged: 'trusted',
+        priority: deliveryJobPriority,
       }),
       defaultRefs: { 'livestorejs/livestore': 'dev' },
     }),
@@ -1720,6 +1838,7 @@ const allCiJobs: Record<string, any> = {
         profile: 'namespace-profile-linux-x86-64',
         runId: '${{ github.run_id }}',
         privileged: 'never',
+        priority: backgroundJobPriority,
       }),
     }),
     // Optional lookup failures permit authoritative quality fallback; publication must succeed.
@@ -1759,6 +1878,7 @@ export const empiricalProofJobs: CiWorkflowArgs['jobs'] = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: backgroundJobPriority,
     }),
     if: "${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}",
   },
@@ -1786,6 +1906,12 @@ export default ciWorkflow({
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
+        run_notion_integration_on_branch: {
+          description: 'Opt into credentialed Notion integration tests on this branch.',
+          required: false,
+          default: false,
+          type: 'boolean',
+        },
         run_datasource_sync_demo: {
           description:
             'Run the credentialed notion-datasource-sync demo showcase in the Notion integration lane. Requires NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID.',

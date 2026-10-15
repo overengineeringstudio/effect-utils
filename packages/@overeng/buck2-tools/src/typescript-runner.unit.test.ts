@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import {
   chmodSync,
   existsSync,
@@ -14,17 +15,20 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
+import { PassThrough } from 'node:stream'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   copyDeclarationSources,
   formatError,
+  type FingerprintChild,
   hashDeclaredInputRoots,
   linkStagedWorkspaceProjects,
   parseEmitOptions as parseEmit,
   parseTypecheckOptions as parseTypecheck,
   relinkStagedDependencyView,
+  runFingerprintTool,
   stagedEmitPackageRoot,
 } from './typescript-runner.ts'
 
@@ -57,6 +61,34 @@ it('preserves an error message when the runtime stack omits it', () => {
   expect(formatError(error)).toContain(
     'expected declaration entrypoint was not emitted: mod.d.ts\nError',
   )
+})
+
+type FingerprintTestChild = EventEmitter & FingerprintChild
+
+it('queues root subprocesses and continues after a failed fingerprint', async () => {
+  // Only streams and lifecycle events belong to this test; no OS child is started.
+  const makeChild = (): FingerprintTestChild =>
+    Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() })
+  const turns = Array.from({ length: 3 }, () => Promise.withResolvers<FingerprintTestChild>())
+  let spawned = 0
+  const spawnChild = vi.fn(() => {
+    const child = makeChild()
+    turns[spawned]?.resolve(child)
+    spawned += 1
+    return child
+  })
+  const results = Promise.allSettled(
+    turns.map((_, index) =>
+      runFingerprintTool({ tool: fingerprintTool, args: [`/root-${index}`], spawnChild }),
+    ),
+  )
+  for (const [index, turn] of turns.entries()) {
+    const child = await turn.promise
+    expect(spawned).toBe(index + 1)
+    child.emit('close', index === 0 ? 1 : 0, null)
+  }
+  const settled = await results
+  expect(settled.map((result) => result.status)).toEqual(['rejected', 'fulfilled', 'fulfilled'])
 })
 
 describe('TypeScript emit declaration command', () => {

@@ -82,7 +82,8 @@ Effect instance, which `Interop.assertEffectCohort` rejects. Do not bypass this
 guard: the consumer, generated service, and runtime must share one instance.
 
 In the root's Genie projection, stage the runtime package and merge its overrides
-after the catalog's `effect` pin:
+after the catalog's `effect` pin. Also pass the generated peer rules to the same
+`pnpmWorkspaceYaml` output:
 
 ```ts
 const rootPnpmSourceInputs = projectPnpmSourceInputs({
@@ -94,6 +95,8 @@ const overrides = {
   effect: catalog.effect,
   ...rootPnpmSourceInputs.overrides,
 }
+
+const peerDependencyRules = rootPnpmSourceInputs.peerDependencyRules
 ```
 
 Carry `rootPnpmSourceInputs.sourceInputPaths` and the stage path

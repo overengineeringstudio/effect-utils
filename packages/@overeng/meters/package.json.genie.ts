@@ -40,6 +40,12 @@ const runtimeDeps = catalog.compose({
   peerDependencies: {
     external: {
       ...catalog.pick(...peerDepNames),
+      /**
+       * React 19.2.3 is the lowest React 19.2 release verified by a consumer.
+       * Catalog-derived peers over-constrain hosts whose React cannot move in lockstep.
+       */
+      react: '^19.2.3',
+      'react-dom': '^19.2.3',
       /** Releases plus exactly the one RC verified by typecheck + unit tests; other RCs must fail the peer check. */
       effect: '^4.0.0 || 4.0.0-rc.118',
     },
