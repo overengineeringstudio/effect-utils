@@ -21,7 +21,7 @@ it.effect(
       const fs = yield* FileSystem.FileSystem
       const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-upgrade-' })
       yield* Effect.gen(function* () {
-        const kind = Schema.decodeUnknownSync(NodeKind)('versioned-extract')
+        const kind = yield* Schema.decodeEffect(NodeKind)('versioned-extract')
         const scope = { document: 'versioned' }
         let calls = 0
         const definition = (version: string, outputNames: ReadonlyArray<string>): NodeDef => ({
@@ -68,8 +68,8 @@ it.effect(
       const fs = yield* FileSystem.FileSystem
       const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-names-' })
       yield* Effect.gen(function* () {
-        const sourceKind = Schema.decodeUnknownSync(NodeKind)('named-source')
-        const consumerKind = Schema.decodeUnknownSync(NodeKind)('named-consumer')
+        const sourceKind = yield* Schema.decodeEffect(NodeKind)('named-source')
+        const consumerKind = yield* Schema.decodeEffect(NodeKind)('named-consumer')
         const scope = { document: 'named' }
         let version = '1'
         let sourceCalls = 0
@@ -127,7 +127,7 @@ it.effect(
         expect(Object.keys(first.outputs).toSorted()).toEqual(['__proto__', 'constructor'])
         const firstHead = Option.getOrThrow(yield* DataGraph.getHead({ kind: consumerKind, scope }))
         const store = yield* GraphStore
-        const action = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ContentManifest))(
+        const action = yield* Schema.decodeEffect(Schema.fromJsonString(ContentManifest))(
           new TextDecoder().decode(yield* store.get(firstHead.action)),
         )
         expect(
@@ -166,7 +166,7 @@ it.effect(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-concurrent-' })
-      const kind = Schema.decodeUnknownSync(NodeKind)('concurrent')
+      const kind = yield* Schema.decodeEffect(NodeKind)('concurrent')
       let calls = 0
       const node: NodeDef = {
         _tag: 'Derive',

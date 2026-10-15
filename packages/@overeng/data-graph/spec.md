@@ -16,14 +16,14 @@ An action manifest binds the canonical recipe descriptor and sorted named input 
 
 `GraphStore.fileSystem(root)` reuses content-address byte, manifest, and pin primitives. CAS manifests and pins are authoritative; there is no SQLite registry or alternative serializer. Registry inventories are consumer-supplied, not inferred through directory scans.
 
-| Object / pin | Meaning |
-| --- | --- |
-| `data-graph.action` | Recipe and sorted input descriptors |
-| `data-graph.materialization` | Action, named outputs, opaque receipts |
-| `data-graph.attempt` | Unsuccessful action, UUID invocation status/reason, receipts |
-| `data-graph.head` | Confirmation record and selected materialization |
-| `data-graph/actions/<action digest hex>` | Accepted deterministic cache entry |
-| `data-graph/heads/<node identity digest hex>` | Selected head |
+| Object / pin                                  | Meaning                                                      |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| `data-graph.action`                           | Recipe and sorted input descriptors                          |
+| `data-graph.materialization`                  | Action, named outputs, opaque receipts                       |
+| `data-graph.attempt`                          | Unsuccessful action, UUID invocation status/reason, receipts |
+| `data-graph.head`                             | Confirmation record and selected materialization             |
+| `data-graph/actions/<action digest hex>`      | Accepted deterministic cache entry                           |
+| `data-graph/heads/<node identity digest hex>` | Selected head                                                |
 
 Writes publish bytes, then manifests, then atomic individual pins. CAS verifies object integrity. Missing/corrupt objects fail closed rather than silently executing over a broken cache. An unpublished manifest is not a selection. An accepted deterministic action pin without its head can recover the head on the next pull. Individual pins are not a multi-object transaction. Defects, interruption, process crash, and storage failure may leave no completed attempt.
 
