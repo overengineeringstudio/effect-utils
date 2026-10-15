@@ -138,10 +138,12 @@ The kernel census and shell-created symlinks are **advisory observations only**,
 not guaranteed reader registration: a reference can appear after inspection,
 process permissions can hide it, and editors can cache paths after closing files.
 Linux observes same-user `/proc` executable, working-directory, descriptor,
-mapped-file, and entry-point references; macOS uses native `lsof`. Observed references
-and state-root symlink targets defer retirement, and an unavailable inventory backend
-defers collection. None of those observations replaces a managed pin for a reader
-that requires guaranteed retention.
+mapped-file, and entry-point references; macOS uses native `lsof`. Local snapshot
+retention matches observed pathnames: a shared payload hardlink may be reported
+under another generation or the content store instead of the path used to open it.
+Observed references and state-root symlink targets defer retirement, and an
+unavailable inventory backend defers collection. None of those observations
+replaces a managed pin for a reader that requires guaranteed retention.
 Retention reuses the selected generation's full validation from the same publication.
 Older protected generations receive only ownership and root-permission checks;
 their complete permission proof runs outside the CAS flock before publishing the
