@@ -30,6 +30,13 @@ jobs:
       head-sha: ${{ steps.pull-request.outputs.head-sha }}
       head-repo: ${{ steps.pull-request.outputs.head-repo }}
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - id: pull-request
         name: Resolve pull request from the triggering run
         shell: bash
@@ -99,6 +106,13 @@ jobs:
       run:
         shell: bash
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - name: Checkout default-branch tooling
         uses: actions/checkout@v6
         with:
@@ -115,6 +129,8 @@ jobs:
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
       - name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -269,6 +285,13 @@ jobs:
       run:
         shell: bash
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - name: Checkout default-branch tooling
         uses: actions/checkout@v6
         with:
@@ -285,6 +308,8 @@ jobs:
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
       - name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}

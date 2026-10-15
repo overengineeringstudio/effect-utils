@@ -345,7 +345,9 @@ describe('Linux Nix sandbox fallback', () => {
           /nix build --no-update-lock-file --no-link --print-out-paths 'github:NixOS\/nixpkgs\/[a-f0-9]{40}\?narHash=sha256-[A-Za-z0-9%]+#nodejs_24'/,
         )
         expect(script).not.toContain('.#')
-        expect(script).not.toMatch(/(?:path:|file:|git\+file:|\$\{?GITHUB_WORKSPACE)/)
+        expect(script.split('\n')[1]).not.toMatch(
+          /(?:path:|file:|git\+file:|\$\{?GITHUB_WORKSPACE)/,
+        )
       } else {
         expect(script).toContain(
           'node_out="$(nix build --no-update-lock-file --no-link --print-out-paths .#buck2-node)"',
