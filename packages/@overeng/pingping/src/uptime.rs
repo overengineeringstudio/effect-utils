@@ -99,9 +99,15 @@ pub fn spawn(
         if !emit(index, State::Pending, &events, &wake) {
             return;
         }
+        let user_known_hosts = user_known_hosts(target);
         while !stop.load(Ordering::Relaxed) {
-            let boot =
-                read(target, &peer.ssh_host_keys, &stop).map_or_else(State::Failed, State::Boot);
+            let boot = read(
+                target,
+                &peer.ssh_host_keys,
+                user_known_hosts.as_deref(),
+                &stop,
+            )
+            .map_or_else(State::Failed, State::Boot);
             if stop.load(Ordering::Relaxed) || !emit(index, boot, &events, &wake) {
                 return;
             }
@@ -141,6 +147,14 @@ struct KnownHosts(PathBuf);
 
 impl KnownHosts {
     fn create(host: &str, keys: &[String]) -> std::io::Result<Option<Self>> {
+        Self::create_in(host, keys, &std::env::temp_dir())
+    }
+
+    fn create_in(
+        host: &str,
+        keys: &[String],
+        directory: &std::path::Path,
+    ) -> std::io::Result<Option<Self>> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         if keys.is_empty() {
             return Ok(None);
@@ -149,11 +163,14 @@ impl KnownHosts {
             return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
         }
         loop {
-            let path = std::env::temp_dir().join(format!(
+            let path = directory.join(format!(
                 "pingping-known-hosts-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
+            if !safe_path(&path.to_string_lossy()) {
+                return Ok(None);
+            }
             let file = OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -197,7 +214,56 @@ fn valid_key(key: &str) -> bool {
         && !data.trim_end_matches('=').is_empty()
 }
 
-fn command(host: &str, known_hosts: Option<&KnownHosts>) -> Command {
+// OpenSSH parses and expands this list again when passed through -o. Skip the
+// override rather than changing the interpretation of any configured path.
+fn safe_path(path: &str) -> bool {
+    !path.is_empty()
+        && !path
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '"' | '\'' | '%' | '$' | '\\'))
+}
+
+fn user_known_hosts(host: &str) -> Option<String> {
+    let output = Command::new("ssh")
+        .args(["-G", host])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    configured_hosts(std::str::from_utf8(&output.stdout).ok()?)
+}
+
+fn configured_hosts(config: &str) -> Option<String> {
+    let paths = config
+        .lines()
+        .find_map(|line| line.strip_prefix("userknownhostsfile "))?;
+    let paths: Vec<_> = paths.split_whitespace().collect();
+    // -G loses quoting around spaced paths; missing tokens must not hide revocations.
+    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+    (!paths.is_empty()
+        && paths.iter().all(|path| {
+            safe_path(path)
+                && (std::path::Path::new(path).is_file()
+                    || [
+                        home.join(".ssh/known_hosts"),
+                        home.join(".ssh/known_hosts2"),
+                    ]
+                    .iter()
+                    .any(|default| default == std::path::Path::new(path)))
+        }))
+    .then(|| paths.join(" "))
+}
+
+fn known_hosts_option(known_hosts: &KnownHosts, paths: &str) -> Option<String> {
+    let path = known_hosts.0.to_str()?;
+    (safe_path(path) && paths.split(' ').all(safe_path))
+        .then(|| format!("UserKnownHostsFile={path} {paths}"))
+}
+
+fn command(host: &str, known_hosts: Option<&str>) -> Command {
     let mut command = Command::new("ssh");
     command.args([
         "-o",
@@ -216,12 +282,7 @@ fn command(host: &str, known_hosts: Option<&KnownHosts>) -> Command {
         "KbdInteractiveAuthentication=no",
     ]);
     if let Some(known_hosts) = known_hosts {
-        // OpenSSH expands ~ in its space-separated UserKnownHostsFile list.
-        // Quote the temporary filename to support temp directories containing spaces.
-        command.arg("-o").arg(format!(
-            "UserKnownHostsFile=\"{}\" ~/.ssh/known_hosts ~/.ssh/known_hosts2",
-            known_hosts.0.display()
-        ));
+        command.arg("-o").arg(known_hosts);
     }
     command
         .args([host, REMOTE])
@@ -231,12 +292,26 @@ fn command(host: &str, known_hosts: Option<&KnownHosts>) -> Command {
     command
 }
 
-fn read(host: &str, keys: &[String], stop: &AtomicBool) -> Result<SystemTime, Failure> {
+fn read(
+    host: &str,
+    keys: &[String],
+    paths: Option<&str>,
+    stop: &AtomicBool,
+) -> Result<SystemTime, Failure> {
     if stop.load(Ordering::Relaxed) {
         return Err(Failure::Failed);
     }
-    let known_hosts = KnownHosts::create(host, keys).map_err(|_| Failure::Failed)?;
-    let child = command(host, known_hosts.as_ref())
+    let known_hosts = paths
+        .filter(|paths| paths.split(' ').all(safe_path))
+        .map(|_| KnownHosts::create(host, keys))
+        .transpose()
+        .map_err(|_| Failure::Failed)?
+        .flatten();
+    let option = known_hosts
+        .as_ref()
+        .zip(paths)
+        .and_then(|(known_hosts, paths)| known_hosts_option(known_hosts, paths));
+    let child = command(host, option.as_deref())
         .spawn()
         .map_err(|_| Failure::Failed)?;
     read_child(child, stop)
@@ -340,6 +415,89 @@ fn parse(text: &str, now: SystemTime) -> Option<SystemTime> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn unsafe_paths_skip_the_temporary_trust_file() {
+        for path in [
+            "/tmp/100%/",
+            "/tmp/quoted\"/",
+            "/tmp/${HOME}/",
+            "/tmp/back\\slash/",
+            "/tmp/single'/",
+            "/tmp/with space/",
+        ] {
+            assert!(KnownHosts::create_in(
+                "host-a.example.ts.net",
+                &["ssh-ed25519 AAAA".into()],
+                std::path::Path::new(path),
+            )
+            .unwrap()
+            .is_none());
+            assert!(configured_hosts(&format!("userknownhostsfile {path}\n")).is_none());
+        }
+    }
+
+    #[test]
+    fn openssh_preserves_configured_trust_files_after_temporary_file() {
+        let custom = KnownHosts::create("example.ts.net", &["ssh-ed25519 AAAA".into()])
+            .unwrap()
+            .unwrap();
+        let revoked = KnownHosts::create("example.ts.net", &["ssh-ed25519 AAAA".into()])
+            .unwrap()
+            .unwrap();
+        let configured = format!(
+            "UserKnownHostsFile={} {}",
+            custom.0.display(),
+            revoked.0.display()
+        );
+        let output = match Command::new("ssh")
+            .args(["-G", "-o", &configured, "example.ts.net"])
+            .output()
+        {
+            Ok(output) => output,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) => panic!("ssh -G failed: {error}"),
+        };
+        assert!(output.status.success());
+        let paths = configured_hosts(std::str::from_utf8(&output.stdout).unwrap()).unwrap();
+        assert_eq!(
+            paths,
+            format!("{} {}", custom.0.display(), revoked.0.display())
+        );
+        let file = KnownHosts::create("example.ts.net", &["ssh-ed25519 AAAA".into()])
+            .unwrap()
+            .unwrap();
+        let option = known_hosts_option(&file, &paths).unwrap();
+        let output = Command::new("ssh")
+            .args(["-G", "-o", &option, "-o", &configured, "example.ts.net"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let effective = configured_hosts(std::str::from_utf8(&output.stdout).unwrap()).unwrap();
+        assert_eq!(effective, format!("{} {paths}", file.0.display()));
+    }
+
+    #[test]
+    fn missing_configured_file_disables_override_but_stock_defaults_are_allowed() {
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+        let defaults = format!(
+            "{} {}",
+            home.join(".ssh/known_hosts").display(),
+            home.join(".ssh/known_hosts2").display()
+        );
+        assert_eq!(
+            configured_hosts(&format!("userknownhostsfile {defaults}\n")),
+            Some(defaults.clone())
+        );
+        let missing =
+            std::env::temp_dir().join(format!("pingping-missing-trust-{}", std::process::id()));
+        assert!(!missing.exists());
+        assert!(configured_hosts(&format!(
+            "userknownhostsfile {defaults} {}\n",
+            missing.display()
+        ))
+        .is_none());
+    }
+
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
@@ -515,7 +673,10 @@ mod tests {
         let file = KnownHosts::create("host-a.example.ts.net", &["ssh-ed25519 AAAA".into()])
             .unwrap()
             .unwrap();
-        let command = super::command("host-a.example.ts.net", Some(&file));
+        let option =
+            known_hosts_option(&file, "/tmp/configured-known-hosts /tmp/other-known-hosts")
+                .unwrap();
+        let command = super::command("host-a.example.ts.net", Some(&option));
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_str().unwrap())
@@ -523,7 +684,7 @@ mod tests {
         assert_eq!(
             args[15],
             format!(
-                "UserKnownHostsFile=\"{}\" ~/.ssh/known_hosts ~/.ssh/known_hosts2",
+                "UserKnownHostsFile={} /tmp/configured-known-hosts /tmp/other-known-hosts",
                 file.0.display()
             )
         );
