@@ -35,7 +35,7 @@ const interruptedPublication = (store: GraphStoreApi, boundary: 'action' | 'head
 
 const fixture = () => {
   let calls = 0
-  const kind = Schema.decodeUnknownSync(NodeKind)('recovery-synthetic')
+  const kind = Schema.decodeSync(NodeKind)('recovery-synthetic')
   const scope = { tenant: 'recovery', item: 'one' }
   const node: NodeDef = {
     _tag: 'Derive',

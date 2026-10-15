@@ -16,8 +16,8 @@ const scaleScenario = Effect.fn('DataGraph.scaleScenario')(function* (size: numb
   return yield* Effect.gen(function* () {
     let observationCalls = 0
     let aggregateCalls = 0
-    const observationKind = Schema.decodeUnknownSync(NodeKind)('synthetic-scope-observation')
-    const aggregateKind = Schema.decodeUnknownSync(NodeKind)('synthetic-scope-aggregate')
+    const observationKind = yield* Schema.decodeEffect(NodeKind)('synthetic-scope-observation')
+    const aggregateKind = yield* Schema.decodeEffect(NodeKind)('synthetic-scope-aggregate')
     const observation: NodeDef = {
       _tag: 'Observe',
       kind: observationKind,
