@@ -44,6 +44,14 @@ mr apply [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
 
 This is the reproducible CI mode. It requires a non-stale lock file and materializes commit worktrees.
 
+With `--worktree-mode tracking`, a canonical branch worktree is reused only
+when its branch identity matches, its tree is clean, and `HEAD` equals the
+lock commit. Otherwise the member mounts `refs/commits/<lock.commit>`.
+Ahead, behind, and dirty canonical branches are never fast-forwarded, reset,
+or checked out; their files and edits are preserved without requiring `--force`.
+`mr status` reports divergent or dirty tracking mounts as apply-needed, and a
+warm apply is ready after selecting the exact-commit fallback.
+
 Member lock rewrites are opt-in with `--lock-sync=direct` or `--lock-sync=recursive`.
 Lock sync refuses shared canonical worktrees under `refs/commits/*`, `refs/heads/*`,
 and `refs/tags/*`, including symlinked targets, before rewriting any member.
