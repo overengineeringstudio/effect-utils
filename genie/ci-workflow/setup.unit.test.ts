@@ -369,10 +369,18 @@ describe('Linux Nix sandbox fallback', () => {
     const job = ciWorkflow.data.jobs['default-ref-policy']!
     const verdict = job.steps.findIndex((step) => step.id === defaultRefPolicyVerdictStepId)
     expect(verdict).toBeGreaterThan(-1)
-    const checkoutReferences = /(?:\.#|git\+file:|genie\/|scripts\/|\.\/|GITHUB_WORKSPACE|CI_SOURCE_ROOT)/
+    const checkoutReferences =
+      /(?:\.#|git\+file:|path:|file:|genie\/|scripts\/|\.\/|GITHUB_WORKSPACE|CI_SOURCE_ROOT)/
+    const inlineSetupScripts: Record<string, true> = {
+      [linuxNixSandboxFallbackStep.run]: true,
+      [linuxSandboxPrerequisitesStep({ privileged: 'trusted' }).run]: true,
+    }
     for (const [index, step] of job.steps.entries()) {
       if (index < verdict) {
         expect(JSON.stringify(step), step.name ?? step.uses).not.toMatch(checkoutReferences)
+        if (step.run !== undefined) {
+          expect(inlineSetupScripts[step.run], step.name).toBe(true)
+        }
       }
       if (step.if?.includes('always()') && /(?:\.#|git\+file:)/.test(step.run ?? '')) {
         expect(step.if, step.name).toContain(
