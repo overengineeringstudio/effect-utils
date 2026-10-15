@@ -689,6 +689,40 @@ describe('normalized store projection', () => {
     }
   })
 
+  it('projects a file snapshot dependency on a workspace importer as a transitive Buck edge', async () => {
+    const fixtureLock = readFileSync(
+      new URL('./fixtures/pnpm-snapshot-link/pnpm-lock.yaml', import.meta.url),
+      'utf8',
+    )
+    const projection = await projectionOf(fixtureLock)
+    const app = projection.views.find((view) => view.importer === 'packages/app')!
+    const consumer = projection.entries.find((entry) => entry.packageName === 'file-consumer')!
+    const libKey = workspaceKey('packages/lib')
+    expect(Object.keys(app.variants[0]!.direct)).toEqual(['file-consumer'])
+    expect(app.variants[0]!.direct['file-consumer']).toEqual({
+      kind: 'entry',
+      storeKey: consumer.storeKey,
+    })
+    expect(app.variants[0]!.closure).toContain(consumer.storeKey)
+    expect(consumer.sourceTree).toBe('//external/file-consumer:package_tree')
+    expect(consumer.variants[0]!.edges['workspace-lib']).toEqual({
+      kind: 'workspace',
+      workspaceKey: libKey,
+      workspacePath: 'packages/lib',
+    })
+    expect(app.workspaceTrees[libKey]).toBe('//packages/lib:package_tree')
+    const rendered = renderPnpmStoreBuck(projection)
+    expect(renderedRule(rendered, consumer.target)).toContain(
+      '"workspace-lib": "//packages/lib:package_tree"',
+    )
+    expect(renderedRule(rendered, consumer.packageTarget)).toContain(
+      'source = "//external/file-consumer:package_tree"',
+    )
+    expect(renderedRule(rendered, app.target)).toContain(
+      `"${libKey}": "//packages/lib:package_tree"`,
+    )
+  })
+
   it('keeps an injected workspace package as an importer workspace edge', async () => {
     // pnpm 12 injects workspace packages by default, so a direct workspace
     // dependency arrives as a `file:<dir>` snapshot instead of a `link:`
@@ -732,7 +766,7 @@ describe('normalized store projection', () => {
   })
 
   it.each(['injected', 'linked'] as const)(
-    'projects an %s frozen source through its declared tree without changing workspace identity',
+    'projects an %s frozen source through its declared tree and dependency context',
     async (kind) => {
       const sourcePath = '.devenv/pnpm-source-inputs/current/repos/sdk/client'
       const sourceTarget = 'pnpm_sources//:sdk_client_package_tree'
@@ -756,20 +790,22 @@ describe('normalized store projection', () => {
       const localKey = workspaceKey('packages/local')
 
       expect(view.workspaceTrees).toEqual({
-        [sourceKey]: sourceTarget,
+        ...(kind === 'linked' ? { [sourceKey]: sourceTarget } : {}),
         [localKey]: '//packages/local:package_tree',
       })
       expect(view.variants).toEqual(ordinary.views[0]!.variants)
-      expect(projected.entries).toEqual(ordinary.entries)
+      expect(projected.entries[0]!.sourceTree).toBe(sourceTarget)
       expect(projected.fingerprint).not.toBe(ordinary.fingerprint)
-      expect(view.variants[0]!.direct['source-lib']).toEqual({
-        kind: 'workspace',
-        workspaceKey: sourceKey,
-        workspacePath: sourcePath,
-      })
+      expect(view.variants[0]!.direct['source-lib']).toEqual(
+        kind === 'linked'
+          ? { kind: 'workspace', workspaceKey: sourceKey, workspacePath: sourcePath }
+          : { kind: 'entry', storeKey: projected.entries[0]!.storeKey },
+      )
 
       const rendered = renderPnpmStoreBuck(projected)
-      expect(rendered).toContain(`"${sourceKey}": "${sourceTarget}"`)
+      expect(rendered).toContain(
+        kind === 'linked' ? `"${sourceKey}": "${sourceTarget}"` : `source = "${sourceTarget}"`,
+      )
       expect(rendered).toContain(`"${localKey}": "//packages/local:package_tree"`)
       expect(rendered).not.toContain(`//${sourcePath}:package_tree`)
       // Matching a live-checkout suffix must not silently replace frozen bytes.

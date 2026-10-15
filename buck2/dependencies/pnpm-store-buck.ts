@@ -123,19 +123,6 @@ const edgesFor = ({
   return variant?.edges ?? {}
 }
 
-const invariantRecord = ({
-  field,
-  values,
-}: {
-  field: string
-  values: Readonly<Record<PnpmPlatform, Readonly<Record<string, string>>>>
-}): Readonly<Record<string, string>> => {
-  const rendered = pnpmPlatforms.map((platform) => JSON.stringify(sortedEntries(values[platform])))
-  if (rendered.every((value) => value === rendered[0]) === false) {
-    return fail(`${field} must not depend on the configured platform`)
-  }
-  return values[pnpmPlatforms[0]!]
-}
 
 const workspaceEdges = (edges: PnpmStoreEdgeSet): Readonly<Record<string, string>> =>
   Object.fromEntries(
@@ -380,7 +367,7 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
   )
   const entryByStoreKey = new Map(projection.entries.map((entry) => [entry.storeKey, entry]))
   const lines = [
-    'load(":defs.bzl", "pnpm_platform_configurations", "pnpm_store_entry", "pnpm_store_scc", "pnpm_store_view")',
+    'load(":defs.bzl", "pnpm_directory_package", "pnpm_platform_configurations", "pnpm_store_entry", "pnpm_store_scc", "pnpm_store_view")',
     '',
     'pnpm_platform_configurations()',
     '',
@@ -445,6 +432,16 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
   }
 
   for (const entry of projection.entries) {
+    if (entry.sourceTree !== undefined) {
+      lines.push(
+        'pnpm_directory_package(',
+        `    name = ${starlarkString(entry.packageTarget)},`,
+        `    package_name = ${starlarkString(entry.packageName)},`,
+        `    source = ${starlarkString(entry.sourceTree)},`,
+        ')',
+        '',
+      )
+    }
     lines.push(
       'pnpm_store_entry(',
       `    name = ${starlarkString(entry.target)},`,
@@ -467,12 +464,22 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
           field: 'dependencies',
         }),
       )
-      const workspaces = invariantRecord({
-        field: `entry ${entry.storeKey} workspace dependencies`,
-        values: byPlatform((platform) => workspaceEdges(edgesFor({ entry, platform }))),
-      })
-      if (Object.keys(workspaces).length > 0) {
-        return fail(`store entry ${entry.storeKey} must not depend on a workspace tree`)
+      if (entry.workspaceTrees !== undefined) {
+      lines.push(
+        ...renderMaybeSelected({
+          byPlatform: byPlatform((platform) =>
+            Object.fromEntries(
+              sortedEntries(edgesFor({ entry, platform })).flatMap(([name, edge]) =>
+                edge.kind === 'workspace'
+                  ? [[name, entry.workspaceTrees?.[edge.workspaceKey] ??
+                      fail(`entry ${entry.snapshot} has no workspace tree ${edge.workspaceKey}`)]]
+                  : [],
+              ),
+            ),
+          ),
+          field: 'workspaces',
+        }),
+      )
       }
     } else {
       if (overrideLines.length > 0) {
