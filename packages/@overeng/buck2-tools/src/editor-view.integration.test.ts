@@ -44,6 +44,7 @@ import {
   releaseEditorViewRoot,
   unpinEditorView,
   verifyEditorViewSnapshot,
+  type EditorViewBatchMetrics,
   type EditorViewOptions,
   type EditorViewRecord,
 } from './editor-view.ts'
@@ -1975,6 +1976,7 @@ describe('editor view publisher', () => {
     let teardown: Promise<void> | undefined
     let verification: Promise<EditorViewRecord> | undefined
     let verified = 0
+    let metrics: Readonly<EditorViewBatchMetrics> | undefined
 
     beforeAll(async () => {
       fixture = makeFixture()
@@ -1996,7 +1998,12 @@ describe('editor view publisher', () => {
           },
         }),
       )
-      batch = publishEditorViews({ options })
+      batch = publishEditorViews({
+        options,
+        onBatchMetrics: (result) => {
+          metrics = result
+        },
+      })
       await entered.promise
     })
 
@@ -2042,6 +2049,15 @@ describe('editor view publisher', () => {
       expect(started.toSorted()).toEqual(options.map((option) => option.viewName).toSorted())
       expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
       expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(options.length)
+      expect(metrics).toBeDefined()
+      expect(metrics!.sourceRootWalks).toBeGreaterThanOrEqual(options.length)
+      expect(metrics!.sourceHashedBytes).toBeGreaterThan(0)
+      expect(metrics!.snapshotRootWalks).toBeGreaterThanOrEqual(options.length)
+      expect(metrics!.snapshotHashedBytes).toBeGreaterThan(0)
+      expect(metrics!.coldCopiedFiles).toBeGreaterThan(0)
+      expect(metrics!.coldCopiedBytes).toBeGreaterThan(0)
+      expect(metrics!.contentHashedFiles).toBeGreaterThan(0)
+      expect(metrics!.contentHashedBytes).toBeGreaterThan(0)
       completed = 4
     })
 
@@ -2057,6 +2073,25 @@ describe('editor view publisher', () => {
         verified += 1
       },
     )
+
+    it('still hashes mutable source roots on a warm batch without copying or CAS candidate rehashing', async () => {
+      expect(verified).toBe(options.length)
+      let warmMetrics: Readonly<EditorViewBatchMetrics> | undefined
+      await publishEditorViews({
+        options,
+        onBatchMetrics: (result) => {
+          warmMetrics = result
+        },
+      })
+      expect(warmMetrics).toBeDefined()
+      expect(warmMetrics!.sourceRootWalks).toBe(metrics!.sourceRootWalks)
+      expect(warmMetrics!.sourceHashedBytes).toBe(metrics!.sourceHashedBytes)
+      expect(warmMetrics!.snapshotHashedBytes).toBeGreaterThan(0)
+      expect(warmMetrics!.coldCopiedFiles).toBe(0)
+      expect(warmMetrics!.coldCopiedBytes).toBe(0)
+      expect(warmMetrics!.contentHashedFiles).toBe(0)
+      expect(warmMetrics!.contentHashedBytes).toBe(0)
+    })
   })
 
   describe('batch failure settlement and cleanup', () => {

@@ -1,4 +1,5 @@
 use buck2_tool_core::fingerprint::{fingerprint, fingerprint_input_root, LinkOwner};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::PathBuf;
@@ -30,9 +31,19 @@ fn canonical_tree_modes_and_owner_root_links() {
     assert_eq!(plain.digest, repeat.digest);
     assert_eq!(plain.literal_links_digest, repeat.literal_links_digest);
     assert_eq!(plain.resolved_links_digest, repeat.resolved_links_digest);
+    // The same payload feeds both digests; link targets and framing do not count.
+    assert_eq!(plain.hashed_bytes, 6);
+    assert_eq!(repeat.hashed_bytes, 6);
+    assert_eq!(
+        fingerprint(&source, false, &[], &[]).unwrap().hashed_bytes,
+        6
+    );
     assert_ne!(plain.digest, plain.resolved_links_digest.unwrap());
     let dereferenced = fingerprint(&source, true, std::slice::from_ref(&backing), &[]).unwrap();
     assert_ne!(plain.digest, dereferenced.digest);
+    // first.txt is read directly and via in-root; external.txt is read via
+    // cross-root and again while traversing owner-root.
+    assert_eq!(dereferenced.hashed_bytes, 6 + 6 + 9 + 9);
     assert!(fingerprint(&source, true, &[], &[]).is_err());
     let relocated = scratch.path().join("relocated");
     fs::create_dir_all(relocated.join("dir")).unwrap();
@@ -90,4 +101,47 @@ fn canonical_tree_digest_remains_mode_independent() {
         canonical_after.resolved_links_digest
     );
     assert_ne!(input_before, fingerprint_input_root(&source).unwrap());
+}
+
+#[test]
+fn payload_metrics_preserve_canonical_framing_across_read_buffers() {
+    let scratch = tempfile::tempdir().unwrap();
+    let source = scratch.path().join("tree");
+    fs::create_dir(&source).unwrap();
+    let payload = vec![0xab; 131072 * 2 + 17];
+    fs::write(source.join("empty"), b"").unwrap();
+    fs::write(source.join("payload"), &payload).unwrap();
+    symlink("payload", source.join("symlink")).unwrap();
+
+    // Build the original v1 wire framing independently of the walker.
+    let mut expected = Sha256::new();
+    expected.update(b"effect-utils/tree-digest/v1\0");
+    for (name, bytes) in [
+        (&b"empty"[..], &b""[..]),
+        (&b"payload"[..], payload.as_slice()),
+    ] {
+        expected.update(b"F");
+        expected.update((name.len() as u64).to_be_bytes());
+        expected.update(name);
+        expected.update((bytes.len() as u64).to_be_bytes());
+        expected.update(bytes);
+    }
+    expected.update(b"L");
+    expected.update(7u64.to_be_bytes());
+    expected.update(b"symlink");
+    expected.update(7u64.to_be_bytes());
+    expected.update(b"payload");
+    let expected = expected
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+
+    let result = fingerprint(&source, false, &[], &[]).unwrap();
+    assert_eq!(result.digest, expected);
+    assert_eq!(result.hashed_bytes, payload.len() as u64);
+    assert!(result.resolved_links_digest.is_none());
+    assert!(result.literal_links_digest.is_none());
+    let dereferenced = fingerprint(&source, true, &[], &[]).unwrap();
+    assert_eq!(dereferenced.hashed_bytes, 2 * payload.len() as u64);
 }
