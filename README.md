@@ -21,11 +21,11 @@ actual deployments. Background includes optional benchmarks, advisory reports
 and maintenance. A scheduled verification is still delivery. Priorities do not
 reserve capacity or preempt running jobs; there is no new concurrency cap.
 
-For effect-utils, product checks, cold-bootstrap/GC verification, cache contract
-proofs, live integrations, compiled-product publication and Storybook build/deploy
-prerequisites use 1 on both platforms. Optional Devenv performance, Nix closure
-measurements, source-shape measurements on main, measurement reports, pipeline
-traces, alignment notices and review-request notifications use 4. The required
+For effect-utils, required product checks, cache contract proofs, live integrations,
+compiled-product publication and required Storybook play tests use 1 on both
+platforms. Optional Storybook previews, cold-bootstrap/GC proofs, Devenv performance,
+Nix closure measurements, source-shape measurements on main, measurement reports,
+pipeline traces, alignment notices and review-request notifications use 4. The required
 PR source-shape check retains delivery priority. Shapes, caches, access controls,
 required checks and workflow frequency are independent of these labels.
 

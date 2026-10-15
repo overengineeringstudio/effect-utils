@@ -80,6 +80,8 @@ describe('namespaceRunner', () => {
 
   it('classifies every Namespace product and empirical job by its delivery result', () => {
     const background = new Set([
+      'test-megarepo-cold-gc',
+      'bootstrap-cold-proof',
       'devenv-perf',
       'nix-closure-sizes',
       'main-source-shape',
@@ -101,10 +103,10 @@ describe('namespaceRunner', () => {
     expect(namespaceJobs).toBeGreaterThan(20)
   })
 
-  it('keeps preview build and publication prerequisites in the delivery tier', () => {
-    for (const workflow of [previewBuildWorkflow, previewDeployWorkflow, storybookPlaysWorkflow]) {
+  it('keeps optional previews background and published products delivery', () => {
+    for (const workflow of [previewBuildWorkflow, previewDeployWorkflow]) {
       for (const job of Object.values(workflow.data.jobs)) {
-        expect(JSON.stringify(job['runs-on'])).toContain(';job.priority=1')
+        expect(JSON.stringify(job['runs-on'])).toContain(';job.priority=4')
       }
     }
     expect(compiledWorkflow.data.jobs['publish-compiled-products']?.strategy?.matrix).toEqual({

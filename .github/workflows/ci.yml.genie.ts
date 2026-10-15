@@ -749,6 +749,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   }),
   'test-megarepo-cold-gc': job({
     privileged: 'trusted',
+    priority: backgroundJobPriority,
     laneIf: empiricalProofLaneIf,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
@@ -1302,6 +1303,7 @@ const extraJobs: Record<string, any> = {
   // the static fast-feedback pre-check. Separate lane because it is heavier than the product checks.
   'bootstrap-cold-proof': job({
     privileged: 'trusted',
+    priority: backgroundJobPriority,
     laneIf: empiricalProofLaneIf,
     step: {
       name: 'Bootstrap cold-proof (R32)',
