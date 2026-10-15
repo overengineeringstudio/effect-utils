@@ -171,6 +171,30 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/data-graph:test_collect",
+      "excludes": [],
+      "packageName": "data-graph",
+      "packagePath": "packages/@overeng/data-graph",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/identity.unit.test.ts",
+        "src/mod.integration.test.ts",
+        "src/properties.integration.test.ts",
+        "src/selection.integration.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/data-graph:test",
+      "taskName": "test:data-graph",
+      "testFiles": [
+        "src/identity.unit.test.ts",
+        "src/mod.integration.test.ts",
+        "src/properties.integration.test.ts",
+        "src/selection.integration.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/devbar:test_collect",
       "excludes": [],
       "packageName": "devbar",

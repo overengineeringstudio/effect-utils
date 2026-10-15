@@ -2,7 +2,7 @@
 # Source: attributes.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:ffbbc9d808652970d1e2e91dad9f6e65ddf0b48e50412f9388b7134e44dc86fe
+# fingerprint: sha256:c1cf74c7acc4cbb27e8b1f6225561d8a47da240b31fd75158e477dc4d0e15d22
 # regen: devenv tasks run genie:run
 groups:
   - id: registry.acme
@@ -567,6 +567,63 @@ groups:
         annotations:
           overeng_policy:
             cardinality: high
+  - id: registry.github
+    type: attribute_group
+    display_name: GitHub App Authentication
+    brief: Attributes for the github namespace.
+    attributes:
+      - id: github.app.client_id
+        type: string
+        stability: development
+        brief: Configured GitHub App client ID.
+        examples: [Iv1.example]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: github.consumer
+        type: string
+        stability: development
+        brief: Stable configured consumer identity.
+        examples: [ci-reader]
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: github.installation.id
+        type: string
+        stability: development
+        brief: Configured GitHub App installation ID.
+        examples: ['123']
+        annotations:
+          overeng_policy:
+            cardinality: bounded
+      - id: github.resource
+        type:
+          members:
+            - id: core
+              value: core
+              brief: REST core budget.
+              stability: development
+            - id: search
+              value: search
+              brief: Search budget.
+              stability: development
+            - id: graphql
+              value: graphql
+              brief: GraphQL budget.
+              stability: development
+            - id: integration_manifest
+              value: integration_manifest
+              brief: App manifest budget.
+              stability: development
+            - id: code_search
+              value: code_search
+              brief: Code search budget.
+              stability: development
+        stability: development
+        brief: GitHub rate-limit resource bucket.
+        annotations:
+          overeng_policy:
+            cardinality: bounded
   - id: registry.megarepo
     type: attribute_group
     display_name: Megarepo Attributes

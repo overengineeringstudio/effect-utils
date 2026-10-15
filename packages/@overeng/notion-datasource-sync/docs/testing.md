@@ -129,6 +129,12 @@ not depend on live Notion availability.
 The durable showcase is documented in
 [`../demo/README.md`](../demo/README.md).
 
+The `live-demo-replica.e2e.test.ts` suites additionally require an explicit,
+non-empty `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID`. Unset, empty, and whitespace-only
+values skip these suites, even when the scratch live lane is enabled. They do
+not fall back to the public manifest page; enabling scratch tests does not
+imply that the CI integration has access to that separate demo.
+
 ```sh
 export NOTION_API_TOKEN="<notion-integration-token>"
 pnpm --dir packages/@overeng/notion-datasource-sync run demo:verify
