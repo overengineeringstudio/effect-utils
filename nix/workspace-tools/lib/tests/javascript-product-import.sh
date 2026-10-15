@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Contract test for the Buck JavaScript product import boundary.
 #
-# The boundary is a pure evaluation contract: every expectation it states about
-# a descriptor is decided before a single byte is fetched. The test therefore
-# evaluates it against a stubbed `pkgs` (no nixpkgs, no build), asserts the
-# accepted case, and asserts that each violated expectation fails with its own
-# diagnostic. The byte-level gates run inside the installer script, so they are
-# proven here by the script text the boundary emits.
+# Published descriptors have a pure evaluation contract. A stubbed pkgs makes
+# accepted and rejected contracts observable without nixpkgs or a build.
+# Source descriptors instead remain unread during evaluation; the exact build
+# validator emitted by that mode is exercised against positive and negative
+# fixtures below. Published byte gates are also asserted in the installer text.
 set -euo pipefail
 
 # Supplied by devenv for both task execution and direct shell-based CI calls.
 # Keep the digest tool independent of the caller's ambient PATH.
 openssl_bin="${JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN:?devenv must provide the OpenSSL binary}"
+export PATH="$(dirname "$openssl_bin"):$PATH"
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 tmp="$(mktemp -d)"
@@ -52,6 +52,8 @@ cat >"$tmp/stub.nix" <<'NIX'
   makeWrapper = "/stub/make-wrapper";
   nodejs = "/stub/nodejs";
   openssl = "/stub/openssl";
+  jq = "/stub/jq";
+  writeText = name: text: builtins.toFile name text;
   runCommand = name: attrs: script: {
     type = "derivation";
     outPath = "/nix/store/test-${name}";
@@ -153,6 +155,15 @@ jq -e --arg digest "$module_digest" --arg integrity "$integrity" --arg size "$si
   (.script | contains("chmod 0444"))
 ' <<<"$valid" >/dev/null
 echo "javascript-product-import-test: GREEN tracked descriptor imports"
+
+# GREEN: an explicit `sourceImport = null` selects published mode.
+write_case "$tmp/explicit-null-source.nix" "$tmp/product.json" 'sourceImport = null;'
+eval_case "$tmp/explicit-null-source.nix" | jq -e '.name == "fixture-buck2-candidate"' >/dev/null
+echo "javascript-product-import-test: GREEN explicit null sourceImport selects published mode"
+
+# RED: a parameter neither mode declares is rejected.
+write_case "$tmp/unexpected-arg.nix" "$tmp/product.json" 'notAParameter = true;'
+expect_failure "unexpected argument" "unexpected argument(s): notAParameter" "$tmp/unexpected-arg.nix"
 
 # GREEN: the wrapper contract the consumer declares reaches the installer —
 # environment, PATH packages, and the linked native module family.
@@ -296,5 +307,148 @@ write_descriptor "$tmp/hostile.json" fixture cli javascript-esm \
   "$portable" '[]' '[]' 'x/../../etc/passwd'
 write_case "$tmp/hostile.nix" "$tmp/hostile.json"
 expect_failure "unsafe module path" "unsafe module path" "$tmp/hostile.nix"
+
+write_descriptor "$tmp/unsupported-runtime.json" fixture cli javascript-esm "$portable" '[]' '[]' tool.js deno
+write_case "$tmp/unsupported-runtime.nix" "$tmp/unsupported-runtime.json"
+expect_failure "unsupported runtime kind" "unsupported JavaScript runtime" "$tmp/unsupported-runtime.nix"
+
+# Source mode must evaluate without opening producer outputs. Its build gate
+# is exercised directly with the same fixtures as the published-mode tests.
+cat >"$tmp/source.nix" <<NIX
+let
+  pkgs = import $tmp/stub.nix;
+in (import $repo_root/nix/workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
+  artifact = "/absent/source/tool.js";
+  descriptor = "/absent/source/descriptor.json";
+  expectedProductKind = "cli";
+  expectedProductName = "fixture";
+  sourceImport = {
+    product = "/absent/source";
+    hasRuntimeClosure = false;
+    facts = {
+      expectedModulePath = "tool.js";
+      expectedRuntimeKind = "node";
+      expectedRuntimeContract = "javascript-esm";
+      expectedRuntimeContractVersion = "v1";
+      checkProducerCommit = true;
+      expectedProducerCommit = "0000000000000000000000000000000000000000";
+    };
+  };
+}
+NIX
+nix eval --impure --json --option allow-import-from-derivation false \
+  --file "$tmp/source.nix" >/dev/null
+echo "javascript-product-import-test: GREEN source evaluation never reads outputs"
+source_product="$tmp"
+artifact="$module"
+facts="$tmp/facts.json"
+jq -n '{expectedProductName:"fixture",expectedProductKind:"cli",expectedModulePath:"tool.js",
+  expectedRuntimeKind:"node",expectedRuntimeContract:"javascript-esm",
+  expectedRuntimeContractVersion:"v1",expectedExternalCapabilities:[],expectedExternalModules:[],
+  checkProducerCommit:true,expectedProducerCommit:"0000000000000000000000000000000000000000"}' >"$facts"
+jq -n --arg digest "$module_digest" \
+  '{productDigest:$digest,producerCommit:"0000000000000000000000000000000000000000"}' >"$tmp/provenance.json"
+validate_source() {
+  descriptor="$1"
+  ( source "$repo_root/nix/workspace-tools/lib/javascript-source-import-validate.sh" )
+}
+write_descriptor "$tmp/source-valid.json"
+validate_source "$tmp/source-valid.json"
+echo "javascript-product-import-test: GREEN source build validation"
+source_failure() {
+  if validate_source "$2" >"$tmp/source-failure.log" 2>&1; then
+    echo "expected source validation failure: $1" >&2
+    exit 1
+  fi
+  jq -e --arg check "$1" '.error == "javascript-product-import" and .check == $check' \
+    "$tmp/source-failure.log" >/dev/null
+  echo "javascript-product-import-test: RED source $1"
+}
+source_failure product-name "$tmp/other-name.json"
+write_descriptor "$tmp/source-runtime.json" fixture cli javascript-esm "$portable" '[]' '[]' tool.js bun
+source_failure runtime-kind "$tmp/source-runtime.json"
+write_descriptor "$tmp/source-external.json" fixture cli javascript-esm "$portable" '[]' '["undeclared"]'
+source_failure external-modules "$tmp/source-external.json"
+source_descriptor_failure() {
+  jq "$2" "$tmp/source-valid.json" >"$tmp/source-mutated.json"
+  source_failure "$1" "$tmp/source-mutated.json"
+}
+source_descriptor_failure descriptor-fields '.unexpected = true'
+source_descriptor_failure schema '.schema = "unknown"'
+source_descriptor_failure product-kind '.productKind = "module"'
+source_descriptor_failure runtime-contract '.runtimeContract = "javascript-cjs"'
+source_descriptor_failure runtime-contract-version '.runtimeContractVersion = "v2"'
+source_descriptor_failure platform '.platform.os = "darwin"'
+source_descriptor_failure module-path '.modulePath = "../tool.js"'
+source_descriptor_failure external-capabilities '.externalCapabilities = ["undeclared"]'
+source_descriptor_failure payload-size '.sizeBytes = 0'
+source_descriptor_failure integrity '.integrity = "invalid"'
+source_descriptor_failure descriptor-integrity '.integrity = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="'
+source_descriptor_failure descriptor-size '.sizeBytes += 1'
+jq '.productDigest = "invalid"' "$tmp/provenance.json" >"$tmp/bad-provenance.json"
+cp "$tmp/provenance.json" "$tmp/good-provenance.json"
+cp "$tmp/bad-provenance.json" "$tmp/provenance.json"
+source_failure provenance-digest "$tmp/source-valid.json"
+cp "$tmp/good-provenance.json" "$tmp/provenance.json"
+jq '.productDigest = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"' \
+  "$tmp/provenance.json" >"$tmp/bad-provenance.json"
+cp "$tmp/bad-provenance.json" "$tmp/provenance.json"
+source_failure module-digest "$tmp/source-valid.json"
+jq -n --arg digest "$module_digest" \
+  '{productDigest:$digest,producerCommit:"1111111111111111111111111111111111111111"}' >"$tmp/provenance.json"
+source_failure producer-commit "$tmp/source-valid.json"
+jq '.expectedProducerCommit = null' "$facts" >"$tmp/missing-commit.json"
+cp "$tmp/missing-commit.json" "$facts"
+source_failure missing-producer-commit "$tmp/source-valid.json"
+
+# Exercise the emitted source installer, including the real runtime-tree
+# verifier, rather than duplicating its error mapping in the fixture.
+closure="$tmp/runtime-closure"
+mkdir -p "$closure/importers/fixture/node_modules"
+printf 'original closure payload\n' >"$closure/importers/fixture/node_modules/fixture.js"
+ln -s importers/fixture/node_modules "$closure/node_modules"
+closure_digest="$(node --input-type=module -e '
+  const { digestRuntimeClosure } = await import(process.argv[1]);
+  process.stdout.write(await digestRuntimeClosure(process.argv[2]));
+' "$repo_root/buck2/dependencies/runtime-closure.ts" "$closure")"
+jq -n --arg digest "$closure_digest" \
+  '{schema:"effect-utils/pnpm-runtime-closure/v1",digest:$digest,importers:["fixture"],primary:"fixture"}' \
+  >"$closure/descriptor.json"
+cp "$tmp/source-valid.json" "$tmp/descriptor.json"
+cp "$tmp/good-provenance.json" "$tmp/provenance.json"
+node_package="$(dirname "$(dirname "$(command -v node)")")"
+cat >"$tmp/source-closure.nix" <<NIX
+let
+  pkgs = (import $tmp/stub.nix) // { nodejs = "$node_package"; };
+in (import $repo_root/nix/workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
+  artifact = "$module";
+  descriptor = "$tmp/descriptor.json";
+  expectedProductKind = "cli";
+  expectedProductName = "fixture";
+  sourceImport = {
+    product = "$tmp";
+    hasRuntimeClosure = true;
+    facts = {
+      expectedModulePath = "tool.js";
+      expectedRuntimeKind = "node";
+      expectedRuntimeContract = "javascript-esm";
+      expectedRuntimeContractVersion = "v1";
+      checkProducerCommit = false;
+    };
+  };
+}
+NIX
+nix eval --impure --raw --option allow-import-from-derivation false \
+  --file "$tmp/source-closure.nix" --apply 'candidate: candidate.script' >"$tmp/source-install.sh"
+out="$tmp/valid-closure-import" bash "$tmp/source-install.sh"
+echo "javascript-product-import-test: GREEN source runtime closure imports"
+printf 'tampered closure payload\n' >"$closure/importers/fixture/node_modules/fixture.js"
+if out="$tmp/tampered-closure-import" bash "$tmp/source-install.sh" >"$tmp/closure-failure.log" 2>&1; then
+  echo "javascript-product-import-test: expected tampered closure to fail" >&2
+  exit 1
+fi
+grep -F '{"error":"javascript-product-import","check":"runtime-closure"}' \
+  "$tmp/closure-failure.log" >/dev/null
+echo "javascript-product-import-test: RED source runtime-closure"
 
 echo "javascript-product-import: OK"
