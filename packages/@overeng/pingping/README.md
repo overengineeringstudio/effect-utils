@@ -78,6 +78,8 @@ checking), with closed stdin, a three-second connection timeout, an eight-second
 total deadline and bounded output. Advertised Tailscale SSH host keys are stored
 in a private temporary known_hosts file for each read, followed by the user's
 configured known_hosts files resolved locally with `ssh -G` once per worker.
+Discovery uses the read's SSH options and remote command, and shares its deadline,
+cancellation and bounded output handling.
 The temporary file is removed after the read. If configuration resolution fails,
 paths contain unsafe SSH syntax, or a non-default configured file is missing,
 the read leaves SSH's own trust configuration unchanged.

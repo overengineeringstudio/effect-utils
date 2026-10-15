@@ -99,7 +99,7 @@ pub fn spawn(
         if !emit(index, State::Pending, &events, &wake) {
             return;
         }
-        let user_known_hosts = user_known_hosts(target);
+        let user_known_hosts = user_known_hosts(target, &stop);
         while !stop.load(Ordering::Relaxed) {
             let boot = read(
                 target,
@@ -223,17 +223,14 @@ fn safe_path(path: &str) -> bool {
             .any(|c| c.is_whitespace() || matches!(c, '"' | '\'' | '%' | '$' | '\\'))
 }
 
-fn user_known_hosts(host: &str) -> Option<String> {
-    let output = Command::new("ssh")
-        .args(["-G", host])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
+fn user_known_hosts(host: &str, stop: &AtomicBool) -> Option<String> {
+    if stop.load(Ordering::Relaxed) {
         return None;
     }
-    configured_hosts(std::str::from_utf8(&output.stdout).ok()?)
+    let child = command(host, None, true).spawn().ok()?;
+    // Effective SSH configuration is larger than the remote uptime response.
+    let output = child_output(child, stop, 64 * 1024).ok()?;
+    configured_hosts(std::str::from_utf8(&output).ok()?)
 }
 
 fn configured_hosts(config: &str) -> Option<String> {
@@ -263,8 +260,11 @@ fn known_hosts_option(known_hosts: &KnownHosts, paths: &str) -> Option<String> {
         .then(|| format!("UserKnownHostsFile={path} {paths}"))
 }
 
-fn command(host: &str, known_hosts: Option<&str>) -> Command {
+fn command(host: &str, known_hosts: Option<&str>, config: bool) -> Command {
     let mut command = Command::new("ssh");
+    if config {
+        command.arg("-G");
+    }
     command.args([
         "-o",
         "BatchMode=yes",
@@ -311,7 +311,7 @@ fn read(
         .as_ref()
         .zip(paths)
         .and_then(|(known_hosts, paths)| known_hosts_option(known_hosts, paths));
-    let child = command(host, option.as_deref())
+    let child = command(host, option.as_deref(), false)
         .spawn()
         .map_err(|_| Failure::Failed)?;
     read_child(child, stop)
@@ -346,13 +346,13 @@ fn classify(stderr: &[u8]) -> Failure {
 }
 
 /// Drain only up to the bound per poll so either pipe cannot starve cancellation.
-fn drain(pipe: &mut impl Read, output: &mut Vec<u8>) -> Result<(), Failure> {
+fn drain(pipe: &mut impl Read, output: &mut Vec<u8>, limit: usize) -> Result<(), Failure> {
     let mut buffer = [0_u8; 1024];
-    for _ in 0..=LIMIT / buffer.len() {
+    for _ in 0..=limit / buffer.len() {
         match pipe.read(&mut buffer) {
             Ok(0) => break,
             Ok(n) => {
-                if output.len() + n > LIMIT {
+                if output.len() + n > limit {
                     return Err(Failure::Failed);
                 }
                 output.extend_from_slice(&buffer[..n]);
@@ -364,7 +364,16 @@ fn drain(pipe: &mut impl Read, output: &mut Vec<u8>) -> Result<(), Failure> {
     Ok(())
 }
 
-fn read_child(mut child: Child, stop: &AtomicBool) -> Result<SystemTime, Failure> {
+fn read_child(child: Child, stop: &AtomicBool) -> Result<SystemTime, Failure> {
+    let output = child_output(child, stop, LIMIT)?;
+    parse(
+        std::str::from_utf8(&output).map_err(|_| Failure::Failed)?,
+        SystemTime::now(),
+    )
+    .ok_or(Failure::Failed)
+}
+
+fn child_output(mut child: Child, stop: &AtomicBool, limit: usize) -> Result<Vec<u8>, Failure> {
     let result = (|| {
         let mut stdout = child.stdout.take().ok_or(Failure::Failed)?;
         let mut stderr = child.stderr.take().ok_or(Failure::Failed)?;
@@ -380,19 +389,15 @@ fn read_child(mut child: Child, stop: &AtomicBool) -> Result<SystemTime, Failure
             if start.elapsed() >= DEADLINE {
                 return Err(Failure::Timeout);
             }
-            drain(&mut stdout, &mut output)?;
-            drain(&mut stderr, &mut errors)?;
+            drain(&mut stdout, &mut output, limit)?;
+            drain(&mut stderr, &mut errors, LIMIT)?;
             if let Some(status) = child.try_wait().map_err(|_| Failure::Failed)? {
-                drain(&mut stdout, &mut output)?;
-                drain(&mut stderr, &mut errors)?;
+                drain(&mut stdout, &mut output, limit)?;
+                drain(&mut stderr, &mut errors, LIMIT)?;
                 if !status.success() {
                     return Err(classify(&errors));
                 }
-                return parse(
-                    std::str::from_utf8(&output).map_err(|_| Failure::Failed)?,
-                    SystemTime::now(),
-                )
-                .ok_or(Failure::Failed);
+                return Ok(output);
             }
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -415,6 +420,58 @@ fn parse(text: &str, now: SystemTime) -> Option<SystemTime> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn discovery_uses_the_read_arguments_including_remote_command() {
+        let discovery = command("example.ts.net", None, true);
+        let read = command("example.ts.net", None, false);
+        let args: Vec<_> = discovery.get_args().collect();
+        assert_eq!(args[0], "-G");
+        assert_eq!(args[1..], read.get_args().collect::<Vec<_>>());
+        let child = match command("example.ts.net", None, true).spawn() {
+            Ok(child) => child,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) => panic!("ssh -G failed: {error}"),
+        };
+        let output = child_output(child, &AtomicBool::new(false), 64 * 1024).unwrap();
+        assert!(std::str::from_utf8(&output)
+            .unwrap()
+            .lines()
+            .any(|line| line.starts_with("userknownhostsfile ")));
+    }
+
+    #[test]
+    fn discovery_output_is_bounded_and_hung_children_time_out() {
+        for (limit, expected) in [(64 * 1024, Ok(32768)), (LIMIT, Err(Failure::Failed))] {
+            let child = Command::new("sh")
+                .args(["-c", "printf '%32768s' x"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            assert_eq!(
+                child_output(child, &AtomicBool::new(false), limit).map(|bytes| bytes.len()),
+                expected
+            );
+        }
+        let child = Command::new("sleep")
+            .arg("60")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        assert_eq!(
+            child_output(child, &AtomicBool::new(false), 64 * 1024),
+            Err(Failure::Timeout)
+        );
+        assert!(!Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .output()
+            .unwrap()
+            .status
+            .success());
+    }
+
     #[test]
     fn unsafe_paths_skip_the_temporary_trust_file() {
         for path in [
@@ -450,7 +507,7 @@ mod tests {
             revoked.0.display()
         );
         let output = match Command::new("ssh")
-            .args(["-G", "-o", &configured, "example.ts.net"])
+            .args(["-G", "-o", &configured, "example.ts.net", REMOTE])
             .output()
         {
             Ok(output) => output,
@@ -468,7 +525,15 @@ mod tests {
             .unwrap();
         let option = known_hosts_option(&file, &paths).unwrap();
         let output = Command::new("ssh")
-            .args(["-G", "-o", &option, "-o", &configured, "example.ts.net"])
+            .args([
+                "-G",
+                "-o",
+                &option,
+                "-o",
+                &configured,
+                "example.ts.net",
+                REMOTE,
+            ])
             .output()
             .unwrap();
         assert!(output.status.success());
@@ -594,7 +659,10 @@ mod tests {
             stop,
             thread: Some(std::thread::spawn(move || {
                 ready.send(()).unwrap();
-                assert_eq!(read_child(child, &reader_stop), Err(Failure::Failed));
+                assert_eq!(
+                    child_output(child, &reader_stop, 64 * 1024),
+                    Err(Failure::Failed)
+                );
             })),
         };
         started.recv_timeout(Duration::from_secs(2)).unwrap();
@@ -643,7 +711,7 @@ mod tests {
 
     #[test]
     fn ssh_arguments_never_request_interactive_authentication() {
-        let command = command("host-a.example.ts.net", None);
+        let command = command("host-a.example.ts.net", None, false);
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_str().unwrap())
@@ -676,7 +744,7 @@ mod tests {
         let option =
             known_hosts_option(&file, "/tmp/configured-known-hosts /tmp/other-known-hosts")
                 .unwrap();
-        let command = super::command("host-a.example.ts.net", Some(&option));
+        let command = super::command("host-a.example.ts.net", Some(&option), false);
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_str().unwrap())
