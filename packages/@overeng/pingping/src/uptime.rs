@@ -1,9 +1,11 @@
 //! Noninteractive, bounded SSH uptime reads for known tailnet peers only.
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
+use std::os::unix::{fs::OpenOptionsExt, net::UnixStream};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc::Sender,
     Arc,
 };
@@ -16,12 +18,35 @@ use nix::fcntl::{fcntl, FcntlArg, OFlag};
 pub enum State {
     #[default]
     Disabled,
-    Unavailable,
+    Pending,
+    Failed(Failure),
     Boot(SystemTime),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Failure {
+    HostKey,
+    Auth,
+    Timeout,
+    Unreachable,
+    Failed,
+}
+
+impl Failure {
+    pub fn reason(self) -> &'static str {
+        match self {
+            Self::HostKey => "host key unknown",
+            Self::Auth => "auth refused",
+            Self::Timeout => "timed out",
+            Self::Unreachable => "unreachable",
+            Self::Failed => "failed",
+        }
+    }
 }
 
 const DEADLINE: Duration = Duration::from_secs(8);
 const REFRESH: Duration = Duration::from_secs(600);
+const LIMIT: usize = 4096;
 const REMOTE: &str = "cat /proc/uptime 2>/dev/null || sysctl -n kern.boottime";
 
 /// Owns shutdown: interrupt refresh sleep, then cancel and reap an active SSH child.
@@ -67,16 +92,17 @@ pub fn spawn(
             return;
         };
         let target = peer.dns_name.trim_end_matches('.');
-        if target.is_empty() || target.starts_with('-') {
+        if !valid_host(target) {
             return;
         }
         // Publish eligibility immediately; a slow SSH read cannot delay the placeholder.
-        if !emit(index, ProbeEvent::Boot(None), &events, &wake) {
+        if !emit(index, State::Pending, &events, &wake) {
             return;
         }
         while !stop.load(Ordering::Relaxed) {
-            let boot = read(target, &stop);
-            if !emit(index, ProbeEvent::Boot(boot), &events, &wake) {
+            let boot =
+                read(target, &peer.ssh_host_keys, &stop).map_or_else(State::Failed, State::Boot);
+            if stop.load(Ordering::Relaxed) || !emit(index, boot, &events, &wake) {
                 return;
             }
             std::thread::park_timeout(REFRESH);
@@ -90,11 +116,11 @@ pub fn spawn(
 
 fn emit(
     index: usize,
-    event: ProbeEvent,
+    state: State,
     events: &Sender<(usize, ProbeEvent)>,
     wake: &UnixStream,
 ) -> bool {
-    if events.send((index, event)).is_err() {
+    if events.send((index, ProbeEvent::Boot(state))).is_err() {
         return false;
     }
     let mut wake = wake;
@@ -102,80 +128,196 @@ fn emit(
     true
 }
 
-fn command(host: &str) -> Command {
+fn valid_host(host: &str) -> bool {
+    !host.is_empty()
+        && !host.starts_with('-')
+        && host
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
+}
+
+/// Private per-read trust material; never changes the user's SSH files.
+struct KnownHosts(PathBuf);
+
+impl KnownHosts {
+    fn create(host: &str, keys: &[String]) -> std::io::Result<Option<Self>> {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        if keys.is_empty() {
+            return Ok(None);
+        }
+        if !valid_host(host) || !keys.iter().all(|key| valid_key(key)) {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+        }
+        loop {
+            let path = std::env::temp_dir().join(format!(
+                "pingping-known-hosts-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&path);
+            match file {
+                Ok(mut file) => {
+                    let guard = Self(path);
+                    for key in keys {
+                        writeln!(file, "{host} {key}")?;
+                    }
+                    return Ok(Some(guard));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
+}
+
+impl Drop for KnownHosts {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn valid_key(key: &str) -> bool {
+    let Some((kind, data)) = key.split_once(' ') else {
+        return false;
+    };
+    kind.starts_with(|c: char| c.is_ascii_alphabetic())
+        && kind
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'@' | b'.'))
+        && !data.is_empty()
+        && data
+            .trim_end_matches('=')
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/'))
+        && data.len() - data.trim_end_matches('=').len() <= 2
+        && !data.trim_end_matches('=').is_empty()
+}
+
+fn command(host: &str, known_hosts: Option<&KnownHosts>) -> Command {
     let mut command = Command::new("ssh");
+    command.args([
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=3",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "LogLevel=ERROR",
+        "-o",
+        "IdentityAgent=none",
+        "-o",
+        "PasswordAuthentication=no",
+        "-o",
+        "KbdInteractiveAuthentication=no",
+    ]);
+    if let Some(known_hosts) = known_hosts {
+        // OpenSSH expands ~ in its space-separated UserKnownHostsFile list.
+        // Quote the temporary filename to support temp directories containing spaces.
+        command.arg("-o").arg(format!(
+            "UserKnownHostsFile=\"{}\" ~/.ssh/known_hosts ~/.ssh/known_hosts2",
+            known_hosts.0.display()
+        ));
+    }
     command
-        .args([
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "ConnectTimeout=3",
-            "-o",
-            "StrictHostKeyChecking=yes",
-            "-o",
-            "LogLevel=ERROR",
-            "-o",
-            "IdentityAgent=none",
-            "-o",
-            "PasswordAuthentication=no",
-            "-o",
-            "KbdInteractiveAuthentication=no",
-            host,
-            REMOTE,
-        ])
+        .args([host, REMOTE])
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .stdout(Stdio::piped());
     command
 }
 
-fn read(host: &str, stop: &AtomicBool) -> Option<SystemTime> {
+fn read(host: &str, keys: &[String], stop: &AtomicBool) -> Result<SystemTime, Failure> {
     if stop.load(Ordering::Relaxed) {
-        return None;
+        return Err(Failure::Failed);
     }
-    read_child(command(host).spawn().ok()?, stop)
+    let known_hosts = KnownHosts::create(host, keys).map_err(|_| Failure::Failed)?;
+    let child = command(host, known_hosts.as_ref())
+        .spawn()
+        .map_err(|_| Failure::Failed)?;
+    read_child(child, stop)
 }
 
-fn read_child(mut child: Child, stop: &AtomicBool) -> Option<SystemTime> {
-    // Nonblocking bounded output prevents a malicious or broken remote from filling the pipe.
+fn classify(stderr: &[u8]) -> Failure {
+    let text = String::from_utf8_lossy(stderr).to_ascii_lowercase();
+    if text.contains("host key verification failed")
+        || text.contains("no ed25519 host key is known")
+        || text.contains("remote host identification has changed")
+    {
+        Failure::HostKey
+    } else if text.contains("permission denied") || text.contains("authentication failed") {
+        Failure::Auth
+    } else if text.contains("timed out") || text.contains("timeout") {
+        Failure::Timeout
+    } else if [
+        "no route to host",
+        "network is unreachable",
+        "connection refused",
+        "could not resolve hostname",
+        "connection closed",
+        "connection reset",
+    ]
+    .iter()
+    .any(|message| text.contains(message))
+    {
+        Failure::Unreachable
+    } else {
+        Failure::Failed
+    }
+}
+
+/// Drain only up to the bound per poll so either pipe cannot starve cancellation.
+fn drain(pipe: &mut impl Read, output: &mut Vec<u8>) -> Result<(), Failure> {
+    let mut buffer = [0_u8; 1024];
+    for _ in 0..=LIMIT / buffer.len() {
+        match pipe.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => {
+                if output.len() + n > LIMIT {
+                    return Err(Failure::Failed);
+                }
+                output.extend_from_slice(&buffer[..n]);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
+            Err(_) => return Err(Failure::Failed),
+        }
+    }
+    Ok(())
+}
+
+fn read_child(mut child: Child, stop: &AtomicBool) -> Result<SystemTime, Failure> {
     let result = (|| {
-        let mut stdout = child.stdout.take()?;
-        fcntl(&stdout, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).ok()?;
+        let mut stdout = child.stdout.take().ok_or(Failure::Failed)?;
+        let mut stderr = child.stderr.take().ok_or(Failure::Failed)?;
+        fcntl(&stdout, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).map_err(|_| Failure::Failed)?;
+        fcntl(&stderr, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).map_err(|_| Failure::Failed)?;
         let start = Instant::now();
         let mut output = Vec::new();
-        let mut buffer = [0_u8; 1024];
+        let mut errors = Vec::new();
         loop {
             if stop.load(Ordering::Relaxed) {
-                return None;
-            }
-            match stdout.read(&mut buffer) {
-                Ok(n) => output.extend_from_slice(&buffer[..n]),
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
-                Err(_) => return None,
-            }
-            if output.len() > 4096 {
-                return None;
-            }
-            if let Some(status) = child.try_wait().ok()? {
-                if !status.success() {
-                    return None;
-                }
-                // Drain bytes written immediately before the process exited.
-                loop {
-                    match stdout.read(&mut buffer) {
-                        Ok(0) => break,
-                        Ok(n) => output.extend_from_slice(&buffer[..n]),
-                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
-                        Err(_) => return None,
-                    }
-                    if output.len() > 4096 {
-                        return None;
-                    }
-                }
-                return parse(std::str::from_utf8(&output).ok()?, SystemTime::now());
+                return Err(Failure::Failed);
             }
             if start.elapsed() >= DEADLINE {
-                return None;
+                return Err(Failure::Timeout);
+            }
+            drain(&mut stdout, &mut output)?;
+            drain(&mut stderr, &mut errors)?;
+            if let Some(status) = child.try_wait().map_err(|_| Failure::Failed)? {
+                drain(&mut stdout, &mut output)?;
+                drain(&mut stderr, &mut errors)?;
+                if !status.success() {
+                    return Err(classify(&errors));
+                }
+                return parse(
+                    std::str::from_utf8(&output).map_err(|_| Failure::Failed)?,
+                    SystemTime::now(),
+                )
+                .ok_or(Failure::Failed);
             }
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -199,11 +341,92 @@ fn parse(text: &str, now: SystemTime) -> Option<SystemTime> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn known_hosts_are_private_formatted_and_removed() {
+        let keys = vec![
+            "ssh-ed25519 AAAA==".into(),
+            "ecdsa-sha2-nistp256 BBBB".into(),
+        ];
+        let file = KnownHosts::create("host-a.example.ts.net", &keys)
+            .unwrap()
+            .unwrap();
+        let path = file.0.clone();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "host-a.example.ts.net ssh-ed25519 AAAA==\nhost-a.example.ts.net ecdsa-sha2-nistp256 BBBB\n");
+        drop(file);
+        assert!(!path.exists());
+        assert!(KnownHosts::create("host-a.example.ts.net", &[])
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn rejects_malformed_keys() {
+        for key in [
+            "",
+            "ssh-ed25519",
+            "ssh-ed25519 AAAA\nother AAAA",
+            "ssh-ed25519 AAAA comment",
+            "ssh-ed25519\tAAAA",
+            "ssh-ed25519 A=AA",
+            "ssh-ed25519 AAAA===",
+            "ssh-ed25519 ====",
+            "@cert-authority AAAA",
+        ] {
+            assert!(
+                KnownHosts::create("host-a.example.ts.net", &[key.into()]).is_err(),
+                "{key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_ssh_failures() {
+        for (message, reason) in [
+            ("No ED25519 host key is known for host-a.example.ts.net and you have requested strict checking.\r\nHost key verification failed.", Failure::HostKey),
+            ("WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!", Failure::HostKey),
+            ("user@host-a.example.ts.net: Permission denied (publickey).", Failure::Auth),
+            ("Authentication failed.", Failure::Auth),
+            ("ssh: connect to host host-a.example.ts.net port 22: Operation timed out", Failure::Timeout),
+            ("ssh: connect to host host-a.example.ts.net port 22: No route to host", Failure::Unreachable),
+            ("ssh: connect to host host-a.example.ts.net port 22: Connection refused", Failure::Unreachable),
+            ("remote command failed", Failure::Failed),
+        ] {
+            assert_eq!(classify(message.as_bytes()), reason);
+        }
+    }
+
+    #[test]
+    fn failed_child_reports_stderr_and_success_requires_valid_output() {
+        for (script, expected) in [
+            (
+                "printf 'Permission denied' >&2; exit 255",
+                Err(Failure::Auth),
+            ),
+            ("printf invalid", Err(Failure::Failed)),
+        ] {
+            let child = Command::new("sh")
+                .args(["-c", script])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            assert_eq!(read_child(child, &AtomicBool::new(false)), expected);
+        }
+    }
 
     #[test]
     fn shutdown_kills_and_reaps_an_active_child() {
         let mut command = Command::new("sleep");
-        command.arg("60").stdout(Stdio::piped());
+        command
+            .arg("60")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         let child = command.spawn().unwrap();
         let pid = child.id();
         let stop = Arc::new(AtomicBool::new(false));
@@ -213,7 +436,7 @@ mod tests {
             stop,
             thread: Some(std::thread::spawn(move || {
                 ready.send(()).unwrap();
-                assert_eq!(read_child(child, &reader_stop), None);
+                assert_eq!(read_child(child, &reader_stop), Err(Failure::Failed));
             })),
         };
         started.recv_timeout(Duration::from_secs(2)).unwrap();
@@ -262,7 +485,7 @@ mod tests {
 
     #[test]
     fn ssh_arguments_never_request_interactive_authentication() {
-        let command = command("host-a.example.ts.net");
+        let command = command("host-a.example.ts.net", None);
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_str().unwrap())
@@ -286,8 +509,23 @@ mod tests {
                 "-o",
                 "KbdInteractiveAuthentication=no",
                 "host-a.example.ts.net",
-                REMOTE,
+                REMOTE
             ]
+        );
+        let file = KnownHosts::create("host-a.example.ts.net", &["ssh-ed25519 AAAA".into()])
+            .unwrap()
+            .unwrap();
+        let command = super::command("host-a.example.ts.net", Some(&file));
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect();
+        assert_eq!(
+            args[15],
+            format!(
+                "UserKnownHostsFile=\"{}\" ~/.ssh/known_hosts ~/.ssh/known_hosts2",
+                file.0.display()
+            )
         );
     }
 
