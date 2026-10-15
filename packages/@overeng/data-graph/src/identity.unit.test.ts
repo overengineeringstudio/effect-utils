@@ -23,8 +23,8 @@ it.prop(
       ['__proto__', b],
       ['constructor', a],
     ])
-    expect(actionKey(recipe, first)).toBe(actionKey(recipe, first))
-    expect(actionKey(recipe, first)).toBe(actionKey(recipe, second))
+    expect(actionKey({ recipe, inputs: first })).toBe(actionKey({ recipe, inputs: first }))
+    expect(actionKey({ recipe, inputs: first })).toBe(actionKey({ recipe, inputs: second }))
   },
 )
 
@@ -33,13 +33,16 @@ it.prop(
   [Schema.String],
   ([value]) => {
     const inputs = { value: descriptorForUtf8({ value }) }
-    const key = actionKey(recipe, inputs)
-    expect(actionKey({ ...recipe, version: '2' }, inputs)).not.toBe(key)
-    expect(actionKey({ ...recipe, config: { value } }, inputs)).not.toBe(key)
-    expect(actionKey(recipe, { value: descriptorForUtf8({ value: `${value}\0` }) })).not.toBe(key)
+    const key = actionKey({ recipe, inputs })
+    expect(actionKey({ recipe: { ...recipe, version: '2' }, inputs })).not.toBe(key)
+    expect(actionKey({ recipe: { ...recipe, config: { value } }, inputs })).not.toBe(key)
     expect(
-      actionKey(recipe, {
-        value: descriptorForUtf8({ value, mediaType: 'application/octet-stream' }),
+      actionKey({ recipe, inputs: { value: descriptorForUtf8({ value: `${value}\0` }) } }),
+    ).not.toBe(key)
+    expect(
+      actionKey({
+        recipe,
+        inputs: { value: descriptorForUtf8({ value, mediaType: 'application/octet-stream' }) },
       }),
     ).not.toBe(key)
   },

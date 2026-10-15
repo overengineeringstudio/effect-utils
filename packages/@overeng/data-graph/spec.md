@@ -6,7 +6,7 @@ An Effect 4 graph execution contract and filesystem adapter over `@overeng/conte
 
 A `NodeDef` is a `Derive` or `Observe` template with a non-empty branded `kind`, named outputs, scope-dependent static named inputs, a recipe, and an Effect executor. A `NodeRef` binds an instance scope and one output. Node identity is canonical JSON of `{ kind, scope }`; selecting an output does not change identity. Dependencies are declared before execution, never discovered by the executor. Cycles, conflicting definitions, and invalid output sets fail explicitly.
 
-An action manifest binds the canonical recipe descriptor and sorted named input descriptors. `actionKey(recipe, inputs)` exposes this identity without storage access. Recipes include version and configuration; all acceptance-policy and model/configuration changes that affect behavior must change the recipe. Input descriptor identity includes metadata, not just bytes. Consumers are responsible for complete recipe identity and determinism.
+An action manifest binds the canonical recipe descriptor and sorted named input descriptors. `actionKey({ recipe, inputs })` exposes this identity without storage access. Recipes include version and configuration; all acceptance-policy and model/configuration changes that affect behavior must change the recipe. Input descriptor identity includes metadata, not just bytes. Consumers are responsible for complete recipe identity and determinism.
 
 `materialize(ref, { refresh? })` resolves each instance once per pull, selects every upstream before consulting deterministic cache, and returns selected output descriptors and a postorder trace (`Executed`, `Reused`, `Rejected`). `Derive` reuses only previously accepted actions. Named output digest equality cuts off downstream work even when an upstream recipe changes. Arbitrary valid names including `__proto__` and `constructor` are data, not object-prototype operations.
 
@@ -35,7 +35,7 @@ No automatic GC until durable attempt roots and publication/evidence closures ex
 
 `value` and `evidence` are ordinary separately named outputs. Publication-relevant metadata, such as rights/licence, must be a named evidence OUTPUT consumed by a gate node, not only an opaque receipt. The generic scenario binds the evidence channel into a `policy-gate`; receipts remain provenance, not dependency identity. Consumers must not assume unchanged value bytes imply unchanged admissibility.
 
-Confirmation time is outside semantic action/output identities. Freshness gates run at read/publish time against selected-head confirmation and explicit `now`; graph execution is not necessary to detect expiry. `isStale(head, now, maxAge)` treats absent confirmation as stale and expires at the age boundary. Consumers own valid finite times and non-negative budgets/ages, as well as publication decisions.
+Confirmation time is outside semantic action/output identities. Freshness gates run at read/publish time against selected-head confirmation and explicit `now`; graph execution is not necessary to detect expiry. `isStale({ head, now, maxAge })` treats absent confirmation as stale and expires at the age boundary. Consumers own valid finite times and non-negative budgets/ages, as well as publication decisions.
 
 ## Evidence and commands
 
