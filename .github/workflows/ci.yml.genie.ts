@@ -304,6 +304,8 @@ const longJobTimeoutMinutes = 45
 
 const heavyCiIf = `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}`
 const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
+// Branch secrets are available only through a deliberate collaborator dispatch, never a PR event.
+const notionIntegrationCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true)) }}`
 const empiricalProofLaneIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}`
 const publishingCachixStep = cachixPublisherStep({
   name: 'overeng-effect-utils',
@@ -1591,7 +1593,7 @@ const extraJobs: Record<string, any> = {
   },
   /** Integration tests for Notion API (requires package-specific Notion token secrets) */
   'test-integration-notion': {
-    if: trustedSecretCiIf,
+    if: notionIntegrationCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -1873,6 +1875,12 @@ export default ciWorkflow({
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
+        run_notion_integration_on_branch: {
+          description: 'Opt into credentialed Notion integration tests on this branch.',
+          required: false,
+          default: false,
+          type: 'boolean',
+        },
         run_datasource_sync_demo: {
           description:
             'Run the credentialed notion-datasource-sync demo showcase in the Notion integration lane. Requires NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID.',

@@ -34,6 +34,8 @@ const admitted = (
   labels: string[] = [],
   label = '',
   baselineRef = '',
+  runNotionIntegrationOnBranch = false,
+  headRepository = 'owner/repo',
 ) => {
   const triggers = workflowForJob(jobId).split('\njobs:\n')[0]!
   const trigger = triggers.match(
@@ -52,24 +54,62 @@ const admitted = (
       'contains',
       'success',
       'cancelled',
-      `return (${condition(jobId).replace('github.event.pull_request.labels.*.name', 'github.event.pull_request.labels.map(label => label.name)')})`,
+      // Model an already-tested main tree; this matrix tests queue admission,
+      // not the separate fallback path for an untested main push.
+      `return (${condition(jobId)
+        .replace(
+          'github.event.pull_request.labels.*.name',
+          'github.event.pull_request.labels.map(label => label.name)',
+        )
+        .replace('needs.tested-tree.outputs.tested', "'true'")})`,
     )(
       {
         event_name: eventName,
         ref,
+        repository: 'owner/repo',
         event: {
           action,
           label: { name: label },
-          pull_request: { labels: labels.map((name) => ({ name })) },
+          pull_request: {
+            labels: labels.map((name) => ({ name })),
+            head: { repo: { full_name: headRepository, fork: headRepository !== 'owner/repo' } },
+          },
         },
       },
-      { measurement_baseline_ref: baselineRef },
+      {
+        measurement_baseline_ref: baselineRef,
+        run_notion_integration_on_branch: runNotionIntegrationOnBranch,
+      },
       (values: string[], value: string) => values.includes(value),
       () => true,
       () => false,
     ),
   )
 }
+
+test('Notion secrets require main or an explicit branch dispatch, never a PR', () => {
+  const job = 'test-integration-notion'
+  const select = (event: string, ref: string, optIn: boolean, action = '', baseline = '') =>
+    admitted(job, event, ref, action, [], '', baseline, optIn)
+  for (const ref of ['refs/heads/main', 'refs/heads/feature', 'refs/pull/1/merge']) {
+    for (const optIn of [false, true]) {
+      expect(select('pull_request', ref, optIn, 'synchronize')).toBe(false)
+      expect(select('pull_request_target', ref, optIn, 'synchronize')).toBe(false)
+      expect(
+        admitted(job, 'pull_request', ref, 'synchronize', [], '', '', optIn, 'fork/repo'),
+      ).toBe(false)
+      expect(select('merge_group', ref, optIn, 'checks_requested')).toBe(false)
+      expect(select('schedule', ref, optIn)).toBe(false)
+    }
+  }
+  expect(select('push', 'refs/heads/main', false)).toBe(true)
+  expect(select('push', 'refs/heads/feature', true)).toBe(false)
+  expect(select('workflow_dispatch', 'refs/heads/main', false)).toBe(true)
+  expect(select('workflow_dispatch', 'refs/heads/feature', false)).toBe(false)
+  expect(select('workflow_dispatch', 'refs/heads/feature', true)).toBe(true)
+  expect(select('workflow_dispatch', 'refs/heads/feature', true, '', 'baseline')).toBe(false)
+  expect(workflow).toContain('run_notion_integration_on_branch:')
+})
 
 for (const jobId of EMPIRICAL_PROOF_CI_JOB_NAMES) {
   test(`${jobId} admits main proofs and only opted-in PRs`, () => {
