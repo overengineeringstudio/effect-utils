@@ -40,7 +40,7 @@ it.effect(
             }
           }),
       }
-      const target = DataGraph.ref(node, {}, 'value')
+      const target = DataGraph.ref({ node: node, scope: {}, output: 'value' })
       const refresh = { refresh: [DataGraph.nodeId({ kind, scope: {} })] }
       const pull = () =>
         DataGraph.materialize(target, refresh).pipe(Effect.provide(GraphStore.fileSystem(root)))
@@ -135,9 +135,12 @@ it.effect(
         }
         const heads = []
         for (const scope of ['low', 'high-old', 'high-new']) {
-          yield* DataGraph.materialize(DataGraph.ref(node, scope, 'value'), {
-            refresh: [DataGraph.nodeId({ kind, scope })],
-          })
+          yield* DataGraph.materialize(
+            DataGraph.ref({ node: node, scope: scope, output: 'value' }),
+            {
+              refresh: [DataGraph.nodeId({ kind, scope })],
+            },
+          )
           heads.push(Option.getOrThrow(yield* DataGraph.getHead({ kind, scope })))
           yield* TestClock.adjust('1 second')
         }
@@ -186,7 +189,7 @@ it.effect.each(['corrupt', 'remove'])(
                 : { _tag: 'Rejected', reason: 'denied', receipts: [receipt] },
             ),
         }
-        const target = DataGraph.ref(node, {}, 'value')
+        const target = DataGraph.ref({ node: node, scope: {}, output: 'value' })
         const refresh = { refresh: [DataGraph.nodeId({ kind, scope: {} })] }
         yield* DataGraph.materialize(target, refresh)
         version = '2'
@@ -238,13 +241,17 @@ it.effect.each(['recipe', 'input'])(
             }),
         }
         for (const scope of ['a', 'b', 'c'])
-          yield* DataGraph.materialize(DataGraph.ref(source, scope, 'value'))
+          yield* DataGraph.materialize(
+            DataGraph.ref({ node: source, scope: scope, output: 'value' }),
+          )
         let version = 'a'
         const node: NodeDef = {
           _tag: 'Observe',
           kind,
           outputs: ['value'],
-          inputs: () => ({ signal: DataGraph.ref(source, version, 'value') }),
+          inputs: () => ({
+            signal: DataGraph.ref({ node: source, scope: version, output: 'value' }),
+          }),
           recipe: () => ({ kind, version, config: {} }),
           execute: () =>
             Effect.succeed(
@@ -259,7 +266,7 @@ it.effect.each(['recipe', 'input'])(
                 : { _tag: 'Rejected', reason: 'denied', receipts: [] },
             ),
         }
-        const target = DataGraph.ref(node, {}, 'value')
+        const target = DataGraph.ref({ node: node, scope: {}, output: 'value' })
         const refresh = { refresh: [DataGraph.nodeId({ kind, scope: {} })] }
         yield* DataGraph.materialize(target, refresh)
         version = 'b'
