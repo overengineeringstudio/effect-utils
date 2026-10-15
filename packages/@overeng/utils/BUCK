@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:033b35d9f876f6d383ff3eaeeaf92a25f40d0c8b6c3626f917aca889baf811a1
+# Semantic fingerprint: sha256:b37fafc6ccdf3c3ada2c0d12e905ff86e47e65b6794725b666f39b9250b589d0
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -85,6 +85,7 @@ export_materialization_inputs([
     "src/node/cmd.unit.test.ts",
     "src/node/file-system-backing.ts",
     "src/node/file-system-backing.unit.test.ts",
+    "src/node/github-app.contract.ts",
     "src/node/github-app.integration.test.ts",
     "src/node/github-app.ts",
     "src/node/mod.ts",
@@ -229,6 +230,7 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/github-app.contract.ts": "src/node/github-app.contract.ts",
         "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
         "src/node/github-app.ts": "src/node/github-app.ts",
         "src/node/mod.ts": "src/node/mod.ts",
@@ -361,6 +363,7 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/github-app.contract.ts": "src/node/github-app.contract.ts",
         "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
         "src/node/github-app.ts": "src/node/github-app.ts",
         "src/node/mod.ts": "src/node/mod.ts",

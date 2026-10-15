@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:291a717728338507752a350ba79eb549a4a51e799179ebcc23428fc044fb5680
+// fingerprint: sha256:f876f6d90c3381deb39fb8966d5cbf8dea96f23de7aeef3ce900c88e483bc9ac
 // regen: devenv tasks run genie:run
 
 export const AcmeAttempt = 'acme.attempt' as const
@@ -61,6 +61,10 @@ export const GitStreamed = 'git.streamed' as const
 export const GitSubcommand = 'git.subcommand' as const
 export const GitTimeout_ms = 'git.timeout_ms' as const
 export const GitUrl = 'git.url' as const
+export const GithubAppClient_id = 'github.app.client_id' as const
+export const GithubConsumer = 'github.consumer' as const
+export const GithubInstallationId = 'github.installation.id' as const
+export const GithubResource = 'github.resource' as const
 export const MegarepoBranch = 'megarepo.branch' as const
 export const MegarepoCliAll = 'megarepo.cli.all' as const
 export const MegarepoCliCommand = 'megarepo.cli.command' as const
@@ -438,6 +442,13 @@ export const AGENT_ACTIVITY = 'span.agent.activity' as const
 export const SPAN_SpanNotionReactSync = 'span.notion-react.sync' as const
 export const METRIC_AcmeProbeDuration = 'acme.probe.duration' as const
 export const METRIC_AcmeProbes = 'acme.probes' as const
+export const METRIC_GithubAppMintFailuresTotal = 'github_app_mint_failures_total' as const
+export const METRIC_GithubAppMintsTotal = 'github_app_mints_total' as const
+export const METRIC_GithubAppRateLimitLimit = 'github_app_rate_limit_limit' as const
+export const METRIC_GithubAppRateLimitRemaining = 'github_app_rate_limit_remaining' as const
+export const METRIC_GithubAppRateLimitResetAtSeconds =
+  'github_app_rate_limit_reset_at_seconds' as const
+export const METRIC_GithubAppTokenExpirySeconds = 'github_app_token_expiry_seconds' as const
 export const METRIC_MegarepoStoreGcRssBytes = 'megarepo_store_gc_rss_bytes' as const
 export const METRIC_RestateAttemptsTotal = 'restate_attempts_total' as const
 export const METRIC_RestateAwakeableWaitMs = 'restate_awakeable_wait_ms' as const
@@ -503,6 +514,10 @@ export type AttributeKey =
   | 'git.subcommand'
   | 'git.timeout_ms'
   | 'git.url'
+  | 'github.app.client_id'
+  | 'github.consumer'
+  | 'github.installation.id'
+  | 'github.resource'
   | 'megarepo.branch'
   | 'megarepo.cli.all'
   | 'megarepo.cli.command'
@@ -857,6 +872,12 @@ export type SpanName =
 export type MetricName =
   | 'acme.probe.duration'
   | 'acme.probes'
+  | 'github_app_mint_failures_total'
+  | 'github_app_mints_total'
+  | 'github_app_rate_limit_limit'
+  | 'github_app_rate_limit_remaining'
+  | 'github_app_rate_limit_reset_at_seconds'
+  | 'github_app_token_expiry_seconds'
   | 'megarepo_store_gc_rss_bytes'
   | 'restate_attempts_total'
   | 'restate_awakeable_wait_ms'

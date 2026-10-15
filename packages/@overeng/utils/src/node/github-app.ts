@@ -6,6 +6,17 @@ import { HttpClientError, DecodeError } from 'effect/http/HttpClientError'
 
 import { OtelAttr, OtelMetric, OtelOperation } from '@overeng/otel-contract'
 
+import {
+  AppLabels,
+  Resource,
+  MintCount,
+  MintFailures,
+  TokenExpiry,
+  RateRemaining,
+  RateLimit,
+  RateReset,
+} from './github-app.contract.ts'
+
 const PositiveID = Schema.Int.check(Schema.isGreaterThan(0))
 /** GitHub App client identity used as the JWT issuer. */
 export const AppIdentity = Schema.Struct({
@@ -87,15 +98,6 @@ export interface GitHubAppOptions {
   readonly refreshMarginSeconds?: number
 }
 
-// These labels describe configured consumers/installations, never individual requests or tokens.
-const AppLabels = Schema.Struct({
-  clientID: OtelAttr.string({ key: 'github.app.client_id', metadata: { cardinality: 'bounded' } }),
-  installationID: OtelAttr.string({
-    key: 'github.installation.id',
-    metadata: { cardinality: 'bounded' },
-  }),
-  consumer: OtelAttr.string({ key: 'github.consumer', metadata: { cardinality: 'bounded' } }),
-})
 const MintOperation = OtelOperation.define({
   name: 'github-app.mint',
   schema: AppLabels,
@@ -128,42 +130,17 @@ const InvalidateOperation = OtelOperation.define({
   }),
   label: ({ consumer }) => consumer,
 })
-const mintCount = OtelMetric.effect.counter(
-  OtelMetric.counter({
-    name: 'github_app_mints_total',
-    description: 'Installation token mint attempts',
-    labels: AppLabels,
-  }),
-)
-const mintFailures = OtelMetric.effect.counter(
-  OtelMetric.counter({
-    name: 'github_app_mint_failures_total',
-    description: 'Failed installation token mint attempts',
-    labels: AppLabels,
-  }),
-)
-const tokenExpiry = OtelMetric.effect.gauge(
-  OtelMetric.gauge({
-    name: 'github_app_token_expiry_seconds',
-    description: 'Earliest cached token expiry (Unix seconds); zero when invalidated',
-    labels: AppLabels,
-  }),
-)
-const Resource = OtelAttr.literal(
-  'github.resource',
-  'core',
-  'search',
-  'graphql',
-  'integration_manifest',
-  'code_search',
-)
-const rateRemaining = OtelMetric.effect.gauge(
-  OtelMetric.gauge({
-    name: 'github_app_rate_limit_remaining',
-    description: 'Last observed GitHub budget, separated by resource bucket',
-    labels: Schema.Struct({ ...AppLabels.fields, resource: Resource }),
-  }),
-)
+const mintCount = OtelMetric.effect.counter(MintCount.metric)
+const mintFailures = OtelMetric.effect.counter(MintFailures.metric)
+const tokenExpiry = OtelMetric.effect.gauge({ ...TokenExpiry.metric, instrument: 'gauge' })
+const rateRemaining = OtelMetric.effect.gauge({ ...RateRemaining.metric, instrument: 'gauge' })
+const rateLimit = OtelMetric.effect.gauge({ ...RateLimit.metric, instrument: 'gauge' })
+const rateReset = OtelMetric.effect.gauge({ ...RateReset.metric, instrument: 'gauge' })
+const rateObservations = [
+  ['x-ratelimit-remaining', rateRemaining],
+  ['x-ratelimit-limit', rateLimit],
+  ['x-ratelimit-reset', rateReset],
+] as const
 
 /** Scoped typed HttpClient; deliberately distinct from the unauthenticated transport dependency. */
 export class GitHubAppHttpClient extends Context.Service<
@@ -261,20 +238,18 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
     responseHeaders: Readonly<Record<string, string | undefined>>,
   ) {
     yield* MintOperation.annotate(attributes(installationID)).pipe(Effect.orDie)
-    const remaining = responseHeaders['x-ratelimit-remaining']
     const resource = responseHeaders['x-ratelimit-resource']
     // GitHub's resources are a finite vocabulary; never use arbitrary response strings as labels.
-    if (
-      remaining !== undefined &&
-      resource !== undefined &&
-      Schema.is(Resource)(resource) === true
-    ) {
-      const value = Number(remaining)
-      if (Number.isSafeInteger(value) === true && value >= 0) {
-        yield* rateRemaining.trustedSet({
-          labels: { ...attributes(installationID), resource },
-          value,
-        })
+    if (resource !== undefined && Schema.is(Resource)(resource) === true) {
+      const labels = { ...attributes(installationID), resource }
+      for (const [header, gauge] of rateObservations) {
+        const rawValue = responseHeaders[header]
+        // Missing, empty and malformed values are not observations (in particular, not zero).
+        if (rawValue === undefined || /^\d+$/.test(rawValue) === false) continue
+        const value = Number(rawValue)
+        if (Number.isSafeInteger(value) === true) {
+          yield* gauge.trustedSet({ labels, value })
+        }
       }
     }
   })
@@ -612,7 +587,12 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
             )
             .pipe(
               Effect.tapError((error) =>
-                error.response?.status === 401 ? invalidate(credential) : Effect.void,
+                Effect.gen(function* () {
+                  if (error.response !== undefined) {
+                    yield* observeResponse(scope.installationID, error.response.headers)
+                    if (error.response.status === 401) yield* invalidate(credential)
+                  }
+                }),
               ),
               Effect.mapError(
                 (error) =>
