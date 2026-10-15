@@ -181,6 +181,11 @@
       "description": "@overeng/content-address package · Set: manual"
     },
     {
+      "name": "system:data-graph",
+      "color": "a371f7",
+      "description": "@overeng/data-graph package · Set: manual"
+    },
+    {
       "name": "system:devbar",
       "color": "a371f7",
       "description": "@overeng/devbar package · Set: manual"
