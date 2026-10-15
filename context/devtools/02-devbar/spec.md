@@ -92,6 +92,7 @@ viewport width minus 8px. Width is bounded by `calc(100vw - 1rem)`. Size and vie
 reposition the open surface. Native pointer light dismissal updates expanded
 state; Escape consumes the event and restores trigger focus. Closing unmounts
 content. Open-state teardown notifies the host; there is no cross-mount state.
+Host content that removes its own focused control, such as a Retry action replacing an error state, moves focus to the stable dialog before removing that control so keyboard users retain their place and scoped Escape remains available.
 
 Panel and segment IDs are host-local, opaque, nonempty case-sensitive strings, unique within their respective lists. They are not protocol identifiers or storage keys. Unknown `openPanel` renders no panel; it does not manufacture a callback or mutate host state. The host reconciles removed IDs. No default panels, segments, strip, or meter list are injected.
 

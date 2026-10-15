@@ -141,7 +141,7 @@ export const Light: Story = {
       ),
     )
 
-    await userEvent.click(canvas.getByRole('button', { name: /^Approximate JS heap:/ }))
+    await userEvent.click(canvas.getByRole('button', { name: /^Approximate JS heap / }))
     await expect(
       canvas.findByRole('region', { name: 'Approximate JS heap details' }),
     ).resolves.toBeVisible()
@@ -166,7 +166,7 @@ export const Light: Story = {
     expect(meters).toHaveAttribute('aria-expanded', 'true')
 
     // Focus reveals the tooltip only; Enter selects the block and keeps Meters open.
-    canvas.getByRole('button', { name: /^Frame rate:/ }).focus()
+    canvas.getByRole('button', { name: /^Frame rate / }).focus()
     expect(canvas.getByRole('region', { name: 'durationP95 details' })).toBeVisible()
     await userEvent.keyboard('{Enter}')
     expect(canvas.getByRole('region', { name: 'Frame rate details' })).toBeVisible()
