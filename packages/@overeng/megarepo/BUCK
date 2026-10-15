@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b51419c9519582e3fe7a5704a4e488e5c2a962b0819d5b144c8dd45977dbd785
+# Semantic fingerprint: sha256:4b41adc8397619a303b3354be0abe8b44eb6067b9299ca6258de533766d947f8
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -48,6 +48,7 @@ export_materialization_inputs([
     "src/cli/commands/pin.ts",
     "src/cli/commands/root.ts",
     "src/cli/commands/status.ts",
+    "src/cli/commands/store/lock.ts",
     "src/cli/commands/store/mod.ts",
     "src/cli/components/Header.stories.tsx",
     "src/cli/components/Header.tsx",
@@ -222,6 +223,8 @@ export_materialization_inputs([
     "src/megarepo.contract.ts",
     "src/mod.ts",
     "src/nix.contract.ts",
+    "src/store/git-writer-lock.integration.test.ts",
+    "src/store/git-writer-lock.ts",
     "src/store/store-archive.integration.test.ts",
     "src/store/store-archive.ts",
     "src/store/store-branch-worktree.integration.test.ts",
@@ -268,6 +271,7 @@ export_materialization_inputs([
     "src/sync/types.ts",
     "src/test-utils/consoleCapture.ts",
     "src/test-utils/git-env-setup.ts",
+    "src/test-utils/git-writer-lock-worker.ts",
     "src/test-utils/json.ts",
     "src/test-utils/memory-probe.ts",
     "src/test-utils/mod.ts",
@@ -341,6 +345,7 @@ package_view(
         "src/cli/commands/pin.ts": "src/cli/commands/pin.ts",
         "src/cli/commands/root.ts": "src/cli/commands/root.ts",
         "src/cli/commands/status.ts": "src/cli/commands/status.ts",
+        "src/cli/commands/store/lock.ts": "src/cli/commands/store/lock.ts",
         "src/cli/commands/store/mod.ts": "src/cli/commands/store/mod.ts",
         "src/cli/components/Header.stories.tsx": "src/cli/components/Header.stories.tsx",
         "src/cli/components/Header.tsx": "src/cli/components/Header.tsx",
@@ -515,6 +520,8 @@ package_view(
         "src/megarepo.contract.ts": "src/megarepo.contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/nix.contract.ts": "src/nix.contract.ts",
+        "src/store/git-writer-lock.integration.test.ts": "src/store/git-writer-lock.integration.test.ts",
+        "src/store/git-writer-lock.ts": "src/store/git-writer-lock.ts",
         "src/store/store-archive.integration.test.ts": "src/store/store-archive.integration.test.ts",
         "src/store/store-archive.ts": "src/store/store-archive.ts",
         "src/store/store-branch-worktree.integration.test.ts": "src/store/store-branch-worktree.integration.test.ts",
@@ -561,6 +568,7 @@ package_view(
         "src/sync/types.ts": "src/sync/types.ts",
         "src/test-utils/consoleCapture.ts": "src/test-utils/consoleCapture.ts",
         "src/test-utils/git-env-setup.ts": "src/test-utils/git-env-setup.ts",
+        "src/test-utils/git-writer-lock-worker.ts": "src/test-utils/git-writer-lock-worker.ts",
         "src/test-utils/json.ts": "src/test-utils/json.ts",
         "src/test-utils/memory-probe.ts": "src/test-utils/memory-probe.ts",
         "src/test-utils/mod.ts": "src/test-utils/mod.ts",
@@ -639,6 +647,7 @@ package_view(
         "src/cli/commands/pin.ts": "src/cli/commands/pin.ts",
         "src/cli/commands/root.ts": "src/cli/commands/root.ts",
         "src/cli/commands/status.ts": "src/cli/commands/status.ts",
+        "src/cli/commands/store/lock.ts": "src/cli/commands/store/lock.ts",
         "src/cli/commands/store/mod.ts": "src/cli/commands/store/mod.ts",
         "src/cli/components/Header.stories.tsx": "src/cli/components/Header.stories.tsx",
         "src/cli/components/Header.tsx": "src/cli/components/Header.tsx",
@@ -813,6 +822,8 @@ package_view(
         "src/megarepo.contract.ts": "src/megarepo.contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/nix.contract.ts": "src/nix.contract.ts",
+        "src/store/git-writer-lock.integration.test.ts": "src/store/git-writer-lock.integration.test.ts",
+        "src/store/git-writer-lock.ts": "src/store/git-writer-lock.ts",
         "src/store/store-archive.integration.test.ts": "src/store/store-archive.integration.test.ts",
         "src/store/store-archive.ts": "src/store/store-archive.ts",
         "src/store/store-branch-worktree.integration.test.ts": "src/store/store-branch-worktree.integration.test.ts",
@@ -859,6 +870,7 @@ package_view(
         "src/sync/types.ts": "src/sync/types.ts",
         "src/test-utils/consoleCapture.ts": "src/test-utils/consoleCapture.ts",
         "src/test-utils/git-env-setup.ts": "src/test-utils/git-env-setup.ts",
+        "src/test-utils/git-writer-lock-worker.ts": "src/test-utils/git-writer-lock-worker.ts",
         "src/test-utils/json.ts": "src/test-utils/json.ts",
         "src/test-utils/memory-probe.ts": "src/test-utils/memory-probe.ts",
         "src/test-utils/mod.ts": "src/test-utils/mod.ts",
@@ -966,6 +978,7 @@ vitest_test(
         "src/core/git-memory.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
+        "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
@@ -1000,6 +1013,7 @@ vitest_collect(
         "src/core/git-memory.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
+        "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",

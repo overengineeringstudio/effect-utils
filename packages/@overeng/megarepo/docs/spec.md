@@ -72,6 +72,24 @@ The path reveals:
 
 **Key implication:** Each ref has its own isolated worktree. Switching between refs (via `mr pin -c`) updates the symlink to point to a different worktree—it does NOT modify files in place like `git checkout`. This means uncommitted changes in one worktree are preserved when you switch to another ref.
 
+**Shared Git writers:** Canonical fetches (including pull-request recovery), clones,
+branch/ref changes, pushes, pulls, and worktree registration changes acquire one
+host-local kernel writer lock per resolved Git common directory. Linked worktrees
+and symlink aliases share ownership; different repositories remain parallel.
+The persistent `${resolvedCommonDir}.mr-writer.lock` file is not a stale-lock
+marker and must not be removed. A missing clone target uses its real parent plus
+basename as its identity; the parent directory must already exist. Clone checks
+for a sibling's completed target while holding this lock.
+
+The Git mutation leaves own this boundary, not their enclosing sync/pin/GC
+workflows: wrapping an already-locked leaf in the same writer lock would nest
+ownership. Read-only validation and freshness integrations must instead use
+private Git metadata. When deliberately fetching into shared metadata without
+refreshing canonical refs, use `--refmap=` and `--no-write-fetch-head` with a
+private destination, and resolve the fetched result to an immutable commit SHA
+before ancestry or evidence checks. A custom destination ref alone does not
+suppress the configured origin refmap.
+
 ---
 
 ## Source Types
@@ -635,6 +653,48 @@ mr root --json
 ```
 
 ### Store Commands
+
+#### Common-directory writer coordination
+
+```text
+bare repo / normal repo / linked worktree / symlink
+  -> git rev-parse --path-format=absolute --git-common-dir
+  -> realpath(common dir)
+  -> <common dir>.mr-writer.lock -> kernel flock -> leaf Git mutation
+```
+
+Canonical Git writers use `withGitWriterLock(repoPath)(effect)` from
+`src/store/git-writer-lock.ts`. Existing repositories resolve their real common
+directory, so bare paths, linked worktrees, and symlink aliases coordinate on
+one identity. Before a bare clone exists, resolve its real existing parent and
+append the target basename; the identity remains stable after clone creation.
+Bare clone admission uses `{ create: true }` so a partially initialized target
+does not need to answer `git rev-parse` before the caller can wait for its lock.
+Distinct common directories may mutate concurrently.
+
+On Linux and macOS, Bun FFI acquires an exclusive host-local kernel `flock` on
+the persistent `<resolved-common-dir>.mr-writer.lock` file. Effect scope closes
+the descriptor on completion, failure, or interruption; process death releases
+that process's ownership. The file is never deleted or interpreted as stale.
+Git child processes inherit the held descriptor, so killing the wrapper does
+not release ownership while its child still performs the write. This is a
+cooperative same-host boundary, not distributed coordination.
+In-process writer tests run under Bun, matching the packaged mr runtime.
+
+Acquire only around leaf Git mutations; nested acquisitions of the same common
+directory are unsupported. External integrations use
+`mr store lock <path> -- <command> [args…]`, which runs with inherited stdio,
+preserves the invoking cwd, and propagates the child's exit status. They must
+not wrap an mr workflow that acquires this lock internally.
+Bare-clone integrations pass `--clone-target` and recheck target existence
+inside the held command.
+
+Read-only validation/freshness uses private Git metadata. A fetch into shared
+metadata must explicitly suppress configured refmaps (`--refmap=`) and shared
+`FETCH_HEAD` writes (`--no-write-fetch-head`); a custom destination alone does
+not isolate remote-tracking refs. Resolve fetched evidence to an immutable SHA
+before ancestry or freshness checks. The lock does not make a shared-metadata
+fetch read-only.
 
 #### `mr store gc`
 
