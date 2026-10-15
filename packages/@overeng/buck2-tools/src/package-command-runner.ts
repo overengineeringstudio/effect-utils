@@ -709,11 +709,11 @@ const createEntryOverridePlugin = ({
   readonly entry: string
   readonly onOverride: () => void
 }): BunPlugin => {
-  // Canonicalized once, unconditionally, on every host: `realpathSync` is the
-  // only comparison that survives a host whose build root is reached through a
-  // symlink (Darwin resolves `/tmp` to `/private/tmp`), and Bun reports the
-  // canonical path in `args.path`.
-  const expected = realpathSync(entry)
+  // Resolve symlinked roots (Darwin's /tmp -> /private/tmp), but retain the
+  // entry's own hardlink name. Bun's Darwin file realpath uses F_GETPATH and
+  // may report a different name for the same vnode between setup and onLoad.
+  // Inode equality would also override other module names sharing that inode.
+  const expected = realpathThroughName(entry)
   const loader =
     LOADERS[expected.slice(expected.lastIndexOf('.'))] ??
     fail(`unsupported entry extension: ${expected}`)
@@ -723,7 +723,7 @@ const createEntryOverridePlugin = ({
       build.onLoad({ filter: /\.(?:c|m)?[jt]sx?$/ }, (args) => {
         let candidate: string
         try {
-          candidate = realpathSync(args.path)
+          candidate = realpathThroughName(args.path)
         } catch {
           return undefined
         }

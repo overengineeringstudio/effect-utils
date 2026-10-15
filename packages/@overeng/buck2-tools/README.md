@@ -331,6 +331,17 @@ owned directories writable before removal. It never follows snapshot symlinks
 or changes external dependency targets. Neither release nor teardown is ever a
 dependency of setup, tests, or checks; republishing recreates a released root.
 
+## Portable CLI entry override
+
+The package command runner builds CLI products from a hardlink farm and overrides
+the entry's `import.meta.main` guard exactly once during loading. Entry matching
+resolves symlinks with `realpathThroughName`, canonicalizing parent directories
+while preserving the final file name. Bun's Darwin file realpath can report a
+different hardlink name for the same vnode, so comparing file `realpathSync`
+results is not stable across plugin setup and loading. Inode equality is not a
+substitute: a separate module name that shares the entry's inode must keep its
+own guard.
+
 ## Test collection
 
 The JavaScript runner loads test modules when collecting their inventory without
