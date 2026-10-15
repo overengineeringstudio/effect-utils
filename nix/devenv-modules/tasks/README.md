@@ -108,8 +108,13 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `megarepo.nix` - Megarepo workspace tasks
   - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` makes
     `mr:setup` prepare those members' nested megarepo trees in fresh commit
-    worktrees (readiness via `mr status --all`); unlisted members stay on
-    tracking worktrees. Default `[ ]` keeps the plain tracking setup.
+    worktrees; unlisted members stay on tracking worktrees. Local readiness
+    checks every non-skipped root member with `mr status` (without `--all`),
+    then runs `mr status --all` inside only the listed, non-skipped members
+    that have their own megarepo config. Unlisted nested trees do not block
+    readiness; ordinary listed repos need no nested check. These checks also
+    run on the outer setup cache-hit path. Default `[ ]` keeps the plain
+    tracking setup and its root-mount-only outer cache-hit check.
     With `CI=true`, `mr:setup` uses commit worktrees for every member; with a
     non-empty list it passes `mr apply --commit-all-members`, preparing every
     root member's nested tree to match the `mr status --all` readiness check.

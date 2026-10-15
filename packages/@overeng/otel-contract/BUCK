@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/otel-contract/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:436dcf0e212419fa2d86217f515e6612422d598f13d9bacdaa158b2726251922
+# Semantic fingerprint: sha256:37c0530e1b871aea7a2f86d7f2d8a1f12062f2b3e71728aa9bf431be45212e95
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -23,6 +23,7 @@ export_file(
 export_materialization_inputs([
     "src/Traceparent.ts",
     "src/Traceparent.unit.test.ts",
+    "src/agent.contract.ts",
     "src/mod.ts",
     "src/mod.unit.test.ts",
     "src/otel-scrape/profile-link.ts",
@@ -80,6 +81,7 @@ package_view(
         "package.json": "package.json",
         "src/Traceparent.ts": "src/Traceparent.ts",
         "src/Traceparent.unit.test.ts": "src/Traceparent.unit.test.ts",
+        "src/agent.contract.ts": "src/agent.contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/otel-scrape/profile-link.ts": "src/otel-scrape/profile-link.ts",
@@ -121,6 +123,7 @@ package_view(
         "package.json": "package.json",
         "src/Traceparent.ts": "src/Traceparent.ts",
         "src/Traceparent.unit.test.ts": "src/Traceparent.unit.test.ts",
+        "src/agent.contract.ts": "src/agent.contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/otel-scrape/profile-link.ts": "src/otel-scrape/profile-link.ts",
@@ -160,6 +163,7 @@ package_view(
         "package.json": "package.json",
         "src/Traceparent.ts": "src/Traceparent.ts",
         "src/Traceparent.unit.test.ts": "src/Traceparent.unit.test.ts",
+        "src/agent.contract.ts": "src/agent.contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/otel-scrape/profile-link.ts": "src/otel-scrape/profile-link.ts",

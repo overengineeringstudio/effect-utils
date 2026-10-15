@@ -1,0 +1,11 @@
+{
+  "host": "headless CI Mac",
+  "removed": true,
+  "path": "<temporary-directory>/m3-experiments.V37kxE",
+  "auditFlags": "0x5020",
+  "windowList": "unavailable",
+  "ciChecks": [{"time":1791942480.346356,"activeJobCount":0}],
+  "launchdOperations": 0,
+  "commandShape": "ssh headless-ci-mac nice -n 19 python3 -c 'safety.idle(); no_ui_session(); shutil.rmtree(own_experiment_tree); print_removed'",
+  "scope": "Final file-only cleanup of shipped experiment sources and receipts; per-run build/bundle/socket/lock cleanup is in each experiment evidence. No launchd jobs were ever loaded."
+}

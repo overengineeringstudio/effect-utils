@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/gh-ci-utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:6c7de901873f29e68fa1d991f5072bbac8876f0d8b7260bdd4734cee7b741adf
+# Semantic fingerprint: sha256:1b979c22b8d0f1a25a475f36ca58bfd86742740bb38544cb1396eafe9d338b1c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -654,6 +654,7 @@ vitest_test(
     package_tree = ":test_package_tree",
     excludes = [
         "src/node/GitHubClient.integration.test.ts",
+        "test/GitHubClient.test.ts",
     ],
     visibility = ["PUBLIC"],
 )
@@ -663,6 +664,7 @@ vitest_collect(
     package_tree = ":test_package_tree",
     excludes = [
         "src/node/GitHubClient.integration.test.ts",
+        "test/GitHubClient.test.ts",
     ],
     visibility = ["PUBLIC"],
 )

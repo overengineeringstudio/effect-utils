@@ -8,8 +8,7 @@ import type {
   RpcDescriptorWire,
   RpcRecord,
 } from '@overeng/effect-rpc-explorer'
-
-import type { ExplorerClient } from '../projection.ts'
+import type { ExplorerClient } from '@overeng/effect-rpc-explorer'
 
 /** Stable wall-clock sample shared by deterministic stories. */
 export const fixtureNow = 1_795_027_210_000

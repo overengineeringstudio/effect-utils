@@ -34,14 +34,23 @@ let
     ];
     text = ''
       set -euo pipefail
-      rev=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
       ts=$(date +%s)
+      head=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+      rev="unknown"
+      commitTsField=""
+      if [ "$head" != "unknown" ]; then
+        rev=$(git rev-parse --short "$head")
+        commitTs=$(git log -1 --format=%ct "$head" 2>/dev/null || true)
+        if [[ "$commitTs" =~ ^[0-9]+$ ]]; then
+          commitTsField=",\"commitTs\":$commitTs"
+        fi
+      fi
       dirty="false"
       if [ "$rev" != "unknown" ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
         dirty="true"
       fi
       # Output LocalStamp JSON
-      echo "{\"type\":\"local\",\"rev\":\"$rev\",\"ts\":$ts,\"dirty\":$dirty}"
+      echo "{\"type\":\"local\",\"rev\":\"$rev\",\"ts\":$ts,\"dirty\":$dirty$commitTsField}"
     '';
   };
   shellHook = ''

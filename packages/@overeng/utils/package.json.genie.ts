@@ -171,6 +171,13 @@ export default packageJson(
         { types: './dist/src/browser/mod.d.ts', default: './src/browser/mod.ts' },
         { environment: 'browser' },
       ),
+      './build-identity': exportEntry(
+        {
+          types: './src/build-identity-types.d.ts',
+          default: './src/build-identity.js',
+        },
+        [{ environment: 'browser' }, { environment: 'node' }],
+      ),
       './cuid': exportEntry(
         {
           types: './dist/src/cuid/mod.d.ts',
@@ -230,6 +237,10 @@ export default packageJson(
         },
         './lock': { types: './dist/src/lock/mod.d.ts', default: './dist/src/lock/mod.js' },
         './browser': { types: './dist/src/browser/mod.d.ts', default: './dist/src/browser/mod.js' },
+        './build-identity': {
+          types: './src/build-identity-types.d.ts',
+          default: './src/build-identity.js',
+        },
         './cuid': {
           types: './dist/src/cuid/mod.d.ts',
           browser: './dist/src/cuid/cuid.browser.js',
