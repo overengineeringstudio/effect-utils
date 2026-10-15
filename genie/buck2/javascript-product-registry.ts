@@ -80,6 +80,8 @@ export const javaScriptProductRegistry = {
       kind: 'cli',
       output: 'mr.js',
       productName: 'megarepo',
+      // Common-directory writer locks use Bun's FFI-backed flock implementation.
+      runtime: 'bun',
       smokeArgs: ['--help'],
       targetName: 'megarepo-candidate',
     },

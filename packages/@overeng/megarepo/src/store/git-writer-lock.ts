@@ -4,7 +4,7 @@ import { lstat, open, realpath, stat } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 
-import { Context, Effect, Option, Schedule, Schema, Stream } from 'effect'
+import { Clock, Context, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/process/ChildProcess'
 
@@ -26,45 +26,49 @@ const io =
     Effect.tryPromise({ try: run, catch: (cause) => new GitWriterLockError({ path, cause }) })
 
 /** Resolve worktrees, bare repositories and symlinks to one identity. */
-export const resolveGitCommonDir = Effect.fn('git/resolve-common-dir')(function* (path: string) {
-  const absolute = resolve(path)
-  const exists = yield* io(absolute)(() =>
-    stat(absolute).then(
-      () => true,
-      (cause: NodeJS.ErrnoException) => {
-        if (cause.code === 'ENOENT') return false
-        throw cause
-      },
-    ),
-  )
-  // Clone admission uses the same name before Git has created its common dir.
-  if (exists === false) {
-    const parent = yield* io(absolute)(() => realpath(dirname(absolute)))
-    return resolve(parent, basename(absolute))
-  }
-  const common = yield* Command.make(
-    'git',
-    ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-    { cwd: absolute, stdout: 'pipe', stderr: 'pipe' },
-  ).pipe(
-    Effect.flatMap((child) =>
-      Effect.all([
-        Stream.runCollect(child.stdout),
-        Stream.runCollect(child.stderr),
-        child.exitCode,
-      ]),
-    ),
-    Effect.scoped,
-  )
-  if (common[2] !== 0) {
-    return yield* new GitWriterLockError({
-      path: absolute,
-      cause: new TextDecoder().decode(Buffer.concat(common[1])),
-    })
-  }
-  const commonPath = new TextDecoder().decode(Buffer.concat(common[0])).trim()
-  return yield* io(absolute)(() => realpath(commonPath))
-})
+export const resolveGitCommonDir = Effect.fnUntraced(
+  function* (path: string) {
+    const absolute = resolve(path)
+    const exists = yield* io(absolute)(() =>
+      stat(absolute).then(
+        () => true,
+        (cause: NodeJS.ErrnoException) => {
+          if (cause.code === 'ENOENT') return false
+          throw cause
+        },
+      ),
+    )
+    // Clone admission uses the same name before Git has created its common dir.
+    if (exists === false) {
+      const parent = yield* io(absolute)(() => realpath(dirname(absolute)))
+      return resolve(parent, basename(absolute))
+    }
+    const common = yield* Command.make(
+      'git',
+      ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+      { cwd: absolute, stdout: 'pipe', stderr: 'pipe' },
+    ).pipe(
+      Effect.flatMap((child) =>
+        Effect.all([
+          Stream.runCollect(child.stdout),
+          Stream.runCollect(child.stderr),
+          child.exitCode,
+        ]),
+      ),
+      Effect.scoped,
+    )
+    if (common[2] !== 0) {
+      return yield* new GitWriterLockError({
+        path: absolute,
+        cause: new TextDecoder().decode(Buffer.concat(common[1])),
+      })
+    }
+    const commonPath = new TextDecoder().decode(Buffer.concat(common[0])).trim()
+    return yield* io(absolute)(() => realpath(commonPath))
+  },
+  (effect, path) =>
+    effect.pipe(Observability.withRepoPathSpan({ name: 'git/resolve-common-dir', path })),
+)
 
 // Lazy loading keeps read-only Node consumers importable; the mr runtime is Bun.
 interface FlockLibrary {
@@ -151,6 +155,8 @@ export const withGitWriterLock =
               while: (acquired) => acquired === false,
               schedule: Schedule.spaced('10 millis'),
             }),
+            // Kernel contention follows wall time, never a caller's decision/TestClock.
+            Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()),
           )
           const named = yield* io(lockPath)(() => lstat(lockPath))
           if (named.dev !== opened.dev || named.ino !== opened.ino || named.nlink !== 1) {
@@ -175,75 +181,84 @@ export interface GitWriterProcess {
  * adapter so fd3 retains the SAME open-file-description lock after mr is killed,
  * until the actual writer exits. Unlocked commands keep the standard spawner.
  */
-export const startGitWriterProcess = Effect.fn('git/start-writer-process')(function* ({
-  command,
-  args,
-  cwd,
-  inheritStdio = false,
-}: {
-  command: string
-  args: ReadonlyArray<string>
-  cwd?: string
-  inheritStdio?: boolean
-}) {
-  const descriptor = yield* Effect.serviceOption(WriterDescriptor)
-  if (Option.isNone(descriptor) === true) {
-    const child: GitWriterProcess = yield* Command.make(command, args, {
-      cwd,
-      stdin: inheritStdio === true ? 'inherit' : 'pipe',
-      stdout: inheritStdio === true ? 'inherit' : 'pipe',
-      stderr: inheritStdio === true ? 'inherit' : 'pipe',
-    })
-    return child
-  }
-  // Native spawn is required solely for numeric fd inheritance, unavailable in
-  // ChildProcess.CommandOptions. No shell parsing or command rewriting occurs.
-  const child = spawn(command, args, {
+export const startGitWriterProcess = Effect.fnUntraced(
+  function* ({
+    command,
+    args,
     cwd,
-    stdio: [
-      inheritStdio === true ? 'inherit' : 'pipe',
-      inheritStdio === true ? 'inherit' : 'pipe',
-      inheritStdio === true ? 'inherit' : 'pipe',
-      descriptor.value,
-    ],
-  })
-  const exited = new Promise<number>((accept, reject) => {
-    child.once('error', reject)
-    child.once('exit', (code, signal) =>
-      accept(code ?? 128 + (signal === null ? 0 : osConstants.signals[signal])),
+    inheritStdio = false,
+  }: {
+    command: string
+    args: ReadonlyArray<string>
+    cwd?: string
+    inheritStdio?: boolean
+  }) {
+    const descriptor = yield* Effect.serviceOption(WriterDescriptor)
+    if (Option.isNone(descriptor) === true) {
+      const child: GitWriterProcess = yield* Command.make(command, args, {
+        cwd,
+        stdin: inheritStdio === true ? 'inherit' : 'pipe',
+        stdout: inheritStdio === true ? 'inherit' : 'pipe',
+        stderr: inheritStdio === true ? 'inherit' : 'pipe',
+      })
+      return child
+    }
+    // Native spawn is required solely for numeric fd inheritance, unavailable in
+    // ChildProcess.CommandOptions. No shell parsing or command rewriting occurs.
+    const child = spawn(command, args, {
+      cwd,
+      stdio: [
+        inheritStdio === true ? 'inherit' : 'pipe',
+        inheritStdio === true ? 'inherit' : 'pipe',
+        inheritStdio === true ? 'inherit' : 'pipe',
+        descriptor.value,
+      ],
+    })
+    const exited = new Promise<number>((accept, reject) => {
+      child.once('error', reject)
+      child.once('exit', (code, signal) =>
+        accept(code ?? 128 + (signal === null ? 0 : osConstants.signals[signal])),
+      )
+    })
+    // Install rejection handling immediately, even while stdout is being consumed.
+    void exited.catch(() => undefined)
+    yield* Effect.addFinalizer(() =>
+      Effect.promise(async () => {
+        if (child.exitCode !== null || child.signalCode !== null) return
+        child.kill('SIGTERM')
+        const escalation = setTimeout(() => child.kill('SIGKILL'), 1_000)
+        escalation.unref()
+        try {
+          await exited.catch(() => undefined)
+        } finally {
+          clearTimeout(escalation)
+        }
+      }),
     )
-  })
-  // Install rejection handling immediately, even while stdout is being consumed.
-  void exited.catch(() => undefined)
-  yield* Effect.addFinalizer(() =>
-    Effect.promise(async () => {
-      if (child.exitCode !== null || child.signalCode !== null) return
-      child.kill('SIGTERM')
-      const escalation = setTimeout(() => child.kill('SIGKILL'), 1_000)
-      escalation.unref()
-      try {
-        await exited.catch(() => undefined)
-      } finally {
-        clearTimeout(escalation)
-      }
-    }),
-  )
-  const result: GitWriterProcess = {
-    stdout:
-      child.stdout === null
-        ? Stream.empty
-        : Stream.fromAsyncIterable<Uint8Array, GitWriterLockError>(
-            child.stdout,
-            (cause) => new GitWriterLockError({ path: command, cause }),
-          ),
-    stderr:
-      child.stderr === null
-        ? Stream.empty
-        : Stream.fromAsyncIterable<Uint8Array, GitWriterLockError>(
-            child.stderr,
-            (cause) => new GitWriterLockError({ path: command, cause }),
-          ),
-    exitCode: io(command)(() => exited),
-  }
-  return result
-})
+    const result: GitWriterProcess = {
+      stdout:
+        child.stdout === null
+          ? Stream.empty
+          : Stream.fromAsyncIterable<Uint8Array, GitWriterLockError>(
+              child.stdout,
+              (cause) => new GitWriterLockError({ path: command, cause }),
+            ),
+      stderr:
+        child.stderr === null
+          ? Stream.empty
+          : Stream.fromAsyncIterable<Uint8Array, GitWriterLockError>(
+              child.stderr,
+              (cause) => new GitWriterLockError({ path: command, cause }),
+            ),
+      exitCode: io(command)(() => exited),
+    }
+    return result
+  },
+  (effect, { command }) =>
+    effect.pipe(
+      Observability.withLabelSpan({
+        name: 'git/start-writer-process',
+        labelValue: command,
+      }),
+    ),
+)
