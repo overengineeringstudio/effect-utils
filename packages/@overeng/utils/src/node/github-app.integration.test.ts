@@ -764,17 +764,40 @@ for (const [name, transport] of [
       const { state, app, apiBase } = yield* fixture(filtered)
       const credential = Redacted.value(yield* app.token(scope))
       state.unauthorized = true
+      state.rateHeaders = {
+        'x-ratelimit-resource': 'core',
+        'x-ratelimit-remaining': '0',
+        'x-ratelimit-limit': '6000',
+        'x-ratelimit-reset': '1800000100',
+      }
       const failure = yield* app.client(scope).get(new URL('/probe', apiBase)).pipe(Effect.flip)
       expect(failure).toMatchObject({ _tag: 'GitHubAppError', operation: 'authorize', status: 401 })
       for (const secret of [credential, 'Bearer', ...state.jwtTokens])
         expectCredentialFree(failure, secret)
+      const metrics = yield* Metric.snapshot
+      for (const [id, value] of [
+        ['github_app_rate_limit_remaining', 0],
+        ['github_app_rate_limit_limit', 6000],
+        ['github_app_rate_limit_reset_at_seconds', 1800000100],
+      ] as const) {
+        expect(metrics.find((metric) => metric.id === id)).toMatchObject({
+          type: 'Gauge',
+          attributes: {
+            'github.app.client_id': 'Iv1.fixture',
+            'github.installation.id': '123',
+            'github.consumer': 'fixture',
+            'github.resource': 'core',
+          },
+          state: { value },
+        })
+      }
       expect(state.calls).toBe(1)
       state.unauthorized = false
       const response = yield* app.client(scope).get(new URL('/probe', apiBase))
       expect(response.status).toBe(200)
       expect(state.exchanges).toBe(2)
       expect(state.authorization).toEqual(['Bearer installation-1', 'Bearer installation-2'])
-    }),
+    }).pipe(Effect.provideService(Metric.MetricRegistry, new Map())),
   )
 
   for (const accessor of [

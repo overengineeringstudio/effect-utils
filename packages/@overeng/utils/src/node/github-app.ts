@@ -587,7 +587,12 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
             )
             .pipe(
               Effect.tapError((error) =>
-                error.response?.status === 401 ? invalidate(credential) : Effect.void,
+                Effect.gen(function* () {
+                  if (error.response !== undefined) {
+                    yield* observeResponse(scope.installationID, error.response.headers)
+                    if (error.response.status === 401) yield* invalidate(credential)
+                  }
+                }),
               ),
               Effect.mapError(
                 (error) =>
