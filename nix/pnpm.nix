@@ -27,7 +27,7 @@
 # failing with a bare spawnSync ENOENT.
 let
   lib = pkgs.lib;
-  version = "12.7.0";
+  version = "12.11.2";
 
   platform = pkgs.stdenv.hostPlatform;
 
@@ -45,17 +45,17 @@ let
       unsupportedPlatform;
 
   exeHashes = {
-    "linux-x64" = "sha256-Kyn+L9kWh71plcNWxz1+hOrV/OYwo4yj0jGcLOep/EU=";
-    "linux-arm64" = "sha256-m6NyMSn40aUIly+LTka7LpiXODOGG5/rzOKEdRk5cr8=";
-    "linux-x64-musl" = "sha256-8XH4x64Oz2frI7SmqLMoZ5J2DKgWAjKaghy3Izfrb/M=";
-    "linux-arm64-musl" = "sha256-Jig47yJUCvCmcOn5I51B7mEpODv6StWFveIkG77/r74=";
-    "darwin-x64" = "sha256-vT1FCcruSoiSP+7K9O1pc1aBDcxift/3PGlGMVm49c4=";
-    "darwin-arm64" = "sha256-lxwInMbFfy9d8GEbQxQB3ZbfpwfeKOx1VNXuxVJwG3Q=";
+    "linux-x64" = "sha256-eQCNMTCEXuig/kOB5rgYFegOG9QRcC80chscxj5uIL8=";
+    "linux-arm64" = "sha256-ybXRoqJU9Fk6b72Hi7u8gdzk+zaxyFDMjzEDHbsI/9s=";
+    "linux-x64-musl" = "sha256-6sM0nTMU1jMyNPGnQ84ulgXzFQSl6of69ZnBB10Pzzk=";
+    "linux-arm64-musl" = "sha256-v4Pj+AjcBh2EDBHamokZaq6JBjJj4PE2gXrYqpQhylo=";
+    "darwin-x64" = "sha256-1w65mZ5EeTO3f91eGLCqkz8JHqXmhwEfNigSCaGAzH8=";
+    "darwin-arm64" = "sha256-ckZKlKe88ewsMzCqTxkNLqd1AxiPLNhBbrCYsrX8j6A=";
   };
 
   wrapperSrc = pkgs.fetchurl {
     url = "https://registry.npmjs.org/pnpm/-/pnpm-${version}.tgz";
-    hash = "sha256-Gn/ks2q+rXnuE+Lywgid3Tf+4BYXm5/laoWkTvcqr38=";
+    hash = "sha256-61c0G4tU/dru3tsV27d8wwoRdQzsyjAb/aAkeP3/OgA=";
   };
 
   exeSrc = pkgs.fetchurl {
