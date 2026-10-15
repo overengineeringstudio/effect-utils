@@ -1,4 +1,5 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { defaultRefPolicyVerdictStepId } from './megarepo.ts'
 
 /** Retain compact and complete native cache evidence independently of tailnet/OTLP delivery. */
 export const withBuck2CacheEvidence = (
@@ -11,8 +12,13 @@ export const withBuck2CacheEvidence = (
         (step) => 'uses' in step && step.uses.startsWith('actions/checkout@'),
       )
       if (checkout < 0) return [jobId, job]
+      const verdict = steps.findIndex((step) => step.id === defaultRefPolicyVerdictStepId)
+      const admittedAlways =
+        verdict < 0
+          ? '${{ always() }}'
+          : `\${{ always() && steps.${defaultRefPolicyVerdictStepId}.outcome == 'success' }}`
       const matrix = job.strategy !== undefined && 'matrix' in job.strategy
-      steps.splice(checkout + 1, 0, {
+      steps.splice(Math.max(checkout, verdict) + 1, 0, {
         name: 'Start Buck2 cache evidence window',
         shell: 'bash',
         run: [
@@ -37,7 +43,7 @@ export const withBuck2CacheEvidence = (
       steps.push(
         {
           name: 'Collect Buck2 cache evidence',
-          if: '${{ always() }}',
+          if: admittedAlways,
           shell: 'bash',
           env: { GITHUB_TOKEN: '${{ github.token }}' },
           'continue-on-error': true,
@@ -49,7 +55,7 @@ export const withBuck2CacheEvidence = (
         },
         {
           name: 'Upload Buck2 cache evidence',
-          if: '${{ always() }}',
+          if: admittedAlways,
           uses: 'actions/upload-artifact@v4',
           with: {
             name:

@@ -184,8 +184,11 @@ const defaultRefPolicyNixpkgs: { rev: string; narHash: string } = JSON.parse(
 const defaultRefPolicyNodeInstallable =
   `github:NixOS/nixpkgs/${defaultRefPolicyNixpkgs.rev}?narHash=${encodeURIComponent(defaultRefPolicyNixpkgs.narHash)}#nodejs_24`
 
+export const defaultRefPolicyVerdictStepId = 'default-ref-policy-verdict'
+
 /** Fail before composition when first-party megarepo/flake/devenv inputs target non-default refs. */
 export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions = {}) => ({
+  id: defaultRefPolicyVerdictStepId,
   name: 'Check first-party default refs',
   env: {
     ...githubTokenEnv(),

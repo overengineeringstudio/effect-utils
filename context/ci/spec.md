@@ -286,6 +286,14 @@ guard before realizing tools: fork PRs fail closed. The separate main source-sha
 proof inherits that guard but does not depend on the product workflow's gate;
 its main/dispatch-only events are admitted without granting fork PRs privilege.
 
+The policy step publishes a stable `default-ref-policy-verdict` step identity.
+Evidence wrappers attach checkout-dependent identity and cache-window capture
+only after that verdict. Their `always()` cleanup, export and tailnet steps
+require the verdict's successful outcome, so rejection never evaluates a local
+flake or executes checkout scripts through cleanup. Pipeline-attempt closing
+also refuses fork PR local-flake execution; when the product source-policy job
+is present, closing additionally requires that job's successful admission.
+
 `plainFlakeSetupSteps` installs Determinate Nix and accepts an optional public
 `cachix` name for read-only cache access. For custom jobs, compose these setup steps
 with `nixDevelopStep({ name, command })`; `command` is an argv vector, not a shell

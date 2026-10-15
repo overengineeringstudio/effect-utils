@@ -9,7 +9,9 @@ import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.
 import previewBuildWorkflow from '../../.github/workflows/storybook-preview-build.yml.genie.ts'
 import previewDeployWorkflow from '../../.github/workflows/storybook-preview-deploy.yml.genie.ts'
 import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'json' }
+import { pipelineIdentityStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { defaultRefPolicyVerdictStepId } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import {
   ciWorkflow as composeCiWorkflow,
@@ -360,6 +362,59 @@ describe('Linux Nix sandbox fallback', () => {
       expect(script).not.toContain('ensure_ci_measurement_tool')
       expect(script).not.toContain('nix shell')
       expect(script).not.toMatch(/(?:^|\n)node\s/)
+    }
+  })
+
+  it('keeps checkout-controlled execution after the policy verdict and guards always cleanup', () => {
+    const job = ciWorkflow.data.jobs['default-ref-policy']!
+    const verdict = job.steps.findIndex((step) => step.id === defaultRefPolicyVerdictStepId)
+    expect(verdict).toBeGreaterThan(-1)
+    const checkoutReferences = /(?:\.#|git\+file:|genie\/|scripts\/|\.\/|GITHUB_WORKSPACE|CI_SOURCE_ROOT)/
+    for (const [index, step] of job.steps.entries()) {
+      if (index < verdict) {
+        expect(JSON.stringify(step), step.name ?? step.uses).not.toMatch(checkoutReferences)
+      }
+      if (step.if?.includes('always()') && /(?:\.#|git\+file:)/.test(step.run ?? '')) {
+        expect(step.if, step.name).toContain(
+          `steps.${defaultRefPolicyVerdictStepId}.outcome == 'success'`,
+        )
+      }
+    }
+    for (const name of ['Start Buck2 cache evidence window', pipelineIdentityStepName]) {
+      // Every checkout-dependent wrapper must attach after, not ahead of, admission.
+      const step = job.steps.findIndex((entry) => entry.name === name)
+      expect(step, name).toBeGreaterThan(verdict)
+    }
+  })
+
+  it('denies pipeline close local-flake execution on forks and failed source admission', () => {
+    const job = ciWorkflow.data.jobs['pipeline-attempt-close']!
+    expect(job['runs-on']).toBe('ubuntu-latest')
+    const close = job.steps.find((step) => step.name === 'Link started job roots')!
+    expect(close.if).toContain(namespacePrivilegeTrustedPredicate)
+    expect(close.if).toContain("needs.default-ref-policy.result == 'success'")
+    const expression = close.if!
+      .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+      .replace('needs.default-ref-policy', 'needs["default-ref-policy"]')
+    const allowed = new Function('github', 'needs', 'always', `return (${expression})`)
+    const repository = 'overengineeringstudio/effect-utils'
+    for (const [headRepository, verdict, expected] of [
+      [repository, 'success', true],
+      [repository, 'failure', false],
+      ['external-contributor/effect-utils', 'success', false],
+      ['external-contributor/effect-utils', 'failure', false],
+    ] as const) {
+      expect(
+        allowed(
+          {
+            event_name: 'pull_request',
+            repository,
+            event: { pull_request: { head: { repo: { full_name: headRepository } } } },
+          },
+          { 'default-ref-policy': { result: verdict } },
+          () => true,
+        ),
+      ).toBe(expected)
     }
   })
 })

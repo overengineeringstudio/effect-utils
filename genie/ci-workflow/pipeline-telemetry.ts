@@ -4,6 +4,8 @@ import {
   pipelineJobIdentityForName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { defaultRefPolicyVerdictStepId } from './megarepo.ts'
+import { namespacePrivilegeTrustedPredicate } from './setup.ts'
 import { linuxNixSandboxFallbackConf } from './shared.ts'
 
 type Job = GitHubWorkflowArgs['jobs'][string]
@@ -29,9 +31,15 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
         (step) => 'uses' in step && step.uses?.startsWith('actions/checkout@'),
       )
       if (checkout < 0) return [jobId, job]
+      const verdict = steps.findIndex((step) => step.id === defaultRefPolicyVerdictStepId)
+      const admittedAlways =
+        verdict < 0
+          ? 'always()'
+          : `always() && steps.${defaultRefPolicyVerdictStepId}.outcome == 'success'`
       const matrix = job.strategy !== undefined && 'matrix' in job.strategy
       const identity = pipelineJobIdentityForName(job.name ?? jobId)
-      steps.splice(checkout + 1, 0, {
+      // The trust verdict must precede every checkout-controlled telemetry script.
+      steps.splice(Math.max(checkout, verdict) + 1, 0, {
         name: pipelineIdentityStepName,
         shell: 'bash',
         env: {
@@ -62,13 +70,19 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
         }
       }
       // Never change build DNS/routes: join only after all build and span work.
-      steps.push(joinTailnetStep, {
-        name: pipelineExportStepName,
-        if: '${{ always() }}',
-        shell: 'bash',
-        env: { OTEL_EXPORTER_OTLP_ENDPOINT: '${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}' },
-        run: `${script} export '\${{ job.status }}' || true`,
-      })
+      steps.push(
+        {
+          ...joinTailnetStep,
+          if: joinTailnetStep.if.replace('always()', admittedAlways),
+        },
+        {
+          name: pipelineExportStepName,
+          if: `\${{ ${admittedAlways} }}`,
+          shell: 'bash',
+          env: { OTEL_EXPORTER_OTLP_ENDPOINT: '${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}' },
+          run: `${script} export '\${{ job.status }}' || true`,
+        },
+      )
       return [
         jobId,
         {
@@ -110,6 +124,7 @@ export const pipelineCloseJob = (jobs: Record<string, Job>): Job => ({
     joinTailnetStep,
     {
       name: 'Link started job roots',
+      if: `\${{ always() && (${namespacePrivilegeTrustedPredicate})${Object.hasOwn(jobs, 'default-ref-policy') ? " && needs.default-ref-policy.result == 'success'" : ''} }}`,
       shell: 'bash',
       'continue-on-error': true,
       env: {
