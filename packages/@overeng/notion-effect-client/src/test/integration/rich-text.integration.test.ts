@@ -19,7 +19,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
     beforeAll(setupIntegrationFixtures, 120_000)
     afterAll(teardownIntegrationFixtures, 60_000)
 
-    Vitest.it.effect(
+    Vitest.it.live(
       'converts paragraph rich text to plain text',
       () =>
         Effect.gen(function* () {
@@ -50,7 +50,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
       { timeout: 30000 },
     )
 
-    Vitest.it.effect(
+    Vitest.it.live(
       'converts heading rich text to markdown',
       () =>
         Effect.gen(function* () {
@@ -82,7 +82,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
       { timeout: 30000 },
     )
 
-    Vitest.it.effect(
+    Vitest.it.live(
       'converts rich text with formatting to HTML',
       () =>
         Effect.gen(function* () {
