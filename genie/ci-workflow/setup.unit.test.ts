@@ -228,9 +228,18 @@ describe('Linux Nix sandbox fallback', () => {
         expect(step.run ?? '', jobId).not.toMatch(/\bnix (?:build|shell|run|develop)\b/)
       }
       const script = job.steps[commandIndex]?.run ?? ''
-      expect(script).toContain(
-        'node_out="$(nix build --no-update-lock-file --no-link --print-out-paths .#buck2-node)"',
-      )
+      if (jobId === 'default-ref-policy') {
+        expect(script).toMatch(
+          /nix build --no-update-lock-file --no-link --print-out-paths 'github:NixOS\/nixpkgs\/[a-f0-9]{40}\?narHash=sha256-[A-Za-z0-9%]+#nodejs_24'/,
+        )
+        expect(script).not.toContain('.#')
+        expect(script).not.toMatch(/(?:path:|file:|git\+file:|\$\{?GITHUB_WORKSPACE)/)
+      } else {
+        expect(script).toContain(
+          'node_out="$(nix build --no-update-lock-file --no-link --print-out-paths .#buck2-node)"',
+        )
+        expect(job.needs).toContain('default-ref-policy')
+      }
       expect(script).toContain('"$node_out/bin/node" <<')
       expect(script).not.toContain('nixpkgs#')
       expect(script).not.toContain('command -v')

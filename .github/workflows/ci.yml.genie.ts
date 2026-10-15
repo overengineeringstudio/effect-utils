@@ -1774,6 +1774,7 @@ const productCiJobs: CiWorkflowArgs['jobs'] = {
   ),
   'source-shape': {
     ...allCiJobs['source-shape'],
+    needs: ['default-ref-policy'],
     if: "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}",
   },
 }

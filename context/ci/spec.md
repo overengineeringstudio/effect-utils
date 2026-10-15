@@ -268,13 +268,17 @@ disabled sandbox nor an unavailable sandbox may silently run a build unsandboxed
 The settings are conditional on `runner.os == 'Linux'`, leaving Darwin policy
 unchanged; they do not grant privileges or bypass fork admission guards.
 
-The source-only `default-ref-policy` and `source-shape` jobs use the declared
-`.#buck2-node` flake output with `--no-update-lock-file`, then invoke its exact
-`bin/node` path. They never select ambient Node or resolve an unpinned registry
-package on a cache miss. Both jobs apply the same `trusted` Linux prerequisites
-guard before realizing tools: fork PRs fail closed rather than attempting an
-unprivileged Nix build. The main source-shape proof inherits this guard; its
-non-PR events are admitted without granting fork PRs privilege.
+The source-only `default-ref-policy` job must not evaluate the checkout's flake
+before checking its refs. Genie freezes the root `flake.lock` nixpkgs revision
+and NAR hash into an upstream `github:NixOS/nixpkgs/...#nodejs_24` installable in
+the generated workflow; the running gate never reads the checkout's lockfile to
+resolve its interpreter. `source-shape` explicitly needs `default-ref-policy`
+before realizing the declared `.#buck2-node` output. Both invoke the exact
+realized `bin/node`, use `--no-update-lock-file`, and never select ambient Node
+or an unpinned registry package. Both apply the `trusted` Linux prerequisites
+guard before realizing tools: fork PRs fail closed. The separate main source-shape
+proof inherits that guard but does not depend on the product workflow's gate;
+its main/dispatch-only events are admitted without granting fork PRs privilege.
 
 `plainFlakeSetupSteps` installs Determinate Nix and accepts an optional public
 `cachix` name for read-only cache access. For custom jobs, compose these setup steps
