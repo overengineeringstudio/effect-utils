@@ -14,8 +14,8 @@ it.effect(
       const fs = yield* FileSystem.FileSystem
       const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-read-cache-' })
       yield* Effect.gen(function* () {
-        const kind = Schema.decodeUnknownSync(NodeKind)('shared-source')
-        const consumerKind = Schema.decodeUnknownSync(NodeKind)('shared-consumer')
+        const kind = yield* Schema.decodeEffect(NodeKind)('shared-source')
+        const consumerKind = yield* Schema.decodeEffect(NodeKind)('shared-consumer')
         let sourceCalls = 0
         let consumerCalls = 0
         const source: NodeDef = {
