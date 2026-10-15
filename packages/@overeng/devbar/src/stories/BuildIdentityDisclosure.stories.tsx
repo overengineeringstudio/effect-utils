@@ -134,7 +134,14 @@ const ChangelogHost = ({
                           <p>
                             Release notes could not be fetched. The host app is still available.
                           </p>
-                          <button type="button" onClick={() => setRetried(true)}>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              // Retry removes this control; preserve focus in the stable dialog.
+                              event.currentTarget.closest<HTMLElement>('[role="dialog"]')?.focus()
+                              setRetried(true)
+                            }}
+                          >
                             Retry
                           </button>
                         </>
@@ -192,6 +199,7 @@ const playChangelog: NonNullable<Story['play']> = async ({ canvasElement, args, 
     await expect(dialog).toHaveTextContent('Release notes could not be fetched.')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Retry' }))
     await expect(dialog).toHaveTextContent('Search filters')
+    await expect(dialog).toHaveFocus()
   } else await expect(dialog).toHaveTextContent('Search filters')
   if (args.panel === true) await expect(canvas.getByRole('region', { name: 'Logs' })).toBeVisible()
   await userEvent.keyboard('{Escape}')
