@@ -14,7 +14,7 @@ it.effect(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-selection-' })
-      const kind = Schema.decodeUnknownSync(NodeKind)('selection')
+      const kind = yield* Schema.decodeEffect(NodeKind)('selection')
       let version = '1'
       let outcome: 'accept' | 'reject' | 'fail' = 'accept'
       let calls = 0
@@ -117,7 +117,7 @@ it.effect(
       const fs = yield* FileSystem.FileSystem
       const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-tiers-' })
       yield* Effect.gen(function* () {
-        const kind = Schema.decodeUnknownSync(NodeKind)('tiers')
+        const kind = yield* Schema.decodeEffect(NodeKind)('tiers')
         const node: NodeDef = {
           _tag: 'Observe',
           kind,
@@ -162,7 +162,7 @@ it.effect.each(['corrupt', 'remove'])(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-attempt-receipt-' })
-      const kind = Schema.decodeUnknownSync(NodeKind)('receipt-rejection')
+      const kind = yield* Schema.decodeEffect(NodeKind)('receipt-rejection')
       let version = '1'
       yield* Effect.gen(function* () {
         const store = yield* GraphStore
@@ -220,8 +220,8 @@ it.effect.each(['recipe', 'input'])(
       const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-attempt-action-' })
       yield* Effect.gen(function* () {
         const store = yield* GraphStore
-        const sourceKind = Schema.decodeUnknownSync(NodeKind)('attempt-input')
-        const kind = Schema.decodeUnknownSync(NodeKind)('action-rejection')
+        const sourceKind = yield* Schema.decodeEffect(NodeKind)('attempt-input')
+        const kind = yield* Schema.decodeEffect(NodeKind)('action-rejection')
         const source: NodeDef = {
           _tag: 'Derive',
           kind: sourceKind,
@@ -267,7 +267,7 @@ it.effect.each(['recipe', 'input'])(
         const status = Option.getOrThrow(
           (yield* DataGraph.getSelectionStatus(target)).latestAttempt,
         )
-        const action = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ContentManifest))(
+        const action = yield* Schema.decodeEffect(Schema.fromJsonString(ContentManifest))(
           new TextDecoder().decode(yield* store.get(status.action)),
         )
         const descriptor = action.entries.find((entry) => entry.role === role)!.descriptor
