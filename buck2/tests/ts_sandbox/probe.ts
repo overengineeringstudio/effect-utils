@@ -49,6 +49,17 @@ const denyWrite = ({ name, path }: { name: string; path: string }) =>
     },
   })
 
+// Host-shared fingerprint coordination survives the private /tmp boundary,
+// without granting payloads permission to replace the semaphore's inodes.
+const fingerprintLocks = '/tmp/effect-utils-buck2-fingerprint-v1'
+for (const slot of ['admission', 'slot-0', 'slot-1', 'slot-2', 'slot-3']) {
+  const path = join(fingerprintLocks, slot)
+  const status = await lstat(path)
+  assert(status.isFile(), `missing host fingerprint lock: ${slot}`)
+  await readFile(path)
+  await denyWrite({ name: `fingerprint admission ${slot} is read-only`, path })
+}
+
 assert((await readFile(input, 'utf8')).includes('No receipt is written'))
 const closure: unknown = JSON.parse(await readFile(closurePath, 'utf8'))
 const strings = (value: unknown): value is string[] =>

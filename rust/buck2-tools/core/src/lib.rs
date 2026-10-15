@@ -1,4 +1,5 @@
 pub mod fingerprint;
+mod fingerprint_admission;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};

@@ -19,6 +19,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import type { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 
 const signalNumbers = {
@@ -222,38 +223,69 @@ const forEachSequential = async <T>(options: {
 const canonicalRoots = (roots: readonly string[]): readonly string[] =>
   [...new Set(roots.map((root) => resolve(root)))].toSorted()
 
-/**
- * Runs the immutable fingerprint executable without blocking the event loop, so concurrent
- * root walks stay parallel. A non-zero exit rejects with the tool's stderr.
- */
-export const runFingerprintTool = ({
+// A process-local queue prevents root Promise.all/allSettled callers from
+// spawning one child per root. The native tool separately enforces the fixed
+// host-wide walk cap across independent runners, Buck actions and publishers.
+let fingerprintQueue: Promise<void> = Promise.resolve()
+
+/** Only the streams and lifecycle events consumed by the fingerprint runner. */
+export type FingerprintChild = {
+  readonly stdout: Readable
+  readonly stderr: Readable
+  on(event: 'error', listener: (error: Error) => void): void
+  on(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void
+}
+
+const spawnFingerprintChild = ({
   tool,
   args,
 }: {
   readonly tool: string
   readonly args: readonly string[]
-}): Promise<string> =>
-  new Promise((resolveOutput, reject) => {
-    const child = spawn(requireFingerprintTool(tool), args, {
-      cwd: '/',
-      env: { PATH: '' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-    child.on('error', reject)
-    child.on('close', (code, signal) => {
-      if (code === 0) resolveOutput(Buffer.concat(stdout).toString('utf8'))
-      else
-        reject(
-          new Error(
-            `fingerprint tool failed for ${args[0] ?? ''} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
-          ),
-        )
-    })
-  })
+}): FingerprintChild =>
+  spawn(tool, args, { cwd: '/', env: { PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] })
+
+/** Runs one fingerprint child at a time without blocking the event loop. */
+export const runFingerprintTool = ({
+  tool,
+  args,
+  spawnChild = spawnFingerprintChild,
+}: {
+  readonly tool: string
+  readonly args: readonly string[]
+  readonly spawnChild?: (options: {
+    readonly tool: string
+    readonly args: readonly string[]
+  }) => FingerprintChild
+}): Promise<string> => {
+  const result = fingerprintQueue.then(
+    () =>
+      new Promise<string>((resolveOutput, reject) => {
+        const child = spawnChild({ tool: requireFingerprintTool(tool), args })
+        const stdout: Buffer[] = []
+        const stderr: Buffer[] = []
+        child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
+        child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+        child.on('error', reject)
+        child.on('close', (code, signal) => {
+          if (code === 0) resolveOutput(Buffer.concat(stdout).toString('utf8'))
+          else
+            reject(
+              new Error(
+                `fingerprint tool failed for ${args[0] ?? ''} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
+              ),
+            )
+        })
+      }),
+  )
+  // A failed root must not poison later requests, and callers still receive
+  // the original rejection through result.
+  fingerprintQueue = result.then(
+    () => {},
+    () => {},
+  )
+  return result
+}
 
 /**
  * Hashes each declared root using the pinned Rust CLI. The outer framing preserves the
