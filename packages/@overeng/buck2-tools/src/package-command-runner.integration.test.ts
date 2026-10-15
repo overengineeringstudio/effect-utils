@@ -338,6 +338,7 @@ describe('source-only workspace export bundling', () => {
       // Live code at both workspace boundaries proves recursive source
       // resolution; a bare re-export can disappear from Bun's module comments.
       const moduleUrl = `data:text/javascript;base64,${Buffer.from(left.bytes ?? '').toString('base64')}`
+      // oxlint-disable-next-line import/no-dynamic-require -- the data URL executes this test's runtime-generated bundle
       expect((await import(moduleUrl)).result).toBe('workspace:source:external')
       expect(left.bytes).not.toContain(first)
       expect(right.bytes).not.toContain(second)
