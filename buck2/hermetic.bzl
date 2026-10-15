@@ -86,6 +86,16 @@ def _ts_action_launcher(ctx, sandbox, command, inputs, outputs):
             "--coreutils-prog=mkdir", "-p", "--",
             [_ts_sandbox_absolute(output) for output in outputs],
         ], delimiter = " "),
+        # Private /tmp must not turn the native fingerprint cap into a per-action
+        # cap. Create persistent host inodes without truncation, then expose only
+        # a read-only mount; payload commands cannot replace semaphore files.
+        "fingerprint_locks=/tmp/effect-utils-buck2-fingerprint-v1",
+        cmd_args([
+            cmd_args(action_env.store_path, quote = "shell"),
+            '--coreutils-prog=mkdir -p -m 755 -- "$fingerprint_locks"',
+        ], delimiter = " "),
+        '[[ -d "$fingerprint_locks" && ! -L "$fingerprint_locks" ]]',
+        '(umask 022; for slot in admission slot-0 slot-1 slot-2 slot-3; do if [[ ! -e "$fingerprint_locks/$slot" ]]; then (set -o noclobber; : > "$fingerprint_locks/$slot") || [[ -f "$fingerprint_locks/$slot" ]]; fi; done)',
         command,
         "",
     ], allow_args = True)
@@ -125,6 +135,7 @@ def ts_action(ctx, arguments, inputs, outputs, tools = [], cacheable = True, **k
         "--proc", "/proc", "--remount-ro", "/proc",
         "--dev", "/dev", "--remount-ro", "/dev",
         "--tmpfs", "/tmp",
+        "--ro-bind", '"$fingerprint_locks"', "/tmp/effect-utils-buck2-fingerprint-v1",
         "--bind", '"$scratch"', '"$scratch"',
         "--dir", '"$PWD"',
     ], delimiter = " ")

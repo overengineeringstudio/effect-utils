@@ -1,3 +1,5 @@
+import * as ChildProcess from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import {
   chmodSync,
   existsSync,
@@ -14,8 +16,9 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
+import { PassThrough } from 'node:stream'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   copyDeclarationSources,
@@ -25,8 +28,13 @@ import {
   parseEmitOptions as parseEmit,
   parseTypecheckOptions as parseTypecheck,
   relinkStagedDependencyView,
+  runFingerprintTool,
   stagedEmitPackageRoot,
 } from './typescript-runner.ts'
+
+const nativeChildProcess = { ...ChildProcess }
+const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
+vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
 
 const scratchDirectories: string[] = []
 const fingerprintTool =
@@ -48,6 +56,7 @@ const createFixture = () => {
 
 afterEach(() => {
   for (const directory of scratchDirectories.splice(0)) rmSync(directory, { recursive: true })
+  childProcessMocks.spawn.mockReset().mockImplementation(nativeChildProcess.spawn)
 })
 
 it('preserves an error message when the runtime stack omits it', () => {
@@ -57,6 +66,33 @@ it('preserves an error message when the runtime stack omits it', () => {
   expect(formatError(error)).toContain(
     'expected declaration entrypoint was not emitted: mod.d.ts\nError',
   )
+})
+
+it('queues root subprocesses and continues after a failed fingerprint', async () => {
+  const turns = Array.from({ length: 3 }, () => Promise.withResolvers<ChildProcess.ChildProcess>())
+  let spawned = 0
+  childProcessMocks.spawn.mockImplementation(() => {
+    // Only streams and close events belong to this queue test; no OS child is started.
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+    }) as ChildProcess.ChildProcess
+    turns[spawned]?.resolve(child)
+    spawned += 1
+    return child
+  })
+  const results = Promise.allSettled(
+    turns.map((_, index) =>
+      runFingerprintTool({ tool: fingerprintTool, args: [`/root-${index}`] }),
+    ),
+  )
+  for (const [index, turn] of turns.entries()) {
+    const child = await turn.promise
+    expect(spawned).toBe(index + 1)
+    child.emit('close', index === 0 ? 1 : 0, null)
+  }
+  const settled = await results
+  expect(settled.map((result) => result.status)).toEqual(['rejected', 'fulfilled', 'fulfilled'])
 })
 
 describe('TypeScript emit declaration command', () => {

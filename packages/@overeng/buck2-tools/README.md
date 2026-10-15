@@ -33,11 +33,29 @@ select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
 
 Batch publication prepares up to four private candidates concurrently and
-serializes commits within each editor state root. Independent root fingerprints
-within each candidate also run concurrently. All fingerprint subprocesses
-for a candidate settle before hardening, promotion, or failure cleanup can
-change it. A failed fingerprint does not release the candidate or its state-root
-lock while another payload walk remains active.
+serializes commits within each editor state root. Fingerprint requests within
+each TypeScript process queue one child at a time, including independent roots.
+The native fingerprint library admits at most **four concurrent walks per host**
+across Buck actions, publishers, worktrees, users, and executable versions that
+implement this protocol. This is a fixed filesystem-pressure limit, not a CPU
+count: CPU-scaled fan-out can livelock ZFS dnode lookup.
+
+Admission uses persistent kernel file locks in
+`/tmp/effect-utils-buck2-fingerprint-v1`, deliberately independent of `TMPDIR`
+and worktree paths. Waiting processes block without polling. A full semaphore
+waits for slot zero before rescanning other slots, so admission may briefly
+leave another slot idle. Descriptor closure (including process death) releases
+capacity; no stale PID recovery is needed. Do not unlink the coordination
+directory or files while any fingerprint process is alive. Buck's Linux action
+launcher initializes the host files without truncation and mounts their directory
+read-only into its otherwise private `/tmp`, so independent action sandboxes
+share the same inodes without granting payloads permission to replace them.
+Other mount namespaces must likewise expose this host directory; old tool
+versions do not participate. Coordination errors fail closed before walking.
+
+All fingerprint subprocesses for a candidate settle before hardening, promotion,
+or failure cleanup can change it. A failed fingerprint does not release the
+candidate or its state-root lock while another payload walk remains active.
 
 Unstable native fingerprints report the entry type, changed metadata fields,
 and before/after metadata and link targets. Publication errors also report the
