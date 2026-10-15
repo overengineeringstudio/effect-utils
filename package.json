@@ -62,5 +62,5 @@
     "packages/@overeng/utils-dev",
     "packages/@overeng/utils-storybook"
   ],
-  "packageManager": "pnpm@12.7.0"
+  "packageManager": "pnpm@12.11.2"
 }

@@ -35,6 +35,7 @@ const SELF_HOSTED_RUNNER_LABELS = [
     'sh-linux-arm64-publish',
     ...darwinArm64Runner,
     namespaceLinuxX64PairedPerfRunner,
+    `${namespaceLinuxX64PairedPerfRunner};job.priority=4`,
   ]),
 ] as const
 

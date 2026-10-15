@@ -40,6 +40,7 @@ import { fragment } from '../../packages/@overeng/otel-contract/src/registry.ts'
 import ptyContract from '../../packages/@overeng/pty-effect/src/pty.contract.ts'
 import restateContract from '../../packages/@overeng/restate-effect/src/observability/restate.contract.ts'
 import cmdContract from '../../packages/@overeng/utils/src/node/cmd.contract.ts'
+import githubAppContract from '../../packages/@overeng/utils/src/node/github-app.contract.ts'
 import pwContract from '../../packages/@overeng/utils/src/node/playwright/pw.contract.ts'
 import semaphoreContract from '../../packages/@overeng/utils/src/node/semaphore.contract.ts'
 
@@ -70,6 +71,7 @@ export const memberSeamPaths = [
   'packages/@overeng/pty-effect/src/pty.contract.ts',
   'packages/@overeng/restate-effect/src/observability/restate.contract.ts',
   'packages/@overeng/utils/src/node/cmd.contract.ts',
+  'packages/@overeng/utils/src/node/github-app.contract.ts',
   'packages/@overeng/utils/src/node/playwright/pw.contract.ts',
   'packages/@overeng/utils/src/node/semaphore.contract.ts',
 ] as const
@@ -90,6 +92,7 @@ const contracts = [
   ptyContract,
   restateContract,
   cmdContract,
+  githubAppContract,
   pwContract,
   semaphoreContract,
 ]

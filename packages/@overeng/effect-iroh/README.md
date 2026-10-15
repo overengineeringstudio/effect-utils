@@ -4,7 +4,7 @@ An Effect 4 wrapper over the official [`@number0/iroh`](https://docs.iroh.comput
 
 ## Owner
 
-`agent/effect-utils/effect-iroh`
+`agent/effect-utils/effect-utils-manager`
 
 ## Usage
 

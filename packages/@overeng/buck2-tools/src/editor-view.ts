@@ -1211,9 +1211,9 @@ const fingerprintDeclaredRoots = async ({
     readonly literalLinksDigest?: string
   }
 }): Promise<DeclaredRootFingerprints> => {
-  // Declared roots are proven disjoint read-only trees, so their fingerprints are
-  // computed concurrently. Settling first and rethrowing in declared order keeps both
-  // the reported failure and the hashed sequence deterministic.
+  // Queue disjoint root requests together; the shared tool runner serializes
+  // subprocesses locally and native admission bounds walks across processes.
+  // Settling first preserves deterministic failures and candidate lifetime.
   const linkOwners: TreeLinkOwners = roots
   const settled = await Promise.allSettled(
     roots.map(async (root) => {

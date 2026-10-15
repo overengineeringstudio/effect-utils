@@ -329,10 +329,13 @@ fn block(
     lines
 }
 
-/// Replaces the path note with a cursor-near readout without adding a row.
+/// Replaces the path note and uptime with a cursor-near readout without adding a row.
 fn identity_tooltip(line: &mut Line, description: &str, width: usize, pointer_col: usize) {
     drop::clear_notice(line);
-    if let Some(note) = line.iter().position(|span| span.role == Role::PathNote) {
+    if let Some(note) = line
+        .iter()
+        .position(|span| span.role == Role::PathNote || span.text.starts_with("up "))
+    {
         line.truncate(note.saturating_sub(1));
     }
     hover::append(line, description, width, pointer_col);
@@ -362,7 +365,8 @@ fn append_note(line: &mut Line, host: &HostState, now: SystemTime, width: usize)
     });
     let uptime = match host.boot {
         crate::uptime::State::Disabled => None,
-        crate::uptime::State::Unavailable => Some(span(Role::Dim, uptime_label(None, now))),
+        crate::uptime::State::Pending => Some(span(Role::Dim, uptime_label(None, now))),
+        crate::uptime::State::Failed(_) => Some(span(Role::Dim, "up ?")),
         crate::uptime::State::Boot(boot) => Some(span(Role::Dim, uptime_label(Some(boot), now))),
     };
     let total_width = note.as_ref().map_or(0, |note| note.text.width())
@@ -420,12 +424,35 @@ fn uptime_note_renders_label_and_dim_placeholder() {
     append_note(&mut line, &host, now, 80);
     let text: String = line.iter().map(|span| span.text.as_str()).collect();
     assert!(text.ends_with("tailnet direct · up 14d22h"));
-    host.boot = crate::uptime::State::Unavailable;
+    host.boot = crate::uptime::State::Pending;
     let mut line = vec![span(Role::Plain, "host-a")];
     append_note(&mut line, &host, now, 80);
     assert!(line
         .iter()
         .any(|span| span.role == Role::Dim && span.text == "up –"));
+    host.boot = crate::uptime::State::Failed(crate::uptime::Failure::HostKey);
+    let mut line = vec![span(Role::Plain, "host-a")];
+    append_note(&mut line, &host, now, 80);
+    assert!(line
+        .iter()
+        .any(|span| span.role == Role::Dim && span.text == "up ?"));
+    assert!(note_region(&line).is_some());
+    let hover = Some(Hover {
+        host: 0,
+        cell: NOTE_CELL,
+        overview: false,
+    });
+    let (_, description) = tooltip(&host, &tests::LIVE, 80, hover, None).unwrap();
+    assert!(description.ends_with("uptime unavailable: host key unknown"));
+    host.path.note = None;
+    let (_, description) = tooltip(&host, &tests::LIVE, 80, hover, None).unwrap();
+    assert_eq!(description, "uptime unavailable: host key unknown");
+    let mut line = vec![span(Role::Plain, "host-a")];
+    append_note(&mut line, &host, now, 80);
+    identity_tooltip(&mut line, &description, 80, 80);
+    assert!(line
+        .iter()
+        .any(|span| span.role == Role::Tooltip && span.text.contains(&description)));
     host.boot = crate::uptime::State::Disabled;
     let mut line = vec![span(Role::Plain, "host-a")];
     append_note(&mut line, &host, now, 80);
@@ -434,14 +461,17 @@ fn uptime_note_renders_label_and_dim_placeholder() {
 
 fn note_region(line: &Line) -> Option<(usize, usize)> {
     let mut column = 0;
+    let mut start = None;
+    let mut end = 0;
     for span in line {
-        let end = column + span.text.width();
-        if span.role == Role::PathNote {
-            return Some((column, end));
+        let next = column + span.text.width();
+        if span.role == Role::PathNote || span.text.starts_with("up ") {
+            start.get_or_insert(column);
+            end = next;
         }
-        column = end;
+        column = next;
     }
-    None
+    start.map(|start| (start, end))
 }
 
 fn tooltip(
@@ -451,8 +481,22 @@ fn tooltip(
     hover: Option<Hover>,
     hovered: Option<(usize, Bucket)>,
 ) -> Option<(usize, String)> {
+    let failure = match host.boot {
+        crate::uptime::State::Failed(reason) => {
+            Some(format!("uptime unavailable: {}", reason.reason()))
+        }
+        _ => None,
+    };
     if hover.is_some_and(|hover| hover.cell == NOTE_CELL) {
-        return Some((width, host.path.note.as_ref()?.tooltip()));
+        let mut description = host.path.note.as_ref().map(crate::path::Note::tooltip);
+        if let Some(failure) = failure {
+            let text = description.get_or_insert_with(String::new);
+            if !text.is_empty() {
+                text.push_str(" · ");
+            }
+            text.push_str(&failure);
+        }
+        return Some((width, description?));
     }
     let (cell, bucket) = hovered?;
     let grid = if hover.is_some_and(|hover| hover.overview) {
@@ -464,6 +508,9 @@ fn tooltip(
     let mut description = timeline::describe(&bucket, timeline.hover_now.unwrap_or(timeline.now));
     if let Some(change) = host.path_change_in(from, to) {
         let _ = write!(description, " · {} → {}", change.old, change.new);
+    }
+    if let Some(failure) = failure {
+        let _ = write!(description, " · {failure}");
     }
     Some((RULE.width() + cell, description))
 }

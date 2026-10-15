@@ -653,52 +653,146 @@ impl Ctl {
 }
 fn known_option(key: &str) -> bool {
     #[cfg(feature = "test-signing-cert")]
-    if matches!(key, "test-self-signed-cert-out" | "mode") { return true; }
-    matches!(key, "config" | "app-dir" | "state" | "socket" | "plist-dir" | "domain" |
-        "desired" | "generation" | "keychain" | "keychain-password-fd" | "common-name-hint" |
-        "csr-out" | "cert" | "restore-host" | "signing-auth-pending" | "replace" | "no-sign" |
-        "certificate-sha1" | "requirement" | "target" | "inventory" | "identifier" | "production-requirements" |
-        "artifact" | "archive-dir" | "output" | "plist" | "target-uid" | "evidence" | "validate-only" | "lifecycle-fd")
+    if matches!(key, "test-self-signed-cert-out" | "mode") {
+        return true;
+    }
+    matches!(
+        key,
+        "config"
+            | "app-dir"
+            | "state"
+            | "socket"
+            | "plist-dir"
+            | "domain"
+            | "desired"
+            | "generation"
+            | "keychain"
+            | "keychain-password-fd"
+            | "common-name-hint"
+            | "csr-out"
+            | "cert"
+            | "restore-host"
+            | "signing-auth-pending"
+            | "replace"
+            | "no-sign"
+            | "certificate-sha1"
+            | "requirement"
+            | "target"
+            | "inventory"
+            | "identifier"
+            | "production-requirements"
+            | "artifact"
+            | "incumbent"
+            | "archive-dir"
+            | "output"
+            | "plist"
+            | "target-uid"
+            | "evidence"
+            | "validate-only"
+            | "lifecycle-fd"
+    )
 }
 fn run() -> Result<Value> {
     let _signals = install_signal_handlers()?;
-    let mut argv = std::env::args().skip(1); let action = argv.next().ok_or_else(|| fail(64, "invalid-input", "Missing primitive"))?;
+    let mut argv = std::env::args().skip(1);
+    let action = argv
+        .next()
+        .ok_or_else(|| fail(64, "invalid-input", "Missing primitive"))?;
     let mut args = BTreeMap::new();
     while let Some(flag) = argv.next() {
-        let key = flag.strip_prefix("--").ok_or_else(|| fail(64, "invalid-input", "Expected --option"))?;
-        if !known_option(key) { return Err(fail(64, "invalid-input", format!("Unknown option --{key}"))); }
-        if matches!(key, "restore-host" | "signing-auth-pending" | "replace" | "no-sign" | "validate-only") {
-            if args.insert(key.to_owned(), String::new()).is_some() { return Err(fail(64, "invalid-input", "Duplicate option")); }
+        let key = flag
+            .strip_prefix("--")
+            .ok_or_else(|| fail(64, "invalid-input", "Expected --option"))?;
+        if !known_option(key) {
+            return Err(fail(64, "invalid-input", format!("Unknown option --{key}")));
+        }
+        if matches!(
+            key,
+            "restore-host" | "signing-auth-pending" | "replace" | "no-sign" | "validate-only"
+        ) {
+            if args.insert(key.to_owned(), String::new()).is_some() {
+                return Err(fail(64, "invalid-input", "Duplicate option"));
+            }
             continue;
         }
-        let value = argv.next().ok_or_else(|| fail(64, "invalid-input", "Missing option value"))?;
-        if args.insert(key.to_owned(), value).is_some() { return Err(fail(64, "invalid-input", "Duplicate option")); }
+        let value = argv
+            .next()
+            .ok_or_else(|| fail(64, "invalid-input", "Missing option value"))?;
+        if args.insert(key.to_owned(), value).is_some() {
+            return Err(fail(64, "invalid-input", "Duplicate option"));
+        }
     }
-    if args.contains_key("validate-only") && (action != "converge-launchd" || !args.contains_key("plist")) {
-        return Err(fail(64, "invalid-input", "--validate-only requires converge-launchd --plist"));
+    if args.contains_key("validate-only")
+        && (action != "converge-launchd" || !args.contains_key("plist"))
+    {
+        return Err(fail(
+            64,
+            "invalid-input",
+            "--validate-only requires converge-launchd --plist",
+        ));
     }
-    let config_path = args.get("config").ok_or_else(|| fail(64, "invalid-input", "Missing --config"))?;
-    let config = serde_json::from_slice(&fs::read(config_path)?)?; let ctl = Ctl { config, args };
+    if args.contains_key("incumbent") {
+        if !matches!(action.as_str(), "install-host" | "rollback") || !args.contains_key("artifact")
+        {
+            return Err(fail(
+                64,
+                "invalid-input",
+                "--incumbent requires install-host or rollback --artifact",
+            ));
+        }
+        releases::Incumbent::parse(args.get("incumbent").map(String::as_str))?;
+    }
+    let config_path = args
+        .get("config")
+        .ok_or_else(|| fail(64, "invalid-input", "Missing --config"))?;
+    let config = serde_json::from_slice(&fs::read(config_path)?)?;
+    let ctl = Ctl { config, args };
     // Keychain calls in this process fail instead of showing UI (errSecInteractionNotAllowed).
     // SAFETY: a plain flag setter for this process's Security framework client state.
     let status = unsafe { SecKeychainSetUserInteractionAllowed(0) };
-    if status != 0 { return Err(fail(23, "operation-failed", format!("SecKeychainSetUserInteractionAllowed status {status}"))); }
-    let _lifecycle = if matches!(action.as_str(), "install-host" | "select-generation" | "converge-launchd" | "rollback" |
-        "provision-signing-key" | "import-signing-cert" | "prove-signing-key" | "sign-fixture") &&
-        !(action == "converge-launchd" && ctl.args.contains_key("plist") && ctl.args.contains_key("validate-only") && !ctl.args.contains_key("lifecycle-fd")) {
+    if status != 0 {
+        return Err(fail(
+            23,
+            "operation-failed",
+            format!("SecKeychainSetUserInteractionAllowed status {status}"),
+        ));
+    }
+    let _lifecycle = if matches!(
+        action.as_str(),
+        "install-host"
+            | "select-generation"
+            | "converge-launchd"
+            | "rollback"
+            | "provision-signing-key"
+            | "import-signing-cert"
+            | "prove-signing-key"
+            | "sign-fixture"
+    ) && !(action == "converge-launchd"
+        && ctl.args.contains_key("plist")
+        && ctl.args.contains_key("validate-only")
+        && !ctl.args.contains_key("lifecycle-fd"))
+    {
         lifecycle::verify(&ctl)?
-    } else { None };
+    } else {
+        None
+    };
     let result = match action.as_str() {
-        "describe-host" => ctl.describe_host(), "seal-host" => ctl.seal_host(),
+        "describe-host" => ctl.describe_host(),
+        "seal-host" => ctl.seal_host(),
         "install-host" if ctl.args.contains_key("artifact") => ctl.install_artifact(),
-        "install-host" => ctl.install(), "select-generation" => ctl.generation(),
+        "install-host" => ctl.install(),
+        "select-generation" => ctl.generation(),
         "converge-launchd" if ctl.args.contains_key("plist") => ctl.converge_supplied(),
         "converge-launchd" => ctl.converge(),
         "verify" if ctl.args.contains_key("artifact") => ctl.verify_artifact(),
         "rollback" if ctl.args.contains_key("artifact") => ctl.rollback_artifact(),
         "status" if ctl.args.contains_key("artifact") => ctl.status_artifact(),
-        "verify" => ctl.verify(), "rollback" => ctl.rollback(), "status" => ctl.status(),
-        "provision-signing-key" => keys::provision(&ctl), "import-signing-cert" => keys::import_certificate(&ctl), "prove-signing-key" => keys::prove(&ctl),
+        "verify" => ctl.verify(),
+        "rollback" => ctl.rollback(),
+        "status" => ctl.status(),
+        "provision-signing-key" => keys::provision(&ctl),
+        "import-signing-cert" => keys::import_certificate(&ctl),
+        "prove-signing-key" => keys::prove(&ctl),
         "sign-fixture" => keys::sign_fixture(&ctl),
         #[cfg(feature = "test-signing-cert")]
         "seal-fixture-artifact" => ctl.seal_fixture_artifact(),

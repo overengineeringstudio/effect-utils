@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Cause, Effect, Exit, Option, Schema } from 'effect'
+import { Cause, Effect, Exit, Logger, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
@@ -126,6 +126,66 @@ const runMrCommand = ({
   }).pipe(Effect.scoped)
 
 describe('mr store gc', () => {
+  it.effect(
+    'completes gc and reports foreign files at every enumeration level without deleting them',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'test-owner', repo: 'test-repo', branches: ['main'] },
+          { host: 'github.com', owner: 'test-owner', repo: 'foreign-refs', branches: [] },
+        ])
+        // The fixture creates an empty refs/ even when no worktrees are requested.
+        yield* fs.rename(
+          `${storePath}github.com/test-owner/foreign-refs/refs`,
+          `${storePath}github.com/test-owner/foreign-refs/.fixture-refs`,
+        )
+        const foreignPaths = [
+          `${storePath}foreign-host`,
+          `${storePath}github.com/foreign-owner`,
+          `${storePath}github.com/test-owner/foreign-backup.sqlite3`,
+          `${storePath}github.com/test-owner/test-repo/refs/tags`,
+          `${storePath}github.com/test-owner/test-repo/refs/heads/foreign-ref`,
+          `${storePath}github.com/test-owner/foreign-refs/refs`,
+        ]
+        for (const path of foreignPaths) yield* fs.writeFileString(path, '')
+        const warnings: Array<string> = []
+        const loggerLayer = Logger.layer(
+          [
+            Logger.make(({ logLevel, message }) => {
+              if (logLevel === 'Warn') warnings.push(String(message))
+            }),
+          ],
+          { mergeWithExisting: false },
+        )
+        const gc = yield* runMrCommand({
+          cwd: storePath,
+          command: ['store', 'gc', '--dry-run', '--output', 'json'],
+          env: { MEGAREPO_STORE: storePath },
+        }).pipe(Effect.provide(loggerLayer))
+        expect(gc.failure).toBe('')
+        expect(gc.exitCode).toBe(0)
+        expect(decodeStoreGcJsonOutput(gc.stdout).results.length).toBeGreaterThan(0)
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+        const listed = yield* store
+          .listWorktrees(parseSourceString('test-owner/test-repo')!)
+          .pipe(Effect.provide(loggerLayer))
+        expect(listed.map((worktree) => worktree.ref)).toEqual(['main'])
+        expect(
+          yield* store
+            .listWorktrees(parseSourceString('test-owner/foreign-refs')!)
+            .pipe(Effect.provide(loggerLayer)),
+        ).toEqual([])
+        for (const path of foreignPaths) {
+          expect(warnings.some((warning) => warning.includes(path))).toBe(true)
+          expect((yield* fs.stat(path)).size).toBe(0n)
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
   describe('with unused worktrees', () => {
     it.effect(
       'should identify unused worktrees when not in a megarepo',

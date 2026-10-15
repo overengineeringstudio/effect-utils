@@ -13,10 +13,15 @@ import type { GenieContext } from '../core.ts'
 import { validateCrossInstallRootVersions } from '../cross-install-root/mod.ts'
 import type { CatalogInput } from '../package-json/catalog.ts'
 import type { WorkspacePackageLike } from '../package-json/mod.ts'
+import { satisfiesRange } from '../semver/mod.ts'
 import { joinPath } from '../utils/path.ts'
 import { stringify } from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
-import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
+import {
+  relativeRepoPath,
+  rootWorkspaceMemberPathsFromPackages,
+  workspaceClosureReferenceSource,
+} from '../workspace-graph.ts'
 
 // =============================================================================
 // Settings Types
@@ -1168,6 +1173,14 @@ const collectLogicalWorkspaceDepsRecursive = ({
 /** Stable root-local path through which pnpm consumes the current source generation. */
 export const pnpmSourceInputStagePath = '.devenv/pnpm-source-inputs/current'
 
+// Admit only the stable, complete-version range grammar the shared checker fully
+// evaluates. Unsupported npm syntax must not silently acquire a file: exception.
+const stableVersionPattern = String.raw`(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)`
+const projectedPeerVersionPattern = new RegExp(`^${stableVersionPattern}$`)
+const projectedPeerRangePattern = new RegExp(
+  `^(?:[~^]?${stableVersionPattern}|>=${stableVersionPattern}(?:\\s+<${stableVersionPattern})?|\\*|(?:0|[1-9]\\d*)\\.(?:[xX*](?:\\.[xX*])?|(?:0|[1-9]\\d*)\\.[xX*]))$`,
+)
+
 /** Project foreign workspace dependencies into one root-local source generation. */
 export const projectPnpmSourceInputs = ({
   packages,
@@ -1177,11 +1190,14 @@ export const projectPnpmSourceInputs = ({
   repoName: string
 }) => {
   const byName = new Map<string, string>()
-  const visited = new Set<string>()
+  const projectedPackages = new Map<string, WorkspacePackageLike>()
+  // Traverse each representation's graph, but validate reference-only entries
+  // against their original manifests rather than their intentionally stripped data.
+  const visited = new Set<WorkspacePackageLike>()
   const visit = (pkg: WorkspacePackageLike) => {
     const key = `${pkg.meta.workspace.repoName}:${pkg.meta.workspace.memberPath}`
-    if (visited.has(key) === true) return
-    visited.add(key)
+    if (visited.has(pkg) === true) return
+    visited.add(pkg)
 
     if (pkg.meta.workspace.repoName !== repoName) {
       const name = pkg.data.name
@@ -1197,6 +1213,7 @@ export const projectPnpmSourceInputs = ({
         throw new Error(`Workspace package ${name} maps to both ${previous} and ${sourcePath}`)
       }
       byName.set(name, sourcePath)
+      projectedPackages.set(name, pkg.meta[workspaceClosureReferenceSource] ?? pkg)
     }
 
     for (const dep of pkg.meta.workspace.deps) visit(dep)
@@ -1206,11 +1223,42 @@ export const projectPnpmSourceInputs = ({
   const entries = [...byName.entries()].toSorted(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
   )
+  const allowedVersions: Record<string, string> = {}
+  for (const [name] of entries) {
+    const pkg = projectedPackages.get(name)!
+    for (const [peer, range] of Object.entries(pkg.data.peerDependencies ?? {}).toSorted(
+      ([left], [right]) => (left < right ? -1 : left > right ? 1 : 0),
+    )) {
+      const target = projectedPackages.get(peer)
+      if (target === undefined) continue
+      const version = target.data.version
+      if (
+        version === undefined ||
+        projectedPeerVersionPattern.test(version) === false ||
+        [version, range].some((value) =>
+          (value.match(/\d+/g) ?? []).some((part) => Number.isSafeInteger(Number(part)) === false),
+        ) === true ||
+        range.split('||').every((part) => projectedPeerRangePattern.test(part.trim()) === true) ===
+          false
+      ) {
+        throw new Error(
+          `${name} peer ${peer} ${range} vs projected ${version ?? '(missing version)'}: unsupported semver version or range`,
+        )
+      }
+      if (satisfiesRange(version, range) === false) {
+        throw new Error(`${name} peer ${peer} ${range} vs projected ${version}`)
+      }
+      // pnpm 12 compares file: identity, not package.json version, for local peers.
+      // Validate the semver contract above before admitting this specific edge.
+      allowedVersions[`${name}>${peer}`] = `file:${pnpmSourceInputStagePath}/${byName.get(peer)!}`
+    }
+  }
   return {
     sourceInputPaths: [...new Set(entries.map(([, sourcePath]) => sourcePath))].toSorted(),
     overrides: Object.fromEntries(
       entries.map(([name, sourcePath]) => [name, `file:${pnpmSourceInputStagePath}/${sourcePath}`]),
     ),
+    peerDependencyRules: { allowedVersions },
   }
 }
 

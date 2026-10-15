@@ -33,7 +33,7 @@ static_source_set(
 # over the store fingerprint sidecar, so both are declared inputs, not just
 # generated output.
 export_materialization_inputs(
-    glob(["*.ts"], exclude = ["assemble-store.ts"]) + ["BUCK", "pnpm-lock.sha256.json"],
+    glob(["*.ts", "fixtures/**"], exclude = ["assemble-store.ts"]) + ["BUCK", "pnpm-lock.sha256.json"],
 )
 
 load("//buck2/dependencies:defs.bzl", "pnpm_package", "pnpm_platform_gated_packages")

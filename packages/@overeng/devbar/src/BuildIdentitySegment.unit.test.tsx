@@ -67,41 +67,37 @@ describe('BuildIdentitySegment', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('dismisses hovered details with focus outside the trigger before closing the open panel', () => {
+  it('does not consume Escape from a host input while hovered details are visible', () => {
     const onOpenPanelChange = vi.fn()
-    const { unmount } = render(
-      <React.StrictMode>
+    const onHostKeyDown = vi.fn()
+    render(
+      <>
+        <textarea aria-label="Host input" onKeyDown={onHostKeyDown} />
         <Devbar
           panels={[{ id: 'logs', label: 'Logs', render: () => <button>Inspect logs</button> }]}
-          segments={[
-            { id: 'build', render: () => <BuildIdentitySegment identity={identity} now={now} /> },
-          ]}
+          strip={<BuildIdentitySegment identity={identity} now={now} />}
           openPanel="logs"
           onOpenPanelChange={onOpenPanelChange}
         />
-      </React.StrictMode>,
+      </>,
     )
-    const outside = screen.getByRole('button', { name: 'Inspect logs' })
-    outside.focus()
+    const outside = screen.getByRole('textbox', { name: 'Host input' })
+    act(() => outside.focus())
     const trigger = screen.getByRole('button', { name: 'Build identity: a7647bb · 3h' })
     fireEvent.mouseEnter(trigger)
-    expect(screen.getByRole('tooltip')).toBeDefined()
-    fireEvent.keyDown(outside, { key: 'Tab' })
-    expect(screen.getByRole('tooltip')).toBeDefined()
     fireEvent.keyDown(outside, { key: 'Escape' })
-    expect(screen.queryByRole('tooltip')).toBeNull()
+    expect(onHostKeyDown).toHaveBeenCalledOnce()
+    expect(onHostKeyDown.mock.calls[0]?.[0].defaultPrevented).toBe(false)
+    expect(screen.getByRole('tooltip')).toBeDefined()
     expect(document.activeElement).toBe(outside)
-    expect(screen.getByRole('region', { name: 'Logs' })).toBeDefined()
     expect(onOpenPanelChange).not.toHaveBeenCalled()
-    fireEvent.keyDown(outside, { key: 'Escape' })
+    act(() => trigger.focus())
+    fireEvent.keyDown(trigger, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+    expect(onOpenPanelChange).not.toHaveBeenCalled()
+    fireEvent.keyDown(trigger, { key: 'Escape' })
     expect(onOpenPanelChange).toHaveBeenCalledExactlyOnceWith(undefined)
-    fireEvent.mouseLeave(trigger)
-    fireEvent.mouseEnter(trigger)
-    expect(screen.getByRole('tooltip')).toBeDefined()
-    unmount()
-    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
-    document.dispatchEvent(escape)
-    expect(escape.defaultPrevented).toBe(false)
   })
 
   it('does not invent commit or deploy ages when their timestamps are absent', () => {

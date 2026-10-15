@@ -22,7 +22,7 @@
     },
     "packageManager": {
       "name": "pnpm",
-      "version": "12.7.0"
+      "version": "12.11.2"
     }
   },
   "installPolicy": {
@@ -76,7 +76,7 @@
   },
   "packageManager": {
     "name": "pnpm",
-    "version": "12.7.0"
+    "version": "12.11.2"
   },
   "schemaVersion": 2,
   "storeContract": {

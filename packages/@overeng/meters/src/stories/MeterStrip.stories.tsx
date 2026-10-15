@@ -59,7 +59,7 @@ export const Light: Story = {
       'aria-pressed',
       'true',
     )
-    await userEvent.click(canvas.getByRole('button', { name: /^Frames:/ }))
+    await userEvent.click(canvas.getByRole('button', { name: /^Frames / }))
     await expect(canvas.getByLabelText('Detail requests')).toHaveTextContent('story.frames')
     await userEvent.click(canvas.getByRole('button', { name: 'Resume meters' }))
   },

@@ -23,9 +23,9 @@ jobs:
       matrix:
         include:
           - runner: namespace-profile-linux-x86-64
-            runnerLabel: namespace-profile-linux-x86-64;github.run-id={0};container.privileged=true
+            runnerLabel: namespace-profile-linux-x86-64;github.run-id={0};container.privileged=true;job.priority=1
           - runner: namespace-profile-macos-arm64
-            runnerLabel: namespace-profile-macos-arm64;github.run-id={0}
+            runnerLabel: namespace-profile-macos-arm64;github.run-id={0};job.priority=1
     runs-on: ['${{ format(matrix.runnerLabel, github.run_id) }}']
     timeout-minutes: 120
     permissions:

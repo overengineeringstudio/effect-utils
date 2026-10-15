@@ -94,6 +94,35 @@ parent traversal, missing sources, all directory symlinks, resolved file
 symlink escapes, and cleanup or publication destinations outside its fixed
 root-owned subtree.
 
+The Genie source projection emits `overrides` and `peerDependencyRules` into
+the same generated workspace artifact. For each peer edge between two projected
+packages, it checks the target's manifest version against the declared range
+before emitting `allowedVersions["<dependent>><peer>"]`. A mismatch, missing
+version, or syntax the shared semver checker cannot fully evaluate fails
+generation with the edge, range, and projected version. The supported subset
+is stable complete versions, caret and tilde ranges over complete versions,
+`>=X.Y.Z`, `>=X.Y.Z <A.B.C`, dotted wildcards with at most three components,
+`*`, and their `||` unions. Every union branch must be supported before any
+branch is evaluated; prereleases, build metadata, protocols, and other
+operators fail closed.
+
+`workspaceClosureReference` retains a non-enumerable symbol-keyed link to its
+original manifest in metadata. Peer validation uses that provenance, including
+for recursively referenced packages, independent of traversal order. Ordinary
+composition still sees only the stripped reference data; serialized manifests
+and the override closure do not change. Complete no-peer manifests need no
+version, even when their data contains only a name. Missing versions fail
+closed only when required to validate an actual projected peer edge.
+
+pnpm 12.7.0 checks a local peer's `file:` identity rather than its manifest
+version. Each generated allowance therefore pins the exact projected `file:`
+specifier, scoped to that dependent/peer edge; an exact semver allowance does
+not work for these packages. Reprojection rechecks the version even when the
+file path is unchanged. Absent optional peers and non-projected registry peers
+receive no allowance. Consumers merge these generated rules, never handwritten
+exceptions; `genie:check` detects drift. `strictPeerDependencies` remains true,
+with no generated `allowAny`, `ignoreMissing`, or wildcard allowance.
+
 The declared source set and canonical content determine one generation
 identity. Readiness validates that the published read-only generation matches
 that identity; staged output is not a second freshness authority. A canonical

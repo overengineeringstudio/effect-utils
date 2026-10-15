@@ -304,6 +304,8 @@ const longJobTimeoutMinutes = 45
 
 const heavyCiIf = `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}`
 const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
+// Branch secrets are available only through a deliberate collaborator dispatch, never a PR event.
+const notionIntegrationCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true)) }}`
 const empiricalProofLaneIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}`
 const publishingCachixStep = cachixPublisherStep({
   name: 'overeng-effect-utils',
@@ -335,9 +337,14 @@ const measurementReportIf = [
   "&& needs.main-source-shape.result != 'failure' }}",
 ].join(' ')
 
+/** Required checks, main verification and publication share the delivery tier. */
+const deliveryJobPriority = 1
+const backgroundJobPriority = 4
+
 const job = ({
   step,
   privileged,
+  priority = deliveryJobPriority,
   extraSteps = [],
   afterSteps = [],
   laneIf = heavyCiIf,
@@ -345,6 +352,7 @@ const job = ({
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
   privileged: NamespacePrivilege
+  priority?: number | string
   extraSteps?: readonly any[]
   afterSteps?: readonly any[]
   laneIf?: string
@@ -356,6 +364,7 @@ const job = ({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
     privileged,
+    priority,
   }),
   'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
@@ -480,6 +489,7 @@ const unitTestJob = ({
     profile: runner,
     runId: '${{ github.run_id }}',
     privileged,
+    priority: deliveryJobPriority,
   }),
   'timeout-minutes': 90,
   defaults: bashShellDefaults,
@@ -587,6 +597,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
     name: 'pr/quality',
     ...job({
       privileged: 'trusted',
+      priority: deliveryJobPriority,
       laneIf: `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}`,
       timeoutMinutes: 90,
       extraSteps: [
@@ -692,6 +703,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   'test-macos': unitTestJob({ runner: 'namespace-profile-macos-arm64', privileged: 'always' }),
   'test-playwright-utils': job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'Utils Playwright tests',
@@ -714,6 +726,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   }),
   'test-playwright-tui-react': job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'TUI React Playwright tests',
@@ -736,6 +749,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   }),
   'test-megarepo-cold-gc': job({
     privileged: 'trusted',
+    priority: backgroundJobPriority,
     laneIf: empiricalProofLaneIf,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
@@ -747,6 +761,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
 
   cargo: job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     step: {
       name: 'Cargo build + test + clippy + fmt',
       env: githubTokenEnv(),
@@ -760,6 +775,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   // The bounded registry and version checks run through Buck's quick aggregate in the same lane.
   weaver: job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     timeoutMinutes: longJobTimeoutMinutes,
     extraSteps: [
       {
@@ -876,6 +892,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1004,6 +1021,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 120,
     permissions: { contents: 'read' },
@@ -1037,6 +1055,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 120,
     permissions: { contents: 'read', 'pull-requests': 'read', statuses: 'write' },
@@ -1238,6 +1257,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1283,6 +1303,7 @@ const extraJobs: Record<string, any> = {
   // the static fast-feedback pre-check. Separate lane because it is heavier than the product checks.
   'bootstrap-cold-proof': job({
     privileged: 'trusted',
+    priority: backgroundJobPriority,
     laneIf: empiricalProofLaneIf,
     step: {
       name: 'Bootstrap cold-proof (R32)',
@@ -1297,6 +1318,7 @@ const extraJobs: Record<string, any> = {
         profile: namespaceLinuxX64PairedPerfRunner,
         runId: '${{ github.run_id }}',
         privileged: 'always',
+        priority: backgroundJobPriority,
       }),
       artifactName: 'devenv-perf',
       artifactDir: devenvPerfMeasurementsDir,
@@ -1425,6 +1447,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'trusted',
+      priority: backgroundJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1458,6 +1481,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'trusted',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1519,6 +1543,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: backgroundJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1591,11 +1616,12 @@ const extraJobs: Record<string, any> = {
   },
   /** Integration tests for Notion API (requires package-specific Notion token secrets) */
   'test-integration-notion': {
-    if: trustedSecretCiIf,
+    if: notionIntegrationCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 90,
     defaults: bashShellDefaults,
@@ -1641,6 +1667,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 60,
     defaults: bashShellDefaults,
@@ -1667,6 +1694,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 30,
     defaults: bashShellDefaults,
@@ -1690,6 +1718,7 @@ const deployJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     // No `needs` — run in parallel with other jobs for faster feedback
@@ -1762,6 +1791,7 @@ const pipelineTracesJob = {
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
     privileged: 'trusted',
+    priority: backgroundJobPriority,
   }),
   permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
@@ -1792,6 +1822,7 @@ const allCiJobs: Record<string, any> = {
         profile: 'namespace-profile-linux-x86-64',
         runId: '${{ github.run_id }}',
         privileged: 'trusted',
+        priority: deliveryJobPriority,
       }),
       defaultRefs: { 'livestorejs/livestore': 'dev' },
     }),
@@ -1807,6 +1838,7 @@ const allCiJobs: Record<string, any> = {
         profile: 'namespace-profile-linux-x86-64',
         runId: '${{ github.run_id }}',
         privileged: 'never',
+        priority: backgroundJobPriority,
       }),
     }),
     // Optional lookup failures permit authoritative quality fallback; publication must succeed.
@@ -1846,6 +1878,7 @@ export const empiricalProofJobs: CiWorkflowArgs['jobs'] = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: backgroundJobPriority,
     }),
     if: "${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}",
   },
@@ -1873,6 +1906,12 @@ export default ciWorkflow({
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
+        run_notion_integration_on_branch: {
+          description: 'Opt into credentialed Notion integration tests on this branch.',
+          required: false,
+          default: false,
+          type: 'boolean',
+        },
         run_datasource_sync_demo: {
           description:
             'Run the credentialed notion-datasource-sync demo showcase in the Notion integration lane. Requires NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID.',

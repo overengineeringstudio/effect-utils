@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BuildIdentitySegment } from './BuildIdentitySegment.tsx'
@@ -132,6 +133,88 @@ describe('anchored disclosure', () => {
     fireEvent(dialog, new Event('toggle'))
     expect(onOpenChange.mock.calls).toEqual([[true], [false]])
   })
+
+  it('does not consume host textarea Escape or steal focus while a disclosure is open', () => {
+    const onOpenPanelChange = vi.fn()
+    const onHostKeyDown = vi.fn()
+    render(
+      <>
+        <textarea aria-label="Host input" onKeyDown={onHostKeyDown} />
+        <Devbar
+          panels={[{ id: 'logs', label: 'Logs', render: () => <p>Recent requests</p> }]}
+          openPanel="logs"
+          onOpenPanelChange={onOpenPanelChange}
+          strip={
+            <AnchoredDisclosure label="Details" trigger="Details" triggerLabel="Show details">
+              <p>Host content</p>
+            </AnchoredDisclosure>
+          }
+        />
+      </>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Show details' })
+    fireEvent.click(trigger)
+    const outside = screen.getByRole('textbox', { name: 'Host input' })
+    act(() => outside.focus())
+    fireEvent.keyDown(outside, { key: 'Escape' })
+    expect(onHostKeyDown).toHaveBeenCalledOnce()
+    expect(onHostKeyDown.mock.calls[0]?.[0].defaultPrevented).toBe(false)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('dialog', { name: 'Details' })).toBeDefined()
+    expect(document.activeElement).toBe(outside)
+    expect(onOpenPanelChange).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])(
+    'lets a nested host popover consume Escape before its disclosure (portalled=%s)',
+    (portalled) => {
+      const onOpenPanelChange = vi.fn()
+      const NestedPopover = (): React.ReactNode => {
+        const [open, setOpen] = React.useState(true)
+        if (open === false) return <p>Nested popover closed</p>
+        const content = (
+          <div
+            role="dialog"
+            aria-label="Nested host popover"
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') return
+              event.preventDefault()
+              setOpen(false)
+            }}
+          >
+            <button type="button">Nested action</button>
+          </div>
+        )
+        return portalled === true ? createPortal(content, document.body) : content
+      }
+      render(
+        <Devbar
+          panels={[{ id: 'logs', label: 'Logs', render: () => <p>Recent requests</p> }]}
+          openPanel="logs"
+          onOpenPanelChange={onOpenPanelChange}
+          strip={
+            <AnchoredDisclosure label="Details" trigger="Details" triggerLabel="Show details">
+              <NestedPopover />
+            </AnchoredDisclosure>
+          }
+        />,
+      )
+      const trigger = screen.getByRole('button', { name: 'Show details' })
+      fireEvent.click(trigger)
+      const nested = screen.getByRole('button', { name: 'Nested action' })
+      act(() => nested.focus())
+      fireEvent.keyDown(nested, { key: 'Escape' })
+      expect(screen.queryByRole('dialog', { name: 'Nested host popover' })).toBeNull()
+      const disclosure = screen.getByRole('dialog', { name: 'Details' })
+      expect(trigger.getAttribute('aria-expanded')).toBe('true')
+      expect(onOpenPanelChange).not.toHaveBeenCalled()
+      act(() => disclosure.focus())
+      fireEvent.keyDown(disclosure, { key: 'Escape' })
+      expect(trigger.getAttribute('aria-expanded')).toBe('false')
+      expect(document.activeElement).toBe(trigger)
+      expect(onOpenPanelChange).not.toHaveBeenCalled()
+    },
+  )
 
   it.each([
     { right: 20, expectedLeft: 8 },

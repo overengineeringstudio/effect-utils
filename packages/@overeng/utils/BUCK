@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:213ceeef1728161e024b725525de4d44ead706999fce22ba6f8a0d2716de4b90
+# Semantic fingerprint: sha256:02378bc5e409d4a8ff9f6c15747200d04f6864c875d577d8fbf41f800620d778
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -85,6 +85,7 @@ export_materialization_inputs([
     "src/node/cmd.unit.test.ts",
     "src/node/file-system-backing.ts",
     "src/node/file-system-backing.unit.test.ts",
+    "src/node/github-app.contract.ts",
     "src/node/github-app.integration.test.ts",
     "src/node/github-app.ts",
     "src/node/mod.ts",
@@ -229,6 +230,7 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/github-app.contract.ts": "src/node/github-app.contract.ts",
         "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
         "src/node/github-app.ts": "src/node/github-app.ts",
         "src/node/mod.ts": "src/node/mod.ts",
@@ -360,6 +362,7 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/github-app.contract.ts": "src/node/github-app.contract.ts",
         "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
         "src/node/github-app.ts": "src/node/github-app.ts",
         "src/node/mod.ts": "src/node/mod.ts",
@@ -489,6 +492,7 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/github-app.contract.ts": "src/node/github-app.contract.ts",
         "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
         "src/node/github-app.ts": "src/node/github-app.ts",
         "src/node/mod.ts": "src/node/mod.ts",

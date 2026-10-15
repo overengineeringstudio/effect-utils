@@ -245,6 +245,53 @@ retained immutably in consumer-selected `R`, never pruned by ctl. Invalid
 imports leave the incumbent untouched. The local-signing `install-host
 --desired APP` path below remains backward compatible and separate.
 
+### Incumbent policy during artifact cutover
+
+| Installed bundle's config record                | Incumbent validation before replacement                                                                                                                                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Present at `S/host-configs/<bundle-inode>.json` | Describe the incumbent using its recorded configuration and verify its recorded outer and nested signature policy; also require its outer identity to satisfy the candidate's pinned identity.                            |
+| Absent, default invocation                      | Describe and verify the incumbent using the candidate configuration, including its complete bundle layout and signature policy. A layout or policy mismatch fails closed.                                                 |
+| Absent, explicit `--incumbent legacy`           | Check the outer Info.plist `CFBundleIdentifier` equals the candidate's configured `bundleId`, verify the outer code signature strictly, and evaluate the candidate's pinned outer `requirement` against that actual code. |
+
+`--incumbent` is a typed CLI policy whose only accepted value is `legacy`.
+It is accepted only for `install-host --artifact` and `rollback --artifact`;
+other values and use with local-sign installation or other primitives are
+invalid input. Omission retains the default checks above. A consumer explicitly
+opts in when adopting an unrecorded legacy bundle whose layout differs from
+the candidate, for example:
+
+```sh
+"$ctl" install-host --artifact "$release" --desired "$descriptor" \
+  --app-dir "$app" --state "$state" --archive-dir "$archives" \
+  --incumbent legacy --lifecycle-fd "$lifecycle_fd"
+```
+
+The legacy exception checks identity, not compatibility with the candidate's
+executable path, nested inventory, entitlements or signing options. It does not
+skip strict outer signature validity or authorize a different bundle identifier
+or pinned signing identity. It does not prove historical grant continuity.
+Candidate descriptor, receipt, content and signature checks remain unchanged.
+
+Before publishing an artifact-installed bundle, ctl durably records its
+configuration at `S/host-configs/<device>-<bundle-inode>.json`, keyed by that bundle's
+inode. Later replacement uses that recorded configuration to describe and
+verify the incumbent's own layout and signatures, rather than imposing the
+new candidate's layout on it. The candidate's pinned outer identity must still
+match the incumbent. An existing invalid record or a failure under its policy
+is a refusal, never a reason to retry as legacy; `--incumbent legacy` cannot
+bypass a record. The consumer retains these records with the state needed for
+its installed and archived bundles.
+
+This is an invocation policy, not a Nix constructor or configuration option.
+The existing `ctl` wrapper forwards consumer arguments unchanged; the constructor
+arguments and generated `ctlConfig` schema do not change. The additive library
+capability `effectUtils.lib.macosAppCapabilities.legacyIncumbentImport = true`
+allows consumers to assert support during evaluation before passing the opt-in:
+
+```nix
+assert effectUtils.lib.macosAppCapabilities.legacyIncumbentImport or false;
+```
+
 Artifact `verify --artifact RELEASE --desired DESCRIPTOR --app-dir D
 --state S --generation G` checks the installed descriptor and actual
 `sealedRevision` against the pinned release, and compares the selected
@@ -259,6 +306,10 @@ that release and selects the supplied generation. Supplied-plist inputs can
 converge and verify the job. Without a plist it reports `restartRequired:
 true`, not a claim that the process restarted. Legacy `--restore-host`
 rollback and its primitive-scoped crash journals below remain available.
+The same incumbent policy applies when artifact rollback replaces the currently
+installed bundle; `--incumbent legacy` is an explicit option there too, and
+never relaxes validation of the selected rollback artifact or a recorded
+incumbent.
 
 ## Install primitives
 

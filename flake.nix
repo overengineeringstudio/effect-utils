@@ -578,6 +578,9 @@ rec {
       # Can be added to devenv packages without importing the full OTEL module.
       lib.mkOtelSpan = { pkgs }: import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
 
+      # Consumers can fail closed at evaluation before requesting a legacy cutover.
+      lib.macosAppCapabilities.legacyIncumbentImport = true;
+
       lib.mkMacosApp =
         args:
         import ./nix/macos-app/default.nix {

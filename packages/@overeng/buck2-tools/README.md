@@ -33,11 +33,48 @@ select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
 
 Batch publication prepares up to four private candidates concurrently and
-serializes commits within each editor state root. Independent root fingerprints
-within each candidate also run concurrently. All fingerprint subprocesses
-for a candidate settle before hardening, promotion, or failure cleanup can
-change it. A failed fingerprint does not release the candidate or its state-root
-lock while another payload walk remains active.
+serializes commits within each editor state root. Fingerprint requests within
+each TypeScript process queue one child at a time, including independent roots.
+The native fingerprint library admits at most **four concurrent walks per host**
+across Buck actions, publishers, worktrees, users, and executable versions that
+implement this protocol. This is a fixed filesystem-pressure limit, not a CPU
+count: CPU-scaled fan-out can livelock ZFS dnode lookup.
+
+Admission uses persistent kernel file locks in
+`/tmp/effect-utils-buck2-fingerprint-v1`, deliberately independent of `TMPDIR`
+and worktree paths. Waiting processes block without polling. When all slots are
+busy, a waiter releases the scan-admission lock and blocks on slot `pid % 4`,
+spreading waiters across slots rather than placing every waiter behind slot zero.
+A waiter may still wait while a different slot is idle. Descriptor closure
+(including process death) releases capacity; no stale PID recovery is needed.
+Native initialization prepares mode `1777` directories and mode `0666` regular
+files under unique temporary names before publishing them: directories by
+rename, files by no-replace hard link. Permissions are set before publication,
+independent of umask, so concurrent cold-start callers never see partially
+initialized modes. Losing initializers use the winner's files and remove their
+temporary entries. Sticky directory permissions prevent other users from
+replacing an owner's files; the file bytes are unused. Existing modes are not
+required to match exactly: the caller must be able to open the regular files
+read-only and lock them. An actual access or lock failure names the affected
+path and required sharing mode. Do not unlink the coordination directory or
+files while any fingerprint process is alive. Buck's Linux action
+launcher initializes the host files without truncation and mounts their directory
+read-only into its otherwise private `/tmp`, so independent action sandboxes
+share the same inodes without granting payloads permission to replace them.
+Other mount namespaces must likewise expose this host directory; old tool
+versions do not participate. Coordination errors fail closed before walking.
+
+The coordination directory is deliberately **outside the action digest**. It
+controls scheduling only: file contents are neither read as fingerprint inputs
+nor written into digests or action outputs. Every admitted walk still hashes
+the same declared roots and applies the same stability checks. Host contention
+can change waiting time (or cause an explicit admission error), never the bytes
+of a successful result. Including this host-local coordination state in the
+action digest would destroy cache sharing without adding an output dependency.
+
+All fingerprint subprocesses for a candidate settle before hardening, promotion,
+or failure cleanup can change it. A failed fingerprint does not release the
+candidate or its state-root lock while another payload walk remains active.
 
 Unstable native fingerprints report the entry type, changed metadata fields,
 and before/after metadata and link targets. Publication errors also report the
@@ -138,10 +175,12 @@ The kernel census and shell-created symlinks are **advisory observations only**,
 not guaranteed reader registration: a reference can appear after inspection,
 process permissions can hide it, and editors can cache paths after closing files.
 Linux observes same-user `/proc` executable, working-directory, descriptor,
-mapped-file, and entry-point references; macOS uses native `lsof`. Observed references
-and state-root symlink targets defer retirement, and an unavailable inventory backend
-defers collection. None of those observations replaces a managed pin for a reader
-that requires guaranteed retention.
+mapped-file, and entry-point references; macOS uses native `lsof`. Local snapshot
+retention matches observed pathnames: a shared payload hardlink may be reported
+under another generation or the content store instead of the path used to open it.
+Observed references and state-root symlink targets defer retirement, and an
+unavailable inventory backend defers collection. None of those observations
+replaces a managed pin for a reader that requires guaranteed retention.
 Retention reuses the selected generation's full validation from the same publication.
 Older protected generations receive only ownership and root-permission checks;
 their complete permission proof runs outside the CAS flock before publishing the
