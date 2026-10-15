@@ -1,7 +1,7 @@
 //! Host-wide admission shared by CLI invocations, worktrees and Buck daemons.
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, ErrorKind};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 // Fixed, not CPU-scaled: ~220 concurrent walks caused ZFS dnode lookup livelock
@@ -23,10 +23,10 @@ fn lock_file(directory: &Path, name: &str) -> io::Result<File> {
             match OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .mode(0o644)
+                .mode(0o666)
                 .open(&path)
             {
-                Ok(_) => {}
+                Ok(file) => file.set_permissions(fs::Permissions::from_mode(0o666))?,
                 Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(error),
             }
@@ -34,13 +34,15 @@ fn lock_file(directory: &Path, name: &str) -> io::Result<File> {
         }
         Err(error) => return Err(error),
     };
-    if !before.is_file() || before.nlink() != 1 || before.mode() & 0o022 != 0 {
-        return Err(io::Error::other(
-            "coordination file must be a non-shared-writable regular file",
-        ));
+    if !before.is_file() || before.nlink() != 1 || before.mode() & 0o7777 != 0o666 {
+        return Err(io::Error::other(format!(
+            "coordination file {} must be a regular file with one link and mode 0666 (found mode {:04o})",
+            path.display(),
+            before.mode() & 0o7777,
+        )));
     }
-    // flock works on read-only descriptors on supported Unix hosts, allowing
-    // different users to share the same persistent inode without write access.
+    // flock works on read-only descriptors on supported Unix hosts. Sandboxed
+    // callers receive a read-only mount even though host files are mode 0666.
     let file = File::open(path)?;
     let after = file.metadata()?;
     if before.dev() != after.dev() || before.ino() != after.ino() {
@@ -54,7 +56,7 @@ fn acquire_at(directory: &Path) -> io::Result<File> {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == ErrorKind::NotFound => {
             match fs::create_dir(directory) {
-                Ok(()) => {}
+                Ok(()) => fs::set_permissions(directory, fs::Permissions::from_mode(0o1777))?,
                 Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(error),
             }
@@ -62,14 +64,15 @@ fn acquire_at(directory: &Path) -> io::Result<File> {
         }
         Err(error) => return Err(error),
     };
-    if !metadata.is_dir() || metadata.mode() & 0o022 != 0 {
-        return Err(io::Error::other(
-            "coordination directory must be a non-shared-writable directory",
-        ));
+    if !metadata.is_dir() || metadata.mode() & 0o7777 != 0o1777 {
+        return Err(io::Error::other(format!(
+            "coordination directory {} must be a directory with mode 1777 (found mode {:04o})",
+            directory.display(),
+            metadata.mode() & 0o7777,
+        )));
     }
-    // Serialize admission, not walks. Once all slots are busy, one waiter
-    // sleeps in the kernel on slot zero; other waiters sleep on admission.
-    // After it enters, the next waiter rescans every slot. No polling/spinning.
+    // Serialize only the scan. Waiters release admission before blocking on
+    // PID-distributed slots, so one slow slot does not block the entire queue.
     let admission = lock_file(directory, "admission")?;
     admission.lock()?;
     // Initialize the entire set before admitting a walk, so subsequent users
@@ -87,12 +90,17 @@ fn acquire_at(directory: &Path) -> io::Result<File> {
             Err(TryLockError::Error(error)) => return Err(error),
         }
     }
-    let slot = lock_file(directory, "slot-0")?;
+    drop(admission);
+    wait_for_slot(directory, std::process::id())
+    // Dropping the returned descriptor releases the slot, including on errors,
+    // panic or process termination. Never unlink live coordination files.
+}
+
+fn wait_for_slot(directory: &Path, pid: u32) -> io::Result<File> {
+    let index = pid as usize % FINGERPRINT_WALK_LIMIT;
+    let slot = lock_file(directory, &format!("slot-{index}"))?;
     slot.lock()?;
     Ok(slot)
-    // Dropping admission opens the queue; dropping the returned descriptor
-    // releases the slot, including on errors, panic or process termination.
-    // Never unlink these files: that would split the semaphore's inode set.
 }
 
 #[cfg(test)]
@@ -106,6 +114,7 @@ mod tests {
     fn concurrent_independent_acquisitions_never_exceed_fixed_cap() {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("locks");
+        drop(acquire_at(&directory).unwrap());
         let start = Arc::new(Barrier::new(FINGERPRINT_WALK_LIMIT + 4));
         let first_wave = Arc::new(Barrier::new(FINGERPRINT_WALK_LIMIT + 1));
         let active = Arc::new(AtomicUsize::new(0));
@@ -143,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn full_semaphore_blocks_and_drop_releases_capacity() {
+    fn releasing_nonzero_slot_admits_its_waiter_without_releasing_slot_zero() {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("locks");
         let mut permits = (0..FINGERPRINT_WALK_LIMIT)
@@ -160,18 +169,22 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         thread::scope(|scope| {
             scope.spawn(|| {
-                let permit = acquire_at(&directory).unwrap();
+                let permit = wait_for_slot(&directory, 1).unwrap();
                 tx.send(()).unwrap();
                 drop(permit);
             });
             assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
-            drop(permits.remove(0));
+            drop(permits.remove(1));
             rx.recv().unwrap();
         });
+        assert!(matches!(
+            lock_file(&directory, "slot-0").unwrap().try_lock(),
+            Err(TryLockError::WouldBlock)
+        ));
     }
 
     #[test]
-    #[ignore = "subprocess helper for process_exit_releases_shared_slot"]
+    #[ignore = "subprocess helper for restrictive_umask_initialization_and_process_exit_share_slots"]
     fn hold_slot_in_child() {
         use std::io::{Read, Write};
         let directory = std::env::var_os("FINGERPRINT_ADMISSION_TEST_DIRECTORY").unwrap();
@@ -182,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn process_exit_releases_shared_slot() {
+    fn restrictive_umask_initialization_and_process_exit_share_slots() {
         use std::io::BufRead;
         use std::process::{Child, Command, Stdio};
         struct ChildGuard(Child);
@@ -195,13 +208,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("locks");
         let mut child = ChildGuard(
-            Command::new(std::env::current_exe().unwrap())
+            Command::new("/bin/sh")
                 .args([
-                    "--exact",
-                    "fingerprint_admission::tests::hold_slot_in_child",
-                    "--ignored",
-                    "--nocapture",
+                    "-c",
+                    "umask 077; exec \"$1\" --exact fingerprint_admission::tests::hold_slot_in_child --ignored --nocapture",
+                    "fingerprint-admission-test",
                 ])
+                .arg(std::env::current_exe().unwrap())
                 .env("FINGERPRINT_ADMISSION_TEST_DIRECTORY", &directory)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -212,6 +225,13 @@ mod tests {
         assert!(output
             .lines()
             .any(|line| line.unwrap().ends_with("SLOT_ACQUIRED")));
+        assert_eq!(fs::metadata(&directory).unwrap().mode() & 0o7777, 0o1777);
+        for name in ["admission", "slot-0", "slot-1", "slot-2", "slot-3"] {
+            assert_eq!(
+                fs::metadata(directory.join(name)).unwrap().mode() & 0o7777,
+                0o666
+            );
+        }
         let _permits = (1..FINGERPRINT_WALK_LIMIT)
             .map(|_| acquire_at(&directory).unwrap())
             .collect::<Vec<_>>();
@@ -228,8 +248,27 @@ mod tests {
     }
 
     #[test]
+    fn rejects_existing_permission_mismatches_with_required_modes() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("locks");
+        drop(acquire_at(&directory).unwrap());
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(acquire_at(&directory)
+            .unwrap_err()
+            .to_string()
+            .contains("mode 1777"));
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o1777)).unwrap();
+        fs::set_permissions(directory.join("slot-1"), fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(acquire_at(&directory)
+            .unwrap_err()
+            .to_string()
+            .contains("mode 0666"));
+    }
+
+    #[test]
     fn rejects_symlinked_coordination_files() {
         let root = tempfile::tempdir().unwrap();
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o1777)).unwrap();
         fs::write(root.path().join("target"), "").unwrap();
         std::os::unix::fs::symlink("target", root.path().join("admission")).unwrap();
         assert!(acquire_at(root.path()).is_err());

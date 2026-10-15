@@ -42,16 +42,31 @@ count: CPU-scaled fan-out can livelock ZFS dnode lookup.
 
 Admission uses persistent kernel file locks in
 `/tmp/effect-utils-buck2-fingerprint-v1`, deliberately independent of `TMPDIR`
-and worktree paths. Waiting processes block without polling. A full semaphore
-waits for slot zero before rescanning other slots, so admission may briefly
-leave another slot idle. Descriptor closure (including process death) releases
-capacity; no stale PID recovery is needed. Do not unlink the coordination
+and worktree paths. Waiting processes block without polling. When all slots are
+busy, a waiter releases the scan-admission lock and blocks on slot `pid % 4`,
+spreading waiters across slots rather than placing every waiter behind slot zero.
+A waiter may still wait while a different slot is idle. Descriptor closure
+(including process death) releases capacity; no stale PID recovery is needed.
+The directory has explicit mode `1777` and the regular coordination files have
+explicit mode `0666`, independent of the initializing user's umask. Sticky
+directory permissions prevent other users from replacing an owner's files;
+the file bytes are unused. Existing paths with mismatched modes or types fail
+with an explanatory error rather than silently creating a different semaphore.
+Do not unlink the coordination
 directory or files while any fingerprint process is alive. Buck's Linux action
 launcher initializes the host files without truncation and mounts their directory
 read-only into its otherwise private `/tmp`, so independent action sandboxes
 share the same inodes without granting payloads permission to replace them.
 Other mount namespaces must likewise expose this host directory; old tool
 versions do not participate. Coordination errors fail closed before walking.
+
+The coordination directory is deliberately **outside the action digest**. It
+controls scheduling only: file contents are neither read as fingerprint inputs
+nor written into digests or action outputs. Every admitted walk still hashes
+the same declared roots and applies the same stability checks. Host contention
+can change waiting time (or cause an explicit admission error), never the bytes
+of a successful result. Including this host-local coordination state in the
+action digest would destroy cache sharing without adding an output dependency.
 
 All fingerprint subprocesses for a candidate settle before hardening, promotion,
 or failure cleanup can change it. A failed fingerprint does not release the
