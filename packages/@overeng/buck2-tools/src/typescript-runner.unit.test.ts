@@ -1,4 +1,3 @@
-import * as ChildProcess from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import {
   chmodSync,
@@ -23,6 +22,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   copyDeclarationSources,
   formatError,
+  type FingerprintChild,
   hashDeclaredInputRoots,
   linkStagedWorkspaceProjects,
   parseEmitOptions as parseEmit,
@@ -31,10 +31,6 @@ import {
   runFingerprintTool,
   stagedEmitPackageRoot,
 } from './typescript-runner.ts'
-
-const nativeChildProcess = { ...ChildProcess }
-const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
-vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
 
 const scratchDirectories: string[] = []
 const fingerprintTool =
@@ -56,7 +52,6 @@ const createFixture = () => {
 
 afterEach(() => {
   for (const directory of scratchDirectories.splice(0)) rmSync(directory, { recursive: true })
-  childProcessMocks.spawn.mockReset().mockImplementation(nativeChildProcess.spawn)
 })
 
 it('preserves an error message when the runtime stack omits it', () => {
@@ -68,22 +63,23 @@ it('preserves an error message when the runtime stack omits it', () => {
   )
 })
 
+type FingerprintTestChild = EventEmitter & FingerprintChild
+
 it('queues root subprocesses and continues after a failed fingerprint', async () => {
-  const turns = Array.from({ length: 3 }, () => Promise.withResolvers<ChildProcess.ChildProcess>())
+  // Only streams and lifecycle events belong to this test; no OS child is started.
+  const makeChild = (): FingerprintTestChild =>
+    Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() })
+  const turns = Array.from({ length: 3 }, () => Promise.withResolvers<FingerprintTestChild>())
   let spawned = 0
-  childProcessMocks.spawn.mockImplementation(() => {
-    // Only streams and close events belong to this queue test; no OS child is started.
-    const child = Object.assign(new EventEmitter(), {
-      stdout: new PassThrough(),
-      stderr: new PassThrough(),
-    }) as ChildProcess.ChildProcess
+  const spawnChild = vi.fn(() => {
+    const child = makeChild()
     turns[spawned]?.resolve(child)
     spawned += 1
     return child
   })
   const results = Promise.allSettled(
     turns.map((_, index) =>
-      runFingerprintTool({ tool: fingerprintTool, args: [`/root-${index}`] }),
+      runFingerprintTool({ tool: fingerprintTool, args: [`/root-${index}`], spawnChild }),
     ),
   )
   for (const [index, turn] of turns.entries()) {

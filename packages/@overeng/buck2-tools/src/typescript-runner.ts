@@ -19,6 +19,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import type { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 
 const signalNumbers = {
@@ -227,22 +228,31 @@ const canonicalRoots = (roots: readonly string[]): readonly string[] =>
 // host-wide walk cap across independent runners, Buck actions and publishers.
 let fingerprintQueue: Promise<void> = Promise.resolve()
 
+/** Only the streams and lifecycle events consumed by the fingerprint runner. */
+export type FingerprintChild = {
+  readonly stdout: Readable
+  readonly stderr: Readable
+  on(event: 'error', listener: (error: Error) => void): void
+  on(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void
+}
+
+const spawnFingerprintChild = (tool: string, args: readonly string[]): FingerprintChild =>
+  spawn(tool, args, { cwd: '/', env: { PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] })
+
 /** Runs one fingerprint child at a time without blocking the event loop. */
 export const runFingerprintTool = ({
   tool,
   args,
+  spawnChild = spawnFingerprintChild,
 }: {
   readonly tool: string
   readonly args: readonly string[]
+  readonly spawnChild?: (tool: string, args: readonly string[]) => FingerprintChild
 }): Promise<string> => {
   const result = fingerprintQueue.then(
     () =>
       new Promise<string>((resolveOutput, reject) => {
-        const child = spawn(requireFingerprintTool(tool), args, {
-          cwd: '/',
-          env: { PATH: '' },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
+        const child = spawnChild(requireFingerprintTool(tool), args)
         const stdout: Buffer[] = []
         const stderr: Buffer[] = []
         child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
