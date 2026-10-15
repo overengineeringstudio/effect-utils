@@ -236,7 +236,13 @@ export type FingerprintChild = {
   on(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void
 }
 
-const spawnFingerprintChild = (tool: string, args: readonly string[]): FingerprintChild =>
+const spawnFingerprintChild = ({
+  tool,
+  args,
+}: {
+  readonly tool: string
+  readonly args: readonly string[]
+}): FingerprintChild =>
   spawn(tool, args, { cwd: '/', env: { PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] })
 
 /** Runs one fingerprint child at a time without blocking the event loop. */
@@ -247,12 +253,15 @@ export const runFingerprintTool = ({
 }: {
   readonly tool: string
   readonly args: readonly string[]
-  readonly spawnChild?: (tool: string, args: readonly string[]) => FingerprintChild
+  readonly spawnChild?: (options: {
+    readonly tool: string
+    readonly args: readonly string[]
+  }) => FingerprintChild
 }): Promise<string> => {
   const result = fingerprintQueue.then(
     () =>
       new Promise<string>((resolveOutput, reject) => {
-        const child = spawnChild(requireFingerprintTool(tool), args)
+        const child = spawnChild({ tool: requireFingerprintTool(tool), args })
         const stdout: Buffer[] = []
         const stderr: Buffer[] = []
         child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
