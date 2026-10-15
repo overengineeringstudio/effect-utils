@@ -92,6 +92,7 @@ viewport width minus 8px. Width is bounded by `calc(100vw - 1rem)`. Size and vie
 reposition the open surface. Native pointer light dismissal updates expanded
 state; Escape consumes the event and restores trigger focus. Closing unmounts
 content. Open-state teardown notifies the host; there is no cross-mount state.
+Host content that removes its own focused control, such as a Retry action replacing an error state, moves focus to the stable dialog before removing that control so keyboard users retain their place and scoped Escape remains available.
 
 Panel and segment IDs are host-local, opaque, nonempty case-sensitive strings, unique within their respective lists. They are not protocol identifiers or storage keys. Unknown `openPanel` renders no panel; it does not manufacture a callback or mutate host state. The host reconciles removed IDs. No default panels, segments, strip, or meter list are injected.
 
@@ -132,7 +133,7 @@ Each segment has a natural-width inner node. Hidden segments stay mounted inside
 
 One `ResizeObserver` observes the segment group, row, controls, natural-width nodes, and overflow sample. The budget is computed from the row's inner width minus its padding, gaps, nonshrinking controls, and `stripMinWidth`, never from the current visible set. The group's flex basis remains the sum of all natural widths and gaps even while items are hidden. This makes hiding independent of the widths it changes. Initial layout measurement occurs before paint; source snapshots publish only when measurements change. Natural/control widths round up and the available budget rounds down to CSS pixels to avoid boundary oscillation. There is no polling, animation-frame loop, or internal status scrollbar.
 
-The native `+N` button's accessible name is `N more status items: <hidden ids in declaration order>`; its expanded state and controls relationship identify the named `More status items` dialog. Opening focuses the nonmodal native auto-popover, which uses the shared above/below collision placement in the browser's top layer and retains inherited host theme tokens. It renders hidden segments in declaration order at full natural width; unusually wide or tall content can scroll within the disclosure rather than being truncated. Pointer light dismissal is browser-owned. Unconsumed Escape closes overflow before the shell panel's Escape handler and returns focus to its trigger, including after Tab leaves the disclosure. The keyboard listener exists only while overflow is open. Fitting away the final hidden item closes the disclosure.
+The native `+N` button's accessible name is `N more status items: <hidden ids in declaration order>`; its expanded state and controls relationship identify the named `More status items` dialog. Opening focuses the nonmodal native auto-popover, which uses the shared above/below collision placement in the browser's top layer and retains inherited host theme tokens. It renders hidden segments in declaration order at full natural width; unusually wide or tall content can scroll within the disclosure rather than being truncated. Pointer light dismissal is browser-owned. While overflow is open, element-level `onKeyDown` handlers on its trigger and dialog consume unhandled Escape, close overflow before the shell panel's handler, and return focus to the trigger. Once Tab moves focus outside those elements and their React descendants, Escape no longer closes overflow through these handlers; an unconsumed event inside the bar may reach the shell panel, while events outside the bar remain untouched. Fitting away the final hidden item closes the disclosure.
 
 Hidden `hasAlert` values aggregate onto the overflow dot and append
 `, including unseen changes` to its accessible name. Hosts explicitly mirror
@@ -142,11 +143,14 @@ width when any segment has an alert. A hidden build's overflow copy remains
 keyboard-operable and can open its anchored disclosure. Fitting away overflow
 closes it without stealing focus and unmounts its interactive content.
 
-Escape ordering is disclosure, identity tooltip, overflow, then panel. The
-overflow handler ignores events while an open `data-devbar-disclosure` surface
-or identity tooltip exists, including when focus has moved elsewhere. Each
-layer consumes its own Escape once, before the shell window listener; disclosure
-and overflow close restore their respective trigger focus.
+Escape follows React bubbling ancestry from the innermost focused layer: a host
+popover, disclosure or identity tooltip, enclosing overflow, then panel. Each
+layer uses an element-level `onKeyDown` on its content or trigger, respects
+`defaultPrevented`, and consumes its own Escape once. Host-owned portals retain
+React ancestry so nested handlers run first; unrelated host inputs do not reach
+these handlers. Disclosure and overflow close restore their respective trigger
+focus. A hovered tooltip does not intercept Escape from elsewhere in the bar
+or host app.
 
 The `Narrow600` story supplies version (`1`), websocket (`4`), HTTP (`3`), subscriptions (`2`), and message-rate (`0`) priorities with deterministic realistic text. Its play assertions check the 600px host geometry, intact visible segments wholly within the row, priority ordering, the hidden-ID accessible name, complete overflow contents, and Escape/focus restoration.
 
@@ -213,8 +217,8 @@ aria-hidden dot updates live. `render()` runs only while open; opening can
 notify the host to mark entries seen without remounting the dialog. The identity
 tooltip remains available on hover and focus, but is suppressed while the dialog
 is open. Opening and closing dismiss the current tooltip; subsequent hover or
-focus can reveal it again. The existing tooltip Escape handler stays installed
-only while visible, consumes Escape before the panel, and preserves focus.
+focus can reveal it again. The tooltip's element-level Escape handler acts only
+while visible, consumes Escape before enclosing layers, and preserves focus.
 
 Live segments share one sixty-second clock while at least one segment is mounted.
 Unmounting the final subscriber clears the interval; import alone schedules
@@ -257,7 +261,13 @@ freeze -> meter renderer state only
 
 Traces: DT.BAR-R05–R07.
 
-Panel buttons expose `aria-expanded`; the open panel has a stable generated DOM ID and accessible label, and its corresponding controls expose `aria-controls`. Buttons remain native keyboard-operable controls, not incorrectly labelled ARIA tabs without implementing a tablist keyboard model. Ctrl or Meta plus unmodified Backquote toggles; respect `defaultPrevented`. Unconsumed Escape closes the panel. Keyboard listeners exist only while shell is mounted, and cleanup removes them. Closing after keyboard interaction restores focus to the initiating control if focus was inside removed panel content; pointer activation does not forcibly steal focus.
+Panel buttons expose `aria-expanded`; the open panel has a stable generated DOM ID and accessible label, and its corresponding controls expose `aria-controls`. Buttons remain native keyboard-operable controls, not incorrectly labelled ARIA tabs without implementing a tablist keyboard model. Ctrl or Meta plus unmodified Backquote toggles globally while mounted, respects `defaultPrevented`, and removes its window listener on unmount. Escape is handled by the shell root's bubbling `onKeyDown` only when it is unconsumed and the root physically contains the event target; outside focus and portalled content cannot close the panel. Escape from the row or panel closes it and returns focus to the toggle. Any close, including pointer actions and host-controlled closes, returns focus to the toggle if focus was inside the removed panel; closes with focus outside the panel do not steal focus.
+
+Focus restoration is determined immediately before the actual panel removal,
+not retained from a rejected close proposal. Each new proposal clears pending
+restoration intent. For Escape from the row, the focused element at the proposal
+must still be focused inside the bar when the panel is removed; moving focus to
+the host app before a later controlled close prevents focus theft.
 
 The meter renderer owns DOM focus targets, text equivalents, and tooltips. `MeterStrip.onOpenDetail({ id })` delegates click and Enter/Space activation to the host; focus alone shows a tooltip without opening a panel. Tooltip access remains possible without hover. Freeze is a distinct named button/action and affects rendering, not source collection or headless readers. A repeated activation of the already-open meter keeps its panel open.
 

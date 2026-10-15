@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Devbar, type DevbarPanel, type DevbarSegment } from './Devbar.tsx'
@@ -22,14 +23,16 @@ const segments: readonly DevbarSegment[] = [
 const Host = ({
   initial,
   onProposal,
+  suppliedPanels = panels,
 }: {
   initial?: string | undefined
   onProposal?: (id: string | undefined) => void
+  suppliedPanels?: readonly DevbarPanel[]
 }): React.ReactNode => {
   const [openPanel, setOpenPanel] = React.useState<string | undefined>(initial)
   return (
     <Devbar
-      panels={panels}
+      panels={suppliedPanels}
       segments={segments}
       openPanel={openPanel}
       onOpenPanelChange={(id) => {
@@ -116,7 +119,7 @@ describe('Devbar interaction', () => {
     render(<Host onProposal={(id) => proposals.push(id)} />)
     fireEvent.keyDown(window, { code: 'Backquote', key: '`', ctrlKey: true })
     expect(screen.getByRole('region', { name: 'Performance' })).toBeTruthy()
-    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.keyDown(toggle(), { key: 'Escape' })
     expect(screen.queryByRole('region')).toBeNull()
     fireEvent.keyDown(window, { code: 'Backquote', key: '`', metaKey: true })
     expect(screen.getByRole('region', { name: 'Performance' })).toBeTruthy()
@@ -164,27 +167,163 @@ describe('Devbar interaction', () => {
     expect(screen.queryByRole('region')).toBeNull()
   })
 
-  it('restores focus to the initiating control when a keyboard close removes focused content', () => {
+  it('closes on Escape inside the panel and returns focus to the toggle', () => {
     render(<Host />)
-    const tab = screen.getByRole('button', { name: 'Performance Live' })
-    fireEvent.click(tab, { detail: 0 })
+    fireEvent.click(screen.getByRole('button', { name: 'Performance Live' }), { detail: 0 })
     const inner = screen.getByRole('button', { name: 'Inspect frame' })
     act(() => inner.focus())
     fireEvent.keyDown(inner, { key: 'Escape' })
     expect(screen.queryByRole('region')).toBeNull()
-    expect(document.activeElement).toBe(tab)
+    expect(document.activeElement).toBe(toggle())
   })
 
-  it('does not steal focus on pointer close', () => {
+  it('closes on Escape inside the bar row and focuses the toggle', () => {
+    render(<Host initial="performance" />)
+    const rowControl = screen.getByRole('button', { name: 'Logs' })
+    act(() => rowControl.focus())
+    fireEvent.keyDown(rowControl, { key: 'Escape' })
+    expect(screen.queryByRole('region')).toBeNull()
+    expect(document.activeElement).toBe(toggle())
+  })
+
+  it('returns focus to the toggle on pointer close when focus is inside the panel', () => {
     render(<Host />)
     pointerClick(screen.getByRole('button', { name: 'Performance Live' }))
     act(() => screen.getByRole('button', { name: 'Inspect frame' }).focus())
     pointerClick(screen.getByRole('button', { name: 'Close Performance panel' }))
     expect(screen.queryByRole('region')).toBeNull()
-    expect(document.activeElement).not.toBe(
-      screen.getByRole('button', { name: 'Performance Live' }),
-    )
+    expect(document.activeElement).toBe(toggle())
   })
+
+  it('does not close on Escape from an element outside the bar', () => {
+    const onProposal = vi.fn()
+    render(
+      <>
+        <textarea aria-label="Host input" />
+        <Host initial="performance" onProposal={onProposal} />
+      </>,
+    )
+    const outside = screen.getByRole('textbox', { name: 'Host input' })
+    act(() => outside.focus())
+    fireEvent.keyDown(outside, { key: 'Escape' })
+    expect(screen.getByRole('region', { name: 'Performance' })).toBeTruthy()
+    expect(onProposal).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(outside)
+  })
+
+  it('does not close when a nested popover prevents Escape', () => {
+    const onProposal = vi.fn()
+    render(
+      <Host
+        initial="popover"
+        onProposal={onProposal}
+        suppliedPanels={[
+          {
+            id: 'popover',
+            label: 'Popover panel',
+            render: () => (
+              <div role="dialog" aria-label="Nested popover">
+                <button
+                  type="button"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') event.preventDefault()
+                  }}
+                >
+                  Popover action
+                </button>
+              </div>
+            ),
+          },
+        ]}
+      />,
+    )
+    const nested = screen.getByRole('button', { name: 'Popover action' })
+    act(() => nested.focus())
+    fireEvent.keyDown(nested, { key: 'Escape' })
+    expect(screen.getByRole('region', { name: 'Popover panel' })).toBeTruthy()
+    expect(onProposal).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(nested)
+  })
+
+  it('does not close on Escape from portalled panel content outside the root', () => {
+    const onProposal = vi.fn()
+    render(
+      <Host
+        initial="portal"
+        onProposal={onProposal}
+        suppliedPanels={[
+          {
+            id: 'portal',
+            label: 'Portal panel',
+            render: () =>
+              createPortal(<button type="button">Portalled action</button>, document.body),
+          },
+        ]}
+      />,
+    )
+    const portalled = screen.getByRole('button', { name: 'Portalled action' })
+    act(() => portalled.focus())
+    fireEvent.keyDown(portalled, { key: 'Escape' })
+    expect(screen.getByRole('region', { name: 'Portal panel' })).toBeTruthy()
+    expect(onProposal).not.toHaveBeenCalled()
+  })
+
+  it('returns focus to the toggle when the host closes focused panel content', () => {
+    const { rerender } = render(
+      <Devbar panels={panels} openPanel="performance" onOpenPanelChange={() => {}} />,
+    )
+    act(() => screen.getByRole('button', { name: 'Inspect frame' }).focus())
+    rerender(<Devbar panels={panels} openPanel={undefined} onOpenPanelChange={() => {}} />)
+    expect(screen.queryByRole('region')).toBeNull()
+    expect(document.activeElement).toBe(toggle())
+  })
+
+  it('does not steal outside focus when the host closes the panel', () => {
+    const { rerender } = render(
+      <>
+        <textarea aria-label="Host input" />
+        <Devbar panels={panels} openPanel="performance" onOpenPanelChange={() => {}} />
+      </>,
+    )
+    const outside = screen.getByRole('textbox', { name: 'Host input' })
+    act(() => outside.focus())
+    rerender(
+      <>
+        <textarea aria-label="Host input" />
+        <Devbar panels={panels} openPanel={undefined} onOpenPanelChange={() => {}} />
+      </>,
+    )
+    expect(document.activeElement).toBe(outside)
+  })
+
+  it.each([false, true])(
+    'does not restore stale focus after a rejected close (switchPanel=%s)',
+    (switchPanel) => {
+      const onOpenPanelChange = vi.fn()
+      const view = ({ openPanel }: { openPanel: string | undefined }) => (
+        <>
+          <textarea aria-label="Host input" />
+          <Devbar panels={panels} openPanel={openPanel} onOpenPanelChange={onOpenPanelChange} />
+        </>
+      )
+      const { rerender } = render(view({ openPanel: 'performance' }))
+      const inner = screen.getByRole('button', { name: 'Inspect frame' })
+      act(() => inner.focus())
+      fireEvent.keyDown(inner, { key: 'Escape' })
+      expect(onOpenPanelChange).toHaveBeenCalledExactlyOnceWith(undefined)
+      expect(screen.getByRole('region', { name: 'Performance' })).toBeDefined()
+      expect(document.activeElement).toBe(inner)
+      if (switchPanel === true) {
+        pointerClick(screen.getByRole('button', { name: 'Logs' }))
+        rerender(view({ openPanel: 'logs' }))
+      }
+      const outside = screen.getByRole('textbox', { name: 'Host input' })
+      act(() => outside.focus())
+      rerender(view({ openPanel: undefined }))
+      expect(screen.queryByRole('region')).toBeNull()
+      expect(document.activeElement).toBe(outside)
+    },
+  )
 })
 
 describe('Devbar composition and geometry', () => {
