@@ -337,9 +337,14 @@ const measurementReportIf = [
   "&& needs.main-source-shape.result != 'failure' }}",
 ].join(' ')
 
+/** Required checks, main verification and publication share the delivery tier. */
+const deliveryJobPriority = 1
+const backgroundJobPriority = 4
+
 const job = ({
   step,
   privileged,
+  priority = deliveryJobPriority,
   extraSteps = [],
   afterSteps = [],
   laneIf = heavyCiIf,
@@ -347,6 +352,7 @@ const job = ({
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
   privileged: NamespacePrivilege
+  priority?: number | string
   extraSteps?: readonly any[]
   afterSteps?: readonly any[]
   laneIf?: string
@@ -358,6 +364,7 @@ const job = ({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
     privileged,
+    priority,
   }),
   'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
@@ -482,6 +489,7 @@ const unitTestJob = ({
     profile: runner,
     runId: '${{ github.run_id }}',
     privileged,
+    priority: deliveryJobPriority,
   }),
   'timeout-minutes': 90,
   defaults: bashShellDefaults,
@@ -589,6 +597,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
     name: 'pr/quality',
     ...job({
       privileged: 'trusted',
+      priority: deliveryJobPriority,
       laneIf: `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}`,
       timeoutMinutes: 90,
       extraSteps: [
@@ -694,6 +703,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   'test-macos': unitTestJob({ runner: 'namespace-profile-macos-arm64', privileged: 'always' }),
   'test-playwright-utils': job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'Utils Playwright tests',
@@ -716,6 +726,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   }),
   'test-playwright-tui-react': job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'TUI React Playwright tests',
@@ -749,6 +760,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
 
   cargo: job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     step: {
       name: 'Cargo build + test + clippy + fmt',
       env: githubTokenEnv(),
@@ -762,6 +774,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   // The bounded registry and version checks run through Buck's quick aggregate in the same lane.
   weaver: job({
     privileged: 'always',
+    priority: deliveryJobPriority,
     timeoutMinutes: longJobTimeoutMinutes,
     extraSteps: [
       {
@@ -878,6 +891,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1006,6 +1020,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 120,
     permissions: { contents: 'read' },
@@ -1039,6 +1054,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 120,
     permissions: { contents: 'read', 'pull-requests': 'read', statuses: 'write' },
@@ -1240,6 +1256,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1299,6 +1316,7 @@ const extraJobs: Record<string, any> = {
         profile: namespaceLinuxX64PairedPerfRunner,
         runId: '${{ github.run_id }}',
         privileged: 'always',
+        priority: backgroundJobPriority,
       }),
       artifactName: 'devenv-perf',
       artifactDir: devenvPerfMeasurementsDir,
@@ -1427,6 +1445,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'trusted',
+      priority: backgroundJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1460,6 +1479,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'trusted',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1521,6 +1541,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: backgroundJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
@@ -1598,6 +1619,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 90,
     defaults: bashShellDefaults,
@@ -1643,6 +1665,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 60,
     defaults: bashShellDefaults,
@@ -1669,6 +1692,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': 30,
     defaults: bashShellDefaults,
@@ -1692,6 +1716,7 @@ const deployJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: deliveryJobPriority,
     }),
     'timeout-minutes': jobTimeoutMinutes,
     // No `needs` — run in parallel with other jobs for faster feedback
@@ -1764,6 +1789,7 @@ const pipelineTracesJob = {
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
     privileged: 'trusted',
+    priority: backgroundJobPriority,
   }),
   permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
@@ -1794,6 +1820,7 @@ const allCiJobs: Record<string, any> = {
         profile: 'namespace-profile-linux-x86-64',
         runId: '${{ github.run_id }}',
         privileged: 'trusted',
+        priority: deliveryJobPriority,
       }),
       defaultRefs: { 'livestorejs/livestore': 'dev' },
     }),
@@ -1809,6 +1836,7 @@ const allCiJobs: Record<string, any> = {
         profile: 'namespace-profile-linux-x86-64',
         runId: '${{ github.run_id }}',
         privileged: 'never',
+        priority: backgroundJobPriority,
       }),
     }),
     // Optional lookup failures permit authoritative quality fallback; publication must succeed.
@@ -1848,6 +1876,7 @@ export const empiricalProofJobs: CiWorkflowArgs['jobs'] = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
       privileged: 'always',
+      priority: backgroundJobPriority,
     }),
     if: "${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}",
   },
