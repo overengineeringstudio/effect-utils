@@ -25,7 +25,7 @@ const interruptedPublication = (store: GraphStoreApi, boundary: 'action' | 'head
     pin: (name, descriptor) =>
       Effect.gen(function* () {
         pins.push(name)
-        if (name.startsWith(`data-graph/${boundary === 'action' ? 'actions' : 'heads'}/`))
+        if (name.startsWith(`data-graph/${boundary === 'action' ? 'actions' : 'heads'}/`) === true)
           return yield* Effect.interrupt
         yield* store.pin(name, descriptor)
       }),
@@ -43,25 +43,27 @@ const fixture = () => {
     outputs: ['value'],
     inputs: () => ({}),
     recipe: (scope) => ({ kind, version: '1', config: scope }),
-    execute: Effect.fn('Recovery.synthetic')(function* () {
-      calls++
-      return {
-        _tag: 'Accepted',
-        outputs: { value: { bytes: utf8Bytes('durable output'), mediaType: 'text/plain' } },
-        receipts: [],
-      }
-    }),
+    execute: Effect.fn('Recovery.synthetic')(() =>
+      Effect.sync(() => {
+        calls++
+        return {
+          _tag: 'Accepted' as const,
+          outputs: { value: { bytes: utf8Bytes('durable output'), mediaType: 'text/plain' } },
+          receipts: [],
+        }
+      }),
+    ),
   }
   return {
     key: { kind, scope },
-    target: DataGraph.ref(node, scope, 'value'),
+    target: DataGraph.ref({ node: node, scope: scope, output: 'value' }),
     calls: () => calls,
   }
 }
 
 const expectInterrupted = <TValue, TError>(exit: Exit.Exit<TValue, TError>) => {
   expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+  if (Exit.isFailure(exit) === true) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
 }
 
 it.effect(

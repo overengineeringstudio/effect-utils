@@ -24,28 +24,30 @@ const scaleScenario = Effect.fn('DataGraph.scaleScenario')(function* (size: numb
       outputs: ['value'],
       inputs: () => ({}),
       recipe: (scope) => ({ kind: observationKind, version: '1', config: scope }),
-      execute: Effect.fn('Scale.observe')(function* ({ scope }) {
-        observationCalls++
-        return {
-          _tag: 'Accepted',
-          outputs: {
-            value: {
-              bytes: canonicalJsonBytes({ schema: Schema.Json, value: scope }),
-              mediaType: 'application/json',
-              codec: 'canonical-json',
-              schemaVersion: 1,
+      execute: Effect.fn('Scale.observe')(({ scope }) =>
+        Effect.sync(() => {
+          observationCalls++
+          return {
+            _tag: 'Accepted' as const,
+            outputs: {
+              value: {
+                bytes: canonicalJsonBytes({ schema: Schema.Json, value: scope }),
+                mediaType: 'application/json',
+                codec: 'canonical-json',
+                schemaVersion: 1,
+              },
             },
-          },
-          receipts: [],
-        }
-      }),
+            receipts: [],
+          }
+        }),
+      ),
     }
     const references: NodeRef[] = []
     const inputs: Record<string, NodeRef> = Object.create(null)
     const tiers = new Map<string, number>()
     for (let index = 0; index < size; index++) {
       const scope = { tenant: 'synthetic', entity: `item-${index.toString().padStart(5, '0')}` }
-      const reference = DataGraph.ref(observation, scope, 'value')
+      const reference = DataGraph.ref({ node: observation, scope: scope, output: 'value' })
       references.push(reference)
       inputs[`item-${index.toString().padStart(5, '0')}`] = reference
       tiers.set(DataGraph.nodeId({ kind: observationKind, scope }), index % 2)
@@ -56,25 +58,31 @@ const scaleScenario = Effect.fn('DataGraph.scaleScenario')(function* (size: numb
       outputs: ['value'],
       inputs: () => inputs,
       recipe: () => ({ kind: aggregateKind, version: '1', config: { size } }),
-      execute: Effect.fn('Scale.aggregate')(function* ({ inputs }) {
-        aggregateCalls++
-        const digests: Record<string, Schema.Json> = Object.create(null)
-        for (const [name, descriptor] of Object.entries(inputs)) digests[name] = descriptor.digest
-        return {
-          _tag: 'Accepted',
-          outputs: {
-            value: {
-              bytes: canonicalJsonBytes({ schema: Schema.Json, value: digests }),
-              mediaType: 'application/json',
-              codec: 'canonical-json',
-              schemaVersion: 1,
+      execute: Effect.fn('Scale.aggregate')(({ inputs }) =>
+        Effect.sync(() => {
+          aggregateCalls++
+          const digests: Record<string, Schema.Json> = Object.create(null)
+          for (const [name, descriptor] of Object.entries(inputs)) digests[name] = descriptor.digest
+          return {
+            _tag: 'Accepted' as const,
+            outputs: {
+              value: {
+                bytes: canonicalJsonBytes({ schema: Schema.Json, value: digests }),
+                mediaType: 'application/json',
+                codec: 'canonical-json',
+                schemaVersion: 1,
+              },
             },
-          },
-          receipts: [],
-        }
-      }),
+            receipts: [],
+          }
+        }),
+      ),
     }
-    const target = DataGraph.ref(aggregate, { tenant: 'synthetic', size }, 'value')
+    const target = DataGraph.ref({
+      node: aggregate,
+      scope: { tenant: 'synthetic', size },
+      output: 'value',
+    })
     const refresh = references.map(({ node, scope }) =>
       DataGraph.nodeId({ kind: node.kind, scope }),
     )
