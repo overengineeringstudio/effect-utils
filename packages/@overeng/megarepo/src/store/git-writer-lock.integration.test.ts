@@ -17,9 +17,10 @@ const cli = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
 const bun = process.env.BUN_BIN ?? (process.versions.bun === undefined ? 'bun' : process.execPath)
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
-  ChildProcessSpawner.use((spawner) =>
-    spawner.string(ChildProcess.make('git', args, { cwd })),
-  ).pipe(Effect.map((output) => output.trim()))
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner
+    return (yield* spawner.string(ChildProcess.make('git', args, { cwd }))).trim()
+  })
 
 /** Local deadlines make broken workers fail instead of hanging a suite. */
 const awaitMarker = Effect.fn('test/writer-lock/awaitMarker')(function* (path: string) {
@@ -74,7 +75,7 @@ const startWorker = Effect.fn('test/writer-lock/startWorker')(function* (
           cli,
           'store',
           'lock',
-          ...(cloneTarget ? ['--clone-target'] : []),
+          ...(cloneTarget === true ? ['--clone-target'] : []),
           repo,
           '--',
           bun,

@@ -8,6 +8,8 @@ import { Context, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/process/ChildProcess'
 
+import * as Observability from '../core/observability.ts'
+
 /** A failed lock acquisition is never downgraded to an unlocked write. */
 export class GitWriterLockError extends Schema.TaggedError<GitWriterLockError>()(
   'GitWriterLockError',
@@ -18,13 +20,15 @@ class WriterDescriptor extends Context.Service<WriterDescriptor, number>()(
   'megarepo/GitWriterDescriptor',
 ) {}
 
-const io = <A>(path: string, run: () => Promise<A>) =>
-  Effect.tryPromise({ try: run, catch: (cause) => new GitWriterLockError({ path, cause }) })
+const io =
+  (path: string) =>
+  <A>(run: () => Promise<A>) =>
+    Effect.tryPromise({ try: run, catch: (cause) => new GitWriterLockError({ path, cause }) })
 
 /** Resolve worktrees, bare repositories and symlinks to one identity. */
 export const resolveGitCommonDir = Effect.fn('git/resolve-common-dir')(function* (path: string) {
   const absolute = resolve(path)
-  const exists = yield* io(absolute, () =>
+  const exists = yield* io(absolute)(() =>
     stat(absolute).then(
       () => true,
       (cause: NodeJS.ErrnoException) => {
@@ -35,7 +39,7 @@ export const resolveGitCommonDir = Effect.fn('git/resolve-common-dir')(function*
   )
   // Clone admission uses the same name before Git has created its common dir.
   if (exists === false) {
-    const parent = yield* io(absolute, () => realpath(dirname(absolute)))
+    const parent = yield* io(absolute)(() => realpath(dirname(absolute)))
     return resolve(parent, basename(absolute))
   }
   const common = yield* Command.make(
@@ -59,7 +63,7 @@ export const resolveGitCommonDir = Effect.fn('git/resolve-common-dir')(function*
     })
   }
   const commonPath = new TextDecoder().decode(Buffer.concat(common[0])).trim()
-  return yield* io(absolute, () => realpath(commonPath))
+  return yield* io(absolute)(() => realpath(commonPath))
 })
 
 // Lazy loading keeps read-only Node consumers importable; the mr runtime is Bun.
@@ -97,12 +101,12 @@ let flockLibrary: Promise<FlockLibrary> | undefined
  * No TTL, stale-owner recovery or lock-file deletion participates in admission.
  */
 export const withGitWriterLock =
-  (path: string, options?: { readonly create?: boolean }) =>
+  ({ path, create = false }: { readonly path: string; readonly create?: boolean }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       const common =
-        options?.create === true
-          ? yield* io(path, async () => {
+        create === true
+          ? yield* io(path)(async () => {
               try {
                 return await realpath(path)
               } catch (cause) {
@@ -112,16 +116,16 @@ export const withGitWriterLock =
             })
           : yield* resolveGitCommonDir(path)
       const lockPath = `${common}.mr-writer.lock`
-      const native = yield* io(lockPath, () => (flockLibrary ??= loadFlock()))
+      const native = yield* io(lockPath)(() => (flockLibrary ??= loadFlock()))
       return yield* Effect.scoped(
         Effect.gen(function* () {
           const file = yield* Effect.acquireRelease(
-            io(lockPath, () =>
+            io(lockPath)(() =>
               open(lockPath, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600),
             ),
             (handle) => Effect.promise(() => handle.close()).pipe(Effect.orDie),
           )
-          const opened = yield* io(lockPath, () => file.stat())
+          const opened = yield* io(lockPath)(() => file.stat())
           if (
             opened.isFile() === false ||
             opened.nlink !== 1 ||
@@ -148,7 +152,7 @@ export const withGitWriterLock =
               schedule: Schedule.spaced('10 millis'),
             }),
           )
-          const named = yield* io(lockPath, () => lstat(lockPath))
+          const named = yield* io(lockPath)(() => lstat(lockPath))
           if (named.dev !== opened.dev || named.ino !== opened.ino || named.nlink !== 1) {
             return yield* new GitWriterLockError({
               path: lockPath,
@@ -158,7 +162,7 @@ export const withGitWriterLock =
           return yield* effect.pipe(Effect.provideService(WriterDescriptor, file.fd))
         }),
       )
-    }).pipe(Effect.withSpan('git/writer-lock'))
+    }).pipe(Observability.withRepoPathSpan({ name: 'git/writer-lock', path }))
 /** Minimal process handle shared by the standard and descriptor-inheriting spawners. */
 export interface GitWriterProcess {
   readonly stdout: Stream.Stream<Uint8Array, GitWriterLockError | PlatformError>
@@ -186,9 +190,9 @@ export const startGitWriterProcess = Effect.fn('git/start-writer-process')(funct
   if (Option.isNone(descriptor) === true) {
     const child: GitWriterProcess = yield* Command.make(command, args, {
       cwd,
-      stdin: inheritStdio ? 'inherit' : 'pipe',
-      stdout: inheritStdio ? 'inherit' : 'pipe',
-      stderr: inheritStdio ? 'inherit' : 'pipe',
+      stdin: inheritStdio === true ? 'inherit' : 'pipe',
+      stdout: inheritStdio === true ? 'inherit' : 'pipe',
+      stderr: inheritStdio === true ? 'inherit' : 'pipe',
     })
     return child
   }
@@ -197,9 +201,9 @@ export const startGitWriterProcess = Effect.fn('git/start-writer-process')(funct
   const child = spawn(command, args, {
     cwd,
     stdio: [
-      inheritStdio ? 'inherit' : 'pipe',
-      inheritStdio ? 'inherit' : 'pipe',
-      inheritStdio ? 'inherit' : 'pipe',
+      inheritStdio === true ? 'inherit' : 'pipe',
+      inheritStdio === true ? 'inherit' : 'pipe',
+      inheritStdio === true ? 'inherit' : 'pipe',
       descriptor.value,
     ],
   })
@@ -239,7 +243,7 @@ export const startGitWriterProcess = Effect.fn('git/start-writer-process')(funct
             child.stderr,
             (cause) => new GitWriterLockError({ path: command, cause }),
           ),
-    exitCode: io(command, () => exited),
+    exitCode: io(command)(() => exited),
   }
   return result
 })

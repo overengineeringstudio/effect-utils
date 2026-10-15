@@ -23,7 +23,7 @@ const program = Effect.gen(function* () {
   })
   yield* fs.writeFileString(`${marker}.attempted`, '')
   yield* mode === 'primitive' || mode === 'clone'
-    ? body.pipe(withGitWriterLock(repoPath, { create: mode === 'clone' }))
+    ? body.pipe(withGitWriterLock({ path: repoPath, create: mode === 'clone' }))
     : body
 })
 

@@ -36,7 +36,7 @@ export const storeLockCommand = Cli.Command.make(
         })
       }
     }).pipe(
-      withGitWriterLock(path, { create: cloneTarget }),
+      withGitWriterLock({ path: path, create: cloneTarget }),
       Observability.withCommandSpan({ name: 'megarepo/store/lock', command: 'store lock' }),
     ),
 ).pipe(
