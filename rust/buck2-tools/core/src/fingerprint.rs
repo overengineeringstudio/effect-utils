@@ -385,6 +385,7 @@ pub fn fingerprint(
     backing_roots: &[PathBuf],
     link_owners: &[LinkOwner],
 ) -> io::Result<Fingerprints> {
+    let _permit = crate::fingerprint_admission::acquire()?;
     let root = real_directory(tree, "tree input")?;
     let backing = backing_roots
         .iter()
@@ -512,6 +513,7 @@ fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -
 }
 
 pub fn fingerprint_input_root(root: &Path) -> io::Result<String> {
+    let _permit = crate::fingerprint_admission::acquire()?;
     let mut hash = Sha256::new();
     let mut buffer = Box::new([0u8; 131072]);
     visit_input(root, root, &mut hash, &mut *buffer)?;

@@ -104,7 +104,7 @@ import {
   type ColdWorktreeDecision,
 } from '../../../store/store-worktree-policy.ts'
 import { classifyStoreWorktreePolicy } from '../../../store/store-worktree-policy.ts'
-import { Store, StoreLayer } from '../../../store/store.ts'
+import { isStoreDirectory, Store, StoreLayer } from '../../../store/store.ts'
 import { getCloneUrl } from '../../../sync/mod.ts'
 import {
   Cwd,
@@ -769,8 +769,7 @@ const collectStoreWorktrees = ({
       if (entry.startsWith('.') === true) continue
 
       const entryPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeDir(`${entry}/`))
-      const entryStat = yield* fs.stat(entryPath)
-      if (entryStat.type !== 'Directory') continue
+      if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) continue
 
       result.push(
         ...(yield* collectStoreWorktrees({
@@ -856,14 +855,17 @@ const collectRepoStoreWorktrees = ({
       for (const refName of refNames) knownRefsByType[namespace].add(refName)
     }
 
+    const refsPath = EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeDir('refs/'))
+    if ((yield* fs.exists(refsPath.replace(/\/+$/, ''))) === false) return result
+    if ((yield* isStoreDirectory({ fs, path: refsPath })) === false) return result
+
     for (const refType of STORE_REF_TYPES) {
       const refTypePath = EffectPath.ops.join(
         repoPath,
         EffectPath.unsafe.relativeDir(`refs/${refType}/`),
       )
-      if ((yield* fs.exists(refTypePath)) === false) continue
-      const refTypeStat = yield* fs.stat(refTypePath)
-      if (refTypeStat.type !== 'Directory') continue
+      if ((yield* fs.exists(refTypePath.replace(/\/+$/, ''))) === false) continue
+      if ((yield* isStoreDirectory({ fs, path: refTypePath })) === false) continue
 
       const layoutWorktrees = yield* collectStoreWorktrees({
         fs,

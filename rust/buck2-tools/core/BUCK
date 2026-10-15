@@ -4,7 +4,7 @@
 # Projection source: rust/buck2-tools/core/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:2f0daf9234347739ed0894c7970017115e0fe37537931aec78854f88be1a3623
+# Semantic fingerprint: sha256:cd0ad2b5206fecd91df069b7937f96bce99df2d98e63134a5e3c28824b09b313
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/BUCK.genie.ts, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/core/src/**/*.rs, rust/buck2-tools/core/tests/**/*.rs, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -19,6 +19,7 @@ static_source_set(
         "Cargo.toml",
         "src/bin/buck2-fingerprint.rs",
         "src/fingerprint.rs",
+        "src/fingerprint_admission.rs",
         "src/lib.rs",
         "tests/fingerprint.rs",
     ] + glob(["rust-toolchain.toml"]),
@@ -44,6 +45,12 @@ native.export_file(
 )
 
 native.export_file(
+    name = "cargo-source/src/fingerprint_admission.rs",
+    src = "src/fingerprint_admission.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
     name = "cargo-source/src/lib.rs",
     src = "src/lib.rs",
     visibility = ["PUBLIC"],
@@ -56,6 +63,7 @@ native.rust_library(
     srcs = [
         "src/bin/buck2-fingerprint.rs",
         "src/fingerprint.rs",
+        "src/fingerprint_admission.rs",
         "src/lib.rs",
     ],
     deps = [
@@ -95,6 +103,7 @@ native.rust_binary(
     srcs = [
         "src/bin/buck2-fingerprint.rs",
         "src/fingerprint.rs",
+        "src/fingerprint_admission.rs",
         "src/lib.rs",
     ],
     deps = [

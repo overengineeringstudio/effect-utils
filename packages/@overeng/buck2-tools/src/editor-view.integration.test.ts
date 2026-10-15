@@ -1128,10 +1128,12 @@ describe('editor view publisher', () => {
       const publication = publishEditorView(fixture.options)
       operation = publication
       opened = await publication
-      descriptor = openSync(
-        join(fixture.editorRoot, opened.snapshot, 'node_modules', 'dep', 'index.js'),
-        'r',
-      )
+      // Payloads are CAS hardlinks shared across generations. macOS lsof may
+      // report another link's pathname, so use the generation-owned record for
+      // this pathname-based advisory census (managed pins are the guarantee).
+      const readerPath = recordPath(fixture, opened.snapshot)
+      expect(statSync(readerPath).nlink).toBe(1)
+      descriptor = openSync(readerPath, 'r')
       revision = 2
     })
 
