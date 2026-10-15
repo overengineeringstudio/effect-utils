@@ -231,10 +231,10 @@ const readVerified = Effect.fn('DataGraph.readVerified')(function* (descriptor: 
   const store = yield* GraphStore
   const reads = yield* Effect.serviceOption(PullReads)
   const identity = canonicalJsonString({ schema: ContentDescriptor, value: descriptor })
-  const cached = Option.isSome(reads) ? reads.value.get(identity) : undefined
+  const cached = Option.isSome(reads) === true ? reads.value.get(identity) : undefined
   if (cached !== undefined) return cached
   const bytes = yield* store.get(descriptor)
-  if (Option.isSome(reads)) reads.value.set(identity, bytes)
+  if (Option.isSome(reads) === true) reads.value.set(identity, bytes)
   return bytes
 })
 const readJson = Effect.fn('DataGraph.readJson')(function* <TSchema extends Schema.Codec<unknown>>(
@@ -533,7 +533,7 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
         if (Option.isSome(cached) === true) {
           const outputs = yield* outputsOf(cached.value, node, action)
           if (
-            Option.isNone(previous) ||
+            Option.isNone(previous) === true ||
             previous.value.action.digest !== action.digest ||
             previous.value.materialization.digest !== cached.value.digest
           )

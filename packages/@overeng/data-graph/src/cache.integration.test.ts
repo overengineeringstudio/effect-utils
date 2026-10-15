@@ -41,8 +41,8 @@ it.effect(
           kind: consumerKind,
           outputs: ['value'],
           inputs: () => ({
-            left: DataGraph.ref(source, {}, 'value'),
-            right: DataGraph.ref(source, {}, 'value'),
+            left: DataGraph.ref({ node: source, scope: {}, output: 'value' }),
+            right: DataGraph.ref({ node: source, scope: {}, output: 'value' }),
           }),
           recipe: () => ({ kind: consumerKind, version: '1', config: {} }),
           execute: () =>
@@ -57,7 +57,7 @@ it.effect(
               }
             }),
         }
-        const target = DataGraph.ref(consumer, {}, 'value')
+        const target = DataGraph.ref({ node: consumer, scope: {}, output: 'value' })
         const cold = yield* DataGraph.materialize(target)
         expect(cold.trace).toHaveLength(2)
         expect(sourceCalls).toBe(1)
