@@ -2,6 +2,33 @@
 
 A collection of production-ready [Effect](https://effect.website) utilities and integrations.
 
+## Namespace scheduling
+
+Namespace priorities express queue order across the shared projects. Lower numbers
+start first; any explicit priority precedes an unspecified priority.
+
+| Priority | Work                                |
+| -------- | ----------------------------------- |
+| 1        | effect-utils delivery               |
+| 2        | Smalltalk, PTY and tooling delivery |
+| 3        | LiveStore delivery                  |
+| 4        | effect-utils background             |
+| 5        | Smalltalk and tooling background    |
+| 6        | LiveStore background                |
+
+Delivery includes required-check prerequisites, main verification, releases and
+actual deployments. Background includes optional benchmarks, advisory reports
+and maintenance. A scheduled verification is still delivery. Priorities do not
+reserve capacity or preempt running jobs; there is no new concurrency cap.
+
+For effect-utils, required product checks, cache contract proofs, live integrations,
+compiled-product publication and required Storybook play tests use 1 on both
+platforms. Optional Storybook previews, cold-bootstrap/GC proofs, Devenv performance,
+Nix closure measurements, source-shape measurements on main, measurement reports,
+pipeline traces, alignment notices and review-request notifications use 4. The required
+PR source-shape check retains delivery priority. Shapes, caches, access controls,
+required checks and workflow frequency are independent of these labels.
+
 ## Packages
 
 ### Notion Integration

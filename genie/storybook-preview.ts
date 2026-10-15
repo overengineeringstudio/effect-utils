@@ -70,6 +70,7 @@ export const storybookPreviewRunner = (privileged: NamespacePrivilege): readonly
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
     privileged,
+    priority: 4,
   })
 
 const binaryCache = readBinaryCacheDescriptors(
