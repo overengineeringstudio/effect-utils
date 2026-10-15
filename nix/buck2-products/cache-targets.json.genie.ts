@@ -48,6 +48,7 @@ const packageProducts = [
   '@overeng/ai-gateway-conformance',
   '@overeng/ai-gateway-edge',
   '@overeng/content-address',
+  '@overeng/data-graph',
   '@overeng/devbar',
   '@overeng/effect-ai-claude-cli',
   '@overeng/effect-ai-gateway',
