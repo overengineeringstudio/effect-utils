@@ -1,4 +1,4 @@
-import { Effect, Option, Schedule, Stream } from 'effect'
+import { Clock, Duration, Effect, Option, Schedule, Stream } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -14,7 +14,7 @@ import {
 } from './setup.ts'
 
 Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
-  Vitest.it.effect('returns valid page or data source objects without a query', () =>
+  Vitest.it.live('returns valid page or data source objects without a query', () =>
     Effect.gen(function* () {
       const result = yield* NotionSearch.search({ pageSize: 10 })
       for (const item of result.results) {
@@ -24,7 +24,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
     }).pipe(Effect.provide(IntegrationTestLayer)),
   )
 
-  Vitest.it.effect('accepts an empty query even in an empty workspace', () =>
+  Vitest.it.live('accepts an empty query even in an empty workspace', () =>
     NotionSearch.search({ query: '' }).pipe(Effect.provide(IntegrationTestLayer)),
   )
 
@@ -53,16 +53,25 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
           const dataSourceId = database.data_sources?.[0]?.id
           expect(dataSourceId).toBeDefined()
 
-          // Poll the actual search index, not a fixed delay. Bound the entire polling
-          // effect, including HTTP requests and their rate-limit retries, to one minute.
-          const indexed = yield* NotionSearch.search({ query }).pipe(
-            Effect.repeat({
-              schedule: Schedule.spaced('2 seconds'),
-              until: (result) =>
-                result.results.some((item) => item.id === page.id) &&
-                result.results.some((item) => item.id === dataSourceId),
-            }),
-            Effect.timeout('60 seconds'),
+          // Every query shape observes its own index readiness, sharing the fixture's
+          // one-minute deadline (including HTTP requests and rate-limit retries).
+          const indexDeadline = (yield* Clock.currentTimeMillis) + 60000
+          const waitForIndex = <TResult, TError, TRequirements>(
+            search: Effect.Effect<TResult, TError, TRequirements>,
+            until: (result: TResult) => boolean,
+          ) =>
+            Effect.gen(function* () {
+              const remaining = indexDeadline - (yield* Clock.currentTimeMillis)
+              return yield* search.pipe(
+                Effect.repeat({ schedule: Schedule.spaced('2 seconds'), until }),
+                Effect.timeout(Duration.millis(Math.max(0, remaining))),
+              )
+            })
+          const indexed = yield* waitForIndex(
+            NotionSearch.search({ query }),
+            (result) =>
+              result.results.some((item) => item.id === page.id) &&
+              result.results.some((item) => item.id === dataSourceId),
           )
           expect(indexed.results.map((item) => item.id)).toEqual(
             expect.arrayContaining([page.id, dataSourceId]),
@@ -74,44 +83,64 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             ['page', page.id],
             ['data_source', dataSourceId],
           ] as const) {
-            const filtered = yield* NotionSearch.search({
-              query,
-              filter: { property: 'object', value },
-            })
+            const filtered = yield* waitForIndex(
+              NotionSearch.search({
+                query,
+                filter: { property: 'object', value },
+              }),
+              (result) => result.results.some((item) => item.id === id),
+            )
             expect(filtered.results.map((item) => item.id)).toContain(id)
             for (const item of filtered.results) expect(item.object).toBe(value)
 
-            const streamed = yield* NotionSearch.searchStream({
-              query,
-              filter: { property: 'object', value },
-              pageSize: 1,
-            }).pipe(Stream.runCollect)
+            const streamed = yield* waitForIndex(
+              NotionSearch.searchStream({
+                query,
+                filter: { property: 'object', value },
+                pageSize: 1,
+              }).pipe(Stream.runCollect),
+              (items) => items.some((item) => item.id === id),
+            )
             expect(streamed.map((item) => item.id)).toContain(id)
             for (const item of streamed) expect(item.object).toBe(value)
           }
 
-          const sorted = yield* NotionSearch.search({
-            query,
-            sort: { direction: 'descending', timestamp: 'last_edited_time' },
-          })
+          const sorted = yield* waitForIndex(
+            NotionSearch.search({
+              query,
+              sort: { direction: 'descending', timestamp: 'last_edited_time' },
+            }),
+            (result) =>
+              result.results.some((item) => item.id === page.id) &&
+              result.results.some((item) => item.id === dataSourceId),
+          )
           expect(sorted.results.map((item) => item.id)).toEqual(
             expect.arrayContaining([page.id, dataSourceId]),
           )
 
-          const first = yield* NotionSearch.search({ query, pageSize: 1 })
+          const first = yield* waitForIndex(
+            NotionSearch.search({ query, pageSize: 1 }),
+            (result) => result.results.length === 1 && result.hasMore,
+          )
           expect(first.results).toHaveLength(1)
           expect(first.hasMore).toBe(true)
           expect(Option.isSome(first.nextCursor)).toBe(true)
-          const second = yield* NotionSearch.search({
-            query,
-            pageSize: 1,
-            startCursor: Option.getOrThrow(first.nextCursor),
-          })
+          const second = yield* waitForIndex(
+            NotionSearch.search({
+              query,
+              pageSize: 1,
+              startCursor: Option.getOrThrow(first.nextCursor),
+            }),
+            (result) => result.results.length === 1,
+          )
           expect(second.results).toHaveLength(1)
           expect(second.results[0]?.id).not.toBe(first.results[0]?.id)
 
-          const streamed = yield* NotionSearch.searchStream({ query, pageSize: 1 }).pipe(
-            Stream.runCollect,
+          const streamed = yield* waitForIndex(
+            NotionSearch.searchStream({ query, pageSize: 1 }).pipe(Stream.runCollect),
+            (items) =>
+              items.some((item) => item.id === page.id) &&
+              items.some((item) => item.id === dataSourceId),
           )
           expect(streamed.map((item) => item.id)).toEqual(
             expect.arrayContaining([page.id, dataSourceId]),

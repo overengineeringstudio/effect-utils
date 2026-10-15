@@ -36,6 +36,12 @@ Without a scratch parent, fixture-backed tests are skipped via
 and empty-query handling without requiring any workspace content. Without a
 token, all live integration tests are skipped.
 
+Live HTTP cases use `Vitest.it.live`, not `Vitest.it.effect`. The latter
+installs a virtual `TestClock`: without an explicit clock adjustment, even a
+one-second retry backoff never elapses and the outer Vitest timeout fires.
+Fixture provisioning remains in `beforeAll`, outside each test's timeout.
+Unit retry tests use the virtual clock only when they explicitly advance it.
+
 ## Test Fixtures
 
 The provisioned fixture set includes:

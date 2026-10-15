@@ -12,7 +12,7 @@ const USER_RETRIEVE_TIMEOUT = 60_000
 
 Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
   Vitest.describe('me', () => {
-    Vitest.it.effect(
+    Vitest.it.live(
       'fetches the bot user',
       () =>
         Effect.gen(function* () {
@@ -26,7 +26,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
   })
 
   Vitest.describe('list', () => {
-    Vitest.it.effect(
+    Vitest.it.live(
       'lists workspace users',
       () =>
         Effect.gen(function* () {
@@ -38,7 +38,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
       { timeout: USER_REQUEST_TIMEOUT },
     )
 
-    Vitest.it.effect(
+    Vitest.it.live(
       'lists with page size limit',
       () =>
         Effect.gen(function* () {
@@ -51,7 +51,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
   })
 
   Vitest.describe('listStream', () => {
-    Vitest.it.effect(
+    Vitest.it.live(
       'streams all users',
       () =>
         Effect.gen(function* () {
@@ -69,7 +69,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
   })
 
   Vitest.describe('retrieve', () => {
-    Vitest.it.effect(
+    Vitest.it.live(
       'fetches a specific user by ID',
       () =>
         Effect.gen(function* () {
