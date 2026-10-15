@@ -57,7 +57,16 @@ const runtimeDeps = catalog.compose({
   },
   // The optional entry consumes only utils' dependency-free formatter; the shell has no edge.
   peerDependencies: {
-    external: { ...catalog.pick(...peerDepNames), '@overeng/utils': utilsPkg.data.version },
+    external: {
+      ...catalog.pick(...peerDepNames),
+      /**
+       * React 19.2.3 is the lowest React 19.2 release verified by a consumer.
+       * Catalog-derived peers over-constrain hosts whose React cannot move in lockstep.
+       */
+      react: '^19.2.3',
+      'react-dom': '^19.2.3',
+      '@overeng/utils': utilsPkg.data.version,
+    },
   },
 })
 
