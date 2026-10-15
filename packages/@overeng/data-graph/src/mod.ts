@@ -107,8 +107,8 @@ export class GraphStore extends Context.Service<GraphStore, GraphStoreApi>()(
       pin: (name, manifestDescriptor) => pinManifest({ store, name, manifestDescriptor }),
       lookup: (name) =>
         getPinnedManifestDescriptor({ store, name }).pipe(
-          Effect.map(Option.some),
-          Effect.catchTag('ContentPinMissingError', () => Effect.succeed(Option.none())),
+          Effect.asSome,
+          Effect.catchTag('ContentPinMissingError', () => Effect.succeedNone),
         ),
     })
   }
@@ -175,11 +175,13 @@ const actionManifest = (
 ): ContentManifest =>
   manifest('data-graph.action', [
     { role: 'recipe', descriptor: recipe },
-    ...Object.keys(inputs).toSorted().map((name) => ({
-      role: 'input',
-      logicalPath: name,
-      descriptor: inputs[name]!,
-    })),
+    ...Object.keys(inputs)
+      .toSorted()
+      .map((name) => ({
+        role: 'input',
+        logicalPath: name,
+        descriptor: inputs[name]!,
+      })),
   ])
 
 /** Pure action identity, using exactly the descriptors persisted during a pull. */
@@ -201,7 +203,7 @@ const readJson = Effect.fn('DataGraph.readJson')(function* <TSchema extends Sche
   descriptor: ContentDescriptor,
 ) {
   const store = yield* GraphStore
-  return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(
+  return yield* Schema.decodeEffect(Schema.fromJsonString(schema))(
     decoder.decode(yield* store.get(descriptor)),
   )
 })
@@ -387,9 +389,7 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
       const recipe = node.recipe(scope)
       if (recipe.kind !== node.kind) return yield* invalid('Recipe kind must match node kind')
       const recipeDescriptor = yield* writeJson(Recipe, recipe)
-      const action = yield* store.manifest(
-        actionManifest(recipeDescriptor, inputs),
-      )
+      const action = yield* store.manifest(actionManifest(recipeDescriptor, inputs))
       const previous = yield* getHead(key)
       const finish = (
         outcome: Outcome,

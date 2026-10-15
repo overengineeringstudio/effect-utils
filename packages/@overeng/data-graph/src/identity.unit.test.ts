@@ -6,7 +6,7 @@ import { descriptorForUtf8 } from '@overeng/content-address'
 
 import { actionKey, NodeKind } from './mod.ts'
 
-const kind = Schema.decodeUnknownSync(NodeKind)('property-source')
+const kind = Schema.decodeSync(NodeKind)('property-source')
 const recipe = { kind, version: '1', config: {} }
 
 it.prop(

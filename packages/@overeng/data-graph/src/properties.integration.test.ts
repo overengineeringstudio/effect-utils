@@ -17,8 +17,8 @@ it.effect.prop(
       yield* Effect.gen(function* () {
         const name = `name:${raw.replaceAll('\0', '').trim()}`
         const names = [...new Set([name, '__proto__', 'constructor'])]
-        const kind = Schema.decodeUnknownSync(NodeKind)('property-source')
-        const consumerKind = Schema.decodeUnknownSync(NodeKind)('property-consumer')
+        const kind = yield* Schema.decodeEffect(NodeKind)('property-source')
+        const consumerKind = yield* Schema.decodeEffect(NodeKind)('property-consumer')
         let version = '1'
         let calls = 0
         const source: NodeDef = {

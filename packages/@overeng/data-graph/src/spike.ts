@@ -1,5 +1,5 @@
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import * as TestClock from 'effect/testing/TestClock'
 
 import { scenario } from './scenario.ts'
@@ -11,8 +11,7 @@ scenario().pipe(
       for (const line of lines) console.log(line)
     }),
   ),
-  Effect.provide(TestClock.layer()),
-  Effect.provide(NodeServices.layer),
+  Effect.provide(Layer.mergeAll(TestClock.layer(), NodeServices.layer)),
   Effect.scoped,
   NodeRuntime.runMain,
 )

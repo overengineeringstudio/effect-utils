@@ -45,7 +45,7 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
       execute: NodeDef['execute'],
       mode: NodeDef['_tag'] = 'Derive',
     ): NodeDef => {
-      const kind = Schema.decodeUnknownSync(NodeKind)(name)
+      const kind = Schema.decodeSync(NodeKind)(name)
       return {
         _tag: mode,
         kind,
@@ -102,7 +102,7 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
         Effect.fn(`Scenario.render-${language}`)(function* ({ inputs }) {
           const store = yield* GraphStore
           assert.ok(inputs.value)
-          const title = yield* Schema.decodeUnknownEffect(
+          const title = yield* Schema.decodeEffect(
             Schema.fromJsonString(Schema.Struct({ title: Schema.String })),
           )(new TextDecoder().decode(yield* store.get(inputs.value)))
           return accepted({ value: jsonOutput({ language, title: title.title }) })
@@ -298,7 +298,7 @@ export const scenario = Effect.fn('DataGraph.scenario')(function* () {
     let attemptCount = 0
     for (const shard of yield* fs.readDirectory(`${root}/sha256`)) {
       for (const object of yield* fs.readDirectory(`${root}/sha256/${shard}`)) {
-        const decoded = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))(
+        const decoded = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Json))(
           yield* fs.readFileString(`${root}/sha256/${shard}/${object}`),
         ).pipe(Effect.result)
         if (
