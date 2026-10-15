@@ -53,23 +53,18 @@ fn publish_directory(directory: &Path) -> io::Result<()> {
     };
     let result = (|| {
         fs::set_permissions(&temporary, fs::Permissions::from_mode(0o1777))?;
-        match fs::rename(&temporary, directory) {
-            Ok(()) => Ok(()),
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    ErrorKind::AlreadyExists | ErrorKind::DirectoryNotEmpty
-                ) =>
-            {
-                Ok(())
-            }
-            Err(error) => Err(error),
-        }
+        fs::rename(&temporary, directory)
     })();
     let cleanup = match fs::remove_dir(&temporary) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
+    };
+    // In sticky /tmp, another user's winner can make rename fail with
+    // EPERM/EACCES rather than EEXIST. After cleanup, validate the winner by use.
+    let result = match result {
+        Err(_) if directory.is_dir() => Ok(()),
+        other => other,
     };
     result.and(cleanup)
 }
@@ -100,6 +95,12 @@ fn publish_file(path: &Path) -> io::Result<()> {
         }
     })();
     let cleanup = fs::remove_file(&temporary);
+    // A concurrently published winner can also mask the expected EEXIST with
+    // a permission error. Leave regular-file/open/lock validation to the caller.
+    let result = match result {
+        Err(_) if path.is_file() => Ok(()),
+        other => other,
+    };
     result.and(cleanup)
 }
 
