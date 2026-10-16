@@ -215,27 +215,33 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                         const now = yield* Clock.currentTimeMillis
                         // Only synthetic fixture IDs, counts, and cursor hashes are logged.
                         // Preserve the original failure; diagnostics never retry assertions.
-                        yield* Effect.logError('Notion search fixture readiness failed', {
-                          shape,
-                          attempts,
-                          elapsedMs: now - indexStarted,
-                          pollElapsedMs: now - started,
-                          remainingMs: Math.max(0, indexDeadline - now),
-                          remainingAtStartMs: remaining,
-                          expectedFixtureIds,
-                          lastResult,
-                          httpEvents,
-                          searchPageObserver: {
+                        yield* Effect.logError(
+                          'Notion search fixture readiness failed',
+                          yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
                             shape,
-                            searchPages,
-                            totalSearchPages,
-                            observerFailures,
-                            retainedCursorHashCount: cursorHashes.size,
-                            cursorTrackingSaturated,
-                            retentionLimit,
-                          },
-                        })
-                      })
+                            attempts,
+                            elapsedMs: now - indexStarted,
+                            pollElapsedMs: now - started,
+                            remainingMs: Math.max(0, indexDeadline - now),
+                            remainingAtStartMs: remaining,
+                            expectedFixtureIds,
+                            lastResult,
+                            httpEvents,
+                            searchPageObserver: {
+                              shape,
+                              searchPages,
+                              totalSearchPages,
+                              observerFailures,
+                              retainedCursorHashCount: cursorHashes.size,
+                              cursorTrackingSaturated,
+                              retentionLimit,
+                            },
+                          }),
+                        )
+                      }).pipe(
+                        // Diagnostic encoding/logging must not replace the readiness failure.
+                        Effect.ignoreCause({ log: false }),
+                      )
                     : Effect.void,
                 ),
               )
