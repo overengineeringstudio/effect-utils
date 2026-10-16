@@ -8,6 +8,9 @@
 #     (inputs.effect-utils.devenvModules.tasks.lint-oxc {
 #       # Git pathspecs that define the lint surface.
 #       lintPaths = [ "packages" "scripts" ];
+#       # Tailwind policy includes manifests/CSS beyond the ordinary lint surface.
+#       # Exclude inert source with Git pathspecs, not Tailwind exceptions.
+#       noTailwindPaths = [ "." ":(exclude)archive/**" ];
 #       # Glob patterns for .genie.ts files (for genie check caching)
 #       # Should match all *.genie.ts files without traversing node_modules
 #       geniePatterns = [
@@ -44,6 +47,9 @@
   # untracked non-ignored files below these paths, so ignored dependency/build
   # trees are never walked by devenv or the lint tools.
   lintPaths ? [ "." ],
+  # Tailwind checks also cover manifests and CSS, independently of lintPaths.
+  # Consumers may exclude inert historical source using Git pathspecs.
+  noTailwindPaths ? [ "." ],
   # Type-aware linting: provide tsconfig to enable --type-aware flag.
   # Requires pkgs.tsgolint in devenv packages (auto-discovered on PATH by oxlint).
   tsconfig ? null,
@@ -378,7 +384,7 @@ let
     "lint:check:no-tailwind" = {
       description = "Reject Tailwind dependencies, imports, configs, and CSS directives";
       exec = trace.exec "lint:check:no-tailwind" ''
-        ${pkgs.nodejs}/bin/node ${noTailwindScript}
+        ${pkgs.nodejs}/bin/node ${noTailwindScript} ${lib.escapeShellArgs noTailwindPaths}
       '';
     };
     "lint:check" = {
