@@ -689,6 +689,40 @@ describe('normalized store projection', () => {
     }
   })
 
+  it('projects a file snapshot dependency on a workspace importer as a transitive Buck edge', async () => {
+    const fixtureLock = readFileSync(
+      new URL('./fixtures/pnpm-snapshot-link/pnpm-lock.yaml', import.meta.url),
+      'utf8',
+    )
+    const projection = await projectionOf(fixtureLock)
+    const app = projection.views.find((view) => view.importer === 'packages/app')!
+    const consumer = projection.entries.find((entry) => entry.packageName === 'file-consumer')!
+    const libKey = workspaceKey('packages/lib')
+    expect(Object.keys(app.variants[0]!.direct)).toEqual(['file-consumer'])
+    expect(app.variants[0]!.direct['file-consumer']).toEqual({
+      kind: 'entry',
+      storeKey: consumer.storeKey,
+    })
+    expect(app.variants[0]!.closure).toContain(consumer.storeKey)
+    expect(consumer.sourceTree).toBe('//external/file-consumer:package_tree')
+    expect(consumer.variants[0]!.edges['workspace-lib']).toEqual({
+      kind: 'workspace',
+      workspaceKey: libKey,
+      workspacePath: 'packages/lib',
+    })
+    expect(app.workspaceTrees[libKey]).toBe('//packages/lib:package_tree')
+    const rendered = renderPnpmStoreBuck(projection)
+    expect(renderedRule(rendered, consumer.target)).toContain(
+      '"workspace-lib": "//packages/lib:package_tree"',
+    )
+    expect(renderedRule(rendered, consumer.packageTarget)).toContain(
+      'source = "//external/file-consumer:package_tree"',
+    )
+    expect(renderedRule(rendered, app.target)).toContain(
+      `"${libKey}": "//packages/lib:package_tree"`,
+    )
+  })
+
   it('keeps an injected workspace package as an importer workspace edge', async () => {
     // pnpm 12 injects workspace packages by default, so a direct workspace
     // dependency arrives as a `file:<dir>` snapshot instead of a `link:`
@@ -732,7 +766,7 @@ describe('normalized store projection', () => {
   })
 
   it.each(['injected', 'linked'] as const)(
-    'projects an %s frozen source through its declared tree without changing workspace identity',
+    'projects an %s frozen source through its declared tree and dependency context',
     async (kind) => {
       const sourcePath = '.devenv/pnpm-source-inputs/current/repos/sdk/client'
       const sourceTarget = 'pnpm_sources//:sdk_client_package_tree'
@@ -756,20 +790,22 @@ describe('normalized store projection', () => {
       const localKey = workspaceKey('packages/local')
 
       expect(view.workspaceTrees).toEqual({
-        [sourceKey]: sourceTarget,
+        ...(kind === 'linked' ? { [sourceKey]: sourceTarget } : {}),
         [localKey]: '//packages/local:package_tree',
       })
       expect(view.variants).toEqual(ordinary.views[0]!.variants)
-      expect(projected.entries).toEqual(ordinary.entries)
+      expect(projected.entries[0]!.sourceTree).toBe(sourceTarget)
       expect(projected.fingerprint).not.toBe(ordinary.fingerprint)
-      expect(view.variants[0]!.direct['source-lib']).toEqual({
-        kind: 'workspace',
-        workspaceKey: sourceKey,
-        workspacePath: sourcePath,
-      })
+      expect(view.variants[0]!.direct['source-lib']).toEqual(
+        kind === 'linked'
+          ? { kind: 'workspace', workspaceKey: sourceKey, workspacePath: sourcePath }
+          : { kind: 'entry', storeKey: projected.entries[0]!.storeKey },
+      )
 
       const rendered = renderPnpmStoreBuck(projected)
-      expect(rendered).toContain(`"${sourceKey}": "${sourceTarget}"`)
+      expect(rendered).toContain(
+        kind === 'linked' ? `"${sourceKey}": "${sourceTarget}"` : `source = "${sourceTarget}"`,
+      )
       expect(rendered).toContain(`"${localKey}": "//packages/local:package_tree"`)
       expect(rendered).not.toContain(`//${sourcePath}:package_tree`)
       // Matching a live-checkout suffix must not silently replace frozen bytes.
@@ -941,6 +977,41 @@ describe('normalized store projection of the real lockfile', () => {
     expect(new Set(projection.entries.map((entry) => entry.storeKey)).size).toBe(743)
     expect(projection.views).toHaveLength(Object.keys(metadata.importers).length)
     expect(computeStoreSccs({ metadata })).toEqual(projection.sccs.map((scc) => scc.members))
+  })
+
+  it('adds source-only and external-only views without changing npm views or external platform graphs', () => {
+    const rendered = renderPnpmStoreBuck(projection)
+    const previous = readFileSync('buck2/dependencies/BUCK', 'utf8')
+    const viewBody = (output: string, target: string): string => {
+      const body = output.split(`pnpm_store_view(\n    name = "${target}",\n`)[1]?.split('\n)\n')[0]
+      if (body === undefined) throw new Error(`missing dependency view ${target}`)
+      return body
+    }
+    const externalGraph = (body: string): string =>
+      body
+        .replace(/    workspace_trees = \{[\s\S]*?\n    \},\n/u, '')
+        .replace(/    workspace_dependencies = \{[\s\S]*?\n    \},\n/u, '')
+    for (const view of projection.views) {
+      const ordinary = viewBody(rendered, view.target)
+      const product = viewBody(rendered, view.target.replace(/^view_/, 'product_view_'))
+      const external = viewBody(rendered, view.target.replace(/^view_/, 'external_view_'))
+      expect(ordinary).toBe(viewBody(previous, view.target))
+      expect(product.replaceAll(':product_package_tree"', ':package_tree"')).toBe(ordinary)
+      expect(externalGraph(product)).toBe(externalGraph(ordinary))
+      expect(externalGraph(external)).toBe(externalGraph(ordinary))
+      expect(external).toContain('    workspace_trees = {\n    },')
+      expect(external).toContain('    workspace_dependencies = {\n    },')
+      expect(external).not.toContain(':package_tree"')
+      expect(external).not.toContain(':product_package_tree"')
+      expect(product).not.toMatch(/": "[^"]+:package_tree"/u)
+    }
+    const genie = projection.views.find((view) => view.importer === 'packages/@overeng/genie')!
+    const externalGenie = viewBody(rendered, genie.target.replace(/^view_/, 'external_view_'))
+    expect(externalGenie).toContain('"typescript": "typescript@7.0.2"')
+    expect(externalGenie).toContain('closure_by_platform = {')
+    for (const platform of pnpmPlatforms) {
+      expect(externalGenie).toContain(`"${platform}": {`)
+    }
   })
 
   it('renders a deterministic declaration whose selects appear only where edges vary', () => {

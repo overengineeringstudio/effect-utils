@@ -178,7 +178,9 @@ export const Column = ({ children, widthRatio, blockKey }: ColumnProps) => {
   return h('column', Object.keys(props).length === 0 ? null : props, children)
 }
 export const LinkToPage = ({ pageId }: LinkToPageProps) => h('link_to_page', { pageId })
-export const TableOfContents = () => h('table_of_contents', null)
+// Notion defaults an omitted TOC color to gray. Claim default explicitly only
+// for this ergonomic component; Raw forwards its caller-owned body unchanged.
+export const TableOfContents = () => h('table_of_contents', { content: { color: 'default' } })
 export const ChildPage = ({ title, icon, cover, children, blockKey }: ChildPageProps) => {
   const p: Record<string, unknown> = {}
   if (title !== undefined) p.title = title

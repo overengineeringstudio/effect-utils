@@ -487,6 +487,15 @@ export const statusCommand = Cli.Command.make(
                 `Member '${memberLabel}' commit drift: workspace is '${member.commitDrift.localCommit.slice(0, 8)}' but lock records '${member.commitDrift.lockedCommit.slice(0, 8)}'`,
               )
             }
+            if (
+              member.isLocal === false &&
+              member.gitStatus?.isDirty === true &&
+              member.gitStatus.branch !== 'HEAD'
+            ) {
+              applyReasons.push(
+                `Member '${memberLabel}' dirty tracking worktree requires a locked commit mount`,
+              )
+            }
             if (member.nestedMembers !== undefined) {
               collectMemberSyncReasons({ memberList: member.nestedMembers, prefix: memberLabel })
             }

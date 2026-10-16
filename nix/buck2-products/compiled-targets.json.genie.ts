@@ -1,5 +1,13 @@
 import { javaScriptProductRegistry } from '../../genie/buck2/javascript-product-registry.ts'
+import { productBuildCapabilities, productLinuxBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
+import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
+import ciToolsPkg from '../../packages/@overeng/ci-tools/package.json.genie.ts'
+import type { WorkspacePackageLike } from '../../packages/@overeng/genie/src/runtime/package-json/mod.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+
+const sourcePackages: Record<string, WorkspacePackageLike> = {
+  'packages/@overeng/ci-tools': ciToolsPkg,
+}
 
 /**
  * Compiled-executable products, one per registry CLI marked `compiledExecutable`.
@@ -24,6 +32,19 @@ const compiledProducts = Object.entries(javaScriptProductRegistry)
         : [],
     ),
   )
+  .map((product) => {
+    const pkg = sourcePackages[product.packagePath]
+    if (pkg === undefined) throw new Error(`Missing compiled source inventory for ${product.packagePath}`)
+    return {
+      ...product,
+      buildCapabilities: productBuildCapabilities(product),
+      linuxBuildCapabilities: productLinuxBuildCapabilities(product),
+      sourcePaths: projectBuckProductSourcePaths({
+        pkg,
+        additionalPaths: ['packages/@overeng/buck2-tools', 'patches'],
+      }),
+    }
+  })
   .toSorted((left, right) => left.name.localeCompare(right.name))
 
 export default projectionArtifact.json({

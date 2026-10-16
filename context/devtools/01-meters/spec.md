@@ -620,8 +620,8 @@ interface CanvasPlatform {
 }
 interface CanvasBlockSpec {
   readonly id: string
-  readonly label: string // full label: accessible text and tooltip
-  readonly shortLabel?: string // canvas-only fallback when the full label does not fit
+  readonly label: string // full label: accessible description, output, and tooltip
+  readonly shortLabel?: string // compact canvas fallback and accessible-name prefix
   readonly widthPx: number // nominal width; shrinks only when the slot is too small
   readonly read: (store: SeriesStore) => BlockReader // opaque typed draw/describe/snapshot closures
 }
@@ -1026,6 +1026,14 @@ meter selection. Focus shows the keyboard tooltip without opening a panel.
 Click and Enter/Space delegate `onOpenDetail({ id })` to the host/devbar;
 Escape dismisses the tooltip. Frozen state is controlled independently of the
 session and snapshots only that renderer's bounded histories.
+
+Each meter button's accessible name is `${shortLabel ?? label} ${text}`, beginning
+with the visible label and the same formatted value as the canvas. A persistent,
+visually hidden description with a strip-unique generated ID is referenced by
+`aria-describedby`; it carries the full series label, unabridged value (including
+availability reasons), configured history span, and detail action. The description
+is separate from the hover/focus tooltip and remains associated when the tooltip
+is absent or dismissed. Full-label DOM outputs remain available independently.
 
 `MetersPanel` is the shared renderer-only list/detail composition exported from
 `/react`. It lists every supplied block in order as a native keyboard-operable

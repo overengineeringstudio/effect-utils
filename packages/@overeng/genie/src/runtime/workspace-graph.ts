@@ -22,6 +22,9 @@ import { normalizeRelativePath } from './utils/path.ts'
 
 export { relativeRepoPath, rootWorkspaceMemberPathsFromPackages }
 
+/** Non-emitted provenance used only when validating projected source peer edges. */
+export const workspaceClosureReferenceSource = Symbol('workspaceClosureReferenceSource')
+
 /** Compute a relative repo path from one logical workspace location to another. */
 const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
   const fromParts = normalizeRelativePath(from)

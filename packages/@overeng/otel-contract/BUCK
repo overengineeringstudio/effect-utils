@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/otel-contract/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:09cf85ca15d120df784062e0a8d0ccd066fe3406ae8af8aa508b6215bfe51e56
+# Semantic fingerprint: sha256:37c0530e1b871aea7a2f86d7f2d8a1f12062f2b3e71728aa9bf431be45212e95
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -109,6 +109,46 @@ package_view(
     workspace_dependency_views = {
         "node_modules/@overeng/content-address/node_modules": "//packages/@overeng/content-address:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_otel_contract_071b3792a33c",
+    files = {
+        "package.json": "package.json",
+        "src/Traceparent.ts": "src/Traceparent.ts",
+        "src/Traceparent.unit.test.ts": "src/Traceparent.unit.test.ts",
+        "src/agent.contract.ts": "src/agent.contract.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "src/otel-scrape/profile-link.ts": "src/otel-scrape/profile-link.ts",
+        "src/otel-scrape/profile-link.unit.test.ts": "src/otel-scrape/profile-link.unit.test.ts",
+        "src/otel-scrape/registry.gen.ts": "src/otel-scrape/registry.gen.ts",
+        "src/otel-scrape/registry.gen.ts.genie.ts": "src/otel-scrape/registry.gen.ts.genie.ts",
+        "src/otel-scrape/registry.gen.unit.test.ts": "src/otel-scrape/registry.gen.unit.test.ts",
+        "src/raw-otel-boundary.unit.test.ts": "src/raw-otel-boundary.unit.test.ts",
+        "src/registry-demo.contract.ts": "src/registry-demo.contract.ts",
+        "src/registry-equivalence.property.unit.test.ts": "src/registry-equivalence.property.unit.test.ts",
+        "src/registry-live-check.integration.test.ts": "src/registry-live-check.integration.test.ts",
+        "src/registry-seam.unit.test.ts": "src/registry-seam.unit.test.ts",
+        "src/registry.ts": "src/registry.ts",
+        "src/registry.unit.test.ts": "src/registry.unit.test.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/content-address/package.json": "//packages/@overeng/content-address:package.json",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/content-address/node_modules": "//packages/@overeng/content-address:product_package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",

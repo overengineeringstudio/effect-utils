@@ -543,11 +543,12 @@ const flushAppendRun = (
  * their content). That single-op flow hits a validation error from the API
  * on the first call because a column_list without columns is invalid.
  *
- * This pass folds every descendant `append` op of an atomic container into
- * the container op's `props.children` as a nested Notion block-body array.
- * The absorbed ops are removed from the resulting plan. After the atomic
- * op's API call succeeds, the caller issues a recursive children retrieval
- * to map absorbed tmpIds → server-minted ids.
+ * This pass folds the required children of atomic containers into the
+ * container op's `props.children`. Ordinary blocks remain leaf bodies in
+ * that request: their descendants are appended after their server ids have
+ * been resolved. This avoids exceeding Notion's request nesting limit while
+ * preserving the mandatory column_list/column/table creation shapes.
+ * Absorbed ops are removed and their tmpIds resolved by recursive retrieval.
  *
  * Only newly-created subtrees are folded (append ops reachable through the
  * tmpId graph). Inserts anchored on existing blocks carry server ids and
@@ -585,15 +586,11 @@ const foldAtomicContainers = (
   const absorbedTmpIds = new Set<string>()
 
   /**
-   * Build the nested Notion API body for `op`, recursively folding
-   * descendants. Children are capped at `MAX_CHILDREN_PER_APPEND` per
-   * level (Notion's validation limit on `table.children` and every other
-   * nested `children` array). Overflow at the top-level atomic container
-   * is left in the plan as plain append ops — they get batched normally
-   * against the container's server id once it's resolved via `idMap`. At
-   * deeper levels (e.g. a `column` with >100 direct children inside a
-   * column_list), we surface loudly: that shape is rare and would require
-   * per-level chunking logic not implemented here.
+   * Build the required atomic creation shape. Do not fold children of an
+   * ordinary block (such as a toggle inside a column): those can be appended
+   * separately without violating its creation contract.
+   * Children are capped at `MAX_CHILDREN_PER_APPEND`; top-level overflow
+   * remains in the plan for subsequent batched appends.
    */
   const buildNestedBody = (
     op: AppendLike,
@@ -603,6 +600,9 @@ const foldAtomicContainers = (
   ): Record<string, unknown> => {
     const kids = childrenByParent.get(op.tmpId) ?? []
     const payload: Record<string, unknown> = { ...op.props }
+    // Columns are only legal inside column_list creation, so they are not
+    // standalone ATOMIC_CONTAINERS but still require their first-level children.
+    if (!ATOMIC_CONTAINERS.has(op.type) && op.type !== 'column') return payload
     if (kids.length > 0) {
       const inlineCount = isTopLevelContainer
         ? Math.min(kids.length, MAX_CHILDREN_PER_APPEND)

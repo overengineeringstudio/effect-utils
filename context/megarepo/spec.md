@@ -135,6 +135,32 @@ registration agrees: the branch is registered exactly at `P`, or nowhere while
 as ambiguous rather than shadowed. A member path that is a real directory or
 file rather than a symlink is foreign and refused before replacement.
 
+### Exact-lock tracking selection (MR-R01)
+
+MR-R01's pinned-materialization postcondition governs immutable commit mounts.
+Preserving an author's branch worktree does not exempt the member mount from
+the exact-lock selection rule: when that branch is unsuitable, apply preserves
+it and selects the locked commit rather than leaving a divergent mount.
+
+| Tracking branch state                                        | Member mount                 |
+| ------------------------------------------------------------ | ---------------------------- |
+| Canonical branch identity, clean tree, `HEAD == lock.commit` | `refs/heads/<branch>`        |
+| `HEAD != lock.commit`, including ahead or behind             | `refs/commits/<lock.commit>` |
+| Dirty canonical branch or unproven clean/exact state         | `refs/commits/<lock.commit>` |
+
+Tracking mode is a read-only selection policy, not branch reconciliation.
+`mr apply` and the apply phase of `mr fetch --apply` never checkout, reset, or
+fast-forward canonical branch worktrees. A missing branch worktree may be
+created only from an existing local branch already at the locked commit;
+otherwise the locked commit worktree is materialized directly. Repointing the
+member symlink preserves the original branch's ref, `HEAD`, index, files, and
+uncommitted edits and does not require `--force`. Warm apply reuses the selected
+worktree and converges without canonical mutation authorization.
+
+Readiness reports commit drift or a dirty remote branch mount as apply-needed.
+After fallback, the clean exact-commit mount is ready even when the preserved,
+unmounted canonical branch remains ahead, behind, or dirty.
+
 ### Recursive materialization ownership
 
 ```text
@@ -195,17 +221,23 @@ Local setup that needs nested trees names the members explicitly:
 `mr apply --worktree-mode tracking --commit-members <a,b> --lock-sync off`.
 The listed root members become commit worktrees and are applied recursively;
 everything below them is applied in commit mode, so fresh worktrees carry the
-freshness grant. Unlisted members stay on shared tracking worktrees and are not
-recursed into, which keeps co-development through `repos/<member>` on
-`refs/heads/*`. `--only`/`--skip` select root members only; a listed member's
+freshness grant. Unlisted members use the exact-lock tracking selection above
+and are not recursed into. A clean canonical branch exactly at the lock remains
+the co-development mount; divergent or dirty branches are preserved while the
+member mount selects the locked commit. `--only`/`--skip` select root members only;
+the listed member's
 fresh commit subtree is always applied completely or not created at all. A
 nested commit worktree that existed before the invocation is
 accepted only if its locked tree is already mounted; an incomplete one is
 refused as above. The devenv `taskModules.megarepo` option
-`setupCommitMembers` is the intended consumer path: `mr:setup` passes the list
-and checks readiness with `mr status --all`, also on the outer setup cache-hit
-path. The option is empty by default, leaving `mr:setup` a plain tracking
-apply.
+`setupCommitMembers` is the intended consumer path: `mr:setup` passes the list.
+Local readiness checks the root with `mr status`, then runs `mr status --all`
+inside each listed, non-skipped member that has its own megarepo configuration,
+including on the outer setup cache-hit path. Unlisted nested trees do not affect
+local readiness because local exec does not prepare them. The option is empty
+by default, leaving `mr:setup` a plain tracking apply.
+Even with an empty selection, root status runs on outer cache hits: a canonical
+branch can change `HEAD` or become dirty without changing its member symlink.
 
 CI setup (`CI=true`, the same predicate as `--worktree-mode auto`) never uses
 tracking worktrees: `mr:setup` applies `--worktree-mode commit`, and with a

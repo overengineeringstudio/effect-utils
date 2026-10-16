@@ -25,6 +25,23 @@ interrupted run may leave an archived-or-active scratch child page named
 `effect-utils notion live fixture: ...`; those pages can be safely deleted after
 confirming no test process is still running.
 
+Search tests create their own uniquely titled page under the scratch parent and
+a database with the same run-scoped title beneath that page. They poll search
+every two seconds until both the page and data source are indexed, with a
+60-second total polling timeout (including HTTP retries). The database and page
+are archived when the test scope closes, including on assertion failure.
+
+Without a scratch parent, fixture-backed tests are skipped via
+`SKIP_FIXTURE_INTEGRATION`. Token-only search checks validate response objects
+and empty-query handling without requiring any workspace content. Without a
+token, all live integration tests are skipped.
+
+Live HTTP cases use `Vitest.it.live`, not `Vitest.it.effect`. The latter
+installs a virtual `TestClock`: without an explicit clock adjustment, even a
+one-second retry backoff never elapses and the outer Vitest timeout fires.
+Fixture provisioning remains in `beforeAll`, outside each test's timeout.
+Unit retry tests use the virtual clock only when they explicitly advance it.
+
 ## Test Fixtures
 
 The provisioned fixture set includes:

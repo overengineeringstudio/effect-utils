@@ -102,6 +102,10 @@
   "bounded": {
     "darwin": [
       {
+        "task": "test:data-graph",
+        "rationale": "Content-addressed graph integration tests exercise real filesystem persistence, atomic publication and shared-root writer serialization on Darwin."
+      },
+      {
         "task": "test:effect-iroh",
         "rationale": "Real platform-native Iroh N-API binding and QUIC sockets; cancellation and scoped endpoint/stream teardown exercise Darwin native I/O settlement."
       },

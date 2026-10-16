@@ -2,6 +2,33 @@
 
 A collection of production-ready [Effect](https://effect.website) utilities and integrations.
 
+## Namespace scheduling
+
+Namespace priorities express queue order across the shared projects. Lower numbers
+start first; any explicit priority precedes an unspecified priority.
+
+| Priority | Work                                |
+| -------- | ----------------------------------- |
+| 1        | effect-utils delivery               |
+| 2        | Smalltalk, PTY and tooling delivery |
+| 3        | LiveStore delivery                  |
+| 4        | effect-utils background             |
+| 5        | Smalltalk and tooling background    |
+| 6        | LiveStore background                |
+
+Delivery includes required-check prerequisites, main verification, releases and
+actual deployments. Background includes optional benchmarks, advisory reports
+and maintenance. A scheduled verification is still delivery. Priorities do not
+reserve capacity or preempt running jobs; there is no new concurrency cap.
+
+For effect-utils, required product checks, cache contract proofs, live integrations,
+compiled-product publication and required Storybook play tests use 1 on both
+platforms. Optional Storybook previews, cold-bootstrap/GC proofs, Devenv performance,
+Nix closure measurements, source-shape measurements on main, measurement reports,
+pipeline traces, alignment notices and review-request notifications use 4. The required
+PR source-shape check retains delivery priority. Shapes, caches, access controls,
+required checks and workflow frequency are independent of these labels.
+
 ## Packages
 
 ### Notion Integration
@@ -344,6 +371,16 @@ The consumer's Nix source closure must supply the same cell, package bytes, and
 target declarations. The root continues to ignore `.devenv` wholesale. Unmapped
 workspace packages retain their conventional same-cell `:package_tree` labels;
 mapped labels participate in the projection fingerprint.
+
+Workspace `link:` dependencies resolve relative to their importer, or relative
+to the lockfile root when pnpm emits them inside a package snapshot. Both forms
+reference the same workspace importer and package tree. Links must remain inside
+the repository; snapshot links must resolve to a known lockfile importer.
+Directory snapshots without their own importer view get a normalized store entry
+backed by their declared source tree. Their snapshot dependencies, including
+workspace links, remain explicit Buck edges rather than being lost behind a
+source-tree reference. Directory snapshots with an importer reuse its workspace
+tree and dependency view.
 
 Dependency-view availability is derived from the complete required resolver
 context, not just a package's own platform fields. Required native dependencies

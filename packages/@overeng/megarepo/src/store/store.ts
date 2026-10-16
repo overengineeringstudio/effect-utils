@@ -101,6 +101,26 @@ export class Store extends Context.Service<Store, MegarepoStore>()('megarepo/Sto
 // Store Implementation
 // =============================================================================
 
+/** Stat the entry itself before using a directory-shaped path (which ends in `/`).
+ * Keep FileSystem.stat's existing symlink semantics; never mutate foreign entries.
+ */
+export const isStoreDirectory = Effect.fn('megarepo/store/is-directory')(function* ({
+  fs,
+  path,
+}: {
+  fs: FileSystem.FileSystem
+  path: string
+}) {
+  const entryPath = path.replace(/\/+$/, '')
+  const stat = yield* fs.stat(entryPath)
+  if (stat.type === 'Directory') return true
+
+  yield* Effect.logWarning(`store enumeration: skipping non-directory entry ${entryPath}`).pipe(
+    Effect.annotateLogs({ path: entryPath, type: stat.type }),
+  )
+  return false
+})
+
 const shouldSkipStoreRootEntry = (entry: string): boolean =>
   // The store root holds member namespaces (`<host>/<owner>/<repo>/`) AND
   // non-member co-tenant dirs. This is the PRIMARY membership boundary that
@@ -223,8 +243,12 @@ const make = ({
           currentPath,
           EffectPath.unsafe.relativeDir(`${entry}/`),
         )
-        const entryStat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null))
-        if (entryStat?.type !== 'Directory') continue
+        if (
+          (yield* isStoreDirectory({ fs, path: entryPath }).pipe(
+            Effect.orElseSucceed(() => false),
+          )) === false
+        )
+          continue
 
         nestedResults.push(
           ...(yield* collectNestedWorktrees({
@@ -333,8 +357,7 @@ const make = ({
                   dir,
                   EffectPath.unsafe.relativeDir(`${entry}/`),
                 )
-                const entryStat = yield* fs.stat(entryPath)
-                if (entryStat.type !== 'Directory') return
+                if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) return
 
                 yield* walk({ dir: entryPath, depth: depth + 1 })
               }),
@@ -355,8 +378,7 @@ const make = ({
               basePath,
               EffectPath.unsafe.relativeDir(`${entry}/`),
             )
-            const entryStat = yield* fs.stat(entryPath)
-            if (entryStat.type !== 'Directory') return
+            if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) return
 
             yield* walk({ dir: entryPath, depth: 1 })
           }),
@@ -373,10 +395,11 @@ const make = ({
         const repoBase = getRepoBasePath(source)
         const refsDir = EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir('refs/'))
 
-        const exists = yield* fs.exists(refsDir)
+        const exists = yield* fs.exists(refsDir.replace(/\/+$/, ''))
         if (exists === false) {
           return []
         }
+        if ((yield* isStoreDirectory({ fs, path: refsDir })) === false) return []
 
         const result: Array<{
           ref: string
@@ -395,8 +418,7 @@ const make = ({
             refsDir,
             EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
           )
-          const refTypeStat = yield* fs.stat(refTypePath)
-          if (refTypeStat.type !== 'Directory') continue
+          if ((yield* isStoreDirectory({ fs, path: refTypePath })) === false) continue
 
           result.push(
             ...(yield* collectNestedWorktrees({

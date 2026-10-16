@@ -87,8 +87,8 @@
   "peerDependencies": {
     "@overeng/utils": "^0.1.0",
     "@stylexjs/stylex": "^0.19.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   },
   "peerDependenciesMeta": {
     "@overeng/utils": {

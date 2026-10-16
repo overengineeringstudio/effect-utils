@@ -1,7 +1,7 @@
 """Language-neutral portable build-product packaging contract."""
 
 load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
-load("//buck2/materialization.bzl", "PackageTreeInfo")
+load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
 load("//buck2/package_tools.bzl", "JavaScriptModuleInfo", "PackageCommandRuntimeInfo", "package_command_runtime_inputs")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/provenance:defs.bzl", "ProductExecutableInfo", "product_executable_info")
@@ -110,7 +110,7 @@ def _validate_relative_path(value, subject):
             fail("{} must be a normalized relative path".format(subject))
 
 def _package_tree_product_executable_impl(ctx):
-    package_tree = ctx.attrs.package_tree[PackageTreeInfo]
+    dependency_view = ctx.attrs.dependency_view[PnpmDeclaredClosureInfo]
     target_platform = ctx.attrs.target_platform[ProductPlatformInfo]
     platform_key = "{}-{}-{}".format(
         target_platform.architecture,
@@ -123,10 +123,10 @@ def _package_tree_product_executable_impl(ctx):
     _validate_relative_path(ctx.attrs.package_anchor, "package_tree_product_executable package anchor")
     _validate_relative_path(executable_path, "package_tree_product_executable executable path")
 
-    # Package trees link dependency entries. Resolve the anchor's real store
-    # entry before materializing declared sibling files.
+    # The declared pnpm view links dependency entries. Resolve the anchor's
+    # real store entry without requiring a workspace package's emitted dist.
     executable = ctx.actions.declare_output("executable")
-    anchor = cmd_args(package_tree.tree, format = "{}/" + ctx.attrs.package_anchor)
+    anchor = cmd_args(dependency_view.node_modules, format = "{}/" + ctx.attrs.package_anchor)
     args = cmd_args([
         ctx.attrs._bun[BunToolchainInfo].executable,
         "-e",
@@ -135,7 +135,7 @@ def _package_tree_product_executable_impl(ctx):
         executable_path,
         executable.as_output(),
     ])
-    args.add(cmd_args(hidden = package_tree.read_roots))
+    args.add(cmd_args(hidden = dependency_view.read_roots))
     ctx.actions.run(
         args,
         category = "package_tree_product_executable",
@@ -158,7 +158,7 @@ def _package_tree_product_executable_impl(ctx):
             ctx.attrs.support_destination,
             support_tree.as_output(),
         ])
-        support_args.add(cmd_args(hidden = package_tree.read_roots))
+        support_args.add(cmd_args(hidden = dependency_view.read_roots))
         ctx.actions.run(
             support_args,
             category = "package_tree_product_support",
@@ -185,7 +185,7 @@ _package_tree_product_executable = cache_guarded_rule(
     impl = _package_tree_product_executable_impl,
     attrs = {
         "executable_paths": attrs.dict(key = attrs.string(), value = attrs.string()),
-        "package_tree": attrs.dep(providers = [PackageTreeInfo]),
+        "dependency_view": attrs.dep(providers = [PnpmDeclaredClosureInfo]),
         "package_anchor": attrs.string(),
         "support_destination": attrs.string(default = "support"),
         "support_directory_paths": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
@@ -201,7 +201,7 @@ _package_tree_product_executable = cache_guarded_rule(
 
 def package_tree_product_executable(
         name,
-        package_tree,
+        dependency_view,
         package_anchor,
         executable_paths,
         recipe,
@@ -210,10 +210,14 @@ def package_tree_product_executable(
         support_directory_paths = {},
         support_destination = "support",
         **kwargs):
-    """Projects a platform executable from a lockfile-derived package tree."""
+    """Projects a pinned executable from a declared pnpm node_modules view.
+
+    package_anchor is relative to that view, not to a workspace package tree.
+    All declared read roots travel with both executable and support actions.
+    """
     _package_tree_product_executable(
         name = name,
-        package_tree = package_tree,
+        dependency_view = dependency_view,
         executable_paths = executable_paths,
         package_anchor = package_anchor,
         recipe = recipe,

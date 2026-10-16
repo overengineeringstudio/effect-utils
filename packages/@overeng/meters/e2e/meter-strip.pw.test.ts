@@ -79,7 +79,7 @@ test.describe('MeterStrip', () => {
   }) => {
     await page.goto(liveStory)
     await bridgeHost(page)
-    const frame = page.getByRole('button', { name: /^Frames:/ })
+    const frame = page.getByRole('button', { name: /^Frames / })
     await frame.focus()
     await expect(page.getByRole('tooltip')).toContainText('Frames:')
     await expect(page.getByLabel('Detail requests')).toHaveText('None')

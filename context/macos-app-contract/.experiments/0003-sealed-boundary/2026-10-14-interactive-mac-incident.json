@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-14",
+  "host": "interactive Mac",
+  "baseline": "7419e7c63",
+  "example": "/nix/store/jl77zqm949yqpk8d96zmzw6c5g1vjgb8-macos-app-example",
+  "commandShape": "nice -n 10 python3 context/macos-app-contract/.experiments/0003-sealed-boundary/run.py EXAMPLE",
+  "verdict": "BLOCKED",
+  "safetyGate": "FAIL: first direct codesign raised a new SecurityAgent window; tripwire killed process group",
+  "matrixExecuted": false,
+  "provisionAndImport": "succeeded with throwaway test-signing-cert ctl",
+  "cause": "Fixture omitted ctl prove-signing-key --no-sign partition pin and guard before direct codesign. This is fixture error, not falsification of THIN.",
+  "promptingArgv": ["nice", "-n", "10", "/usr/bin/codesign", "--force", "--sign", "<certificateSha1 not persisted before abort>", "--keychain", "<keychain>", "--timestamp=none", "-r", "=designated => identifier \"dev.overeng.macos-app.m3-helper\" and certificate leaf = H\"<same unrecorded certificateSha1>\"", "<worktree>/tmp/m3-experiments-f7ma8dhc/Fixture.app/Contents/Helpers/Helper.app"],
+  "exactArgvLimitation": "All arguments and paths above are known except the dynamically returned certificate SHA1; not logged before the abort and unavailable after file-only cleanup. No invented hash.",
+  "cleanup": {"temporaryTreeRemoved": true, "method": "file-only shutil.rmtree", "SecurityAgentTouched": false, "launchdOperations": 0},
+  "postIncident": "All experiments stopped by Manager. Pin/guard and file-only abort cleanup source correction committed, not run. No more keychain/codesign activity."
+}

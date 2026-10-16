@@ -36,6 +36,7 @@ const scratchDirectories: string[] = []
 const fingerprintTool =
   '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
 const parsePackageCommand = (args: readonly string[]) => {
+  if (args[0] === 'bundle') return parsePackage(args)
   const delimiter = args.indexOf('--')
   const at = delimiter < 0 ? args.length : delimiter
   return parsePackage([
@@ -395,8 +396,6 @@ const bundleProduct = (prefix: string): { readonly bytes: string; readonly descr
       'fixture//p:cli-module',
       '--platform-gated-manifest',
       manifest,
-      '--fingerprint-tool',
-      process.env['FINGERPRINT_BIN'] ?? 'missing FINGERPRINT_BIN',
       ...closureRoots.flatMap((closureRoot) => [
         '--closure-root',
         `${closureRoot.name}\t${closureRoot.path}`,
@@ -944,19 +943,36 @@ describe('package command runner', () => {
     ).toThrow('entrypoint must be a normalized portable relative path')
   })
 
-  it('requires the immutable fingerprint tool for every launch mode', () => {
-    const args = [
-      'check',
-      '/nix/store/runtime/bin/bun',
-      '/buck/tree',
-      'src/mod.ts',
-      '/buck/verdict',
-    ]
-    expect(() => parsePackage(args)).toThrow('missing --fingerprint-tool')
-    expect(() => parsePackage([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint'])).toThrow(
-      'immutable /nix/store executable',
-    )
-  })
+  it.each(['exec', 'check', 'native-check', 'build-dir'])(
+    'requires the immutable fingerprint tool for %s',
+    (mode) => {
+      const args = [
+        mode,
+        '/nix/store/runtime/bin/bun',
+        '/buck/tree',
+        'src/mod.ts',
+        '/buck/verdict',
+        ...(mode === 'build-dir' ? ['--arg', '{OUT}'] : []),
+      ]
+      expect(() => parsePackage(args)).toThrow('missing --fingerprint-tool')
+      expect(() => parsePackage([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint'])).toThrow(
+        'immutable /nix/store executable',
+      )
+      expect(parsePackage([...args, '--fingerprint-tool', fingerprintTool])).toMatchObject({
+        mode,
+        fingerprintTool,
+      })
+      expect(() =>
+        parsePackage([
+          ...args,
+          '--fingerprint-tool',
+          fingerprintTool,
+          '--fingerprint-tool',
+          fingerprintTool,
+        ]),
+      ).toThrow('duplicate --fingerprint-tool')
+    },
+  )
 
   it('preserves repeated arguments and explicit environment entries', () => {
     expect(
@@ -1019,6 +1035,15 @@ describe('package command runner', () => {
     '--target-identity',
     'cell//p:cli-module',
   ]
+
+  it('parses bundles without a fingerprint capability and rejects attempts to add one', () => {
+    expect(parsePackage(bundle)).not.toHaveProperty('fingerprintTool')
+    for (const tool of [fingerprintTool, '/tmp/buck2-fingerprint']) {
+      expect(() => parsePackage([...bundle, '--fingerprint-tool', tool])).toThrow(
+        'bundle does not accept --fingerprint-tool',
+      )
+    }
+  })
 
   it('defaults bundles to tree shaking and accepts a full-closure product', () => {
     expect(parsePackageCommand(bundle)).toMatchObject({ kind: 'module', treeShaking: true })

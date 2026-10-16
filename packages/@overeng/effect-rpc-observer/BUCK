@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-rpc-observer/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:ffa05e3e3cdbeefec3d7879670606714d71ede0d65e9a4b869fe271129477bff
+# Semantic fingerprint: sha256:bbcb4f828561db3defb1db55d6881f95a40d0b6f78c67bf11b72bcb3cb7c1a2e
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -62,6 +62,27 @@ alias(
 package_view(
     name = "package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rpc_observer_be7d70d24c5d",
+    files = {
+        "package.json": "package.json",
+        "src/index.ts": "src/index.ts",
+        "src/index.unit.test.ts": "src/index.unit.test.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_effect_rpc_observer_be7d70d24c5d",
     files = {
         "package.json": "package.json",
         "src/index.ts": "src/index.ts",

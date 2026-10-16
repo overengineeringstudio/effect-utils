@@ -583,6 +583,43 @@ Vitest.describe('executeRequest retry schedule', () => {
       return { result, retryEvents, responseEvents, calls: call }
     })
 
+  Vitest.it.live(
+    'retries a rate-limited request on the live clock without TestClock adjustment',
+    () =>
+      Effect.gen(function* () {
+        let calls = 0
+        const events: NotionHttpTelemetryEvent[] = []
+        const result = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
+          Effect.provideService(NotionHttpTelemetry, {
+            report: (event) =>
+              Effect.sync(() => {
+                events.push(event)
+              }),
+          }),
+          Effect.provide(
+            createTestLayer(
+              () => {
+                calls += 1
+                return calls === 1
+                  ? {
+                      status: 429,
+                      body: sampleResponses.error(429, 'rate_limited', 'Rate limited'),
+                      headers: { 'retry-after': '0' },
+                    }
+                  : { status: 200, body: sampleResponses.database }
+              },
+              { ...retryConfig, retryBaseDelay: 1 },
+            ),
+          ),
+        )
+        expect(result.id).toBe(sampleResponses.database.id)
+        expect(calls).toBe(2)
+        expect(events.filter((event) => event._tag === 'retry')).toMatchObject([
+          { status: 429, delayMs: 1, nextAttempt: 1 },
+        ])
+      }),
+  )
+
   Vitest.it.effect(
     'floors exponential backoff with Retry-After (max(backoff, Retry-After)) then succeeds',
     () =>

@@ -18,7 +18,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionPages (integration)', ()
   afterAll(teardownIntegrationFixtures, 60_000)
 
   Vitest.describe('retrieve', () => {
-    Vitest.it.effect('fetches page by ID', () =>
+    Vitest.it.live('fetches page by ID', () =>
       Effect.gen(function* () {
         const page = yield* NotionPages.retrieve({
           pageId: TEST_IDS.pageWithBlocks,
@@ -30,7 +30,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionPages (integration)', ()
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    Vitest.it.effect('fetches database row as page', () =>
+    Vitest.it.live('fetches database row as page', () =>
       Effect.gen(function* () {
         const page = yield* NotionPages.retrieve({
           pageId: TEST_IDS.rows.alpha,
@@ -46,7 +46,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionPages (integration)', ()
   Vitest.describe.skipIf(SKIP_MUTATIONS)('create', () => {
     const createdPageIds: string[] = []
 
-    Vitest.it.effect(
+    Vitest.it.live(
       'creates a new page in database',
       () =>
         Effect.gen(function* () {
@@ -77,7 +77,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionPages (integration)', ()
   })
 
   Vitest.describe.skipIf(SKIP_MUTATIONS)('update', () => {
-    Vitest.it.effect(
+    Vitest.it.live(
       'updates page properties',
       () =>
         Effect.gen(function* () {
@@ -115,7 +115,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionPages (integration)', ()
   })
 
   Vitest.describe.skipIf(SKIP_MUTATIONS)('archive', () => {
-    Vitest.it.effect(
+    Vitest.it.live(
       'archives a page',
       () =>
         Effect.gen(function* () {

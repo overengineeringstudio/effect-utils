@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/notion-effect-schema/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:5cc399d336f0b143b4f4857dea1870f4d5f80402cfae3d068db17aacd50eec07
+# Semantic fingerprint: sha256:1c4907e50e2a0e971ae3a01be07427c4c0c826eb8da2ea4b541ec2a2f1272b05
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -133,6 +133,58 @@ package_view(
     workspace_dependency_views = {
         "node_modules/@overeng/notion-core/node_modules": "//packages/@overeng/notion-core:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_notion_effect_schema_4393910d3e7b",
+    files = {
+        "package.json": "package.json",
+        "src/common.ts": "src/common.ts",
+        "src/common.unit.test.ts": "src/common.unit.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/objects.ts": "src/objects.ts",
+        "src/objects.unit.test.ts": "src/objects.unit.test.ts",
+        "src/properties.unit.test.ts": "src/properties.unit.test.ts",
+        "src/properties/audit.ts": "src/properties/audit.ts",
+        "src/properties/boolean.ts": "src/properties/boolean.ts",
+        "src/properties/canonical-codec.ts": "src/properties/canonical-codec.ts",
+        "src/properties/canonical-codec.unit.test.ts": "src/properties/canonical-codec.unit.test.ts",
+        "src/properties/canonical.ts": "src/properties/canonical.ts",
+        "src/properties/common.ts": "src/properties/common.ts",
+        "src/properties/computed.ts": "src/properties/computed.ts",
+        "src/properties/contact.ts": "src/properties/contact.ts",
+        "src/properties/date.ts": "src/properties/date.ts",
+        "src/properties/descriptor.ts": "src/properties/descriptor.ts",
+        "src/properties/descriptor.unit.test.ts": "src/properties/descriptor.unit.test.ts",
+        "src/properties/mod.ts": "src/properties/mod.ts",
+        "src/properties/number.ts": "src/properties/number.ts",
+        "src/properties/reference.ts": "src/properties/reference.ts",
+        "src/properties/rollup.ts": "src/properties/rollup.ts",
+        "src/properties/select.ts": "src/properties/select.ts",
+        "src/properties/text.ts": "src/properties/text.ts",
+        "src/property-schema.ts": "src/property-schema.ts",
+        "src/rich-text-utils.ts": "src/rich-text-utils.ts",
+        "src/rich-text-utils.unit.test.ts": "src/rich-text-utils.unit.test.ts",
+        "src/rich-text.ts": "src/rich-text.ts",
+        "src/users.ts": "src/users.ts",
+        "src/webhook.ts": "src/webhook.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/notion-core/package.json": "//packages/@overeng/notion-core:package.json",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/notion-core/node_modules": "//packages/@overeng/notion-core:product_package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",

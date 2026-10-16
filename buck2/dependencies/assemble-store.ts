@@ -279,6 +279,7 @@ export type StoreEntryOptions = {
   /** Defaults to `hardlink`: a declared tree Buck produced itself. */
   readonly packageMaterialization?: TreeMaterialization
   readonly packageTree: string
+  readonly workspaceLinks: readonly ViewWorkspaceLink[]
 }
 
 /**
@@ -314,6 +315,21 @@ export const assembleStoreEntry = async (options: StoreEntryOptions): Promise<vo
           linkPath: join(nodeModules, dependency.name),
           targetPath: join(entryDir, dependency.packageName),
           targetRoot: entryDir,
+        })
+      }
+      for (const workspace of options.workspaceLinks) {
+        assertPortablePath({ value: workspace.name, field: 'workspace dependency name' })
+        if (seen.has(workspace.name) === true) fail(`duplicate dependency ${workspace.name}`)
+        seen.add(workspace.name)
+        const workspaceDir = await requireDeclaredTree({
+          field: 'workspace dependency',
+          path: workspace.workspaceDir,
+        })
+        await addRelativeLink({
+          containedIn: undefined,
+          linkPath: join(nodeModules, workspace.name),
+          targetPath: workspaceDir,
+          targetRoot: workspaceDir,
         })
       }
       for (const bin of options.bins) {
@@ -484,7 +500,7 @@ export const assembleStoreScc = async (options: SccOptions): Promise<void> => {
   })
 }
 
-/** A first-hop link from an importer view to a declared workspace tree. */
+/** A dependency link to a declared workspace tree. */
 export type ViewWorkspaceLink = {
   readonly name: string
   readonly workspaceDir: string
@@ -686,6 +702,7 @@ export const runStoreAssemblyCli = async (args: readonly string[]): Promise<void
       packageMaterialization: source.materialization,
       packageName: packageName ?? fail('missing --package-name'),
       packageTree: source.path,
+      workspaceLinks,
     })
     return
   }

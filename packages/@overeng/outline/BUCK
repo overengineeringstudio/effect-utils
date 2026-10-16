@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/outline/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:ecd952b98d8280455bd1db5a71388634b4e05cbdb057400694d5a340abfb5c74
+# Semantic fingerprint: sha256:693ea2e17fb574263c227dcfdfd12ead98367315a6256a5d67d9e9aaf7906a25
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -64,6 +64,29 @@ alias(
 package_view(
     name = "package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_outline_6dd7061bb977",
+    files = {
+        "package.json": "package.json",
+        "src/mod.ts": "src/mod.ts",
+        "src/model.ts": "src/model.ts",
+        "src/model.unit.test.ts": "src/model.unit.test.ts",
+        "src/navigation.tsx": "src/navigation.tsx",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_outline_6dd7061bb977",
     files = {
         "package.json": "package.json",
         "src/mod.ts": "src/mod.ts",

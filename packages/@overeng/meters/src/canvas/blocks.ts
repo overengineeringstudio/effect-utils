@@ -67,7 +67,7 @@ export interface BlockReader {
 export interface CanvasBlockSpec {
   readonly id: string
   readonly label: string
-  /** Compact canvas label used only when the full label does not fit; DOM text keeps `label`. */
+  /** Compact label used by the canvas and as the accessible-name prefix when supplied. */
   readonly shortLabel?: string | undefined
   /** Nominal width; blocks shrink below it only when the strip has too little space. */
   readonly widthPx: number
@@ -151,7 +151,7 @@ const noValues: readonly number[] = []
 export interface BlockOptions<TValue> {
   readonly id: string
   readonly series: Series<TValue>
-  /** Compact canvas label; the full series label remains the accessible and tooltip text. */
+  /** Compact label; the full series label remains in the accessible description and tooltip. */
   readonly shortLabel?: string | undefined
   /** Nominal CSS width, 150 by default. */
   readonly widthPx?: number
