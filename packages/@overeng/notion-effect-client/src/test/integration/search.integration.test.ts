@@ -37,7 +37,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
       'finds run-scoped fixtures with filters, sorting, pagination, and streaming',
       () =>
         Effect.gen(function* () {
-          const query = `effect-utils search fixture ${crypto.randomUUID()}`
+          const query = crypto.randomUUID().replaceAll('-', '')
           const title = [{ type: 'text', text: { content: query } }]
           const page = yield* Effect.acquireRelease(
             NotionPages.create({
