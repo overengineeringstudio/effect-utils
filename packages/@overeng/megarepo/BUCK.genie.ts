@@ -77,6 +77,7 @@ export const buck2TypeScriptAdmission = {
         'src/core/git-memory.integration.test.ts',
         'src/core/git-streaming-parsers.integration.test.ts',
         'src/core/git-timeout.integration.test.ts',
+        'src/store/git-writer-lock.integration.test.ts',
         'src/store/store-archive.integration.test.ts',
         'src/store/store-branch-worktree.integration.test.ts',
         'src/store/store-deletion-lease.integration.test.ts',

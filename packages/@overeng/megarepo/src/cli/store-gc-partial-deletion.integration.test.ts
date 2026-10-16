@@ -9,7 +9,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -158,9 +158,11 @@ describe.skipIf(inPartialNamespace === false)('store gc partial deletion (namesp
         const lower = `${lowerFs}/layer`
         const copy = spawnSync('cp', ['-a', `${tmpRoot}/.`, `${lower}/`], { encoding: 'utf8' })
         expect(copy.status, copy.stderr).toBe(0)
-        const mountPoint = `${worktree}/mnt`
-        // Lower-only mount point; the worktree itself is lower-backed, so its rename is EXDEV.
-        yield* fs.makeDirectory(`${lower}/${relative(tmpRoot, mountPoint)}`)
+        // Both candidates must be lower-backed so the worktree rename is EXDEV.
+        const candidateNames = ['partial-a', 'partial-b']
+        for (const name of candidateNames) {
+          yield* fs.makeDirectory(`${lower}/${relative(tmpRoot, worktree)}/${name}`)
+        }
         yield* fs.makeDirectory(`${upperFs}/layer`)
         yield* fs.makeDirectory(`${upperFs}/work`)
         // Overlay at the fixture's own path keeps every absolute git worktree path valid.
@@ -172,8 +174,15 @@ describe.skipIf(inPartialNamespace === false)('store gc partial deletion (namesp
           `lowerdir=${lower},upperdir=${upperFs}/layer,workdir=${upperFs}/work,xino=off,userxattr`,
           tmpRoot,
         ])
-        // Name this before mnt in native readdir's ordering, proving actual partial removal.
-        const sibling = `${worktree}/000-sibling`
+        // Match the deletion implementation's native readdir order. Node sorts
+        // readdirSync results, but Bun preserves filesystem order; overlayfs
+        // does not promise that a lexically earlier sibling is visited first.
+        const orderedCandidates = readdirSync(worktree).filter((name) =>
+          candidateNames.includes(name),
+        )
+        expect(orderedCandidates).toHaveLength(2)
+        const sibling = `${worktree}/${orderedCandidates[0]!}/sibling`
+        const mountPoint = `${worktree}/${orderedCandidates[1]!}`
         yield* fs.writeFileString(sibling, 'removable sibling')
         yield* mountScoped(['-t', 'tmpfs', 'inner', mountPoint])
         yield* fs.writeFileString(`${mountPoint}/survivor`, 'inner mount survives')

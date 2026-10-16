@@ -149,6 +149,41 @@ Every plan-bound deletion — generated artifact, whole worktree, archive reap �
 additionally holds the lease for its owner path, so an activation wrapped in
 `mr store lease` can never be overtaken.
 
+### `mr store lock`
+
+```bash
+mr store lock [--clone-target] <path> -- <command> [args…]
+mr store lock /path/to/worktree -- git -C /path/to/worktree fetch origin
+mr store lock --clone-target /path/to/repo.bare -- git clone --bare URL /path/to/repo.bare
+```
+
+Runs an external canonical Git writer with inherited stdin/stdout/stderr and
+propagates its exit status. `<path>` may name a bare repository, a normal
+repository, a linked worktree, or a missing clone target whose parent exists.
+The command's working directory is unchanged; pass `git -C` or `--git-dir`
+explicitly when needed.
+
+On Linux and macOS, writers cooperate through one host-local kernel `flock`
+per real Git common directory, shared with mr's own Git writers. Symlink aliases
+and linked worktrees share the same lock; different repositories remain parallel.
+The persistent lock file is `<resolved-common-dir>.mr-writer.lock`; never delete
+it, including after a crash. Ownership ends when the last inherited descriptor
+closes, not when the file is unlinked. The external command inherits the lock,
+so killing the mr wrapper does not unlock a still-running command. For bare
+clone admission, pass `--clone-target`: the real parent plus target basename
+determines the same identity before creation, during partial initialization,
+and after the bare clone. The clone command must recheck existence under the lock.
+The wrapped command must preserve inherited fd 3 until its canonical writes finish.
+
+Nested acquisitions are unsupported: wrap only the external leaf Git write,
+not an mr workflow that takes the same lock internally. This is cooperative
+host-local coordination, not a distributed lock or protection from unwrapped Git.
+Read-only freshness consumers should use private Git metadata instead. If they
+deliberately fetch into shared metadata, suppress configured ref mapping with
+`--refmap=` and isolate `FETCH_HEAD` writes (`--no-write-fetch-head`); a custom
+destination ref alone does not prevent origin's configured refmap from updating
+canonical remote-tracking refs.
+
 ### `mr store lease`
 
 ```bash
