@@ -328,13 +328,7 @@ empty_package_view(
         expect(negative.stderr).toContain('undeclared.ts')
         expect(negative.stderr).not.toContain('UNDECLARED_RULES_CELL_MODULE_EXECUTED')
       } finally {
-        const stopped = await runCaptured(
-          buck,
-          [...buckArgs, 'kill'],
-          tools,
-          fixture,
-          process.env,
-        )
+        const stopped = await runCaptured(buck, [...buckArgs, 'kill'], tools, fixture, process.env)
         for (const directory of [sources, rulesSources, rules]) await chmod(directory, 0o755)
         assert.equal(stopped.status, 0, stopped.stderr)
         await rm(join(tools.repoRoot, 'buck-out', isolation), { recursive: true, force: true })
