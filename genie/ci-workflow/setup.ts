@@ -29,6 +29,7 @@ import {
   ciCompositionStateRoot,
   withCiSourceRoot,
   linuxNixSandboxFallbackConf,
+  linuxSandboxAdmissionStepId,
 } from './shared.ts'
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
@@ -261,6 +262,7 @@ export const installNixStep = (opts?: {
  */
 export const linuxSandboxPrerequisitesStep = ({ privileged }: { privileged: NamespacePrivilege }) =>
   ({
+    id: linuxSandboxAdmissionStepId,
     name: 'Log Linux sandbox prerequisites',
     if: "${{ runner.os == 'Linux' }}",
     shell: 'bash',

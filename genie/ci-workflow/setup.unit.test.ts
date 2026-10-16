@@ -5,16 +5,20 @@ import { Glob } from 'bun'
 import autoReviewWorkflow from '../../.github/workflows/auto-review.yml.genie.ts'
 import ciWorkflow, { empiricalProofJobs } from '../../.github/workflows/ci.yml.genie.ts'
 import compiledWorkflow from '../../.github/workflows/compiled-products.yml.genie.ts'
+import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.genie.ts'
 import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
 import previewBuildWorkflow from '../../.github/workflows/storybook-preview-build.yml.genie.ts'
 import previewDeployWorkflow from '../../.github/workflows/storybook-preview-deploy.yml.genie.ts'
 import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'json' }
 import { pipelineIdentityStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { defaultRefPolicyVerdictStepId } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import {
   ciWorkflow as composeCiWorkflow,
+  ciJobAdmission,
+  defaultRefPolicyVerdictStepId,
+  linuxSandboxAdmissionStepId,
+  withCiAdmissionCleanup,
   linuxNixSandboxFallbackConf,
   linuxNixSandboxFallbackStep,
 } from './shared.ts'
@@ -420,6 +424,128 @@ describe('Linux Nix sandbox fallback', () => {
             event: { pull_request: { head: { repo: { full_name: headRepository } } } },
           },
           { 'default-ref-policy': { result: verdict } },
+          () => true,
+        ),
+      ).toBe(expected)
+    }
+  })
+})
+
+describe('CI execution admission cleanup', () => {
+  it('blocks rejected quality admission while retaining admitted failure cleanup and Darwin', () => {
+    const job = ciWorkflow.data.jobs.quality!
+    expect(job.steps.find((step) => step.name === 'Log Linux sandbox prerequisites')?.id).toBe(
+      linuxSandboxAdmissionStepId,
+    )
+    for (const name of ['Collect Buck2 cache evidence', 'Export completed job trace']) {
+      const step = job.steps.find((entry) => entry.name === name)!
+      const expression = step.if!
+        .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+        .replace(/steps\.([A-Za-z0-9_-]+)/g, 'steps["$1"]')
+      const allowed = new Function('runner', 'steps', 'always', `return (${expression})`)
+      for (const [os, outcome, expected] of [
+        ['Linux', 'failure', false],
+        ['Linux', 'skipped', false],
+        ['Linux', 'success', true],
+        ['macOS', 'skipped', true],
+      ] as const) {
+        expect(
+          allowed({ os }, { [linuxSandboxAdmissionStepId]: { outcome } }, () => true),
+          `${name}/${os}/${outcome}`,
+        ).toBe(expected)
+      }
+    }
+  })
+
+  it('covers every admission job and executable status cleanup in every generated workflow', () => {
+    let admissionJobs = 0
+    let executableCleanups = 0
+    let safeUploads = 0
+    for (const workflow of [
+      ciWorkflow,
+      empiricalWorkflow,
+      compiledWorkflow,
+      storybookPlaysWorkflow,
+      previewBuildWorkflow,
+      previewDeployWorkflow,
+      autoReviewWorkflow,
+    ]) {
+      for (const [jobId, job] of Object.entries(workflow.data.jobs)) {
+        const guards = job.steps.filter(
+          (step) =>
+            step.name === 'Log Linux sandbox prerequisites' ||
+            step.name === 'Check first-party default refs',
+        )
+        if (guards.length === 0) continue
+        admissionJobs++
+        for (const guard of guards) {
+          expect(guard.id, jobId).toBe(
+            guard.name === 'Log Linux sandbox prerequisites'
+              ? linuxSandboxAdmissionStepId
+              : defaultRefPolicyVerdictStepId,
+          )
+        }
+        const lastAdmission = Math.max(...guards.map((guard) => job.steps.indexOf(guard)))
+        for (const [index, step] of job.steps.entries()) {
+          if (
+            step.name === 'Start Buck2 cache evidence window' ||
+            step.name === pipelineIdentityStepName
+          ) {
+            expect(index, `${jobId}/${step.name}`).toBeGreaterThan(lastAdmission)
+          }
+          if (/\b(?:always|failure|cancelled|success)\s*\(/.test(step.if ?? '') === false)
+            continue
+          if (/^actions\/(?:upload-artifact|cache\/save)@/.test(step.uses ?? '')) {
+            safeUploads++
+            expect(step.if, `${jobId}/${step.name}`).not.toContain(linuxSandboxAdmissionStepId)
+            continue
+          }
+          executableCleanups++
+          for (const guard of guards) {
+            expect(step.if, `${jobId}/${step.name}`).toContain(
+              `steps.${guard.id}.outcome == 'success'`,
+            )
+          }
+        }
+      }
+    }
+    expect(admissionJobs).toBeGreaterThan(0)
+    expect(executableCleanups).toBeGreaterThan(0)
+    expect(safeUploads).toBeGreaterThan(0)
+  })
+
+  it('combines all admission prerequisites, is idempotent, and leaves independent jobs alone', () => {
+    const independent = [
+      { name: 'Independent trusted cleanup', if: '${{ always() }}', run: 'nix shell .#bun -c bun' },
+    ]
+    expect(withCiAdmissionCleanup(independent)).toBe(independent)
+    const steps = [
+      linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
+      { id: defaultRefPolicyVerdictStepId, run: 'node pinned-policy-checker' },
+      { name: 'Executable cleanup', if: 'always() || failure()', run: 'bash checkout-cleanup.sh' },
+      { name: 'Safe upload', if: 'always()', uses: 'actions/upload-artifact@v4' },
+    ]
+    const guarded = withCiAdmissionCleanup(steps)
+    expect(ciJobAdmission(steps).after).toBe(1)
+    expect(withCiAdmissionCleanup(guarded)).toEqual(guarded)
+    expect(guarded[3]).toEqual(steps[3])
+    const expression = guarded[2]!.if!
+      .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+      .replace(/steps\.([A-Za-z0-9_-]+)/g, 'steps["$1"]')
+    const allowed = new Function('runner', 'steps', 'always', 'failure', `return (${expression})`)
+    for (const [namespace, verdict, expected] of [
+      ['failure', 'success', false],
+      ['success', 'failure', false],
+      ['success', 'success', true],
+    ] as const) {
+      expect(
+        allowed(
+          { os: 'Linux' },
+          {
+            [linuxSandboxAdmissionStepId]: { outcome: namespace },
+            [defaultRefPolicyVerdictStepId]: { outcome: verdict },
+          },
+          () => true,
           () => true,
         ),
       ).toBe(expected)

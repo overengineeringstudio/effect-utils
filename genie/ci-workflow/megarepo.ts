@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 
 import { defaultRefPolicyCheckScript } from './default-ref-policy-script.ts'
-import { githubTokenEnv, shellSingleQuote } from './shared.ts'
+import { defaultRefPolicyVerdictStepId, githubTokenEnv, shellSingleQuote } from './shared.ts'
 
 /** Ephemeral per-job megarepo store path scoped to the CI run/attempt/job */
 export const jobLocalMegarepoStore =
@@ -183,8 +183,6 @@ const defaultRefPolicyNixpkgs: { rev: string; narHash: string } = JSON.parse(
 ).nodes.nixpkgs.locked
 const defaultRefPolicyNodeInstallable =
   `github:NixOS/nixpkgs/${defaultRefPolicyNixpkgs.rev}?narHash=${encodeURIComponent(defaultRefPolicyNixpkgs.narHash)}#nodejs_24`
-
-export const defaultRefPolicyVerdictStepId = 'default-ref-policy-verdict'
 
 /** Fail before composition when first-party megarepo/flake/devenv inputs target non-default refs. */
 export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions = {}) => ({

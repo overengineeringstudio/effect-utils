@@ -232,6 +232,48 @@ export const linuxNixSandboxFallbackStep = {
   ].join('\n'),
 }
 
+export const linuxSandboxAdmissionStepId = 'linux-sandbox-admission'
+export const defaultRefPolicyVerdictStepId = 'default-ref-policy-verdict'
+
+type CiJobSteps = GitHubWorkflowArgs['jobs'][string]['steps']
+
+/** All execution prerequisites in a job jointly own its admission boundary. */
+export const ciJobAdmission = (steps: CiJobSteps) => {
+  let after = -1
+  const conditions: string[] = []
+  for (const [index, step] of steps.entries()) {
+    const condition =
+      step.id === linuxSandboxAdmissionStepId
+        ? `(runner.os != 'Linux' || steps.${linuxSandboxAdmissionStepId}.outcome == 'success')`
+        : step.id === defaultRefPolicyVerdictStepId
+          ? `steps.${defaultRefPolicyVerdictStepId}.outcome == 'success'`
+          : undefined
+    if (condition !== undefined) {
+      after = index
+      conditions.push(condition)
+    }
+  }
+  return { after, condition: conditions.length === 0 ? undefined : conditions.join(' && ') }
+}
+
+/**
+ * Explicit status functions bypass Actions' implicit success() prerequisite.
+ * Restore admission for executable cleanup, retaining data-only artifact/cache saves.
+ */
+export const withCiAdmissionCleanup = (steps: CiJobSteps): CiJobSteps => {
+  const { condition } = ciJobAdmission(steps)
+  if (condition === undefined) return steps
+  const suffix = ` && (${condition})`
+  return steps.map((step) => {
+    if (step.if === undefined || /\b(?:always|failure|cancelled|success)\s*\(/.test(step.if) === false)
+      return step
+    if (/^actions\/(?:upload-artifact|cache\/save)@/.test(step.uses ?? '')) return step
+    const expression = step.if.replace(/^\s*\$\{\{\s*|\s*\}\}\s*$/g, '')
+    if (expression.endsWith(suffix)) return step
+    return { ...step, if: `\${{ (${expression})${suffix} }}` }
+  })
+}
+
 const withStandardCIEnv = ({
   jobs,
   trustTier,
@@ -248,10 +290,10 @@ const withStandardCIEnv = ({
           ...standardCIEnv({ trustTier }),
           ...job.env,
         },
-        steps: [
+        steps: withCiAdmissionCleanup([
           linuxNixSandboxFallbackStep,
           ...job.steps.filter((step) => step.id !== linuxNixSandboxFallbackStep.id),
-        ],
+        ]),
       },
     ]),
   )
