@@ -39,12 +39,12 @@ clients (same UID, local or SSH) ------typed IPC------> signed host
                                                    -> bounded result + audit
 ```
 
-One consumer-assembled app holds all grants its operations need. Its fixed
-consumer display name is **Mac Permissions Host**; the public implementation
-uses the generic technical executable name `macos-app-host`. The consumer pins
-its bundle identifier, display name, install path, launchd label and designated
-requirement before the first grant. Renaming the consent identity is a deliberate
-re-consent migration, not an ordinary upgrade.
+One consumer-assembled app holds all grants its operations need. The consumer
+repo fixes a descriptive, consent-facing display name before the first grant
+(for example "Mac Permissions Host"); renaming later is a re-consent migration.
+The public runtime keeps a generic technical name, `macos-app-host`. The consumer
+also pins its bundle identifier, install path, launchd label and designated
+requirement before the first grant.
 
 launchd starts the installed signed native entrypoint directly, never a resident
 shell, resource-accounting wrapper or client. A socket/SSH client does not launch
