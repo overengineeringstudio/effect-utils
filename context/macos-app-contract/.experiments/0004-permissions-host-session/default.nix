@@ -53,7 +53,7 @@ let
       executable = "Contents/MacOS/permissions-host";
       hostSourceHash = sourceHash;
       signingOptions = [ "runtime" ];
-      entitlements = pkgs.writeText "permissions-host-entitlements.plist" (lib.generators.toPlist { } {
+      entitlements = pkgs.writeText "permissions-host-entitlements.plist" (lib.generators.toPlist { escape = true; } {
         "com.apple.security.automation.apple-events" = true;
         "com.apple.security.device.audio-input" = true;
       });
