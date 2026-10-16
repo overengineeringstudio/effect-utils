@@ -183,10 +183,12 @@ fn read_source(src: &str, signal: &str) -> Result<String, u8> {
 }
 
 fn read_file(file: &Path) -> Result<String, u8> {
-    File::open(file).and_then(|file| read_snapshot(file, || {})).map_err(|e| {
-        eprintln!("otelite: cannot read {}: {e}", file.display());
-        EX_NOINPUT
-    })
+    File::open(file)
+        .and_then(|file| read_snapshot(file, || {}))
+        .map_err(|e| {
+            eprintln!("otelite: cannot read {}: {e}", file.display());
+            EX_NOINPUT
+        })
 }
 
 /// A read snapshot shares the writer's whole-record OS lock. The callback marks
@@ -390,7 +392,11 @@ mod tests {
         let mut stdout = std::io::BufReader::new(reader.stdout.take().unwrap());
         loop {
             let mut line = String::new();
-            assert_ne!(stdout.read_line(&mut line).unwrap(), 0, "reader exited before contention");
+            assert_ne!(
+                stdout.read_line(&mut line).unwrap(),
+                0,
+                "reader exited before contention"
+            );
             if line.contains(CONTENDED) {
                 break;
             }
