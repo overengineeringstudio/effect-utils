@@ -91,7 +91,6 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                 readonly elapsedMs: number
                 readonly delayMs: number | undefined
               }[] = []
-              const observePages = shape === 'searchStream:unfiltered:pageSize=1'
               const retentionLimit = 100
               const cursorHashes = new Set<string>()
               const searchPages: {
@@ -175,10 +174,11 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
               )
               return yield* Effect.suspend(() => {
                 attempts++
-                return observePages === true
-                  ? search.pipe(Effect.updateService(HttpClient.HttpClient, observePage))
-                  : search
+                return search
               }).pipe(
+                // Every readiness shape, including earlier filtered streams,
+                // uses this wait-local observer with fresh bounded tracking.
+                Effect.updateService(HttpClient.HttpClient, observePage),
                 Effect.tap((result) =>
                   Effect.sync(() => {
                     const { items, hasMore } = summarize(result)
@@ -225,17 +225,15 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                           expectedFixtureIds,
                           lastResult,
                           httpEvents,
-                          searchPageObserver:
-                            observePages === true
-                              ? {
-                                  searchPages,
-                                  totalSearchPages,
-                                  observerFailures,
-                                  retainedCursorHashCount: cursorHashes.size,
-                                  cursorTrackingSaturated,
-                                  retentionLimit,
-                                }
-                              : undefined,
+                          searchPageObserver: {
+                            shape,
+                            searchPages,
+                            totalSearchPages,
+                            observerFailures,
+                            retainedCursorHashCount: cursorHashes.size,
+                            cursorTrackingSaturated,
+                            retentionLimit,
+                          },
                         })
                       })
                     : Effect.void,
