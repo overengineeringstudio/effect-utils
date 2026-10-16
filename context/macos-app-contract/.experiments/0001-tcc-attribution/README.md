@@ -54,14 +54,17 @@ authorize use of its private key.
   image. A launchd wrapper that stays resident as parent (for example to record
   exit rusage) takes over the subject and must spawn its child with
   `responsibility_spawnattrs_setdisclaim` or not wrap consent-identity jobs.
-- A host grant transfers to every child the host spawns. A stable signed host
-  must therefore only spawn declared, pinned payloads; arbitrary `exec` would
-  turn one product grant into a pooled grant.
+- In this FDA-denial fixture, a non-disclaimed child was evaluated against the
+  host's identity (T5). This does **not** prove successful inherited access or
+  grant transfer for every child or permission type. Any later pinned worker
+  requires a positive capability-specific experiment; arbitrary `exec` is not
+  the host's interface.
 - SSH-origin work must reach the protected resource through IPC to a
   launchd-started host. Direct SSH execution is attributed to `sshd`.
-- Signing cannot be part of an SSH-driven update. Payload and presentation
-  updates must not change the host signature; host changes need a signer in a
-  GUI session with an unlocked login keychain.
+- The login-keychain signing attempt over SSH failed in this experiment.
+  This does not establish that signing always requires a GUI session: the
+  current contract uses headless dedicated-keychain sealing through ctl.
+  See [the release contract](../../spec.md#stable-signed-releases-and-existing-machinery).
 
 ## Open
 
