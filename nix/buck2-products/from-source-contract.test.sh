@@ -22,9 +22,14 @@ contract="$(nix eval --impure --json --expr '
     system = builtins.currentSystem;
     packages = flake.packages.${system};
     product = packages.buck-product-megarepo-from-source;
+    inventory = builtins.fromJSON (builtins.readFile (repo + "/nix/buck2-products/cache-targets.json"));
+    declaration = builtins.head (builtins.filter (entry: entry.name == "megarepo") inventory.products);
   in {
     capabilities = toString product.capabilities;
-    registeredCapabilities = toString (packages.buck2-capabilities.select [ "action-env" "archive-tool" "bun" ]);
+    registeredCapabilities = toString (packages.buck2-capabilities.selectProduct declaration);
+    requiredCapabilities = product.capabilities.requiredCapabilities;
+    expectedCapabilities = [ "action-env" "archive-tool" "bun" "rust-shell" ]
+      ++ (if builtins.match ".*-linux" system != null then [ "bubblewrap" ] else []);
     pnpmArchives = toString product.pnpmArchives;
     registeredArchives = toString packages.buck2-pnpm-archives;
     hasPreparedDeps = product ? preparedDeps;
@@ -42,6 +47,12 @@ source="$(jq -r .source <<<"$contract")"
 
 [[ "$capabilities" == "$registered_capabilities" ]] || {
   printf 'megarepo source product did not select its declared capability closure\n' >&2
+  exit 1
+}
+# Independently enforce the portable bundle boundary, not only inventory wiring:
+# every required tool is present and unrelated compiler/fingerprint tools are absent.
+jq -e "(.requiredCapabilities | sort) == (.expectedCapabilities | sort)" <<<"$contract" >/dev/null || {
+  printf 'megarepo source product has missing or unrelated build capabilities\n' >&2
   exit 1
 }
 [[ "$pnpm_archives" == "$registered_archives" ]] || {

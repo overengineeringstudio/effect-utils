@@ -49,9 +49,12 @@ A waiter may still wait while a different slot is idle. Descriptor closure
 (including process death) releases capacity; no stale PID recovery is needed.
 Native initialization prepares mode `1777` directories and mode `0666` regular
 files under unique temporary names before publishing them: directories by
-rename, files by no-replace hard link. Permissions are set before publication,
-independent of umask, so concurrent cold-start callers never see partially
-initialized modes. Losing initializers use the winner's files and remove their
+rename, files by no-replace hard link. Each private directory already contains its
+usable admission file before publication, so a competing initializer cannot
+replace an empty winner while another caller starts opening that file.
+Permissions are set before publication, independent of umask, so concurrent
+cold-start callers never see partially initialized modes. Losing initializers use
+the winner's files and remove their
 temporary entries. Sticky directory permissions prevent other users from
 replacing an owner's files; the file bytes are unused. Existing modes are not
 required to match exactly: the caller must be able to open the regular files
