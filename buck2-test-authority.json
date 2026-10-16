@@ -177,18 +177,24 @@
       "packagePath": "packages/@overeng/data-graph",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/cache.integration.test.ts",
         "src/identity.unit.test.ts",
         "src/mod.integration.test.ts",
         "src/properties.integration.test.ts",
+        "src/recovery.integration.test.ts",
+        "src/scale.integration.test.ts",
         "src/selection.integration.test.ts"
       ],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/data-graph:test",
       "taskName": "test:data-graph",
       "testFiles": [
+        "src/cache.integration.test.ts",
         "src/identity.unit.test.ts",
         "src/mod.integration.test.ts",
         "src/properties.integration.test.ts",
+        "src/recovery.integration.test.ts",
+        "src/scale.integration.test.ts",
         "src/selection.integration.test.ts"
       ],
       "unboundedAfter": [],
