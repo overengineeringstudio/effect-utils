@@ -1,4 +1,7 @@
-import { Clock, Duration, Effect, Exit, Option, Schedule, Stream } from 'effect'
+import { createHash } from 'node:crypto'
+
+import { Clock, Duration, Effect, Exit, Option, Schedule, Schema, Stream } from 'effect'
+import * as HttpClient from 'effect/http/HttpClient'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -88,9 +91,93 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                 readonly elapsedMs: number
                 readonly delayMs: number | undefined
               }[] = []
+              const observePages = shape === 'searchStream:unfiltered:pageSize=1'
+              const retentionLimit = 100
+              const cursorHashes = new Set<string>()
+              const searchPages: {
+                readonly pollAttempt: number
+                readonly page: number
+                readonly resultCount: number
+                readonly matchingFixtureCount: number
+                readonly hasMore: boolean
+                readonly nextCursorHash: string | null
+                readonly repeatedTrackedCursor: boolean
+                readonly cursorTrackingSaturated: boolean
+              }[] = []
+              let totalSearchPages = 0
+              let pageInAttempt = 0
+              let observedAttempt = 0
+              let observerFailures = 0
+              let cursorTrackingSaturated = false
+              const observedPageSchema = Schema.Struct({
+                results: Schema.Array(Schema.Struct({ id: Schema.String })),
+                has_more: Schema.Boolean,
+                next_cursor: Schema.NullOr(Schema.String),
+              })
+              const observePage = HttpClient.tap((response) =>
+                Effect.gen(function* () {
+                  if (
+                    response.request.method !== 'POST' ||
+                    new URL(response.request.url).pathname !== '/v1/search' ||
+                    response.status < 200 ||
+                    response.status >= 300
+                  ) {
+                    return
+                  }
+                  // Fetch responses cache their body bytes. The real client still
+                  // decodes this same response; this observer never issues requests.
+                  const body = yield* response.json
+                  const result = yield* Schema.decodeUnknownEffect(observedPageSchema)(body)
+                  if (observedAttempt !== attempts) {
+                    observedAttempt = attempts
+                    pageInAttempt = 0
+                    cursorHashes.clear()
+                    cursorTrackingSaturated = false
+                  }
+                  pageInAttempt++
+                  totalSearchPages++
+                  const cursorHash =
+                    result.next_cursor === null
+                      ? null
+                      : createHash('sha256').update(result.next_cursor).digest('hex')
+                  const repeatedTrackedCursor = cursorHash !== null && cursorHashes.has(cursorHash)
+                  if (cursorHash !== null && repeatedTrackedCursor === false) {
+                    if (cursorHashes.size < retentionLimit) {
+                      cursorHashes.add(cursorHash)
+                    } else {
+                      cursorTrackingSaturated = true
+                    }
+                  }
+                  searchPages.push({
+                    pollAttempt: attempts,
+                    page: pageInAttempt,
+                    resultCount: result.results.length,
+                    matchingFixtureCount: result.results.filter((item) =>
+                      expectedFixtureIds.includes(item.id),
+                    ).length,
+                    hasMore: result.has_more,
+                    nextCursorHash: cursorHash?.slice(0, 12) ?? null,
+                    // False means "not in the retained first 100 hashes", not
+                    // global uniqueness once cursor tracking is saturated.
+                    repeatedTrackedCursor,
+                    cursorTrackingSaturated,
+                  })
+                  if (searchPages.length > retentionLimit) searchPages.shift()
+                }).pipe(
+                  // Even malformed JSON/schema failures must leave the original
+                  // response and its client-side decoding outcome untouched.
+                  Effect.catchCause(() =>
+                    Effect.sync(() => {
+                      observerFailures++
+                    }),
+                  ),
+                ),
+              )
               return yield* Effect.suspend(() => {
                 attempts++
-                return search
+                return observePages === true
+                  ? search.pipe(Effect.updateService(HttpClient.HttpClient, observePage))
+                  : search
               }).pipe(
                 Effect.tap((result) =>
                   Effect.sync(() => {
@@ -119,13 +206,14 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                         elapsedMs: (yield* Clock.currentTimeMillis) - indexStarted,
                         delayMs: event._tag === 'retry' ? event.delayMs : undefined,
                       })
+                      if (httpEvents.length > retentionLimit) httpEvents.shift()
                     }),
                 }),
                 Effect.onExit((exit) =>
                   Exit.isFailure(exit) === true
                     ? Effect.gen(function* () {
                         const now = yield* Clock.currentTimeMillis
-                        // Only synthetic fixture IDs and numeric HTTP metadata are logged.
+                        // Only synthetic fixture IDs, counts, and cursor hashes are logged.
                         // Preserve the original failure; diagnostics never retry assertions.
                         yield* Effect.logError('Notion search fixture readiness failed', {
                           shape,
@@ -137,6 +225,17 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                           expectedFixtureIds,
                           lastResult,
                           httpEvents,
+                          searchPageObserver:
+                            observePages === true
+                              ? {
+                                  searchPages,
+                                  totalSearchPages,
+                                  observerFailures,
+                                  retainedCursorHashCount: cursorHashes.size,
+                                  cursorTrackingSaturated,
+                                  retentionLimit,
+                                }
+                              : undefined,
                         })
                       })
                     : Effect.void,
