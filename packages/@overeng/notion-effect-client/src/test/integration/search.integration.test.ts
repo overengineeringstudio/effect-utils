@@ -59,19 +59,14 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
           const indexStarted = yield* Clock.currentTimeMillis
           const indexDeadline = indexStarted + 60000
           const expectedFixtureIds = [page.id, dataSourceId]
-          const waitForIndex = <
-            TResult extends
-              | readonly { readonly id: string }[]
-              | {
-                  readonly results: readonly { readonly id: string }[]
-                  readonly hasMore: boolean
-                },
-            TError,
-            TRequirements,
-          >(
+          const waitForIndex = <TResult, TError, TRequirements>(
             shape: string,
             search: Effect.Effect<TResult, TError, TRequirements>,
             until: (result: TResult) => boolean,
+            summarize: (result: TResult) => {
+              readonly items: readonly { readonly id: string }[]
+              readonly hasMore: boolean | undefined
+            },
           ) =>
             Effect.gen(function* () {
               const started = yield* Clock.currentTimeMillis
@@ -99,7 +94,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
               }).pipe(
                 Effect.tap((result) =>
                   Effect.sync(() => {
-                    const items = 'results' in result ? result.results : result
+                    const { items, hasMore } = summarize(result)
                     const observedFixtureIds = items
                       .filter((item) => expectedFixtureIds.includes(item.id))
                       .map((item) => item.id)
@@ -107,7 +102,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                       observedFixtureIds,
                       nonfixtureResultCount: items.length - observedFixtureIds.length,
                       itemCount: items.length,
-                      hasMore: 'hasMore' in result ? result.hasMore : undefined,
+                      hasMore,
                     }
                   }),
                 ),
@@ -154,6 +149,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             (result) =>
               result.results.some((item) => item.id === page.id) &&
               result.results.some((item) => item.id === dataSourceId),
+            (result) => ({ items: result.results, hasMore: result.hasMore }),
           )
           expect(indexed.results.map((item) => item.id)).toEqual(
             expect.arrayContaining([page.id, dataSourceId]),
@@ -172,6 +168,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                 filter: { property: 'object', value },
               }),
               (result) => result.results.some((item) => item.id === id),
+              (result) => ({ items: result.results, hasMore: result.hasMore }),
             )
             expect(filtered.results.map((item) => item.id)).toContain(id)
             for (const item of filtered.results) expect(item.object).toBe(value)
@@ -184,6 +181,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                 pageSize: 1,
               }).pipe(Stream.runCollect),
               (items) => items.some((item) => item.id === id),
+              (items) => ({ items, hasMore: undefined }),
             )
             expect(streamed.map((item) => item.id)).toContain(id)
             for (const item of streamed) expect(item.object).toBe(value)
@@ -198,6 +196,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             (result) =>
               result.results.some((item) => item.id === page.id) &&
               result.results.some((item) => item.id === dataSourceId),
+            (result) => ({ items: result.results, hasMore: result.hasMore }),
           )
           expect(sorted.results.map((item) => item.id)).toEqual(
             expect.arrayContaining([page.id, dataSourceId]),
@@ -207,6 +206,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             'search:pageSize=1:first',
             NotionSearch.search({ query, pageSize: 1 }),
             (result) => result.results.length === 1 && result.hasMore,
+            (result) => ({ items: result.results, hasMore: result.hasMore }),
           )
           expect(first.results).toHaveLength(1)
           expect(first.hasMore).toBe(true)
@@ -219,6 +219,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
               startCursor: Option.getOrThrow(first.nextCursor),
             }),
             (result) => result.results.length === 1,
+            (result) => ({ items: result.results, hasMore: result.hasMore }),
           )
           expect(second.results).toHaveLength(1)
           expect(second.results[0]?.id).not.toBe(first.results[0]?.id)
@@ -229,6 +230,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             (items) =>
               items.some((item) => item.id === page.id) &&
               items.some((item) => item.id === dataSourceId),
+            (items) => ({ items, hasMore: undefined }),
           )
           expect(streamed.map((item) => item.id)).toEqual(
             expect.arrayContaining([page.id, dataSourceId]),
