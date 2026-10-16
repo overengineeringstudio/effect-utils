@@ -76,7 +76,8 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
-      - name: Log Linux sandbox prerequisites
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         env:
@@ -192,7 +193,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-cold-gc' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-cold-gc'
       - name: Nix diagnostics summary
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
@@ -236,13 +237,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Failure note
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Summarize CI OpenTelemetry spans
-        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        if: ${{ (always() && env.OTEL_SPAN_SPOOL_DIR != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -283,7 +284,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -302,7 +303,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -311,7 +312,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
@@ -369,7 +370,8 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
-      - name: Log Linux sandbox prerequisites
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         env:
@@ -485,7 +487,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run bootstrap:cold-proof' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bootstrap:cold-proof'
       - name: Nix diagnostics summary
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
@@ -529,13 +531,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Failure note
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -554,7 +556,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -563,7 +565,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
@@ -644,7 +646,8 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
-      - name: Log Linux sandbox prerequisites
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         env:
@@ -1448,7 +1451,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1467,7 +1470,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -1476,7 +1479,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
@@ -1540,7 +1543,8 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
-      - name: Log Linux sandbox prerequisites
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         env:
@@ -2130,7 +2134,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Nix diagnostics summary
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
@@ -2174,13 +2178,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Failure note
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2199,7 +2203,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -2208,7 +2212,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
@@ -2270,7 +2274,8 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
-      - name: Log Linux sandbox prerequisites
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         env:
@@ -2515,7 +2520,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2534,7 +2539,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -2543,7 +2548,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}

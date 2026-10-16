@@ -132,7 +132,8 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
-      - name: Log Linux sandbox prerequisites
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         env:
@@ -311,7 +312,8 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
-      - name: Log Linux sandbox prerequisites
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         env:
@@ -379,7 +381,7 @@ jobs:
           name: netlify-preview-comment
           path: '${{ runner.temp }}/workflow-reports/netlify-preview'
       - name: Publish workflow report
-        if: always() && !cancelled()
+        if: ${{ (always() && !cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}

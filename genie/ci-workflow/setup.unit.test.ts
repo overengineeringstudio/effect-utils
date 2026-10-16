@@ -432,6 +432,16 @@ describe('Linux Nix sandbox fallback', () => {
 })
 
 describe('CI execution admission cleanup', () => {
+  const workflows = [
+    ciWorkflow,
+    empiricalWorkflow,
+    compiledWorkflow,
+    storybookPlaysWorkflow,
+    previewBuildWorkflow,
+    previewDeployWorkflow,
+    autoReviewWorkflow,
+  ]
+
   it('blocks rejected quality admission while retaining admitted failure cleanup and Darwin', () => {
     const job = ciWorkflow.data.jobs.quality!
     expect(job.steps.find((step) => step.name === 'Log Linux sandbox prerequisites')?.id).toBe(
@@ -461,15 +471,7 @@ describe('CI execution admission cleanup', () => {
     let admissionJobs = 0
     let executableCleanups = 0
     let safeUploads = 0
-    for (const workflow of [
-      ciWorkflow,
-      empiricalWorkflow,
-      compiledWorkflow,
-      storybookPlaysWorkflow,
-      previewBuildWorkflow,
-      previewDeployWorkflow,
-      autoReviewWorkflow,
-    ]) {
+    for (const workflow of workflows) {
       for (const [jobId, job] of Object.entries(workflow.data.jobs)) {
         const guards = job.steps.filter(
           (step) =>
@@ -512,6 +514,72 @@ describe('CI execution admission cleanup', () => {
     expect(admissionJobs).toBeGreaterThan(0)
     expect(executableCleanups).toBeGreaterThan(0)
     expect(safeUploads).toBeGreaterThan(0)
+  })
+
+  it('keeps independent executable cleanup restricted to its trusted event admission', () => {
+    const independentRoutes: Record<string, 'job' | 'step'> = {
+      'pr-a-inert-buck': 'job',
+      'build-products': 'job',
+      'publish-products': 'job',
+      'trusted-buck2-remote-cache-proof': 'job',
+      'publish-compiled-products': 'job',
+      'ci-measurements-report': 'job',
+      'pipeline-attempt-close': 'step',
+    }
+    const seen = new Set<string>()
+    for (const workflow of workflows) {
+      for (const [jobId, job] of Object.entries(workflow.data.jobs)) {
+        if (ciJobAdmission(job.steps).condition !== undefined) continue
+        const cleanup = job.steps.filter(
+          (step) =>
+            /\b(?:always|failure|cancelled|success)\s*\(/.test(step.if ?? '') &&
+            (step.run !== undefined || step.uses?.startsWith('./')),
+        )
+        if (cleanup.length === 0) continue
+        expect(independentRoutes[jobId], jobId).toBeDefined()
+        seen.add(jobId)
+        const condition =
+          independentRoutes[jobId] === 'step' ? cleanup[0]!.if! : job.if!
+        const expression = condition
+          .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+          .replace(/needs\.([A-Za-z0-9_-]+)/g, 'needs["$1"]')
+        const allowed = new Function(
+          'github',
+          'inputs',
+          'needs',
+          'always',
+          'cancelled',
+          `return (${expression})`,
+        )
+        const needs = Object.fromEntries(
+          (typeof job.needs === 'string' ? [job.needs] : (job.needs ?? [])).map((id) => [
+            id,
+            { result: 'success', outputs: { tested: 'false' } },
+          ]),
+        )
+        for (const [eventName, expected] of [
+          ['pull_request', false],
+          ['push', true],
+        ] as const) {
+          expect(
+            allowed(
+              {
+                event_name: eventName,
+                ref: 'refs/heads/main',
+                repository: 'overengineeringstudio/effect-utils',
+                event: { pull_request: { head: { repo: { full_name: 'fork/effect-utils' } } } },
+              },
+              { measurement_baseline_ref: '' },
+              needs,
+              () => true,
+              () => false,
+            ),
+            `${jobId}/${eventName}`,
+          ).toBe(expected)
+        }
+      }
+    }
+    expect([...seen].toSorted()).toEqual(Object.keys(independentRoutes).toSorted())
   })
 
   it('combines all admission prerequisites, is idempotent, and leaves independent jobs alone', () => {
