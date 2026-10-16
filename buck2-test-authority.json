@@ -605,12 +605,19 @@
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/gh-ci-utils:test_collect",
-      "excludes": ["src/node/GitHubClient.integration.test.ts", "test/GitHubClient.test.ts"],
+      "excludes": [
+        "src/node/ArtifactTransport.integration.test.ts",
+        "src/node/GitHubClient.integration.test.ts",
+        "test/GitHubClient.test.ts"
+      ],
       "packageName": "gh-ci-utils",
       "packagePath": "packages/@overeng/gh-ci-utils",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/node/ArtifactArchive.unit.test.ts",
+        "src/node/ArtifactTransport.integration.test.ts",
         "src/node/GitHubClient.integration.test.ts",
+        "src/node/commands/artifacts.unit.test.ts",
         "test/GitHubClient.test.ts",
         "test/GitHubClientLogs.test.ts",
         "test/GitHubInternal.test.ts",
@@ -641,7 +648,10 @@
       "target": "effect_utils//packages/@overeng/gh-ci-utils:test",
       "taskName": "test:gh-ci-utils",
       "testFiles": [
+        "src/node/ArtifactArchive.unit.test.ts",
+        "src/node/ArtifactTransport.integration.test.ts",
         "src/node/GitHubClient.integration.test.ts",
+        "src/node/commands/artifacts.unit.test.ts",
         "test/GitHubClient.test.ts",
         "test/GitHubClientLogs.test.ts",
         "test/GitHubInternal.test.ts",
@@ -669,7 +679,11 @@
         "test/watchPlan.test.ts"
       ],
       "unboundedAfter": [],
-      "unboundedFiles": ["src/node/GitHubClient.integration.test.ts", "test/GitHubClient.test.ts"],
+      "unboundedFiles": [
+        "src/node/ArtifactTransport.integration.test.ts",
+        "src/node/GitHubClient.integration.test.ts",
+        "test/GitHubClient.test.ts"
+      ],
       "unboundedTaskName": "test:gh-ci-utils:unbounded"
     },
     {
