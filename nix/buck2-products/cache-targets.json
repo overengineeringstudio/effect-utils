@@ -88,6 +88,25 @@
       ],
       "kind": "package",
       "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "@overeng/data-graph",
+      "outputName": "overeng-data-graph.tgz",
+      "packagePath": "packages/@overeng/data-graph",
+      "packageTreePath": "packages/@overeng/data-graph",
+      "target": "effect_utils//packages/@overeng/data-graph:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
+      "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/devbar",
       "outputName": "overeng-devbar.tgz",
       "packagePath": "packages/@overeng/devbar",
