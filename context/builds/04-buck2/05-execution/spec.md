@@ -182,6 +182,29 @@ dylibs cannot use it. Package-specific Cargo profile overrides require a
 package-aware rule projection; the current Cargo projector does not read
 profiles, so the shared workspace profile is the supported boundary.
 
+### Native Rust sandbox executor registration
+
+```text
+rust_native_sandbox.enabled=false -> existing executor registration only
+rust_native_sandbox.enabled=true  -> Linux x86_64 candidate also registered
+                                 -> no Rust action automatically admitted
+```
+
+`rust_native_sandbox.enabled` is a root-config boolean, default `false`;
+other values fail analysis. Registration adds only
+`exec_linux_x86_64_rust_sandbox`, identified by the separate
+`cache_rust_native_sandbox` value of the cache-admission constraint setting.
+The candidate uses the existing root read/upload switches, not a new cache
+control plane. Unsupported hosts register no candidate.
+
+Registration is not a lane enablement or a sandbox implementation. No Rust
+caller selects the candidate. `cache_guarded_rule` rejects explicit Rust
+admission even for a rule eligible for `cache_hermetic`; TS eligibility cannot
+authorize Rust admission. Existing native, wasm, Darwin and aarch64 action
+policies stay unchanged. Admission is configured-target-wide: every run action
+in a selected target requires an audited boundary, not just the rustc command.
+The standalone fixed-root launcher is not wired into Prelude actions.
+
 ### Rust Interop Products
 
 ```text

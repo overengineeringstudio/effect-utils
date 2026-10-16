@@ -278,6 +278,10 @@ tsgo_emit(name = "admitted_emit", package_tree = ":package_tree")
 fixture_ts_policy(name = "ts_policy_default")
 fixture_ts_policy(name = "ts_policy_cache", exec_compatible_with = ["@rules//buck2/platforms:cache_hermetic"])
 fixture_ts_policy_with_helper(name = "ts_policy_helper")
+fixture_ts_policy(
+    name = "ts_policy_rust_override",
+    exec_compatible_with = ["@rules//buck2/platforms:cache_rust_native_sandbox"],
+)
 fixture_ts_output(name = "darwin_fresh_verdict")
 
 vitest_collect(
@@ -335,6 +339,22 @@ for target in admitted_collect default_uncacheable_collect default_unadmitted_ch
   fi
   printf 'PASS analysis: %s\n' "$target"
 done
+# Enabling Rust registration must not let an otherwise TS-eligible rule borrow
+# the Rust executor. Audit only: this negative control executes no run action.
+if "$buck" --isolation-dir cache-admission-check audit providers \
+  -c build.execution_platforms=effect_utils//buck2/platforms:exec_linux_x86_64_rust_sandbox \
+  effect_utils//:ts_policy_rust_override > "$work/rust-override.log" 2>&1; then
+  cat "$work/rust-override.log" >&2
+  printf 'TS rule unexpectedly borrowed Rust sandbox admission\n' >&2
+  exit 1
+fi
+if ! grep -Fq 'this rule is not eligible for the Rust sandbox execution platform' "$work/rust-override.log"; then
+  cat "$work/rust-override.log" >&2
+  printf 'Rust admission override failed for a reason other than rule ownership\n' >&2
+  exit 1
+fi
+printf 'PASS rejected: ts_policy_rust_override\n'
+
 
 # Inspect Buck's actual selected execution platform, with root cache policy ON.
 # This is analysis-only: no fixture command or remote-cache request executes.

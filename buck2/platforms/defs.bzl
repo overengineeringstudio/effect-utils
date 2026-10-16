@@ -153,6 +153,9 @@ def cache_guarded_rule(impl, attrs, cache_eligible = None, **kwargs):
     """Owns shared-cache admission at rule definition, never at a call site."""
     rule_attrs = dict(attrs)
     rule_attrs["_cache_admission_constraint"] = _cache_admission_label_attr()
+    rule_attrs["_rust_cache_admission_constraint"] = attrs.default_only(attrs.label(
+        default = "@rules//buck2/platforms:cache_rust_native_sandbox",
+    ))
 
     def guarded_impl(ctx):
         # Buck resolves both the built-in compatibility list and this label to
@@ -162,6 +165,11 @@ def cache_guarded_rule(impl, attrs, cache_eligible = None, **kwargs):
         if constraint in ctx.attrs.exec_compatible_with:
             if cache_eligible == None or not cache_eligible(ctx):
                 fail("this rule is not eligible for the cache-admitted execution platform")
+        # TS eligibility must never grant the separate Rust executor. No guarded
+        # rule owns a sandboxed Rust action set yet, even with registration on.
+        rust_constraint = str(ctx.attrs._rust_cache_admission_constraint.raw_target())
+        if rust_constraint in ctx.attrs.exec_compatible_with:
+            fail("this rule is not eligible for the Rust sandbox execution platform")
         return impl(ctx)
 
     return rule(impl = guarded_impl, attrs = rule_attrs, **kwargs)
