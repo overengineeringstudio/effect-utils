@@ -76,6 +76,15 @@ type Fixture = {
   readonly cliBin?: string
 }
 
+type CliResult = {
+  readonly exitCode: number | null
+  readonly stdout: string
+  readonly capturedStdout: string
+  readonly stderr: string
+  readonly spawnError: string | undefined
+  readonly signal: NodeJS.Signals | null
+}
+
 /** Fail loudly (never skip) when the root process probe cannot be exercised. */
 const requireRoot = () => {
   const probe = spawnSync('sudo', ['-n', 'true'], { encoding: 'utf8' })
@@ -146,7 +155,14 @@ const runCli = (
               ),
             },
           })
-  return { exitCode: result.status, stdout: result.stdout.trim(), stderr: result.stderr }
+  return {
+    exitCode: result.status,
+    stdout: result.stdout.trim(),
+    capturedStdout: result.stdout,
+    stderr: result.stderr,
+    spawnError: result.error?.message,
+    signal: result.signal,
+  }
 }
 
 const runMr = (f: Fixture, args: ReadonlyArray<string>, options?: { asRoot?: boolean }) =>
@@ -881,10 +897,42 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           return { f, w, worklog, worklogBytes }
         })
 
-      const gcRow = (stdout: string, path: string) => {
-        const json = decodeJson(stdout) as { results?: ReadonlyArray<Record<string, unknown>> }
+      const gcRow = (result: CliResult, path: string) => {
+        let json: { results?: ReadonlyArray<Record<string, unknown>> }
+        try {
+          json = decodeJson(result.stdout) as typeof json
+        } catch (cause) {
+          const redact = (text: string) => {
+            for (const [key, value] of Object.entries(process.env)) {
+              if (
+                /token|secret|password|credential|authorization|cookie|private.?key/iu.test(key) &&
+                value !== undefined &&
+                value.length > 0
+              ) {
+                text = text.replaceAll(value, '[REDACTED]')
+              }
+            }
+            return text
+              .replace(/(https?:\/\/)[^/\s@]+@/giu, '$1[REDACTED]@')
+              .replace(/\b(Bearer|Basic)\s+\S+/giu, '$1 [REDACTED]')
+              .slice(0, 16_384)
+          }
+          throw new Error(
+            `mr store gc emitted invalid JSON: ${encodeJson({
+              exitCode: result.exitCode,
+              signal: result.signal,
+              spawnError: redact(result.spawnError ?? ''),
+              stdoutBytes: Buffer.byteLength(result.capturedStdout),
+              stderrBytes: Buffer.byteLength(result.stderr),
+              stdout: redact(result.capturedStdout),
+              stderr: redact(result.stderr),
+              streamLimitCharacters: 16_384,
+            })}`,
+            { cause },
+          )
+        }
         return (json.results ?? []).find(
-          (result) => result['ref'] === BRANCH || result['path'] === path,
+          (entry) => entry['ref'] === BRANCH || entry['path'] === path,
         )
       }
 
@@ -898,7 +946,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             })
             const result = runMr(f, [])
             expect(result.exitCode, result.stderr).toBe(0)
-            const receipt = gcRow(result.stdout, w)
+            const receipt = gcRow(result, w)
             expect(receipt).toMatchObject({ status: 'reaped', reason: 'merged-worklog-teardown' })
             expect(receipt?.['worklogBytesRemoved']).toBeGreaterThan(0)
             expect(receipt?.['worklogBytesRemoved']).toBeLessThanOrEqual(worklogBytes)
@@ -928,7 +976,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             yield* writeManifest(f, { variant: 'missing' })
             const result = runMr(f, [])
             expect(result.exitCode, result.stderr).toBe(0)
-            expect(gcRow(result.stdout, w)).toMatchObject({
+            expect(gcRow(result, w)).toMatchObject({
               status: 'kept',
               reason: 'agent-liveness-unavailable',
             })
@@ -950,7 +998,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             yield* writeManifest(f, { parkedWorkspaces: [w.replace(/\/$/u, '')] })
             const result = runMr(f, [])
             expect(result.exitCode, result.stderr).toBe(0)
-            expect(gcRow(result.stdout, w)).toMatchObject({ status: 'kept', reason: 'live' })
+            expect(gcRow(result, w)).toMatchObject({ status: 'kept', reason: 'live' })
             expect(yield* exists(w)).toBe(true)
             expect(yield* exists(`${worklog}/notes.md`)).toBe(true)
             const registrations = yield* Git.listWorktrees(f.bareRepoPaths[REPO_KEY]!)
@@ -968,7 +1016,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             const { f, w } = yield* teardownFixture({ teardown: 'retain', prState: 'MERGED' })
             const result = runMr(f, [])
             expect(result.exitCode, result.stderr).toBe(0)
-            const receipt = gcRow(result.stdout, w)
+            const receipt = gcRow(result, w)
             expect(receipt?.['reason']).not.toBe('merged-worklog-teardown')
             expect(receipt?.['worklogBytesRemoved'] ?? 0).toBe(0)
             const survivingRoot =
@@ -998,7 +1046,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             })
             const result = runMr(f, [])
             expect(result.exitCode, result.stderr).toBe(0)
-            expect(gcRow(result.stdout, w)?.['status']).toBe('kept')
+            expect(gcRow(result, w)?.['status']).toBe('kept')
             expect(yield* exists(w)).toBe(true)
             expect(yield* exists(`${worklog}/notes.md`)).toBe(true)
           },
