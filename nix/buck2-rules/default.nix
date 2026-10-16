@@ -124,9 +124,10 @@ pkgs.runCommand "buck2-rules"
     mkdir -p "$out/packages/@overeng/buck2-tools"
     cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
     load("//buck2/package_tools.bzl", "package_command_runtime")
+    load("//buck2:materialization.bzl", "runtime_modules")
 
 
-    filegroup(
+    runtime_modules(
         name = "package_tree_runtime",
         srcs = {
             "package-tree.ts": "src/package-tree.ts",
@@ -156,10 +157,13 @@ pkgs.runCommand "buck2-rules"
         visibility = ["PUBLIC"],
     )
 
-    filegroup(
+    runtime_modules(
         name = "javascript_action_runtime",
         srcs = {
             "javascript-runner.ts": "src/javascript-runner.ts",
+            "bun-test-runner.ts": "src/bun-test-runner.ts",
+            "bun-test-timeout.ts": "src/bun-test-timeout.ts",
+            "bun-test-preload.ts": "src/bun-test-preload.ts",
             "test-verdict.ts": "src/test-verdict.ts",
             "typescript-runner.ts": "src/typescript-runner.ts",
         },
