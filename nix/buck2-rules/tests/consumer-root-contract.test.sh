@@ -120,13 +120,20 @@ grep -F 'name = "runtime-closure.ts"' "$root/.buck2/rules/buck2/dependencies/BUC
 
 # Buck writes buck-out under the project root, so queries run in a writable copy.
 work="$(mktemp -d)"
+runtime_work="$(mktemp -d)"
 cleanup() {
   (cd "$work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true
+  (cd "$runtime_work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true
   watchman watch-del "$work" >/dev/null 2>&1 || true
-  chmod -R u+w "$work"
-  rm -rf "$work"
+  chmod -R u+w "$work" "$runtime_work"
+  rm -rf "$work" "$runtime_work"
 }
 trap cleanup EXIT
+# This immutable-cell fixture is separate from the writable native-product
+# source snapshot, whose capability cell the product builder repopulates.
+(
+work="$runtime_work"
+root="$immutable_root"
 # Keep the actual Nix-exported cells immutable. Copying their source files into
 # this checkout would hide absolute Buck source symlinks into the store.
 mkdir -p "$work/.buck2" "$work/buck2/toolchains"
@@ -249,9 +256,13 @@ denial = "denied" if sys.platform == "linux" else "unsupported-darwin"
 print(f"EXPORTED_RUNTIME_PROOF_PASSED regular_files=8 package_tree=pass declared_imports=pass undeclared_import={denial}")
 PY
 )
+)
 if "$runtime_only"; then
   exit 0
 fi
+# Native source builds require an owned capability directory, not a store link.
+cp -R "$root/." "$work/"
+chmod -R u+w "$work"
 cat >> "$work/buck2/toolchains/BUCK" <<'BUCK'
 
 load("@rules//buck2/toolchains:configured.bzl", "store_directory")
