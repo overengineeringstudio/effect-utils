@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/notion-core/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:671a88c20f18c6946f8195ee024e56bb4007239d9b580684dbb6d86f18c58e9e
+# Semantic fingerprint: sha256:4109c24e4bb0510bc208de874c2c2bff0678cd02e5e4ed9f149f617e8ba23b8e
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -73,6 +73,38 @@ alias(
 package_view(
     name = "package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_notion_core_bbf3eb334469",
+    files = {
+        "package.json": "package.json",
+        "src/body-fidelity.ts": "src/body-fidelity.ts",
+        "src/body-fidelity.unit.test.ts": "src/body-fidelity.unit.test.ts",
+        "src/colors.ts": "src/colors.ts",
+        "src/colors.unit.test.ts": "src/colors.unit.test.ts",
+        "src/constants.ts": "src/constants.ts",
+        "src/constants.unit.test.ts": "src/constants.unit.test.ts",
+        "src/ids.ts": "src/ids.ts",
+        "src/ids.unit.test.ts": "src/ids.unit.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/properties.ts": "src/properties.ts",
+        "src/properties.unit.test.ts": "src/properties.unit.test.ts",
+        "src/rich-text.ts": "src/rich-text.ts",
+        "src/rich-text.unit.test.ts": "src/rich-text.unit.test.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_notion_core_bbf3eb334469",
     files = {
         "package.json": "package.json",
         "src/body-fidelity.ts": "src/body-fidelity.ts",

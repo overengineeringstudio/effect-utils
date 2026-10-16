@@ -320,6 +320,7 @@ const checkWorkspaceContract = ({
     'ai-gateway',
     'buck2-archive-tool',
     'buck2-events',
+    'buck2-fingerprint',
     'buck2-product',
     'buck2-tool-core',
     'content-address-contract',
@@ -415,6 +416,7 @@ const checkWorkspaceContract = ({
     'rust/buck2-tools/archive-tool',
     'rust/buck2-tools/core',
     'rust/buck2-tools/events',
+    'rust/buck2-tools/fingerprint',
     'rust/buck2-tools/product',
   ]) {
     const buck = readFileSync(path.join(sourceRoot, memberPath, 'BUCK'), 'utf8')
@@ -443,7 +445,9 @@ const checkWorkspaceContract = ({
     requireExactFields({
       value: entry,
       fields: [
+        'buildCapabilities',
         'kind',
+        'linuxBuildCapabilities',
         'name',
         'outputName',
         'sourcePaths',
@@ -455,6 +459,27 @@ const checkWorkspaceContract = ({
       subject: `native products[${index}]`,
     })
     const target = requireString(entry.target, `native products[${index}].target`)
+    const buildCapabilities = requireStrings(
+      entry.buildCapabilities,
+      `native products[${index}].buildCapabilities`,
+    )
+    requireUnique(buildCapabilities, `native products[${index}].buildCapabilities`)
+    const linuxBuildCapabilities = requireStrings(
+      entry.linuxBuildCapabilities,
+      `native products[${index}].linuxBuildCapabilities`,
+    )
+    // Pnpm-backed products materialize package trees through sandboxed TS
+    // actions; Cargo products run none. Buck analysis rejects an undeclared set.
+    const tsSandbox = rust === false
+    if (
+      (tsSandbox === true &&
+        (buildCapabilities.includes('bun') === false ||
+          buildCapabilities.includes('rust-shell') === false)) ||
+      linuxBuildCapabilities.join('\0') !== (tsSandbox === true ? 'bubblewrap' : '')
+    )
+      throw new Error(
+        `native products[${index}] must declare exactly the TS sandbox capabilities it uses`,
+      )
     const packagePath = rust === true ? name : 'genie'
     const sourcePaths = requireStrings(entry.sourcePaths, `native products[${index}].sourcePaths`)
     requireUnique(sourcePaths, `native products[${index}].sourcePaths`)

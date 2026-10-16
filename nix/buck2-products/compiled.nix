@@ -7,24 +7,28 @@
 # publisher pushes these imports to Cachix per platform; consumers substitute
 # the same derivations.
 {
+  pkgs,
   mkBuckProductFromSource,
   capabilities,
   pnpmArchives,
-  producerCommit,
   repositoryRoot ? ../..,
 }:
 
 let
   inventory = builtins.fromJSON (builtins.readFile ./compiled-targets.json);
+  rootProjection = import ./root-projection.nix { inherit pkgs repositoryRoot; };
   validProduct =
     product:
     builtins.isAttrs product
     &&
       builtins.attrNames product == [
+        "buildCapabilities"
         "kind"
+        "linuxBuildCapabilities"
         "name"
         "outputName"
         "packagePath"
+        "sourcePaths"
         "target"
         "version"
       ]
@@ -64,12 +68,13 @@ builtins.listToAttrs (
     name = "${product.name}-compiled";
     value = mkBuckProductFromSource {
       inherit
-        capabilities
         pnpmArchives
         product
-        producerCommit
         repositoryRoot
         ;
+      inherit rootProjection;
+      sourcePaths = product.sourcePaths;
+      capabilities = capabilities.selectProduct product;
       importNative = true;
     };
   }) inventory.products

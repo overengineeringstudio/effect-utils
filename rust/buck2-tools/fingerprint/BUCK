@@ -1,0 +1,124 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/buck2-tools/fingerprint/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:56be0c5dfd87b502e0d670ed786ae6acb32461c25361c830a0b7f28082583701
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/BUCK.genie.ts, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/fingerprint/src/**/*.rs, rust/buck2-tools/fingerprint/tests/**/*.rs, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/buck2-tools/fingerprint",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/bin/buck2-fingerprint.rs",
+        "src/fingerprint_admission.rs",
+        "src/lib.rs",
+        "tests/fingerprint.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/bin/buck2-fingerprint.rs",
+    src = "src/bin/buck2-fingerprint.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/fingerprint_admission.rs",
+    src = "src/fingerprint_admission.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "buck2_fingerprint",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/bin/buck2-fingerprint.rs",
+        "src/fingerprint_admission.rs",
+        "src/lib.rs",
+    ],
+    deps = [
+        "//rust/third-party:sha2",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "buck2-fingerprint",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "buck2_fingerprint",
+        "CARGO_MANIFEST_DIR": "rust/buck2-tools/fingerprint",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "buck2-fingerprint",
+    crate = "buck2_fingerprint",
+    crate_root = "src/bin/buck2-fingerprint.rs",
+    srcs = [
+        "src/bin/buck2-fingerprint.rs",
+        "src/fingerprint_admission.rs",
+        "src/lib.rs",
+    ],
+    deps = [
+        "//rust/third-party:sha2",
+        ":lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "buck2-fingerprint",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "buck2_fingerprint",
+        "CARGO_MANIFEST_DIR": "rust/buck2-tools/fingerprint",
+        "CARGO_BIN_NAME": "buck2-fingerprint",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)

@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/genie-smalltalk/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:3ae7a33a56f467ca09e8f617d8032129f7182852b17bbd7db35ead7c7e41c8b5
+# Semantic fingerprint: sha256:b145721b2007035dd2461140f43e4273ca92b62448f63be8124393cfee257eae
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -102,6 +102,43 @@ package_view(
         "node_modules/@overeng/genie/node_modules": "//packages/@overeng/genie:package_tree",
         "node_modules/@overeng/kdl/node_modules": "//packages/@overeng/kdl:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_genie_smalltalk_8c26e80c6e0e",
+    files = {
+        "package.json": "package.json",
+        "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
+        "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
+        "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "src/pr-landing.fixture.ts": "src/pr-landing.fixture.ts",
+        "src/run-values.ts": "src/run-values.ts",
+        "src/run-values.unit.test.ts": "src/run-values.unit.test.ts",
+        "src/testing.ts": "src/testing.ts",
+        "src/tree.ts": "src/tree.ts",
+        "src/tree.unit.test.ts": "src/tree.unit.test.ts",
+        "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/genie/package.json": "//packages/@overeng/genie:package.json",
+        "node_modules/@overeng/kdl/package.json": "//packages/@overeng/kdl:package.json",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/genie/node_modules": "//packages/@overeng/genie:product_package_tree",
+        "node_modules/@overeng/kdl/node_modules": "//packages/@overeng/kdl:product_package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",

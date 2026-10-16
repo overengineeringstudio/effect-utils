@@ -18,6 +18,7 @@ export type JavaScriptProduct = {
   readonly externalCapabilities?: readonly string[]
   readonly kind: 'cli' | 'module'
   readonly output: string
+  /** Source-only package view; never a declaration-producing npm package tree. */
   readonly packageTree?: string
   readonly productName: string
   readonly runtime?: 'bun' | 'node'
@@ -64,7 +65,7 @@ const renderProduct = (product: JavaScriptProduct): string => {
     external_capabilities = ${list(product.externalCapabilities ?? [])},
     kind = ${quote(product.kind)},
     output = ${quote(product.output)},
-    package_tree = ${quote(product.packageTree ?? ':package_tree')},
+    package_tree = ${quote(product.packageTree ?? ':product_package_tree')},
     target = ${quote(product.runtime ?? 'node')},
 ${product.treeShaking === false ? '    tree_shaking = False,\n' : ''}    visibility = ["PUBLIC"],
 )
@@ -83,8 +84,8 @@ javascript_product(
  *
  * The wrapped output retains the projection's data and validation hooks, and
  * embeds its serialized graph verbatim. This wrapper owns only the additional
- * product loads and targets; it does not reproduce the normalized dependency
- * or editor-view graph.
+ * product loads and targets; it consumes the source-only product package view
+ * without changing the normalized npm or editor-view graph.
  */
 export const withJavaScriptCandidates = <TData>({
   projection,

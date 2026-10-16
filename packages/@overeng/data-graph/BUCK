@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/data-graph/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:3ed4da92ebd9d31fa534683f9a6681cd8000ad9e5b113e5905619d94db48eebd
+# Semantic fingerprint: sha256:a65ace637ba3c61ca91282252197971bca08cf79a6a20af604ddfa7217305889
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -89,6 +89,36 @@ package_view(
     workspace_dependency_views = {
         "node_modules/@overeng/content-address/node_modules": "//packages/@overeng/content-address:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_data_graph_71f8ed469693",
+    files = {
+        "package.json": "package.json",
+        "src/identity.unit.test.ts": "src/identity.unit.test.ts",
+        "src/mod.integration.test.ts": "src/mod.integration.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/properties.integration.test.ts": "src/properties.integration.test.ts",
+        "src/scenario.ts": "src/scenario.ts",
+        "src/selection.integration.test.ts": "src/selection.integration.test.ts",
+        "src/spike.ts": "src/spike.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/content-address/package.json": "//packages/@overeng/content-address:package.json",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/content-address/node_modules": "//packages/@overeng/content-address:product_package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",

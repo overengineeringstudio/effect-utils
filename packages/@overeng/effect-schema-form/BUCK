@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-schema-form/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:f7c7a130edcc1aa5853d7c21a24e224b31afab432a099cde0e91240c5e6609c5
+# Semantic fingerprint: sha256:35cef84e5963e57d9bf853513182bb72a30bece24c501566ca4c1b9d80698f33
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -68,6 +68,33 @@ alias(
 package_view(
     name = "package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_schema_form_9234ab1a7f4a",
+    files = {
+        "package.json": "package.json",
+        "src/SchemaForm.tsx": "src/SchemaForm.tsx",
+        "src/context.tsx": "src/context.tsx",
+        "src/hooks.ts": "src/hooks.ts",
+        "src/introspection.ts": "src/introspection.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/mod.unit.test.tsx": "src/mod.unit.test.tsx",
+        "src/types.ts": "src/types.ts",
+        "src/utils.ts": "src/utils.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_effect_schema_form_9234ab1a7f4a",
     files = {
         "package.json": "package.json",
         "src/SchemaForm.tsx": "src/SchemaForm.tsx",

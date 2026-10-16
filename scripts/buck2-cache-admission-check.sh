@@ -125,8 +125,10 @@ def _dependency_impl(ctx):
         BunToolchainInfo(executable = "/analysis-only/bin/bun", identity = "analysis-only"),
         EffectTsgoToolchainInfo(
             bun = "/analysis-only/bin/bun",
+            closure_paths = ["/analysis-only"],
             executable = "/analysis-only/bin/tsgo",
             identity = "analysis-only",
+            inputs = [artifact],
             runner = artifact,
         ),
         TsSandboxToolchainInfo(
@@ -134,8 +136,6 @@ def _dependency_impl(ctx):
             bun = "/analysis-only/bin/bun",
             closure_paths = {
                 "bun": ["/analysis-only"],
-                "effect-tsgo": ["/analysis-only"],
-                "buck2-fingerprint": ["/analysis-only"],
             },
             inputs = [artifact],
             shell = read_root_config("fixture", "shell", "/analysis-only/bin/bash"),
@@ -143,6 +143,7 @@ def _dependency_impl(ctx):
         BuckSupportToolInfo(
             content_digest = "analysis-only",
             closure_identity = "analysis-only",
+            closure_store_paths = ["/analysis-only"],
             execution_platform = "analysis-only",
             executable = artifact,
             manifest = artifact,

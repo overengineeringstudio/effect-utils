@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/meters/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:807f8fc122f61d85668b9adc3fc8cdae0899db540693861ae4e09edc005eaa3e
+# Semantic fingerprint: sha256:ce1da9200ff1fdb70e78900a9bc28ab1c2f42bf4474e0caa5e0bb51280503eac
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -114,6 +114,79 @@ alias(
 package_view(
     name = "package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_meters_03b79beacb4f",
+    files = {
+        "e2e/bridge.ts": "e2e/bridge.ts",
+        "e2e/meter-strip.pw.test.ts": "e2e/meter-strip.pw.test.ts",
+        "e2e/perf-gates.pw.test.ts": "e2e/perf-gates.pw.test.ts",
+        "package.json": "package.json",
+        "src/canvas/_test-canvas.ts": "src/canvas/_test-canvas.ts",
+        "src/canvas/blocks.ts": "src/canvas/blocks.ts",
+        "src/canvas/canvas.unit.test.ts": "src/canvas/canvas.unit.test.ts",
+        "src/canvas/index.ts": "src/canvas/index.ts",
+        "src/canvas/layout.ts": "src/canvas/layout.ts",
+        "src/canvas/layout.unit.test.ts": "src/canvas/layout.unit.test.ts",
+        "src/headless/headless.unit.test.ts": "src/headless/headless.unit.test.ts",
+        "src/headless/index.ts": "src/headless/index.ts",
+        "src/headless/internal.ts": "src/headless/internal.ts",
+        "src/index.ts": "src/index.ts",
+        "src/instrumentation/index.ts": "src/instrumentation/index.ts",
+        "src/instrumentation/instrumentation.unit.test.ts": "src/instrumentation/instrumentation.unit.test.ts",
+        "src/platform/browser.ts": "src/platform/browser.ts",
+        "src/platform/browser.unit.test.ts": "src/platform/browser.unit.test.ts",
+        "src/react/commits.ts": "src/react/commits.ts",
+        "src/react/commits.unit.test.ts": "src/react/commits.unit.test.ts",
+        "src/react/index.tsx": "src/react/index.tsx",
+        "src/react/panel.tsx": "src/react/panel.tsx",
+        "src/react/panel.unit.test.tsx": "src/react/panel.unit.test.tsx",
+        "src/react/react.unit.test.tsx": "src/react/react.unit.test.tsx",
+        "src/series/index.ts": "src/series/index.ts",
+        "src/series/internal.ts": "src/series/internal.ts",
+        "src/series/series.unit.test.ts": "src/series/series.unit.test.ts",
+        "src/session/_test-platform.ts": "src/session/_test-platform.ts",
+        "src/session/clock.ts": "src/session/clock.ts",
+        "src/session/frame.ts": "src/session/frame.ts",
+        "src/session/frame.unit.test.ts": "src/session/frame.unit.test.ts",
+        "src/session/index.ts": "src/session/index.ts",
+        "src/session/session.unit.test.ts": "src/session/session.unit.test.ts",
+        "src/session/source.ts": "src/session/source.ts",
+        "src/session/types.ts": "src/session/types.ts",
+        "src/sources/counters/counters.unit.test.ts": "src/sources/counters/counters.unit.test.ts",
+        "src/sources/counters/index.ts": "src/sources/counters/index.ts",
+        "src/sources/fibers/fibers.unit.test.ts": "src/sources/fibers/fibers.unit.test.ts",
+        "src/sources/fibers/index.ts": "src/sources/fibers/index.ts",
+        "src/sources/frame/frame.unit.test.ts": "src/sources/frame/frame.unit.test.ts",
+        "src/sources/frame/index.ts": "src/sources/frame/index.ts",
+        "src/sources/long-frames/index.ts": "src/sources/long-frames/index.ts",
+        "src/sources/long-frames/long-frames.unit.test.ts": "src/sources/long-frames/long-frames.unit.test.ts",
+        "src/sources/memory/index.ts": "src/sources/memory/index.ts",
+        "src/sources/memory/memory.unit.test.ts": "src/sources/memory/memory.unit.test.ts",
+        "src/sources/otel-browser/index.ts": "src/sources/otel-browser/index.ts",
+        "src/sources/otel-browser/otel-browser.unit.test.ts": "src/sources/otel-browser/otel-browser.unit.test.ts",
+        "src/sources/spans/index.ts": "src/sources/spans/index.ts",
+        "src/sources/spans/spans.unit.test.ts": "src/sources/spans/spans.unit.test.ts",
+        "src/sources/status/index.ts": "src/sources/status/index.ts",
+        "src/sources/status/status.unit.test.ts": "src/sources/status/status.unit.test.ts",
+        "src/stories/Availability.stories.tsx": "src/stories/Availability.stories.tsx",
+        "src/stories/MeterStrip.stories.tsx": "src/stories/MeterStrip.stories.tsx",
+        "src/stories/PerfGates.stories.tsx": "src/stories/PerfGates.stories.tsx",
+        "src/stories/fixtures.tsx": "src/stories/fixtures.tsx",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_meters_03b79beacb4f",
     files = {
         "e2e/bridge.ts": "e2e/bridge.ts",
         "e2e/meter-strip.pw.test.ts": "e2e/meter-strip.pw.test.ts",

@@ -1,0 +1,21 @@
+[package]
+name = "buck2-fingerprint"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "buck2_fingerprint"
+path = "src/lib.rs"
+
+[[bin]]
+name = "buck2-fingerprint"
+path = "src/bin/buck2-fingerprint.rs"
+
+[dependencies]
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

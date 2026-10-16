@@ -259,6 +259,7 @@ repository_static_checks(
     "//rust/buck2-tools/archive-tool:static_sources",
     "//rust/buck2-tools/core:static_sources",
     "//rust/buck2-tools/events:static_sources",
+    "//rust/buck2-tools/fingerprint:static_sources",
     "//rust/buck2-tools/product:static_sources",
     "//rust/content-address-contract:static_sources",
     "//rust/content-address-core:static_sources",

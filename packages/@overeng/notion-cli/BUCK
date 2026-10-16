@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/notion-cli/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:6a79d71ae4887c4381651f08b8ac99453d28f05ffa1e3bd643234976e6ec3d63
+# Semantic fingerprint: sha256:3b5e97ae8853a2d0ae1211174951fa792caf13a5dbeddd9a23751dddbfe3951c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -208,6 +208,94 @@ package_view(
 )
 
 package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_notion_cli_b91b1e6ae4c6",
+    files = {
+        "package.json": "package.json",
+        "src/cli-command.unit.test.ts": "src/cli-command.unit.test.ts",
+        "src/cli.contract.test.ts": "src/cli.contract.test.ts",
+        "src/cli.ts": "src/cli.ts",
+        "src/codegen.ts": "src/codegen.ts",
+        "src/codegen.unit.test.ts": "src/codegen.unit.test.ts",
+        "src/commands/db/mod.ts": "src/commands/db/mod.ts",
+        "src/commands/schema/mod.ts": "src/commands/schema/mod.ts",
+        "src/commands/schema/mod.unit.test.ts": "src/commands/schema/mod.unit.test.ts",
+        "src/commands/shared.ts": "src/commands/shared.ts",
+        "src/concurrent-import.fixture.ts": "src/concurrent-import.fixture.ts",
+        "src/concurrent-import.unit.test.ts": "src/concurrent-import.unit.test.ts",
+        "src/config-def.ts": "src/config-def.ts",
+        "src/config.ts": "src/config.ts",
+        "src/diff.ts": "src/diff.ts",
+        "src/diff.unit.test.ts": "src/diff.unit.test.ts",
+        "src/exit-codes.unit.test.ts": "src/exit-codes.unit.test.ts",
+        "src/integration.integration.test.ts": "src/integration.integration.test.ts",
+        "src/introspect.ts": "src/introspect.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/output.ts": "src/output.ts",
+        "src/output.unit.test.ts": "src/output.unit.test.ts",
+        "src/renderers/DiffOutput.stories.tsx": "src/renderers/DiffOutput.stories.tsx",
+        "src/renderers/DiffOutput/app.ts": "src/renderers/DiffOutput/app.ts",
+        "src/renderers/DiffOutput/mod.ts": "src/renderers/DiffOutput/mod.ts",
+        "src/renderers/DiffOutput/schema.ts": "src/renderers/DiffOutput/schema.ts",
+        "src/renderers/DiffOutput/view.tsx": "src/renderers/DiffOutput/view.tsx",
+        "src/renderers/GenerateConfigOutput.stories.tsx": "src/renderers/GenerateConfigOutput.stories.tsx",
+        "src/renderers/GenerateConfigOutput/app.ts": "src/renderers/GenerateConfigOutput/app.ts",
+        "src/renderers/GenerateConfigOutput/mod.ts": "src/renderers/GenerateConfigOutput/mod.ts",
+        "src/renderers/GenerateConfigOutput/schema.ts": "src/renderers/GenerateConfigOutput/schema.ts",
+        "src/renderers/GenerateConfigOutput/view.tsx": "src/renderers/GenerateConfigOutput/view.tsx",
+        "src/renderers/GenerateOutput.stories.tsx": "src/renderers/GenerateOutput.stories.tsx",
+        "src/renderers/GenerateOutput/app.ts": "src/renderers/GenerateOutput/app.ts",
+        "src/renderers/GenerateOutput/mod.ts": "src/renderers/GenerateOutput/mod.ts",
+        "src/renderers/GenerateOutput/schema.ts": "src/renderers/GenerateOutput/schema.ts",
+        "src/renderers/GenerateOutput/view.tsx": "src/renderers/GenerateOutput/view.tsx",
+        "src/renderers/InfoOutput.stories.tsx": "src/renderers/InfoOutput.stories.tsx",
+        "src/renderers/InfoOutput/app.ts": "src/renderers/InfoOutput/app.ts",
+        "src/renderers/InfoOutput/mod.ts": "src/renderers/InfoOutput/mod.ts",
+        "src/renderers/InfoOutput/schema.ts": "src/renderers/InfoOutput/schema.ts",
+        "src/renderers/InfoOutput/view.tsx": "src/renderers/InfoOutput/view.tsx",
+        "src/renderers/IntrospectOutput.stories.tsx": "src/renderers/IntrospectOutput.stories.tsx",
+        "src/renderers/IntrospectOutput/app.ts": "src/renderers/IntrospectOutput/app.ts",
+        "src/renderers/IntrospectOutput/mod.ts": "src/renderers/IntrospectOutput/mod.ts",
+        "src/renderers/IntrospectOutput/schema.ts": "src/renderers/IntrospectOutput/schema.ts",
+        "src/renderers/IntrospectOutput/view.tsx": "src/renderers/IntrospectOutput/view.tsx",
+        "src/renderers/shared/DatabaseHeader.tsx": "src/renderers/shared/DatabaseHeader.tsx",
+        "src/renderers/shared/PropertyList.tsx": "src/renderers/shared/PropertyList.tsx",
+        "src/renderers/shared/mod.ts": "src/renderers/shared/mod.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/effect-path/package.json": "//packages/@overeng/effect-path:package.json",
+        "node_modules/@overeng/notion-datasource-sync/package.json": "//packages/@overeng/notion-datasource-sync:package.json",
+        "node_modules/@overeng/notion-effect-client/package.json": "//packages/@overeng/notion-effect-client:package.json",
+        "node_modules/@overeng/notion-effect-schema/package.json": "//packages/@overeng/notion-effect-schema:package.json",
+        "node_modules/@overeng/notion-md/package.json": "//packages/@overeng/notion-md:package.json",
+        "node_modules/@overeng/otel-contract/package.json": "//packages/@overeng/otel-contract:package.json",
+        "node_modules/@overeng/tui-core/package.json": "//packages/@overeng/tui-core:package.json",
+        "node_modules/@overeng/tui-react/package.json": "//packages/@overeng/tui-react:package.json",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/effect-path/node_modules": "//packages/@overeng/effect-path:product_package_tree",
+        "node_modules/@overeng/notion-datasource-sync/node_modules": "//packages/@overeng/notion-datasource-sync:product_package_tree",
+        "node_modules/@overeng/notion-effect-client/node_modules": "//packages/@overeng/notion-effect-client:product_package_tree",
+        "node_modules/@overeng/notion-effect-schema/node_modules": "//packages/@overeng/notion-effect-schema:product_package_tree",
+        "node_modules/@overeng/notion-md/node_modules": "//packages/@overeng/notion-md:product_package_tree",
+        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:product_package_tree",
+        "node_modules/@overeng/tui-core/node_modules": "//packages/@overeng/tui-core:product_package_tree",
+        "node_modules/@overeng/tui-react/node_modules": "//packages/@overeng/tui-react:product_package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:product_package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
     name = "test_package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_notion_cli_b91b1e6ae4c6",
     files = {
@@ -384,7 +472,7 @@ package_bin_artifact(
     external_capabilities = [],
     kind = "cli",
     output = "notion.js",
-    package_tree = ":package_tree",
+    package_tree = ":product_package_tree",
     target = "node",
     visibility = ["PUBLIC"],
 )
@@ -404,7 +492,7 @@ package_bin_artifact(
     external_capabilities = ["opentui-core-native"],
     kind = "cli",
     output = "notion-db.js",
-    package_tree = "//packages/@overeng/notion-datasource-sync:package_tree",
+    package_tree = "//packages/@overeng/notion-datasource-sync:product_package_tree",
     target = "node",
     visibility = ["PUBLIC"],
 )

@@ -14,50 +14,7 @@ let
   # Native shell products are source-addressed, not HEAD-addressed. Keep the
   # ordinary repository Buck root as a separate, declared rules input; package
   # source closures come from the committed Genie inventory below.
-  rootProjection = pkgs.lib.fileset.toSource {
-    root = repositoryRoot;
-    fileset = pkgs.lib.fileset.unions (
-      (map (path: repositoryRoot + "/${path}") [
-        ".buckconfig"
-        ".buckroot"
-        ".watchmanconfig"
-        "BUCK"
-        # Root BUCK eagerly coerces its declared source attrs even when only a
-        # conventional toolchain alias is requested. Retain those root inputs,
-        # rather than importing unrelated package source trees.
-        "package.json"
-        "pnpm-workspace.yaml"
-        "rust-toolchain.toml"
-        ".oxfmtrc.json"
-        ".oxlintrc.json"
-        "devenv.lock"
-        "devenv.yaml"
-        "flake.lock"
-        "flake.nix"
-        "megarepo.kdl"
-        "megarepo.lock"
-        "patches/@myobie__pty@0.10.0.patch"
-        "genie/weaver-registry/attributes.yaml"
-        "genie/weaver-registry/manifest.yaml"
-        "genie/weaver-registry/signals.yaml"
-        "genie/weaver-registry/registry.ts"
-        "nix/weaver-flake/flake.nix"
-      ])
-      ++ [
-        (pkgs.lib.fileset.fileFilter (
-          file:
-          file.name == "BUCK"
-          || file.hasExt "bzl"
-          || file.hasExt "json"
-          || (
-            file.hasExt "ts"
-            && !(pkgs.lib.hasSuffix ".test.ts" file.name)
-            && !(pkgs.lib.hasSuffix ".genie.ts" file.name)
-          )
-        ) (repositoryRoot + "/buck2"))
-      ]
-    );
-  };
+  rootProjection = import ./root-projection.nix { inherit pkgs repositoryRoot; };
   cargoArchives = import ../workspace-tools/lib/buck2-cargo-archives.nix {
     inherit pkgs;
     thirdPartyBuckFiles = [ (repositoryRoot + "/rust/third-party/BUCK") ];
@@ -67,9 +24,11 @@ let
     builtins.isAttrs product
     &&
       builtins.attrNames product == (
-        pkgs.lib.optional (product ? cargoWorkspaceRoot) "cargoWorkspaceRoot"
+        [ "buildCapabilities" ]
+        ++ pkgs.lib.optional (product ? cargoWorkspaceRoot) "cargoWorkspaceRoot"
         ++ [
           "kind"
+          "linuxBuildCapabilities"
           "name"
           "outputName"
         ]
@@ -121,12 +80,12 @@ builtins.listToAttrs (
       let
         nativeProduct = mkBuckProductFromSource {
           inherit
-            capabilities
             pnpmArchives
             product
             repositoryRoot
             rootProjection
             ;
+          capabilities = capabilities.selectProduct product;
           sourcePaths = product.sourcePaths;
           # producerCommit is deliberately absent: unrelated commits must keep the
           # exact source product and its validated native import substitutable.
