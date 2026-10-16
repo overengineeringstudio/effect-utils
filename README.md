@@ -31,6 +31,33 @@ required checks and workflow frequency are independent of these labels.
 
 ## Packages
 
+### GitHub Actions retained artifacts
+
+[`@overeng/gh-ci-utils`](./packages/@overeng/gh-ci-utils) provides read-only
+artifact inspection through the same configured GitHub authentication as its CI commands:
+
+```sh
+gh-ci-utils artifacts list 123 --repo example-org/example-repo --page 1
+gh-ci-utils artifacts members 123 --repo example-org/example-repo --artifact 456
+gh-ci-utils artifacts read 123 --repo example-org/example-repo --artifact 456 --member cost.json
+```
+
+Output is terminal-safe JSON with explicit repository, run, and artifact provenance.
+Artifact names never imply a job association. Expired artifacts, missing artifacts
+or members, and run mismatches fail explicitly. Member reads select one exact
+portable relative path; there is no automatic extraction or binary/raw output.
+
+Hard limits are 100 artifacts per page (pages 1–1000), 1 MiB metadata responses,
+32 MiB compressed downloads, 1024 ZIP entries, 1024-byte member paths, 8 MiB
+decompressed per member, and 256 KiB text/escaped JSON output including its envelope.
+Limits apply to actual streamed bytes as well as advertised sizes; oversized output
+fails instead of silently truncating. Only unencrypted ZIP32 stored/DEFLATE entries
+are supported. Unsafe/duplicate paths, symlinks, special files, inconsistent headers,
+and corrupt selected-member contents are rejected. Metadata enumeration does not
+decompress members. Signed storage redirects are allowlisted and receive no GitHub
+authorization header.
+
+
 ### Notion Integration
 
 Full-featured Effect-native Notion API client with type-safe schema generation.
