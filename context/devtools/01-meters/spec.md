@@ -164,6 +164,14 @@ interface SeriesView<TValue> extends Retention {
   readonly latest: Sample<TValue> | undefined
   readonly at: (index: number) => Sample<TValue> | undefined
 }
+declare const bucketSeries: <TValue>(options: {
+  readonly history: SeriesView<TValue>
+  readonly endMs: number
+  readonly bucketMs: number
+  readonly buckets: number
+  readonly mode: 'Gauge' | 'Event' | 'Counter'
+  readonly value: (value: TValue) => number
+}) => readonly (number | undefined)[]
 interface SeriesSnapshot<TValue> extends Retention {
   readonly id: string
   readonly label: string
@@ -696,9 +704,50 @@ interface DrawInput<TValue> {
   readonly historyMs: number
   readonly theme: MeterTheme
 }
+type BlockAggregation =
+  | { readonly _tag: 'Latest' }
+  | {
+      readonly _tag: 'Bucket'
+      readonly mode: 'Gauge' | 'Event' | 'Counter'
+      readonly bucketMs: number
+      readonly buckets: number
+      readonly unit: Unit
+    }
+type BlockAggregationEvidence =
+  | { readonly _tag: 'Latest' }
+  | (Extract<BlockAggregation, { readonly _tag: 'Bucket' }> & { readonly endMs: number })
+declare const resolveBlockAggregation: (options: {
+  readonly aggregation?: BlockAggregation
+  readonly nowMs: number
+}) => BlockAggregationEvidence
+interface BlockEvidence {
+  readonly label: string
+  readonly unit: Unit
+  readonly text: string
+  readonly evaluatedAtMs: number
+  readonly revision: number
+  readonly latest:
+    | { readonly _tag: 'Value'; readonly atMs: number }
+    | {
+        readonly _tag: 'Unavailable'
+        readonly atMs: number
+        readonly reason: UnavailableReason
+        readonly lastKnownAtMs?: number
+      }
+    | {
+        readonly _tag: 'Gap'
+        readonly atMs: number
+        readonly durationMs: number
+        readonly reason: Extract<Sample<never>, { readonly _tag: 'Gap' }>['reason']
+      }
+    | undefined
+  readonly retention: Retention
+  readonly aggregation: BlockAggregationEvidence
+}
 interface BlockReader {
   readonly revision: () => number
-  readonly describe: () => string
+  readonly describe: (options: { readonly nowMs: number }) => string
+  readonly evidence: (options: { readonly nowMs: number }) => BlockEvidence
   readonly draw: (input: Omit<DrawInput<never>, 'history'>) => void
   readonly snapshot: () => BlockReader
 }
@@ -725,12 +774,17 @@ declare const block: <TValue>(options: {
   readonly id: string
   readonly series: Series<TValue>
   readonly widthPx: number
+  readonly aggregation?: BlockAggregation
   readonly draw: (input: DrawInput<TValue>) => void
-  readonly describe: (history: SeriesView<TValue>) => string
+  readonly describe: (input: {
+    readonly history: SeriesView<TValue>
+    readonly nowMs: number
+  }) => string
 }) => CanvasBlockSpec
 declare const makeStripView: (options: {
   readonly store: SeriesStore
   readonly blocks: readonly CanvasBlockSpec[]
+  readonly now: () => number
   readonly frozenAtMs?: number
 }) => StripView
 interface Renderer {
@@ -785,6 +839,59 @@ intervals have explicit gap rendering. Unsupported values draw `n/a` with a
 reason. DPR changes do not change the time horizon. Token resolution is a host
 adapter; devbar maps StyleX tokens to `MeterTheme` or semantic CSS variables.
 Meters imports no StyleX and does no per-frame `getComputedStyle`.
+
+The pure core `bucketSeries` accepts live or frozen `SeriesView` inputs. Its
+chronological bins end at `start + ((bin + 1) * span) / buckets`. Gauge holds
+the latest observation; Event sums observations in `(end - bucketMs, end]`;
+Counter sums positive deltas with zero for the first value and resets after
+non-values. Aggregates saturate at finite extrema. A missing observation or a
+latest Gap/Unavailable yields `undefined`; an observed empty Event/Counter bin
+yields zero. Partial bins use actual observations, never fabricated history
+before the retained range. Invalid finite-window/duration/count arguments throw
+`TypeError`, including non-finite derived starts or the endpoint formula's
+multiplication intermediate. The helper allocates only its result array; canvas shares the
+internal streaming scan without materializing bin arrays. Existing omitted-range
+canvas scaling and unsaturated aggregation remain unchanged.
+
+`BlockReader.evidence({ nowMs })` evaluates the bound reader's unabridged
+`describe({ nowMs })` text, output unit, typed latest metadata and retention.
+`evaluatedAtMs` is exactly the supplied evaluation time. `latest.atMs` is the
+timestamp of the latest typed evidence, which may be a synthetic state
+transition rather than a measurement; it must not be interpreted as measurement age.
+For unavailable evidence, optional `latest.lastKnownAtMs` projects only the
+actual prior observation timestamp from `Sample.lastKnown.atMs`, never its
+payload. It is absent when there is no last-known observation. This remains
+distinct from both synthetic transition time and explicit evaluation time.
+Metadata projects only declared tags, timestamps, reasons and gap duration,
+never extra payload fields. Evidence performs no store lookup, subscription or caching.
+
+Aggregation defaults to `Latest` with the series unit. An optional `Bucket`
+policy specifies mode, duration, count and explicit output unit. The pure
+`resolveBlockAggregation` derives its completed endpoint as
+`floor(nowMs / bucketMs) * bucketMs` on the session clock and validates finite
+positive dimensions and representable derived endpoints. Its horizon is
+`buckets * bucketMs`, independent of strip `historyMs`. It allocates no bucket
+array. Future block descriptions/drawers and evidence share this endpoint
+calculation; actual bin reduction remains the shared internal scan. There is
+no implicit rate normalization: a 1000ms Event bucket with `value: () => 1`
+counts frame observations, rather than summing raw FPS. `bucketSeries` itself
+continues to honor its explicit endpoint without alignment.
+
+**BREAKING CHANGE:** Custom `block.describe` now accepts `{ history, nowMs }`,
+bound `reader.describe` requires `{ nowMs }`, and `makeStripView` requires
+`now: meters.clock.now`. Numeric strings and MeterStrip accessible names are
+unchanged. Strip snapshots recompute text at the existing 250ms presentation
+publication even without a new sample, retaining the old array when every
+string is equal. Subscribed reads return the last published array;
+unsubscribed reads evaluate against the injected clock. No new timer or
+subscription chain is introduced.
+
+`reader.snapshot()` still copies only bounded history, not time. Every reader
+method honors its supplied `nowMs`. A frozen StripView evaluates descriptions
+with `frozenAtMs ?? now()`; canvas drawing uses `frozenAtMs ?? tick.atMs`.
+A consumer evaluating evidence for that view must pass the same view time.
+Actual capture time and frozen-view metadata belong to that consumer, not to
+the bound reader.
 
 ### Shared numeric plot domains
 

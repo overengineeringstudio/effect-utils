@@ -1,5 +1,5 @@
 /** Platform-independent meters contracts and scoped sessions. */
-export { makeSeries, makeSeriesStore } from './series/index.ts'
+export { bucketSeries, makeSeries, makeSeriesStore } from './series/index.ts'
 export type {
   Cadence,
   UnavailableReason,

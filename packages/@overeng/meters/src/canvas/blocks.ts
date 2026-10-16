@@ -1,10 +1,14 @@
 import {
   validateId,
+  type Retention,
+  type Sample,
   type Series,
   type SeriesStore,
   type SeriesView,
   type Unit,
+  type UnavailableReason,
 } from '../series/index.ts'
+import { scanBins } from '../series/internal.ts'
 import type { FpsValue } from '../session/frame.ts'
 import { historyX, layoutBlockText, type Rect } from './layout.ts'
 
@@ -56,10 +60,84 @@ export interface DrawInput<TValue> {
   readonly historyMs: number
   readonly theme: MeterTheme
 }
+/** Latest observations by default; completed buckets use an explicit output unit. */
+export type BlockAggregation =
+  | { readonly _tag: 'Latest' }
+  | {
+      readonly _tag: 'Bucket'
+      readonly mode: 'Gauge' | 'Event' | 'Counter'
+      readonly bucketMs: number
+      readonly buckets: number
+      readonly unit: Unit
+    }
+/** Bucket endpoints are derived from evaluation time, never cached in a reader. */
+export type BlockAggregationEvidence =
+  | { readonly _tag: 'Latest' }
+  | (Extract<BlockAggregation, { readonly _tag: 'Bucket' }> & { readonly endMs: number })
+const latestAggregation: BlockAggregationEvidence = { _tag: 'Latest' }
+/** Resolve completed session-clock buckets without allocating history/bin arrays. */
+export const resolveBlockAggregation = (options: {
+  readonly aggregation?: BlockAggregation
+  readonly nowMs: number
+}): BlockAggregationEvidence => {
+  const policy = options.aggregation
+  if (policy === undefined || policy._tag === 'Latest') return latestAggregation
+  const spanMs = policy.bucketMs * policy.buckets
+  const endMs = Math.floor(options.nowMs / policy.bucketMs) * policy.bucketMs
+  if (
+    Number.isFinite(options.nowMs) === false ||
+    Number.isFinite(policy.bucketMs) === false ||
+    policy.bucketMs <= 0 ||
+    Number.isInteger(policy.buckets) === false ||
+    policy.buckets <= 0 ||
+    Number.isFinite(spanMs) === false ||
+    Number.isFinite(endMs) === false ||
+    Number.isFinite(endMs - spanMs) === false ||
+    Number.isFinite(policy.buckets * spanMs) === false
+  )
+    throw new TypeError(
+      'Block buckets require finite derived endpoints and positive duration/count',
+    )
+  return {
+    _tag: 'Bucket',
+    mode: policy.mode,
+    bucketMs: policy.bucketMs,
+    buckets: policy.buckets,
+    unit: policy.unit,
+    endMs,
+  }
+}
+
+/** On-demand renderer evidence; payloads stay inside the bound typed closure. */
+export interface BlockEvidence {
+  readonly label: string
+  readonly unit: Unit
+  readonly text: string
+  readonly evaluatedAtMs: number
+  readonly revision: number
+  readonly latest:
+    | { readonly _tag: 'Value'; readonly atMs: number }
+    | {
+        readonly _tag: 'Unavailable'
+        readonly atMs: number
+        readonly reason: UnavailableReason
+        readonly lastKnownAtMs?: number
+      }
+    | {
+        readonly _tag: 'Gap'
+        readonly atMs: number
+        readonly durationMs: number
+        readonly reason: Extract<Sample<never>, { readonly _tag: 'Gap' }>['reason']
+      }
+    | undefined
+  readonly retention: Retention
+  readonly aggregation: BlockAggregationEvidence
+}
 /** Bound drawing and describing closures; no write or acquisition capability. */
 export interface BlockReader {
   readonly revision: () => number
-  readonly describe: () => string
+  readonly describe: (options: { readonly nowMs: number }) => string
+  readonly evidence: (options: { readonly nowMs: number }) => BlockEvidence
   readonly draw: (input: Omit<DrawInput<never>, 'history'>) => void
   readonly snapshot: () => BlockReader
 }
@@ -79,15 +157,62 @@ export const block = <TValue>(options: {
   readonly series: Series<TValue>
   readonly shortLabel?: string | undefined
   readonly widthPx: number
+  readonly aggregation?: BlockAggregation
   readonly draw: (input: DrawInput<TValue>) => void
-  readonly describe: (history: SeriesView<TValue>) => string
+  readonly describe: (input: {
+    readonly history: SeriesView<TValue>
+    readonly nowMs: number
+  }) => string
 }): CanvasBlockSpec => {
   validateId(options.id)
   if (Number.isFinite(options.widthPx) === false || options.widthPx <= 0)
     throw new TypeError('Block width must be positive')
+  const aggregationPolicy = options.aggregation ?? latestAggregation
+  resolveBlockAggregation({ aggregation: aggregationPolicy, nowMs: 0 })
   const bind = (history: SeriesView<TValue>): BlockReader => ({
     revision: () => history.revision,
-    describe: () => options.describe(history),
+    describe: ({ nowMs }) => options.describe({ history, nowMs }),
+    evidence: ({ nowMs }) => {
+      const latest = history.latest
+      const aggregation = resolveBlockAggregation({ aggregation: aggregationPolicy, nowMs })
+      return {
+        label: options.series.label,
+        unit: aggregation._tag === 'Bucket' ? aggregation.unit : options.series.unit,
+        text: options.describe({ history, nowMs }),
+        evaluatedAtMs: nowMs,
+        revision: history.revision,
+        latest:
+          latest === undefined
+            ? undefined
+            : latest._tag === 'Value'
+              ? { _tag: 'Value', atMs: latest.atMs }
+              : latest._tag === 'Unavailable'
+                ? {
+                    _tag: 'Unavailable',
+                    atMs: latest.atMs,
+                    reason: latest.reason,
+                    ...(latest.lastKnown === undefined
+                      ? {}
+                      : { lastKnownAtMs: latest.lastKnown.atMs }),
+                  }
+                : {
+                    _tag: 'Gap',
+                    atMs: latest.atMs,
+                    reason: latest.reason,
+                    durationMs: latest.durationMs,
+                  },
+        retention: {
+          capacity: history.capacity,
+          length: history.length,
+          oldestAtMs: history.oldestAtMs,
+          newestAtMs: history.newestAtMs,
+          overflowCount: history.overflowCount,
+          firstRetainedSequence: history.firstRetainedSequence,
+          nextSequence: history.nextSequence,
+        },
+        aggregation,
+      }
+    },
     draw: (input) => options.draw({ ...input, history }),
     snapshot: () => {
       // oxlint-disable-next-line overeng/named-args -- Native Array.from map callback signature.
@@ -311,7 +436,7 @@ export const numericBlock = <TValue>(
     series: options.series,
     shortLabel: options.shortLabel,
     widthPx: options.widthPx ?? 150,
-    describe: (history) => describe({ history }),
+    describe: ({ history }) => describe({ history }),
     draw: ({ ctx, rect, history, nowMs, historyMs, theme }) => {
       ctx.save()
       ctx.beginPath()
@@ -346,38 +471,26 @@ export const numericBlock = <TValue>(
       if (options.range !== undefined && (options.mode === 'Event' || options.mode === 'Counter')) {
         // Match completed drawing bins, including held zero bins, but not
         // bins whose newest observation is unavailable or a gap.
-        let index = 0
-        let previous = history.at(0)
-        for (let bin = 0; bin < bins; bin++) {
-          const atMs = startMs + ((bin + 1) * historyMs) / bins
-          let eventTotal = 0
-          while (index < history.length) {
-            const sample = history.at(index)
-            if (sample === undefined || sample.atMs > atMs) break
-            previous = sample
-            if (sample._tag === 'Value') {
-              const value = total(sample.value)
-              const increment =
-                options.mode === 'Counter'
-                  ? priorValue === undefined
-                    ? 0
-                    : Math.max(0, value - priorValue)
-                  : value
-              if (sample.atMs > atMs - binDurationMs) eventTotal += increment
-              eventTotal = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, eventTotal))
-              priorValue = value
-            } else priorValue = undefined
-            index++
-          }
-          if (
-            previous?._tag !== 'Value' ||
-            previous.atMs > atMs ||
-            Number.isFinite(eventTotal) === false
-          )
-            continue
-          minimum = Math.min(minimum, eventTotal)
-          maximum = Math.max(maximum, eventTotal)
-        }
+        scanBins({
+          history,
+          endMs: nowMs,
+          spanMs: historyMs,
+          bins,
+          mode: options.mode,
+          value: total,
+          saturate: true,
+          // oxlint-disable-next-line overeng/named-args -- Streaming visitor avoids allocating one object per bin.
+          visit: (_bin, atMs, previous, eventTotal) => {
+            if (
+              previous?._tag !== 'Value' ||
+              previous.atMs > atMs ||
+              Number.isFinite(eventTotal) === false
+            )
+              return
+            minimum = Math.min(minimum, eventTotal)
+            maximum = Math.max(maximum, eventTotal)
+          },
+        })
       } else {
         for (let cursor = 0; cursor < history.length; cursor++) {
           const sample = history.at(cursor)
@@ -436,68 +549,54 @@ export const numericBlock = <TValue>(
       // Normalize first so opposite finite extrema cannot overflow the denominator.
       const scale = options.range === undefined ? 1 : Math.max(Math.abs(minimum), Math.abs(maximum))
       const span = maximum / scale - minimum / scale
-      let previous = history.at(0)
-      let previousValue: number | undefined
-      let index = 0
-      for (let bin = 0; bin < bins; bin++) {
-        const atMs = nowMs - historyMs + ((bin + 1) * historyMs) / bins
-        let eventTotal = 0
-        while (index < history.length) {
-          const sample = history.at(index)
-          if (sample === undefined || sample.atMs > atMs) break
-          previous = sample
-          if (sample._tag === 'Value') {
-            const value = total(sample.value)
-            const increment =
-              options.mode === 'Counter'
-                ? previousValue === undefined
-                  ? 0
-                  : Math.max(0, value - previousValue)
-                : value
-            if (sample.atMs > atMs - binDurationMs) eventTotal += increment
-            if (options.range !== undefined)
-              eventTotal = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, eventTotal))
-            previousValue = value
-          } else previousValue = undefined
-          index++
-        }
-        if (previous === undefined || previous.atMs > atMs) continue
-        const x = historyX({ atMs: atMs - historyMs / bins, nowMs, historyMs, rect: chart })
-        if (previous._tag !== 'Value') {
-          ctx.fillStyle = theme.gap
-          ctx.fillRect(x, chart.y, chart.width / bins, chart.height)
-          continue
-        }
-        const parts =
-          options.mode === 'Event' || options.mode === 'Counter'
-            ? eventTotal
-            : options.values(previous.value)
-        let bottom = chart.y + (chart.height * (maximum / scale)) / span
-        let stacked = 0
-        const partCount = typeof parts === 'number' ? 1 : parts.length
-        for (let part = 0; part < partCount; part++) {
-          const value = typeof parts === 'number' ? parts : (parts[part] ?? 0)
-          if (Number.isFinite(value) === false) continue
-          let height = (value / scale / span) * chart.height
-          if (options.range !== undefined) {
-            const baseline = Math.max(minimum, Math.min(maximum, stacked)) / scale
-            stacked = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, stacked + value))
-            const top = Math.max(minimum, Math.min(maximum, stacked)) / scale
-            bottom = chart.y + chart.height * ((maximum / scale - baseline) / span)
-            height = chart.height * ((top - baseline) / span)
+      scanBins({
+        history,
+        endMs: nowMs,
+        spanMs: historyMs,
+        bins,
+        mode: options.mode ?? 'Gauge',
+        value: total,
+        saturate: options.range !== undefined,
+        // oxlint-disable-next-line overeng/named-args -- Streaming visitor avoids allocating one object per bin.
+        visit: (_bin, atMs, previous, eventTotal) => {
+          if (previous === undefined || previous.atMs > atMs) return
+          const x = historyX({ atMs: atMs - historyMs / bins, nowMs, historyMs, rect: chart })
+          if (previous._tag !== 'Value') {
+            ctx.fillStyle = theme.gap
+            ctx.fillRect(x, chart.y, chart.width / bins, chart.height)
+            return
           }
-          ctx.fillStyle =
-            dimmed === true
-              ? theme.muted
-              : part % 3 === 0
-                ? theme.normal
-                : part % 3 === 1
-                  ? theme.warning
-                  : theme.danger
-          bottom -= height
-          ctx.fillRect(x, bottom, chart.width / bins, height)
-        }
-      }
+          const parts =
+            options.mode === 'Event' || options.mode === 'Counter'
+              ? eventTotal
+              : options.values(previous.value)
+          let bottom = chart.y + (chart.height * (maximum / scale)) / span
+          let stacked = 0
+          const partCount = typeof parts === 'number' ? 1 : parts.length
+          for (let part = 0; part < partCount; part++) {
+            const value = typeof parts === 'number' ? parts : (parts[part] ?? 0)
+            if (Number.isFinite(value) === false) continue
+            let height = (value / scale / span) * chart.height
+            if (options.range !== undefined) {
+              const baseline = Math.max(minimum, Math.min(maximum, stacked)) / scale
+              stacked = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, stacked + value))
+              const top = Math.max(minimum, Math.min(maximum, stacked)) / scale
+              bottom = chart.y + chart.height * ((maximum / scale - baseline) / span)
+              height = chart.height * ((top - baseline) / span)
+            }
+            ctx.fillStyle =
+              stale === true
+                ? theme.muted
+                : part % 3 === 0
+                  ? theme.normal
+                  : part % 3 === 1
+                    ? theme.warning
+                    : theme.danger
+            bottom -= height
+            ctx.fillRect(x, bottom, chart.width / bins, height)
+          }
+        },
+      })
       for (const mark of options.marks ?? noValues) {
         if (Number.isFinite(mark) === false || mark < minimum || mark > maximum) continue
         const y = Math.min(

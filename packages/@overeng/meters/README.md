@@ -60,6 +60,39 @@ Presentation hooks publish every 250ms: in the frame publication phase when
 frames are supported, otherwise on a timer. Publication pauses while the session
 is hidden or stopped; raw event and interval acquisition remains independent.
 
+### Breaking migration: explicit renderer time
+
+Custom `block` descriptions receive `{ history, nowMs }`; bound readers require
+`reader.describe({ nowMs })`. `makeStripView` requires `now: meters.clock.now`.
+Numeric blocks keep their existing text and accessible names. Custom time-based
+descriptions must use this injected time, not an ambient clock or last-draw cache.
+Subscribed strip snapshots update on the existing 250ms presentation publication,
+including epochs with no new sample, and retain array identity when text is
+unchanged. Unsubscribed reads compute against the injected clock.
+
+```ts
+import { makeStripView } from '@overeng/meters/canvas'
+
+const view = makeStripView({
+  store: meters.store,
+  blocks,
+  now: meters.clock.now,
+})
+const text = view.readers[0]?.describe({ nowMs: meters.clock.now() })
+```
+
+`reader.snapshot()` remains a data-only bounded history copy: all reader methods
+use the supplied `nowMs`. For a frozen view, evaluate descriptions/draw/evidence
+with `view.frozenAtMs ?? meters.clock.now()`. Evidence `evaluatedAtMs` is this
+explicit time. `latest.atMs` is the latest typed evidence timestamp and may
+represent a synthetic state transition, not measurement age.
+
+Blocks default to Latest evidence. A Bucket policy supplies mode, `bucketMs`,
+`buckets` and the output `unit`; `resolveBlockAggregation` derives the completed
+session-clock endpoint `floor(nowMs / bucketMs) * bucketMs` without bin arrays.
+Bucket horizons do not inherit strip `historyMs`, and no implicit rate
+normalization is applied.
+
 ## Headless gates
 
 Keep a scope alive around the work. No UI is needed. `measurement` acquires a

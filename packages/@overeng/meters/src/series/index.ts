@@ -1,4 +1,4 @@
-import { notifyListeners, publishRevision, subscribePresentation } from './internal.ts'
+import { notifyListeners, publishRevision, scanBins, subscribePresentation } from './internal.ts'
 
 /** Cadence belongs to acquisition, independently of reader publication. */
 export type Cadence =
@@ -81,6 +81,57 @@ export interface SeriesView<TValue> extends Retention {
   readonly revision: number
   readonly latest: Sample<TValue> | undefined
   readonly at: (index: number) => Sample<TValue> | undefined
+}
+
+/**
+ * Chronological buckets ending at endMs. Gauge holds; Event sums; Counter sums
+ * positive deltas, resetting after non-values. A partially observed bucket uses
+ * its actual observations; missing history and a latest non-value stay undefined.
+ * Aggregates saturate at finite extrema. The returned array is allocated per call.
+ */
+export const bucketSeries = <TValue>(options: {
+  readonly history: SeriesView<TValue>
+  readonly endMs: number
+  readonly bucketMs: number
+  readonly buckets: number
+  readonly mode: 'Gauge' | 'Event' | 'Counter'
+  readonly value: (value: TValue) => number
+}): readonly (number | undefined)[] => {
+  const spanMs = options.bucketMs * options.buckets
+  if (
+    Number.isFinite(options.endMs) === false ||
+    Number.isFinite(options.bucketMs) === false ||
+    options.bucketMs <= 0 ||
+    Number.isInteger(options.buckets) === false ||
+    options.buckets <= 0 ||
+    Number.isFinite(spanMs) === false ||
+    Number.isFinite(options.endMs - spanMs) === false ||
+    // The shared scan deliberately multiplies before dividing for legacy boundaries.
+    Number.isFinite(options.buckets * spanMs) === false
+  )
+    throw new TypeError(
+      'Buckets require a finite derived window, positive duration and positive integer count',
+    )
+  const result: (number | undefined)[] = []
+  scanBins({
+    history: options.history,
+    endMs: options.endMs,
+    spanMs,
+    bins: options.buckets,
+    mode: options.mode,
+    value: options.value,
+    saturate: true,
+    // oxlint-disable-next-line overeng/named-args -- Streaming visitor avoids allocating one object per bin.
+    visit: (_bin, endMs, sample, aggregate) => {
+      if (sample?._tag !== 'Value' || sample.atMs > endMs) {
+        result.push(undefined)
+        return
+      }
+      const value = options.mode === 'Gauge' ? options.value(sample.value) : aggregate
+      result.push(Number.isFinite(value) === true ? value : undefined)
+    },
+  })
+  return result
 }
 /** An immutable, revision-stable copy materialized only on explicit reads. */
 export interface SeriesSnapshot<TValue> extends Retention {
