@@ -1,7 +1,11 @@
 /** Shared auto-review workflow: requests review from a human when an assistant opens a PR */
 
 import { githubWorkflow } from '../packages/@overeng/genie/src/runtime/mod.ts'
-import { defaultActionlintConfig, linuxX64Runner } from './ci-workflow.ts'
+import {
+  defaultActionlintConfig,
+  linuxX64Runner,
+  linuxNixSandboxFallbackStep,
+} from './ci-workflow.ts'
 
 /** Generate the shared auto-review workflow used by assistant-authored PRs. */
 export const autoReviewWorkflow = ({
@@ -26,6 +30,7 @@ export const autoReviewWorkflow = ({
         'runs-on': runner,
         'timeout-minutes': timeoutMinutes,
         steps: [
+          linuxNixSandboxFallbackStep,
           {
             name: `Request review from ${reviewer}`,
             if: `github.event.pull_request.user.login == '${author}' && github.event.pull_request.draft == false`,
