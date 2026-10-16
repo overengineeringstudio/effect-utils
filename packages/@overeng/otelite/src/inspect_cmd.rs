@@ -339,10 +339,29 @@ pub fn parse_attr(arg: &str) -> Result<(String, String), u8> {
 mod tests {
     use super::*;
     use std::io::{BufRead as _, Write as _};
-    use std::process::{Command, Stdio};
+    use std::process::{Child, Command, ExitStatus, Stdio};
 
     const SNAPSHOT_PATH: &str = "OTELITE_TEST_SNAPSHOT_PATH";
     const CONTENDED: &str = "SNAPSHOT_LOCK_CONTENDED";
+
+    struct ChildGuard(Option<Child>);
+
+    impl ChildGuard {
+        fn wait(&mut self) -> std::io::Result<ExitStatus> {
+            let status = self.0.as_mut().unwrap().wait()?;
+            self.0.take();
+            Ok(status)
+        }
+    }
+
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            if let Some(mut child) = self.0.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
 
     #[test]
     #[ignore = "subprocess fixture for snapshot_waits_for_complete_record"]
@@ -378,18 +397,21 @@ mod tests {
         assert_eq!(group_by_trace(&unsafe_snapshot).unwrap_err(), EX_DATAERR);
         eprintln!("UNLOCKED_SNAPSHOT={unsafe_snapshot:?}");
 
-        let mut reader = Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "inspect_cmd::tests::snapshot_reader_process",
-                "--ignored",
-                "--nocapture",
-            ])
-            .env(SNAPSHOT_PATH, &path)
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let mut stdout = std::io::BufReader::new(reader.stdout.take().unwrap());
+        let mut reader = ChildGuard(Some(
+            Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "inspect_cmd::tests::snapshot_reader_process",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env(SNAPSHOT_PATH, &path)
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap(),
+        ));
+        let mut stdout =
+            std::io::BufReader::new(reader.0.as_mut().unwrap().stdout.take().unwrap());
         loop {
             let mut line = String::new();
             assert_ne!(
