@@ -585,7 +585,7 @@ export const numericBlock = <TValue>(
               height = chart.height * ((top - baseline) / span)
             }
             ctx.fillStyle =
-              stale === true
+              dimmed === true
                 ? theme.muted
                 : part % 3 === 0
                   ? theme.normal
