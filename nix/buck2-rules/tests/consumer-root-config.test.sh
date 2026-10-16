@@ -37,6 +37,7 @@ forbid_line() {
 
 default_config="$(render_config '{}')"
 require_line "$default_config" '  file_watcher = watchman'
+require_line "$default_config" '  daemon_idle_timeout_s = 10800'
 require_line "$default_config" '  remote_cache_enabled = false'
 require_line "$default_config" '  allow_cache_uploads = false'
 forbid_line "$default_config" '  default_allow_cache_upload = true'
@@ -45,6 +46,7 @@ forbid_line "$default_config" '[archive_origin]'
 
 immutable_config="$(render_config '{ watcherPolicy = "immutable-input"; }')"
 require_line "$immutable_config" '  file_watcher = fs_hash_crawler'
+require_line "$immutable_config" '  daemon_idle_timeout_s = 10800'
 forbid_line "$immutable_config" '  file_watcher = watchman'
 
 if invalid_config="$(render_config '{ watcherPolicy = "invalid"; }' 2>&1)"; then

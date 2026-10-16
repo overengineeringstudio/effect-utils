@@ -23,6 +23,8 @@
   # notify recursively watches ignored output trees before filtering events.
   # Watchman prunes these trees using the shipped .watchmanconfig.
   file_watcher = watchman
+  # Keep caches warm across agent iterations, but release abandoned worktrees.
+  daemon_idle_timeout_s = 10800
   allow_cache_uploads = false
   digest_algorithms = SHA256
 
