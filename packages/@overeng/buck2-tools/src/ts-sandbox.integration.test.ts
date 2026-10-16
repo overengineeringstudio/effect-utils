@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
-import { access, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  access,
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -85,6 +98,10 @@ const runCaptured = async (
   args: readonly string[],
   tools: Tools,
   fixture: Fixture,
+  environment: NodeJS.ProcessEnv = {
+    BUCK_SCRATCH_PATH: fixture.scratch,
+    TMPDIR: fixture.tmp,
+  },
 ): Promise<{
   readonly status: number
   readonly stdout: string
@@ -97,7 +114,7 @@ const runCaptured = async (
   }>()
   const child = spawn(executable, args, {
     cwd: tools.repoRoot,
-    env: { BUCK_SCRATCH_PATH: fixture.scratch, TMPDIR: fixture.tmp },
+    env: environment,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let stdout = ''
@@ -190,6 +207,135 @@ linuxSuite('TS sandbox generated shell (Linux required; Darwin containment unsup
       await expectProbeReceipt(fixture)
     })
   }, 20_000)
+
+  it('copies the declared runtime closure from an immutable external cell without admitting sibling imports', async () => {
+    await withFixture(tools, async (fixture) => {
+      const buck = requiredEnvironment('BUCK2_BIN')
+      await access(buck, constants.X_OK)
+      const root = join(fixture.root, 'workspace')
+      const rules = join(fixture.root, 'runtime-rules')
+      const sources = join(fixture.root, 'immutable-sources')
+      const rulesSources = join(rules, 'src')
+      await mkdir(root)
+      await mkdir(rulesSources, { recursive: true })
+      await mkdir(sources)
+      const generated = await readFile(
+        join(tools.repoRoot, 'packages/@overeng/buck2-tools/BUCK'),
+        'utf8',
+      )
+      const runtime = /runtime_modules\(\n    name = "package_tree_runtime",[\s\S]*?\n\)/u.exec(
+        generated,
+      )?.[0]
+      assert(runtime !== undefined, 'the fixture must use the production runtime declaration')
+      const modules = ['package-tree.ts', 'real-path.ts']
+      for (const module of modules) {
+        await writeFile(
+          join(sources, module),
+          await readFile(join(tools.repoRoot, 'packages/@overeng/buck2-tools/src', module)),
+        )
+      }
+      await writeFile(
+        join(sources, 'undeclared-entry.ts'),
+        `${await readFile(join(sources, 'package-tree.ts'), 'utf8')}\nimport './undeclared.ts'\n`,
+      )
+      await writeFile(
+        join(sources, 'undeclared.ts'),
+        "throw new Error('UNDECLARED_RULES_CELL_MODULE_EXECUTED')\n",
+      )
+      const sourceNames = [...modules, 'undeclared-entry.ts', 'undeclared.ts']
+      for (const module of sourceNames) {
+        await chmod(join(sources, module), 0o444)
+        await symlink(join(sources, module), join(rulesSources, module))
+        expect(await readlink(join(rulesSources, module))).toBe(join(sources, module))
+      }
+      await writeFile(
+        join(rules, 'BUCK'),
+        `load("@rules//buck2:materialization.bzl", "runtime_modules")\n${runtime}\n\n${runtime
+          .replace('name = "package_tree_runtime"', 'name = "undeclared_runtime"')
+          .replace('"src/package-tree.ts"', '"src/undeclared-entry.ts"')}\n`,
+      )
+      await writeFile(join(root, 'package.json'), '{"name":"runtime-source-closure-fixture"}\n')
+      await writeFile(
+        join(root, 'BUCK'),
+        `load("@rules//buck2:materialization.bzl", "empty_package_view")
+empty_package_view(
+    name = "declared",
+    files = {"package.json": "package.json"},
+    runtime = "runtime_rules//:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+)
+empty_package_view(
+    name = "undeclared",
+    files = {"package.json": "package.json"},
+    runtime = "runtime_rules//:undeclared_runtime",
+    runtime_entry = "package-tree.ts",
+)
+`,
+      )
+      const cellConfig = join(fixture.root, 'cells.buckconfig')
+      await writeFile(
+        cellConfig,
+        `[cells]\n  fixture = ${relative(tools.repoRoot, root)}\n  runtime_rules = ${relative(tools.repoRoot, rules)}\n`,
+      )
+      await chmod(join(rules, 'BUCK'), 0o444)
+      for (const directory of [sources, rulesSources, rules]) await chmod(directory, 0o555)
+      // An owned overlay leaves the production root config untouched. An isolated
+      // daemon owns the fixture; cleanup must never kill the repository daemon.
+      const isolation = `runtime-source-closure-${process.pid}`
+      const buckArgs = ['--isolation-dir', isolation]
+      const buildArgs = [
+        ...buckArgs,
+        'build',
+        '--config-file',
+        cellConfig,
+        '--config',
+        'buck2.remote_cache_enabled=false',
+        '--config',
+        'buck2.file_watcher=fs_hash_crawler',
+        '--target-platforms',
+        'effect_utils//buck2/platforms:host_platform',
+        '--show-full-json-output',
+      ]
+      try {
+        const positive = await runCaptured(
+          buck,
+          [...buildArgs, 'fixture//:declared', 'runtime_rules//:package_tree_runtime'],
+          tools,
+          fixture,
+          process.env,
+        )
+        assert.equal(positive.status, 0, positive.stderr)
+        const outputs: Record<string, string> = JSON.parse(positive.stdout)
+        const tree = outputs['fixture//:declared']
+        const staged = outputs['runtime_rules//:package_tree_runtime']
+        assert(tree !== undefined && staged !== undefined, positive.stdout)
+        expect(JSON.parse(await readFile(join(tree, 'package.json'), 'utf8'))).toEqual({
+          name: 'runtime-source-closure-fixture',
+        })
+        for (const module of modules) {
+          expect((await lstat(join(staged, module))).isFile()).toBe(true)
+          expect(await readFile(join(staged, module), 'utf8')).toBe(
+            await readFile(join(sources, module), 'utf8'),
+          )
+        }
+        const negative = await runCaptured(
+          buck,
+          [...buildArgs, 'fixture//:undeclared'],
+          tools,
+          fixture,
+          process.env,
+        )
+        expect(negative.status).not.toBe(0)
+        expect(negative.stderr).toContain('undeclared.ts')
+        expect(negative.stderr).not.toContain('UNDECLARED_RULES_CELL_MODULE_EXECUTED')
+      } finally {
+        const stopped = await runCaptured(buck, [...buckArgs, 'kill'], tools, fixture, process.env)
+        for (const directory of [sources, rulesSources, rules]) await chmod(directory, 0o755)
+        assert.equal(stopped.status, 0, stopped.stderr)
+        await rm(join(tools.repoRoot, 'buck-out', isolation), { recursive: true, force: true })
+      }
+    })
+  }, 120_000)
 
   it('passes the production negative probes and preserves hidden host siblings outside the output directory', async () => {
     await withFixture(tools, async (fixture) => {
