@@ -138,6 +138,7 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
       makeStripView({
         store: props.meters.store,
         blocks: props.blocks,
+        now: props.meters.clock.now,
         ...(props.frozen === true ? { frozenAtMs: props.meters.clock.now() } : {}),
       }),
     [props.meters, props.blocks, props.frozen],

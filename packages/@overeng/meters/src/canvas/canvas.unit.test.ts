@@ -3,12 +3,22 @@ import { afterEach, describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Scope } from 'effect'
 import { vi } from 'vitest'
 
-import { makeSeries, makeSeriesStore, type NumberValue } from '../series/index.ts'
+import {
+  bucketSeries,
+  makeSeries,
+  makeSeriesStore,
+  type NumberValue,
+  type Sample,
+} from '../series/index.ts'
 import { testPlatform } from '../session/_test-platform.ts'
 import type { FpsValue } from '../session/frame.ts'
 import { makeMeters, makeSource } from '../session/index.ts'
 import { testCanvas } from './_test-canvas.ts'
 import {
+  block,
+  resolveBlockAggregation,
+  type BlockAggregation,
+  type DrawInput,
   counterBlock,
   formatMeterValue,
   formatRange,
@@ -18,6 +28,7 @@ import {
   makeCanvasStrip,
   makeStripView,
   numberBlock,
+  numericBlock,
   plotRange,
   resolveMeterTheme,
 } from './index.ts'
@@ -69,6 +80,417 @@ const fixture = () => {
 }
 
 describe('canvas strip', () => {
+  it('resolves completed bucket metadata from explicit time and validates its derived domain', () => {
+    const aggregation = {
+      _tag: 'Bucket',
+      mode: 'Event',
+      bucketMs: 1000,
+      buckets: 2,
+      unit: 'count',
+    } satisfies BlockAggregation
+    expect(resolveBlockAggregation({ nowMs: 1250 })).toEqual({ _tag: 'Latest' })
+    expect(resolveBlockAggregation({ aggregation, nowMs: 1250 })).toEqual({
+      ...aggregation,
+      endMs: 1000,
+    })
+    expect(resolveBlockAggregation({ aggregation, nowMs: 2000 })).toEqual({
+      ...aggregation,
+      endMs: 2000,
+    })
+    for (const invalid of [
+      { bucketMs: 0 },
+      { bucketMs: -1 },
+      { bucketMs: Infinity },
+      { buckets: 0 },
+      { buckets: 1.5 },
+      { bucketMs: Number.MAX_VALUE / 2, buckets: 2 },
+    ])
+      expect(() =>
+        resolveBlockAggregation({
+          aggregation: { ...aggregation, ...invalid },
+          nowMs: 1250,
+        }),
+      ).toThrow(TypeError)
+    for (const nowMs of [NaN, Infinity, -Number.MAX_VALUE])
+      expect(() =>
+        resolveBlockAggregation({
+          aggregation: { ...aggregation, bucketMs: Number.MAX_VALUE, buckets: 1 },
+          nowMs,
+        }),
+      ).toThrow(TypeError)
+  })
+
+  it.effect(
+    'publishes time-only bucket text and preserves explicit-time frozen parity and array identity',
+    () =>
+      Effect.gen(function* () {
+        const host = testPlatform()
+        const surface = testCanvas()
+        const ctx = surface.canvas.getContext('2d')
+        if (ctx === null) throw new TypeError('Injected canvas context is required')
+        const meters = makeMeters({ sources: [], platform: host.platform })
+        const series = makeSeries<NumberValue>({
+          id: 'time',
+          label: 'Timed events',
+          unit: 'ms',
+          capacity: 4,
+        })
+        meters.store.register({ series }).append({
+          sample: { _tag: 'Value', atMs: 500, value: { _tag: 'Number', value: 7 } },
+        })
+        const aggregation = {
+          _tag: 'Bucket',
+          mode: 'Event',
+          bucketMs: 1000,
+          buckets: 1,
+          unit: 'count',
+        } satisfies BlockAggregation
+        const describeBucket = ({
+          history,
+          nowMs,
+        }: Pick<DrawInput<NumberValue>, 'history' | 'nowMs'>): string => {
+          const policy = resolveBlockAggregation({ aggregation, nowMs })
+          if (policy._tag !== 'Bucket') throw new TypeError('Expected bucket policy')
+          const values = bucketSeries({ ...policy, history, value: (value) => value.value })
+          const value = values.at(-1)
+          return value === undefined ? 'n/a' : formatMeterValue({ value, unit: policy.unit })
+        }
+        const blocks = [
+          block({
+            id: 'time',
+            series,
+            widthPx: 100,
+            aggregation,
+            describe: describeBucket,
+            draw: (input) => input.ctx.fillText(describeBucket(input), input.rect.x, input.rect.y),
+          }),
+        ]
+        let explicitNow = 250
+        const unsubscribed = makeStripView({
+          store: meters.store,
+          blocks,
+          now: () => explicitNow,
+        })
+        expect(unsubscribed.getSnapshot()).toEqual(['n/a'])
+        explicitNow = 1250
+        expect(unsubscribed.getSnapshot()).toEqual(['7'])
+        host.advance(1250)
+        const scope = yield* Scope.make()
+        yield* Scope.provide(meters.start, scope)
+        const live = makeStripView({ store: meters.store, blocks, now: meters.clock.now })
+        const unusedNow = vi.fn(() => NaN)
+        const frozen = makeStripView({
+          store: meters.store,
+          blocks,
+          now: unusedNow,
+          frozenAtMs: meters.clock.now(),
+        })
+        const reader = live.readers[0]
+        const frozenReader = frozen.readers[0]
+        if (reader === undefined || frozenReader === undefined)
+          throw new TypeError('Expected readers')
+        const initial = live.getSnapshot()
+        expect(initial).toEqual(['7'])
+        expect(frozen.getSnapshot()).toEqual(initial)
+        const evidence = reader.evidence({ nowMs: 1250 })
+        expect(evidence).toEqual(frozenReader.evidence({ nowMs: 1250 }))
+        expect(evidence).toMatchObject({
+          text: '7',
+          unit: 'count',
+          evaluatedAtMs: 1250,
+          latest: { _tag: 'Value', atMs: 500 },
+          aggregation: { ...aggregation, endMs: 1000 },
+        })
+        const revision = reader.revision()
+        const notify = vi.fn()
+        const stop = live.subscribe(notify)
+        host.tick(10)
+        host.tick(250)
+        expect(live.getSnapshot()).toBe(initial)
+        expect(notify).not.toHaveBeenCalled()
+        host.tick(750)
+        const published = live.getSnapshot()
+        expect(published).toEqual(['0'])
+        expect(published).not.toBe(initial)
+        expect(reader.revision()).toBe(revision)
+        expect(notify).toHaveBeenCalledTimes(1)
+        expect(frozen.getSnapshot()).toEqual(initial)
+        expect(unusedNow).not.toHaveBeenCalled()
+        // A snapshot copies data only; readers always honor the supplied time.
+        expect(frozenReader.describe({ nowMs: meters.clock.now() })).toBe('0')
+        const frozenNow = frozen.frozenAtMs ?? meters.clock.now()
+        expect(frozenReader.evidence({ nowMs: frozenNow })).toEqual(evidence)
+        frozenReader.draw({
+          ctx,
+          rect: { x: 0, y: 0, width: 100, height: 32 },
+          nowMs: frozenNow,
+          historyMs: 99,
+          theme: lightMeterTheme,
+        })
+        expect(surface.texts.at(-1)).toBe(evidence.text)
+        reader.draw({
+          ctx,
+          rect: { x: 0, y: 0, width: 100, height: 32 },
+          nowMs: meters.clock.now(),
+          historyMs: 9999,
+          theme: lightMeterTheme,
+        })
+        expect(surface.texts.at(-1)).toBe(reader.evidence({ nowMs: meters.clock.now() }).text)
+        host.advance(1000)
+        expect(live.getSnapshot()).toBe(published)
+        stop()
+        expect(live.getSnapshot()).toBe(published)
+        const numeric = numberBlock({ id: 'latest', series }).read(meters.store)
+        expect(numeric.describe({ nowMs: meters.clock.now() })).toBe('7 ms')
+        expect(numeric.evidence({ nowMs: meters.clock.now() })).toMatchObject({
+          text: '7 ms',
+          unit: 'ms',
+          latest: { _tag: 'Value', atMs: 500 },
+          aggregation: { _tag: 'Latest' },
+        })
+        yield* Scope.close(scope, Exit.void)
+      }),
+  )
+  it('captures on-demand typed evidence from the same live or frozen reader', () => {
+    const series = makeSeries<NumberValue>({
+      id: 'evidence',
+      label: 'Elapsed',
+      unit: 'ms',
+      capacity: 2,
+    })
+    const store = makeSeriesStore()
+    const writer = store.register({ series })
+    const reader = numberBlock({ id: 'evidence', series }).read(store)
+    expect(reader.evidence({ nowMs: 10 })).toMatchObject({
+      label: 'Elapsed',
+      unit: 'ms',
+      text: 'n/a (NoSamples)',
+      evaluatedAtMs: 10,
+      latest: undefined,
+    })
+    writer.append({ sample: { _tag: 'Value', atMs: 11, value: { _tag: 'Number', value: 12.6 } } })
+    const frozen = reader.snapshot()
+    const captured = reader.evidence({ nowMs: 20 })
+    expect(captured).toEqual(frozen.evidence({ nowMs: 20 }))
+    expect(captured.text).toBe('12.6 ms')
+    expect(captured.text).toBe(reader.describe({ nowMs: 20 }))
+    expect(captured.latest).toEqual({ _tag: 'Value', atMs: 11 })
+    const extraPayload = { secret: 'not evidence' }
+    const gap = {
+      _tag: 'Gap',
+      atMs: 21,
+      durationMs: 10,
+      reason: 'Hidden',
+      value: extraPayload,
+    } satisfies Sample<NumberValue> & { readonly value: { readonly secret: string } }
+    writer.append({ sample: gap })
+    expect(reader.evidence({ nowMs: 22 })).toMatchObject({
+      text: 'n/a (Hidden gap)',
+      latest: { _tag: 'Gap', atMs: 21, durationMs: 10, reason: 'Hidden' },
+    })
+    const gapEvidence = reader.evidence({ nowMs: 22 })
+    expect(gapEvidence.latest).toEqual({
+      _tag: 'Gap',
+      atMs: 21,
+      durationMs: 10,
+      reason: 'Hidden',
+    })
+    expect(gapEvidence).toEqual(reader.snapshot().evidence({ nowMs: 22 }))
+    const unavailableSample = {
+      _tag: 'Unavailable',
+      atMs: 23,
+      reason: 'MeasurementFailed',
+      value: extraPayload,
+    } satisfies Sample<NumberValue> & { readonly value: { readonly secret: string } }
+    writer.append({ sample: unavailableSample })
+    const unavailable = reader.evidence({ nowMs: 24 })
+    expect(unavailable).toEqual(reader.snapshot().evidence({ nowMs: 24 }))
+    expect(unavailable).toMatchObject({
+      text: 'n/a (MeasurementFailed)',
+      latest: { _tag: 'Unavailable', atMs: 23, reason: 'MeasurementFailed' },
+      retention: {
+        capacity: 2,
+        length: 2,
+        oldestAtMs: 21,
+        newestAtMs: 23,
+        overflowCount: 1,
+        firstRetainedSequence: 1,
+        nextSequence: 3,
+      },
+    })
+    expect(unavailable.latest).toEqual({
+      _tag: 'Unavailable',
+      atMs: 23,
+      reason: 'MeasurementFailed',
+    })
+    extraPayload.secret = 'changed after capture'
+    expect(unavailable).toEqual(reader.snapshot().evidence({ nowMs: 24 }))
+    expect(gapEvidence.latest).toEqual({
+      _tag: 'Gap',
+      atMs: 21,
+      durationMs: 10,
+      reason: 'Hidden',
+    })
+    expect(frozen.evidence({ nowMs: 20 })).toEqual(captured)
+    expect(captured.retention.overflowCount).toBe(0)
+  })
+
+  it('preserves original production rectangles for scalar and stacked bins, including overflow', () => {
+    // Reference transcribed from the pre-extraction production loops. Deliberately
+    // retain their distinct omitted-range extent scan and floating boundaries.
+    for (const mode of ['Gauge', 'Event', 'Counter'] as const) {
+      for (const explicit of [false, true]) {
+        for (const { stacked, overflow } of [
+          { stacked: false, overflow: false },
+          { stacked: true, overflow: false },
+          { stacked: false, overflow: true },
+          { stacked: true, overflow: true },
+        ]) {
+          const samples: readonly Sample<number>[] = [
+            { _tag: 'Value', atMs: 0, value: 3 },
+            { _tag: 'Value', atMs: 10, value: 4 },
+            { _tag: 'Value', atMs: 10.1, value: 6 },
+            { _tag: 'Value', atMs: 10.2, value: 8 },
+            { _tag: 'Gap', atMs: 10.3, durationMs: 0.1, reason: 'Hidden' },
+            { _tag: 'Value', atMs: 10.4, value: overflow === true ? -Number.MAX_VALUE : 2 },
+            { _tag: 'Value', atMs: 10.5, value: overflow === true ? Number.MAX_VALUE : 10 },
+            { _tag: 'Value', atMs: 10.6, value: overflow === true ? Number.MAX_VALUE : 15 },
+            { _tag: 'Unavailable', atMs: 10.9, reason: 'Stopped' },
+          ]
+          const values = (value: number) => (stacked === true ? [value / 2, value / 2] : value)
+          const total = (value: number) => {
+            const parts = values(value)
+            return typeof parts === 'number' ? parts : parts.reduce((sum, part) => sum + part, 0)
+          }
+          const surface = testCanvas()
+          const ctx = surface.canvas.getContext('2d')
+          if (ctx === null) throw new TypeError('Injected canvas context is required')
+          const series = makeSeries<number>({
+            id: 'golden',
+            label: '',
+            unit: 'count',
+            capacity: 20,
+          })
+          const store = makeSeriesStore()
+          const writer = store.register({ series })
+          for (const sample of samples) writer.append({ sample })
+          let lo = explicit === true ? -10 : 0
+          let hi = explicit === true ? 10 : 1
+          const bins = 7
+          const nowMs = 11
+          const historyMs = 1
+          const startMs = nowMs - historyMs
+          const binMs = historyMs / bins
+          if (explicit === false) {
+            let prior: number | undefined
+            let aggregate = 0
+            let aggregateBin = -1
+            for (const sample of samples) {
+              if (sample._tag !== 'Value') {
+                prior = undefined
+                continue
+              }
+              const value = total(sample.value)
+              if (Number.isFinite(value) === false) {
+                prior = undefined
+                continue
+              }
+              const increment =
+                mode === 'Counter' ? (prior === undefined ? 0 : Math.max(0, value - prior)) : value
+              prior = value
+              if (sample.atMs < startMs) {
+                if (mode === 'Gauge') {
+                  hi = Math.max(1, value)
+                  lo = Math.min(0, value)
+                }
+                continue
+              }
+              const bin = Math.max(
+                0,
+                Math.min(bins - 1, Math.ceil((sample.atMs - startMs) / binMs) - 1),
+              )
+              if (bin !== aggregateBin) {
+                aggregate = 0
+                aggregateBin = bin
+              }
+              aggregate += increment
+              hi = Math.max(hi, mode === 'Gauge' ? value : aggregate)
+              if (mode === 'Gauge') lo = Math.min(lo, value)
+            }
+          }
+          const scale = explicit === true ? Math.max(Math.abs(lo), Math.abs(hi)) : 1
+          const span = hi / scale - lo / scale
+          const expected: number[][] = [[0, 0, 15, 32]]
+          let index = 0
+          let previous = samples[0]
+          let prior: number | undefined
+          for (let bin = 0; bin < bins; bin++) {
+            const end = nowMs - historyMs + ((bin + 1) * historyMs) / bins
+            let aggregate = 0
+            while (index < samples.length) {
+              const sample = samples[index]
+              if (sample === undefined || sample.atMs > end) break
+              previous = sample
+              if (sample._tag === 'Value') {
+                const value = total(sample.value)
+                const increment =
+                  mode === 'Counter'
+                    ? prior === undefined
+                      ? 0
+                      : Math.max(0, value - prior)
+                    : value
+                if (sample.atMs > end - binMs) aggregate += increment
+                if (explicit === true)
+                  aggregate = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, aggregate))
+                prior = value
+              } else prior = undefined
+              index++
+            }
+            if (previous === undefined || previous.atMs > end) continue
+            const x = 4 + ((end - binMs - (nowMs - historyMs)) / historyMs) * 7
+            if (previous._tag !== 'Value') {
+              expected.push([x, 18, 1, 12])
+              continue
+            }
+            const parts = mode === 'Gauge' ? values(previous.value) : aggregate
+            let bottom = 18 + (12 * (hi / scale)) / span
+            let sum = 0
+            for (const value of typeof parts === 'number' ? [parts] : parts) {
+              if (Number.isFinite(value) === false) continue
+              let height = (value / scale / span) * 12
+              if (explicit === true) {
+                const baseline = Math.max(lo, Math.min(hi, sum)) / scale
+                sum = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, sum + value))
+                const top = Math.max(lo, Math.min(hi, sum)) / scale
+                bottom = 18 + 12 * ((hi / scale - baseline) / span)
+                height = 12 * ((top - baseline) / span)
+              }
+              bottom -= height
+              expected.push([x, bottom, 1, height])
+            }
+          }
+          // Duration overlay uses the existing historyX arithmetic.
+          expected.push([4 + ((10.3 - 0.1 - startMs) / historyMs) * 7, 18, 1, 12])
+          numericBlock({
+            id: 'golden',
+            series,
+            values,
+            mode,
+            ...(explicit === true ? { range: { lo, hi } } : {}),
+          })
+            .read(store)
+            .draw({
+              ctx,
+              rect: { x: 0, y: 0, width: 15, height: 32 },
+              nowMs,
+              historyMs,
+              theme: lightMeterTheme,
+            })
+          expect(surface.rectangles).toEqual(expected)
+        }
+      }
+    }
+  })
   it('ranges completed event and counter bins, including plotted empty zero bins', () => {
     const surface = testCanvas()
     const ctx = surface.canvas.getContext('2d')
@@ -316,7 +738,7 @@ describe('canvas strip', () => {
       expect(formatRange({ range, unit: 'ms' })).toBe(
         `${formatMeterValue({ value: range.lo, unit: 'ms' })}–${formatMeterValue({ value: range.hi, unit: 'ms' })}`,
       )
-      expect(reader.describe()).toBe('50 ms')
+      expect(reader.describe({ nowMs: 100 })).toBe('50 ms')
     }
     for (const range of [
       { lo: 1, hi: 1 },
@@ -431,7 +853,11 @@ describe('canvas strip', () => {
         const lease = yield* Scope.make()
         const drawScope = yield* Scope.make()
         yield* Scope.provide(f.meters.start, lease)
-        const live = makeStripView({ store: f.meters.store, blocks: f.blocks })
+        const live = makeStripView({
+          store: f.meters.store,
+          blocks: f.blocks,
+          now: f.meters.clock.now,
+        })
         yield* Scope.provide(
           makeCanvasStrip({
             canvas: f.surface.canvas,
@@ -449,6 +875,7 @@ describe('canvas strip', () => {
         const frozen = makeStripView({
           store: f.meters.store,
           blocks: f.blocks,
+          now: f.meters.clock.now,
           frozenAtMs: f.meters.clock.now(),
         })
         const frozenText = frozen.getSnapshot()[0]
@@ -468,7 +895,11 @@ describe('canvas strip', () => {
       const f = fixture()
       const scope = yield* Scope.make()
       yield* Scope.provide(f.meters.start, scope)
-      const live = makeStripView({ store: f.meters.store, blocks: f.blocks })
+      const live = makeStripView({
+        store: f.meters.store,
+        blocks: f.blocks,
+        now: f.meters.clock.now,
+      })
       const initial = live.getSnapshot()
       const notify = vi.fn()
       const unsubscribe = live.subscribe(notify)
@@ -492,7 +923,9 @@ describe('canvas strip', () => {
         atMs: 250,
         value: { _tag: 'Number', value: 25 },
       })
-      expect(f.surface.texts.at(-1)).toBe(live.readers[0]?.describe())
+      expect(f.surface.texts.at(-1)).toBe(
+        live.readers[0]?.describe({ nowMs: f.meters.clock.now() }),
+      )
       expect(f.surface.texts.at(-1)).not.toBe(initial[0])
       f.host.tick(10)
       expect(notify).toHaveBeenCalledTimes(1)
@@ -502,6 +935,7 @@ describe('canvas strip', () => {
       const frozen = makeStripView({
         store: f.meters.store,
         blocks: f.blocks,
+        now: f.meters.clock.now,
         frozenAtMs: f.meters.clock.now(),
       })
       const frozenSnapshot = frozen.getSnapshot()
@@ -587,7 +1021,7 @@ describe('canvas strip', () => {
       })
       expect(surface.drawnTexts.map((text) => text.text)).toEqual([drawn])
       expect(surface.drawnTexts.every((text) => text.maxWidth === undefined)).toBe(true)
-      expect(reader.describe()).toBe(full)
+      expect(reader.describe({ nowMs: 0 })).toBe(full)
     }
   })
   it('compacts actual frame timing without substituting calibration or missing samples', () => {
@@ -619,7 +1053,7 @@ describe('canvas strip', () => {
       theme: lightMeterTheme,
     })
     expect(surface.drawnTexts.map((text) => text.text)).toEqual(['60fps'])
-    expect(reader.describe()).toBe('59.9 fps')
+    expect(reader.describe({ nowMs: 0 })).toBe('59.9 fps')
     writer.append({
       sample: { _tag: 'Value', atMs: 1, value: { ...value, durationMs: 0 } },
     })
@@ -632,7 +1066,7 @@ describe('canvas strip', () => {
       theme: lightMeterTheme,
     })
     expect(surface.drawnTexts.map((text) => text.text)).toEqual(['FPS', 'n/a (NoSamples)'])
-    expect(reader.describe()).toBe('n/a (NoSamples)')
+    expect(reader.describe({ nowMs: 1 })).toBe('n/a (NoSamples)')
   })
   it('aggregates cumulative counter increments by timestamp bin and overlays explicit gap durations', () => {
     const surface = testCanvas()
@@ -662,7 +1096,7 @@ describe('canvas strip', () => {
       theme: lightMeterTheme,
     })
     expect(surface.rectangles).toContainEqual([8, 18, 1, 12])
-    expect(reader.describe()).toBe('15')
+    expect(reader.describe({ nowMs: 100 })).toBe('15')
     writer.append({ sample: { _tag: 'Gap', atMs: 75, durationMs: 25, reason: 'Hidden' } })
     reader.draw({
       ctx,
@@ -672,7 +1106,7 @@ describe('canvas strip', () => {
       theme: lightMeterTheme,
     })
     expect(surface.rectangles).toContainEqual([8, 18, 2, 12])
-    expect(reader.describe()).toBe('n/a (Hidden gap)')
+    expect(reader.describe({ nowMs: 100 })).toBe('n/a (Hidden gap)')
   })
   it('accepts semantic CSS-variable token objects without a styling-framework dependency', () => {
     const surface = testCanvas()
@@ -695,7 +1129,11 @@ describe('canvas strip', () => {
   it.effect('describes unavailable evidence without substituting zero', () =>
     Effect.gen(function* () {
       const f = fixture()
-      const view = makeStripView({ store: f.meters.store, blocks: f.blocks })
+      const view = makeStripView({
+        store: f.meters.store,
+        blocks: f.blocks,
+        now: f.meters.clock.now,
+      })
       expect(view.getSnapshot()).toEqual(['n/a (NoSamples)'])
       const writer = f.meters.store.register({ series: f.series })
       writer.append({ sample: { _tag: 'Unavailable', atMs: 0, reason: 'Unsupported' } })
