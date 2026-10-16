@@ -25,6 +25,7 @@ export type {
   SourceRegistration,
   SourceError,
   SourceEvidence,
+  Freshness,
   Calibration,
   FpsValue,
   FrameStats,
