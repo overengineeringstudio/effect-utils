@@ -17,10 +17,10 @@ describe('StoreLock', () => {
       withStoreLock(
         Effect.gen(function* () {
           const counterRef = yield* Ref.make(0)
-          const { withRepoLock } = yield* StoreLock
+          const { withWorktreeLock } = yield* StoreLock
 
           const increment = () =>
-            withRepoLock('shared-url')(
+            withWorktreeLock('shared-worktree')(
               Effect.gen(function* () {
                 const current = yield* Ref.get(counterRef)
                 yield* Effect.yieldNow
@@ -44,39 +44,19 @@ describe('StoreLock', () => {
   it.effect('allows concurrent access with different keys', () =>
     withStoreLock(
       Effect.gen(function* () {
-        const { withRepoLock } = yield* StoreLock
+        const { withWorktreeLock } = yield* StoreLock
         const results: string[] = []
 
         yield* Effect.all(
           [
-            withRepoLock('url-a')(Effect.sync(() => results.push('a'))),
-            withRepoLock('url-b')(Effect.sync(() => results.push('b'))),
+            withWorktreeLock('worktree-a')(Effect.sync(() => results.push('a'))),
+            withWorktreeLock('worktree-b')(Effect.sync(() => results.push('b'))),
           ],
           { concurrency: 'unbounded' },
         )
 
         // Both complete (different keys don't block each other)
         expect(results.sort()).toEqual(['a', 'b'])
-      }),
-    ),
-  )
-
-  it.effect('repo and worktree locks are independent registries', () =>
-    withStoreLock(
-      Effect.gen(function* () {
-        const { withRepoLock, withWorktreeLock } = yield* StoreLock
-        const results: string[] = []
-
-        yield* Effect.all(
-          [
-            withRepoLock('same-key')(Effect.sync(() => results.push('repo'))),
-            withWorktreeLock('same-key')(Effect.sync(() => results.push('worktree'))),
-          ],
-          { concurrency: 'unbounded' },
-        )
-
-        // Both complete (repo and worktree are separate registries)
-        expect(results.sort()).toEqual(['repo', 'worktree'])
       }),
     ),
   )

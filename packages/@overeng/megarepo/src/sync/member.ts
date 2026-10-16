@@ -740,21 +740,13 @@ export const syncMember = <R = never>({
     const wasCloned: boolean = yield* Effect.gen(function* () {
       if (bareExists === false) {
         if (dryRun === false) {
-          return yield* storeLock.withRepoLock(cloneUrl)(
-            Effect.gen(function* () {
-              // Double-check inside lock (another fiber may have cloned concurrently)
-              const stillNotExists = (yield* store.hasBareRepo(source)) === false
-              if (stillNotExists === true) {
-                const repoBasePath = store.getRepoBasePath(source)
-                yield* fs.makeDirectory(repoBasePath, { recursive: true })
-                yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
-                yield* Observability.annotateSyncMemberAction('clone')
-                return true
-              }
-              yield* Observability.annotateSyncMemberAction('already-cloned-by-sibling')
-              return false
-            }),
+          const repoBasePath = store.getRepoBasePath(source)
+          yield* fs.makeDirectory(repoBasePath, { recursive: true })
+          const cloned = yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
+          yield* Observability.annotateSyncMemberAction(
+            cloned === true ? 'clone' : 'already-cloned-by-sibling',
           )
+          return cloned
         }
         yield* Observability.annotateSyncMemberAction('skip-dry-run')
       } else if (isFetchMode === true && dryRun === false) {
