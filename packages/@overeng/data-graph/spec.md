@@ -2,6 +2,10 @@
 
 An Effect 4 graph execution contract and filesystem adapter over `@overeng/content-address`. Consumers supply topology, recipes, canonical scope JSON, output bytes, and acceptance policy. The graph does not interpret domain data.
 
+## Package distribution
+
+`@overeng/data-graph` is admitted to the Buck/Nix package-product inventory alongside `@overeng/content-address` and `@overeng/effect-rust`. Package archives resolve workspace dependency ranges to sibling package versions, so artifact-only consumers do not need workspace source edges. The normal publisher on `main` produces the cached artifact and `nix/buck2-products/manifest.json`; inventory admission alone does not publish an artifact.
+
 ## Identity and execution
 
 A `NodeDef` is a `Derive` or `Observe` template with a non-empty branded `kind`, named outputs, scope-dependent static named inputs, a recipe, and an Effect executor. A `NodeRef` binds an instance scope and one output. Node identity is canonical JSON of `{ kind, scope }`; selecting an output does not change identity. Dependencies are declared before execution, never discovered by the executor. Cycles, conflicting definitions, and invalid output sets fail explicitly.
