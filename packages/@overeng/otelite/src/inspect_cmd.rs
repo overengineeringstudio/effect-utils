@@ -410,8 +410,7 @@ mod tests {
                 .spawn()
                 .unwrap(),
         ));
-        let mut stdout =
-            std::io::BufReader::new(reader.0.as_mut().unwrap().stdout.take().unwrap());
+        let mut stdout = std::io::BufReader::new(reader.0.as_mut().unwrap().stdout.take().unwrap());
         loop {
             let mut line = String::new();
             assert_ne!(
