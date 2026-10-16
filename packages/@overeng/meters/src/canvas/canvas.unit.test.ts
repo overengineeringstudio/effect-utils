@@ -11,12 +11,14 @@ import { testCanvas } from './_test-canvas.ts'
 import {
   counterBlock,
   formatMeterValue,
+  formatRange,
   frameBlock,
   layoutStrip,
   lightMeterTheme,
   makeCanvasStrip,
   makeStripView,
   numberBlock,
+  plotRange,
   resolveMeterTheme,
 } from './index.ts'
 
@@ -67,6 +69,264 @@ const fixture = () => {
 }
 
 describe('canvas strip', () => {
+  it('ranges completed event and counter bins, including plotted empty zero bins', () => {
+    const surface = testCanvas()
+    const ctx = surface.canvas.getContext('2d')
+    if (ctx === null) throw new TypeError('Injected canvas context is required')
+    for (const { mode, atMs } of [
+      { mode: 'Event', atMs: 51 },
+      { mode: 'Counter', atMs: 51 },
+      { mode: 'Event', atMs: 95 },
+      { mode: 'Counter', atMs: 95 },
+    ] as const) {
+      const series = makeSeries<NumberValue>({ id: mode, label: mode, unit: 'count', capacity: 4 })
+      const store = makeSeriesStore()
+      const writer = store.register({ series })
+      if (mode === 'Counter')
+        writer.append({ sample: { _tag: 'Value', atMs: 1, value: { _tag: 'Number', value: 0 } } })
+      writer.append({ sample: { _tag: 'Value', atMs, value: { _tag: 'Number', value: 20 } } })
+      writer.append({
+        sample: {
+          _tag: 'Value',
+          atMs: atMs + 4,
+          value: { _tag: 'Number', value: mode === 'Counter' ? 50 : 30 },
+        },
+      })
+      const history = mode === 'Counter' || atMs === 51 ? [0, 50] : [50]
+      const range = plotRange({ history, nominalMax: 100, mode: 'auto' })
+      surface.rectangles.length = 0
+      numberBlock({ id: mode, series, mode, range: 'auto', nominalMax: 100, marks: [55] })
+        .read(store)
+        .draw({
+          ctx,
+          rect: { x: 0, y: 0, width: 16, height: 32 },
+          nowMs: 100,
+          historyMs: 100,
+          theme: lightMeterTheme,
+        })
+      const mark = surface.rectangles.find((rect) => rect[2] === 8 && rect[3] === 1)
+      expect(mark?.[1]).toBeCloseTo(18 + 12 * ((range.hi - 55) / (range.hi - range.lo)))
+      const bar = surface.rectangles.find(
+        (rect) => rect[0] === (atMs === 51 ? 8 : 11) && rect[2] === 1,
+      )
+      expect(bar?.[3]).toBeCloseTo(12 * ((50 - range.lo) / (range.hi - range.lo)))
+    }
+  })
+  it('uses signed completed event totals rather than transient peaks for fixed ranges', () => {
+    const surface = testCanvas()
+    const ctx = surface.canvas.getContext('2d')
+    if (ctx === null) throw new TypeError('Injected canvas context is required')
+    const series = makeSeries<NumberValue>({
+      id: 'signed-events',
+      label: 'Events',
+      unit: 'count',
+      capacity: 4,
+    })
+    const store = makeSeriesStore()
+    const writer = store.register({ series })
+    writer.append({ sample: { _tag: 'Value', atMs: 51, value: { _tag: 'Number', value: 100 } } })
+    writer.append({ sample: { _tag: 'Value', atMs: 55, value: { _tag: 'Number', value: -80 } } })
+    numberBlock({
+      id: 'signed-events',
+      series,
+      mode: 'Event',
+      range: 'fixed',
+      nominalMax: 1,
+      marks: [20],
+    })
+      .read(store)
+      .draw({
+        ctx,
+        rect: { x: 0, y: 0, width: 16, height: 32 },
+        nowMs: 100,
+        historyMs: 100,
+        theme: lightMeterTheme,
+      })
+    expect(surface.rectangles).toContainEqual([8, 18, 1, 12])
+    expect(surface.rectangles).toContainEqual([4, 18, 8, 1])
+  })
+  it('keeps adjacent subnormal extrema inside an increasing auto range and draws their marks', () => {
+    const m = Number.MIN_VALUE
+    const range = plotRange({ history: [2 * m, 3 * m], nominalMax: m, mode: 'auto' })
+    expect(Number.isFinite(range.lo) && Number.isFinite(range.hi)).toBe(true)
+    expect(range.lo).toBeLessThanOrEqual(2 * m)
+    expect(range.hi).toBeGreaterThanOrEqual(3 * m)
+    expect(range.lo).toBeLessThan(range.hi)
+    const surface = testCanvas()
+    const ctx = surface.canvas.getContext('2d')
+    if (ctx === null) throw new TypeError('Injected canvas context is required')
+    const series = makeSeries<NumberValue>({
+      id: 'subnormal',
+      label: 'Tiny',
+      unit: 'count',
+      capacity: 4,
+    })
+    const store = makeSeriesStore()
+    const writer = store.register({ series })
+    writer.append({ sample: { _tag: 'Value', atMs: 0, value: { _tag: 'Number', value: 2 * m } } })
+    writer.append({ sample: { _tag: 'Value', atMs: 1, value: { _tag: 'Number', value: 3 * m } } })
+    numberBlock({ id: 'subnormal', series, range: 'auto', nominalMax: m, marks: [2 * m] })
+      .read(store)
+      .draw({
+        ctx,
+        rect: { x: 0, y: 0, width: 16, height: 32 },
+        nowMs: 100,
+        historyMs: 100,
+        theme: lightMeterTheme,
+      })
+    expect(surface.rectangles).toContainEqual([4, 29, 8, 1])
+    expect(surface.rectangles.every((rect) => rect.every(Number.isFinite))).toBe(true)
+  })
+  it('draws finite coordinates for extreme values, clipped custom bounds and tiny scales', () => {
+    const surface = testCanvas()
+    const ctx = surface.canvas.getContext('2d')
+    if (ctx === null) throw new TypeError('Injected canvas context is required')
+    const series = makeSeries<NumberValue>({
+      id: 'extreme',
+      label: 'Extreme',
+      unit: 'count',
+      capacity: 4,
+    })
+    const store = makeSeriesStore()
+    const writer = store.register({ series })
+    writer.append({
+      sample: { _tag: 'Value', atMs: 0, value: { _tag: 'Number', value: -Number.MAX_VALUE } },
+    })
+    writer.append({
+      sample: { _tag: 'Value', atMs: 50, value: { _tag: 'Number', value: Number.MAX_VALUE } },
+    })
+    for (const range of ['auto', { lo: Number.MIN_VALUE, hi: Number.MIN_VALUE * 2 }] as const) {
+      surface.rectangles.length = 0
+      numberBlock({ id: 'extreme', series, range, marks: [0] })
+        .read(store)
+        .draw({
+          ctx,
+          rect: { x: 0, y: 0, width: 16, height: 32 },
+          nowMs: 100,
+          historyMs: 100,
+          theme: lightMeterTheme,
+        })
+      expect(surface.rectangles.every((rect) => rect.every(Number.isFinite))).toBe(true)
+      expect(surface.rectangles.some((rect) => rect[2] === 1 && Math.abs(rect[3] ?? 0) > 0)).toBe(
+        true,
+      )
+    }
+    const tiny = plotRange({
+      history: [0],
+      nominalMax: Number.MIN_VALUE,
+      minSpanRatio: Number.MIN_VALUE,
+      mode: 'auto',
+    })
+    expect(tiny).toEqual({ lo: 0, hi: Number.MIN_VALUE })
+  })
+  it('shares whole-unit fixed bounds and padded auto bounds without inventing missing samples', () => {
+    expect(plotRange({ history: [undefined, 301.06], nominalMax: 256, mode: 'fixed' })).toEqual({
+      lo: 0,
+      hi: 302,
+    })
+    for (const history of [[], [undefined], [NaN, Infinity, -Infinity]]) {
+      expect(plotRange({ history, nominalMax: 10.2, mode: 'auto' })).toEqual({ lo: 0, hi: 11 })
+    }
+    const constant = plotRange({ history: [50, 50], nominalMax: 100, mode: 'auto' })
+    expect(constant.lo).toBeCloseTo(44.25)
+    expect(constant.hi).toBeCloseTo(55.75)
+    expect(plotRange({ history: [0], nominalMax: 100, mode: 'auto' })).toEqual({ lo: 0, hi: 11.5 })
+    const customSpan = plotRange({
+      history: [50],
+      nominalMax: 100,
+      minSpanRatio: 0.2,
+      mode: 'auto',
+    })
+    expect(customSpan.hi - customSpan.lo).toBeCloseTo(23)
+  })
+  it('retains negative and mixed-sign extrema and bounds finite arithmetic overflow', () => {
+    expect(plotRange({ history: [-8, 3], nominalMax: 10, mode: 'fixed' })).toEqual({
+      lo: -8,
+      hi: 10,
+    })
+    for (const history of [
+      [-8, -2],
+      [-8, 3],
+      [-Number.MAX_VALUE, Number.MAX_VALUE],
+      [Number.MAX_VALUE],
+      [-Number.MAX_VALUE],
+    ]) {
+      const range = plotRange({ history, nominalMax: 10, mode: 'auto' })
+      expect(Number.isFinite(range.lo) && Number.isFinite(range.hi)).toBe(true)
+      expect(range.lo).toBeLessThan(range.hi)
+      expect(range.lo).toBeLessThanOrEqual(Math.min(...history))
+      expect(range.hi).toBeGreaterThanOrEqual(Math.max(...history))
+    }
+    expect(plotRange({ history: [NaN, 5, Infinity], nominalMax: 10, mode: 'fixed' })).toEqual({
+      lo: 0,
+      hi: 10,
+    })
+  })
+  it('validates caller scales and formats range endpoints with meter units', () => {
+    for (const nominalMax of [0, -1, NaN, Infinity]) {
+      expect(() => plotRange({ history: [], nominalMax, mode: 'fixed' })).toThrow(TypeError)
+    }
+    for (const minSpanRatio of [0, -1, NaN, Infinity]) {
+      expect(() => plotRange({ history: [], nominalMax: 1, minSpanRatio, mode: 'auto' })).toThrow(
+        TypeError,
+      )
+    }
+    expect(formatRange({ range: { lo: 0, hi: 302 }, unit: 'ms' })).toBe('0 ms–302 ms')
+    expect(formatRange({ range: { lo: 0, hi: 1024 }, unit: 'bytes' })).toBe('0 B–1.0 KiB')
+    expect(formatRange({ range: { lo: -1, hi: 2 }, unit: 'count' })).toBe('-1–2')
+    expect(() => formatRange({ range: { lo: 2, hi: 2 }, unit: 'ms' })).toThrow(TypeError)
+  })
+  it('draws fixed, auto and custom domains and visible marks in the same coordinates as their captions', () => {
+    const surface = testCanvas()
+    const ctx = surface.canvas.getContext('2d')
+    if (ctx === null) throw new TypeError('Injected canvas context is required')
+    const series = makeSeries<NumberValue>({ id: 'range', label: 'Range', unit: 'ms', capacity: 4 })
+    const store = makeSeriesStore()
+    const writer = store.register({ series })
+    writer.append({ sample: { _tag: 'Value', atMs: 0, value: { _tag: 'Number', value: 40 } } })
+    writer.append({ sample: { _tag: 'Value', atMs: 1, value: { _tag: 'Number', value: 50 } } })
+    for (const mode of ['fixed', 'auto', 'custom'] as const) {
+      const range =
+        mode === 'custom'
+          ? { lo: 25, hi: 75 }
+          : plotRange({ history: [40, 50], nominalMax: 100, mode })
+      const reader = numberBlock({
+        id: mode,
+        series,
+        nominalMax: 100,
+        range: mode === 'custom' ? range : mode,
+        marks: [range.lo, 50, range.hi, NaN, Infinity, -100, 1000],
+      }).read(store)
+      surface.rectangles.length = 0
+      reader.draw({
+        ctx,
+        rect: { x: 0, y: 0, width: 16, height: 32 },
+        nowMs: 100,
+        historyMs: 100,
+        theme: lightMeterTheme,
+      })
+      const mark = surface.rectangles.filter((rect) => rect[2] === 8 && rect[3] === 1)
+      expect(mark).toHaveLength(3)
+      expect(mark[0]).toEqual([4, 29, 8, 1])
+      expect(mark[1]?.[1]).toBeCloseTo(18 + 12 * ((range.hi - 50) / (range.hi - range.lo)))
+      expect(mark[2]).toEqual([4, 18, 8, 1])
+      const bar = surface.rectangles.find((rect) => rect[0] === 11 && rect[2] === 1)
+      expect(bar?.[1]).toBeCloseTo(18 + 12 * ((range.hi - 50) / (range.hi - range.lo)))
+      expect(bar?.[3]).toBeCloseTo(12 * ((50 - Math.max(0, range.lo)) / (range.hi - range.lo)))
+      expect(formatRange({ range, unit: 'ms' })).toBe(
+        `${formatMeterValue({ value: range.lo, unit: 'ms' })}–${formatMeterValue({ value: range.hi, unit: 'ms' })}`,
+      )
+      expect(reader.describe()).toBe('50 ms')
+    }
+    for (const range of [
+      { lo: 1, hi: 1 },
+      { lo: 2, hi: 1 },
+      { lo: NaN, hi: 1 },
+      { lo: 0, hi: Infinity },
+    ]) {
+      expect(() => numberBlock({ id: 'invalid', series, range })).toThrow(TypeError)
+    }
+  })
   it('lays out variable widths and fractional backing dimensions without a trailing gap', () => {
     expect(layoutStrip({ widths: [150, 151], heightPx: 32, gapPx: 2, dpr: 1.25 })).toEqual({
       widthPx: 303,
