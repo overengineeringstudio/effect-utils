@@ -495,6 +495,40 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
 
   for (const view of projection.views) {
     lines.push(...renderView({ entryByStoreKey, targetByStoreKey, view }))
+    // Product consumers need the same immutable external store, but neither
+    // source bundling nor native dependency extraction consumes declarations.
+    // Keep the ordinary npm/editor view above byte-for-byte unchanged.
+    lines.push(
+      ...renderView({
+        entryByStoreKey,
+        targetByStoreKey,
+        view: {
+          ...view,
+          target: view.target.replace(/^view_/, 'product_view_'),
+          workspaceTrees: Object.fromEntries(
+            sortedEntries(view.workspaceTrees).map(([key, target]) => [
+              key,
+              target.replace(/:package_tree$/, ':product_package_tree'),
+            ]),
+          ),
+        },
+      }),
+      ...renderView({
+        entryByStoreKey,
+        targetByStoreKey,
+        view: {
+          ...view,
+          target: view.target.replace(/^view_/, 'external_view_'),
+          workspaceTrees: {},
+          variants: view.variants.map((variant) => ({
+            ...variant,
+            direct: Object.fromEntries(
+              sortedEntries(variant.direct).filter(([, edge]) => edge.kind === 'entry'),
+            ),
+          })),
+        },
+      }),
+    )
   }
   return lines.join('\n')
 }

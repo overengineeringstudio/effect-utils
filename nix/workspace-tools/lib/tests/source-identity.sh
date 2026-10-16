@@ -82,7 +82,7 @@ let
   names = [
     "buck2" "buck2-capabilities" "buck2-archive-tool" "buck2-events"
     "buck2-fingerprint" "buck2-product" "otelite" "otel-scrape"
-    "typescript-api-server"
+    "typescript-api-server" "ci-tools-compiled"
     "netlify-cli" "vercel-cli" "pnpm" "oxlint-with-plugins"
   ];
 in builtins.listToAttrs (map (name: {
@@ -123,4 +123,30 @@ jq -ne --argjson before "$events_after" --argjson after "$lock_after" '
   $before["buck2-events"] != $after["buck2-events"]
   and $before["buck2-archive-tool"] != $after["buck2-archive-tool"]
   and $before.otelite != $after.otelite
+' >/dev/null
+
+# Fingerprint is a real npm emission proof, not an input to native/compiled
+# packaging. A helper edit must still invalidate the required packager.
+printf '\n// fingerprint capability closure control\n' >> "$work/shell/rust/buck2-tools/fingerprint/src/lib.rs"
+fingerprint_after="$(BUCK2_SYSTEM=x86_64-linux shell_paths)"
+jq -ne --argjson before "$lock_after" --argjson after "$fingerprint_after" '
+  $before["buck2-fingerprint"] != $after["buck2-fingerprint"]
+  and $before["buck2-product"] == $after["buck2-product"]
+  and $before["buck2-archive-tool"] == $after["buck2-archive-tool"]
+  and $before["buck2-events"] == $after["buck2-events"]
+  and $before.otelite == $after.otelite
+  and $before["otel-scrape"] == $after["otel-scrape"]
+  and $before["typescript-api-server"] == $after["typescript-api-server"]
+  and $before["ci-tools-compiled"] == $after["ci-tools-compiled"]
+' >/dev/null
+printf '\n// core helper capability closure control\n' >> "$work/shell/rust/buck2-tools/core/src/lib.rs"
+core_after="$(BUCK2_SYSTEM=x86_64-linux shell_paths)"
+jq -ne --argjson before "$fingerprint_after" --argjson after "$core_after" '
+  $before["buck2-product"] != $after["buck2-product"]
+  and $before["buck2-archive-tool"] != $after["buck2-archive-tool"]
+  and $before["buck2-fingerprint"] == $after["buck2-fingerprint"]
+  and $before["buck2-events"] == $after["buck2-events"]
+  and $before.otelite != $after.otelite
+  and $before["typescript-api-server"] != $after["typescript-api-server"]
+  and $before["ci-tools-compiled"] != $after["ci-tools-compiled"]
 ' >/dev/null

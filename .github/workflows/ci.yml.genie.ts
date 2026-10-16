@@ -972,7 +972,7 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' ${rootNixSourceGlobs.map((glob) => `':(glob,exclude)nix/buck2-products/${glob}'`).join(' ')} | grep -Ev '^nix/buck2-products/(cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|manifest\\.json|native-targets\\.json|native-targets\\.json\\.genie\\.ts|private-product-tarballs\\.test\\.sh|publish\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' ${rootNixSourceGlobs.map((glob) => `':(glob,exclude)nix/buck2-products/${glob}'`).join(' ')} | grep -Ev '^nix/buck2-products/(cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|capability-closure\\.test\\.sh|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|manifest\\.json|native-targets\\.json|native-targets\\.json\\.genie\\.ts|private-product-tarballs\\.test\\.sh|publish\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
             'invalid_sources=()',
             "while IFS= read -r -d '' path; do",
             '  case "/$path/" in',
@@ -1489,6 +1489,8 @@ const extraJobs: Record<string, any> = {
     env: ciMeasurementSubjectEnv,
     steps: [
       checkoutStep(),
+      installNixStep(),
+      linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
       ciMeasurementBaselineCheckoutStep,
       sourceShapeMeasurementStep({
         artifactDir: `${sourceShapeMeasurementsDir}/current/effect-utils`,
@@ -1825,6 +1827,7 @@ const allCiJobs: Record<string, any> = {
         priority: deliveryJobPriority,
       }),
       defaultRefs: { 'livestorejs/livestore': 'dev' },
+      preSteps: [linuxSandboxPrerequisitesStep({ privileged: 'trusted' })],
     }),
   },
   ...withCiOtelCapture(jobs),
@@ -1891,6 +1894,7 @@ const productCiJobs: CiWorkflowArgs['jobs'] = {
   ),
   'source-shape': {
     ...allCiJobs['source-shape'],
+    needs: ['default-ref-policy'],
     if: "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}",
   },
 }

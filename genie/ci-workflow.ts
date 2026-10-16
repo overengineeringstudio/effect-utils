@@ -104,6 +104,8 @@ export {
   linuxArm64Runner,
   linuxX64Runner,
   namespaceLinuxX64PairedPerfRunner,
+  linuxNixSandboxFallbackConf,
+  linuxNixSandboxFallbackStep,
   nixExtraConf,
   preparedCiRuntimeScriptsDir,
   prepareJobLocalRustState,

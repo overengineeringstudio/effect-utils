@@ -979,6 +979,41 @@ describe('normalized store projection of the real lockfile', () => {
     expect(computeStoreSccs({ metadata })).toEqual(projection.sccs.map((scc) => scc.members))
   })
 
+  it('adds source-only and external-only views without changing npm views or external platform graphs', () => {
+    const rendered = renderPnpmStoreBuck(projection)
+    const previous = readFileSync('buck2/dependencies/BUCK', 'utf8')
+    const viewBody = (output: string, target: string): string => {
+      const body = output.split(`pnpm_store_view(\n    name = "${target}",\n`)[1]?.split('\n)\n')[0]
+      if (body === undefined) throw new Error(`missing dependency view ${target}`)
+      return body
+    }
+    const externalGraph = (body: string): string =>
+      body
+        .replace(/    workspace_trees = \{[\s\S]*?\n    \},\n/u, '')
+        .replace(/    workspace_dependencies = \{[\s\S]*?\n    \},\n/u, '')
+    for (const view of projection.views) {
+      const ordinary = viewBody(rendered, view.target)
+      const product = viewBody(rendered, view.target.replace(/^view_/, 'product_view_'))
+      const external = viewBody(rendered, view.target.replace(/^view_/, 'external_view_'))
+      expect(ordinary).toBe(viewBody(previous, view.target))
+      expect(product.replaceAll(':product_package_tree"', ':package_tree"')).toBe(ordinary)
+      expect(externalGraph(product)).toBe(externalGraph(ordinary))
+      expect(externalGraph(external)).toBe(externalGraph(ordinary))
+      expect(external).toContain('    workspace_trees = {\n    },')
+      expect(external).toContain('    workspace_dependencies = {\n    },')
+      expect(external).not.toContain(':package_tree"')
+      expect(external).not.toContain(':product_package_tree"')
+      expect(product).not.toMatch(/": "[^"]+:package_tree"/u)
+    }
+    const genie = projection.views.find((view) => view.importer === 'packages/@overeng/genie')!
+    const externalGenie = viewBody(rendered, genie.target.replace(/^view_/, 'external_view_'))
+    expect(externalGenie).toContain('"typescript": "typescript@7.0.2"')
+    expect(externalGenie).toContain('closure_by_platform = {')
+    for (const platform of pnpmPlatforms) {
+      expect(externalGenie).toContain(`"${platform}": {`)
+    }
+  })
+
   it('renders a deterministic declaration whose selects appear only where edges vary', () => {
     const rendered = renderPnpmStoreBuck(projection)
 

@@ -20,13 +20,15 @@ import {
 } from '../demo/live-demo.ts'
 
 const liveToken = process.env.NOTION_API_TOKEN ?? process.env.NOTION_TOKEN
-const liveDemoEnabled = process.env.NOTION_DATASOURCE_SYNC_LIVE === '1' && liveToken !== undefined
+const expectedDemoPageId = process.env.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID?.trim() ?? ''
+const liveDemoEnabled =
+  process.env.NOTION_DATASOURCE_SYNC_LIVE === '1' &&
+  liveToken !== undefined &&
+  expectedDemoPageId !== ''
 const liveExistingBodyRef =
   process.env.NOTION_DATASOURCE_SYNC_EXISTING_DATABASE_URL ??
   process.env.NOTION_DATASOURCE_SYNC_EXISTING_DATA_SOURCE_ID
 const notionVersion = '2026-03-11'
-const expectedDemoPageId =
-  process.env.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID ?? notionDatasourceSyncDemoManifest.pageId
 
 const normalizeNotionId = (id: string): string => id.replaceAll('-', '').toLowerCase()
 

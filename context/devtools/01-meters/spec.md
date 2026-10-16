@@ -690,6 +690,50 @@ reason. DPR changes do not change the time horizon. Token resolution is a host
 adapter; devbar maps StyleX tokens to `MeterTheme` or semantic CSS variables.
 Meters imports no StyleX and does no per-frame `getComputedStyle`.
 
+### Shared numeric plot domains
+
+`@overeng/meters/canvas` exports `PlotRange = { readonly lo: number; readonly hi: number }`,
+`plotRange({ history, nominalMax, mode, minSpanRatio? })`, and
+`formatRange({ range, unit })`. History is `readonly (number | undefined)[]`;
+missing and nonfinite observations do not participate in the range. Both scale
+options must be finite and positive (`minSpanRatio` defaults to `0.1`).
+Invalid scale options or custom bounds throw `TypeError`, consistently with
+the other pure canvas helpers.
+
+| Mode / input                    | Domain                                                                                            |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Empty or no finite observations | `[0, ceil(nominalMax)]`                                                                           |
+| `fixed`                         | `[min(0, minimum), ceil(max(nominalMax, maximum))]`                                               |
+| `auto`, finite observations     | Span `max(maximum - minimum, nominalMax * minSpanRatio) * 1.15`, centered on the extrema midpoint |
+| Nonnegative auto history        | Clamp the lower endpoint to zero, then add the span                                               |
+| Negative or mixed auto history  | Retain both extrema without a zero clamp                                                          |
+
+The fixed upper bound rounds to a whole value in the input unit, not a
+second nice-step scheme. Padding arithmetic saturates at finite numeric limits;
+extrema always remain included. At large constant values where padding rounds
+away, use the zero-inclusive domain instead. Bounds remain finite and strictly
+increasing even for opposite `Number.MAX_VALUE` extrema or subnormal scales.
+`formatRange` validates finite increasing bounds and joins the independently
+`formatMeterValue`-formatted endpoints with an en dash, including each endpoint's
+unit (for example `0 ms–302 ms` or `0 B–1.0 KiB`).
+
+All numeric block builders accept `range?: 'auto' | 'fixed' | PlotRange`,
+`nominalMax?: number` (default `1`, in series units), `minSpanRatio?: number`,
+and `marks?: readonly number[]`. Omitted `range` preserves the original
+zero-baseline scale and default rendering. Explicit policies use the shared
+range calculation on the values drawn in the current time window (held gauge
+values or timestamp-bin event/counter aggregates); they do not rescale the
+formatted current reading. Aggregate overflow saturates at finite limits for
+explicit policies. Custom bounds must be finite with `hi > lo`; out-of-domain
+bars are clipped to the chart, never into its header. Explicit-domain drawing
+normalizes endpoints before subtraction to avoid overflowing the span.
+
+Marks use the same original series units and domain as bars, not formatted
+display units. Only finite marks within the inclusive plotted domain draw:
+one CSS-pixel horizontal line in `theme.border`, with no label or acquisition
+behavior. Hosts use the same helper/domain for captions and axes; custom bounds
+can be passed unchanged to both `formatRange` and a block.
+
 The canvas is decorative when equivalent labelled DOM outputs are present.
 Text publication is not an aria-live event every frame. Each block has a DOM
 focus target covering the same rectangle used for pointer hit testing. Focus

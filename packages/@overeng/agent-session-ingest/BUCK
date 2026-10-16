@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/agent-session-ingest/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d15464868261a4f7e460b79330f36a73c62dade536610070f061f1304c96771d
+# Semantic fingerprint: sha256:6252ba12e6ecc478ed7dfbac64f7f6b7768836b2e9667d9f3efaa665e0a98edd
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -127,6 +127,55 @@ package_view(
     workspace_dependency_views = {
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_agent_session_ingest_6dae38a37f1d",
+    files = {
+        "package.json": "package.json",
+        "src/adapters.integration-test-helpers.ts": "src/adapters.integration-test-helpers.ts",
+        "src/adapters/claude.ts": "src/adapters/claude.ts",
+        "src/adapters/codex.ts": "src/adapters/codex.ts",
+        "src/adapters/jsonl.ts": "src/adapters/jsonl.ts",
+        "src/adapters/opencode.ts": "src/adapters/opencode.ts",
+        "src/claude.integration.test.ts": "src/claude.integration.test.ts",
+        "src/codex.integration.test.ts": "src/codex.integration.test.ts",
+        "src/errors.ts": "src/errors.ts",
+        "src/files/append-only.ts": "src/files/append-only.ts",
+        "src/files/content-version.ts": "src/files/content-version.ts",
+        "src/files/mutable.ts": "src/files/mutable.ts",
+        "src/ingest.unit.test.ts": "src/ingest.unit.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/normalized.unit.test.ts": "src/normalized.unit.test.ts",
+        "src/normalized/mcp-tool-name.ts": "src/normalized/mcp-tool-name.ts",
+        "src/normalized/mod.ts": "src/normalized/mod.ts",
+        "src/normalized/schema.ts": "src/normalized/schema.ts",
+        "src/normalized/translate-claude.ts": "src/normalized/translate-claude.ts",
+        "src/normalized/translate-codex.ts": "src/normalized/translate-codex.ts",
+        "src/normalized/translate-opencode.ts": "src/normalized/translate-opencode.ts",
+        "src/opencode.integration.test.ts": "src/opencode.integration.test.ts",
+        "src/schema/core.ts": "src/schema/core.ts",
+        "src/services.integration.test.ts": "src/services.integration.test.ts",
+        "src/services/CheckpointStore.ts": "src/services/CheckpointStore.ts",
+        "src/services/SessionIngestor.ts": "src/services/SessionIngestor.ts",
+        "src/watch.ts": "src/watch.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",

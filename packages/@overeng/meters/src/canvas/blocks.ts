@@ -146,9 +146,102 @@ export const formatMeterValue = (options: {
   if (format === 'number' || options.unit === 'count') return number
   return `${number}${format === 'compact' ? '' : ' '}${unit}`
 }
+/** Bounds in the same units as plotted values. */
+export interface PlotRange {
+  readonly lo: number
+  readonly hi: number
+}
+const validateScale = (options: {
+  readonly nominalMax: number
+  readonly minSpanRatio: number
+}): void => {
+  if (
+    Number.isFinite(options.nominalMax) === false ||
+    options.nominalMax <= 0 ||
+    Number.isFinite(options.minSpanRatio) === false ||
+    options.minSpanRatio <= 0
+  )
+    throw new TypeError('Plot scale and minimum span ratio must be finite and positive')
+}
+const validateRange = (range: PlotRange): void => {
+  if (
+    Number.isFinite(range.lo) === false ||
+    Number.isFinite(range.hi) === false ||
+    range.hi <= range.lo
+  )
+    throw new TypeError('Plot bounds must be finite and increasing')
+}
+// The renderer reuses its target; scanning samples never allocates a history array per frame.
+const resolveRange = (options: {
+  readonly minimum: number
+  readonly maximum: number
+  readonly nominalMax: number
+  readonly minSpanRatio: number
+  readonly mode: 'auto' | 'fixed'
+  readonly target: { lo: number; hi: number }
+}): void => {
+  const { minimum, maximum, nominalMax, minSpanRatio, target } = options
+  if (maximum === -Infinity || options.mode === 'fixed') {
+    target.lo = Math.min(0, minimum)
+    target.hi = Math.ceil(Math.max(nominalMax, maximum))
+    return
+  }
+  const span = Math.min(
+    Number.MAX_VALUE,
+    Math.max(maximum - minimum, nominalMax * minSpanRatio) * 1.15,
+  )
+  const midpoint = minimum / 2 + maximum / 2
+  const lo = midpoint - span / 2
+  target.lo =
+    minimum >= 0
+      ? Math.max(0, Math.min(minimum, lo))
+      : Math.max(-Number.MAX_VALUE, Math.min(minimum, lo))
+  target.hi = Math.min(Number.MAX_VALUE, Math.max(maximum, target.lo + span))
+  // Padding can be smaller than one ULP at a large constant sample.
+  if (target.hi <= target.lo) {
+    target.lo = Math.min(0, minimum)
+    target.hi = Math.max(nominalMax, maximum)
+  }
+}
+/** Window range: whole-unit fixed upper bound, or a padded auto range with a minimum span. */
+export const plotRange = (options: {
+  readonly history: readonly (number | undefined)[]
+  readonly nominalMax: number
+  readonly mode: 'auto' | 'fixed'
+  readonly minSpanRatio?: number
+}): PlotRange => {
+  const minSpanRatio = options.minSpanRatio ?? 0.1
+  validateScale({ nominalMax: options.nominalMax, minSpanRatio })
+  let minimum = Infinity
+  let maximum = -Infinity
+  for (const value of options.history) {
+    if (value === undefined || Number.isFinite(value) === false) continue
+    minimum = Math.min(minimum, value)
+    maximum = Math.max(maximum, value)
+  }
+  const target = { lo: 0, hi: 1 }
+  resolveRange({ ...options, minSpanRatio, minimum, maximum, target })
+  return target
+}
+/** Format both endpoints with the same formatter used by meter values. */
+export const formatRange = (options: {
+  readonly range: PlotRange
+  readonly unit: Unit
+}): string => {
+  validateRange(options.range)
+  return `${formatMeterValue({ value: options.range.lo, unit: options.unit })}–${formatMeterValue({ value: options.range.hi, unit: options.unit })}`
+}
+/** Optional plot policy; omitted range retains the original zero-baseline scaling. */
+export interface PlotOptions {
+  readonly range?: 'auto' | 'fixed' | PlotRange
+  /** Scale in series units; defaults to 1. */
+  readonly nominalMax?: number
+  readonly minSpanRatio?: number
+  readonly marks?: readonly number[]
+}
 const noValues: readonly number[] = []
 /** Options shared by every built-in block builder. */
-export interface BlockOptions<TValue> {
+export interface BlockOptions<TValue> extends PlotOptions {
   readonly id: string
   readonly series: Series<TValue>
   /** Compact label; the full series label remains in the accessible description and tooltip. */
@@ -168,6 +261,19 @@ export const numericBlock = <TValue>(
     readonly staleAfterMs?: number
   },
 ): CanvasBlockSpec => {
+  const nominalMax = options.nominalMax ?? 1
+  const minSpanRatio = options.minSpanRatio ?? 0.1
+  validateScale({ nominalMax, minSpanRatio })
+  if (typeof options.range === 'object') validateRange(options.range)
+  const resolvedRange = { lo: 0, hi: 1 }
+  const rangeState = {
+    minimum: Infinity,
+    maximum: -Infinity,
+    nominalMax,
+    minSpanRatio,
+    mode: typeof options.range === 'string' ? options.range : 'fixed',
+    target: resolvedRange,
+  } satisfies Parameters<typeof resolveRange>[0]
   const total = (value: TValue): number => {
     const values = options.values(value)
     if (typeof values === 'number') return values
@@ -211,50 +317,112 @@ export const numericBlock = <TValue>(
         height: Math.max(1, rect.height - 20),
       }
       const bins = Math.max(1, Math.floor(chart.width))
+      if (options.range !== undefined) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(chart.x, chart.y, chart.width, chart.height)
+        ctx.clip()
+      }
       const binDurationMs = historyMs / bins
       const startMs = nowMs - historyMs
-      let maximum = 1
-      let minimum = 0
+      let maximum = options.range === undefined ? 1 : -Infinity
+      let minimum = options.range === undefined ? 0 : Infinity
       let aggregate = 0
       let aggregateBin = -1
       let priorValue: number | undefined
-      for (let cursor = 0; cursor < history.length; cursor++) {
-        const sample = history.at(cursor)
-        if (sample?._tag !== 'Value') {
-          priorValue = undefined
-          continue
-        }
-        const value = total(sample.value)
-        const increment =
-          options.mode === 'Counter'
-            ? priorValue === undefined
-              ? 0
-              : Math.max(0, value - priorValue)
-            : value
-        priorValue = value
-        if (sample.atMs < startMs) {
-          if (options.mode === undefined || options.mode === 'Gauge') {
-            maximum = Math.max(1, value)
-            minimum = Math.min(0, value)
+      if (options.range !== undefined && (options.mode === 'Event' || options.mode === 'Counter')) {
+        // Match completed drawing bins, including held zero bins, but not
+        // bins whose newest observation is unavailable or a gap.
+        let index = 0
+        let previous = history.at(0)
+        for (let bin = 0; bin < bins; bin++) {
+          const atMs = startMs + ((bin + 1) * historyMs) / bins
+          let eventTotal = 0
+          while (index < history.length) {
+            const sample = history.at(index)
+            if (sample === undefined || sample.atMs > atMs) break
+            previous = sample
+            if (sample._tag === 'Value') {
+              const value = total(sample.value)
+              const increment =
+                options.mode === 'Counter'
+                  ? priorValue === undefined
+                    ? 0
+                    : Math.max(0, value - priorValue)
+                  : value
+              if (sample.atMs > atMs - binDurationMs) eventTotal += increment
+              eventTotal = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, eventTotal))
+              priorValue = value
+            } else priorValue = undefined
+            index++
           }
-          continue
+          if (
+            previous?._tag !== 'Value' ||
+            previous.atMs > atMs ||
+            Number.isFinite(eventTotal) === false
+          )
+            continue
+          minimum = Math.min(minimum, eventTotal)
+          maximum = Math.max(maximum, eventTotal)
         }
-        const bin = Math.max(
-          0,
-          Math.min(bins - 1, Math.ceil((sample.atMs - startMs) / binDurationMs) - 1),
-        )
-        if (aggregateBin !== bin) {
-          aggregate = 0
-          aggregateBin = bin
+      } else {
+        for (let cursor = 0; cursor < history.length; cursor++) {
+          const sample = history.at(cursor)
+          if (sample?._tag !== 'Value') {
+            priorValue = undefined
+            continue
+          }
+          const value = total(sample.value)
+          if (Number.isFinite(value) === false) {
+            priorValue = undefined
+            continue
+          }
+          const increment =
+            options.mode === 'Counter'
+              ? priorValue === undefined
+                ? 0
+                : Math.max(0, value - priorValue)
+              : value
+          priorValue = value
+          if (sample.atMs < startMs) {
+            if (options.mode === undefined || options.mode === 'Gauge') {
+              maximum = options.range === undefined ? Math.max(1, value) : value
+              minimum = options.range === undefined ? Math.min(0, value) : value
+            }
+            continue
+          }
+          const bin = Math.max(
+            0,
+            Math.min(bins - 1, Math.ceil((sample.atMs - startMs) / binDurationMs) - 1),
+          )
+          if (aggregateBin !== bin) {
+            aggregate = 0
+            aggregateBin = bin
+          }
+          aggregate += increment
+          if (options.range !== undefined)
+            aggregate = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, aggregate))
+          maximum = Math.max(
+            maximum,
+            options.mode === 'Event' || options.mode === 'Counter' ? aggregate : value,
+          )
+          if (options.range !== undefined || options.mode === undefined || options.mode === 'Gauge')
+            minimum = Math.min(minimum, value)
         }
-        aggregate += increment
-        maximum = Math.max(
-          maximum,
-          options.mode === 'Event' || options.mode === 'Counter' ? aggregate : value,
-        )
-        if (options.mode === undefined || options.mode === 'Gauge')
-          minimum = Math.min(minimum, value)
       }
+      if (typeof options.range === 'object') {
+        minimum = options.range.lo
+        maximum = options.range.hi
+      } else if (options.range !== undefined) {
+        rangeState.minimum = minimum
+        rangeState.maximum = maximum
+        resolveRange(rangeState)
+        minimum = resolvedRange.lo
+        maximum = resolvedRange.hi
+      }
+      // Normalize first so opposite finite extrema cannot overflow the denominator.
+      const scale = options.range === undefined ? 1 : Math.max(Math.abs(minimum), Math.abs(maximum))
+      const span = maximum / scale - minimum / scale
       let previous = history.at(0)
       let previousValue: number | undefined
       let index = 0
@@ -274,6 +442,8 @@ export const numericBlock = <TValue>(
                   : Math.max(0, value - previousValue)
                 : value
             if (sample.atMs > atMs - binDurationMs) eventTotal += increment
+            if (options.range !== undefined)
+              eventTotal = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, eventTotal))
             previousValue = value
           } else previousValue = undefined
           index++
@@ -291,11 +461,20 @@ export const numericBlock = <TValue>(
           options.mode === 'Event' || options.mode === 'Counter'
             ? eventTotal
             : options.values(previous.value)
-        let bottom = chart.y + (chart.height * maximum) / (maximum - minimum)
+        let bottom = chart.y + (chart.height * (maximum / scale)) / span
+        let stacked = 0
         const partCount = typeof parts === 'number' ? 1 : parts.length
         for (let part = 0; part < partCount; part++) {
           const value = typeof parts === 'number' ? parts : (parts[part] ?? 0)
-          const height = (value / (maximum - minimum)) * chart.height
+          if (Number.isFinite(value) === false) continue
+          let height = (value / scale / span) * chart.height
+          if (options.range !== undefined) {
+            const baseline = Math.max(minimum, Math.min(maximum, stacked)) / scale
+            stacked = Math.max(-Number.MAX_VALUE, Math.min(Number.MAX_VALUE, stacked + value))
+            const top = Math.max(minimum, Math.min(maximum, stacked)) / scale
+            bottom = chart.y + chart.height * ((maximum / scale - baseline) / span)
+            height = chart.height * ((top - baseline) / span)
+          }
           ctx.fillStyle =
             stale === true
               ? theme.muted
@@ -308,6 +487,15 @@ export const numericBlock = <TValue>(
           ctx.fillRect(x, bottom, chart.width / bins, height)
         }
       }
+      for (const mark of options.marks ?? noValues) {
+        if (Number.isFinite(mark) === false || mark < minimum || mark > maximum) continue
+        const y = Math.min(
+          chart.y + chart.height - 1,
+          chart.y + chart.height * ((maximum / scale - mark / scale) / span),
+        )
+        ctx.fillStyle = theme.border
+        ctx.fillRect(chart.x, y, chart.width, 1)
+      }
       for (let cursor = 0; cursor < history.length; cursor++) {
         const sample = history.at(cursor)
         if (sample?._tag !== 'Gap') continue
@@ -316,6 +504,7 @@ export const numericBlock = <TValue>(
         ctx.fillStyle = theme.gap
         ctx.fillRect(x, chart.y, Math.max(1, end - x), chart.height)
       }
+      if (options.range !== undefined) ctx.restore()
       ctx.font = theme.font
       ctx.textBaseline = 'top'
       ctx.fillStyle = theme.muted

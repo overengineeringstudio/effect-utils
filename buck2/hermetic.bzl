@@ -106,11 +106,19 @@ def _ts_action_launcher(ctx, sandbox, command, inputs, outputs):
     ], hidden = inputs + sandbox.inputs + [output.as_output() for output in outputs])
 
 
-def ts_action(ctx, arguments, inputs, outputs, tools = [], cacheable = True, **kwargs):
-    """Runs directory-output TS actions; Linux bind argv is fixed at analysis."""
+def ts_action(ctx, arguments, inputs, outputs, tool_closures = {}, tool_inputs = [], cacheable = True, **kwargs):
+    """Runs directory-output TS actions; Linux bind argv is fixed at analysis.
+
+    `tool_closures` maps each action tool beyond Bun to the complete store
+    closure its consuming rule's toolchain dependency attests; `tool_inputs`
+    are that toolchain's capability artifacts.
+    """
     status = ts_action_admission_status(ctx)
     kwargs["local_only"] = True
     sandbox = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo]
+    for tool_id in sorted(tool_closures.keys()):
+        if not tool_closures[tool_id]:
+            fail("TS sandbox: {} capability closure missing; unsandboxed execution is forbidden".format(tool_id))
     if status == "darwin-unsandboxed":
         kwargs["category"] = kwargs["category"] + "_darwin_unsandboxed"
         # Unsupported admission is not refusal to execute the native macOS lane.
@@ -118,7 +126,7 @@ def ts_action(ctx, arguments, inputs, outputs, tools = [], cacheable = True, **k
             ctx,
             sandbox,
             cmd_args(["exec", cmd_args(arguments, quote = "shell")], delimiter = " "),
-            inputs,
+            inputs + tool_inputs,
             outputs,
         )
         hermetic_action(ctx, command, cacheable = False, **kwargs)
@@ -126,8 +134,10 @@ def ts_action(ctx, arguments, inputs, outputs, tools = [], cacheable = True, **k
     if not sandbox.bubblewrap:
         fail("TS sandbox: declared Bubblewrap capability missing; unsandboxed execution is forbidden")
     closure = {}
-    for tool_id in ["bun"] + tools:
-        for path in sandbox.closure_paths[tool_id]:
+    for path in sandbox.closure_paths["bun"]:
+        closure[path] = None
+    for tool_id in sorted(tool_closures.keys()):
+        for path in tool_closures[tool_id]:
             closure[path] = None
     bind_args = cmd_args([
         "exec",
@@ -157,5 +167,7 @@ def ts_action(ctx, arguments, inputs, outputs, tools = [], cacheable = True, **k
         "--setenv", "PWD", '"$PWD"',
         "--", cmd_args(arguments, quote = "shell"),
     )
-    command = _ts_action_launcher(ctx, sandbox, bind_args, inputs, outputs)
+    # Tool capability artifacts stay hidden launcher inputs, as sandbox inputs are;
+    # their store closures are the read-only binds above.
+    command = _ts_action_launcher(ctx, sandbox, bind_args, inputs + tool_inputs, outputs)
     hermetic_action(ctx, command, cacheable = cacheable, **kwargs)

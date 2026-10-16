@@ -1,6 +1,3 @@
-pub mod fingerprint;
-mod fingerprint_admission;
-
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

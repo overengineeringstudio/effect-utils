@@ -1,4 +1,4 @@
-use buck2_tool_core::fingerprint::{fingerprint, fingerprint_input_root, LinkOwner};
+use buck2_fingerprint::{fingerprint, fingerprint_input_root, LinkOwner};
 use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::PathBuf;

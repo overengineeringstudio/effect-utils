@@ -27,6 +27,7 @@ const composition = catalog.compose({
   mode: 'install',
   workspace: workspaceMember({ memberPath: 'packages/@overeng/gh-ci-utils' }),
   dependencies: {
+    external: catalog.pick('yauzl'),
     workspace: [ciToolsPkg, otelContractPkg, tuiReactPkg, utilsPkg],
     liveWorkspaceLinks: ['@overeng/ci-tools'],
   },
@@ -41,6 +42,7 @@ const composition = catalog.compose({
       '@types/node',
       '@types/react',
       '@types/react-reconciler',
+      '@types/yauzl',
       '@vitejs/plugin-react',
       'storybook',
       'typescript',

@@ -14,14 +14,24 @@ export {
   darkMeterTheme,
   fiberBlock,
   formatMeterValue,
+  formatRange,
   frameBlock,
   heapBlock,
   jankBlock,
   lightMeterTheme,
   numberBlock,
   numericBlock,
+  plotRange,
 } from './blocks.ts'
-export type { BlockOptions, BlockReader, CanvasBlockSpec, DrawInput, MeterTheme } from './blocks.ts'
+export type {
+  BlockOptions,
+  BlockReader,
+  CanvasBlockSpec,
+  DrawInput,
+  MeterTheme,
+  PlotOptions,
+  PlotRange,
+} from './blocks.ts'
 export { fitText, historyX, layoutBlockText, layoutStrip } from './layout.ts'
 export type { BlockTextLayout, Rect, StripLayout, TextRun } from './layout.ts'
 

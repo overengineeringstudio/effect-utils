@@ -91,11 +91,11 @@ rec {
         # Compiled-executable products imported for this host platform (compiled.nix).
         buckCompiledProducts = import ./nix/buck2-products/compiled.nix {
           inherit
+            pkgs
             mkBuckProductFromSource
             pnpmArchives
             ;
           capabilities = buck2Capabilities;
-          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           repositoryRoot = ./.;
         };
         viteRuntimeFixture =

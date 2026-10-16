@@ -60,12 +60,10 @@ export type PlatformGatedManifest = {
   readonly packages: readonly string[]
 }
 
-/** The complete launcher configuration one `package_*` action encodes in its argv. */
-export type PackageCommand = {
-  readonly mode: 'exec' | 'check' | 'native-check' | 'build-dir' | 'bundle'
+/** Shared launcher configuration encoded by every `package_*` action. */
+type PackageCommandOptions = {
   readonly runtime: string
   readonly packageTree: string
-  readonly fingerprintTool: string
   readonly readRoots: readonly string[]
   readonly entrypoint: string
   readonly output: string | undefined
@@ -84,6 +82,16 @@ export type PackageCommand = {
   readonly kind: 'cli' | 'module'
   readonly treeShaking: boolean
 }
+
+/** Bundles never acquire the source-mutation guard's executable capability. */
+export type PackageCommand = PackageCommandOptions &
+  (
+    | { readonly mode: 'bundle'; readonly fingerprintTool?: never }
+    | {
+        readonly mode: 'exec' | 'check' | 'native-check' | 'build-dir'
+        readonly fingerprintTool: string
+      }
+  )
 
 const fail: (message: string) => never = (message) => {
   throw new Error(`package command runner: ${message}`)
@@ -200,6 +208,7 @@ export const parsePackageCommand = (argv: readonly string[]): PackageCommand => 
       if (value.length === 0 || root === sep) fail(`invalid declared read root: ${value}`)
       readRoots.push(root)
     } else if (flag === '--fingerprint-tool') {
+      if (rawMode === 'bundle') fail('bundle does not accept --fingerprint-tool')
       if (fingerprintTool !== undefined) fail('duplicate --fingerprint-tool')
       fingerprintTool = requireFingerprintTool(value)
     } else if (flag === '--env') {
@@ -235,11 +244,9 @@ export const parsePackageCommand = (argv: readonly string[]): PackageCommand => 
   if (rawMode === 'bundle' && (targetIdentity === undefined || targetIdentity.length === 0)) {
     fail('bundle requires the producing target identity')
   }
-  return {
-    mode: rawMode,
+  const options: PackageCommandOptions = {
     runtime,
     packageTree,
-    fingerprintTool: fingerprintTool ?? fail('missing --fingerprint-tool'),
     readRoots: [...new Set(readRoots)].toSorted(),
     entrypoint,
     output,
@@ -258,6 +265,13 @@ export const parsePackageCommand = (argv: readonly string[]): PackageCommand => 
     treeShaking,
     targetIdentity,
   }
+  return rawMode === 'bundle'
+    ? { ...options, mode: rawMode }
+    : {
+        ...options,
+        mode: rawMode,
+        fingerprintTool: fingerprintTool ?? fail('missing --fingerprint-tool'),
+      }
 }
 
 let child: Bun.Subprocess | undefined
@@ -1002,7 +1016,9 @@ const planPackageLaunch = ({
   }
 }
 
-const runBundle = async (command: PackageCommand): Promise<void> => {
+const runBundle = async (
+  command: Extract<PackageCommand, { readonly mode: 'bundle' }>,
+): Promise<void> => {
   const output = resolve(command.output ?? fail('bundle output is missing'))
   const descriptorPath = resolve(command.descriptor ?? fail('bundle descriptor is missing'))
   const packageTree = resolve(command.packageTree)

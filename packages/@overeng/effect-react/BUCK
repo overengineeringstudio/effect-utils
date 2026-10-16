@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-react/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:f00030d0ac1167725e7271c9cf0ab0146e67c4b6a434145dfca8a557e150cd57
+# Semantic fingerprint: sha256:435672ef5d6c1197fc8b3bccb165b3b6f795190f51a4df778e1cc3d20674124d
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -92,6 +92,37 @@ package_view(
     },
     workspace_dependency_views = {
         "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_effect_react_111d6e63d407",
+    files = {
+        "package.json": "package.json",
+        "src/context.tsx": "src/context.tsx",
+        "src/effect-button.tsx": "src/effect-button.tsx",
+        "src/external-store.ts": "src/external-store.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/progress-reporter.ts": "src/progress-reporter.ts",
+        "src/react-aria/EffectButton.stories.tsx": "src/react-aria/EffectButton.stories.tsx",
+        "src/react-aria/EffectButton.tsx": "src/react-aria/EffectButton.tsx",
+        "src/react-aria/mod.ts": "src/react-aria/mod.ts",
+        "test/external-store.test.tsx": "test/external-store.test.tsx",
+        "test/runtime-baseline.test.tsx": "test/runtime-baseline.test.tsx",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/otel-contract/package.json": "//packages/@overeng/otel-contract:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",

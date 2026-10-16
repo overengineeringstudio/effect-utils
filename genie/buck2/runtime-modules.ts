@@ -12,6 +12,11 @@ import {
  * `Cannot find module`. These declarations are the complete relative-import
  * closure of each runner; `buck2-runtime-closure.unit.test.ts` re-derives the
  * closure from the sources and fails when the two disagree.
+ *
+ * Dependency-free runtime trees dereference their enumerated modules into regular
+ * files: Buck's copied_dir preserves source symlinks, which may point into an
+ * immutable external rules cell that is not a sandbox read root. Explicit file
+ * copies keep imports inside the declared tree without exposing ambient siblings.
  */
 
 /** One runner and the exact set of repository sources staged alongside it. */
@@ -24,8 +29,8 @@ export type Buck2StagedRuntime = {
   readonly modules: readonly string[]
   /** Declared dependency view staged for runners importing third-party modules. */
   readonly nodeModules?: string
-  /** Multi-file closures use a filegroup; standalone modules use export_file. */
-  readonly staging: 'export_file' | 'filegroup'
+  /** Sandboxed module trees dereference sources; dependency views retain their links. */
+  readonly staging: 'export_file' | 'filegroup' | 'runtime_modules'
 }
 
 const buck2ToolsPackagePath = 'packages/@overeng/buck2-tools'
@@ -38,7 +43,7 @@ export const buck2StagedRuntimes = [
     label: buck2ToolsLabel('package_tree_runtime'),
     entry: runnerSource('package-tree.ts'),
     modules: [runnerSource('package-tree.ts'), runnerSource('real-path.ts')],
-    staging: 'filegroup',
+    staging: 'runtime_modules',
   },
   {
     label: buck2ToolsLabel('package_command_runtime'),
@@ -62,7 +67,7 @@ export const buck2StagedRuntimes = [
       runnerSource('test-verdict.ts'),
       runnerSource('typescript-runner.ts'),
     ],
-    staging: 'filegroup',
+    staging: 'runtime_modules',
   },
   {
     label: buck2ToolsLabel('typescript-runner.ts'),
@@ -113,15 +118,15 @@ const renderRuntime = (runtime: Buck2StagedRuntime): string => {
       ? ''
       : `\n        "node_modules": ${JSON.stringify(runtime.nodeModules)},`
   const filesName = runtime.nodeModules === undefined ? name : `${name}_files`
-  const filegroup = `filegroup(
+  const tree = `${runtime.staging}(
     name = ${JSON.stringify(filesName)},
     srcs = {
 ${sources}${nodeModules}
     },
     visibility = ["PUBLIC"],
 )`
-  if (runtime.nodeModules === undefined) return filegroup
-  return `${filegroup}
+  if (runtime.nodeModules === undefined) return tree
+  return `${tree}
 
 package_command_runtime(
     name = ${JSON.stringify(name)},
@@ -137,6 +142,7 @@ export const withBuck2ToolsRuntimes = <TData>(projection: GenieOutput<TData>): G
     ...projection,
     stringify: (context) =>
       `load("//buck2/package_tools.bzl", "package_command_runtime")
+load("//buck2:materialization.bzl", "runtime_modules")
 ${projection.stringify(context)}
 ${buck2StagedRuntimes.map(renderRuntime).join('\n\n')}
 `,

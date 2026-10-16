@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils-storybook/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:cff9de2c9db5d4600935d938782673415d9fc73d9dfe2d9b5afd84f1191d1b71
+# Semantic fingerprint: sha256:f12f139736817da7af50f7888920e68a70849aad02df0b47f12c513c6955a388
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -127,6 +127,52 @@ package_view(
     workspace_dependency_views = {
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_utils_storybook_ad47b984871c",
+    files = {
+        "package.json": "package.json",
+        "src/builder-vite-patch.unit.test.ts": "src/builder-vite-patch.unit.test.ts",
+        "src/config/mod.ts": "src/config/mod.ts",
+        "src/config/mod.unit.test.ts": "src/config/mod.unit.test.ts",
+        "src/gate/annotations.ts": "src/gate/annotations.ts",
+        "src/gate/cli.ts": "src/gate/cli.ts",
+        "src/gate/completion-reporter.ts": "src/gate/completion-reporter.ts",
+        "src/gate/constants.ts": "src/gate/constants.ts",
+        "src/gate/mod.ts": "src/gate/mod.ts",
+        "src/gate/portable-stories.ts": "src/gate/portable-stories.ts",
+        "src/gate/portable-stories.unit.test.ts": "src/gate/portable-stories.unit.test.ts",
+        "src/gate/project-annotations.ts": "src/gate/project-annotations.ts",
+        "src/gate/project-annotations.unit.test.ts": "src/gate/project-annotations.unit.test.ts",
+        "src/gate/project.ts": "src/gate/project.ts",
+        "src/gate/project.unit.test.ts": "src/gate/project.unit.test.ts",
+        "src/gate/run.integration.test.ts": "src/gate/run.integration.test.ts",
+        "src/gate/run.ts": "src/gate/run.ts",
+        "src/gate/run.unit.test.ts": "src/gate/run.unit.test.ts",
+        "src/gate/settle.ts": "src/gate/settle.ts",
+        "src/gate/settle.unit.test.ts": "src/gate/settle.unit.test.ts",
+        "src/gate/setup.ts": "src/gate/setup.ts",
+        "src/gate/virtual-modules.d.ts": "src/gate/virtual-modules.d.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/opentui-stub.ts": "src/opentui-stub.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",

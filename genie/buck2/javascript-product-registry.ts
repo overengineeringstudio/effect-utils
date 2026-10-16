@@ -100,7 +100,7 @@ export const javaScriptProductRegistry = {
       externalCapabilities: ['opentui-core-native'],
       kind: 'cli',
       output: 'notion-db.js',
-      packageTree: '//packages/@overeng/notion-datasource-sync:package_tree',
+      packageTree: '//packages/@overeng/notion-datasource-sync:product_package_tree',
       productName: 'notion-db-runtime',
       smokeArgs: ['--help'],
       smokeRuntime: 'node',

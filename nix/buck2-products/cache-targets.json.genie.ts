@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 
+import { productBuildCapabilities, productLinuxBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
+
 import {
   assertPublishedPackageClosure,
   type PublishedPackageManifest,
@@ -48,6 +50,7 @@ const packageProducts = [
   '@overeng/ai-gateway-conformance',
   '@overeng/ai-gateway-edge',
   '@overeng/content-address',
+  '@overeng/data-graph',
   '@overeng/devbar',
   '@overeng/effect-ai-claude-cli',
   '@overeng/effect-ai-gateway',
@@ -138,7 +141,11 @@ const buckProductSourceEntries = [
     version: '0.0.0',
   })),
   ...packageEntries,
-].toSorted((left, right) => left.name.localeCompare(right.name))
+]
+  .map((product) => ({ ...product, buildCapabilities: productBuildCapabilities(product),
+    linuxBuildCapabilities: productLinuxBuildCapabilities(product),
+  }))
+  .toSorted((left, right) => left.name.localeCompare(right.name))
 
 export default projectionArtifact.json({
   schemaVersion: 1,

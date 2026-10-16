@@ -150,6 +150,18 @@ products have dynamic runtimes. Genie wrappers bind
 `GENIE_TYPESCRIPT_API_SERVER` to that same imported package; the reusable
 observability module uses the imported `otelite` for capture.
 
+The TypeScript server's `package_tree_product_executable` consumes
+`PnpmDeclaredClosureInfo` from Genie's lock-projected `external_view_` target,
+not the workspace `:package_tree` or its shared `:node_modules` view. The
+external-only view retains the full pinned external closure and platform gates
+but declares no workspace links. `package_anchor = "typescript"` is relative
+to its `node_modules`; the executable and support-copy actions declare every
+read root needed to resolve the pinned store links. Extraction copies the
+platform `@typescript` executable and support files without compiling workspace
+declarations or invoking effect-tsgo/fingerprint. Pinned archives, Bun,
+action-env, product provenance and native packaging/validation remain required;
+the npm package views, emit, typecheck and archive targets are unchanged.
+
 Native shell imports instead use the source-addressed provenance contract
 above. Their generated `sourcePaths` declare the Rust crate, workspace profile
 and lock, and Reindeer graph; the TypeScript server derives its recursive pnpm

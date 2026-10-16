@@ -2,6 +2,10 @@
 //! Instability errors include changed-field names and full before/after metadata;
 //! Read-only shared files tolerate link-count ctime churn, but still prove bytes,
 //! inode identity, modification time, size, and unchanged permissions.
+//! This implementation is isolated from the shared archive/product packaging helpers.
+//! Npm emission/typecheck consumers still use this crate for source-mutation proofs.
+mod fingerprint_admission;
+
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::ffi::OsString;

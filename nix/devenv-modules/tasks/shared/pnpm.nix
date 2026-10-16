@@ -136,9 +136,9 @@ let
   # derivation here would force the module's `pkgs` argument while devenv is
   # still assembling `_module.args`, causing an evaluation recursion.
   pnpmLockMutatorOverrideVersion =
-    if pnpmLockMutatorPkg == null then "12.11.2" else pnpmLockMutatorPkg.version or "unknown";
+    if pnpmLockMutatorPkg == null then "12.7.0" else pnpmLockMutatorPkg.version or "unknown";
   pnpmLockMutatorOverrideIsSupported =
-    pnpmLockMutatorPkg == null || pnpmLockMutatorOverrideVersion == "12.11.2";
+    pnpmLockMutatorPkg == null || pnpmLockMutatorOverrideVersion == "12.7.0";
 
   flock = "${pkgs.flock}/bin/flock";
   installFlagsString = lib.escapeShellArgs installFlags;
@@ -906,7 +906,7 @@ in
 assert lib.assertMsg (builtins.isBool globalVirtualStore) "globalVirtualStore must be a Boolean";
 assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
   pnpm lock mutator version ${pnpmLockMutatorOverrideVersion} is not supported.
-  Set a derivation versioned as the verified-safe pnpm 12.11.2 pin;
+  Set a derivation versioned as the verified-safe pnpm 12.7.0 pin;
   other versions require explicit verification and an allowlist change.
 '';
 assert lib.assertMsg (!sourceInputPathsOverlap) "sourceInputPaths entries must not overlap";

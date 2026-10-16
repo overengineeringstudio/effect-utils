@@ -5,6 +5,7 @@
  */
 import * as Cli from 'effect/cli'
 
+import { artifactsCommand } from './node/commands/artifacts.ts'
 import { authCommand } from './node/commands/auth.ts'
 import { inspectCommand } from './node/commands/inspect.ts'
 import { logsCommand } from './node/commands/logs.ts'
@@ -18,6 +19,7 @@ export const ghCiUtilsCommand = Cli.Command.make('gh-ci-utils').pipe(
   Cli.Command.withSubcommands([
     statusCommand,
     tracesCommand,
+    artifactsCommand,
     logsCommand,
     runCommand,
     rerunCommand,

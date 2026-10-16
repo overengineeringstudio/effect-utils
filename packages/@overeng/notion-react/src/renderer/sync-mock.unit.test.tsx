@@ -26,6 +26,7 @@ import {
   type FakeNotion,
   type FakeRequest,
 } from '../test/mock-client.ts'
+import { flattenRichText } from './flatten-rich-text.ts'
 import type { SyncEvent } from './sync-events.ts'
 import type { SyncMetrics } from './sync-metrics.ts'
 import { sync } from './sync.ts'
@@ -787,6 +788,66 @@ describe('sync() against in-memory fake Notion', () => {
       const kids = fake.childrenOf(c.id)
       expect(kids.map((b) => b.type)).toEqual(['image'])
     }
+  })
+
+  it('deep column content is staged without nesting optional descendants in the create body', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ColumnList>
+        <Column>
+          {h(
+            'toggle',
+            { title: 'more' },
+            h(
+              'callout',
+              null,
+              h(
+                'bulleted_list_item',
+                null,
+                <>
+                  item<Paragraph>deep leaf</Paragraph>
+                </>,
+              ),
+            ),
+          )}
+        </Column>
+        <Column>
+          <Paragraph>right</Paragraph>
+        </Column>
+      </ColumnList>
+    )
+    const result = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(result.appends).toBe(8)
+    const requests = fake.requests.filter(
+      (request) => request.method === 'PATCH' && /\/blocks\/[^/]+\/children$/.test(request.path),
+    )
+    expect(requests).toHaveLength(4)
+    const body = requests[0]!.body as {
+      children: { column_list: { children: { column: { children: { toggle?: unknown }[] } }[] } }[]
+    }
+    expect(body.children[0]!.column_list.children[0]!.column.children[0]!.toggle).toEqual({
+      rich_text: flattenRichText('more'),
+    })
+    const columns = fake.childrenOf(fake.childrenOf(ROOT)[0]!.id)
+    const toggle = fake.childrenOf(columns[0]!.id)[0]!
+    const callout = fake.childrenOf(toggle.id)[0]!
+    const leaf = fake.childrenOf(callout.id)[0]!
+    expect([toggle.type, callout.type, leaf.type]).toEqual([
+      'toggle',
+      'callout',
+      'bulleted_list_item',
+    ])
+    expect(leaf.payload.rich_text).toEqual(flattenRichText('item'))
+    const paragraph = fake.childrenOf(leaf.id)[0]!
+    expect(paragraph.type).toBe('paragraph')
+    expect(paragraph.payload.rich_text).toEqual(flattenRichText('deep leaf'))
+    expect(await runWith(fake, sync(tree, { pageId: ROOT, cache }))).toMatchObject({
+      appends: 0,
+      inserts: 0,
+      updates: 0,
+      removes: 0,
+    })
   })
 
   it('column_list resync is a true no-op (nested tmpIds resolved to server ids)', async () => {
