@@ -94,6 +94,35 @@ describe('git operation-aware timeout', () => {
     }).pipe(Effect.provide(NodeServices.layer)),
   )
 
+  it.live('a credentialed clone URL never reaches the persisted origin', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tmp = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const remote = EffectPath.ops.join(tmp, EffectPath.unsafe.relativeDir('source/'))
+      yield* fs.makeDirectory(remote, { recursive: true })
+      yield* git(remote, 'init', '--bare')
+      const target = cloneTargetIn(tmp, 'clone-credentialed')
+      const cleanUrl = 'https://github.com/owner/repo.git'
+      const credentialedUrl = 'https://x-access-token:fixture-secret@github.com/owner/repo.git'
+      // Rewrite both forms to the same local source: the test never contacts GitHub.
+      const rewrites = [
+        ['GIT_CONFIG_COUNT', '2'],
+        ['GIT_CONFIG_KEY_0', 'url.file://' + remote + '.insteadOf'],
+        ['GIT_CONFIG_VALUE_0', cleanUrl],
+        ['GIT_CONFIG_KEY_1', 'url.file://' + remote + '.insteadOf'],
+        ['GIT_CONFIG_VALUE_1', credentialedUrl],
+      ] as const
+      const cloned = Git.cloneBare({ url: credentialedUrl, targetPath: target })
+      yield* rewrites.reduceRight((effect, [key, value]) => withEnv(key, value, effect), cloned)
+
+      const config = yield* fs.readFileString(
+        EffectPath.ops.join(target, EffectPath.unsafe.relativeFile('config')),
+      )
+      expect(config).toContain('url = ' + cleanUrl)
+      expect(config).not.toContain('fixture-secret')
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+
   it.live('a network op is bounded by the network budget (1ms → times out)', () =>
     Effect.gen(function* () {
       const { tmp, remote } = yield* makeCloneSource()

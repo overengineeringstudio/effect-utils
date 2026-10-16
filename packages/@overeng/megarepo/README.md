@@ -53,6 +53,11 @@ For CI:
 mr apply --git-protocol=https
 ```
 
+For authenticated HTTPS clones, configure a Git credential helper (for example,
+`gh auth setup-git`) or use SSH. Clone URLs are stored as the `origin` remote;
+megarepo removes HTTP URL userinfo before cloning so tokens cannot be persisted
+there. A credential in a source URL does not replace a configured credential helper.
+
 ## Directory Layout
 
 After `mr fetch --apply` and `mr lock`:
