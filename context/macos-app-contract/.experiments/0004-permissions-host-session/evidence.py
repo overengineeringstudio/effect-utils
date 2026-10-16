@@ -19,6 +19,16 @@ def parse(row):
             'message': message, 'processID': row.get('processID')}
 
 
+def correlate_audit(rows, audit_id):
+    """Require one persisted intent followed by one completion for this request."""
+    if not isinstance(audit_id, str) or not audit_id:
+        raise RuntimeError('host audit correlation missing auditId')
+    matching = [row for row in rows if row.get('auditId') == audit_id]
+    if [row.get('phase') for row in matching] != ['begin', 'complete']:
+        raise RuntimeError('host audit correlation requires one begin and one complete')
+    return matching
+
+
 class Tripwire:
     """Correlate interleaved AUTHREQ lines by msgID; unknowns deny, never allow."""
     def __init__(self):

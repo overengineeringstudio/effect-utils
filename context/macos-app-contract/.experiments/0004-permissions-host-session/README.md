@@ -245,6 +245,13 @@ OS/build and cleanup separately with references. Do not create an empty `evidenc
 and call it a run. Publish only sanitized actual observations; never commit raw logs,
 plist absolute paths, peer account details, sensitive screenshots or arbitrary app names.
 
+Audit correlation requires exactly one `begin` row followed by exactly one `complete`
+row for the response's `auditId`; both rows are retained. Missing, duplicate, reversed
+or unknown phases abort rather than treating an intent as a completed operation.
+The pure regression suite runs without any platform permission calls:
+`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s . -p 'test_evidence.py'`
+from this directory.
+
 Integration owner should review/build native releases and exercise parser fixtures,
 malformed/unrecognized AUTHREQ handling, GUI watcher bootstrap/loss, announced prompt
 scope, revocation denial and native audit correlation on the authorized machine. No

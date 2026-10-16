@@ -14,7 +14,7 @@ import threading
 import time
 import plistlib
 
-from evidence import Tripwire, parse
+from evidence import Tripwire, correlate_audit, parse
 
 ROOT = Path(__file__).resolve().parent
 PROMPTS = {'automation.a.request': 'kTCCServiceAppleEvents',
@@ -228,10 +228,8 @@ class Session:
                 raise RuntimeError('native failure exit disagrees with response')
             audit_id = response.get('auditId')
             audit_rows = [json.loads(line) for line in Path(self.config['hostAudit']).read_text().splitlines() if line.strip()]
-            matching = [row for row in audit_rows if row.get('auditId') == audit_id]
-            if not audit_id or len(matching) != 1:
-                raise RuntimeError('host audit correlation missing or ambiguous')
-            append(self.directory / 'host-audit.jsonl', matching[0])
+            for row in correlate_audit(audit_rows, audit_id):
+                append(self.directory / 'host-audit.jsonl', row)
             return response
         finally:
             if process.poll() is None:
