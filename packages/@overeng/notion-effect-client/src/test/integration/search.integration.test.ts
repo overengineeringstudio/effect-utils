@@ -1,9 +1,10 @@
-import { Clock, Duration, Effect, Option, Schedule, Stream } from 'effect'
+import { Clock, Duration, Effect, Exit, Option, Schedule, Stream } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionDatabases } from '../../databases.ts'
+import { NotionHttpTelemetry } from '../../internal/http.ts'
 import { NotionPages } from '../../pages.ts'
 import { NotionSearch } from '../../search.ts'
 import {
@@ -55,19 +56,100 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
 
           // Every query shape observes its own index readiness, sharing the fixture's
           // one-minute deadline (including HTTP requests and rate-limit retries).
-          const indexDeadline = (yield* Clock.currentTimeMillis) + 60000
-          const waitForIndex = <TResult, TError, TRequirements>(
+          const indexStarted = yield* Clock.currentTimeMillis
+          const indexDeadline = indexStarted + 60000
+          const expectedFixtureIds = [page.id, dataSourceId]
+          const waitForIndex = <
+            TResult extends
+              | readonly { readonly id: string }[]
+              | {
+                  readonly results: readonly { readonly id: string }[]
+                  readonly hasMore: boolean
+                },
+            TError,
+            TRequirements,
+          >(
+            shape: string,
             search: Effect.Effect<TResult, TError, TRequirements>,
             until: (result: TResult) => boolean,
           ) =>
             Effect.gen(function* () {
-              const remaining = indexDeadline - (yield* Clock.currentTimeMillis)
-              return yield* search.pipe(
+              const started = yield* Clock.currentTimeMillis
+              const remaining = indexDeadline - started
+              let attempts = 0
+              let lastResult:
+                | {
+                    readonly observedFixtureIds: readonly string[]
+                    readonly nonfixtureResultCount: number
+                    readonly itemCount: number
+                    readonly hasMore: boolean | undefined
+                  }
+                | undefined
+              const httpEvents: {
+                readonly kind: 'response' | 'retry'
+                readonly pollAttempt: number
+                readonly attempt: number
+                readonly status: number
+                readonly elapsedMs: number
+                readonly delayMs: number | undefined
+              }[] = []
+              return yield* Effect.suspend(() => {
+                attempts++
+                return search
+              }).pipe(
+                Effect.tap((result) =>
+                  Effect.sync(() => {
+                    const items = 'results' in result ? result.results : result
+                    const observedFixtureIds = items
+                      .filter((item) => expectedFixtureIds.includes(item.id))
+                      .map((item) => item.id)
+                    lastResult = {
+                      observedFixtureIds,
+                      nonfixtureResultCount: items.length - observedFixtureIds.length,
+                      itemCount: items.length,
+                      hasMore: 'hasMore' in result ? result.hasMore : undefined,
+                    }
+                  }),
+                ),
                 Effect.repeat({ schedule: Schedule.spaced('2 seconds'), until }),
                 Effect.timeout(Duration.millis(Math.max(0, remaining))),
+                Effect.provideService(NotionHttpTelemetry, {
+                  report: (event) =>
+                    Effect.gen(function* () {
+                      httpEvents.push({
+                        kind: event._tag,
+                        pollAttempt: attempts,
+                        attempt: event.attempt,
+                        status: event.status,
+                        elapsedMs: (yield* Clock.currentTimeMillis) - indexStarted,
+                        delayMs: event._tag === 'retry' ? event.delayMs : undefined,
+                      })
+                    }),
+                }),
+                Effect.onExit((exit) =>
+                  Exit.isFailure(exit) === true
+                    ? Effect.gen(function* () {
+                        const now = yield* Clock.currentTimeMillis
+                        // Only synthetic fixture IDs and numeric HTTP metadata are logged.
+                        // Preserve the original failure; diagnostics never retry assertions.
+                        yield* Effect.logError('Notion search fixture readiness failed', {
+                          shape,
+                          attempts,
+                          elapsedMs: now - indexStarted,
+                          pollElapsedMs: now - started,
+                          remainingMs: Math.max(0, indexDeadline - now),
+                          remainingAtStartMs: remaining,
+                          expectedFixtureIds,
+                          lastResult,
+                          httpEvents,
+                        })
+                      })
+                    : Effect.void,
+                ),
               )
             })
           const indexed = yield* waitForIndex(
+            'search:unfiltered',
             NotionSearch.search({ query }),
             (result) =>
               result.results.some((item) => item.id === page.id) &&
@@ -84,6 +166,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             ['data_source', dataSourceId],
           ] as const) {
             const filtered = yield* waitForIndex(
+              `search:filter=${value}`,
               NotionSearch.search({
                 query,
                 filter: { property: 'object', value },
@@ -94,6 +177,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             for (const item of filtered.results) expect(item.object).toBe(value)
 
             const streamed = yield* waitForIndex(
+              `searchStream:filter=${value}:pageSize=1`,
               NotionSearch.searchStream({
                 query,
                 filter: { property: 'object', value },
@@ -106,6 +190,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
           }
 
           const sorted = yield* waitForIndex(
+            'search:sort=last_edited_time:descending',
             NotionSearch.search({
               query,
               sort: { direction: 'descending', timestamp: 'last_edited_time' },
@@ -119,6 +204,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
           )
 
           const first = yield* waitForIndex(
+            'search:pageSize=1:first',
             NotionSearch.search({ query, pageSize: 1 }),
             (result) => result.results.length === 1 && result.hasMore,
           )
@@ -126,6 +212,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
           expect(first.hasMore).toBe(true)
           expect(Option.isSome(first.nextCursor)).toBe(true)
           const second = yield* waitForIndex(
+            'search:pageSize=1:nextCursor',
             NotionSearch.search({
               query,
               pageSize: 1,
@@ -137,6 +224,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
           expect(second.results[0]?.id).not.toBe(first.results[0]?.id)
 
           const streamed = yield* waitForIndex(
+            'searchStream:unfiltered:pageSize=1',
             NotionSearch.searchStream({ query, pageSize: 1 }).pipe(Stream.runCollect),
             (items) =>
               items.some((item) => item.id === page.id) &&
