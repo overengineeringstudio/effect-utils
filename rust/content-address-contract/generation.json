@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:6afb1b1d6cb81eb9197a4bd7a42ec3452af79fe3e3f923bfaf415492abf78ccc",
-  "generatedAt": "2026-10-16T05:52:24.251Z",
+  "inputFingerprint": "sha256:c2fa6a73b64054673123004034a09172be351b92c427add5474081190f8f1aa4",
+  "generatedAt": "2026-10-16T22:22:59.158Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.2"
@@ -117,7 +117,7 @@
     },
     {
       "path": "rust/Cargo.lock",
-      "sha256": "93675fcc58680da2e6ed475f8fdac202991b73dfba8769cbd4a439c294174652"
+      "sha256": "891c9bc36ed9e0f57f8bb3def25cdd28455eaf569fc085171c5c8e021319d46e"
     },
     {
       "path": "rust/Cargo.toml",
@@ -127,7 +127,7 @@
   "artifacts": [
     {
       "path": "Cargo.toml",
-      "sha256": "e3aa0c082de3fd129923c25be92136d7883c8f27f2b6e6f247422a3e3dc62665"
+      "sha256": "8d62b5e934624d53b0fb54be0a2e8519167fa6bee8795bd5c841f6e625739cc2"
     },
     {
       "path": "schema/Codec.json",
@@ -151,7 +151,7 @@
     },
     {
       "path": "src/lib.rs",
-      "sha256": "3c3546d5a2b66ee1e9ba75470d075d648724ecfb9a46f130fa3b189302a9f0d4"
+      "sha256": "af978bb504bed37d99e0a974012d35456a23de582db5a9b802b181af521542cf"
     }
   ]
 }

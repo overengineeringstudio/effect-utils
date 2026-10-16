@@ -171,10 +171,18 @@ explicit bounded exchange, `run_tools(max_steps, execute)` passes assembled
 results, and continues the conversation. The step budget prevents an unbounded
 model/tool loop; exhausting it is an error rather than a fabricated final answer.
 
+The result is `ToolRun { response, exchanges, total }`: `response` is the final
+chat response, and `exchanges` preserves ordered usage entries, including `None`.
+`total` is absent if any exchange omitted usage; otherwise each field is summed
+only when every exchange supplied that field. Errors return `ToolRunError` with
+the underlying `error` and the same `exchanges` / `total` evidence for completed
+exchanges, including the exchange that exhausted the bound or failed validation
+or tool execution. A failed HTTP request adds no exchange.
+
 This example executes only a local, explicitly allowed addition function:
 
 ```rust
-use ai_gateway::{Client, Error, Result, Tool, ToolCall};
+use ai_gateway::{Client, Error, Result, Tool, ToolCall, ToolRunError};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -182,7 +190,7 @@ use serde_json::json;
 #[serde(deny_unknown_fields)]
 struct AddArguments { left: i64, right: i64 }
 
-async fn tools_chat(client: &Client) -> Result<()> {
+async fn tools_chat(client: &Client) -> Result<(), Box<ToolRunError>> {
     let response = client
         .chat("anthropic/claude-haiku-4-5")
         .user("Use add to calculate 19 + 23.")
@@ -208,7 +216,7 @@ async fn tools_chat(client: &Client) -> Result<()> {
             Ok(json!({ "sum": sum }).to_string())
         })
         .await?;
-    println!("{}", response.text);
+    println!("{}", response.response.text);
     Ok(())
 }
 ```
@@ -250,8 +258,9 @@ original-schema validation, decision integrity checks, or operation telemetry.
 - `Error::Stream` preserves a diagnosis and the raw error payload when available.
 - `Error::Validation { errors, usage }` reports local schema or decision integrity
   failures. Structured-output and `decide` validation retain billed usage when
-  rejecting a successful provider response. Pre-request validation and `run_tools`
-  post-response rejections have `usage: None`.
+  rejecting a successful provider response. Pre-request validation has
+  `usage: None`. `run_tools` returns `ToolRunError`, retaining completed exchange
+  usage separately from its underlying `Error`.
 - `Error::Transport` and `Error::Config` distinguish transport/configuration failures.
 
 The client never automatically retries HTTP refusals, transport failures, or

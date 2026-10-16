@@ -24,7 +24,7 @@ use tracing::Instrument;
 
 use crate::{
     client::STREAM_DONE, schema, telemetry::Operation, ChatResponse, Client, Error, Message,
-    Result, StreamEvent, StructuredResponse, Tool, ToolCall, Usage,
+    Result, StreamEvent, StructuredResponse, Tool, ToolCall, ToolRun, ToolRunError, Usage,
 };
 
 #[derive(Clone, Debug)]
@@ -272,63 +272,86 @@ impl<'a> ChatBuilder<'a> {
 
     /// Perform at most `max_steps` model exchanges. Tool execution belongs to the
     /// supplied callback; the client does not execute model-selected code itself.
+    /// Success and failure retain ordered usage for completed exchanges. Aggregate
+    /// usage requires every exchange, and each aggregate field requires that field
+    /// on every exchange.
     pub async fn run_tools<F, Fut>(
         mut self,
         max_steps: usize,
         mut execute: F,
-    ) -> Result<ChatResponse>
+    ) -> Result<ToolRun, Box<ToolRunError>>
     where
         F: FnMut(ToolCall) -> Fut,
         Fut: Future<Output = Result<String>>,
     {
-        if max_steps == 0 {
-            return Err(Error::validation("max_steps must be positive"));
-        }
-        for step in 0..max_steps {
-            let mut operation = Operation::new("chat", &self.model);
-            let result = self
-                .send_in(None, &operation)
-                .instrument(operation.span.clone())
-                .await;
-            operation.finish(&result);
-            let response = result?;
-            if response.tool_calls.is_empty() {
-                return Ok(response);
+        let mut exchanges = Vec::new();
+        let result = async {
+            if max_steps == 0 {
+                return Err(Error::validation("max_steps must be positive"));
             }
-            if step + 1 == max_steps {
-                return Err(Error::validation("tool run exhausted max_steps"));
-            }
-            let mut ids = std::collections::BTreeSet::new();
-            // Validate the complete exchange before any caller-owned side effect.
-            for call in &response.tool_calls {
-                if call.id.is_empty() || !ids.insert(&call.id) {
-                    return Err(Error::validation(
-                        "tool call IDs must be nonempty and unique",
-                    ));
+            for step in 0..max_steps {
+                let mut operation = Operation::new("chat", &self.model);
+                let result = self
+                    .send_in(None, &operation)
+                    .instrument(operation.span.clone())
+                    .await;
+                operation.finish(&result);
+                let response = result?;
+                exchanges.push(response.usage.clone());
+                if response.tool_calls.is_empty() {
+                    return Ok(response);
                 }
-                let tool = self
-                    .tools
-                    .iter()
-                    .find(|tool| tool.name == call.name)
-                    .ok_or_else(|| Error::validation(format!("undeclared tool: {}", call.name)))?;
-                let arguments: Value = serde_json::from_str(&call.arguments)
-                    .map_err(|error| Error::validation(error.to_string()))?;
-                schema::validate(&tool.parameters, &arguments)?;
-            }
-            self.messages.push(Message::Assistant {
-                content: Some(response.text),
-                tool_calls: response.tool_calls.clone(),
-            });
-            for call in response.tool_calls {
-                let id = call.id.clone();
-                let content = execute(call).await?;
-                self.messages.push(Message::Tool {
-                    tool_call_id: id,
-                    content,
+                if step + 1 == max_steps {
+                    return Err(Error::validation("tool run exhausted max_steps"));
+                }
+                let mut ids = std::collections::BTreeSet::new();
+                // Validate the complete exchange before any caller-owned side effect.
+                for call in &response.tool_calls {
+                    if call.id.is_empty() || !ids.insert(&call.id) {
+                        return Err(Error::validation(
+                            "tool call IDs must be nonempty and unique",
+                        ));
+                    }
+                    let tool = self
+                        .tools
+                        .iter()
+                        .find(|tool| tool.name == call.name)
+                        .ok_or_else(|| {
+                            Error::validation(format!("undeclared tool: {}", call.name))
+                        })?;
+                    let arguments: Value = serde_json::from_str(&call.arguments)
+                        .map_err(|error| Error::validation(error.to_string()))?;
+                    schema::validate(&tool.parameters, &arguments)?;
+                }
+                self.messages.push(Message::Assistant {
+                    content: Some(response.text),
+                    tool_calls: response.tool_calls.clone(),
                 });
+                for call in response.tool_calls {
+                    let id = call.id.clone();
+                    let content = execute(call).await?;
+                    self.messages.push(Message::Tool {
+                        tool_call_id: id,
+                        content,
+                    });
+                }
             }
+            unreachable!("positive bounded loop returns on its final exchange")
         }
-        unreachable!("positive bounded loop returns on its final exchange")
+        .await;
+        let total = crate::types::aggregate_usage(&exchanges);
+        match result {
+            Ok(response) => Ok(ToolRun {
+                response,
+                exchanges,
+                total,
+            }),
+            Err(error) => Err(Box::new(ToolRunError {
+                error,
+                exchanges,
+                total,
+            })),
+        }
     }
 
     pub async fn stream(self) -> Result<ChatStream> {
