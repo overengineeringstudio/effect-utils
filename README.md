@@ -51,8 +51,10 @@ Hard limits are 100 artifacts per page (pages 1–1000), 1 MiB metadata response
 32 MiB compressed downloads, 1024 ZIP entries, 1024-byte member paths, 8 MiB
 decompressed per member, and 256 KiB text/escaped JSON output including its envelope.
 Limits apply to actual streamed bytes as well as advertised sizes; oversized output
-fails instead of silently truncating. Only unencrypted ZIP32 stored/DEFLATE entries
-are supported. Unsafe/duplicate paths, symlinks, special files, inconsistent headers,
+fails instead of silently truncating. Only unencrypted stored/DEFLATE members without
+ZIP64 member fields are supported. Bounded ZIP64 directory records are supported by
+the maintained parser; directory/member counts, offsets and sizes are independently
+bounded. Unsafe/duplicate paths, symlinks, special files, inconsistent headers,
 and corrupt selected-member contents are rejected. Metadata enumeration does not
 decompress members. Signed storage redirects are allowlisted and receive no GitHub
 authorization header.

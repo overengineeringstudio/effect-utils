@@ -24,6 +24,11 @@ const directoryPair = Buffer.from(
   'UEsDBBQAAAAIAAk5UF0AAAAAAgAAAAAAAAAHAAAAZm9sZGVyLwMAUEsDBBQAAAAIAAk5UF0QNp+MBgAAAAQAAAAGAAAAZm9sZGVyS8vMSQUAUEsBAhQDFAAAAAgACTlQXQAAAAACAAAAAAAAAAcAAAAAAAAAAAAQAP1BAAAAAGZvbGRlci9QSwECFAMUAAAACAAJOVBdEDafjAYAAAAEAAAABgAAAAAAAAAAAAAAgAEnAAAAZm9sZGVyUEsFBgAAAAACAAIAaQAAAFEAAAAAAA==',
   'base64',
 )
+// Python stdlib zipfile with ZIP_FILECOUNT_LIMIT=0: ordinary member, ZIP64 directory.
+const zip64Directory = Buffer.from(
+  'UEsDBBQAAAAIAO1CUF2m7oWBDwAAAA0AAAAJAAAAY29zdC5qc29uq1YqyS9JzFGyMjSq5QIAUEsBAhQDFAAAAAgA7UJQXabuhYEPAAAADQAAAAkAAAAAAAAAAAAAAIABAAAAAGNvc3QuanNvblBLBgYsAAAAAAAAAC0ALQAAAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAA3AAAAAAAAADYAAAAAAAAAUEsGBwAAAABtAAAAAAAAAAEAAABQSwUGAAAAAAEAAQA3AAAANgAAAAAA',
+  'base64',
+)
 
 // Mutations use fixed offsets into the synthetic ZIP, not a container implementation.
 const changed = (updates: readonly { offset: number; value: number; width: 2 | 4 }[]) => {
@@ -49,6 +54,44 @@ describe('retained artifact archive', () => {
           decompressedBytes: 13,
         })
       }),
+  )
+
+  it.effect('supports bounded ZIP64 directories without ZIP64 member fields', () =>
+    Effect.gen(function* () {
+      const members = yield* listArtifactMembers(zip64Directory, selection)
+      expect(members).toEqual([
+        { path: 'cost.json', compressedBytes: 15, decompressedBytes: 13, directory: false },
+      ])
+      expect((yield* readArtifactMember(zip64Directory, selection, 'cost.json')).text).toBe(
+        '{"total":12}\n',
+      )
+    }),
+  )
+
+  it.effect('rejects malformed or out-of-budget ZIP64 directory metadata', () =>
+    Effect.gen(function* () {
+      const record = zip64Directory.length - 98
+      for (const [offset, value, reason] of [
+        [record + 32, 1025n, 'limit-exceeded'],
+        [record + 32, 9007199254740992n, 'unsafe-archive'],
+        [record + 48, BigInt(zip64Directory.length + 1), 'unsafe-archive'],
+        [record + 64, BigInt(zip64Directory.length + 1), 'unsafe-archive'],
+        [record + 48, 9007199254740992n, 'unsafe-archive'],
+      ] as const) {
+        const malformed = Buffer.from(zip64Directory)
+        malformed.writeBigUInt64LE(value, offset)
+        expect((yield* listArtifactMembers(malformed, selection).pipe(Effect.flip)).reason).toBe(
+          reason,
+        )
+      }
+      const zip64Entry = changed([
+        { offset: 4, value: 45, width: 2 },
+        { offset: central + 6, value: 45, width: 2 },
+      ])
+      expect((yield* listArtifactMembers(zip64Entry, selection).pipe(Effect.flip)).reason).toBe(
+        'unsupported-archive',
+      )
+    }),
   )
 
   it.effect('supports stored members and streaming data descriptors', () =>

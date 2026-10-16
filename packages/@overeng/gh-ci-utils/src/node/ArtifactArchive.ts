@@ -59,6 +59,15 @@ const failure = ({
   readonly member?: string | null
 }) => new ArtifactError({ ...selection, reason, message, member })
 
+const isBoundedInteger = ({
+  value,
+  maximum,
+}: {
+  readonly value: unknown
+  readonly maximum: number
+}): boolean =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= maximum
+
 /** Validate the entire directory before exposing any member or opening any content stream. */
 const enumerate = async ({
   zip,
@@ -69,6 +78,9 @@ const enumerate = async ({
   readonly selection: ArtifactSelection
   readonly signal: AbortSignal
 }) => {
+  if (!isBoundedInteger({ value: zip.entryCount, maximum: Number.MAX_SAFE_INTEGER })) {
+    throw failure({ selection, reason: 'unsafe-archive', message: 'Invalid archive entry count' })
+  }
   if (zip.entryCount > ARTIFACT_LIMITS.entries) {
     throw failure({
       selection: selection,
@@ -85,6 +97,19 @@ const enumerate = async ({
         selection: selection,
         reason: 'limit-exceeded',
         message: 'Archive exceeds the 1024-member limit',
+      })
+    }
+    if (
+      !isBoundedInteger({ value: zip.readEntryCursor, maximum: zip.fileSize }) ||
+      !isBoundedInteger({ value: zip.entriesRead, maximum: ARTIFACT_LIMITS.entries }) ||
+      !isBoundedInteger({ value: entry.relativeOffsetOfLocalHeader, maximum: zip.fileSize }) ||
+      !isBoundedInteger({ value: entry.compressedSize, maximum: zip.fileSize }) ||
+      !isBoundedInteger({ value: entry.uncompressedSize, maximum: 0xffffffff })
+    ) {
+      throw failure({
+        selection,
+        reason: 'unsafe-archive',
+        message: 'Member metadata exceeds safe archive bounds',
       })
     }
     if (!validateArtifactMemberPath(entry.fileName)) {
@@ -132,10 +157,23 @@ const enumerate = async ({
       throw failure({
         selection: selection,
         reason: 'unsupported-archive',
-        message: 'Only unencrypted ZIP32 stored/DEFLATE entries are supported',
+        message:
+          'Only unencrypted stored/DEFLATE members without ZIP64 member fields are supported',
       })
     const local = await zip.readLocalFileHeaderPromise(entry)
     signal.throwIfAborted()
+    if (
+      !isBoundedInteger({ value: local.fileDataStart, maximum: zip.fileSize }) ||
+      entry.compressedSize > zip.fileSize - local.fileDataStart ||
+      !isBoundedInteger({ value: local.compressedSize, maximum: zip.fileSize }) ||
+      !isBoundedInteger({ value: local.uncompressedSize, maximum: 0xffffffff })
+    ) {
+      throw failure({
+        selection,
+        reason: 'unsafe-archive',
+        message: 'Local member metadata exceeds safe archive bounds',
+      })
+    }
     const localExtras = parseExtraFields(local.extraField)
     if (localExtras.some((field) => field.id === 1)) {
       throw failure({
@@ -209,6 +247,16 @@ const withArchive = <T>({
       signal.addEventListener('abort', close, { once: true })
       try {
         signal.throwIfAborted()
+        if (
+          zip.fileSize !== bytes.byteLength ||
+          !isBoundedInteger({ value: zip.readEntryCursor, maximum: bytes.byteLength })
+        ) {
+          throw failure({
+            selection,
+            reason: 'unsafe-archive',
+            message: 'Directory offset exceeds safe archive bounds',
+          })
+        }
         return await consume(zip, await enumerate({ zip, selection, signal }), signal)
       } finally {
         signal.removeEventListener('abort', close)
