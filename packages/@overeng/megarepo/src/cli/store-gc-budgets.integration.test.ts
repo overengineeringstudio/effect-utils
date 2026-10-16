@@ -905,7 +905,8 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           const redact = (text: string) => {
             for (const [key, value] of Object.entries(process.env)) {
               if (
-                /token|secret|password|credential|authorization|cookie|private.?key/iu.test(key) &&
+                /token|secret|password|credential|authorization|cookie|private.?key/iu.test(key) ===
+                  true &&
                 value !== undefined &&
                 value.length > 0
               ) {
