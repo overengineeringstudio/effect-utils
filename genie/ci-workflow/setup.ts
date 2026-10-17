@@ -30,6 +30,7 @@ import {
   withCiSourceRoot,
   linuxNixSandboxFallbackConf,
   linuxSandboxAdmissionStepId,
+  namespacePrivilegeTrustedPredicate,
 } from './shared.ts'
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
@@ -54,10 +55,6 @@ export const evictCachedPnpmDepsStep = ({
 })
 
 export type NamespacePrivilege = 'always' | 'trusted' | 'never'
-
-/** Q49's fork policy is isolated here; runner selection and TS admission share it. */
-export const namespacePrivilegeTrustedPredicate =
-  "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping, so

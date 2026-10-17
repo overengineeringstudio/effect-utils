@@ -227,6 +227,7 @@ import {
 export default githubWorkflow({
   name: 'Rust CI',
   on: { pull_request: githubWorkflowEvent.all, push: { branches: ['main'] } },
+  linuxNixSandboxCapabilities: { test: 'supported' },
   actionlint: defaultActionlintConfig,
   jobs: {
     fmt: cargoFmtJob({ namespacePrivilege: 'trusted' }),
@@ -273,6 +274,27 @@ installers also apply both settings to daemon configuration. Neither an inherite
 disabled sandbox nor an unavailable sandbox may silently run a build unsandboxed.
 The settings are conditional on `runner.os == 'Linux'`, leaving Darwin policy
 unchanged; they do not grant privileges or bypass fork admission guards.
+
+For jobs using the shared Install Nix action, `ciWorkflow` validates `runs-on`
+before generation. Namespace Linux labels (`namespace-profile-*` or `nscloud-*`)
+must request `container.privileged=true` in their supported format: profiles
+append it inline, while `-with-features` machines use a separate
+`namespace-features:` label. Literal alternatives in both machine and feature
+labels are resolved before validation; every alternative must request privilege
+in the applicable format. Only the shared run-ID interpolation and exact
+trusted-only privilege suffix are recognized within labels. Other interpolated
+features and opaque runner expressions fail closed with job-specific guidance,
+rather than treating incidental quoted strings as emitted feature values.
+Runtime fork admission is unchanged.
+`linuxNixSandboxCapabilities: { [jobId]: 'supported' }` attests that every
+possible Linux runner supports strict sandboxing for such expressions. This
+generation-only option cannot override any statically unprivileged Namespace
+machine or feature alternative, even beside opaque labels. Static Namespace
+profile fragments must include inline privilege; attestation cannot turn an
+opaque interpolated feature into a static privilege declaration. An explicit
+`self-hosted` selector constrains the entire job, including dynamic selectors.
+Self-hosted, macOS, and jobs without the shared installer keep their existing
+behavior and sandbox policy.
 
 The source-only `default-ref-policy` job must not evaluate the checkout's flake
 before checking its refs. Genie freezes the root `flake.lock` nixpkgs revision
