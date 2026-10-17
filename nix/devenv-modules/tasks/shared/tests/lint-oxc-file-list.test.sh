@@ -72,6 +72,22 @@ extract_lint_task_script() {
 
 echo "Running lint-oxc file list tests..."
 echo ""
+for module in lint-oxc.nix lint-genie.nix; do
+  # Frozen verification must not rewrite dependencies read by concurrent checks.
+  task="$(sed -n '/    "lint:check:lockfile" = {/,/^    };/p' "$TESTS_DIR/../$module")"
+  for flag in --lockfile-only --frozen-lockfile; do
+    if ! grep -qF -- "$flag" <<< "$task"; then
+      echo "FAIL: $module lockfile verification must retain $flag"
+      exit 1
+    fi
+  done
+  if grep -qF -- '--config.package-import-method=' <<< "$task"; then
+    echo "FAIL: $module lockfile verification must not configure package materialization"
+    exit 1
+  fi
+  echo "  ok: $module verifies the frozen lockfile without materializing node_modules"
+done
+
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT

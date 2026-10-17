@@ -219,8 +219,21 @@ const decodeChunks = (chunks: ReadonlyArray<Uint8Array>): string => {
 }
 
 /** Start a git subprocess with piped stdout/stderr. */
-const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
-  startGitWriterProcess({ command: 'git', args, ...(cwd !== undefined ? { cwd } : {}) })
+const startGitProcess = ({
+  args,
+  cwd,
+  env,
+}: {
+  args: ReadonlyArray<string>
+  cwd?: string
+  env?: Record<string, string>
+}) =>
+  startGitWriterProcess({
+    command: 'git',
+    args,
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(env === undefined ? {} : { env }),
+  })
 
 /**
  * Run a git command and return stdout.
@@ -229,11 +242,23 @@ const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: str
  * Buffers the full output, so use {@link streamGitCommandLines} for commands
  * whose output is unbounded (large `status`/`worktree list`/`rev-list`).
  */
-const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
+const runGitCommand = ({
+  args,
+  cwd,
+  env,
+}: {
+  args: ReadonlyArray<string>
+  cwd?: string
+  env?: Record<string, string>
+}) =>
   (() => {
     const timeoutMillis = gitCommandTimeoutMillis(args)
     return Effect.gen(function* () {
-      const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
+      const process = yield* startGitProcess({
+        args,
+        ...(cwd === undefined ? {} : { cwd }),
+        ...(env === undefined ? {} : { env }),
+      })
 
       // Concat is one O(n) allocation per stream; per-chunk spreading is O(n²).
       const [stdoutChunks, stderrChunks] = yield* Effect.all([
@@ -266,8 +291,11 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
   })()
 
 /** Run a bounded, observable git command and return trimmed stdout. */
-export const runCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
-  runGitCommand(cwd === undefined ? { args } : { args, cwd })
+export const runCommand = (options: {
+  args: ReadonlyArray<string>
+  cwd?: string
+  env?: Record<string, string>
+}) => runGitCommand(options)
 
 /**
  * Run a git command, folding stdout LINE BY LINE through `sink` at constant
@@ -539,6 +567,8 @@ export const createWorktree = (args: {
   startPoint?: string
   /** Keep the registration locked after creation until the caller explicitly unlocks it. */
   lockReason?: string
+  /** Environment overrides inherited by Git and its child processes. */
+  env?: Record<string, string>
 }) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'add']
@@ -552,7 +582,11 @@ export const createWorktree = (args: {
     } else {
       cmdArgs.push(args.worktreePath, args.branch)
     }
-    yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
+    yield* runGitCommand({
+      args: cmdArgs,
+      cwd: args.repoPath,
+      ...(args.env === undefined ? {} : { env: args.env }),
+    })
   }).pipe(
     withGitWriterLock({ path: args.repoPath }),
     Observability.withGitBranchSpan({

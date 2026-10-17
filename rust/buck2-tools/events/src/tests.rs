@@ -698,6 +698,169 @@ fn bounded_metrics_use_real_timing_and_closed_dimensions() {
 }
 
 #[test]
+fn local_queue_stages_supply_missing_action_timing() {
+    for explicit in [None, Some(0), Some(7)] {
+        let mut raw = synthetic_log(2, true);
+        for (id, stage, closed) in [
+            (
+                4,
+                data::local_stage::Stage::Queued(data::LocalQueued {}),
+                true,
+            ),
+            (
+                5,
+                data::local_stage::Stage::WorkerQueued(data::WorkerQueued {}),
+                true,
+            ),
+            (
+                6,
+                data::local_stage::Stage::Queued(data::LocalQueued {}),
+                false,
+            ),
+        ] {
+            append(
+                &mut raw,
+                &event(
+                    id,
+                    2,
+                    buck_event::Data::SpanStart(data::SpanStartEvent {
+                        data: Some(span_start_event::Data::ExecutorStage(
+                            data::ExecutorStageStart {
+                                stage: Some(data::executor_stage_start::Stage::Local(
+                                    data::LocalStage { stage: Some(stage) },
+                                )),
+                            },
+                        )),
+                    }),
+                ),
+            );
+            if closed {
+                let mut end = event(
+                    id,
+                    2,
+                    buck_event::Data::SpanEnd(data::SpanEndEvent {
+                        data: Some(span_end_event::Data::ExecutorStage(
+                            data::ExecutorStageEnd {},
+                        )),
+                        ..Default::default()
+                    }),
+                );
+                if let Some(command_progress::Progress::Event(e)) = &mut end.progress {
+                    e.timestamp.as_mut().unwrap().seconds += 1;
+                }
+                append(&mut raw, &end);
+                append(&mut raw, &end); // A repeated end is not another wait.
+            }
+        }
+        if let Some(seconds) = explicit {
+            append(
+                &mut raw,
+                &event(
+                    2,
+                    1,
+                    buck_event::Data::SpanEnd(data::SpanEndEvent {
+                        data: Some(span_end_event::Data::ActionExecution(
+                            data::ActionExecutionEnd {
+                                commands: vec![data::CommandExecution {
+                                    details: Some(data::CommandExecutionDetails {
+                                        metadata: Some(data::CommandExecutionMetadata {
+                                            queue_duration: Some(prost_types::Duration {
+                                                seconds,
+                                                nanos: 0,
+                                            }),
+                                            ..Default::default()
+                                        }),
+                                        ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                }],
+                                ..Default::default()
+                            },
+                        )),
+                        ..Default::default()
+                    }),
+                ),
+            );
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let log = write_log(
+            &dir,
+            "queue.pb.zst",
+            &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
+        );
+        let model = decode(&log).unwrap();
+        assert_eq!(
+            model.spans[1].queue_ns,
+            Some(explicit.unwrap_or(2) as u64 * 1_000_000_000)
+        );
+        assert_eq!(model.spans[2].queue_ns, None); // Unknown is not zero.
+        let payload: Value = serde_json::from_slice(&metric_payload(&model)).unwrap();
+        let points = &payload["resourceMetrics"][0]["scopeMetrics"][0]["metrics"][4]["histogram"]
+            ["dataPoints"];
+        assert_eq!(points[0]["count"], "1");
+        assert_eq!(points[0]["sum"], json!(explicit.unwrap_or(2) as f64));
+    }
+}
+
+#[test]
+fn metric_resource_reuses_writer_host_without_build_identity() {
+    let mut raw = Vec::new();
+    append(&mut raw, &data::Invocation::default());
+    append(
+        &mut raw,
+        &event(
+            1,
+            0,
+            buck_event::Data::SpanStart(data::SpanStartEvent {
+                data: Some(span_start_event::Data::Command(data::CommandStart {
+                    metadata: [
+                        ("hostname", "fixture-host"),
+                        ("os", "linux"),
+                        ("arch", "x86_64"),
+                        ("buck2_revision", "build-revision"),
+                        ("materializer", "deferred"),
+                    ]
+                    .map(|(key, value)| (key.into(), value.into()))
+                    .into(),
+                    ..Default::default()
+                })),
+            }),
+        ),
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let log = write_log(
+        &dir,
+        "host.pb.zst",
+        &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
+    );
+    let out = dir.path().join("out");
+    ingest(&[log], None, Some(&out), &dir.path().join("pending")).unwrap();
+    let metrics: Value =
+        serde_json::from_slice(&fs::read(out.join("0-metrics.json")).unwrap()).unwrap();
+    let traces: Value =
+        serde_json::from_slice(&fs::read(out.join("0-full-0.json")).unwrap()).unwrap();
+    let resource = metrics["resourceMetrics"][0]["resource"]["attributes"]
+        .as_array()
+        .unwrap();
+    assert_eq!(
+        resource,
+        &vec![
+            attr("service.name", "effect-utils-buck2"),
+            attr("host.name", "fixture-host"),
+            attr("service.instance.id", "fixture-host"),
+            attr("os.type", "linux"),
+            attr("host.arch", "x86_64"),
+        ]
+    );
+    for attribute in resource {
+        assert!(traces["resourceSpans"][0]["resource"]["attributes"]
+            .as_array()
+            .unwrap()
+            .contains(attribute));
+    }
+}
+
+#[test]
 fn serialized_chunks_include_resource_overhead_and_never_exceed_limit() {
     let resource = json!({"attributes":[attr("large", "x".repeat(100_000))]});
     let spans = (0..50)
@@ -851,6 +1014,14 @@ fn golden_local_build_log() {
     assert!(!model.truncated);
     assert_eq!(model.unknown_fields, 0);
     assert_eq!(model.uuid, "4b68ac2f-58e1-4846-afb2-eff9358143b6");
+    let metrics: Value = serde_json::from_slice(&metric_payload(&model)).unwrap();
+    let queue = &metrics["resourceMetrics"][0]["scopeMetrics"][0]["metrics"][4];
+    assert_eq!(queue["name"], "buck2.action.queue.duration");
+    assert_eq!(queue["histogram"]["dataPoints"][0]["count"], "1");
+    assert_eq!(
+        queue["histogram"]["dataPoints"][0]["sum"],
+        json!(0.000_001_894)
+    );
     let views = make_views(&model, None);
     let (critical, full) = (&views[0], &views[1]);
     assert_eq!((critical.0, full.0), ("critical", "full"));
