@@ -1332,6 +1332,214 @@ describe('mr store ls', () => {
 })
 
 describe('mr store worktree new', () => {
+  for (const remoteState of ['conflicting-tag', 'unavailable'] as const) {
+    it.effect(
+      `creates an isolated mutable branch without fetching when remote is ${remoteState}`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const fixture = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test-owner',
+              repo: 'test-repo',
+              branches: ['main'],
+              tags: ['edge'],
+              withRemote: true,
+            },
+          ])
+          const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']!
+          const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
+          const canonical = fixture.worktreePaths['github.com/test-owner/test-repo#main']!
+          const base = yield* Git.getCurrentCommit(canonical)
+          // Move the upstream edge tag to a newer commit, leaving the local tag stale.
+          const tree = yield* Git.runCommand({ args: ['rev-parse', 'main^{tree}'], cwd: upstream })
+          const nextCommit = yield* Git.runCommand({
+            args: [
+              '-c',
+              'user.name=Test User',
+              '-c',
+              'user.email=test@example.com',
+              '-c',
+              'commit.gpgsign=false',
+              'commit-tree',
+              tree,
+              '-p',
+              base,
+              '-m',
+              'Move edge',
+            ],
+            cwd: upstream,
+          })
+          yield* Git.runCommand({
+            args: ['update-ref', 'refs/tags/edge', nextCommit],
+            cwd: upstream,
+          })
+          if (remoteState === 'unavailable') {
+            yield* fs.rename(upstream, `${upstream.replace(/\/$/u, '')}-offline`)
+          }
+          const refsBefore = yield* Git.runCommand({ args: ['show-ref'], cwd: bare })
+          const fetchHeadBefore = yield* fs.readFileString(`${bare}FETCH_HEAD`)
+          const configBefore = yield* fs.readFileString(`${bare}config`)
+          const canonicalStatus = yield* Git.runCommand({
+            args: ['status', '--porcelain'],
+            cwd: canonical,
+          })
+          const result = yield* runMrCommand({
+            cwd: fixture.storePath,
+            command: [
+              'store',
+              'worktree',
+              'new',
+              'test-owner/test-repo',
+              '--no-fetch',
+              '--ref',
+              'source-patch',
+              '--base',
+              base,
+              '--output',
+              'json',
+            ],
+            env: { MEGAREPO_STORE: fixture.storePath },
+          })
+          expect(result.exitCode).toBe(0)
+          const source = parseSourceString('test-owner/test-repo')!
+          const store = yield* Effect.provide(
+            Store,
+            makeStoreLayer({ basePath: fixture.storePath }),
+          )
+          const worktree = store.getWorktreePath({
+            source,
+            ref: 'source-patch',
+            refType: 'branch',
+          })
+          expect(yield* Git.getCurrentCommit(worktree)).toBe(base)
+          expect(yield* Git.getCurrentBranch(worktree)).toEqual(Option.some('source-patch'))
+          expect(
+            (yield* Git.runCommand({ args: ['show-ref'], cwd: bare }))
+              .split('\n')
+              .filter((line) => line.endsWith(' refs/heads/source-patch') === false)
+              .join('\n'),
+          ).toBe(refsBefore)
+          expect(yield* fs.readFileString(`${bare}FETCH_HEAD`)).toBe(fetchHeadBefore)
+          expect(yield* fs.readFileString(`${bare}config`)).toBe(configBefore)
+          yield* fs.writeFileString(`${worktree}source-patch.txt`, 'local patch\n')
+          expect(
+            yield* Git.runCommand({ args: ['status', '--porcelain'], cwd: worktree }),
+          ).toContain('source-patch.txt')
+          expect(yield* fs.exists(`${canonical}source-patch.txt`)).toBe(false)
+          expect(yield* Git.getCurrentCommit(canonical)).toBe(base)
+          expect(yield* Git.runCommand({ args: ['status', '--porcelain'], cwd: canonical })).toBe(
+            canonicalStatus,
+          )
+          expect(yield* fs.exists(`${worktree}megarepo.kdl`)).toBe(false)
+          expect(yield* fs.exists(`${worktree}megarepo.lock`)).toBe(false)
+          expect(yield* fs.exists(`${worktree}repos`)).toBe(false)
+          const registrations = yield* Git.listWorktrees(bare)
+          expect(registrations.some((entry) => entry.path === worktree.replace(/\/$/u, ''))).toBe(
+            true,
+          )
+          if (remoteState === 'conflicting-tag') {
+            const defaultResult = yield* runMrCommand({
+              cwd: fixture.storePath,
+              command: [
+                'store',
+                'worktree',
+                'new',
+                'test-owner/test-repo',
+                '--ref',
+                'default-fetch',
+                '--base',
+                base,
+                '--output',
+                'json',
+              ],
+              env: { MEGAREPO_STORE: fixture.storePath },
+            })
+            expect(defaultResult.exitCode).toBe(1)
+            expect(yield* Git.refExists({ repoPath: bare, ref: 'refs/heads/default-fetch' })).toBe(
+              false,
+            )
+          }
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
+  for (const invalidInput of [
+    'missing-repo',
+    'missing-object',
+    'missing-base',
+    'non-commit',
+    'branch-name',
+    'abbreviated-sha',
+  ] as const) {
+    it.effect(
+      `rejects --no-fetch with ${invalidInput} without writing store state`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const fixture = yield* createStoreFixture(
+            invalidInput === 'missing-repo'
+              ? []
+              : [{ host: 'github.com', owner: 'test-owner', repo: 'test-repo' }],
+          )
+          const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']
+          const base =
+            invalidInput === 'branch-name'
+              ? 'main'
+              : invalidInput === 'abbreviated-sha' && bare !== undefined
+                ? (yield* Git.getCurrentCommit(bare)).slice(0, 12)
+                : invalidInput === 'non-commit' && bare !== undefined
+                  ? yield* Git.runCommand({ args: ['rev-parse', 'main^{tree}'], cwd: bare })
+                  : '0123456789012345678901234567890123456789'
+          const before =
+            bare === undefined
+              ? undefined
+              : yield* Git.runCommand({ args: ['show-ref'], cwd: bare })
+          const worktreesBefore = bare === undefined ? undefined : yield* Git.listWorktrees(bare)
+          const result = yield* runMrCommand({
+            cwd: fixture.storePath,
+            command: [
+              'store',
+              'worktree',
+              'new',
+              'test-owner/test-repo',
+              '--no-fetch',
+              '--ref',
+              'source-patch',
+              ...(invalidInput === 'missing-base' ? [] : ['--base', base]),
+              '--output',
+              'json',
+            ],
+            env: { MEGAREPO_STORE: fixture.storePath },
+          })
+          expect(result.exitCode).toBe(1)
+          expect(String(result.exit)).toContain(
+            invalidInput === 'missing-repo'
+              ? 'requires an existing bare repository'
+              : invalidInput === 'missing-base'
+                ? 'requires --ref <new-branch> and an explicit local --base'
+                : invalidInput === 'branch-name' || invalidInput === 'abbreviated-sha'
+                  ? 'requires --base to be a full 40-character commit SHA'
+                  : 'must resolve to a commit already present',
+          )
+          if (bare === undefined) {
+            expect(yield* fs.readDirectory(fixture.storePath)).toEqual([])
+          } else {
+            expect(yield* Git.runCommand({ args: ['show-ref'], cwd: bare })).toBe(before)
+            expect(yield* Git.listWorktrees(bare)).toEqual(worktreesBefore)
+            expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
+          }
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
   it.effect(
     'creates from a newly fetched remote branch',
     Effect.fnUntraced(

@@ -34,7 +34,7 @@ import {
 import * as Git from '../../../core/git.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../core/lock.ts'
 import * as LibObservability from '../../../core/observability.ts'
-import { classifyRef } from '../../../core/ref.ts'
+import { classifyRef, isCommitSha } from '../../../core/ref.ts'
 import {
   archiveRefMismatchWorktree,
   archiveWorktree,
@@ -3853,7 +3853,7 @@ const storeFixCommand = Cli.Command.make(
 
 /**
  * Create a new worktree in the store.
- * Auto-bootstraps bare repo if not present, fetches, then creates the worktree.
+ * Fetches by default; --no-fetch creates a branch from an explicit local base.
  */
 const storeWorktreeNewCommand = Cli.Command.make(
   'new',
@@ -3869,6 +3869,12 @@ const storeWorktreeNewCommand = Cli.Command.make(
       Cli.Flag.withDescription('Base ref for creating a new branch (used with --ref)'),
       Cli.Flag.optional,
     ),
+    noFetch: Cli.Flag.Boolean('no-fetch').pipe(
+      Cli.Flag.withDescription(
+        'Create a new branch without cloning or fetching; requires an existing bare repo and --base <full-local-commit-sha>',
+      ),
+      Cli.Flag.withDefault(false),
+    ),
     commit: Cli.Flag.String('commit').pipe(
       Cli.Flag.withDescription('Commit SHA to check out (detached HEAD)'),
       Cli.Flag.optional,
@@ -3881,7 +3887,15 @@ const storeWorktreeNewCommand = Cli.Command.make(
     ),
     output: outputOption,
   },
-  ({ repo: repoString, ref: refOpt, base: baseOpt, commit: commitOpt, porcelain, output }) =>
+  ({
+    repo: repoString,
+    ref: refOpt,
+    base: baseOpt,
+    commit: commitOpt,
+    noFetch,
+    porcelain,
+    output,
+  }) =>
     Effect.gen(function* () {
       const outputMode = yield* resolveOutputOption(output)
       const store = yield* Store
@@ -3942,6 +3956,19 @@ const storeWorktreeNewCommand = Cli.Command.make(
         })
       }
 
+      if (noFetch === true && (base === undefined || ref === undefined)) {
+        return yield* new StoreCommandError({
+          message:
+            '--no-fetch requires --ref <new-branch> and an explicit local --base <full-commit-sha>',
+        })
+      }
+
+      if (noFetch === true && isCommitSha(base!) === false) {
+        return yield* new StoreCommandError({
+          message: '--no-fetch requires --base to be a full 40-character commit SHA',
+        })
+      }
+
       // Parse repo source
       const source = parseSourceString(repoString)
       if (source === undefined) {
@@ -3998,6 +4025,26 @@ const storeWorktreeNewCommand = Cli.Command.make(
       const bareRepoPath = store.getBareRepoPath(source)
       const bareExists = yield* store.hasBareRepo(source)
       const autoBootstrap = bareExists === false
+      let startPoint = base
+      if (noFetch === true) {
+        if (bareExists === false) {
+          return yield* new StoreCommandError({
+            message: `--no-fetch requires an existing bare repository at ${bareRepoPath}; cloning is disabled`,
+          })
+        }
+        // Pin the locally resolved commit before using the existing worktree writer.
+        startPoint = yield* Git.runCommand({
+          args: ['rev-parse', '--verify', '--end-of-options', `${base!}^{commit}`],
+          cwd: bareRepoPath,
+        }).pipe(
+          Effect.mapError(
+            () =>
+              new StoreCommandError({
+                message: `--no-fetch base '${base}' must resolve to a commit already present in ${bareRepoPath}; fetching is disabled`,
+              }),
+          ),
+        )
+      }
 
       if (autoBootstrap === true) {
         const repoBasePath = store.getRepoBasePath(source)
@@ -4006,7 +4053,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
       }
 
       // Fetch to ensure refs are up to date
-      yield* Git.fetchBare({ repoPath: bareRepoPath })
+      if (noFetch === false) yield* Git.fetchBare({ repoPath: bareRepoPath })
 
       // Determine target ref and worktree creation mode
       const targetRef = commit ?? ref!
@@ -4061,7 +4108,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
           worktreePath,
           branch: ref!,
           createBranch: true,
-          startPoint: base,
+          startPoint: startPoint!,
         })
       } else {
         // Existing branch or tag
