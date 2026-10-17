@@ -1421,6 +1421,47 @@ describe('tile block', () => {
     )
   })
 
+  it('dims a stale gauge from source-owned freshness and keeps its label and last-known value', () => {
+    const f = tileFixture()
+    f.value(500, 2)
+    f.value(1500, 4)
+    f.draw({ nowMs: 2250, width: 200 })
+    expect(f.surface.context.strokeStyle).toBe(lightMeterTheme.normal)
+    f.append({
+      _tag: 'Unavailable',
+      atMs: 2500,
+      reason: 'Stale',
+      lastKnown: { atMs: 1500, value: { _tag: 'Number', value: 4 } },
+    })
+    const known = formatMeterValue({ value: 4, unit: 'count' })
+    expect(f.reader.describe({ nowMs: 3250 })).toBe(`n/a (Stale; last known ${known} at 1500ms)`)
+    f.draw({ nowMs: 3250, width: 200 })
+    // The label stays the static name; the value slot names the state, never a bare age.
+    expect(f.surface.texts).toEqual(['Requests', 'stale'])
+    expect(f.surface.context.strokeStyle).toBe(lightMeterTheme.muted)
+    expect(f.surface.context.fillStyle).toBe(lightMeterTheme.muted)
+  })
+
+  it('dims a disconnected counter and names only the last observation time', () => {
+    const f = tileFixture({ ...gauge, mode: 'Counter' })
+    f.value(500, 10)
+    f.value(1200, 15)
+    f.append({
+      _tag: 'Unavailable',
+      atMs: 2500,
+      reason: 'Disconnected',
+      lastKnown: { atMs: 1200, value: { _tag: 'Number', value: 15 } },
+    })
+    // One sample is not a bucket aggregate, so no counter value is projected from it.
+    expect(f.reader.describe({ nowMs: 3250 })).toBe(
+      'n/a (Disconnected; last observation at 1200ms)',
+    )
+    f.draw({ nowMs: 3250, width: 200 })
+    expect(f.surface.texts).toEqual(['Requests', 'offline'])
+    expect(f.surface.context.strokeStyle).toBe(lightMeterTheme.muted)
+    expect(f.surface.context.fillStyle).toBe(lightMeterTheme.muted)
+  })
+
   it('plots with auto, explicit, and marked ranges', () => {
     const f = tileFixture()
     f.value(500, 2)

@@ -1001,6 +1001,12 @@ narrower rect draws an ellipsized prefix of the name and no value, never a
 clipped or `fillText`-squeezed label. The unabridged value remains available
 through on-demand evidence.
 
+The tile consumes source-owned freshness and has no renderer stale policy: when
+the newest observation is `Unavailable` `Stale` or `Disconnected`, it mutes the
+sparkline and shows `stale` or `offline` in the value slot beside its label. In
+that case the full description adds the last-known gauge value, or, for event
+and counter tiles, only the last observation time.
+
 ## Headless Snapshots and Measure Brackets
 
 Trace: DT.MET-R17–R21; parent DT-R15 and Q11.

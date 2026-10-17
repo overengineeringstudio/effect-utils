@@ -794,7 +794,18 @@ export const tileBlock = <TValue>(
       return formatMeterValue({ value: newest, unit: policy.unit, format })
     const sample = scratch.carried
     if (sample === undefined) return 'n/a (NoSamples)'
-    if (sample._tag === 'Unavailable') return `n/a (${sample.reason})`
+    if (sample._tag === 'Unavailable') {
+      const lastKnown = sample.lastKnown
+      if (lastKnown === undefined || format !== 'full') return `n/a (${sample.reason})`
+      // A single sample is not a bucket aggregate: event and counter tiles name only its time.
+      if (policy.mode !== 'Gauge')
+        return `n/a (${sample.reason}; last observation at ${lastKnown.atMs}ms)`
+      const value = options.value(lastKnown.value)
+      if (Number.isFinite(value) === false)
+        return `n/a (${sample.reason}; last observation at ${lastKnown.atMs}ms)`
+      const known = formatMeterValue({ value, unit: policy.unit, format })
+      return `n/a (${sample.reason}; last known ${known} at ${lastKnown.atMs}ms)`
+    }
     if (sample._tag === 'Gap') return `n/a (${sample.reason} gap)`
     return 'n/a (MeasurementFailed)'
   }
@@ -810,6 +821,16 @@ export const tileBlock = <TValue>(
       const values = scratch.values
       const rangeState = scratch.range
       const resolvedRange = rangeState.target
+      // Freshness is source-owned: the tile dims only on materialized Stale/Disconnected.
+      const latest = history.latest
+      const status =
+        latest?._tag !== 'Unavailable'
+          ? undefined
+          : latest.reason === 'Stale'
+            ? 'stale'
+            : latest.reason === 'Disconnected'
+              ? 'offline'
+              : undefined
       ctx.save()
       ctx.beginPath()
       ctx.rect(rect.x, rect.y, rect.width, rect.height)
@@ -856,8 +877,8 @@ export const tileBlock = <TValue>(
         ctx.fillRect(chart.x, Math.min(chart.y + chart.height - 1, markY), chart.width, 1)
       }
       const step = chart.width / policy.buckets
-      ctx.strokeStyle = theme.normal
-      ctx.fillStyle = theme.normal
+      ctx.strokeStyle = status === undefined ? theme.normal : theme.muted
+      ctx.fillStyle = status === undefined ? theme.normal : theme.muted
       ctx.lineWidth = 1.5
       ctx.beginPath()
       let open = false
@@ -881,7 +902,8 @@ export const tileBlock = <TValue>(
       ctx.stroke()
       ctx.restore()
       // The label is the tile's static accessible name, so it outranks the value. A rect
-      // narrower than the label shows an ellipsized prefix of that name and no value.
+      // narrower than the label shows an ellipsized prefix of that name and no value. A
+      // stale or offline tile keeps its label and names that state in the value slot.
       ctx.font = theme.font
       ctx.textBaseline = 'top'
       ctx.textAlign = 'left'
@@ -899,17 +921,21 @@ export const tileBlock = <TValue>(
       }
       const space = right - (left + drawnLabel.width + 6)
       let fitted: TextRun | undefined
-      for (const format of valueFormats) {
-        const candidate = text({ scratch, format })
-        const width = measure(candidate)
-        if (width <= space) {
-          fitted = { text: candidate, x: right - width, width }
-          break
+      if (status !== undefined) {
+        fitted = fitText({ text: status, maxWidth: space, measure })
+      } else {
+        for (const format of valueFormats) {
+          const candidate = text({ scratch, format })
+          const width = measure(candidate)
+          if (width <= space) {
+            fitted = { text: candidate, x: right - width, width }
+            break
+          }
         }
+        fitted ??= fitText({ text: text({ scratch, format: 'number' }), maxWidth: space, measure })
       }
-      fitted ??= fitText({ text: text({ scratch, format: 'number' }), maxWidth: space, measure })
       if (fitted !== undefined) {
-        ctx.fillStyle = theme.foreground
+        ctx.fillStyle = status === undefined ? theme.foreground : theme.muted
         ctx.fillText(fitted.text, right - fitted.width, rect.y + 3)
       }
       ctx.restore()
