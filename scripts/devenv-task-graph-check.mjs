@@ -816,7 +816,7 @@ ok({
 })
 ok({
   condition:
-    editorViewHelper.includes('timeout --kill-after=5s 300s') &&
+    editorViewHelper.includes('editor-view-supervisor.py" 300 5') &&
     editorViewHelper.includes('exceeded its 300s total deadline') &&
     editorViewHelper.includes('exit "$status"'),
   name: 'every authority/bootstrap/publication invocation has a fail-closed process-tree deadline',

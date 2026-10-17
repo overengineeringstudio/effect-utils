@@ -94,6 +94,43 @@ it('bounds root subprocesses to four and continues after a failed fingerprint', 
   ])
 })
 
+it('does not admit queued or new fingerprint children after cancellation', async () => {
+  const cancellation = new AbortController()
+  const children: FingerprintTestChild[] = []
+  const spawnChild = vi.fn(() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+    })
+    children.push(child)
+    return child
+  })
+  const settled = Promise.allSettled(
+    Array.from({ length: 8 }, (_, index) =>
+      runFingerprintTool({
+        tool: fingerprintTool,
+        args: [`/cancel-${index}`],
+        spawnChild,
+        signal: cancellation.signal,
+      }),
+    ),
+  )
+  await Promise.resolve()
+  expect(children).toHaveLength(4)
+  cancellation.abort()
+  for (const child of children) child.emit('close', 1, 'SIGTERM')
+  expect((await settled).every((result) => result.status === 'rejected')).toBe(true)
+  await expect(
+    runFingerprintTool({
+      tool: fingerprintTool,
+      args: ['/cancel-new'],
+      spawnChild,
+      signal: cancellation.signal,
+    }),
+  ).rejects.toThrow('admission closed')
+  expect(spawnChild).toHaveBeenCalledTimes(4)
+})
+
 it('memoizes immutable roots only for identical fingerprint semantics', async () => {
   const spawnChild = vi.fn(() => {
     const child = Object.assign(new EventEmitter(), {

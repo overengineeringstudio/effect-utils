@@ -708,7 +708,7 @@ let
       # Bound the whole authority/build/publication process tree, including synchronous
       # filesystem work and lock waits that an in-process JS timer cannot interrupt.
       status=0
-      ${pkgs.coreutils}/bin/timeout --kill-after=5s 300s \
+      ${pkgs.python3}/bin/python "$root/scripts/editor-view-supervisor.py" 300 5 \
         ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
         --workspace-root "$root" \

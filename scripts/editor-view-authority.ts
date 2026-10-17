@@ -120,9 +120,13 @@ export const resolveEditorViewPackageScope = ({
 }
 
 /** Read the lockfile authority for workspace trees embedded in consumer snapshots. */
-export const workspaceEditorDependencies = (
-  serialized: string,
-): Readonly<Record<string, readonly string[]>> => {
+export const workspaceEditorDependencies = ({
+  serialized,
+  rootBuck,
+}: {
+  readonly serialized: string
+  readonly rootBuck: string
+}): Readonly<Record<string, readonly string[]>> => {
   const lock = Bun.YAML.parse(serialized) as {
     importers?: Record<
       string,
@@ -130,7 +134,7 @@ export const workspaceEditorDependencies = (
     >
   }
   if (lock.importers === undefined) throw new Error('lockfile has no importers')
-  return Object.fromEntries(
+  const dependencies = Object.fromEntries(
     Object.entries(lock.importers).map(([packagePath, importer]) => [
       packagePath,
       ['dependencies', 'devDependencies', 'optionalDependencies'].flatMap((field) =>
@@ -146,6 +150,38 @@ export const workspaceEditorDependencies = (
       ),
     ]),
   )
+  // These root editor entrypoints alias real consumer products rather than
+  // declaring pnpm dependencies. Read their generated Buck authority, not a
+  // duplicated root-to-package mapping.
+  const aliases = new Map(
+    [...rootBuck.matchAll(/\balias\(\s*name\s*=\s*"([^"]+)"\s*,\s*actual\s*=\s*"([^"]+)"/gu)].map(
+      (match) => [match[1]!, match[2]!] as const,
+    ),
+  )
+  const resolveAlias = ({
+    name,
+    visited = new Set<string>(),
+  }: {
+    readonly name: string
+    readonly visited?: Set<string>
+  }): string => {
+    if (visited.has(name) === true) throw new Error(`root editor alias cycle at ${name}`)
+    visited.add(name)
+    const target = aliases.get(name)
+    if (target?.startsWith(':') === true) return resolveAlias({ name: target.slice(1), visited })
+    const owner = target?.match(/^\/\/([^:]+):[^:]+$/u)?.[1]
+    if (owner === undefined || dependencies[owner] === undefined)
+      throw new Error(`unproven root editor alias ${name}`)
+    return owner
+  }
+  dependencies['.'] = [
+    ...new Set([
+      ...(dependencies['.'] ?? []),
+      resolveAlias({ name: 'editor_inputs' }),
+      resolveAlias({ name: 'root_editor_package_tree' }),
+    ]),
+  ]
+  return dependencies
 }
 
 /** Use the pnpm importer reverse closure; global or unproven changes require all views. */
@@ -293,9 +329,10 @@ const main = async (): Promise<void> => {
         changed,
         packagePaths: authorityPackagePaths,
         readDependencies: () =>
-          workspaceEditorDependencies(
-            readFileSync(join(options.repoRoot, 'pnpm-lock.yaml'), 'utf8'),
-          ),
+          workspaceEditorDependencies({
+            serialized: readFileSync(join(options.repoRoot, 'pnpm-lock.yaml'), 'utf8'),
+            rootBuck: readFileSync(join(options.repoRoot, 'BUCK'), 'utf8'),
+          }),
       })
       if (selected.length === 0) {
         process.stdout.write(

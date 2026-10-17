@@ -57,7 +57,7 @@ import {
 } from './editor-view-sharing.ts'
 import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath, realpathThroughName } from './real-path.ts'
-import { runFingerprintTool } from './typescript-runner.ts'
+import { closeFingerprintAdmission, runFingerprintTool } from './typescript-runner.ts'
 
 /** Versioned identity of the persisted scoped editor-view record. */
 export const editorViewSchema = 'effect-utils/editor-view/v2' as const
@@ -3613,6 +3613,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
 
 const main = async (): Promise<void> => {
   process.once('SIGTERM', () => {
+    closeFingerprintAdmission()
     for (const report of interruptedPublicationPhases) report()
     // Give asynchronous span emission a bounded chance to flush before failing closed.
     setTimeout(() => process.exit(143), 100)

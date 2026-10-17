@@ -253,19 +253,27 @@ const spawnFingerprintChild = ({
 }): FingerprintChild =>
   spawn(tool, args, { cwd: '/', env: { PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] })
 
+const fingerprintAdmission = new AbortController()
+/** Stop queued and future root subprocess admission before termination drains lanes. */
+export const closeFingerprintAdmission = (): void => fingerprintAdmission.abort()
+
 /** Bound subprocess admission; memoize only immutable Nix inputs with identical semantics. */
 export const runFingerprintTool = ({
   tool,
   args,
   spawnChild = spawnFingerprintChild,
+  signal: admissionSignal = fingerprintAdmission.signal,
 }: {
   readonly tool: string
   readonly args: readonly string[]
+  readonly signal?: AbortSignal
   readonly spawnChild?: (options: {
     readonly tool: string
     readonly args: readonly string[]
   }) => FingerprintChild
 }): Promise<string> => {
+  if (admissionSignal.aborted === true)
+    return Promise.reject(new Error('fingerprint admission closed by termination'))
   const immutable = /^\/nix\/store\/[^/]+(?:\/|$)/u.test(args[0] ?? '')
   const cacheKey = JSON.stringify([tool, args])
   if (immutable === true) {
@@ -276,6 +284,10 @@ export const runFingerprintTool = ({
   const result = (fingerprintQueues[lane] ?? Promise.resolve()).then(
     () =>
       new Promise<string>((resolveOutput, reject) => {
+        if (admissionSignal.aborted === true) {
+          reject(new Error('fingerprint admission closed by termination'))
+          return
+        }
         const child = spawnChild({ tool: requireFingerprintTool(tool), args })
         const stdout: Buffer[] = []
         const stderr: Buffer[] = []
@@ -828,6 +840,7 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
 }
 
 const forwardSignal = (signal: ForwardedSignal): void => {
+  closeFingerprintAdmission()
   forwardedSignal ??= signal
   activeChild?.kill(signalNumbers[signal])
 }

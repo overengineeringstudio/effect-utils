@@ -24,7 +24,8 @@ describe('editor view authority orchestration', () => {
   })
 
   it('selects the importer reverse closure, not just the changed owner', () => {
-    const dependencies = workspaceEditorDependencies(`importers:
+    const dependencies = workspaceEditorDependencies({
+      serialized: `importers:
   .: {}
   packages/a: {}
   packages/consumer:
@@ -34,14 +35,18 @@ describe('editor view authority orchestration', () => {
     devDependencies:
       consumer: {specifier: 'workspace:*', version: 'link:../consumer'}
   packages/unrelated: {}
-`)
+`,
+      rootBuck: `alias(name = "editor_inputs", actual = ":node_modules")
+alias(name = "node_modules", actual = "//packages/consumer:node_modules")
+alias(name = "root_editor_package_tree", actual = "//packages/consumer:package_tree")`,
+    })
     expect(
       changedEditorConsumers({
         changed: ['packages/a/src/one.ts'],
         packagePaths: Object.keys(dependencies),
         readDependencies: () => dependencies,
       }),
-    ).toEqual(['packages/a', 'packages/consumer', 'packages/transitive'])
+    ).toEqual(['.', 'packages/a', 'packages/consumer', 'packages/transitive'])
   })
 
   it('falls back to all consumers for global inputs and unproven ownership', () => {
