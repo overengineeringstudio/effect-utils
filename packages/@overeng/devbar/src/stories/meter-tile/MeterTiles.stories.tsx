@@ -330,7 +330,9 @@ export const Desktop: Story = {
     const card = await canvas.findByRole('tooltip')
     await expect(tile).toHaveAttribute('aria-describedby', card.id)
     await expect(card).toHaveTextContent('Snapshot taken on focus')
-    await expect(card).toHaveTextContent(/range over the 30\.0 s before evaluation: min .* \/ max /)
+    await expect(card).toHaveTextContent(
+      /range over 30\.0 s ending \d+\.\d s before evaluation: min .* \/ max /,
+    )
     // Enter and Space activate: the explicit refresh.
     await userEvent.keyboard('{Enter}')
     await expect(canvas.getByRole('tooltip')).toHaveTextContent('Snapshot taken on activation')

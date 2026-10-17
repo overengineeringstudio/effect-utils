@@ -139,7 +139,7 @@ describe('MeterEvidence', () => {
     expect(Array.from(card.children, (line) => line.textContent)).toEqual([
       'Work 4',
       'latest sample 1.5 s before evaluation',
-      'range over the 2.0 s before evaluation: min 1 / max 4',
+      'range over 2.0 s ending 0.0 s before evaluation: min 1 / max 4',
       'evaluated at session clock 10.0 s · revision 7',
       'Snapshot refreshed · R refreshes',
     ])
@@ -148,6 +148,40 @@ describe('MeterEvidence', () => {
     const first = container.innerHTML
     rerender(<MeterEvidence {...props} />)
     expect(container.innerHTML).toBe(first)
+  })
+
+  it('dates the range by its completed window end, not the evaluation instant', () => {
+    const bucket = {
+      _tag: 'Bucket',
+      mode: 'Gauge',
+      bucketMs: 1_000,
+      buckets: 30,
+      unit: 'count',
+    } as const
+    const lineOf = (overrides: Partial<BlockEvidence>) => {
+      const { unmount } = render(
+        <MeterEvidence
+          id="range"
+          evidence={evidence({ evaluatedAtMs: 10_900, ...overrides })}
+          trigger="Focus"
+          frozen={false}
+          theme={lightMeterTheme}
+        />,
+      )
+      const line = screen.getByRole('tooltip').children[2]?.textContent
+      unmount()
+      return line
+    }
+    expect(
+      lineOf({
+        aggregation: { ...bucket, endMs: 10_000 },
+        range: { windowMs: 30_000, endMs: 10_000, minimum: 2, maximum: 9 },
+      }),
+    ).toBe('range over 30.0 s ending 0.9 s before evaluation: min 2 / max 9')
+    // An empty window derives its end from the aggregation's completed end.
+    expect(lineOf({ aggregation: { ...bucket, endMs: 10_000 }, range: undefined })).toBe(
+      'range over 30.0 s ending 0.9 s before evaluation: no values',
+    )
   })
 
   it('names the unavailable reason and an empty window instead of a value', () => {
@@ -164,7 +198,7 @@ describe('MeterEvidence', () => {
     expect(lines).toEqual([
       'Work n/a (NoSamples)',
       'no sample before evaluation',
-      'range over the 2.0 s before evaluation: no values',
+      'range over 2.0 s ending 0.0 s before evaluation: no values',
       'evaluated at session clock 10.0 s (frozen) · revision 7',
       'Snapshot taken on focus · R refreshes',
     ])

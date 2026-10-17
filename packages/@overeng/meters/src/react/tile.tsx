@@ -47,10 +47,14 @@ const latestText = (evidence: BlockEvidence): string => {
   }
 }
 
+/** The extrema cover completed buckets, so the window names its own end, not evaluation. */
 const rangeText = (evidence: BlockEvidence): string | undefined => {
-  if (evidence.aggregation._tag !== 'Bucket') return undefined
-  const windowText = `range over the ${seconds(evidence.aggregation.bucketMs * evidence.aggregation.buckets)} before evaluation`
+  const aggregation = evidence.aggregation
+  if (aggregation._tag !== 'Bucket') return undefined
   const range = evidence.range
+  const windowMs = range?.windowMs ?? aggregation.bucketMs * aggregation.buckets
+  const endMs = range?.endMs ?? aggregation.endMs
+  const windowText = `range over ${seconds(windowMs)} ending ${seconds(evidence.evaluatedAtMs - endMs)} before evaluation`
   if (range === undefined) return `${windowText}: no values`
   const format = (value: number): string => formatMeterValue({ value, unit: evidence.unit })
   return `${windowText}: min ${format(range.minimum)} / max ${format(range.maximum)}`

@@ -608,6 +608,7 @@ interface UserTimingValue {
   readonly _tag: 'UserTiming'
   readonly name: string
   readonly startedAtMs: number
+  readonly endedAtMs: number
   readonly durationMs: number
 }
 type UserTimingFilter =
@@ -677,13 +678,17 @@ meters does not stack another tracer wrapper on an already instrumented host.
 `userTimingSource` observes `measure` entries with `buffered: true` for its
 lease, so app-owned `performance.measure()` spans (for example a host's
 `fractal:` prefix) become event samples whose durations bucket tiles reduce to
-p50/p95. A sample is dated at the measure's end mapped onto the session clock,
-clamped to its delivery instant and never before the newest recorded sample.
-Measures already recorded are not counted again when a later lease replays the
-buffer. Other entry types and names outside the filter are ignored; an empty
-filter is rejected at construction. Without `PerformanceObserver`, a
-performance clock or `measure` support the series reads `Unsupported`, and a
-non-finite or negative measure reads `MeasurementFailed`, never a zero.
+p50/p95. A sample is dated at delivery, the observer callback instant on the
+session clock, so buckets aggregate measures by observation time, not completion
+time; the payload keeps the measure's true start, end and duration on the
+session clock. Entries of one delivery are recorded in completion order. Each
+accepted entry object is remembered, so a later lease replaying the buffer
+records only new entries, even one ending when an old one did. Other entry types
+and names outside the filter are ignored; an empty filter is rejected at
+construction. Without `PerformanceObserver`, a performance clock or `measure`
+support the series reads `Unsupported`. An entry whose start, duration or end is
+not finite, or whose duration is negative, reads `MeasurementFailed` once; it is
+never a zero.
 
 `appMemoryProbe` creates no automatic timer. `probe` requires its source's live
 lease; concurrent invocations share one outstanding request. Unsupported or
@@ -1445,8 +1450,10 @@ reaches the host. Evidence is never published live or through `aria-live`
 full label and value text (or unavailable reason), the newest observation as an
 age before evaluation (`latest sample 1.5 s before evaluation`, `unavailable
 (<reason>) …`, `gap (<reason>, <duration>) ending …`, or `no sample before
-evaluation`), for bucket blocks the evidence `range` as `range over the <window>
-before evaluation: min <a> / max <b>` (or `no values`), `evaluated at session
+evaluation`), for bucket blocks the evidence `range` as `range over <window>
+ending <age> before evaluation: min <a> / max <b>` (or `no values`), where the
+window and its end are the completed buckets the extrema cover (the
+aggregation's completed end when the window is empty), `evaluated at session
 clock <t> · revision <n>` with `(frozen)` for a frozen view, and the capturing
 action. A source-owned `Stale` or `Disconnected` observation with
 `lastKnownAtMs` adds `; last sample <age> before evaluation`; the stale state
