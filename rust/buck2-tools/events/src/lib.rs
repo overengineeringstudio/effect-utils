@@ -774,7 +774,11 @@ fn start_shape(start: span_start_event::Data) -> (String, Vec<Value>, bool) {
                         _ => "remote",
                     }
                 }
-                Some(Stage::Local(_)) => "local",
+                Some(Stage::Local(local)) => match local.stage {
+                    Some(data::local_stage::Stage::Queued(_)) => "local_queued",
+                    Some(data::local_stage::Stage::WorkerQueued(_)) => "worker_queued",
+                    _ => "local",
+                },
                 Some(Stage::CacheQuery(_)) => "cache_query",
                 Some(Stage::CacheHit(_)) => "cache_hit",
                 Some(Stage::Prepare(_)) => "prepare",
@@ -920,6 +924,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                         for (source, target) in [
                             ("buck2_revision", "service.version"),
                             ("hostname", "host.name"),
+                            ("hostname", "service.instance.id"),
                             ("os", "os.type"),
                             ("arch", "host.arch"),
                             ("materializer", "buck2.materializer"),
@@ -1097,6 +1102,36 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
     }
     if model.uuid.is_empty() {
         return Err("no Buck event in log".into());
+    }
+    // Local executors can omit CommandExecutionMetadata.queue_duration while
+    // still emitting LocalQueued/WorkerQueued spans. Use their completed
+    // intervals only when the action has no explicit queue timing.
+    let mut local_queue = HashMap::<usize, u64>::new();
+    for (index, span) in model.spans.iter().enumerate() {
+        if !span.ended
+            || !matches!(
+                span.name.as_str(),
+                "buck2.stage local_queued" | "buck2.stage worker_queued"
+            )
+        {
+            continue;
+        }
+        let mut child = index;
+        while let Some(&parent) = by_id.get(&model.spans[child].parent) {
+            // Parents precede children; this also rejects malformed cycles.
+            if parent >= child {
+                break;
+            }
+            if model.spans[parent].action {
+                let total = local_queue.entry(parent).or_default();
+                *total = total.saturating_add(span.end.saturating_sub(span.start));
+                break;
+            }
+            child = parent;
+        }
+    }
+    for (index, duration) in local_queue {
+        model.spans[index].queue_ns.get_or_insert(duration);
     }
     for span in &mut model.spans {
         if !span.ended {
@@ -1485,8 +1520,23 @@ fn metric_payload(model: &Model) -> Vec<u8> {
         ),
         metric_histogram("buck2.action.queue.duration", duration_points(queue)),
     ];
+    // Reuse the log writer's host identity, not the machine doing post-hoc
+    // conversion. Build/run identity remains trace-only.
+    let mut resource_attrs = vec![attr("service.name", "effect-utils-buck2")];
+    resource_attrs.extend(
+        model
+            .resource_attrs
+            .iter()
+            .filter(|attribute| {
+                matches!(
+                    attribute["key"].as_str(),
+                    Some("host.name" | "service.instance.id" | "os.type" | "host.arch")
+                )
+            })
+            .cloned(),
+    );
     serde_json::to_vec(&json!({"resourceMetrics":[{
-        "resource":{"attributes":[attr("service.name","effect-utils-buck2")]},
+        "resource":{"attributes":resource_attrs},
         "scopeMetrics":[{"scope":{"name":"buck2-events"},"metrics":metrics}]
     }]}))
     .expect("OTLP metrics JSON")
