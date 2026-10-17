@@ -443,6 +443,7 @@ const registerDefinition = (
   if (registered !== undefined && registered !== node)
     return new GraphError({ nodeId: id, message: 'Conflicting definitions for one node kind' })
   definitions.set(node.kind, node)
+  return undefined
 }
 
 /** Serialized pull; explicit refresh IDs authorize observations, never time-based hashes. */
