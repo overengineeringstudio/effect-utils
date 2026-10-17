@@ -1,3 +1,34 @@
+import { crc32, deflateRawSync } from 'node:zlib'
+
+/** One synthetic DEFLATE member, with matching local and central integrity metadata. */
+export const makeZip = (content: string | Uint8Array): Buffer<ArrayBuffer> => {
+  const data = Buffer.from(
+    typeof content === 'string' ? new TextEncoder().encode(content) : content,
+  )
+  const name = Buffer.from('log.txt')
+  const compressed = deflateRawSync(data)
+  const local = Buffer.alloc(30)
+  local.writeUInt32LE(0x04034b50, 0)
+  local.writeUInt16LE(20, 4)
+  local.writeUInt16LE(0x800, 6)
+  local.writeUInt16LE(8, 8)
+  local.writeUInt32LE(crc32(data), 14)
+  local.writeUInt32LE(compressed.length, 18)
+  local.writeUInt32LE(data.length, 22)
+  local.writeUInt16LE(name.length, 26)
+  const central = Buffer.alloc(46)
+  central.writeUInt32LE(0x02014b50, 0)
+  central.writeUInt16LE(20, 4)
+  local.copy(central, 6, 4, 30)
+  const end = Buffer.alloc(22)
+  end.writeUInt32LE(0x06054b50, 0)
+  end.writeUInt16LE(1, 8)
+  end.writeUInt16LE(1, 10)
+  end.writeUInt32LE(central.length + name.length, 12)
+  end.writeUInt32LE(local.length + name.length + compressed.length, 16)
+  return Buffer.concat([local, name, compressed, central, name, end])
+}
+
 // Synthetic archives generated with Python stdlib zipfile; no consumer data.
 /** Neutral synthetic text members compressed as a real ZIP archive. */
 export const basic = Buffer.from(
