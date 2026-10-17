@@ -450,8 +450,9 @@ mechanisms establishes historical TCC continuity without positive platform tests
 
 The public unsigned assembly module is
 [`nix/permissions-host/default.nix`](../../nix/permissions-host/default.nix).
-Import it with `pkgs` and `nixpkgsRevision`, then supply required `bundleId`,
-`displayName`, `signer` (`teamId`, `identity`) and ordered `policyFiles`. Optional
+Consumers normally call `effectUtils.lib.mkMacosPermissionsHost` with `pkgs`,
+`bundleId`, `displayName`, `signer` (`teamId`, `identity`) and ordered `policyFiles`.
+Direct imports take `pkgs` and `nixpkgsRevision` before those assembly inputs. Optional
 inputs are `name`, `launchd`, `enabledGrants` (all seven concrete grant strings by
 default) and `automationTargets` (empty by default). The consumer supplies the identity;
 public examples must not expose the final private value. Signer metadata pins
