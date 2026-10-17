@@ -21,7 +21,7 @@ runtime JSON -> GatewayConfig -> makeRoutes -> Node HTTP listener
                            optional metrics listener
 ```
 
-`GatewayConfig` decodes `{ upstream: URLFromString, consumers: Array<{ name: trimmed nonempty string, tokenSha256: lowercase hex SHA-256 }>, maxModelLabels?: nonnegative integer }`. Names and digests must each be unique. `maxModelLabels` defaults to 64 when omitted; zero aggregates every successful model into `_other`. Consumer names are deployer-owned opaque, case-sensitive strings; they are not provider accounts or request-body identities. Metric serialization escapes backslashes, quotes and newlines. The package imposes no preselected consumer vocabulary. `fixture-consumer` is an example; an empty or whitespace-padded name and a non-64-digit digest are invalid.
+`GatewayConfig` decodes `{ upstream: URLFromString, consumers: Array<{ name: trimmed nonempty string, tokenSha256: lowercase hex SHA-256 }>, maxModelLabels?: nonnegative integer, maxRequestBodyBytes?: positive integer }`. Names and digests must each be unique. `maxModelLabels` defaults to 64 when omitted; zero aggregates every successful model into `_other`. `maxRequestBodyBytes` defaults to 1048576 (1 MiB). Consumer names are deployer-owned opaque, case-sensitive strings; they are not provider accounts or request-body identities. Metric serialization escapes backslashes, quotes and newlines. The package imposes no preselected consumer vocabulary. `fixture-consumer` is an example; an empty or whitespace-padded name and a non-64-digit digest are invalid.
 
 `loadConfig(path)` requires Effect FileSystem and reports `ConfigLoadError` for read/decode errors. `makeRoutes({ config, metrics? })` returns `{ router, metrics }`; `Metrics.render()` exposes the text scrape. Accounting methods take named objects: `Metrics.record({ labels, status, seconds })` and `Metrics.addTokens({ labels, status, kind, count })`. The CLI provides:
 
@@ -35,17 +35,17 @@ ai-gateway-edge hash-token
 ## Request and response flow (AIG.EDGE-R01, AIG.EDGE-R03–R05)
 
 ```text
-bearer -> digest comparison -> decode model -> force stream usage -> upstream
-            |                      |                                 |
-           401                    400                         status + bytes
+bearer -> digest comparison -> bound body -> decode model -> force stream usage -> upstream
+            |                    |              |                                 |
+           401                  413            400                         status + bytes
                                                                     |
                                                           usage observation
 ```
 
 1. Protect `GET /v1/models` and `POST /v1/chat/completions`, `/v1/systemone`, `/alpha/decisions`. Parse the root's exact bearer grammar, hash it, and compare all configured digests with `timingSafeEqual`, including on absent or malformed bearer. Rejection returns `{ "error": { "message": "Invalid bearer token", "type": "authentication_error", "code": null } }` with 401.
-2. POST requires JSON with a nonempty `model`; retain its exact ID. Reject malformed JSON or missing model with 400 and message `Invalid request JSON or model`. Nonstreaming requests and decision bodies retain their original bytes. Streaming chat merges `stream_options` and overwrites only `include_usage: true`.
+2. After authentication, reject a declared Content-Length above `maxRequestBodyBytes` before reading. Otherwise count incoming raw bytes while consuming the stream; stop at the first chunk that would exceed the limit, without retaining that chunk or waiting for the upload to finish. Exactly the configured byte limit is accepted. An oversized request returns 413 with `{ "error": { "message": "Request body too large", "type": "gateway_error", "code": null } }` and never reaches the upstream. The bounded Node stream reader leaves the socket alive to send the rejection, then `Connection: close` prevents reuse with an unread upload. Only bounded bodies are decoded: POST requires JSON with a nonempty `model`; retain its exact ID. Reject malformed JSON or missing model with 400 and message `Invalid request JSON or model`. Nonstreaming requests and decision bodies retain their original bytes. Streaming chat merges `stream_options` and overwrites only `include_usage: true`.
 3. Strip Authorization, Host, Content-Length, standard hop-by-hop headers and headers named by Connection. Request `accept-encoding: identity`. The existing native fetch transport binds cancellation to both the Effect signal and the downstream Node socket, allowing stream teardown when the consumer disconnects.
-4. A transport failure before a response returns 502 and message `Upstream unavailable`. Local 400/502 errors use the same envelope with `type: gateway_error` and null `code`. Upstream HTTP errors retain their own status and envelope; no retry or normalization is performed.
+4. A transport failure before a response returns 502 and message `Upstream unavailable`. Local 400/413/502 errors use the same envelope with `type: gateway_error` and null `code`. Upstream HTTP errors retain their own status and envelope; no retry or normalization is performed.
 5. Filter response hop-by-hop headers and Content-Encoding. SSE bytes stream unchanged; a bounded UTF-8 event observer reads usage without rewriting content, `[DONE]`, or error frames. Non-SSE bytes are collected unchanged for optional JSON usage observation. Malformed usage is ignored, not replaced by zero. Body interruption remains a stream failure.
 6. Unauthenticated `GET /healthz` probes upstream `/healthz`, returning the root's 200/503 health envelopes.
 
@@ -60,7 +60,7 @@ bearer -> digest comparison -> decode model -> force stream usage -> upstream
 
 The package owns these case-sensitive Prometheus metric identifiers. Consumer values are escaped configuration values. Request, token and duration metrics share one model-label admission set per `Metrics` instance:
 
-1. Non-2xx responses, including local 400/502 errors, use `_rejected` and do not admit request model values.
+1. Non-2xx responses, including local 400/413/502 errors, use `_rejected` and do not admit request model values.
 2. Upstream 2xx responses may retain at most `maxModelLabels` distinct model values across all configured consumers. Discovery's synthetic `models` value also consumes one slot.
 3. Once the cap is reached, newly observed successful models use `_other`; previously admitted models retain their own label. `_other` and `_rejected` are reserved aggregate values, not admission-set entries.
 4. The cap bounds all model-keyed maps and Prometheus series; it does not rewrite, reject, or constrain the model sent upstream. Optional supplied usage on an error response is counted under `_rejected`.

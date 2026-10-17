@@ -31,6 +31,12 @@ Names and verifier digests must each be unique. Removing a verifier and restarti
 
 `maxModelLabels` is an optional nonnegative integer, defaulting to 64. Request, duration and token metrics retain model labels only for upstream 2xx responses, admit at most this many distinct values, and aggregate further models as `_other`. All non-2xx responses use `_rejected` without consuming the cap. Forwarded model IDs are never rewritten. Set the cap to zero to aggregate all successful models.
 
+`maxRequestBodyBytes` is an optional positive integer, defaulting to 1048576 (1 MiB). After authentication, the edge rejects a declared Content-Length above this limit before reading the body and counts raw bytes incrementally for bodies without a declared length. Exactly the limit is accepted; exceeding it stops reading immediately, before JSON decoding or upstream forwarding. Oversized requests return HTTP 413 with the stable local envelope:
+
+```json
+{ "error": { "message": "Request body too large", "type": "gateway_error", "code": null } }
+```
+
 ## Compose
 
 ```ts

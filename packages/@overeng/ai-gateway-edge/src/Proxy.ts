@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { Socket } from 'node:net'
+import { IncomingMessage } from 'node:http'
+import type { Socket } from 'node:net'
 
+import { NodeStream } from '@effect/platform-node'
 import { Data, Effect, Schema, Stream } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 
@@ -31,6 +33,31 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 class UpstreamStreamError extends Data.TaggedError('UpstreamStreamError')<{
   readonly cause: unknown
 }> {}
+class RequestBodyTooLarge extends Data.TaggedError('RequestBodyTooLarge') {}
+
+const readBody = Effect.fn('ai-gateway-edge.readBody')(function* (
+  request: IncomingMessage,
+  limit: number,
+) {
+  const declared = request.headers['content-length']
+  if (declared !== undefined && /^\d+$/.test(declared) === true && BigInt(declared) > BigInt(limit))
+    return yield* new RequestBodyTooLarge()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  // Keep the socket open long enough to deliver 413 when stream consumption stops early.
+  yield* NodeStream.fromReadable({
+    evaluate: () => request,
+    closeOnDone: false,
+  }).pipe(
+    Stream.runForEach((chunk) => {
+      if (chunk.byteLength > limit - size) return Effect.fail(new RequestBodyTooLarge())
+      size += chunk.byteLength
+      chunks.push(chunk)
+      return Effect.void
+    }),
+  )
+  return Buffer.concat(chunks, size).toString('utf8')
+})
 const excludedHeaders = new Set([
   'authorization',
   'connection',
@@ -61,7 +88,7 @@ const error = ({ status, message }: { status: number; message: string }) =>
         code: null,
       },
     },
-    { status },
+    { status, ...(status === 413 ? { headers: { connection: 'close' } } : {}) },
   )
 
 /** Process one SSE event at a time; arbitrarily split UTF-8 chunks never require buffering the response. */
@@ -114,6 +141,7 @@ export const makeRoutes = ({
     throw new Error('Consumer names and token digests must be unique')
 
   const upstream = new URL(config.upstream)
+  const maxRequestBodyBytes = config.maxRequestBodyBytes ?? 1048576
   const authenticate = (header: string | undefined) => {
     const match = /^Bearer ([^\s]+)$/.exec(header ?? '')
     const digest = createHash('sha256')
@@ -181,11 +209,23 @@ export const makeRoutes = ({
       const consumer = authenticate(request.headers['authorization'])
       if (consumer === undefined || consumer === '')
         return error({ status: 401, message: 'Invalid bearer token' })
+      if (!(request.source instanceof IncomingMessage))
+        return error({ status: 500, message: 'Unsupported HTTP request' })
       const started = performance.now()
       let model = path === '/v1/models' ? 'models' : 'unknown'
       let body: string | undefined
+      const text = yield* readBody(request.source, maxRequestBodyBytes).pipe(
+        Effect.catchTag('RequestBodyTooLarge', () => Effect.void),
+      )
+      if (text === undefined) {
+        metrics.record({
+          labels: { consumer, model },
+          status: 413,
+          seconds: (performance.now() - started) / 1000,
+        })
+        return error({ status: 413, message: 'Request body too large' })
+      }
       if (path !== '/v1/models') {
-        const text = yield* request.text
         const parsed = yield* Effect.try({
           try: () => {
             const value = decodeRequestModel(text)
@@ -237,8 +277,6 @@ export const makeRoutes = ({
       }
       requestHeaders.set('accept-encoding', 'identity')
       const effectSignal = yield* Effect.abortSignal
-      if (!('socket' in request.source) || !(request.source.socket instanceof Socket))
-        return error({ status: 500, message: 'Unsupported HTTP request' })
       const socketAbort = abortOnSocketClose(request.source.socket)
       const url = new URL(path, upstream)
       const result = yield* Effect.tryPromise({
