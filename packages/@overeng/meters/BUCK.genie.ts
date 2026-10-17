@@ -14,7 +14,11 @@ export const buck2TypeScriptAdmission = {
       name: 'test',
       runner: 'vitest',
       staticCollection: true,
-      excludes: ['e2e/meter-strip.pw.test.ts', 'e2e/meter-tile.pw.test.ts', 'e2e/perf-gates.pw.test.ts'],
+      excludes: [
+        'e2e/meter-strip.pw.test.ts',
+        'e2e/meter-tile.pw.test.ts',
+        'e2e/perf-gates.pw.test.ts',
+      ],
       sourceOwners: {
         'e2e/meter-strip.pw.test.ts': 'test:pw:meters',
         'e2e/meter-tile.pw.test.ts': 'test:pw:meters',
