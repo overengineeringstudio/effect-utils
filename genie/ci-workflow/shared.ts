@@ -275,6 +275,16 @@ const validateLinuxNixSandboxRunners = ({
     )
       continue
     const labels = [job['runs-on']].flat()
+    // A fixed macOS machine label constrains the whole job, including opaque
+    // feature-label entries; Linux capability validation does not apply.
+    if (
+      labels.some((label) =>
+        /^(?:namespace-profile-|nscloud-)[^$;]*(?:macos|darwin)[^$;]*$/.test(
+          label.split(';')[0] ?? '',
+        ),
+      ) === true
+    )
+      continue
     const fail = (reason: string): never => {
       throw new Error(
         `CI job "${jobId}": ${reason}. Install Nix requires sandbox = true and sandbox-fallback = false on Linux. ` +
@@ -285,9 +295,28 @@ const validateLinuxNixSandboxRunners = ({
     }
     const alternatives = labels.map((label) => {
       const resolved = resolveRunnerLabelAlternatives(label)
-      if (resolved === undefined && capabilities?.[jobId] !== 'supported')
+      if (resolved !== undefined) return resolved
+      const partial = label.replace(/\$\{\{[\s\S]*?\}\}/g, 'GENIE_OPAQUE')
+      const machine = partial.split(';')[0] ?? ''
+      const knownMachine = machine.includes('GENIE_OPAQUE') === false
+      if (
+        knownMachine === true &&
+        /^(?:namespace-profile-|nscloud-|namespace-features:)/.test(machine) === false
+      )
+        return [partial]
+      if (capabilities?.[jobId] !== 'supported')
         fail(`cannot statically determine runs-on ${JSON.stringify(label)}`)
-      return resolved
+      // An opaque affinity value is not an opaque privilege declaration.
+      // Preserve static feature facts even when the job has an attestation.
+      if (knownMachine === true) {
+        if (/(?:^|[;:])container\.privileged=false(?:;|$)/.test(partial) === true)
+          fail(
+            `Namespace Linux runner ${JSON.stringify(label)} explicitly disables container.privileged`,
+          )
+        if (/(?:^|[;:])(?:container\.privileged=)?GENIE_OPAQUE(?:;|$)/.test(partial) === false)
+          return [partial]
+      }
+      return undefined
     })
     const hasOpaqueLabel = alternatives.some((entry) => entry === undefined)
     // Each runs-on entry is required simultaneously. A feature entry guarantees

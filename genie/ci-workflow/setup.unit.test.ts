@@ -390,6 +390,33 @@ describe('Linux Nix sandbox fallback', () => {
     ).not.toThrow()
   })
 
+  it('does not let attestations hide static privilege facts behind opaque affinity', () => {
+    for (const runsOn of [
+      'namespace-profile-linux-x86-64;container.privileged=false;github.run-id=${{ github.run_attempt }}',
+      'namespace-profile-linux-x86-64;github.run-id=${{ github.run_attempt }}',
+      [
+        'nscloud-ubuntu-24.04-amd64-16x64-with-features',
+        'namespace-features:container.privileged=false;github.run-id=${{ github.run_attempt }}',
+      ],
+    ])
+      expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).toThrow(/container\.privileged/)
+    expect(() =>
+      sandboxWorkflow(
+        'namespace-profile-linux-x86-64;container.privileged=true;github.run-id=${{ github.run_attempt }}',
+        { build: 'supported' },
+      ),
+    ).not.toThrow()
+  })
+
+  it('excludes known macOS and self-hosted machines before checking opaque feature values', () => {
+    for (const runsOn of [
+      'namespace-profile-macos-arm64;github.run-id=${{ github.run_attempt }}',
+      ['namespace-profile-macos-arm64', 'namespace-features:${{ inputs.features }}'],
+      ['sh-linux-x64;github.run-id=${{ github.run_attempt }}', 'nix'],
+    ])
+      expect(() => sandboxWorkflow(runsOn)).not.toThrow()
+  })
+
   it('configures fresh installers only on Linux', () => {
     expect(linuxNixSandboxFallbackConf).toBe(
       [
