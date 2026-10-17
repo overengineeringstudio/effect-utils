@@ -136,6 +136,9 @@ const placeCard = (options: { readonly card: HTMLElement; readonly tile: HTMLEle
   else style.left = `${Math.max(0, rect.left)}px`
 }
 
+/** The one tile per session whose card is open; a capture on another tile dismisses it. */
+const cardOwners = new WeakMap<MeterSession, () => void>()
+
 /**
  * Draw one block on its own canvas through the session's shared Draw phase. Samples cause no
  * DOM writes and no React commits: only focus, hover, activation and R capture evidence.
@@ -170,9 +173,19 @@ export const MeterTile = (props: MeterTileProps): React.ReactNode => {
   )
   const [captured, setCaptured] = React.useState<Captured | undefined>(undefined)
   const hovered = React.useRef(false)
+  const dismiss = React.useCallback(() => setCaptured(undefined), [])
+  React.useEffect(
+    () => () => {
+      if (cardOwners.get(meters) === dismiss) cardOwners.delete(meters)
+    },
+    [meters, dismiss],
+  )
   const capture = (trigger: MeterEvidenceTrigger): void => {
     const reader = view.readers[0]
     if (reader === undefined) return
+    const previous = cardOwners.get(meters)
+    if (previous !== undefined && previous !== dismiss) previous()
+    cardOwners.set(meters, dismiss)
     setCaptured({
       trigger,
       evidence: reader.evidence({ nowMs: view.frozenAtMs ?? meters.clock.now() }),

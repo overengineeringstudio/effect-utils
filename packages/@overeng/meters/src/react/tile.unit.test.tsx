@@ -77,6 +77,7 @@ const fixture = () => {
     host,
     canvas,
     meters,
+    series,
     block,
     /** Mount once, or re-render the same provider so the session keeps running. */
     mount: (options: { readonly frozen?: MeterFreeze; readonly onCommit?: () => void } = {}) =>
@@ -310,6 +311,50 @@ describe('MeterTile', () => {
       expect(screen.getByRole('tooltip').textContent).toContain('Snapshot taken on hover')
       fireEvent.mouseLeave(tile)
       expect(screen.queryByRole('tooltip')).toBeNull()
+    }),
+  )
+
+  it.effect('keeps at most one card open per session', () =>
+    Effect.gen(function* () {
+      const f = fixture()
+      const other = tileBlock({
+        id: 'other',
+        series: f.series,
+        shortLabel: 'other',
+        widthPx: 64,
+        aggregation: { _tag: 'Bucket', mode: 'Gauge', bucketMs: 250, buckets: 8, unit: 'count' },
+        value: (value) => value.value,
+      })
+      yield* Effect.promise(() =>
+        act(async () => {
+          render(
+            <MetersProvider meters={f.meters}>
+              {[f.block, other].map((block) => (
+                <MeterTile
+                  key={block.id}
+                  meters={f.meters}
+                  block={block}
+                  theme={lightMeterTheme}
+                  platform={f.canvas.platform}
+                />
+              ))}
+            </MetersProvider>,
+          )
+        }),
+      )
+      f.ticks(30)
+      const work = screen.getByRole('button', { name: 'work' })
+      const second = screen.getByRole('button', { name: 'other' })
+      // A hovered tile keeps its card past blur; a capture elsewhere still dismisses it.
+      fireEvent.mouseEnter(work)
+      fireEvent.click(work)
+      act(() => second.focus())
+      expect(screen.getAllByRole('tooltip')).toHaveLength(1)
+      expect(second.getAttribute('aria-describedby')).toBe(screen.getByRole('tooltip').id)
+      expect(work.hasAttribute('aria-describedby')).toBe(false)
+      fireEvent.mouseEnter(work)
+      expect(screen.getAllByRole('tooltip')).toHaveLength(1)
+      expect(work.getAttribute('aria-describedby')).toBe(screen.getByRole('tooltip').id)
     }),
   )
 
