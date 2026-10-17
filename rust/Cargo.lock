@@ -43,6 +43,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
+ "proptest",
  "reqwest 0.13.5",
  "rustls",
  "schemars",
