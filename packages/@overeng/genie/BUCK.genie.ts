@@ -73,8 +73,8 @@ ${projection.stringify(context)}
 
 package_tree_product_executable(
     name = "typescript-api-server-product-executable",
-    package_tree = ":package_tree",
-    package_anchor = "node_modules/typescript",
+    dependency_view = "//buck2/dependencies:external_view_packages_overeng_genie_b7534483be10",
+    package_anchor = "typescript",
     executable_paths = {
         "aarch64-darwin-darwin": "@typescript/typescript-darwin-arm64/lib/tsc",
         "aarch64-linux-glibc": "@typescript/typescript-linux-arm64/lib/tsc",

@@ -31,6 +31,35 @@ required checks and workflow frequency are independent of these labels.
 
 ## Packages
 
+### GitHub Actions retained artifacts
+
+[`@overeng/gh-ci-utils`](./packages/@overeng/gh-ci-utils) provides read-only
+artifact inspection through the same configured GitHub authentication as its CI commands:
+
+```sh
+gh-ci-utils artifacts list 123 --repo example-org/example-repo --page 1
+gh-ci-utils artifacts members 123 --repo example-org/example-repo --artifact 456
+gh-ci-utils artifacts read 123 --repo example-org/example-repo --artifact 456 --member cost.json
+```
+
+Output is terminal-safe JSON with explicit repository, run, and artifact provenance.
+Artifact names never imply a job association. Expired artifacts, missing artifacts
+or members, and run mismatches fail explicitly. Member reads select one exact
+portable relative path; there is no automatic extraction or binary/raw output.
+
+Hard limits are 100 artifacts per page (pages 1–1000), 1 MiB metadata responses,
+32 MiB compressed downloads, 1024 ZIP entries, 1024-byte member paths, 8 MiB
+decompressed per member, and 256 KiB text/escaped JSON output including its envelope.
+Limits apply to actual streamed bytes as well as advertised sizes; oversized output
+fails instead of silently truncating. Only unencrypted stored/DEFLATE members without
+ZIP64 member fields are supported. Bounded ZIP64 directory records are supported by
+the maintained parser; directory/member counts, offsets and sizes are independently
+bounded. Unsafe/duplicate paths, symlinks, special files, inconsistent headers,
+and corrupt selected-member contents are rejected. Metadata enumeration does not
+decompress members. Signed storage redirects are allowlisted and receive no GitHub
+authorization header.
+
+
 ### Notion Integration
 
 Full-featured Effect-native Notion API client with type-safe schema generation.
@@ -371,6 +400,16 @@ The consumer's Nix source closure must supply the same cell, package bytes, and
 target declarations. The root continues to ignore `.devenv` wholesale. Unmapped
 workspace packages retain their conventional same-cell `:package_tree` labels;
 mapped labels participate in the projection fingerprint.
+
+Workspace `link:` dependencies resolve relative to their importer, or relative
+to the lockfile root when pnpm emits them inside a package snapshot. Both forms
+reference the same workspace importer and package tree. Links must remain inside
+the repository; snapshot links must resolve to a known lockfile importer.
+Directory snapshots without their own importer view get a normalized store entry
+backed by their declared source tree. Their snapshot dependencies, including
+workspace links, remain explicit Buck edges rather than being lost behind a
+source-tree reference. Directory snapshots with an importer reuse its workspace
+tree and dependency view.
 
 Dependency-view availability is derived from the complete required resolver
 context, not just a package's own platform fields. Required native dependencies

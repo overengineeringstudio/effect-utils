@@ -1,0 +1,105 @@
+Subject: [PATCH] prelude: default-off declared Rust action adapter (Q43 option A)
+Upstream: https://github.com/facebook/buck2/pull/1580
+Base: buck2-prelude 1f8c24e0b1f85e645011f93a4073b0c6c762d7b1 (nix/buck2.nix)
+Removal: drop this patch and its applicator when the upstream change lands and
+  the pinned Prelude includes it; retain the default-off posture regression.
+Policy: rust.action_adapter_enabled defaults to false; no lane is enabled.
+  Runtime resources are declared by the toolchain adapter's RunInfo, never
+  injected into the default rustc_action executable or its action inputs.
+diff --git a/prelude/rust/action_adapter.bzl b/prelude/rust/action_adapter.bzl
+new file mode 100644
+index 0000000000..82138183e0
+--- /dev/null
++++ b/prelude/rust/action_adapter.bzl
+@@ -0,0 +1,41 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is dual-licensed under either the MIT license found in the
++# LICENSE-MIT file in the root directory of this source tree or the Apache
++# License, Version 2.0 found in the LICENSE-APACHE file in the root directory
++# of this source tree. You may select, at your option, one of the
++# above-listed licenses.
++
++def adapt_rustc_action(ctx, command, adapter, prefix):
++    """Optionally wrap the entire action, before rustc_action parses arguments.
++
++    The declared RunInfo receives --sandbox-outputs=<JSON> followed by the
++    original command. JSON v1 contains outputs (including diagnostics and hidden
++    outputs) and views (currently empty). RUST_SANDBOX_METADATA names Buck's
++    declared-input metadata. The adapter must execute the original command and
++    propagate its exit status. Its runtime resources belong in its RunInfo.
++
++    This is only an interception seam, not a sandbox or cache-admission proof.
++    It does not wrap rustdoc, build scripts, linkers, or other target actions.
++    With the flag absent/false the original command and run options are returned
++    unchanged: no extra artifacts, inputs, environment, or metadata are created.
++    """
++    enabled = read_root_config("rust", "action_adapter_enabled", "false")
++    if enabled not in ["true", "false"]:
++        fail("rust.action_adapter_enabled must be true or false")
++    if enabled == "false":
++        return command, {}
++    if adapter == None:
++        fail("rust.action_adapter_enabled requires a declared rustc_action_adapter")
++    manifest = ctx.actions.write_json(
++        prefix + "-sandbox-outputs.json",
++        {
++            "version": 1,
++            "outputs": [cmd_args(command.outputs, ignore_artifacts = True)],
++            "views": [],
++        },
++    )
++    return cmd_args(adapter, cmd_args(manifest, format = "--sandbox-outputs={}"), command), {
++        "metadata_env_var": "RUST_SANDBOX_METADATA",
++        "metadata_path": prefix + "-sandbox-inputs.json",
++    }
+diff --git a/prelude/rust/build.bzl b/prelude/rust/build.bzl
+index 96a4ab9737..f2bc521452 100644
+--- a/prelude/rust/build.bzl
++++ b/prelude/rust/build.bzl
+@@ -149,6 +149,7 @@ load(
+ load(":outputs.bzl", "RustcCompileOutput", "RustcLinkOutput", "RustcOutput")
+ load(":resources.bzl", "rust_attr_resources")
+ load(":rust_toolchain.bzl", "PanicRuntime", "RustToolchainInfo")
++load(":action_adapter.bzl", "adapt_rustc_action")
+ load(
+     ":sources.bzl",
+     "RustSources",
+@@ -2088,6 +2089,13 @@ def _rustc_invoke(
+         # Libraries (check, metadata, rlib) have no preference.
+         action_allow_cache_upload = None
+ 
++    compile_cmd, adapter_options = adapt_rustc_action(
++        ctx,
++        compile_cmd,
++        toolchain_info.rustc_action_adapter,
++        "{}-{}".format(prefix, diag),
++    )
++
+     ctx.actions.run(
+         compile_cmd,
+         local_only = local_only,
+@@ -2098,6 +2106,7 @@ def _rustc_invoke(
+         no_outputs_cleanup = incremental_enabled,
+         allow_cache_upload = action_allow_cache_upload,
+         error_handler = toolchain_info.rust_error_handler,
++        **adapter_options
+     )
+ 
+     return Invoke(
+diff --git a/prelude/rust/rust_toolchain.bzl b/prelude/rust/rust_toolchain.bzl
+index b4314afb86..5ed9008cd8 100644
+--- a/prelude/rust/rust_toolchain.bzl
++++ b/prelude/rust/rust_toolchain.bzl
+@@ -45,6 +45,11 @@ rust_toolchain_attrs = {
+     "rustc_target_triple": provider_field(str | None, default = None),
+     # Extra env variables that should be made available to the rustc executable.
+     "rustc_env": provider_field(dict[str, typing.Any], default = {}),
++    # Optional declared executable wrapping the complete rustc_action invocation.
++    # Inert unless [rust] action_adapter_enabled = true. See action_adapter.bzl
++    # for its metadata/argv contract; this does not grant cache admission.
++    "rustc_action_adapter": provider_field(RunInfo | None, default = None),
++
+     # Baseline compiler config
+     "rustc_flags": provider_field(list[typing.Any], default = []),
+     # Rustc flags, except that they are applied on the command line after the

@@ -1,9 +1,10 @@
 """Generic TypeScript package-tree assembly from declared Buck artifacts."""
 
-load("//buck2:hermetic.bzl", "hermetic_bun_command", "ts_action", "ts_action_attrs")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "ts_action", "ts_action_attrs")
 load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints", "ts_action_admission_status")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
+load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 
 PackageTreeInfo = provider(fields = {
     "admission_status": str,
@@ -34,6 +35,47 @@ def _require_relative_path(value, field):
     for component in value.split("/"):
         if component == "" or component == "." or component == "..":
             fail("{} must be normalized: {}".format(field, value))
+
+def _runtime_modules_impl(ctx):
+    tool = ctx.attrs._action_env[BuckSupportToolInfo]
+    modules = {}
+    for destination, source in ctx.attrs.srcs.items():
+        _require_relative_path(destination, "runtime module")
+        module = ctx.actions.declare_output("modules/" + destination)
+        # copied_dir preserves source symlinks, including absolute links into an
+        # external immutable rules cell. Dereference exactly each declared file
+        # first; never copy a parent directory or expose it to the TS sandbox.
+        hermetic_action(
+            ctx,
+            cmd_args([
+                tool.store_path,
+                "--coreutils-prog=cp", "--dereference", "--no-target-directory",
+                "--", source, module.as_output(),
+            ], hidden = [tool.executable, tool.manifest]),
+            category = "runtime_module",
+            identifier = destination,
+            local_only = True,
+            cacheable = False,
+        )
+        modules[destination] = module
+    tree = ctx.actions.copied_dir("runtime", modules)
+    return [DefaultInfo(default_output = tree)]
+
+_runtime_modules = cache_guarded_rule(
+    cache_eligible = lambda ctx: False,
+    impl = _runtime_modules_impl,
+    attrs = dict(hermetic_attrs(), **{
+        "srcs": attrs.dict(attrs.string(), attrs.source(), sorted = True),
+    }),
+)
+
+def runtime_modules(name, **kwargs):
+    """Stages only enumerated module files, dereferencing external source links."""
+    _runtime_modules(
+        name = name,
+        exec_compatible_with = host_execution_constraints() + kwargs.pop("exec_compatible_with", []),
+        **kwargs
+    )
 
 def _add_mapped_sources(args, flag, sources):
     for destination in sorted(sources.keys()):

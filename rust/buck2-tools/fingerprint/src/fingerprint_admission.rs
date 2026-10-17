@@ -52,10 +52,13 @@ fn publish_directory(directory: &Path) -> io::Result<()> {
         }
     };
     let result = (|| {
+        // Publish a nonempty directory so another cold initializer cannot replace
+        // its inode while a caller starts opening the admission file.
+        publish_file(&temporary.join("admission"))?;
         fs::set_permissions(&temporary, fs::Permissions::from_mode(0o1777))?;
         fs::rename(&temporary, directory)
     })();
-    let cleanup = match fs::remove_dir(&temporary) {
+    let cleanup = match fs::remove_dir_all(&temporary) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
@@ -190,6 +193,21 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{mpsc, Arc, Barrier};
     use std::thread;
+
+    #[test]
+    fn published_directory_already_contains_admission() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("locks");
+        publish_directory(&directory).unwrap();
+        let admission = fs::symlink_metadata(directory.join("admission")).unwrap();
+        File::open(directory.join("admission"))
+            .unwrap()
+            .try_lock()
+            .unwrap();
+        assert!(admission.is_file());
+        assert_eq!(admission.mode() & 0o7777, 0o666);
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+    }
 
     #[test]
     fn concurrent_cold_start_initialization_all_succeeds() {

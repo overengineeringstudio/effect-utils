@@ -3,6 +3,7 @@
 //! itself is the golden-locked [`crate::inspect`] core; this module only adapts
 //! the NDJSON capture into per-trace OTLP values and shapes the CLI output.
 
+use std::fs::{File, TryLockError};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
@@ -182,10 +183,29 @@ fn read_source(src: &str, signal: &str) -> Result<String, u8> {
 }
 
 fn read_file(file: &Path) -> Result<String, u8> {
-    std::fs::read_to_string(file).map_err(|e| {
-        eprintln!("otelite: cannot read {}: {e}", file.display());
-        EX_NOINPUT
-    })
+    File::open(file)
+        .and_then(|file| read_snapshot(file, || {}))
+        .map_err(|e| {
+            eprintln!("otelite: cannot read {}: {e}", file.display());
+            EX_NOINPUT
+        })
+}
+
+/// A read snapshot shares the writer's whole-record OS lock. The callback marks
+/// actual contention for deterministic barrier tests; the CLI supplies a no-op.
+fn read_snapshot(mut file: File, on_contention: impl FnOnce()) -> std::io::Result<String> {
+    match file.try_lock_shared() {
+        Ok(()) => {}
+        Err(TryLockError::WouldBlock) => {
+            on_contention();
+            file.lock_shared()?;
+        }
+        Err(TryLockError::Error(error)) => return Err(error),
+    }
+    let mut raw = String::new();
+    file.read_to_string(&mut raw)?;
+    // Closing the descriptor releases the shared lock on success and error.
+    Ok(raw)
 }
 
 /// Partition all captured spans into one `{"resourceSpans":[...]}` value per
@@ -311,6 +331,121 @@ pub fn parse_attr(arg: &str) -> Result<(String, String), u8> {
         None => {
             eprintln!("otelite: --attr expects key=value, got {arg}");
             Err(EX_USAGE)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead as _, Write as _};
+    use std::process::{Child, Command, ExitStatus, Stdio};
+
+    const SNAPSHOT_PATH: &str = "OTELITE_TEST_SNAPSHOT_PATH";
+    const CONTENDED: &str = "SNAPSHOT_LOCK_CONTENDED";
+
+    struct ChildGuard(Option<Child>);
+
+    impl ChildGuard {
+        fn wait(&mut self) -> std::io::Result<ExitStatus> {
+            let status = self.0.as_mut().unwrap().wait()?;
+            self.0.take();
+            Ok(status)
+        }
+    }
+
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            if let Some(mut child) = self.0.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "subprocess fixture for snapshot_waits_for_complete_record"]
+    fn snapshot_reader_process() {
+        let path = std::env::var(SNAPSHOT_PATH).unwrap();
+        let raw = read_snapshot(File::open(path).unwrap(), || {
+            println!("{CONTENDED}");
+            std::io::stdout().flush().unwrap();
+        })
+        .unwrap();
+        assert_eq!(raw.lines().count(), 4);
+        assert!(group_by_trace(&raw).is_ok());
+        println!("COMPLETED_SNAPSHOT={raw:?}");
+    }
+
+    #[test]
+    fn snapshot_waits_for_complete_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("traces.ndjson");
+        let mut writer = File::create(&path).unwrap();
+        writer.lock().unwrap();
+        let committed = "{\"resourceSpans\":[]}\n".repeat(3);
+        // Match the CI failure's fourth-record EOF column with valid JSON whose
+        // value has not been written yet. No scheduler timing is involved.
+        let partial = format!("{{\"resourceSpans\":{}", " ".repeat(2742));
+        assert_eq!(partial.len(), 2759);
+        writer.write_all(committed.as_bytes()).unwrap();
+        writer.write_all(partial.as_bytes()).unwrap();
+        writer.flush().unwrap();
+
+        let unsafe_snapshot = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(unsafe_snapshot, format!("{committed}{partial}"));
+        assert_eq!(group_by_trace(&unsafe_snapshot).unwrap_err(), EX_DATAERR);
+        eprintln!("UNLOCKED_SNAPSHOT={unsafe_snapshot:?}");
+
+        let mut reader = ChildGuard(Some(
+            Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "inspect_cmd::tests::snapshot_reader_process",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env(SNAPSHOT_PATH, &path)
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap(),
+        ));
+        let mut stdout = std::io::BufReader::new(reader.0.as_mut().unwrap().stdout.take().unwrap());
+        loop {
+            let mut line = String::new();
+            assert_ne!(
+                stdout.read_line(&mut line).unwrap(),
+                0,
+                "reader exited before contention"
+            );
+            if line.contains(CONTENDED) {
+                break;
+            }
+        }
+        // The child has attempted the shared lock and observed WouldBlock.
+        // Only now complete the paused record and release the writer.
+        writer.write_all(b"[]}\n").unwrap();
+        writer.flush().unwrap();
+        writer.unlock().unwrap();
+        let mut output = String::new();
+        stdout.read_to_string(&mut output).unwrap();
+        assert!(reader.wait().unwrap().success(), "{output}");
+        assert!(output.contains("COMPLETED_SNAPSHOT="), "{output}");
+        eprintln!("{output}");
+    }
+
+    #[test]
+    fn committed_corruption_is_not_hidden() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("traces.ndjson");
+        for raw in ["not json\n", "{\"resourceSpans\":"] {
+            std::fs::write(&path, raw).unwrap();
+            let snapshot = read_file(&path).unwrap();
+            assert_eq!(snapshot, raw);
+            assert_eq!(group_by_trace(&snapshot).unwrap_err(), EX_DATAERR);
+            // The failed decode did not retain the snapshot's shared lock.
+            let writer = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+            writer.try_lock().unwrap();
         }
     }
 }

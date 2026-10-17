@@ -18,7 +18,7 @@ import {
   Schema,
   type Scope,
 } from 'effect'
-import { HttpClient, HttpClientRequest } from 'effect/http'
+import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/http'
 import type { HttpClientError } from 'effect/http/HttpClientError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -29,12 +29,26 @@ import {
   type InstallationScope,
 } from '@overeng/utils/node/github-app'
 
+import {
+  ARTIFACT_LIMITS,
+  type ArtifactError,
+  type ArtifactSelection,
+  RetainedArtifact,
+  RunArtifactsResponse,
+} from '../isomorphic/Artifacts.ts'
 import { GitHubApiError, GitHubAuthError, LogsUnavailableError } from '../isomorphic/Errors.ts'
 import type { WorkflowJobsResponse } from '../isomorphic/GitHubSchemas.ts'
 import * as GH from '../isomorphic/GitHubSchemas.ts'
 import { type RateLimitInfo, parseRateLimitHeaders } from '../isomorphic/lib/rateLimit.ts'
 import type { PrHealth } from '../isomorphic/lib/viewModels.ts'
 import { RateLimitWaitPolicy, budgetOutcome } from '../isomorphic/lib/watchPlan.ts'
+import {
+  artifactFailure,
+  artifactStorageUrl,
+  readArtifactBody,
+  validateArtifactRequest,
+  type ArtifactRequest,
+} from './ArtifactTransport.ts'
 import { GitHubAuthConfigTag } from './Config.ts'
 import type { GitHubAppAuthConfig } from './Config.ts'
 import { withGitHubSpan } from './observability.ts'
@@ -812,6 +826,214 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
       return { total_count: allJobs.length, jobs: allJobs } satisfies WorkflowJobsResponse
     }).pipe(withGitHubSpan({ name: 'github-client.listWorkflowJobs', attributes: { repo, runId } }))
 
+  /** Artifact requests never retain transport causes or replay authentication on redirects. */
+  const artifactApiRequest = Effect.fn('github-client.artifact-request')(function* (
+    selection: ArtifactRequest,
+    path: string,
+  ) {
+    yield* awaitBudget('rest').pipe(
+      Effect.mapError(() =>
+        artifactFailure({
+          selection: selection,
+          reason: 'transport',
+          message: 'GitHub API budget is unavailable',
+        }),
+      ),
+    )
+    const client = yield* getClientForRepo(selection.repo).pipe(
+      Effect.mapError(() =>
+        artifactFailure({
+          selection: selection,
+          reason: 'transport',
+          message: 'Artifact authentication failed',
+        }),
+      ),
+    )
+    const response = yield* client
+      .execute(
+        HttpClientRequest.get(`${GITHUB_API_BASE}${path}`).pipe(
+          HttpClientRequest.setHeaders({
+            Accept: 'application/vnd.github+json',
+            'User-Agent': GITHUB_USER_AGENT,
+            'X-GitHub-Api-Version': '2022-11-28',
+          }),
+        ),
+      )
+      .pipe(
+        Effect.provideService(FetchHttpClient.RequestInit, { redirect: 'manual' }),
+        // HTTP spans include response Location headers; those carry signed storage credentials.
+        Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+        Effect.mapError(() =>
+          artifactFailure({
+            selection: selection,
+            reason: 'transport',
+            message: 'Artifact API request failed',
+          }),
+        ),
+      )
+    yield* Ref.update(requestCountRef, (n) => n + 1)
+    yield* trackRateLimit({ headers: response.headers, bucket: 'rest' })
+    return response
+  })
+
+  const checkArtifactStatus = Effect.fn('github-client.artifact-status')(function* (
+    selection: ArtifactRequest,
+    status: number,
+  ) {
+    if (status === 404)
+      return yield* artifactFailure({
+        selection: selection,
+        reason: 'artifact-not-found',
+        message: 'Retained artifact was not found',
+      })
+    if (status === 410)
+      return yield* artifactFailure({
+        selection: selection,
+        reason: 'expired',
+        message: 'Retained artifact has expired',
+      })
+    if (status !== 200)
+      return yield* artifactFailure({
+        selection: selection,
+        reason: 'transport',
+        message: `Artifact request returned HTTP ${status}`,
+      })
+  })
+
+  const listRetainedArtifacts = Effect.fn('github-client.list-retained-artifacts')(
+    function* (selection: {
+      readonly repo: string
+      readonly runId: number
+      readonly page: number
+    }) {
+      yield* validateArtifactRequest(selection, selection.page)
+      const response = yield* artifactApiRequest(
+        selection,
+        `/repos/${selection.repo}/actions/runs/${selection.runId}/artifacts?per_page=${ARTIFACT_LIMITS.artifactsPerPage}&page=${selection.page}`,
+      )
+      yield* checkArtifactStatus(selection, response.status)
+      const bytes = yield* readArtifactBody(response, selection, ARTIFACT_LIMITS.metadataBytes)
+      const data = yield* Schema.decodeEffect(Schema.fromJsonString(RunArtifactsResponse))(
+        new TextDecoder().decode(bytes),
+      ).pipe(
+        Effect.mapError(() =>
+          artifactFailure({
+            selection: selection,
+            reason: 'transport',
+            message: 'Invalid artifact metadata response',
+          }),
+        ),
+      )
+      if (data.artifacts.some((artifact) => artifact.workflow_run?.id !== selection.runId)) {
+        return yield* artifactFailure({
+          selection: selection,
+          reason: 'run-mismatch',
+          message: 'Artifact listing contains an unverified workflow run association',
+        })
+      }
+      return {
+        ...selection,
+        totalCount: data.total_count,
+        artifacts: data.artifacts,
+        hasMore: selection.page * ARTIFACT_LIMITS.artifactsPerPage < data.total_count,
+      }
+    },
+    Effect.scoped,
+  )
+
+  const getRetainedArtifact = Effect.fn('github-client.get-retained-artifact')(function* (
+    selection: ArtifactSelection,
+  ) {
+    yield* validateArtifactRequest(selection)
+    const response = yield* artifactApiRequest(
+      selection,
+      `/repos/${selection.repo}/actions/artifacts/${selection.artifactId}`,
+    )
+    yield* checkArtifactStatus(selection, response.status)
+    const bytes = yield* readArtifactBody(response, selection, ARTIFACT_LIMITS.metadataBytes)
+    const artifact = yield* Schema.decodeEffect(Schema.fromJsonString(RetainedArtifact))(
+      new TextDecoder().decode(bytes),
+    ).pipe(
+      Effect.mapError(() =>
+        artifactFailure({
+          selection: selection,
+          reason: 'transport',
+          message: 'Invalid artifact metadata response',
+        }),
+      ),
+    )
+    if (artifact.id !== selection.artifactId)
+      return yield* artifactFailure({
+        selection: selection,
+        reason: 'artifact-not-found',
+        message: 'Artifact metadata does not identify the requested artifact',
+      })
+    if (artifact.expired)
+      return yield* artifactFailure({
+        selection: selection,
+        reason: 'expired',
+        message: 'Retained artifact has expired',
+      })
+    if (artifact.workflow_run?.id !== selection.runId)
+      return yield* artifactFailure({
+        selection: selection,
+        reason: 'run-mismatch',
+        message: 'Artifact does not belong to the requested workflow run',
+      })
+    return artifact
+  }, Effect.scoped)
+
+  const downloadRetainedArtifact = Effect.fn('github-client.download-retained-artifact')(function* (
+    selection: ArtifactSelection,
+  ) {
+    const artifact = yield* getRetainedArtifact(selection)
+    if (artifact.size_in_bytes > ARTIFACT_LIMITS.compressedBytes)
+      return yield* artifactFailure({
+        selection: selection,
+        reason: 'limit-exceeded',
+        message: 'Artifact archive exceeds the compressed byte limit',
+      })
+    const response = yield* artifactApiRequest(
+      selection,
+      `/repos/${selection.repo}/actions/artifacts/${selection.artifactId}/zip`,
+    )
+    if (response.status >= 300 && response.status < 400) {
+      const storageUrl = artifactStorageUrl(response.headers.location)
+      if (storageUrl === undefined)
+        return yield* artifactFailure({
+          selection: selection,
+          reason: 'transport',
+          message: 'Artifact storage redirect was rejected',
+        })
+      // Deliberately raw: the storage URL already has its own short-lived authorization.
+      const stored = yield* rawHttpClient
+        .pipe(HttpClient.withScope)
+        .execute(HttpClientRequest.get(storageUrl.href))
+        .pipe(
+          Effect.provideService(FetchHttpClient.RequestInit, { redirect: 'manual' }),
+          // Do not record signed query parameters or propagate tracing headers to storage.
+          Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+          Effect.mapError(() =>
+            artifactFailure({
+              selection: selection,
+              reason: 'transport',
+              message: 'Artifact storage request failed',
+            }),
+          ),
+        )
+      yield* checkArtifactStatus(selection, stored.status)
+      return {
+        artifact,
+        bytes: yield* readArtifactBody(stored, selection, ARTIFACT_LIMITS.compressedBytes),
+      }
+    }
+    yield* checkArtifactStatus(selection, response.status)
+    return {
+      artifact,
+      bytes: yield* readArtifactBody(response, selection, ARTIFACT_LIMITS.compressedBytes),
+    }
+  }, Effect.scoped)
+
   /** Get logs for a specific job (works mid-run for completed jobs). */
   const getJobLogs = ({ repo, jobId }: { repo: string; jobId: number }) =>
     apiGetText({ repo, path: `/repos/${repo}/actions/jobs/${jobId}/logs` }).pipe(
@@ -1348,6 +1570,9 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
     getWorkflowJob,
     listWorkflowJobs,
     getJobLogs,
+    listRetainedArtifacts,
+    getRetainedArtifact,
+    downloadRetainedArtifact,
     getCheckAnnotations,
     getLatestRunForBranch,
     getLatestActiveRunForBranch,
@@ -1376,7 +1601,11 @@ const defaultGitHubClient = makeGitHubClient({
 /** Runtime shape of the GitHub CI client. */
 export type GitHubClientShape = Effect.Success<typeof defaultGitHubClient>
 /** Failures exposed by authenticated GitHub CI operations. */
-export type GitHubClientError = GitHubApiError | GitHubAuthError | LogsUnavailableError
+export type GitHubClientError =
+  | GitHubApiError
+  | GitHubAuthError
+  | LogsUnavailableError
+  | ArtifactError
 /** Context service providing authenticated GitHub CI operations. */
 export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShape>()(
   'gh-ci-utils/GitHubClient',

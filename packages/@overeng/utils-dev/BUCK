@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils-dev/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:caa5398e9a63db5c91111aa95952c31e93bf6ca51335a430850323184d15208a
+# Semantic fingerprint: sha256:7baa6a5b0fd2210ec9eb6ba7443793ef6e903f762d86acedfad4f239874cbce2
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -87,6 +87,52 @@ alias(
 package_view(
     name = "package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_utils_dev_8614cc76469c",
+    files = {
+        "package.json": "package.json",
+        "src/baseline-collection.test.ts": "src/baseline-collection.test.ts",
+        "src/baseline-collection.ts": "src/baseline-collection.ts",
+        "src/check-baseline-test-collection.ts": "src/check-baseline-test-collection.ts",
+        "src/cli-contract.test.ts": "src/cli-contract.test.ts",
+        "src/cli-contract.ts": "src/cli-contract.ts",
+        "src/node-vitest/Vitest.ts": "src/node-vitest/Vitest.ts",
+        "src/node-vitest/git-environment.integration.test.ts": "src/node-vitest/git-environment.integration.test.ts",
+        "src/node-vitest/global.ts": "src/node-vitest/global.ts",
+        "src/node-vitest/mod.ts": "src/node-vitest/mod.ts",
+        "src/node-vitest/otel-vitest-flush.test.ts": "src/node-vitest/otel-vitest-flush.test.ts",
+        "src/otelite/Otelite.test.ts": "src/otelite/Otelite.test.ts",
+        "src/otelite/Otelite.ts": "src/otelite/Otelite.ts",
+        "src/otelite/diagnostics.ts": "src/otelite/diagnostics.ts",
+        "src/otelite/emitter.ts": "src/otelite/emitter.ts",
+        "src/otelite/errors.ts": "src/otelite/errors.ts",
+        "src/otelite/mod.ts": "src/otelite/mod.ts",
+        "src/otelite/otel.ts": "src/otelite/otel.ts",
+        "src/otelite/otlp-url.ts": "src/otelite/otlp-url.ts",
+        "src/otelite/schema.ts": "src/otelite/schema.ts",
+        "src/otelite/signal-expect.test.ts": "src/otelite/signal-expect.test.ts",
+        "src/otelite/signal-expect.ts": "src/otelite/signal-expect.ts",
+        "src/otelite/test-harness.test.ts": "src/otelite/test-harness.test.ts",
+        "src/otelite/test-harness.ts": "src/otelite/test-harness.ts",
+        "src/otelite/trace-expect.test.ts": "src/otelite/trace-expect.test.ts",
+        "src/otelite/trace-expect.ts": "src/otelite/trace-expect.ts",
+        "src/otelite/vitest-bridge.test.ts": "src/otelite/vitest-bridge.test.ts",
+        "src/otelite/vitest-bridge.ts": "src/otelite/vitest-bridge.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_utils_dev_8614cc76469c",
     files = {
         "package.json": "package.json",
         "src/baseline-collection.test.ts": "src/baseline-collection.test.ts",

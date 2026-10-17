@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import dependencyBuck from '../../buck2/dependencies/BUCK.genie.ts'
 import { rootWorkspacePackages } from '../../package.json.genie.ts'
+import genieBuck from '../../packages/@overeng/genie/BUCK.genie.ts'
 import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import {
   buck2TestLanes,
@@ -16,6 +17,7 @@ import {
 import {
   buck2TypeScriptPackageProjection,
   type Buck2TypeScriptPackageProjection,
+  workspacePackageSourceRoots,
   type Buck2WorkspacePackageGenerator,
 } from './typescript-package-projection.ts'
 
@@ -224,6 +226,18 @@ const stagedFilesOf = ({
   return [...files.matchAll(/^ {8}"([^"]+)": /gmu)].map(([, destination]) => destination ?? '')
 }
 
+const targetBodyOf = ({
+  output,
+  name,
+}: {
+  readonly output: string
+  readonly name: string
+}): string => {
+  const target = output.split(`\n    name = "${name}",\n`)[1]?.split('\n)\n')[0]
+  if (target === undefined) throw new Error(`missing Buck target ${name}`)
+  return target
+}
+
 const admittedTestLanes = Object.entries(buck2TypeScriptAdmissions).flatMap(([key, admission]) =>
   admission.tests === undefined
     ? []
@@ -315,6 +329,185 @@ describe('generated dependency admission', () => {
   })
 })
 
+describe('source-only product package graph', () => {
+  it('derives source roots from runtime exports and bins, not declaration or published paths', () => {
+    const data = {
+      name: 'workspace-source',
+      exports: {
+        '.': { types: './dist/types.d.ts', default: './runtime/main.ts' },
+        './browser': { browser: './browser/main.tsx', default: './runtime/main.ts' },
+        './style': './styles/main.css',
+        './subpath/*': './runtime/*.ts',
+        './package.json': './package.json',
+      },
+      bin: { tool: './commands/tool.ts' },
+      publishConfig: { exports: { '.': './dist/main.js' } },
+    }
+    expect(workspacePackageSourceRoots({ data })).toEqual([
+      'browser',
+      'commands',
+      'runtime',
+      'styles',
+    ])
+  })
+
+  it.each(['./dist/main.js', '../runtime/main.ts', './node_modules/runtime/main.ts'])(
+    'refuses a non-source runtime boundary %s instead of guessing src',
+    (target) => {
+      expect(() =>
+        workspacePackageSourceRoots({
+          data: { name: 'missing-source', exports: { '.': { default: target } } },
+        }),
+      ).toThrow('has no source runtime target')
+    },
+  )
+
+  it('requires an authoritative runtime source rather than declaration-only exports', () => {
+    expect(() =>
+      workspacePackageSourceRoots({
+        data: { name: 'types-only', exports: { '.': { types: './dist/main.d.ts' } } },
+      }),
+    ).toThrow('has no source runtime entrypoints')
+  })
+
+  it('adds a recursive source view while leaving every npm and test graph boundary unchanged', () => {
+    for (const [key, admission] of Object.entries<Buck2TypeScriptPackageProjection>(
+      buck2TypeScriptAdmissions,
+    )) {
+      const output = buck2TypeScriptPackageProjection(admission).stringify(genieContext)
+      const product = targetBodyOf({ output, name: 'product_package_tree' })
+      expect(product).toContain(
+        `dependency_view = "${admission.dependencyImporter?.replace(':importer_', ':product_view_')}"`,
+      )
+      expect(product).toContain('strip_project_references = True')
+      expect(product).not.toMatch(/": "(?:[^"]+):(?:dist|package_tree)",/u)
+      for (const sibling of admission.workspaceSiblings ?? []) {
+        expect(product).toContain(
+          `"node_modules/${sibling.packageName}/node_modules": "${
+            sibling.distTarget?.replace(/:dist$/, ':product_package_tree') ??
+            `//${sibling.packagePath}:product_package_tree`
+          }",`,
+        )
+      }
+      const previous = outputsByAdmission[key as keyof typeof outputsByAdmission]
+      for (const name of [
+        'node_modules',
+        'package_tree',
+        'typecheck',
+        'dist',
+        'dist-package',
+        ...(admission.tests === undefined ? [] : ['test_package_tree']),
+      ]) {
+        expect(targetBodyOf({ output, name }), `${admission.packagePath}:${name}`).toBe(
+          targetBodyOf({ output: previous, name }),
+        )
+      }
+      expect(stagedFilesOf({ output, tree: 'product_package_tree' })).toEqual(
+        stagedFilesOf({ output, tree: 'package_tree' }),
+      )
+    }
+  })
+
+  it('retains generated products that execute instead of replacing them with workspace sources', () => {
+    const output = buck2TypeScriptPackageProjection(
+      buck2TypeScriptAdmissions.effectRustFixtureConsumer,
+    ).stringify(genieContext)
+    for (const name of ['package_tree', 'product_package_tree']) {
+      expect(targetBodyOf({ output, name })).toContain(
+        '"effect-rust-fixture": "//rust/effect-rust-fixtures/service:service",',
+      )
+    }
+  })
+
+  it('derives declaration-backed sibling roots from its generator and rejects missing exports', () => {
+    const siblingPath = 'genie/buck2/fixtures/nested-package/parent'
+    const projection = (target: string): string =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.kdl,
+        workspaceSiblings: [
+          {
+            packageName: 'nested-source',
+            packagePath: siblingPath,
+            distTarget: `//${siblingPath}:dist`,
+          },
+        ],
+        workspacePackages: [
+          {
+            meta: { workspace: { memberPath: buck2TypeScriptAdmissions.kdl.packagePath } },
+            data: { name: buck2TypeScriptAdmissions.kdl.packageName },
+          },
+          {
+            meta: { workspace: { memberPath: siblingPath } },
+            data: { name: 'nested-source', exports: { '.': { default: target } } },
+          },
+        ],
+      }).stringify(genieContext)
+    const product = targetBodyOf({
+      output: projection('./bin/main.ts'),
+      name: 'product_package_tree',
+    })
+    expect(product).toContain(`"//${siblingPath}:product_package_tree"`)
+    expect(product).not.toContain(`"//${siblingPath}:dist"`)
+    expect(() => projection('./bin/missing.ts')).toThrow('runtime source is missing')
+    expect(() => projection('./missing/main.ts')).toThrow()
+  })
+
+  it('fails closed when a declaration sibling has no matching workspace generator', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...buck2TypeScriptAdmissions.kdl,
+        workspaceSiblings: [
+          {
+            packageName: 'unknown-source',
+            packagePath: buck2TypeScriptAdmissions.kdl.packagePath,
+            distTarget: '//packages/@overeng/kdl:dist',
+          },
+        ],
+      }),
+    ).toThrow('missing workspace source generator')
+  })
+})
+
+describe('native TypeScript server dependency boundary', () => {
+  it('extracts the native server directly from an external-only immutable dependency view', () => {
+    const output = genieBuck.stringify(genieContext)
+    const executable = targetBodyOf({
+      output,
+      name: 'typescript-api-server-product-executable',
+    })
+    expect(executable).toContain(
+      'dependency_view = "//buck2/dependencies:external_view_packages_overeng_genie_b7534483be10"',
+    )
+    expect(executable).toContain('package_anchor = "typescript"')
+    expect(executable).not.toContain('package_tree =')
+    for (const platform of ['darwin-arm64', 'linux-arm64', 'linux-x64']) {
+      expect(executable).toContain(`@typescript/typescript-${platform}/lib/tsc`)
+      expect(executable).toContain(`@typescript/typescript-${platform}/lib"`)
+    }
+    expect(executable).toContain('support_destination = "bin"')
+    expect(executable).toContain('recipe = "pnpm-lock:@typescript/typescript-platform/lib"')
+    expect(executable).toContain('toolchain = "pnpm-lockfile:pnpm-lock.yaml"')
+    expect(executable).toContain('target_platform = host_standalone_platform_label()')
+    const product = targetBodyOf({ output, name: 'typescript-api-server-product' })
+    expect(product).toContain('entrypoint = "bin/typescript-api-server"')
+    expect(product).toContain('target_platform = host_standalone_platform_label()')
+  })
+
+  it('retains full read roots for both native executable and support extraction actions', () => {
+    const rules = readFileSync('buck2/products/defs.bzl', 'utf8')
+    const implementation = rules
+      .split('def _package_tree_product_executable_impl(ctx):')[1]
+      ?.split('_package_tree_product_executable = cache_guarded_rule(')[0]
+    expect(implementation).toContain(
+      'dependency_view = ctx.attrs.dependency_view[PnpmDeclaredClosureInfo]',
+    )
+    expect(implementation).toContain('cmd_args(dependency_view.node_modules,')
+    expect(implementation?.match(/hidden = dependency_view\.read_roots/gu)).toHaveLength(2)
+    expect(rules).toContain('"dependency_view": attrs.dep(providers = [PnpmDeclaredClosureInfo])')
+    expect(rules).not.toContain('PackageTreeInfo')
+  })
+})
+
 describe('declared-closure package projection', () => {
   it('publishes editor views for the complete workspace package registry', () => {
     expect(editorViewConsumerPackagePaths).toEqual(
@@ -337,6 +530,11 @@ describe('declared-closure package projection', () => {
     const output = buck2TypeScriptPackageProjection({
       ...parent,
       workspacePackages: [
+        ...rootWorkspacePackages.filter(
+          (member) =>
+            member.meta.workspace.memberPath !== parent.packagePath &&
+            member.meta.workspace.memberPath !== nested.packagePath,
+        ),
         {
           meta: { workspace: { memberPath: parent.packagePath } },
           data: {
@@ -474,7 +672,7 @@ describe('declared-closure package projection', () => {
     ).toThrow('must name its typecheck target')
   })
 
-  it.each(['dist', 'package_tree', 'test', 'test_collect'])(
+  it.each(['dist', 'package_tree', 'product_package_tree', 'test', 'test_collect'])(
     'refuses a typecheck target that collides with generated target %s',
     (typecheckTargetName) => {
       expect(() =>

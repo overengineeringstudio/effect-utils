@@ -129,6 +129,7 @@ export interface MeterStripProps {
 /** Draw one DPR-aware canvas plus equivalent DOM outputs, focus targets, and keyboard tooltips. */
 export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
   const tooltipId = React.useId()
+  const descriptionId = React.useId()
   const [interaction, setInteraction] = React.useState<
     { readonly _tag: 'None' } | { readonly _tag: 'Focus' | 'Hover'; readonly id: string }
   >({ _tag: 'None' })
@@ -137,6 +138,7 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
       makeStripView({
         store: props.meters.store,
         blocks: props.blocks,
+        now: props.meters.clock.now,
         ...(props.frozen === true ? { frozenAtMs: props.meters.clock.now() } : {}),
       }),
     [props.meters, props.blocks, props.frozen],
@@ -235,8 +237,8 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
             <button
               key={item.id}
               type="button"
-              aria-label={`${item.label}: ${texts[index] ?? 'n/a (NoSamples)'}`}
-              aria-describedby={activeIndex === index ? tooltipId : undefined}
+              aria-label={`${item.shortLabel ?? item.label} ${texts[index] ?? 'n/a (NoSamples)'}`}
+              aria-describedby={`${descriptionId}-${index}`}
               onClick={() => props.onOpenDetail({ id: item.id })}
               onFocus={() => setInteraction({ _tag: 'Focus', id: item.id })}
               onBlur={() => setInteraction({ _tag: 'None' })}
@@ -281,6 +283,20 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
               >
                 {texts[index]}
               </output>
+              <span
+                id={`${descriptionId}-${index}`}
+                style={{
+                  position: 'absolute',
+                  width: 1,
+                  height: 1,
+                  overflow: 'hidden',
+                  clipPath: 'inset(50%)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {item.label}: {texts[index] ?? 'n/a (NoSamples)'}. History{' '}
+                {(props.historyMs ?? 10000) / 1000} seconds. Open meter details.
+              </span>
             </button>
           ),
         )}

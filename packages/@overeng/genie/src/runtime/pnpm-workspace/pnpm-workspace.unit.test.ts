@@ -741,3 +741,38 @@ describe('root patch coverage validation', () => {
     expect(issues).toEqual([])
   })
 })
+
+describe('catalog archive peer validation', () => {
+  it.each([
+    ['0.1.0', 0],
+    ['0.2.0', 1],
+  ])('validates archive metadata %s through workspace output', async (version, errors) => {
+    const archive = 'https://example.com/releases/core.tgz'
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [],
+      repoName: 'example',
+      catalogVersions: { adapter: '1.0.0', core: archive },
+    })
+    const issues = await workspaceFile.validate?.({
+      ...mockGenieContext,
+      io: {
+        fileExists: () => false,
+        readText: (filePath) =>
+          filePath.endsWith('/pnpm-lock.yaml') === true
+            ? [
+                "lockfileVersion: '9.0'",
+                'packages:',
+                "  'adapter@1.0.0':",
+                '    peerDependencies:',
+                '      core: ^0.1.0',
+                `  'core@${archive}':`,
+                `    version: ${version}`,
+              ].join('\n')
+            : undefined,
+      },
+    })
+    expect(issues?.filter((issue) => issue.rule === 'catalog-peer-dep-conflict')).toHaveLength(
+      errors,
+    )
+  })
+})

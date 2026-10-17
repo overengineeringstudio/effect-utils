@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/oxc-config/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:1cd70d7d9ebf3af757d8e5966b88c7d4e38641ca0d2e53c14422eccc5574dd4a
+# Semantic fingerprint: sha256:8f205194fbeb1080d5da4ff40072f7009b4c13881cde594560fae49d59542d11
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -103,6 +103,65 @@ alias(
 package_view(
     name = "package_tree",
     dependency_view = "//buck2/dependencies:view_packages_overeng_oxc_config_0c9db47f45b6",
+    files = {
+        "package.json": "package.json",
+        "src/explicit-boolean-compare.ts": "src/explicit-boolean-compare.ts",
+        "src/explicit-boolean-compare.unit.test.ts": "src/explicit-boolean-compare.unit.test.ts",
+        "src/exports-first.ts": "src/exports-first.ts",
+        "src/exports-first.unit.test.ts": "src/exports-first.unit.test.ts",
+        "src/jsdoc-require-exports.ts": "src/jsdoc-require-exports.ts",
+        "src/jsdoc-require-exports.unit.test.ts": "src/jsdoc-require-exports.unit.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/named-args.ts": "src/named-args.ts",
+        "src/named-args.unit.test.ts": "src/named-args.unit.test.ts",
+        "src/no-external-imports.ts": "src/no-external-imports.ts",
+        "src/no-external-imports.unit.test.ts": "src/no-external-imports.unit.test.ts",
+        "src/no-non-durable-wait.ts": "src/no-non-durable-wait.ts",
+        "src/no-non-durable-wait.unit.test.ts": "src/no-non-durable-wait.unit.test.ts",
+        "src/no-raw-nondeterminism.ts": "src/no-raw-nondeterminism.ts",
+        "src/no-raw-nondeterminism.unit.test.ts": "src/no-raw-nondeterminism.unit.test.ts",
+        "src/no-raw-otel-primitives.ts": "src/no-raw-otel-primitives.ts",
+        "src/no-raw-otel-primitives.unit.test.ts": "src/no-raw-otel-primitives.unit.test.ts",
+        "src/otel-contract-in-seam-file.ts": "src/otel-contract-in-seam-file.ts",
+        "src/otel-contract-in-seam-file.unit.test.ts": "src/otel-contract-in-seam-file.unit.test.ts",
+        "src/storybook/csf-component.ts": "src/storybook/csf-component.ts",
+        "src/storybook/csf-component.unit.test.ts": "src/storybook/csf-component.unit.test.ts",
+        "src/storybook/default-exports.ts": "src/storybook/default-exports.ts",
+        "src/storybook/default-exports.unit.test.ts": "src/storybook/default-exports.unit.test.ts",
+        "src/storybook/hierarchy-separator.ts": "src/storybook/hierarchy-separator.ts",
+        "src/storybook/hierarchy-separator.unit.test.ts": "src/storybook/hierarchy-separator.unit.test.ts",
+        "src/storybook/meta-satisfies-type.ts": "src/storybook/meta-satisfies-type.ts",
+        "src/storybook/meta-satisfies-type.unit.test.ts": "src/storybook/meta-satisfies-type.unit.test.ts",
+        "src/storybook/no-redundant-story-name.ts": "src/storybook/no-redundant-story-name.ts",
+        "src/storybook/no-redundant-story-name.unit.test.ts": "src/storybook/no-redundant-story-name.unit.test.ts",
+        "src/storybook/prefer-pascal-case.ts": "src/storybook/prefer-pascal-case.ts",
+        "src/storybook/prefer-pascal-case.unit.test.ts": "src/storybook/prefer-pascal-case.unit.test.ts",
+        "src/storybook/story-exports.ts": "src/storybook/story-exports.ts",
+        "src/storybook/story-exports.unit.test.ts": "src/storybook/story-exports.unit.test.ts",
+        "src/storybook/utils.ts": "src/storybook/utils.ts",
+        "src/stylex-no-raw-color.ts": "src/stylex-no-raw-color.ts",
+        "src/stylex-no-raw-color.unit.test.ts": "src/stylex-no-raw-color.unit.test.ts",
+        "src/stylex-outline-focus-visible-only.ts": "src/stylex-outline-focus-visible-only.ts",
+        "src/stylex-outline-focus-visible-only.unit.test.ts": "src/stylex-outline-focus-visible-only.unit.test.ts",
+        "src/stylex-shared.ts": "src/stylex-shared.ts",
+        "src/stylex-upstream-plugin.ts": "src/stylex-upstream-plugin.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_oxc_config_0c9db47f45b6",
     files = {
         "package.json": "package.json",
         "src/explicit-boolean-compare.ts": "src/explicit-boolean-compare.ts",
@@ -271,7 +330,7 @@ package_bin_artifact(
     external_capabilities = [],
     kind = "module",
     output = "oxc-config.js",
-    package_tree = ":package_tree",
+    package_tree = ":product_package_tree",
     target = "node",
     visibility = ["PUBLIC"],
 )
@@ -291,7 +350,7 @@ package_bin_artifact(
     external_capabilities = [],
     kind = "module",
     output = "oxc-config-stylex-upstream-plugin.js",
-    package_tree = ":package_tree",
+    package_tree = ":product_package_tree",
     target = "node",
     visibility = ["PUBLIC"],
 )

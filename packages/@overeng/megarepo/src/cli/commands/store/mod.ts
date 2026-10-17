@@ -123,6 +123,7 @@ import type {
   StoreWorktreeStatus,
   StoreWorktreeIssue,
 } from '../../renderers/StoreOutput/mod.ts'
+import { storeLockCommand } from './lock.ts'
 
 /**
  * Entry returned by collectStoreWorktrees — `broken` indicates a directory that looks like a
@@ -1247,9 +1248,14 @@ const checkMergedWorklogTeardown = Effect.fn('megarepo/store/gc/check-worklog-te
     if (defaultBranch === undefined) return 'default-branch-unavailable'
     const head = yield* Git.getCurrentCommit(worktreePath)
     if (head !== expectedHead) return 'head-changed'
+    const defaultHead = yield* Git.resolveRef({
+      repoPath: bareRepoPath,
+      ref: `refs/remotes/origin/${defaultBranch}^{commit}`,
+    }).pipe(Effect.orElseSucceed(() => undefined))
+    if (defaultHead === undefined) return 'head-not-on-default'
     const reachable = yield* Git.runCommand({
       cwd: bareRepoPath,
-      args: ['merge-base', '--is-ancestor', head, `refs/remotes/origin/${defaultBranch}`],
+      args: ['merge-base', '--is-ancestor', head, defaultHead],
     }).pipe(
       Effect.as(true),
       Effect.orElseSucceed(() => false),
@@ -4272,6 +4278,7 @@ export const storeCommand = Cli.Command.make('store', {}).pipe(
     storeGcCommand,
     storeFixCommand,
     storeLeaseCommand,
+    storeLockCommand,
     storeActivityCommand,
     storeWorktreeCommand,
   ]),

@@ -128,6 +128,13 @@ let
     }
   );
   # The password reaches ctl only through the consumer's --keychain-password-fd descriptor.
+  # Incumbent adoption is an explicit consumer CLI policy, not a Nix option:
+  # ctl install-host --artifact RELEASE --desired DESCRIPTOR ... --incumbent legacy
+  # (also accepted by rollback --artifact). Without it, unrecorded incumbents
+  # must satisfy the candidate's complete layout/policy. With it, only an
+  # unrecorded incumbent may use outer bundleId + strict signature + pinned
+  # requirement checks; a recorded config always governs its own layout/signatures.
+  # The wrapper forwards this flag unchanged; ctlConfig has no incumbent setting.
   ctl = pkgs.writeShellScriptBin "macos-app-ctl" ''
     exec '${genericHost}/bin/macos-app-ctl' "$@" --config '${ctlConfig}'
   '';

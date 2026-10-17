@@ -34,6 +34,8 @@ pub struct Peer {
     pub dns_name: String,
     #[serde(rename = "TailscaleIPs")]
     pub ips: Vec<IpAddr>,
+    #[serde(rename = "sshHostKeys")]
+    pub ssh_host_keys: Vec<String>,
     pub online: bool,
     pub active: bool,
     pub cur_addr: String,
@@ -154,6 +156,19 @@ fn cli_status(start: Instant) -> Option<Status> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reads_advertised_ssh_host_keys() {
+        let peer: Peer = serde_json::from_str(
+            r#"{"DNSName":"host-a.example.ts.net.","sshHostKeys":["ssh-ed25519 AAAA"]}"#,
+        )
+        .unwrap();
+        assert_eq!(peer.ssh_host_keys, ["ssh-ed25519 AAAA"]);
+        assert!(serde_json::from_str::<Peer>("{}")
+            .unwrap()
+            .ssh_host_keys
+            .is_empty());
+    }
+
     #[test]
     fn http_status_and_framing() {
         let expected = Status::default();

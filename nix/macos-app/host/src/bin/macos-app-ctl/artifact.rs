@@ -559,6 +559,16 @@ fn file_records(items: &[Item], normalized: bool, bundles: &BTreeSet<String>) ->
     }
     Ok(Value::Array(records))
 }
+/// Check only the outer bundle identifier, without assuming a code inventory.
+pub fn verify_bundle_identifier(app: &Path, config: &Value) -> Result<()> {
+    if plist_field(&app.join("Contents/Info.plist"), "CFBundleIdentifier")?
+        != required(config, "bundleId")?
+    {
+        return Err(mismatch("Outer bundle identifier mismatch"));
+    }
+    Ok(())
+}
+
 /// Deterministic descriptor; never trusts source markers or candidate receipts.
 pub fn describe(app: &Path, config: &Value) -> Result<Value> {
     describe_items(app,config,&inventory(app,false)?)

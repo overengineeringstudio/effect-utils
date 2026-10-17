@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/devbar/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:70e20068078cf1a6f38a5a964c39ec2898e2e2fba6c3653601f195fb0a37e0bf
+# Semantic fingerprint: sha256:b1b8906e8706d7cb7d7b4565808336245f385e81eae2312b600d94baa24b2964
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -137,6 +137,63 @@ package_view(
         "node_modules/@overeng/rpc-devtools/node_modules": "//packages/@overeng/rpc-devtools:package_tree",
         "node_modules/@overeng/stylex-tokens/node_modules": "//packages/@overeng/stylex-tokens:package_tree",
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_devbar_d9a9d68ecdb8",
+    files = {
+        "package.json": "package.json",
+        "src/BuildIdentitySegment.tsx": "src/BuildIdentitySegment.tsx",
+        "src/BuildIdentitySegment.unit.test.tsx": "src/BuildIdentitySegment.unit.test.tsx",
+        "src/Devbar.tsx": "src/Devbar.tsx",
+        "src/Devbar.unit.test.tsx": "src/Devbar.unit.test.tsx",
+        "src/boundary.unit.test.ts": "src/boundary.unit.test.ts",
+        "src/disclosure.tsx": "src/disclosure.tsx",
+        "src/disclosure.unit.test.tsx": "src/disclosure.unit.test.tsx",
+        "src/fitSegments.ts": "src/fitSegments.ts",
+        "src/fitSegments.unit.test.ts": "src/fitSegments.unit.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/stories/BuildIdentityDisclosure.stories.tsx": "src/stories/BuildIdentityDisclosure.stories.tsx",
+        "src/stories/BuildIdentitySegment.stories.tsx": "src/stories/BuildIdentitySegment.stories.tsx",
+        "src/stories/Devbar.stories.tsx": "src/stories/Devbar.stories.tsx",
+        "src/stories/host/HostComposition.stories.tsx": "src/stories/host/HostComposition.stories.tsx",
+        "src/stories/host/boundary.ts": "src/stories/host/boundary.ts",
+        "src/stories/host/devtools.tsx": "src/stories/host/devtools.tsx",
+        "src/stories/host/env.d.ts": "src/stories/host/env.d.ts",
+        "src/stories/host/fixture-entry.ts": "src/stories/host/fixture-entry.ts",
+        "src/stories/host/production-host.unit.test.ts": "src/stories/host/production-host.unit.test.ts",
+        "src/stories/host/runtime.ts": "src/stories/host/runtime.ts",
+        "src/themes.ts": "src/themes.ts",
+        "src/tokens.stylex.ts": "src/tokens.stylex.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/effect-rpc-explorer-react/package.json": "//packages/@overeng/effect-rpc-explorer-react:package.json",
+        "node_modules/@overeng/effect-rpc-explorer/package.json": "//packages/@overeng/effect-rpc-explorer:package.json",
+        "node_modules/@overeng/effect-rpc-observer/package.json": "//packages/@overeng/effect-rpc-observer:package.json",
+        "node_modules/@overeng/meters/package.json": "//packages/@overeng/meters:package.json",
+        "node_modules/@overeng/otel-contract/package.json": "//packages/@overeng/otel-contract:package.json",
+        "node_modules/@overeng/rpc-devtools/package.json": "//packages/@overeng/rpc-devtools:package.json",
+        "node_modules/@overeng/stylex-tokens/package.json": "//packages/@overeng/stylex-tokens:package.json",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/effect-rpc-explorer-react/node_modules": "//packages/@overeng/effect-rpc-explorer-react:product_package_tree",
+        "node_modules/@overeng/effect-rpc-explorer/node_modules": "//packages/@overeng/effect-rpc-explorer:product_package_tree",
+        "node_modules/@overeng/effect-rpc-observer/node_modules": "//packages/@overeng/effect-rpc-observer:product_package_tree",
+        "node_modules/@overeng/meters/node_modules": "//packages/@overeng/meters:product_package_tree",
+        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:product_package_tree",
+        "node_modules/@overeng/rpc-devtools/node_modules": "//packages/@overeng/rpc-devtools:product_package_tree",
+        "node_modules/@overeng/stylex-tokens/node_modules": "//packages/@overeng/stylex-tokens:product_package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",

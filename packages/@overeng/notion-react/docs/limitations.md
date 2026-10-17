@@ -106,6 +106,14 @@ Deeper subtrees are landed via follow-up `blocks.children.append` calls
 scoped to the newly created page. This is handled transparently by
 `inlinePackChildren`; you do not need to structure your JSX around it.
 
+For block appends, `column_list`, `column`, and `table` creation requests
+include their mandatory child shapes. Optional descendants of ordinary
+blocks inside those containers (for example, a toggle's callout children)
+are appended separately after their parent ids resolve, rather than packing
+an arbitrarily deep tree into one request. `<TableOfContents />` sends
+`color: 'default'` explicitly: Notion otherwise inserts a gray default,
+which would disagree with the renderer's readback claim.
+
 ### Title length cap — 2000 chars per rich_text span (A10)
 
 Each title rich_text span is capped at 2000 characters. Titles longer

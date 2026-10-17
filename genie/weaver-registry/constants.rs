@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:291a717728338507752a350ba79eb549a4a51e799179ebcc23428fc044fb5680
+// fingerprint: sha256:f876f6d90c3381deb39fb8966d5cbf8dea96f23de7aeef3ce900c88e483bc9ac
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -64,6 +64,10 @@ pub mod attribute {
     pub const GIT_SUBCOMMAND: &str = "git.subcommand";
     pub const GIT_TIMEOUT_MS: &str = "git.timeout_ms";
     pub const GIT_URL: &str = "git.url";
+    pub const GITHUB_APP_CLIENT_ID: &str = "github.app.client_id";
+    pub const GITHUB_CONSUMER: &str = "github.consumer";
+    pub const GITHUB_INSTALLATION_ID: &str = "github.installation.id";
+    pub const GITHUB_RESOURCE: &str = "github.resource";
     pub const MEGAREPO_BRANCH: &str = "megarepo.branch";
     pub const MEGAREPO_CLI_ALL: &str = "megarepo.cli.all";
     pub const MEGAREPO_CLI_COMMAND: &str = "megarepo.cli.command";
@@ -394,6 +398,10 @@ pub mod attribute {
         "git.subcommand",
         "git.timeout_ms",
         "git.url",
+        "github.app.client_id",
+        "github.consumer",
+        "github.installation.id",
+        "github.resource",
         "megarepo.branch",
         "megarepo.cli.all",
         "megarepo.cli.command",
@@ -832,6 +840,12 @@ pub mod span {
 pub mod metric {
     pub const ACME_PROBE_DURATION: &str = "acme.probe.duration";
     pub const ACME_PROBES: &str = "acme.probes";
+    pub const GITHUB_APP_MINT_FAILURES_TOTAL: &str = "github_app_mint_failures_total";
+    pub const GITHUB_APP_MINTS_TOTAL: &str = "github_app_mints_total";
+    pub const GITHUB_APP_RATE_LIMIT_LIMIT: &str = "github_app_rate_limit_limit";
+    pub const GITHUB_APP_RATE_LIMIT_REMAINING: &str = "github_app_rate_limit_remaining";
+    pub const GITHUB_APP_RATE_LIMIT_RESET_AT_SECONDS: &str = "github_app_rate_limit_reset_at_seconds";
+    pub const GITHUB_APP_TOKEN_EXPIRY_SECONDS: &str = "github_app_token_expiry_seconds";
     pub const MEGAREPO_STORE_GC_RSS_BYTES: &str = "megarepo_store_gc_rss_bytes";
     pub const RESTATE_ATTEMPTS_TOTAL: &str = "restate_attempts_total";
     pub const RESTATE_AWAKEABLE_WAIT_MS: &str = "restate_awakeable_wait_ms";
@@ -843,6 +857,12 @@ pub mod metric {
     pub const ALL: &[&str] = &[
         "acme.probe.duration",
         "acme.probes",
+        "github_app_mint_failures_total",
+        "github_app_mints_total",
+        "github_app_rate_limit_limit",
+        "github_app_rate_limit_remaining",
+        "github_app_rate_limit_reset_at_seconds",
+        "github_app_token_expiry_seconds",
         "megarepo_store_gc_rss_bytes",
         "restate_attempts_total",
         "restate_awakeable_wait_ms",

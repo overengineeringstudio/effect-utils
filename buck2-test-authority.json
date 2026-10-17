@@ -171,6 +171,36 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/data-graph:test_collect",
+      "excludes": [],
+      "packageName": "data-graph",
+      "packagePath": "packages/@overeng/data-graph",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/cache.integration.test.ts",
+        "src/identity.unit.test.ts",
+        "src/mod.integration.test.ts",
+        "src/properties.integration.test.ts",
+        "src/recovery.integration.test.ts",
+        "src/scale.integration.test.ts",
+        "src/selection.integration.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/data-graph:test",
+      "taskName": "test:data-graph",
+      "testFiles": [
+        "src/cache.integration.test.ts",
+        "src/identity.unit.test.ts",
+        "src/mod.integration.test.ts",
+        "src/properties.integration.test.ts",
+        "src/recovery.integration.test.ts",
+        "src/scale.integration.test.ts",
+        "src/selection.integration.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/devbar:test_collect",
       "excludes": [],
       "packageName": "devbar",
@@ -575,12 +605,19 @@
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/gh-ci-utils:test_collect",
-      "excludes": ["src/node/GitHubClient.integration.test.ts", "test/GitHubClient.test.ts"],
+      "excludes": [
+        "src/node/ArtifactTransport.integration.test.ts",
+        "src/node/GitHubClient.integration.test.ts",
+        "test/GitHubClient.test.ts"
+      ],
       "packageName": "gh-ci-utils",
       "packagePath": "packages/@overeng/gh-ci-utils",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/node/ArtifactArchive.unit.test.ts",
+        "src/node/ArtifactTransport.integration.test.ts",
         "src/node/GitHubClient.integration.test.ts",
+        "src/node/commands/artifacts.unit.test.ts",
         "test/GitHubClient.test.ts",
         "test/GitHubClientLogs.test.ts",
         "test/GitHubInternal.test.ts",
@@ -611,7 +648,10 @@
       "target": "effect_utils//packages/@overeng/gh-ci-utils:test",
       "taskName": "test:gh-ci-utils",
       "testFiles": [
+        "src/node/ArtifactArchive.unit.test.ts",
+        "src/node/ArtifactTransport.integration.test.ts",
         "src/node/GitHubClient.integration.test.ts",
+        "src/node/commands/artifacts.unit.test.ts",
         "test/GitHubClient.test.ts",
         "test/GitHubClientLogs.test.ts",
         "test/GitHubInternal.test.ts",
@@ -639,7 +679,11 @@
         "test/watchPlan.test.ts"
       ],
       "unboundedAfter": [],
-      "unboundedFiles": ["src/node/GitHubClient.integration.test.ts", "test/GitHubClient.test.ts"],
+      "unboundedFiles": [
+        "src/node/ArtifactTransport.integration.test.ts",
+        "src/node/GitHubClient.integration.test.ts",
+        "test/GitHubClient.test.ts"
+      ],
       "unboundedTaskName": "test:gh-ci-utils:unbounded"
     },
     {
@@ -687,6 +731,7 @@
         "src/core/git-memory.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
+        "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
@@ -731,6 +776,7 @@
         "src/core/source-policy.unit.test.ts",
         "src/generators/generators.unit.test.ts",
         "src/json-wire-baseline.test.ts",
+        "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
         "src/store/store-buck-daemons.unit.test.ts",
@@ -790,6 +836,7 @@
         "src/core/source-policy.unit.test.ts",
         "src/generators/generators.unit.test.ts",
         "src/json-wire-baseline.test.ts",
+        "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
         "src/store/store-buck-daemons.unit.test.ts",
@@ -828,6 +875,7 @@
         "src/core/git-memory.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
+        "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",

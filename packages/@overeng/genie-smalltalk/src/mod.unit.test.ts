@@ -18,6 +18,7 @@ import {
   type HumanGateSchema,
   mission,
   MissionSchema,
+  missionWire,
   node,
   omp,
   person,
@@ -447,6 +448,47 @@ describe('Smalltalk declarations', () => {
     expect(declaration.children?.some((entry) => entry.name === 'report-to')).toBe(false)
     expect(emit([declaration])).not.toContain('Mission watcher')
     expect(emit([declaration])).not.toContain('harness')
+  })
+  it.each(['1ms', '30s', '45m', '2h', '1d'])(
+    'renders mission stalledAfter %s as a native duration property',
+    (stalledAfter) => {
+      const input = { ...fanInMission(), timeout: '2d', stalledAfter }
+      const decoded = Schema.decodeSync(MissionSchema)(input)
+      expect(decoded.stalledAfter).toBe(stalledAfter)
+      const declaration = mission(input)
+      expect(declaration.props['stalled-after']).toBe(stalledAfter)
+      expect(declaration.props.timeout).toBe('2d')
+      expect(emit([declaration])).toContain(`stalled-after="${stalledAfter}"`)
+      expect(declaration.children?.some((entry) => entry.name === 'stalled-after')).toBe(false)
+      expect(missionWire(input).stalledAfter).toBe(stalledAfter)
+    },
+  )
+  it('omits the native stalled-after property when no duration is authored', () => {
+    expect(mission(fanInMission()).props).not.toHaveProperty('stalled-after')
+  })
+  it.each(['0ms', '0s', '-1m', '1.5h', '45 minutes', '45', '', 45000])(
+    'rejects invalid mission stalledAfter %j',
+    (stalledAfter) => {
+      expect(() =>
+        Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), stalledAfter }),
+      ).toThrow()
+    },
+  )
+  it.each([true, false])('renders mission reportStalls %j as a native boolean', (reportStalls) => {
+    const input = { ...fanInMission(), reportStalls, stalledAfter: '45m' }
+    expect(Schema.decodeSync(MissionSchema)(input).reportStalls).toBe(reportStalls)
+    const declaration = mission(input)
+    expect(declaration.props['report-stalls']).toBe(reportStalls)
+    expect(emit([declaration])).toContain(`report-stalls=#${reportStalls}`)
+    expect(missionWire(input).reportStalls).toBe(reportStalls)
+  })
+  it('omits report-stalls when the native default is requested', () => {
+    expect(mission(fanInMission()).props).not.toHaveProperty('report-stalls')
+  })
+  it.each(['true', 'false', 0, 1, null])('rejects invalid reportStalls %j', (reportStalls) => {
+    expect(() =>
+      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), reportStalls }),
+    ).toThrow()
   })
   it('requires imported objects for step assignment and under targets', () => {
     type AssignedTo = NonNullable<(typeof StepSchema.Encoded)['assignedTo']>

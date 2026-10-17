@@ -34,6 +34,7 @@
 #   - vitest.config.ts in the package root
 #   - optional `after = [ ... ]` for package-specific prerequisites
 #   - optional `installTask` overriding the aggregate's installer for direct execution
+#   - optional `vitestRuntime = "bun"` when tests use Bun-native APIs (default: node)
 #
 # Provides:
 #   - test:run - Run all tests
@@ -112,6 +113,7 @@ let
     {
       name,
       extraArgs ? "",
+      runtime ? "node",
     }:
     ''
       set -euo pipefail
@@ -130,7 +132,9 @@ let
           "--outputFile.json=$_vitest_collection_dir/${taskFileStem name}.vitest.json"
         )
       ''}
-      "''${_otel_instr[@]}" "$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" ${extraArgs}
+      "''${_otel_instr[@]}" ${
+        lib.optionalString (runtime == "bun") "${pkgs.bun}/bin/bun --bun "
+      }"$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" ${extraArgs}
     '';
   vitestWatchExec = ''
     set -euo pipefail
@@ -190,6 +194,7 @@ let
       exec = trace.exec "test:${pkg.name}" (vitestExec {
         name = "test:${pkg.name}";
         extraArgs = pkg.vitestArgs or "";
+        runtime = pkg.vitestRuntime or "node";
       });
       cwd = pkg.path;
       execIfModified = [

@@ -1,18 +1,11 @@
 /**
- * Store Lock
+ * Worktree lifecycle gate.
  *
- * Serializes concurrent access to shared store resources — both within a
- * single process (concurrent fibers) and across separate mr processes.
- *
- * Two-layer locking:
- * - In-process: Effect.Semaphore per key — guarantees fiber serialization
- * - Cross-process: DistributedSemaphore with file-system backing at
- *   $MEGAREPO_STORE/.locks/ — best-effort cross-process coordination
- *
- * The in-process gate is the primary correctness mechanism. The distributed
- * lock's FileSystemBacking has a TOCTOU race in tryAcquire (read-then-write
- * are not atomic), but the in-process gate ensures only one fiber enters
- * tryAcquire at a time, making the race harmless.
+ * This gate coordinates worktree-level decisions within mr. Canonical Git
+ * writers, including clone, use git-writer-lock.ts instead: its kernel flock
+ * is the single cross-tool ownership boundary for each resolved common dir.
+ * The legacy TTL-backed lifecycle gate is not a shared-ref writer lock and
+ * cannot establish cross-process exclusion (the backing is read-then-write).
  */
 
 import { createHash } from 'node:crypto'
@@ -31,10 +24,6 @@ const hashKey = (key: string): string => createHash('sha256').update(key).digest
 
 /** StoreLock service interface */
 export interface StoreLockService {
-  /** Serialize bare repo clone/fetch operations per repo URL */
-  readonly withRepoLock: (
-    key: string,
-  ) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
   /** Serialize worktree creation per worktree path */
   readonly withWorktreeLock: (
     key: string,
@@ -49,7 +38,7 @@ export class StoreLock extends Context.Service<StoreLock, StoreLockService>()(
 type DistributedSem = Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
 
 interface CacheEntry {
-  /** In-process fiber gate — primary correctness mechanism */
+  /** In-process fiber gate for lifecycle decisions */
   readonly gate: Semaphore.Semaphore
   /** Cross-process distributed lock — best-effort coordination */
   readonly distributed: DistributedSem
@@ -128,7 +117,6 @@ export const makeStoreLockLayerFromBacking = (
       const backingContext = withoutPushAcquire(yield* Layer.build(backingLayer))
 
       return {
-        withRepoLock: yield* makeKeyedLock({ backingContext, namespace: 'repo' }),
         withWorktreeLock: yield* makeKeyedLock({ backingContext, namespace: 'worktree' }),
       } as const
     }),
@@ -147,7 +135,6 @@ export const makeStoreLockLayer = (basePath: AbsoluteDirPath) =>
       const backingContext = withoutPushAcquire(yield* Layer.build(lockLayer))
 
       return {
-        withRepoLock: yield* makeKeyedLock({ backingContext, namespace: 'repo' }),
         withWorktreeLock: yield* makeKeyedLock({ backingContext, namespace: 'worktree' }),
       } as const
     }),

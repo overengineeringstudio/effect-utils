@@ -15,7 +15,10 @@ import type { GenieValidationIssue } from '../validation/mod.ts'
 
 /** Resolved peer dependency metadata for a single lockfile package. */
 export type PeerDepsEntry = {
+  /** Exact lock-key selector (including archive URLs), not necessarily a semver. */
   version: string
+  /** The package's declared version, when present in lock metadata. */
+  resolvedVersion?: string
   peerDependencies: Record<string, string>
 }
 
@@ -34,16 +37,24 @@ const unquote = (s: string): string => {
  * Parse the `packages:` section of a pnpm-lock.yaml file and extract
  * peer dependency metadata for each package.
  *
- * Only returns the first (canonical metadata) entry per package name,
- * ignoring resolution-specific duplicate entries.
+ * Without a catalog, returns the first entry with peers per package name.
+ * With a catalog, selects exact lock-key selectors and also retains packages
+ * without peers so their declared versions can resolve incoming peer checks.
  */
-export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, PeerDepsEntry> => {
+const parsePeerDepsEntries = ({
+  yamlContent,
+  catalog,
+}: {
+  yamlContent: string
+  catalog?: ReadonlyMap<string, string>
+}): Map<string, PeerDepsEntry> => {
   const result = new Map<string, PeerDepsEntry>()
   const lines = yamlContent.split('\n')
 
   let inPackages = false
   let currentPkg: string | undefined
   let currentVersion: string | undefined
+  let resolvedVersion: string | undefined
   let inPeerDeps = false
   let peerDeps: Record<string, string> = {}
 
@@ -51,13 +62,21 @@ export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, Peer
     if (
       currentPkg !== undefined &&
       currentVersion !== undefined &&
-      Object.keys(peerDeps).length > 0
+      ((catalog === undefined && Object.keys(peerDeps).length > 0) ||
+        (catalog !== undefined && catalog.get(currentPkg) === currentVersion))
     ) {
       if (result.has(currentPkg) === false) {
-        result.set(currentPkg, { version: currentVersion, peerDependencies: { ...peerDeps } })
+        result.set(currentPkg, {
+          version: currentVersion,
+          ...(resolvedVersion !== undefined ? { resolvedVersion } : {}),
+          peerDependencies: { ...peerDeps },
+        })
       }
     }
     peerDeps = {}
+    currentPkg = undefined
+    currentVersion = undefined
+    resolvedVersion = undefined
     inPeerDeps = false
   }
 
@@ -89,6 +108,13 @@ export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, Peer
       continue
     }
 
+    const versionMatch = line.match(/^    version:\s+(.+)$/)
+    if (versionMatch !== null) {
+      resolvedVersion = unquote(versionMatch[1]!)
+      inPeerDeps = false
+      continue
+    }
+
     if (line === '    peerDependencies:') {
       inPeerDeps = true
       continue
@@ -112,9 +138,19 @@ export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, Peer
   return result
 }
 
+/** Extract the first canonical peer metadata entry per package name. */
+export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, PeerDepsEntry> =>
+  parsePeerDepsEntries({ yamlContent })
+
 // =============================================================================
 // Validation
 // =============================================================================
+
+/** Only concrete registry semvers can stand in for missing lock metadata. */
+const isSemver = (value: string): boolean =>
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+    value,
+  )
 
 /** Input for `validateCatalogPeerDeps`: catalog versions, lockfile content, and optional override rules. */
 export type CatalogPeerDepsValidationArgs = {
@@ -144,7 +180,7 @@ export const validateCatalogPeerDeps = ({
     (entry): entry is [string, string] => typeof entry[1] === 'string',
   )
   const catalogMap = new Map(catalogEntries)
-  const peerDepsMap = parsePeerDepsFromLockfile(lockfileContent)
+  const peerDepsMap = parsePeerDepsEntries({ yamlContent: lockfileContent, catalog: catalogMap })
   const allowedVersions = peerDependencyRules?.allowedVersions ?? {}
 
   const issues: GenieValidationIssue[] = []
@@ -157,13 +193,20 @@ export const validateCatalogPeerDeps = ({
     if (lockEntry.version !== version) continue
 
     for (const [peerName, peerRange] of Object.entries(lockEntry.peerDependencies)) {
-      const catalogVersion = catalogMap.get(peerName)
-      if (catalogVersion === undefined) continue
-      if (satisfiesRange(catalogVersion, peerRange) === true) continue
+      const catalogSelector = catalogMap.get(peerName)
+      if (catalogSelector === undefined) continue
+      const metadataVersion = peerDepsMap.get(peerName)?.resolvedVersion
+      const catalogVersion = metadataVersion ?? catalogSelector
+      const validVersion = isSemver(catalogVersion)
+      if (validVersion === true && satisfiesRange(catalogVersion, peerRange) === true) continue
 
       /* Conflict found — check if suppressed by peerDependencyRules */
       const overrideRange = allowedVersions[peerName]
-      if (overrideRange !== undefined && satisfiesRange(catalogVersion, overrideRange) === true) {
+      if (
+        validVersion === true &&
+        overrideRange !== undefined &&
+        satisfiesRange(catalogVersion, overrideRange) === true
+      ) {
         usedOverrides.add(peerName)
         issues.push({
           severity: 'warning',
@@ -183,7 +226,8 @@ export const validateCatalogPeerDeps = ({
         dependency: peerName,
         message:
           `${name}@${version} peers on ${peerName}: ${peerRange}, ` +
-          `but catalog has ${catalogVersion}`,
+          `but catalog has ${catalogVersion}` +
+          (validVersion === false ? ' (unable to resolve a valid semantic version)' : ''),
         rule: 'catalog-peer-dep-conflict',
       })
     }

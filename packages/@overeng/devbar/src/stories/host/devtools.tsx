@@ -76,7 +76,7 @@ const Detail = ({
     <section {...stylex.props(styles.detail)} aria-label={`${block.label} details`}>
       <h2>{block.label}</h2>
       <output aria-label={`${block.label} current reading`}>
-        {block.read(runtime.meters.store).describe()}
+        {block.read(runtime.meters.store).describe({ nowMs: runtime.meters.clock.now() })}
       </output>
       <p {...stylex.props(styles.muted)}>
         Live evidence from the same scoped session as the strip. Unsupported or unconfigured

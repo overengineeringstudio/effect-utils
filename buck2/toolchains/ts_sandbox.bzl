@@ -37,11 +37,17 @@ _ts_sandbox_toolchain = rule(
 def ts_sandbox_toolchain(name, **kwargs):
     platform = host_capability_platform()
     # Reuse the existing pinned Bash capability; no shell runs inside the action.
-    tool_ids = ["bun", "effect-tsgo", "buck2-fingerprint", "rust-shell"]
+    # Action tools (effect-tsgo, buck2-fingerprint) bind their closures from the
+    # consuming rule's own toolchain deps, so package trees stay independent of them.
+    tool_ids = ["bun", "rust-shell"]
     if host_info().os.is_linux:
-        if CAPABILITIES.get(platform, {}).get("bubblewrap") == None:
-            fail("TS sandbox: declared Nix Bubblewrap capability missing; unsandboxed execution is forbidden")
         tool_ids.append("bubblewrap")
+    # A scoped root lacking any sandbox capability declares no sandbox target.
+    # Every TS action rule depends on this target, so its analysis then fails;
+    # no action can fall back to unsandboxed execution.
+    for tool_id in tool_ids:
+        if tool_id not in CAPABILITIES.get(platform, {}):
+            return
     inputs = []
     closures = {}
     executables = {}

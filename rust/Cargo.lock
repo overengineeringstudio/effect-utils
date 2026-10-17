@@ -43,6 +43,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
+ "proptest",
  "reqwest 0.13.5",
  "rustls",
  "schemars",
@@ -346,6 +347,14 @@ dependencies = [
  "sha2",
  "tempfile",
  "ureq",
+]
+
+[[package]]
+name = "buck2-fingerprint"
+version = "0.0.0"
+dependencies = [
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]

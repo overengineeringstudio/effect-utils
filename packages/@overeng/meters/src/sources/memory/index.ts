@@ -123,7 +123,7 @@ export const appMemoryProbe = (options: {
           }),
       ).pipe(Effect.asVoid),
   })
-  const probe: AppMemoryProbe['probe'] = Effect.suspend(() => {
+  const probe: AppMemoryProbe['probe'] = Effect.suspend((): AppMemoryProbe['probe'] => {
     const current = lease
     if (current === undefined)
       return Effect.succeed({ _tag: 'Unavailable', atMs: 0, reason: 'NotConfigured' } as const)

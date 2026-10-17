@@ -14,14 +14,30 @@ export {
   darkMeterTheme,
   fiberBlock,
   formatMeterValue,
+  formatRange,
   frameBlock,
   heapBlock,
   jankBlock,
   lightMeterTheme,
   numberBlock,
   numericBlock,
+  plotRange,
+  resolveBlockAggregation,
+  tileBlock,
 } from './blocks.ts'
-export type { BlockOptions, BlockReader, CanvasBlockSpec, DrawInput, MeterTheme } from './blocks.ts'
+export type {
+  BlockAggregation,
+  BlockAggregationEvidence,
+  BlockEvidence,
+  BlockOptions,
+  BlockReader,
+  CanvasBlockSpec,
+  DrawInput,
+  MeterTheme,
+  PlotOptions,
+  PlotRange,
+  TileAggregation,
+} from './blocks.ts'
 export { fitText, historyX, layoutBlockText, layoutStrip } from './layout.ts'
 export type { BlockTextLayout, Rect, StripLayout, TextRun } from './layout.ts'
 
@@ -38,6 +54,7 @@ export interface StripView {
 export const makeStripView = (options: {
   readonly store: SeriesStore
   readonly blocks: readonly CanvasBlockSpec[]
+  readonly now: () => number
   readonly frozenAtMs?: number
 }): StripView => {
   const ids = new Set<string>()
@@ -47,19 +64,20 @@ export const makeStripView = (options: {
     const reader = item.read(options.store)
     return options.frozenAtMs === undefined ? reader : reader.snapshot()
   })
-  let revision = ''
   let cached: readonly string[] = []
   let subscribed = 0
-  let published = false
-  const getSnapshot = (): readonly string[] => {
-    if (subscribed > 0 && published === true) return cached
-    const nextRevision = readers.map((reader) => reader.revision()).join(',')
-    if (nextRevision !== revision || cached.length !== readers.length) {
-      revision = nextRevision
-      cached = readers.map((reader) => reader.describe())
-    }
+  const refresh = (): readonly string[] => {
+    const nowMs = options.frozenAtMs ?? options.now()
+    const next = readers.map((reader) => reader.describe({ nowMs }))
+    // oxlint-disable-next-line overeng/named-args -- Native Array.some callback signature.
+    if (
+      next.length !== cached.length ||
+      next.some((text, index) => text !== cached[index]) === true
+    )
+      cached = next
     return cached
   }
+  const getSnapshot = (): readonly string[] => (subscribed > 0 ? cached : refresh())
   return {
     readers,
     frozenAtMs: options.frozenAtMs,
@@ -68,18 +86,15 @@ export const makeStripView = (options: {
       if (options.frozenAtMs !== undefined) return () => {}
       getSnapshot()
       subscribed++
-      published = true
+      // Existing presentation publication owns time-based text updates too.
       const stop = options.store[subscribePresentation](() => {
-        published = false
         const previous = cached
-        getSnapshot()
-        published = true
+        refresh()
         if (cached !== previous) notify()
       })
       return () => {
         stop()
         subscribed--
-        if (subscribed === 0) published = false
       }
     },
   }
@@ -197,7 +212,12 @@ export const makeCanvasStrip = (options: {
     if (Number.isFinite(historyMs) === false || historyMs <= 0)
       throw new TypeError('History horizon must be positive')
     const view =
-      options.view ?? makeStripView({ store: options.meters.store, blocks: options.blocks })
+      options.view ??
+      makeStripView({
+        store: options.meters.store,
+        blocks: options.blocks,
+        now: options.meters.clock.now,
+      })
     const platform = options.platform ?? browserCanvasPlatform(canvas)
     let theme: MeterTheme
     let layout: StripLayout

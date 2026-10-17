@@ -50,6 +50,11 @@ selected Darwin executor -> darwin-unsandboxed   -> local execution, no admissio
 The Linux TS check, emit and package-tree run actions use the declared Nix
 Bubblewrap capability. There is no unsandboxed fallback: a missing capability,
 failed namespace setup, denied access or failed compiler makes the action fail.
+A scoped product root that does not declare the sandbox's Bun, launcher-shell
+and Linux Bubblewrap capabilities declares no sandbox toolchain, so every TS
+action rule fails analysis there. Action tools beyond Bun (effect-tsgo,
+`buck2-fingerprint`) bind closures attested by the consuming rule's own
+toolchain dependencies; package-tree actions therefore do not depend on them.
 Analysis emits the exact bind argv in a declared shell argument script. The
 scrubbed, Nix-pinned Bash entry creates output directories and immediately
 execs Bubblewrap; no Bun containment observer or per-input realpath/stat walk
@@ -218,6 +223,39 @@ the root Cargo workspace and the strict Reindeer graph; a Cargo library declares
   and records a verdict artifact; `//:all` includes the fixture smokes under
   `rust/effect-rust-fixtures` for both runtimes.
 
+## Portable JavaScript Source Graph
+
+```text
+package_bin_artifact -> product_package_tree -> product_view_<importer>
+                              |                       |
+                              +-> sibling sources     +-> immutable external store
+                              +-> recursive product_package_tree views
+                              +-> declared generated package products
+```
+
+The portable module prerequisite for BUILD.BUCK.EXEC-R06 and
+BUILD.BUCK.EXEC-R07 uses a dedicated source-only view. The package projection
+stages its declared source roots and runtime files; declaration-backed
+workspace sibling source roots derive from the workspace package generator's
+runtime exports and binaries, not `publishConfig` or guessed directories.
+Sibling sources retain their recursive package-view links and full read-root
+closure. Missing source metadata or exported sources fails closed.
+
+`product_view_<importer>` preserves the ordinary importer's external direct
+links, bins, closure and platform maps, but workspace links target
+`:product_package_tree`. These product trees have no sibling `:dist` overlays.
+Generated packages remain real action dependencies: Rust interop services and
+their package artifacts are not replaced by source placeholders.
+
+The portable farm names `product_package_tree` and `product_view_<importer>`
+using the corresponding `package_tree` and `view_<importer>` layout names,
+so separating declaration generation does not rename unchanged bundled
+modules. Actual action dependencies and identities retain the product target
+names; logical-name collisions fail analysis. The ordinary npm/editor
+`package_tree` and `view_<importer>` graph, declaration overlays, emit/typecheck
+mutation proof and npm archive prerequisites remain unchanged. Compiled
+JavaScript products consume the same source-only portable module.
+
 ## Compiled JavaScript Executables
 
 `bun_compiled_product_executable` refines BUILD.BUCK.PLAT-R01, BUILD.BUCK.PLAT-R02, BUILD.BUCK.EXEC-R06,
@@ -320,6 +358,27 @@ of network location. Consumer cache policy and the service own revocable per-hos
 credentials, authenticated key logs, AC instance mangling per repo, validation
 and a purge runbook. Public PR write denial is server-enforced. This admission
 contract does not operate the cache or create credentials (axe record `4pmebr`).
+
+### Default-off Rust Prelude adapter
+
+`nix/buck2.nix` pins Prelude as a hashed `.tar.gz`; its materialization in
+`nix/buck2-rules/default.nix` applies the versioned
+`patches/rust-action-adapter.patch`. The
+[upstream contribution](https://github.com/facebook/buck2/pull/1580)
+is the removal authority: drop the patch and its applicator once it lands and
+the pinned Prelude includes it. Keep the default-off posture regression.
+
+`rust.action_adapter_enabled` defaults to `false`. Opt-in also requires a
+declared `RustToolchainInfo.rustc_action_adapter` executable. It intercepts the
+complete rustc action before argument parsing, with Buck's declared-input
+metadata and a versioned manifest of every command output, including diagnostics
+and hidden output directories. Its `RunInfo` owns all runtime resources. The
+default rustc executable and inputs remain unchanged; the posture test compares
+real executor action digests with a bypassed baseline and explicit false.
+
+This seam enables no lane and grants no `cache_hermetic` admission. Native Rust,
+build scripts, rustdoc and linkers remain denied until each lane's complete
+action set has its own containment and key-stability proof.
 
 ### Audited action inventory
 

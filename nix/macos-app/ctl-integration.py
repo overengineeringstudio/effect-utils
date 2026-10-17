@@ -595,6 +595,120 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         invoke('install-host', '--desired', descriptor_path, '--artifact', release)
         print('PASS distinct sealed signatures for identical unsigned content require exact artifact replacement', flush=True)
 
+        # Isolate cutovers from the installed app used by the remaining fixtures.
+        # All fixture signatures are explicitly ad-hoc; imports receive no credentials.
+        original_app, original_state = thin_app, thin_state
+        try:
+            helper_candidate = copy_bundle('ThinCutoverCandidate.app')
+            candidate_helper = helper_candidate / nested_path
+            candidate_helper.parent.mkdir(exist_ok=True)
+            shutil.copy2(helper_candidate / 'Contents/MacOS' / base_config['hostExecutable'],
+                         candidate_helper)
+            tool(str(codesign), '--force', '-s', '-', '--identifier',
+                 nested_policy['identifier'], str(candidate_helper))
+            tool(str(codesign), '--force', '-s', '-', '--identifier',
+                 thin_config['bundleId'], str(helper_candidate))
+            cutover_config = work / 'thin-cutover-config.json'
+            cutover_policy = dict(thin_config, nestedCode=[nested_policy])
+            cutover_config.write_text(json.dumps(cutover_policy))
+            cutover_descriptor = work / 'thin-cutover-descriptor.json'
+            cutover_descriptor.write_text(json.dumps(invoke(
+                'describe-host', '--desired', helper_candidate,
+                config_override=cutover_config)['result']))
+            cutover_release = work / 'thin-cutover-release'
+            invoke('seal-fixture-artifact', '--desired', helper_candidate,
+                   '--output', cutover_release, config_override=cutover_config)
+
+            for case in ('valid', 'wrong-bundle-id', 'wrong-pinned-requirement',
+                         'invalid-outer-signature'):
+                thin_app = copy_bundle(f'ThinLegacy-{case}.app')
+                thin_state = work / f'thin-legacy-{case}-state'
+                if case == 'wrong-bundle-id':
+                    info = thin_app / 'Contents/Info.plist'
+                    plist = plistlib.loads(info.read_bytes())
+                    plist['CFBundleIdentifier'] = 'dev.example.wrong-product'
+                    info.write_bytes(plistlib.dumps(plist))
+                identifier = ('dev.example.wrong-product'
+                              if case == 'wrong-pinned-requirement'
+                              else thin_config['bundleId'])
+                tool(str(codesign), '--force', '-s', '-', '--identifier',
+                     identifier, str(thin_app))
+                if case == 'invalid-outer-signature':
+                    with (thin_app / 'Contents/MacOS' / base_config['hostExecutable']).open('ab') as output:
+                        output.write(b'legacy signature tamper')
+                inode = thin_app.stat().st_ino
+                before_import = (work / 'sign.log').read_text()
+                invoke('install-host', '--desired', cutover_descriptor,
+                       '--artifact', cutover_release, config_override=cutover_config,
+                       refusal=True)
+                assert thin_app.stat().st_ino == inode
+                result = invoke('install-host', '--desired', cutover_descriptor,
+                                '--artifact', cutover_release, '--incumbent', 'legacy',
+                                config_override=cutover_config, refusal=case != 'valid')
+                if case == 'valid':
+                    assert result['result']['changed'] is True, result
+                    assert (thin_app / nested_path).is_file()
+                    installed = thin_app.stat()
+                    record = thin_state / 'host-configs' / f'{installed.st_dev}-{installed.st_ino}.json'
+                    assert json.loads(record.read_text()) == cutover_policy
+                else:
+                    assert thin_app.stat().st_ino == inode, case
+                    assert not (thin_app / nested_path).exists(), case
+                assert (work / 'sign.log').read_text() == before_import
+            print('PASS helper-layout legacy cutover requires opt-in and still rejects wrong plist identity, pinned requirement and outer signature', flush=True)
+
+            thin_app = work / 'thin-recorded-apps/SyntheticHost.app'
+            thin_state = work / 'thin-recorded-state'
+            before_import = (work / 'sign.log').read_text()
+            invoke('install-host', '--desired', descriptor_path, '--artifact', release)
+            plain_inode = thin_app.stat()
+            plain_record = thin_state / 'host-configs' / f'{plain_inode.st_dev}-{plain_inode.st_ino}.json'
+            assert json.loads(plain_record.read_text()) == thin_config
+            # Candidate inventory adds a helper absent from the recorded incumbent.
+            result = invoke('install-host', '--desired', cutover_descriptor,
+                            '--artifact', cutover_release, config_override=cutover_config)
+            assert result['result']['changed'] is True, result
+            assert (thin_app / nested_path).is_file()
+            installed = thin_app.stat()
+            record = thin_state / 'host-configs' / f'{installed.st_dev}-{installed.st_ino}.json'
+            recorded_config = record.read_text()
+            assert json.loads(recorded_config) == cutover_policy
+
+            # A candidate without the helper must not mask a recorded helper policy.
+            bad_policy = dict(cutover_policy, nestedCode=[
+                dict(nested_policy, requirement='identifier "dev.example.wrong-helper"')])
+            for invalid_config in (json.dumps(bad_policy), '{"invalid":true}'):
+                record.write_text(invalid_config)
+                try:
+                    for opt_in in ((), ('--incumbent', 'legacy')):
+                        invoke('install-host', '--desired', descriptor_path,
+                               '--artifact', release, *opt_in, refusal=True)
+                        assert thin_app.stat().st_ino == installed.st_ino
+                        assert record.read_text() == invalid_config
+                finally:
+                    record.write_text(recorded_config)
+            result = invoke('install-host', '--desired', descriptor_path, '--artifact', release)
+            assert result['result']['changed'] is True, result
+            assert not (thin_app / nested_path).exists()
+            print('PASS recorded own-config verification permits helper addition/removal without opt-in; legacy cannot bypass invalid recorded config or nested policy', flush=True)
+
+            invoke('install-host', '--desired', cutover_descriptor, '--artifact', cutover_release,
+                   config_override=cutover_config)
+            installed = thin_app.stat()
+            recorded_helper = thin_app / nested_path
+            recorded_helper.chmod(recorded_helper.stat().st_mode | 0o200)
+            with recorded_helper.open('ab') as output:
+                output.write(b'recorded helper signature tamper')
+            for opt_in in ((), ('--incumbent', 'legacy')):
+                invoke('install-host', '--desired', descriptor_path,
+                       '--artifact', release, *opt_in, refusal=True)
+                assert thin_app.stat().st_ino == installed.st_ino
+                assert recorded_helper.read_bytes().endswith(b'recorded helper signature tamper')
+            assert (work / 'sign.log').read_text() == before_import
+            print('PASS legacy opt-in cannot bypass invalid recorded incumbent signatures; all cutover imports avoid signing', flush=True)
+        finally:
+            thin_app, thin_state = original_app, original_state
+
         # Validate ordinary consumer plists offline; never load a launchd job.
         plist_path = work / 'thin-job.plist'
         entrypoint = str(thin_app / 'Contents/MacOS' / base_config['hostExecutable'])

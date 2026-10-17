@@ -17,7 +17,8 @@ mod types;
 pub use chat::{ChatBuilder, ChatStream};
 pub use client::{Client, ClientBuilder};
 pub use decision::{DecisionAnswer, DecisionResponse, DecisionSpec, Question};
-pub use error::{Error, Result};
+pub use error::{Error, Result, ToolRunError};
 pub use types::{
-    ChatResponse, Message, ModelInfo, StreamEvent, StructuredResponse, Tool, ToolCall, Usage,
+    ChatResponse, Message, ModelInfo, StreamEvent, StructuredResponse, Tool, ToolCall, ToolRun,
+    Usage,
 };

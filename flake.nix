@@ -91,11 +91,11 @@ rec {
         # Compiled-executable products imported for this host platform (compiled.nix).
         buckCompiledProducts = import ./nix/buck2-products/compiled.nix {
           inherit
+            pkgs
             mkBuckProductFromSource
             pnpmArchives
             ;
           capabilities = buck2Capabilities;
-          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           repositoryRoot = ./.;
         };
         viteRuntimeFixture =
@@ -577,6 +577,9 @@ rec {
       # Standalone otel-span CLI (run + emit subcommands).
       # Can be added to devenv packages without importing the full OTEL module.
       lib.mkOtelSpan = { pkgs }: import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+
+      # Consumers can fail closed at evaluation before requesting a legacy cutover.
+      lib.macosAppCapabilities.legacyIncumbentImport = true;
 
       lib.mkMacosApp =
         args:

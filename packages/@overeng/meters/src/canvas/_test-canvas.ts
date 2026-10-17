@@ -17,6 +17,8 @@ export const testCanvas = () => {
   const drawnTexts: DrawnText[] = []
   const recordedTransforms: number[][] = []
   const rectangles: number[][] = []
+  /** Path operations since the last clear as `[op, x, y]`; `stroke` has no coordinates. */
+  const paths: (readonly [op: 'moveTo' | 'lineTo' | 'stroke', x: number, y: number])[] = []
   const context = {
     save: () => {},
     restore: () => {},
@@ -25,6 +27,18 @@ export const testCanvas = () => {
     clip: () => {},
     clearRect: () => {
       rectangles.length = 0
+      paths.length = 0
+    },
+    // oxlint-disable-next-line overeng/named-args -- Native CanvasRenderingContext2D callback signature.
+    moveTo: (x: number, y: number) => {
+      paths.push(['moveTo', x, y])
+    },
+    // oxlint-disable-next-line overeng/named-args -- Native CanvasRenderingContext2D callback signature.
+    lineTo: (x: number, y: number) => {
+      paths.push(['lineTo', x, y])
+    },
+    stroke: () => {
+      paths.push(['stroke', Number.NaN, Number.NaN])
     },
     // oxlint-disable-next-line overeng/named-args -- Native CanvasRenderingContext2D callback signature.
     fillRect: (x: number, y: number, width: number, height: number) => {
@@ -40,6 +54,8 @@ export const testCanvas = () => {
     },
     measureText: (text: string) => ({ width: measureTestText(text) }),
     fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
     font: '',
     textBaseline: 'top',
     textAlign: 'left',
@@ -69,6 +85,8 @@ export const testCanvas = () => {
     texts,
     drawnTexts,
     rectangles,
+    paths,
+    context,
     transforms: recordedTransforms,
     resize: (value: number) => {
       dpr = value

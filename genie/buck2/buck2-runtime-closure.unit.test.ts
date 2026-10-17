@@ -67,6 +67,20 @@ describe('staged Buck runtime closure', () => {
     expect(buck2ToolsBuck).toContain(`    src = "src/${stagedModuleName(runtime.entry)}",`)
   })
 
+  it('dereferences sandboxed runtime modules without copying dependency views', () => {
+    for (const runtime of buck2StagedRuntimes) {
+      if (runtime.staging === 'export_file') continue
+      const hasDependencies = 'nodeModules' in runtime
+      const name = runtime.label.slice(runtime.label.lastIndexOf(':') + 1)
+      const filesName = hasDependencies ? `${name}_files` : name
+      const stanza = buck2ToolsBuck
+        .split(`${runtime.staging}(\n    name = "${filesName}",`)[1]
+        ?.split('\n)')[0]
+      expect(stanza).toBeDefined()
+      expect(runtime.staging).toBe(hasDependencies ? 'filegroup' : 'runtime_modules')
+    }
+  })
+
   it('follows relative imports, so a clean closure is not a vacuous pass', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'buck2-runtime-closure-'))
     try {

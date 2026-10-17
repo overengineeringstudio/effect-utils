@@ -1,4 +1,4 @@
-use buck2_tool_core::fingerprint::{fingerprint, fingerprint_input_root, LinkOwner};
+use buck2_fingerprint::{fingerprint, fingerprint_input_root, LinkOwner};
 use std::path::PathBuf;
 
 fn run() -> Result<(), String> {

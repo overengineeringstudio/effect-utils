@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import cacheTargets from '../../nix/buck2-products/cache-targets.json.genie.ts'
 import { assertPublishedPackageClosure } from './package-product-inventory.ts'
+import {
+  productBuildCapabilities,
+  productLinuxBuildCapabilities,
+  tsSandboxCapabilities,
+} from './product-capabilities.ts'
 
 const workspaceNames = new Set(['@overeng/content-address', '@overeng/effect-rust'])
 const contentAddress = {
@@ -11,9 +16,43 @@ const contentAddress = {
 const effectRust = { name: '@overeng/effect-rust' }
 
 describe('published package product inventory', () => {
+  it('publishes data-graph alongside its runtime package dependency closure', () => {
+    for (const name of ['@overeng/data-graph', '@overeng/content-address', '@overeng/effect-rust']) {
+      expect(cacheTargets.data).toContainEqual({
+        buildCapabilities: [
+          'action-env',
+          'archive-tool',
+          'buck2-fingerprint',
+          'bun',
+          'effect-tsgo',
+          'product',
+          'rust-shell',
+        ],
+        kind: 'package',
+        linuxBuildCapabilities: ['bubblewrap'],
+        name,
+        outputName: `${name.replace('@', '').replace('/', '-')}.tgz`,
+        packagePath: `packages/${name}`,
+        packageTreePath: `packages/${name}`,
+        target: `effect_utils//packages/${name}:dist-package`,
+        version: '0.1.0',
+      })
+    }
+  })
+
   it('publishes the content-address runtime dependency as a package product', () => {
     expect(cacheTargets.data).toContainEqual({
+      buildCapabilities: [
+        'action-env',
+        'archive-tool',
+        'buck2-fingerprint',
+        'bun',
+        'effect-tsgo',
+        'product',
+        'rust-shell',
+      ],
       kind: 'package',
+      linuxBuildCapabilities: ['bubblewrap'],
       name: '@overeng/effect-rust',
       outputName: 'overeng-effect-rust.tgz',
       packagePath: 'packages/@overeng/effect-rust',
@@ -55,5 +94,50 @@ describe('published package product inventory', () => {
     expect(() =>
       assertPublishedPackageClosure({ packages: [packageWithBuildTools], workspaceNames }),
     ).not.toThrow()
+  })
+})
+
+describe('product capability inventory', () => {
+  it('keeps the fingerprint mutation proof only on npm emission/typecheck', () => {
+    expect(productBuildCapabilities({ kind: 'package' })).toContain('buck2-fingerprint')
+    for (const product of [
+      { kind: 'native', cargoWorkspaceRoot: 'rust' },
+      { kind: 'native' },
+      { kind: 'compiled-executable' },
+      { kind: 'javascript' },
+    ] as const) {
+      expect(productBuildCapabilities(product)).not.toContain('buck2-fingerprint')
+    }
+  })
+
+  it('declares only the pnpm tree and TS sandbox capabilities for portable bundles', () => {
+    for (const product of cacheTargets.data.filter((product) => product.kind === 'javascript')) {
+      expect(product.buildCapabilities).toEqual(['action-env', 'archive-tool', 'bun', 'rust-shell'])
+      expect(product.linuxBuildCapabilities).toEqual(['bubblewrap'])
+    }
+  })
+
+  it('declares the TS sandbox set for every product that materializes a package tree', () => {
+    for (const product of [
+      { kind: 'native' },
+      { kind: 'compiled-executable' },
+      { kind: 'javascript' },
+      { kind: 'package' },
+    ] as const) {
+      expect(productBuildCapabilities(product)).toEqual(
+        expect.arrayContaining([...tsSandboxCapabilities]),
+      )
+      expect(productLinuxBuildCapabilities(product)).toEqual(['bubblewrap'])
+    }
+    expect(productLinuxBuildCapabilities({ kind: 'native', cargoWorkspaceRoot: 'rust' })).toEqual([])
+    for (const product of cacheTargets.data) {
+      expect(product.linuxBuildCapabilities).toEqual(['bubblewrap'])
+    }
+  })
+
+  it('projects deterministic unique capability lists for every inventory product', () => {
+    for (const product of cacheTargets.data) {
+      expect(product.buildCapabilities).toEqual([...new Set(product.buildCapabilities)].toSorted())
+    }
   })
 })

@@ -8,7 +8,7 @@ load("//buck2/products:defs.bzl", "build_product", "bun_compiled_product_executa
 # Projection source: packages/@overeng/ci-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:98b7e43597a98d838842ca84964be3dab5a659d980b1456a3001726b68bea441
+# Semantic fingerprint: sha256:656cb4fe64065c2565ba649be4d988d77c2459b741296f455ffad92445978b70
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -140,6 +140,60 @@ package_view(
         "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_ci_tools_ed163de971d5",
+    files = {
+        "bin/ci-tools.ts": "bin/ci-tools.ts",
+        "package.json": "package.json",
+        "src/cli-command.ts": "src/cli-command.ts",
+        "src/cli.contract.test.ts": "src/cli.contract.test.ts",
+        "src/deploy-domain.contract.ts": "src/deploy-domain.contract.ts",
+        "src/deploy-domain.test.ts": "src/deploy-domain.test.ts",
+        "src/deploy-domain.ts": "src/deploy-domain.ts",
+        "src/deploy-io.ts": "src/deploy-io.ts",
+        "src/deploy-netlify.e2e.test.ts": "src/deploy-netlify.e2e.test.ts",
+        "src/deploy-netlify.live.e2e.test.ts": "src/deploy-netlify.live.e2e.test.ts",
+        "src/deploy-netlify.ts": "src/deploy-netlify.ts",
+        "src/deploy-vercel.e2e.test.ts": "src/deploy-vercel.e2e.test.ts",
+        "src/deploy-vercel.live.e2e.test.ts": "src/deploy-vercel.live.e2e.test.ts",
+        "src/deploy-vercel.ts": "src/deploy-vercel.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/pipeline-attempt-close.test.ts": "src/pipeline-attempt-close.test.ts",
+        "src/pipeline-attempt-close.ts": "src/pipeline-attempt-close.ts",
+        "src/pipeline-job-names.ts": "src/pipeline-job-names.ts",
+        "src/pipeline-report.integration.test.ts": "src/pipeline-report.integration.test.ts",
+        "src/pipeline-report.ts": "src/pipeline-report.ts",
+        "src/pipeline-report.unit.test.ts": "src/pipeline-report.unit.test.ts",
+        "src/pipeline-trace-identity.test.ts": "src/pipeline-trace-identity.test.ts",
+        "src/pipeline-trace-identity.ts": "src/pipeline-trace-identity.ts",
+        "src/pipeline-waterfall.ts": "src/pipeline-waterfall.ts",
+        "src/pipeline-waterfall.unit.test.ts": "src/pipeline-waterfall.unit.test.ts",
+        "src/quarantine.test.ts": "src/quarantine.test.ts",
+        "src/quarantine.ts": "src/quarantine.ts",
+        "src/workflow-report.e2e.test.ts": "src/workflow-report.e2e.test.ts",
+        "src/workflow-report.test.ts": "src/workflow-report.test.ts",
+        "src/workflow-report.ts": "src/workflow-report.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/otel-contract/package.json": "//packages/@overeng/otel-contract:package.json",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:product_package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -326,7 +380,7 @@ package_bin_artifact(
     external_capabilities = [],
     kind = "cli",
     output = "ci-tools.js",
-    package_tree = ":package_tree",
+    package_tree = ":product_package_tree",
     target = "node",
     visibility = ["PUBLIC"],
 )

@@ -1,9 +1,13 @@
-import { Effect, Option, Schedule, Stream } from 'effect'
+import { createHash } from 'node:crypto'
+
+import { Clock, Duration, Effect, Exit, Option, Schedule, Schema, Stream } from 'effect'
+import * as HttpClient from 'effect/http/HttpClient'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionDatabases } from '../../databases.ts'
+import { NotionHttpTelemetry } from '../../internal/http.ts'
 import { NotionPages } from '../../pages.ts'
 import { NotionSearch } from '../../search.ts'
 import {
@@ -14,7 +18,7 @@ import {
 } from './setup.ts'
 
 Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
-  Vitest.it.effect('returns valid page or data source objects without a query', () =>
+  Vitest.it.live('returns valid page or data source objects without a query', () =>
     Effect.gen(function* () {
       const result = yield* NotionSearch.search({ pageSize: 10 })
       for (const item of result.results) {
@@ -24,7 +28,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
     }).pipe(Effect.provide(IntegrationTestLayer)),
   )
 
-  Vitest.it.effect('accepts an empty query even in an empty workspace', () =>
+  Vitest.it.live('accepts an empty query even in an empty workspace', () =>
     NotionSearch.search({ query: '' }).pipe(Effect.provide(IntegrationTestLayer)),
   )
 
@@ -53,16 +57,202 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
           const dataSourceId = database.data_sources?.[0]?.id
           expect(dataSourceId).toBeDefined()
 
-          // Poll the actual search index, not a fixed delay. Bound the entire polling
-          // effect, including HTTP requests and their rate-limit retries, to one minute.
-          const indexed = yield* NotionSearch.search({ query }).pipe(
-            Effect.repeat({
-              schedule: Schedule.spaced('2 seconds'),
-              until: (result) =>
-                result.results.some((item) => item.id === page.id) &&
-                result.results.some((item) => item.id === dataSourceId),
-            }),
-            Effect.timeout('60 seconds'),
+          // Every query shape observes its own index readiness, sharing the fixture's
+          // one-minute deadline (including HTTP requests and rate-limit retries).
+          const indexStarted = yield* Clock.currentTimeMillis
+          const indexDeadline = indexStarted + 60000
+          const expectedFixtureIds = [page.id, dataSourceId]
+          const waitForIndex = <TResult, TError, TRequirements>(
+            shape: string,
+            search: Effect.Effect<TResult, TError, TRequirements>,
+            until: (result: TResult) => boolean,
+            summarize: (result: TResult) => {
+              readonly items: readonly { readonly id: string }[]
+              readonly hasMore: boolean | undefined
+            },
+          ) =>
+            Effect.gen(function* () {
+              const started = yield* Clock.currentTimeMillis
+              const remaining = indexDeadline - started
+              let attempts = 0
+              let lastResult:
+                | {
+                    readonly observedFixtureIds: readonly string[]
+                    readonly nonfixtureResultCount: number
+                    readonly itemCount: number
+                    readonly hasMore: boolean | undefined
+                  }
+                | undefined
+              const httpEvents: {
+                readonly kind: 'response' | 'retry'
+                readonly pollAttempt: number
+                readonly attempt: number
+                readonly status: number
+                readonly elapsedMs: number
+                readonly delayMs: number | undefined
+              }[] = []
+              const retentionLimit = 100
+              const cursorHashes = new Set<string>()
+              const searchPages: {
+                readonly pollAttempt: number
+                readonly page: number
+                readonly resultCount: number
+                readonly matchingFixtureCount: number
+                readonly hasMore: boolean
+                readonly nextCursorHash: string | null
+                readonly repeatedTrackedCursor: boolean
+                readonly cursorTrackingSaturated: boolean
+              }[] = []
+              let totalSearchPages = 0
+              let pageInAttempt = 0
+              let observedAttempt = 0
+              let observerFailures = 0
+              let cursorTrackingSaturated = false
+              const observedPageSchema = Schema.Struct({
+                results: Schema.Array(Schema.Struct({ id: Schema.String })),
+                has_more: Schema.Boolean,
+                next_cursor: Schema.NullOr(Schema.String),
+              })
+              const observePage = HttpClient.tap((response) =>
+                Effect.gen(function* () {
+                  if (
+                    response.request.method !== 'POST' ||
+                    new URL(response.request.url).pathname !== '/v1/search' ||
+                    response.status < 200 ||
+                    response.status >= 300
+                  ) {
+                    return
+                  }
+                  // Fetch responses cache their body bytes. The real client still
+                  // decodes this same response; this observer never issues requests.
+                  const body = yield* response.json
+                  const result = yield* Schema.decodeUnknownEffect(observedPageSchema)(body)
+                  if (observedAttempt !== attempts) {
+                    observedAttempt = attempts
+                    pageInAttempt = 0
+                    cursorHashes.clear()
+                    cursorTrackingSaturated = false
+                  }
+                  pageInAttempt++
+                  totalSearchPages++
+                  const cursorHash =
+                    result.next_cursor === null
+                      ? null
+                      : createHash('sha256').update(result.next_cursor).digest('hex')
+                  const repeatedTrackedCursor = cursorHash !== null && cursorHashes.has(cursorHash)
+                  if (cursorHash !== null && repeatedTrackedCursor === false) {
+                    if (cursorHashes.size < retentionLimit) {
+                      cursorHashes.add(cursorHash)
+                    } else {
+                      cursorTrackingSaturated = true
+                    }
+                  }
+                  searchPages.push({
+                    pollAttempt: attempts,
+                    page: pageInAttempt,
+                    resultCount: result.results.length,
+                    matchingFixtureCount: result.results.filter((item) =>
+                      expectedFixtureIds.includes(item.id),
+                    ).length,
+                    hasMore: result.has_more,
+                    nextCursorHash: cursorHash?.slice(0, 12) ?? null,
+                    // False means "not in the retained first 100 hashes", not
+                    // global uniqueness once cursor tracking is saturated.
+                    repeatedTrackedCursor,
+                    cursorTrackingSaturated,
+                  })
+                  if (searchPages.length > retentionLimit) searchPages.shift()
+                }).pipe(
+                  // Even malformed JSON/schema failures must leave the original
+                  // response and its client-side decoding outcome untouched.
+                  Effect.catchCause(() =>
+                    Effect.sync(() => {
+                      observerFailures++
+                    }),
+                  ),
+                ),
+              )
+              return yield* Effect.suspend(() => {
+                attempts++
+                return search
+              }).pipe(
+                // Every readiness shape, including earlier filtered streams,
+                // uses this wait-local observer with fresh bounded tracking.
+                Effect.updateService(HttpClient.HttpClient, observePage),
+                Effect.tap((result) =>
+                  Effect.sync(() => {
+                    const { items, hasMore } = summarize(result)
+                    const observedFixtureIds = items
+                      .filter((item) => expectedFixtureIds.includes(item.id))
+                      .map((item) => item.id)
+                    lastResult = {
+                      observedFixtureIds,
+                      nonfixtureResultCount: items.length - observedFixtureIds.length,
+                      itemCount: items.length,
+                      hasMore,
+                    }
+                  }),
+                ),
+                Effect.repeat({ schedule: Schedule.spaced('2 seconds'), until }),
+                Effect.timeout(Duration.millis(Math.max(0, remaining))),
+                Effect.provideService(NotionHttpTelemetry, {
+                  report: (event) =>
+                    Effect.gen(function* () {
+                      httpEvents.push({
+                        kind: event._tag,
+                        pollAttempt: attempts,
+                        attempt: event.attempt,
+                        status: event.status,
+                        elapsedMs: (yield* Clock.currentTimeMillis) - indexStarted,
+                        delayMs: event._tag === 'retry' ? event.delayMs : undefined,
+                      })
+                      if (httpEvents.length > retentionLimit) httpEvents.shift()
+                    }),
+                }),
+                Effect.onExit((exit) =>
+                  Exit.isFailure(exit) === true
+                    ? Effect.gen(function* () {
+                        const now = yield* Clock.currentTimeMillis
+                        // Only synthetic fixture IDs, counts, and cursor hashes are logged.
+                        // Preserve the original failure; diagnostics never retry assertions.
+                        yield* Effect.logError(
+                          'Notion search fixture readiness failed',
+                          yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+                            shape,
+                            attempts,
+                            elapsedMs: now - indexStarted,
+                            pollElapsedMs: now - started,
+                            remainingMs: Math.max(0, indexDeadline - now),
+                            remainingAtStartMs: remaining,
+                            expectedFixtureIds,
+                            lastResult,
+                            httpEvents,
+                            searchPageObserver: {
+                              shape,
+                              searchPages,
+                              totalSearchPages,
+                              observerFailures,
+                              retainedCursorHashCount: cursorHashes.size,
+                              cursorTrackingSaturated,
+                              retentionLimit,
+                            },
+                          }),
+                        )
+                      }).pipe(
+                        // Diagnostic encoding/logging must not replace the readiness failure.
+                        Effect.ignoreCause({ log: false }),
+                      )
+                    : Effect.void,
+                ),
+              )
+            })
+          const indexed = yield* waitForIndex(
+            'search:unfiltered',
+            NotionSearch.search({ query }),
+            (result) =>
+              result.results.some((item) => item.id === page.id) &&
+              result.results.some((item) => item.id === dataSourceId),
+            (result) => ({ items: result.results, hasMore: result.hasMore }),
           )
           expect(indexed.results.map((item) => item.id)).toEqual(
             expect.arrayContaining([page.id, dataSourceId]),
@@ -74,44 +264,76 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             ['page', page.id],
             ['data_source', dataSourceId],
           ] as const) {
-            const filtered = yield* NotionSearch.search({
-              query,
-              filter: { property: 'object', value },
-            })
+            const filtered = yield* waitForIndex(
+              `search:filter=${value}`,
+              NotionSearch.search({
+                query,
+                filter: { property: 'object', value },
+              }),
+              (result) => result.results.some((item) => item.id === id),
+              (result) => ({ items: result.results, hasMore: result.hasMore }),
+            )
             expect(filtered.results.map((item) => item.id)).toContain(id)
             for (const item of filtered.results) expect(item.object).toBe(value)
 
-            const streamed = yield* NotionSearch.searchStream({
-              query,
-              filter: { property: 'object', value },
-              pageSize: 1,
-            }).pipe(Stream.runCollect)
+            const streamed = yield* waitForIndex(
+              `searchStream:filter=${value}:pageSize=1`,
+              NotionSearch.searchStream({
+                query,
+                filter: { property: 'object', value },
+                pageSize: 1,
+              }).pipe(Stream.runCollect),
+              (items) => items.some((item) => item.id === id),
+              (items) => ({ items, hasMore: undefined }),
+            )
             expect(streamed.map((item) => item.id)).toContain(id)
             for (const item of streamed) expect(item.object).toBe(value)
           }
 
-          const sorted = yield* NotionSearch.search({
-            query,
-            sort: { direction: 'descending', timestamp: 'last_edited_time' },
-          })
+          const sorted = yield* waitForIndex(
+            'search:sort=last_edited_time:descending',
+            NotionSearch.search({
+              query,
+              sort: { direction: 'descending', timestamp: 'last_edited_time' },
+            }),
+            (result) =>
+              result.results.some((item) => item.id === page.id) &&
+              result.results.some((item) => item.id === dataSourceId),
+            (result) => ({ items: result.results, hasMore: result.hasMore }),
+          )
           expect(sorted.results.map((item) => item.id)).toEqual(
             expect.arrayContaining([page.id, dataSourceId]),
           )
 
-          const first = yield* NotionSearch.search({ query, pageSize: 1 })
+          const first = yield* waitForIndex(
+            'search:pageSize=1:first',
+            NotionSearch.search({ query, pageSize: 1 }),
+            (result) => result.results.length === 1 && result.hasMore,
+            (result) => ({ items: result.results, hasMore: result.hasMore }),
+          )
           expect(first.results).toHaveLength(1)
           expect(first.hasMore).toBe(true)
           expect(Option.isSome(first.nextCursor)).toBe(true)
-          const second = yield* NotionSearch.search({
-            query,
-            pageSize: 1,
-            startCursor: Option.getOrThrow(first.nextCursor),
-          })
+          const second = yield* waitForIndex(
+            'search:pageSize=1:nextCursor',
+            NotionSearch.search({
+              query,
+              pageSize: 1,
+              startCursor: Option.getOrThrow(first.nextCursor),
+            }),
+            (result) => result.results.length === 1,
+            (result) => ({ items: result.results, hasMore: result.hasMore }),
+          )
           expect(second.results).toHaveLength(1)
           expect(second.results[0]?.id).not.toBe(first.results[0]?.id)
 
-          const streamed = yield* NotionSearch.searchStream({ query, pageSize: 1 }).pipe(
-            Stream.runCollect,
+          const streamed = yield* waitForIndex(
+            'searchStream:unfiltered:pageSize=1',
+            NotionSearch.searchStream({ query, pageSize: 1 }).pipe(Stream.runCollect),
+            (items) =>
+              items.some((item) => item.id === page.id) &&
+              items.some((item) => item.id === dataSourceId),
+            (items) => ({ items, hasMore: undefined }),
           )
           expect(streamed.map((item) => item.id)).toEqual(
             expect.arrayContaining([page.id, dataSourceId]),

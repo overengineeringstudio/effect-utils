@@ -1839,8 +1839,7 @@ export const sourceShapeMeasurementStep = (opts: SourceShapeMeasurementStepOptio
     },
     run: String.raw`set -euo pipefail
 
-${ciMeasurementToolBootstrapScript}
-require_ci_measurement_tool node nodejs
+node_out="$(nix build --no-update-lock-file --no-link --print-out-paths .#buck2-node)"
 
 mkdir -p "$ARTIFACT_DIR"
 target_id=${shellSingleQuote(targetId)}
@@ -1857,7 +1856,7 @@ TARGET_NAME="$target_name" \
 TARGET_LABEL="$target_label" \
 TARGET_GROUP="$target_group" \
 TARGET_SYSTEM="$target_system" \
-node <<'NODE' >"$artifact_file"
+"$node_out/bin/node" <<'NODE' >"$artifact_file"
 const cp = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')

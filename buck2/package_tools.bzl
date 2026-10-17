@@ -241,11 +241,19 @@ package_bin = cache_guarded_rule(
 )
 
 def _closure_root_name(artifact):
-    """Return a configuration-free name for one declared package-tree root."""
+    """Name source and declaration views by the same portable package layout."""
     owner = artifact.owner
     if owner == None:
         fail("closure root {} has no owning target".format(artifact))
-    return "{}/{}/{}/{}".format(owner.cell, owner.package, owner.name, artifact.short_path)
+    # These views stage the same runtime source paths. Their action identities
+    # remain distinct, but moving declaration-free bytes to a dedicated target
+    # must not rename modules in an otherwise identical portable bundle.
+    name = owner.name
+    if name == "product_package_tree":
+        name = "package_tree"
+    elif name.startswith("product_view_"):
+        name = name[len("product_"):]
+    return "{}/{}/{}/{}".format(owner.cell, owner.package, name, artifact.short_path)
 
 def _package_bundle_impl(ctx):
     _relative(ctx.attrs.entrypoint, "entrypoint")
@@ -283,9 +291,6 @@ def _package_bundle_impl(ctx):
         "--platform-gated-manifest",
         gated.manifest,
     ])
-    fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
-    args.add("--fingerprint-tool", fingerprint.store_path)
-    args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     args.add("--tree-shaking")
     args.add("true" if ctx.attrs.tree_shaking else "false")
     for external in ctx.attrs.external:
@@ -294,10 +299,19 @@ def _package_bundle_impl(ctx):
         args.add("--external-capability", capability)
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
+    closure_names = {}
     for read_root in package_tree.read_roots[1:]:
+        closure_name = _closure_root_name(read_root)
+        if closure_name in closure_names:
+            fail("portable closure roots share logical name {}: {} and {}".format(
+                closure_name,
+                closure_names[closure_name],
+                read_root,
+            ))
+        closure_names[closure_name] = read_root
         args.add("--closure-root", cmd_args(
             read_root,
-            format = _closure_root_name(read_root) + "\t{}",
+            format = closure_name + "\t{}",
         ))
     args.add(cmd_args(hidden = package_tree.read_roots))
     hermetic_action(
@@ -342,10 +356,6 @@ _package_bin_artifact = cache_guarded_rule(
         "_runner": attrs.default_only(attrs.dep(
             default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [PackageCommandRuntimeInfo],
-        )),
-        "_fingerprint_tool": attrs.default_only(attrs.exec_dep(
-            default = "//buck2/toolchains:fingerprint_tool",
-            providers = [BuckSupportToolInfo],
         )),
     }),
 )
