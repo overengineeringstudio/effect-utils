@@ -205,7 +205,7 @@ const styles = stylex.create({
 })
 
 interface MeterTilesProps {
-  readonly widthPx: 1440 | 900 | 600
+  readonly widthPx: 1440 | 900 | 420
   readonly playback: Playback
   readonly scenario: Scenario
   readonly frozen: boolean
@@ -300,7 +300,7 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   args: { widthPx: 1440, playback: 'Pinned', scenario: 'Recording', frozen: false, dark: false },
   argTypes: {
-    widthPx: { control: 'inline-radio', options: [1440, 900, 600] },
+    widthPx: { control: 'inline-radio', options: [1440, 900, 420] },
     playback: { control: 'inline-radio', options: ['Pinned', 'Live'] },
     scenario: {
       control: 'inline-radio',
@@ -356,24 +356,30 @@ export const Desktop: Story = {
   },
 }
 
-/** 900 px: the lowest priorities move into +N, named by their display labels. */
+/** 900 px: six 64 px tiles, freeze and subs still fit, so nothing moves into +N. */
 export const Narrow: Story = {
   args: { widthPx: 900 },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await canvas.findByRole('button', { name: 'msg' })
-    const overflow = await canvas.findByRole('button', { name: /more status items:/ })
-    await expect(overflow).toHaveAccessibleName(/Frame rate/)
+    // The first render precedes measurement; wait for the fitted row.
+    await waitFor(() =>
+      expect(canvas.queryByRole('button', { name: /more status items:/ })).toBeNull(),
+    )
+    await expect(canvas.getByRole('button', { name: 'Freeze meters' })).toHaveTextContent('freeze')
   },
 }
 
-/** 600 px: icon-only freeze with the same accessible name, more tiles in +N. */
+/** 420 px: the tiles alone exceed the bar; icon-only freeze, lowest priorities in +N. */
 export const ExtraNarrow: Story = {
-  args: { widthPx: 600 },
+  args: { widthPx: 420 },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     const freeze = await canvas.findByRole('button', { name: 'Freeze meters' })
     await expect(freeze).toHaveTextContent('')
+    await canvas.findByRole('button', { name: 'msg' })
+    const overflow = await canvas.findByRole('button', { name: /more status items:/ })
+    await expect(overflow).toHaveAccessibleName(/Frame rate/)
   },
 }
 
@@ -423,7 +429,7 @@ export const AllStates: Story = {
       <div {...stylex.props(styles.collection)}>
         <MeterTiles {...args} dark={dark} widthPx={1440} />
         <MeterTiles {...args} dark={dark} widthPx={900} />
-        <MeterTiles {...args} dark={dark} widthPx={600} />
+        <MeterTiles {...args} dark={dark} widthPx={420} />
         <MeterTiles {...args} dark={dark} scenario="NoData" />
         <MeterTiles {...args} dark={dark} scenario="Stale" />
         <MeterTiles {...args} dark={dark} frozen />
