@@ -924,6 +924,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                         for (source, target) in [
                             ("buck2_revision", "service.version"),
                             ("hostname", "host.name"),
+                            ("hostname", "service.instance.id"),
                             ("os", "os.type"),
                             ("arch", "host.arch"),
                             ("materializer", "buck2.materializer"),
@@ -1529,7 +1530,7 @@ fn metric_payload(model: &Model) -> Vec<u8> {
             .filter(|attribute| {
                 matches!(
                     attribute["key"].as_str(),
-                    Some("host.name" | "os.type" | "host.arch")
+                    Some("host.name" | "service.instance.id" | "os.type" | "host.arch")
                 )
             })
             .cloned(),

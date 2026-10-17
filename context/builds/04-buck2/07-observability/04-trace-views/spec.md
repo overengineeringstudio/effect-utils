@@ -127,8 +127,8 @@ exposes `buck2_action_queue_duration_{bucket,sum,count}`, for example.
 
 These bounded dimensions support long-term trends independently of consumer-selected
 trace retention. No target, digest, run id, trace id, or host point label
-is emitted. The resource does carry the writer's `host.name`, `os.type`, and
-`host.arch`, shared with traces; see the
+is emitted. The resource carries the writer's `host.name`, host-derived
+`service.instance.id`, `os.type`, and `host.arch`, shared with traces; see the
 [adapter resource and timing contract](../03-event-log-adapter/spec.md#producer-metrics).
 Backends may promote bounded host resource attributes to labels under their
 own cardinality policy; resource presence alone does not guarantee promotion.

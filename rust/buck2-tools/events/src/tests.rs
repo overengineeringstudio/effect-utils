@@ -847,6 +847,7 @@ fn metric_resource_reuses_writer_host_without_build_identity() {
         &vec![
             attr("service.name", "effect-utils-buck2"),
             attr("host.name", "fixture-host"),
+            attr("service.instance.id", "fixture-host"),
             attr("os.type", "linux"),
             attr("host.arch", "x86_64"),
         ]

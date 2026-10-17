@@ -72,6 +72,11 @@ The metric resource shares the trace resource's writer metadata mapping:
 the log, not the post-hoc converter. Missing metadata stays absent; the adapter
 does not substitute the converter's host. Build IDs, revision, materializer,
 and pipeline identity remain trace-only.
+Both signals also set `service.instance.id` to that same writer `hostname`,
+stable across builds and bounded per host, not per process or build. Together
+with `service.name`, this keeps writer hosts distinct through delta conversion
+and OTLP backends that map service identity to Prometheus `job` / `instance`.
+Absent writer host metadata leaves both host and instance identity absent.
 
 Queue timing prefers each command attempt's `metadata.queue_duration`, then
 the remote command's `queue_time`, summing available attempt timings. When no
