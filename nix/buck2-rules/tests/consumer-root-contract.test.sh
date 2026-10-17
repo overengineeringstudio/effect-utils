@@ -411,6 +411,8 @@ name = "consumer-root-rust"
 version = "0.1.0"
 edition = "2021"
 TOML
+mkdir -p "$work/rust-fixture/vendored-manifest"
+cp "$work/rust-fixture/build.rs" "$work/rust-fixture/Cargo.toml" "$work/rust-fixture/vendored-manifest/"
 cat > "$work/rust-fixture/BUCK" <<'BUCK'
 load("@prelude//:prelude.bzl", "native")
 load("@rules//buck2/products:defs.bzl", "build_product")
@@ -456,7 +458,7 @@ buildscript_run(
     name = "vendored-build-script-run",
     package_name = "consumer-root-rust",
     buildscript_rule = ":build-script-binary",
-    filegroup_for_manifest_dir = {"build.rs": "build.rs", "Cargo.toml": "Cargo.toml"},
+    local_manifest_dir = "vendored-manifest",
     version = "0.1.0",
 )
 
