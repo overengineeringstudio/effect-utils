@@ -797,7 +797,8 @@ ok({
     source.includes('buck2AggregateExec = config.effectUtils.buck2.aggregateExec;') === true &&
     buckProviderCheckSource.includes('audit providers') === true &&
     buckProviderCheckSource.includes('typescript-authority-runtime.ts') === false &&
-    /buck2AggregateExec "buck2:quick" \[\s*"build"\s*"\/\/:quick"\s*\]/.test(buckQuickSource) === true &&
+    /buck2AggregateExec "buck2:quick" \[\s*"build"\s*"\/\/:quick"\s*\]/.test(buckQuickSource) ===
+      true &&
     /buck2AggregateExec "buck2:all" \[\s*"build"\s*"\/\/:all"\s*\]/.test(buckAllSource) === true &&
     buckQuickSource.includes('--local-only') === false &&
     buckAllSource.includes('--local-only') === false,
