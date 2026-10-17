@@ -73,6 +73,9 @@ members fail with instructions to prepare from the owning workspace or use an
 owned worktree. No generators, lock sync, registry, or cache-manifest writes run
 on this read-only path. `mr:setup` uses this mode. It respects `--only`/`--skip`,
 requires lock sync off, and cannot be combined with `--all`.
+Setup probes `mr apply --help` once before selecting this flag. Pre-publication
+products without the capability retain their deployed lock-sync-off invocation
+and canonical-mutation refusal; a failed probe stops setup without running apply.
 With `--all --lock-sync=off`, recursive apply may also materialize `repos/` in
 commit worktrees freshly created by the same invocation under the worktree lock.
 That permission covers only the recorded physical root and its mount directory:

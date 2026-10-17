@@ -227,8 +227,12 @@ echo "  ok: shared mutation tasks stop after a failed mr command"
 echo ""
 echo "Test 9: setup delegates shared-cache verification without writing a manifest"
 setup_block="$(sed -n '/"mr:setup" = {/,/status =/p' "$module_file")"
-if [ "$(grep -c -- '--lock-sync off --verify-shared' <<< "$setup_block")" -ne 2 ]; then
-  echo "FAIL: both setup worktree strategies must verify shared caches read-only"
+if [ "$(grep -Fc 'MR_VERIFY_SHARED_ARGS[@]' <<< "$setup_block")" -ne 2 ]; then
+  echo "FAIL: both setup worktree strategies must use capability-selected shared verification"
+  exit 1
+fi
+if ! grep -Fq 'MR_VERIFY_SHARED_ARGS=(--verify-shared)' <<< "$setup_block"; then
+  echo "FAIL: capable mr products must enable read-only shared-cache verification"
   exit 1
 fi
 if grep -F 'recordWorkspaceMembers' <<< "$setup_block" >/dev/null; then

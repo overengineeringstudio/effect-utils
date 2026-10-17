@@ -267,14 +267,21 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
+        # Remove this probe after the next manifest publication includes --verify-shared.
+        # Older products retain their canonical-mutation refusal; never bypass that guard.
+        MR_VERIFY_SHARED_ARGS=()
+        mr_apply_help="$(mr apply --help)"
+        if [[ "$mr_apply_help" == *--verify-shared* ]]; then
+          MR_VERIFY_SHARED_ARGS=(--verify-shared)
+        fi
         if [ "''${CI:-}" = "true" ]; then
           # CI materializes locked commits end to end (`--worktree-mode auto`
           # semantics) and never advances shared branch worktrees.
           # With nested trees, readiness is `mr status --all`, which inspects
           # every root member's nested tree, so every root member is prepared.
-          mr apply --worktree-mode commit${lib.optionalString setupNestedTrees " --commit-all-members"} --lock-sync off --verify-shared "''${MR_SKIP_ARGS[@]}"
+          mr apply --worktree-mode commit${lib.optionalString setupNestedTrees " --commit-all-members"} --lock-sync off "''${MR_VERIFY_SHARED_ARGS[@]}" "''${MR_SKIP_ARGS[@]}"
         else
-          mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off --verify-shared "''${MR_SKIP_ARGS[@]}"
+          mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off "''${MR_VERIFY_SHARED_ARGS[@]}" "''${MR_SKIP_ARGS[@]}"
         fi
       '';
       status = trace.status "mr:setup" "binary" (mkMrStatusCheck {
