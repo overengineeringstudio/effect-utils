@@ -36,6 +36,7 @@ import {
   makeCanvasStrip,
   makeStripView,
   numericBlock,
+  type BlockEvidence,
   type BlockReader,
   type CanvasBlockSpec,
   type MeterTheme,
@@ -53,6 +54,7 @@ import {
   subscriptionCap,
   type HttpError,
   type Playback,
+  type Scenario,
 } from './recording.ts'
 
 // ---------------------------------------------------------------------------------------------
@@ -62,21 +64,29 @@ import {
 type VariantId = 'A' | 'B' | 'C'
 type WidthId = 'W1440' | 'W900' | 'W600'
 
-const variants: readonly { readonly id: VariantId; readonly description: string }[] = [
+/** UI Design gate verdicts (stories only; the Timeline primitives stay here until a pick). */
+const variants: readonly {
+  readonly id: VariantId
+  readonly verdict: string
+  readonly description: string
+}[] = [
   {
     id: 'A',
+    verdict: 'GO with fixes',
     description:
-      'Compact ~64 px canvas strips with the value drawn in the bar; low-priority strips overflow into +N on narrow bars.',
+      'Compact canvas strips with a short label and value drawn in the bar; low-priority strips overflow into +N on narrow bars.',
   },
   {
     id: 'B',
+    verdict: 'NO-GO (UI Design gate)',
     description:
-      'Compact text values with a tiny trend; one linked Timeline panel aligns msg, HTTP, WS, commit, long frames and FPS on one time axis.',
+      'Kept unchanged for comparison: compact text values with a tiny trend; one linked Timeline panel aligns msg, HTTP, WS, commit, long frames and FPS on one time axis.',
   },
   {
     id: 'C',
+    verdict: 'GO with fixes (recommended)',
     description:
-      'A’s canvas strips in the bar; clicking any strip opens B’s linked Timeline panel.',
+      'A’s canvas strips in the bar; activating any strip opens the linked Timeline panel and highlights its row.',
   },
 ]
 const widths: readonly {
@@ -94,6 +104,18 @@ const playbacks: readonly { readonly id: Playback; readonly description: string 
     description: 'Clock pinned at the recording end (deterministic, screenshot-safe)',
   },
   { id: 'Live', description: 'Recording loops in real time through the replay clock' },
+]
+const scenarios: readonly { readonly id: Scenario; readonly description: string }[] = [
+  { id: 'Recording', description: 'Full scripted recording, evaluated at 60 s' },
+  { id: 'NoData', description: 'Sources registered; no samples before evaluation' },
+  {
+    id: 'Stale',
+    description: 'Recording ended 15 s before evaluation (evaluated at 75 s, no loop)',
+  },
+  {
+    id: 'Disconnected',
+    description: 'Evaluated at 33 s: WebSocket offline since 32 s',
+  },
 ]
 
 /** One history horizon for every presentation so strips and the panel line up. */
@@ -257,10 +279,14 @@ const freezeView = <TValue,>(view: SeriesView<TValue>): SeriesView<TValue> => {
   }
 }
 
-/** Compose any block with danger ticks for a second event series (here: failed requests). */
+/**
+ * Compose any block with full-height danger ticks for an event series (failed requests, or
+ * message windows that carried error frames). Stacked bars cannot show rare small counts.
+ */
 const withEventTicks = <TTick,>(options: {
   readonly spec: CanvasBlockSpec
   readonly ticks: Series<TTick>
+  readonly when?: (value: TTick) => boolean
 }): CanvasBlockSpec => {
   const bind = ({
     inner,
@@ -281,14 +307,14 @@ const withEventTicks = <TTick,>(options: {
       ctx.rect(chart.x, chart.y, chart.width, chart.height)
       ctx.clip()
       ctx.fillStyle = theme.danger
-      const tickHeight = Math.max(3, Math.min(6, chart.height / 2))
       for (let index = 0; index < ticks.length; index++) {
         const sample = ticks.at(index)
         if (sample?._tag !== 'Value' || sample.atMs < nowMs - input.historyMs) continue
+        if (options.when !== undefined && options.when(sample.value) === false) continue
         const x = Math.round(
           historyX({ atMs: sample.atMs, nowMs, historyMs: input.historyMs, rect: chart }),
         )
-        ctx.fillRect(x, chart.y, 1, tickHeight)
+        ctx.fillRect(x - 1, chart.y, 2, chart.height)
       }
       ctx.restore()
     },
@@ -300,6 +326,79 @@ const withEventTicks = <TTick,>(options: {
       bind({ inner: options.spec.read(store), ticks: store.read({ series: options.ticks }) }),
   }
 }
+
+type DrawFrame = Parameters<BlockReader['draw']>[0]
+
+/** Wrap only a block's drawing; text, evidence and snapshots stay the inner block's. */
+const decorate = (options: {
+  readonly spec: CanvasBlockSpec
+  readonly draw: (input: { readonly inner: BlockReader; readonly frame: DrawFrame }) => void
+}): CanvasBlockSpec => {
+  const bind = (inner: BlockReader): BlockReader => ({
+    revision: inner.revision,
+    describe: inner.describe,
+    evidence: inner.evidence,
+    draw: (frame) => options.draw({ inner, frame }),
+    snapshot: () => bind(inner.snapshot()),
+  })
+  return { ...options.spec, read: (store) => bind(options.spec.read(store)) }
+}
+
+/** Paint the p50→p95 tail in the neutral gap colour so error ticks carry the alarm. */
+const withQuietTail = (spec: CanvasBlockSpec): CanvasBlockSpec =>
+  decorate({
+    spec,
+    draw: ({ inner, frame }) =>
+      inner.draw({ ...frame, theme: { ...frame.theme, warning: frame.theme.gap } }),
+  })
+
+/** Header band height the built-in blocks reserve above their chart (`chartRect`). */
+const headerHeightPx = 17
+
+/**
+ * Bar-strip header: a short muted label plus a terse value derived from the block's own
+ * description, replacing the header the block would ellipsize at strip width. A 1 px baseline
+ * under the chart keeps the trend anchored on light backgrounds.
+ */
+const withStripHeader = (options: {
+  readonly spec: CanvasBlockSpec
+  readonly label: string
+  readonly value: (text: string) => string
+}): CanvasBlockSpec =>
+  decorate({
+    spec: options.spec,
+    draw: ({ inner, frame }) => {
+      inner.draw(frame)
+      const { ctx, rect, theme, nowMs } = frame
+      const text = inner.describe({ nowMs })
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(rect.x, rect.y, rect.width, rect.height)
+      ctx.clip()
+      ctx.fillStyle = theme.background
+      ctx.fillRect(rect.x, rect.y, rect.width, headerHeightPx)
+      ctx.fillStyle = theme.border
+      ctx.fillRect(rect.x + 4, rect.y + rect.height - 1, rect.width - 8, 1)
+      ctx.font = theme.font
+      ctx.textBaseline = 'top'
+      ctx.textAlign = 'left'
+      const header = layoutBlockText({
+        rect,
+        label: options.label,
+        value: text.startsWith('n/a') === true ? 'n/a' : options.value(text),
+        measure: (run) => ctx.measureText(run).width,
+        gapPx: 4,
+      })
+      ctx.fillStyle = theme.muted
+      if (header.label !== undefined) ctx.fillText(header.label.text, header.label.x, rect.y + 3)
+      ctx.fillStyle = theme.foreground
+      if (header.value !== undefined) ctx.fillText(header.value.text, header.value.x, rect.y + 3)
+      ctx.restore()
+    },
+  })
+
+/** Bar tiles in light mode: a tinted tile and a darker baseline separate them from the bar. */
+const lightStripTheme: MeterTheme = { ...lightMeterTheme, background: '#eeeff2', border: '#8a8f98' }
 
 // ---------------------------------------------------------------------------------------------
 // Meter rows: one spec, bar priority, trend and time-aligned readout per meter
@@ -386,7 +485,10 @@ const bars = <TValue,>(options: {
 })
 
 interface MeterRow {
+  /** Full block: Timeline rows, evidence text and the Meters panel. */
   readonly spec: CanvasBlockSpec
+  /** Same block with the bar-strip header (short muted label + terse value). */
+  readonly stripSpec: CanvasBlockSpec
   readonly shortLabel: string
   /** Higher stays longer in the bar (Devbar `fitSegments`). */
   readonly priority: number
@@ -394,27 +496,44 @@ interface MeterRow {
   readonly readoutAt: (options: { readonly store: SeriesStore; readonly atMs: number }) => string
 }
 
-const segmentWidthPx = 64
+type MeterRowInput = Omit<MeterRow, 'stripSpec'> & {
+  readonly stripLabel: string
+  /** Terse strip value derived from the block's full description (never re-measured). */
+  readonly stripValue: (text: string) => string
+}
 
-const meterRows: readonly MeterRow[] = [
+/** Fits `commit 3.8` / `ws offline` in 11 px monospace with the 4 px header padding. */
+const segmentWidthPx = 76
+/** Gauges sampled every 0.5–1 s are stale after 3 s without a sample. */
+const gaugeStaleAfterMs = 3000
+
+const meterRowInputs: readonly MeterRowInput[] = [
   {
     shortLabel: 'msg',
+    stripLabel: 'msg',
+    stripValue: (text) => text.replace(' msg/s', '/s'),
     priority: 6,
-    spec: numericBlock({
-      id: 'api.messages',
-      series: recordingSeries.messages,
-      shortLabel: 'msg',
-      widthPx: segmentWidthPx,
-      // Stacked by kind: delta (normal), snapshot resync (warning), error frames (danger).
-      values: (value) => [value.delta, value.snapshot, value.error],
-      describeValue: ({ value, format }) => {
-        const total = value.delta + value.snapshot + value.error
-        return format === 'full'
-          ? `${total} msg/s`
-          : format === 'compact'
-            ? `${total}/s`
-            : `${total}`
-      },
+    spec: withEventTicks({
+      spec: numericBlock({
+        id: 'api.messages',
+        series: recordingSeries.messages,
+        shortLabel: 'msg',
+        widthPx: segmentWidthPx,
+        staleAfterMs: gaugeStaleAfterMs,
+        // Stacked by kind: delta (normal), snapshot resync (warning), error frames (danger).
+        values: (value) => [value.delta, value.snapshot, value.error],
+        describeValue: ({ value, format }) => {
+          const total = value.delta + value.snapshot + value.error
+          return format === 'full'
+            ? `${total} msg/s`
+            : format === 'compact'
+              ? `${total}/s`
+              : `${total}`
+        },
+      }),
+      // Error frames are a few per second next to hundreds of deltas: tick every window with any.
+      ticks: recordingSeries.messages,
+      when: (value) => value.error > 0,
     }),
     trend: bars({
       series: recordingSeries.messages,
@@ -431,6 +550,8 @@ const meterRows: readonly MeterRow[] = [
   },
   {
     shortLabel: 'ws',
+    stripLabel: 'ws',
+    stripValue: (text) => (text === 'reconnecting' ? 'retry' : text),
     priority: 5,
     spec: statusBlock({
       id: 'ws.status',
@@ -445,22 +566,27 @@ const meterRows: readonly MeterRow[] = [
   },
   {
     shortLabel: 'http',
+    stripLabel: 'p95',
+    stripValue: (text) => text.split('/')[1] ?? text,
     priority: 4,
     spec: withEventTicks({
-      spec: numericBlock({
-        id: 'http.latency',
-        series: recordingSeries.httpLatency,
-        shortLabel: 'http',
-        widthPx: segmentWidthPx,
-        // p50 band (normal) with the p50→p95 tail stacked on top (warning).
-        values: (value) => [value.p50Ms, Math.max(0, value.p95Ms - value.p50Ms)],
-        describeValue: ({ value, format }) =>
-          format === 'full'
-            ? `${value.p50Ms}/${value.p95Ms}ms`
-            : format === 'compact'
-              ? formatMeterValue({ value: value.p95Ms, unit: 'ms', format })
-              : `${value.p95Ms}`,
-      }),
+      spec: withQuietTail(
+        numericBlock({
+          id: 'http.latency',
+          series: recordingSeries.httpLatency,
+          shortLabel: 'http',
+          widthPx: segmentWidthPx,
+          staleAfterMs: gaugeStaleAfterMs,
+          // p50 band (normal) with the p50→p95 tail stacked on top (painted neutral).
+          values: (value) => [value.p50Ms, Math.max(0, value.p95Ms - value.p50Ms)],
+          describeValue: ({ value, format }) =>
+            format === 'full'
+              ? `${value.p50Ms}/${value.p95Ms}ms`
+              : format === 'compact'
+                ? formatMeterValue({ value: value.p95Ms, unit: 'ms', format })
+                : `${value.p95Ms}`,
+        }),
+      ),
       ticks: recordingSeries.httpErrors,
     }),
     trend: bars({
@@ -478,11 +604,13 @@ const meterRows: readonly MeterRow[] = [
       })
       if (found === undefined) return 'n/a'
       const statuses = [...new Set(errors.map((error) => error.status))].join('/')
-      return `p50 ${found.value.p50Ms} ms · p95 ${found.value.p95Ms} ms${errors.length > 0 ? ` · ${errors.length} failed (${statuses}) in last 1 s` : ''}`
+      return `p50 ${found.value.p50Ms} ms · p95 ${found.value.p95Ms} ms${errors.length > 0 ? ` · ${errors.length} failed (${statuses}) in the preceding 1 s` : ''}`
     },
   },
   {
     shortLabel: 'commit',
+    stripLabel: 'commit',
+    stripValue: (text) => text.replace(/ ms$/, ''),
     priority: 3,
     spec: commitBlock({
       id: 'react.commits',
@@ -502,13 +630,15 @@ const meterRows: readonly MeterRow[] = [
         atMs,
         windowMs: 1000,
       })
-      if (commits.length === 0) return 'no commits in last 1 s'
+      if (commits.length === 0) return 'no commits in the preceding 1 s'
       const worst = Math.max(...commits.map((commit) => commit.actualDurationMs))
-      return `${commits.length} commits in last 1 s · worst ${worst.toFixed(1)} ms`
+      return `${commits.length} commit${commits.length === 1 ? '' : 's'} in the preceding 1 s · worst ${worst.toFixed(1)} ms`
     },
   },
   {
     shortLabel: 'jank',
+    stripLabel: 'lf',
+    stripValue: (text) => text.replace(' ms', 'ms'),
     priority: 2,
     spec: jankBlock({
       id: 'longFrames',
@@ -529,12 +659,14 @@ const meterRows: readonly MeterRow[] = [
         windowMs: 1000,
       })
       return frames.length === 0
-        ? 'none in last 1 s'
+        ? 'none in the preceding 1 s'
         : `${frames.length} long frame${frames.length === 1 ? '' : 's'} · worst ${Math.max(...frames.map((frame) => frame.durationMs))} ms`
     },
   },
   {
     shortLabel: 'fps',
+    stripLabel: 'fps',
+    stripValue: (text) => text.replace(/ fps$/, '').replace(/\.0$/, ''),
     priority: 1,
     spec: frameBlock({
       id: 'frames',
@@ -556,6 +688,13 @@ const meterRows: readonly MeterRow[] = [
     },
   },
 ]
+const meterRows: readonly MeterRow[] = meterRowInputs.map(
+  // `row` is a fresh rest object, so attaching the decorated strip spec mutates nothing shared.
+  ({ stripLabel, stripValue, ...row }): MeterRow =>
+    Object.assign(row, {
+      stripSpec: withStripHeader({ spec: row.spec, label: stripLabel, value: stripValue }),
+    }),
+)
 const meterSpecs = meterRows.map((row) => row.spec)
 
 // ---------------------------------------------------------------------------------------------
@@ -570,21 +709,57 @@ const runScoped = <A, E>(program: Effect.Effect<A, E, Scope.Scope>): (() => void
 }
 
 /** The story host owns the only session lease, like a real bootstrap. */
-const useReplayMeters = (playback: Playback): Meters | undefined => {
+const useReplayMeters = (options: {
+  readonly playback: Playback
+  readonly scenario: Scenario
+}): Meters | undefined => {
+  const { playback, scenario } = options
+  const key = `${playback}:${scenario}`
   const [started, setStarted] = React.useState<
-    { readonly playback: Playback; readonly meters: Meters } | undefined
+    { readonly key: string; readonly meters: Meters } | undefined
   >(undefined)
   React.useEffect(() => {
-    const meters = makeReplayMeters(playback)
+    const meters = makeReplayMeters({ playback, scenario })
     return runScoped(
       meters.start.pipe(
-        Effect.andThen(Effect.sync(() => setStarted({ playback, meters }))),
+        Effect.andThen(Effect.sync(() => setStarted({ key: `${playback}:${scenario}`, meters }))),
         Effect.andThen(Effect.never),
       ),
     )
-  }, [playback])
-  return started?.playback === playback ? started.meters : undefined
+  }, [playback, scenario])
+  return started?.key === key ? started.meters : undefined
 }
+
+/**
+ * Evaluation instant for DOM readouts: the frozen instant, or the session clock sampled at
+ * most every 500 ms (Pinned playback has no Draw ticks, so it stays at the pinned instant).
+ */
+const useEvaluatedAtMs = (options: {
+  readonly meters: Meters
+  readonly frozenAtMs: number | undefined
+}): number => {
+  const { meters, frozenAtMs } = options
+  const [clockMs, setClockMs] = React.useState(() => meters.clock.now())
+  React.useEffect(() => {
+    if (frozenAtMs !== undefined) return undefined
+    let last = Number.NEGATIVE_INFINITY
+    return runScoped(
+      meters.clock
+        .subscribe({
+          phase: 'Draw',
+          listener: (tick) => {
+            if (tick.atMs - last < 500) return
+            last = tick.atMs
+            setClockMs(tick.atMs)
+          },
+        })
+        .pipe(Effect.andThen(Effect.never)),
+    )
+  }, [meters, frozenAtMs])
+  return frozenAtMs ?? clockMs
+}
+
+const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)} s`
 
 /** DPR-aware canvas painted once on attach and on every Draw tick of the session clock. */
 const usePaintedCanvas = (options: {
@@ -661,10 +836,10 @@ const useStripText = (options: {
 // ---------------------------------------------------------------------------------------------
 
 const styles = stylex.create({
-  frame: (widthPx: number) => ({
+  frame: (widthPx: number, heightPx: number) => ({
     position: 'relative',
     width: widthPx,
-    height: '600px',
+    height: heightPx,
     overflow: 'hidden',
     boxSizing: 'border-box',
     borderWidth: 1,
@@ -702,6 +877,7 @@ const styles = stylex.create({
     outlineOffset: '-2px',
   },
   stripButton: { paddingInline: 0, height: 'auto' },
+  pressed: { backgroundColor: { default: devbarTokens.panel, ':hover': devbarTokens.panel } },
   segmentLabel: { color: devbarTokens.mutedText },
   segmentValue: {
     fontFamily: devbarTokens.fontData,
@@ -715,25 +891,60 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   // Block padding only: the canvas fills the measured width and draws its own inset.
-  timeline: { position: 'relative', paddingBlock: '0.5rem', minWidth: 0 },
+  timeline: { paddingBlock: '0.5rem', minWidth: 0 },
   timelineCanvas: {
     display: 'block',
     outlineWidth: { default: 0, ':focus-visible': 2 },
     outlineStyle: 'solid',
     outlineColor: devbarTokens.focusRing,
   },
+  // Anchored under the axis, outside the plot, so it never hides a row.
   readout: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(19rem, 1fr))',
+    columnGap: '1rem',
+    rowGap: '0.125rem',
+    margin: 0,
+    paddingTop: '0.375rem',
+    paddingInline: '0.25rem',
+    fontFamily: devbarTokens.fontData,
+    fontSize: '0.6875rem',
+    lineHeight: 1.45,
+    color: devbarTokens.text,
+  },
+  readoutEntry: { minWidth: 0 },
+  readoutTerm: { display: 'inline', color: devbarTokens.mutedText, paddingRight: '0.75rem' },
+  readoutValue: { display: 'inline', margin: 0 },
+  readoutSelected: {
+    fontWeight: 600,
+    outlineWidth: 1,
+    outlineStyle: 'solid',
+    outlineColor: devbarTokens.focusRing,
+    outlineOffset: '1px',
+  },
+  srOnly: {
     position: 'absolute',
-    top: '0.5rem',
-    zIndex: 1,
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+    clipPath: 'inset(50%)',
+    whiteSpace: 'nowrap',
+  },
+  // Above the 32 px bar, inside the story frame.
+  evidence: {
+    position: 'absolute',
+    bottom: '2.5rem',
+    zIndex: 201,
+    display: 'grid',
+    gap: '0.125rem',
+    maxWidth: '24rem',
     margin: 0,
     paddingBlock: '0.375rem',
     paddingInline: '0.5rem',
     pointerEvents: 'none',
     fontFamily: devbarTokens.fontData,
     fontSize: '0.6875rem',
-    lineHeight: 1.5,
-    whiteSpace: 'nowrap',
+    lineHeight: 1.45,
     backgroundColor: devbarTokens.canvas,
     color: devbarTokens.text,
     borderWidth: 1,
@@ -741,7 +952,7 @@ const styles = stylex.create({
     borderColor: devbarTokens.border,
     borderRadius: '0.25rem',
   },
-  readoutTerm: { color: devbarTokens.mutedText, paddingRight: '0.75rem' },
+  evidenceTitle: { fontWeight: 600 },
   picker: {
     display: 'grid',
     gap: '0.5rem',
@@ -781,47 +992,167 @@ const styles = stylex.create({
   },
   pickerDescription: { color: devbarTokens.mutedText, minWidth: 0 },
   collection: { display: 'grid', gap: '1rem', padding: '1rem' },
+  stateHeading: {
+    margin: 0,
+    marginBottom: '0.375rem',
+    fontFamily: devbarTokens.fontUi,
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    color: devbarTokens.text,
+  },
 })
+
+/** What captured an evidence snapshot; the card states it so a snapshot never reads as live. */
+type InspectTrigger = 'focus' | 'hover' | 'activation' | 'refresh' | 'pinned'
 
 /** Variant A/C: one existing canvas block rendered by the existing canvas strip renderer. */
 const StripSegment = (props: {
   readonly meters: Meters
   readonly row: MeterRow
   readonly theme: MeterTheme
+  readonly frozenAtMs: number | undefined
+  readonly expanded: boolean
+  readonly controls: string | undefined
+  readonly describedBy: string | undefined
+  readonly tileRef: (element: HTMLButtonElement | null) => void
   readonly onOpen: () => void
+  readonly onInspect: (options: {
+    readonly trigger: InspectTrigger
+    readonly tile: HTMLElement
+  }) => void
+  readonly onDismiss: (options: { readonly trigger: 'focus' | 'hover' | 'escape' }) => void
 }): React.ReactNode => {
-  const text = useStripText({ meters: props.meters, spec: props.row.spec })
-  // Fills the 32 px bar row minus its border, leaving a ~10 px trend under the value.
+  const { meters, row, theme, frozenAtMs, onInspect, onDismiss } = props
+  // Fills the 32 px bar row minus its border, leaving a ~10 px trend under the header.
   const heightPx = 30
+  const view = React.useMemo(
+    () =>
+      makeStripView({
+        store: meters.store,
+        blocks: [row.stripSpec],
+        now: meters.clock.now,
+        ...(frozenAtMs === undefined ? {} : { frozenAtMs }),
+      }),
+    [meters, row.stripSpec, frozenAtMs],
+  )
   const attach = React.useCallback(
     (canvas: HTMLCanvasElement | null) => {
       if (canvas === null) return undefined
       return runScoped(
         makeCanvasStrip({
           canvas,
-          meters: props.meters,
-          blocks: [props.row.spec],
+          meters,
+          blocks: [row.stripSpec],
+          view,
           heightPx,
           gapPx: 0,
           historyMs,
-          readTheme: () => props.theme,
+          readTheme: () => theme,
         }).attach.pipe(Effect.andThen(Effect.never)),
       )
     },
-    [props.meters, props.row.spec, props.theme],
+    [meters, row.stripSpec, view, theme],
   )
   return (
     <button
+      ref={props.tileRef}
       type="button"
-      aria-label={`${props.row.spec.label} ${text}`}
-      title={`${props.row.spec.label}: ${text} (last ${historyMs / 1000} s)`}
-      onClick={props.onOpen}
+      // Static name: values live in the evidence snapshot, never in the accessible name.
+      aria-label={row.spec.label}
+      title={row.spec.label}
+      aria-expanded={props.expanded}
+      aria-controls={props.controls}
+      aria-describedby={props.describedBy}
+      aria-keyshortcuts="R"
+      onClick={(event) => {
+        onInspect({ trigger: 'activation', tile: event.currentTarget })
+        props.onOpen()
+      }}
+      onFocus={(event) => onInspect({ trigger: 'focus', tile: event.currentTarget })}
+      onBlur={() => onDismiss({ trigger: 'focus' })}
+      onMouseEnter={(event) => onInspect({ trigger: 'hover', tile: event.currentTarget })}
+      onMouseLeave={() => onDismiss({ trigger: 'hover' })}
+      onKeyDown={(event) => {
+        if (event.key === 'r' || event.key === 'R') {
+          event.preventDefault()
+          onInspect({ trigger: 'refresh', tile: event.currentTarget })
+        }
+        // First Escape dismisses the snapshot; Devbar sees the next one.
+        if (event.key === 'Escape' && props.describedBy !== undefined) {
+          event.preventDefault()
+          onDismiss({ trigger: 'escape' })
+        }
+      }}
       {...stylex.props(styles.segmentButton, styles.stripButton)}
     >
       <div style={{ width: segmentWidthPx, height: heightPx }}>
         <canvas ref={attach} aria-hidden="true" style={{ display: 'block' }} />
       </div>
     </button>
+  )
+}
+
+/** Where the evidence card sits inside the story frame, aligned with its tile. */
+type CardAnchor = { readonly left: number } | { readonly right: number }
+
+const anchorFor = (tile: HTMLElement): CardAnchor => {
+  const frame = tile.closest('section')
+  if (frame === null) return { left: 0 }
+  const outer = frame.getBoundingClientRect()
+  const inner = tile.getBoundingClientRect()
+  return inner.left + inner.width / 2 > outer.left + outer.width / 2
+    ? { right: Math.max(0, outer.right - inner.right) }
+    : { left: Math.max(0, inner.left - outer.left) }
+}
+
+interface Inspection {
+  readonly id: string
+  readonly trigger: InspectTrigger
+  readonly evidence: BlockEvidence
+  readonly frozen: boolean
+  readonly anchor: CardAnchor
+}
+
+const latestText = (evidence: BlockEvidence): string => {
+  const latest = evidence.latest
+  if (latest === undefined) return 'no sample before evaluation'
+  const before = `${seconds(evidence.evaluatedAtMs - latest.atMs)} before evaluation`
+  switch (latest._tag) {
+    case 'Value':
+      return `latest sample ${before}`
+    case 'Unavailable':
+      return `unavailable (${latest.reason}) ${before}`
+    case 'Gap':
+      return `gap (${latest.reason}, ${seconds(latest.durationMs)}) ending ${before}`
+  }
+}
+
+const triggerText: Record<InspectTrigger, string> = {
+  focus: 'Snapshot taken on focus',
+  hover: 'Snapshot taken on hover',
+  activation: 'Snapshot taken on activation',
+  refresh: 'Snapshot refreshed',
+  pinned: 'Snapshot pinned by this story',
+}
+
+/** Q19 evidence: a captured snapshot with its evaluation instant, never a live readout. */
+const EvidenceCard = (props: {
+  readonly id: string
+  readonly inspection: Inspection
+}): React.ReactNode => {
+  const { evidence, trigger, frozen, anchor } = props.inspection
+  return (
+    <div id={props.id} role="tooltip" style={anchor} {...stylex.props(styles.evidence)}>
+      <span>
+        <span {...stylex.props(styles.evidenceTitle)}>{evidence.label}</span> {evidence.text}
+      </span>
+      <span>{latestText(evidence)}</span>
+      <span {...stylex.props(styles.muted)}>
+        evaluated at replay clock {seconds(evidence.evaluatedAtMs)}
+        {frozen === true ? ' (frozen)' : ''} · revision {evidence.revision}
+      </span>
+      <span {...stylex.props(styles.muted)}>{triggerText[trigger]} · R refreshes</span>
+    </div>
   )
 }
 
@@ -913,35 +1244,51 @@ const SubscriptionsText = (props: { readonly meters: Meters }): React.ReactNode 
 const rowHeightPx = 40
 const rowGapPx = 2
 const axisHeightPx = 18
+/** Crosshair keyboard steps, in seconds. */
+const fineStepS = 1
+const coarseStepS = 10
+const historyS = historyMs / 1000
 
 const TimelineCanvas = (props: {
+  readonly id: string
   readonly meters: Meters
   readonly rows: readonly MeterRow[]
   readonly theme: MeterTheme
   readonly label: string
+  /** Row linked to the activated bar tile; highlighted on the canvas and in the readout. */
+  readonly highlightId: string | undefined
+  readonly frozenAtMs: number | undefined
 }): React.ReactNode => {
-  const { meters, rows, theme } = props
+  const { meters, rows, theme, frozenAtMs, highlightId } = props
   const [containerRef, containerWidth] = useElementWidth()
   const widthPx = containerWidth === undefined ? undefined : Math.max(240, containerWidth)
   const heightPx = rows.length * (rowHeightPx + rowGapPx) + axisHeightPx
   const readers = React.useMemo(
-    () => rows.map((row) => row.spec.read(meters.store)),
-    [rows, meters],
+    () =>
+      rows.map((row) => {
+        const reader = row.spec.read(meters.store)
+        return frozenAtMs === undefined ? reader : reader.snapshot()
+      }),
+    [rows, meters, frozenAtMs],
   )
-  /** Crosshair x in CSS pixels; its time is derived from the clock at read time. */
-  const [cursor, setCursor] = React.useState<{ readonly x: number } | undefined>(undefined)
+  const evaluatedAtMs = useEvaluatedAtMs({ meters, frozenAtMs })
+  /** Crosshair as seconds before evaluation, so keyboard steps stay exact at any width. */
+  const [cursorBeforeS, setCursorBeforeS] = React.useState<number | undefined>(undefined)
   const paint = React.useCallback(
     ({
       ctx,
-      nowMs,
+      nowMs: clockMs,
       widthPx: width,
     }: {
       readonly ctx: CanvasRenderingContext2D
       readonly nowMs: number
       readonly widthPx: number
     }) => {
+      const nowMs = frozenAtMs ?? clockMs
       let top = 0
-      for (const reader of readers) {
+      for (let index = 0; index < readers.length; index++) {
+        const reader = readers[index]
+        if (reader === undefined) continue
         reader.draw({
           ctx,
           rect: { x: 0, y: top, width, height: rowHeightPx },
@@ -949,15 +1296,22 @@ const TimelineCanvas = (props: {
           historyMs,
           theme,
         })
+        if (rows.length > 1 && rows[index]?.spec.id === highlightId) {
+          ctx.strokeStyle = theme.focus
+          ctx.lineWidth = 1
+          ctx.strokeRect(0.5, top + 0.5, width - 1, rowHeightPx - 1)
+          ctx.fillStyle = theme.focus
+          ctx.fillRect(0, top, 3, rowHeightPx)
+        }
         top += rowHeightPx + rowGapPx
       }
       // One axis for every row: identical chart insets make every row share these x positions.
       const axis = chartRect({ x: 0, y: 0, width, height: rowHeightPx })
       ctx.font = theme.font
       ctx.textBaseline = 'top'
-      for (let secondsAgo = 0; secondsAgo <= historyMs / 1000; secondsAgo += 10) {
+      for (let before = 0; before <= historyS; before += 10) {
         const x = Math.round(
-          historyX({ atMs: nowMs - secondsAgo * 1000, nowMs, historyMs, rect: axis }),
+          historyX({ atMs: nowMs - before * 1000, nowMs, historyMs, rect: axis }),
         )
         ctx.fillStyle = theme.border
         ctx.globalAlpha = 0.7
@@ -967,9 +1321,9 @@ const TimelineCanvas = (props: {
           rowTop += rowHeightPx + rowGapPx
         }
         ctx.globalAlpha = 1
-        const label = secondsAgo === 0 ? 'now' : `−${secondsAgo}s`
+        // Seconds before evaluation; 0 s is the evaluation instant, not a live "now".
         const run = fitText({
-          text: label,
+          text: before === 0 ? '0 s' : `−${before} s`,
           maxWidth: 48,
           measure: (text) => ctx.measureText(text).width,
         })
@@ -978,76 +1332,117 @@ const TimelineCanvas = (props: {
         const textX = Math.min(width - run.width, Math.max(0, x - run.width / 2))
         ctx.fillText(run.text, textX, top + 3)
       }
-      if (cursor !== undefined) {
+      if (cursorBeforeS !== undefined) {
         ctx.fillStyle = theme.focus
-        ctx.fillRect(Math.round(cursor.x), 0, 1, top)
+        ctx.fillRect(Math.round(axis.x + axis.width * (1 - cursorBeforeS / historyS)), 0, 1, top)
       }
     },
-    [readers, theme, cursor],
+    [readers, rows, highlightId, theme, cursorBeforeS, frozenAtMs],
   )
   const attach = usePaintedCanvas({ meters, widthPx, heightPx, paint })
   const axis = chartRect({ x: 0, y: 0, width: widthPx ?? 0, height: rowHeightPx })
-  const clampX = (x: number): number => Math.max(axis.x, Math.min(axis.x + axis.width, x))
-  const cursorAtMs =
-    cursor === undefined
-      ? undefined
-      : meters.clock.now() - historyMs + ((cursor.x - axis.x) / axis.width) * historyMs
+  const moveTo = (beforeS: number): void =>
+    setCursorBeforeS(Math.max(0, Math.min(historyS, Math.round(beforeS * 10) / 10)))
+  const atText = `${seconds((cursorBeforeS ?? 0) * 1000)} before evaluation`
+  const readAtMs = evaluatedAtMs - (cursorBeforeS ?? 0) * 1000
+  const entries = rows.map((row) => ({
+    id: row.spec.id,
+    label: row.shortLabel,
+    text: row.readoutAt({ store: meters.store, atMs: readAtMs }),
+  }))
+  // One debounced live line for the whole readout; it follows crosshair moves, not clock ticks.
+  const summary = `${atText}: ${entries.map((entry) => `${entry.label} ${entry.text}`).join('; ')}`
+  const summaryRef = React.useRef(summary)
+  summaryRef.current = summary
+  const [announcement, setAnnouncement] = React.useState('')
+  React.useEffect(() => {
+    if (cursorBeforeS === undefined) return undefined
+    const timer = setTimeout(() => setAnnouncement(summaryRef.current), 500)
+    return () => clearTimeout(timer)
+  }, [cursorBeforeS])
+  const helpId = `${props.id}-help`
   return (
-    <div ref={containerRef} {...stylex.props(styles.timeline)}>
+    <div id={props.id} ref={containerRef} {...stylex.props(styles.timeline)}>
       <canvas
         ref={attach}
         tabIndex={0}
-        role="img"
-        aria-label={`${props.label}: ${rows.map((row) => row.spec.label).join(', ')} over the last ${historyMs / 1000} s on one shared time axis. Use arrow keys to move the crosshair.`}
+        role="slider"
+        aria-label={`${props.label} crosshair`}
+        aria-describedby={helpId}
+        aria-orientation="horizontal"
+        aria-valuemin={-historyS}
+        aria-valuemax={0}
+        aria-valuenow={-(cursorBeforeS ?? 0)}
+        aria-valuetext={atText}
         onPointerMove={(event) => {
           const bounds = event.currentTarget.getBoundingClientRect()
-          setCursor({ x: clampX(event.clientX - bounds.left) })
+          const x = Math.max(axis.x, Math.min(axis.x + axis.width, event.clientX - bounds.left))
+          moveTo((1 - (x - axis.x) / axis.width) * historyS)
         }}
-        onPointerLeave={() => setCursor(undefined)}
+        onPointerLeave={(event) => {
+          // A keyboard-placed crosshair survives the pointer leaving.
+          if (document.activeElement !== event.currentTarget) setCursorBeforeS(undefined)
+        }}
         onKeyDown={(event) => {
-          const step = axis.width / (historyMs / 1000)
-          if (event.key === 'Escape') setCursor(undefined)
-          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          const from = cursorBeforeS ?? 0
+          const step = event.shiftKey === true ? coarseStepS : fineStepS
+          const target =
+            event.key === 'ArrowLeft'
+              ? from + step
+              : event.key === 'ArrowRight'
+                ? from - step
+                : event.key === 'PageDown'
+                  ? from + coarseStepS
+                  : event.key === 'PageUp'
+                    ? from - coarseStepS
+                    : event.key === 'Home'
+                      ? historyS
+                      : event.key === 'End'
+                        ? 0
+                        : undefined
+          if (target !== undefined) {
             event.preventDefault()
-            setCursor((current) => ({
-              x: clampX(
-                (current?.x ?? axis.x + axis.width) + (event.key === 'ArrowLeft' ? -step : step),
-              ),
-            }))
+            moveTo(target)
+            return
+          }
+          // Clear the crosshair but keep focus here; the Devbar only closes on an unhandled Escape.
+          if (event.key === 'Escape' && cursorBeforeS !== undefined) {
+            event.preventDefault()
+            setCursorBeforeS(undefined)
           }
         }}
         {...stylex.props(styles.timelineCanvas)}
       />
-      {cursor !== undefined && cursorAtMs !== undefined && (
-        <dl
-          aria-live="polite"
-          {...stylex.props(styles.readout)}
-          style={
-            cursor.x > (widthPx ?? 0) / 2
-              ? { right: (widthPx ?? 0) - cursor.x + 20 }
-              : { left: cursor.x + 20 }
-          }
-        >
-          <div>
-            <dt {...stylex.props(styles.readoutTerm)} style={{ display: 'inline' }}>
-              at
-            </dt>
-            <dd style={{ display: 'inline', margin: 0 }}>
-              −{((meters.clock.now() - cursorAtMs) / 1000).toFixed(1)} s
-            </dd>
+      <span id={helpId} {...stylex.props(styles.srOnly)}>
+        {rows.map((row) => row.spec.label).join(', ')} over the {historyS} s before evaluation on
+        one shared time axis. Arrow keys move the crosshair {fineStepS} s, Shift+Arrow or Page
+        Up/Down {coarseStepS} s, Home and End jump to the oldest sample and the evaluation instant,
+        Escape clears it.
+      </span>
+      <dl {...stylex.props(styles.readout)}>
+        <div {...stylex.props(styles.readoutEntry)}>
+          <dt {...stylex.props(styles.readoutTerm)}>at</dt>
+          <dd {...stylex.props(styles.readoutValue)}>
+            {atText}
+            {cursorBeforeS === undefined ? ' · move the crosshair to inspect' : ''}
+          </dd>
+        </div>
+        {entries.map((entry) => (
+          <div
+            key={entry.id}
+            {...stylex.props(
+              styles.readoutEntry,
+              rows.length > 1 && entry.id === highlightId && styles.readoutSelected,
+            )}
+          >
+            <dt {...stylex.props(styles.readoutTerm)}>{entry.label}</dt>
+            <dd {...stylex.props(styles.readoutValue)}>{entry.text}</dd>
           </div>
-          {rows.map((row) => (
-            <div key={row.spec.id}>
-              <dt {...stylex.props(styles.readoutTerm)} style={{ display: 'inline' }}>
-                {row.shortLabel}
-              </dt>
-              <dd style={{ display: 'inline', margin: 0 }}>
-                {row.readoutAt({ store: meters.store, atMs: cursorAtMs })}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
+        ))}
+      </dl>
+      <p aria-live="polite" {...stylex.props(styles.srOnly)}>
+        {announcement}
+      </p>
     </div>
   )
 }
@@ -1060,8 +1455,16 @@ interface MeterVariantsProps {
   readonly variant: VariantId
   readonly width: WidthId
   readonly playback: Playback
+  /** Fixture state replayed through the same series (no data, stale, disconnected). */
+  readonly scenario: Scenario
+  /** Start with the bar frozen at the evaluation instant (A/C). */
+  readonly frozen: boolean
+  /** Pin the evidence snapshot of this meter id, as a focused tile would show it (A/C). */
+  readonly inspect?: string
   /** Open the variant's panel initially (Meters for A, Timeline for B/C). */
   readonly panelOpen: boolean
+  /** Story frame height; state frames with a closed panel are shorter. */
+  readonly heightPx?: number
   readonly dark?: boolean
 }
 
@@ -1069,12 +1472,75 @@ const VariantDevbar = (
   props: MeterVariantsProps & { readonly meters: Meters },
 ): React.ReactNode => {
   const { meters, variant } = props
-  const theme = props.dark === true ? darkMeterTheme : lightMeterTheme
+  const dark = props.dark === true
+  const theme = dark === true ? darkMeterTheme : lightMeterTheme
+  const stripTheme = dark === true ? darkMeterTheme : lightStripTheme
   const detailPanel = variant === 'A' ? 'meters' : 'timeline'
+  const baseId = React.useId()
+  const timelineId = `${baseId}timeline`
+  const cardId = `${baseId}evidence`
   const [openPanel, setOpenPanel] = React.useState<string | undefined>(
     props.panelOpen === true ? detailPanel : undefined,
   )
   const [selected, setSelected] = React.useState<string>('api.messages')
+  const [frozenAtMs, setFrozenAtMs] = React.useState<number | undefined>(() =>
+    props.frozen === true ? meters.clock.now() : undefined,
+  )
+  // Captured once per freeze so the bar, the panel and every evidence card read one snapshot.
+  const frozenReaders = React.useMemo(
+    () =>
+      frozenAtMs === undefined
+        ? undefined
+        : new Map(meterRows.map((row) => [row.spec.id, row.spec.read(meters.store).snapshot()])),
+    [meters, frozenAtMs],
+  )
+  const [inspection, setInspection] = React.useState<Inspection | undefined>(undefined)
+  const inspect = (options: {
+    readonly id: string
+    readonly trigger: InspectTrigger
+    readonly tile: HTMLElement
+  }): void => {
+    const row = meterRows.find((item) => item.spec.id === options.id)
+    if (row === undefined) return
+    const reader = frozenReaders?.get(row.spec.id) ?? row.spec.read(meters.store)
+    setInspection({
+      id: row.spec.id,
+      trigger: options.trigger,
+      evidence: reader.evidence({ nowMs: frozenAtMs ?? meters.clock.now() }),
+      frozen: frozenAtMs !== undefined,
+      anchor: anchorFor(options.tile),
+    })
+  }
+  const dismiss = (options: { readonly trigger: 'focus' | 'hover' | 'escape' }): void =>
+    setInspection((current) => {
+      if (current === undefined || options.trigger === 'escape') return undefined
+      if (current.trigger === 'pinned') return current
+      if (options.trigger === 'hover') return current.trigger === 'hover' ? undefined : current
+      return current.trigger === 'hover' ? current : undefined
+    })
+  // The pinned tile mounts inside Devbar's fitted strip; inspect it once it is laid out.
+  const [pinnedTile, setPinnedTile] = React.useState<HTMLElement | undefined>(undefined)
+  const pinnedId = props.inspect
+  const inspectRef = React.useRef(inspect)
+  inspectRef.current = inspect
+  React.useEffect(() => {
+    if (pinnedTile === undefined || pinnedId === undefined) return
+    inspectRef.current({ id: pinnedId, trigger: 'pinned', tile: pinnedTile })
+  }, [pinnedTile, pinnedId])
+  const timeline = (options: {
+    readonly rows: readonly MeterRow[]
+    readonly label: string
+  }): React.ReactNode => (
+    <TimelineCanvas
+      id={timelineId}
+      meters={meters}
+      rows={options.rows}
+      theme={theme}
+      label={options.label}
+      highlightId={variant === 'B' ? undefined : selected}
+      frozenAtMs={frozenAtMs}
+    />
+  )
   const panels: readonly DevbarPanel[] =
     variant === 'A'
       ? [
@@ -1087,14 +1553,12 @@ const VariantDevbar = (
                 theme={theme}
                 selected={selected}
                 onSelect={({ id }) => setSelected(id)}
-                renderDetail={(spec) => (
-                  <TimelineCanvas
-                    meters={meters}
-                    rows={meterRows.filter((row) => row.spec.id === spec.id)}
-                    theme={theme}
-                    label={`${spec.label} detail`}
-                  />
-                )}
+                renderDetail={(spec) =>
+                  timeline({
+                    rows: meterRows.filter((row) => row.spec.id === spec.id),
+                    label: `${spec.label} detail`,
+                  })
+                }
               />
             ),
           },
@@ -1103,21 +1567,37 @@ const VariantDevbar = (
           {
             id: 'timeline',
             label: 'Timeline',
-            render: () => (
-              <TimelineCanvas
-                meters={meters}
-                rows={meterRows}
-                theme={theme}
-                label="Linked meters"
-              />
-            ),
+            render: () => timeline({ rows: meterRows, label: 'Linked meters' }),
           },
         ]
   const open = (id: string) => () => {
     setSelected(id)
     setOpenPanel(detailPanel)
   }
+  const expanded = openPanel === detailPanel
+  const freezeSegment: DevbarSegment = {
+    id: 'meters.freeze',
+    priority: 7,
+    render: () => (
+      <button
+        type="button"
+        aria-pressed={frozenAtMs !== undefined}
+        onClick={() =>
+          setFrozenAtMs((current) => (current === undefined ? meters.clock.now() : undefined))
+        }
+        {...stylex.props(styles.segmentButton, frozenAtMs !== undefined && styles.pressed)}
+      >
+        <span {...stylex.props(styles.segmentLabel)}>
+          {frozenAtMs === undefined ? 'freeze' : 'frozen at'}
+        </span>
+        {frozenAtMs !== undefined && (
+          <span {...stylex.props(styles.segmentValue)}>{seconds(frozenAtMs)}</span>
+        )}
+      </button>
+    ),
+  }
   const segments: readonly DevbarSegment[] = [
+    ...(variant === 'B' ? [] : [freezeSegment]),
     ...meterRows.map(
       (row): DevbarSegment => ({
         id: row.spec.id,
@@ -1126,53 +1606,73 @@ const VariantDevbar = (
           variant === 'B' ? (
             <TrendSegment meters={meters} row={row} theme={theme} onOpen={open(row.spec.id)} />
           ) : (
-            <StripSegment meters={meters} row={row} theme={theme} onOpen={open(row.spec.id)} />
+            <StripSegment
+              meters={meters}
+              row={row}
+              theme={stripTheme}
+              frozenAtMs={frozenAtMs}
+              expanded={expanded && selected === row.spec.id}
+              controls={expanded === true ? timelineId : undefined}
+              describedBy={inspection?.id === row.spec.id ? cardId : undefined}
+              tileRef={(element) => {
+                if (element !== null && row.spec.id === pinnedId) setPinnedTile(element)
+              }}
+              onOpen={open(row.spec.id)}
+              onInspect={({ trigger, tile }) => inspect({ id: row.spec.id, trigger, tile })}
+              onDismiss={dismiss}
+            />
           ),
       }),
     ),
     { id: 'api.subscriptions', priority: 5, render: () => <SubscriptionsText meters={meters} /> },
   ]
   return (
-    <Devbar
-      placement="container"
-      panels={panels}
-      openPanel={openPanel}
-      onOpenPanelChange={setOpenPanel}
-      stripMinWidth={0}
-      segments={segments}
-    />
+    <>
+      {inspection !== undefined && <EvidenceCard id={cardId} inspection={inspection} />}
+      <Devbar
+        placement="container"
+        panels={panels}
+        openPanel={openPanel}
+        onOpenPanelChange={setOpenPanel}
+        stripMinWidth={0}
+        segments={segments}
+      />
+    </>
   )
 }
 
+const defaultFrameHeightPx = 600
+
 const MeterVariants = (props: MeterVariantsProps): React.ReactNode => {
-  const meters = useReplayMeters(props.playback)
+  const meters = useReplayMeters({ playback: props.playback, scenario: props.scenario })
   const width = widths.find((item) => item.id === props.width) ?? widths[0]!
   const variant = variants.find((item) => item.id === props.variant) ?? variants[0]!
+  const scenario = scenarios.find((item) => item.id === props.scenario) ?? scenarios[0]!
   return (
     <section
-      aria-label={`Variant ${variant.id} at ${width.px} px`}
-      {...stylex.props(styles.frame(width.px))}
+      aria-label={`Variant ${variant.id} at ${width.px} px, ${scenario.id}`}
+      {...stylex.props(styles.frame(width.px, props.heightPx ?? defaultFrameHeightPx))}
     >
       <p {...stylex.props(styles.caption)}>
         <span {...stylex.props(styles.captionId)}>
-          {variant.id} · {width.px}px
+          {variant.id} · {width.px}px · {variant.verdict}
         </span>{' '}
         {variant.description}
         <br />
         <span {...stylex.props(styles.muted)}>
-          Scripted {recordingDurationMs / 1000} s recording replayed through meters series/sources (
-          {props.playback}):{' '}
+          {scenario.id}: {scenario.description}. Scripted {recordingDurationMs / 1000} s recording
+          replayed through meters series/sources ({props.playback}):{' '}
           {recordingPhases
             .map((phase) => `${phase.label} ${phase.fromMs / 1000}–${phase.toMs / 1000} s`)
             .join(', ')}
-          . Msg bars stack delta / snapshot / error; HTTP stacks p50 and the p95 tail, red ticks are
-          failed requests; ↻ marks a WebSocket recovery.
+          . Msg bars stack delta / snapshot, red ticks are message errors; HTTP shows p50 with a
+          muted p95 tail, red ticks are failed requests; ↻ marks a WebSocket recovery.
         </span>
       </p>
       {meters !== undefined && (
         <VariantDevbar
-          // Remount on variant change so the initial panel matches the variant.
-          key={`${props.variant}-${props.panelOpen}`}
+          // Remount on fixture change so panel, freeze and pinned evidence match the args.
+          key={`${props.variant}-${props.panelOpen}-${props.playback}-${props.scenario}-${props.frozen}-${props.inspect}`}
           {...props}
           meters={meters}
         />
@@ -1215,6 +1715,7 @@ const Explorer = (props: MeterVariantsProps): React.ReactNode => {
   const [variant, setVariant] = React.useState(props.variant)
   const [width, setWidth] = React.useState(props.width)
   const [playback, setPlayback] = React.useState(props.playback)
+  const [scenario, setScenario] = React.useState(props.scenario)
   return (
     <div style={{ padding: '1rem' }}>
       <div {...stylex.props(styles.picker)}>
@@ -1226,8 +1727,20 @@ const Explorer = (props: MeterVariantsProps): React.ReactNode => {
           value={playback}
           onChange={setPlayback}
         />
+        <VariantPicker
+          label="Scenario"
+          options={scenarios}
+          value={scenario}
+          onChange={setScenario}
+        />
       </div>
-      <MeterVariants {...props} variant={variant} width={width} playback={playback} />
+      <MeterVariants
+        {...props}
+        variant={variant}
+        width={width}
+        playback={playback}
+        scenario={scenario}
+      />
     </div>
   )
 }
@@ -1236,11 +1749,25 @@ const meta = {
   title: 'Developer Bar/Meter Variants',
   component: MeterVariants,
   parameters: { layout: 'fullscreen' },
-  args: { variant: 'A', width: 'W1440', playback: 'Pinned', panelOpen: true },
+  args: {
+    variant: 'A',
+    width: 'W1440',
+    playback: 'Pinned',
+    scenario: 'Recording',
+    frozen: false,
+    panelOpen: true,
+  },
   argTypes: {
     variant: { control: 'inline-radio', options: ['A', 'B', 'C'] },
     width: { control: 'inline-radio', options: ['W1440', 'W900', 'W600'] },
     playback: { control: 'inline-radio', options: ['Pinned', 'Live'] },
+    scenario: {
+      control: 'inline-radio',
+      options: scenarios.map((scenario) => scenario.id),
+    },
+    frozen: { control: 'boolean' },
+    inspect: { control: 'select', options: meterRows.map((row) => row.spec.id) },
+    heightPx: { table: { disable: true } },
     dark: { table: { disable: true } },
   },
   // oxlint-disable-next-line overeng/named-args -- Storybook render receives positional args/context.
@@ -1261,7 +1788,7 @@ export const Explore: Story = {
 export const VariantA1440: Story = { args: { variant: 'A', width: 'W1440' } }
 /** A at 900 px: the same priorities through `fitSegments`. */
 export const VariantA900: Story = { args: { variant: 'A', width: 'W900' } }
-/** B: compact values + tiny trends; the linked Timeline panel is open. */
+/** B (NO-GO, unchanged): compact values + tiny trends; the linked Timeline panel is open. */
 export const VariantB1440: Story = { args: { variant: 'B', width: 'W1440' } }
 /** B at 900 px: lowest-priority value segments move into the +N overflow. */
 export const VariantB900: Story = { args: { variant: 'B', width: 'W900' } }
@@ -1270,7 +1797,34 @@ export const VariantC1440: Story = { args: { variant: 'C', width: 'W1440' } }
 /** C at 900 px. */
 export const VariantC900: Story = { args: { variant: 'C', width: 'W900' } }
 
-/** Every variant at both widths, stacked for side-by-side comparison. */
+/** Fixture states for the bar strips, each with a pinned evidence snapshot where it applies. */
+const stateFrames: readonly {
+  readonly heading: string
+  readonly props: Partial<MeterVariantsProps>
+}[] = [
+  {
+    heading: 'C · no data: sources registered, nothing sampled before evaluation',
+    props: { variant: 'C', scenario: 'NoData', inspect: 'api.messages' },
+  },
+  {
+    heading: 'C · stale: evaluated 15 s after the last sample',
+    props: { variant: 'C', scenario: 'Stale', inspect: 'http.latency' },
+  },
+  {
+    heading: 'C · disconnected: evaluated mid WebSocket outage',
+    props: { variant: 'C', scenario: 'Disconnected', inspect: 'ws.status' },
+  },
+  {
+    heading: 'A · frozen: bar and evidence read one snapshot',
+    props: { variant: 'A', frozen: true, inspect: 'react.commits' },
+  },
+  {
+    heading: 'A · 600 px: low-priority strips overflow into +N',
+    props: { variant: 'A', width: 'W600' },
+  },
+]
+
+/** Every variant at both widths, then the fixture states, stacked for side-by-side review. */
 export const AllStates: Story = {
   // oxlint-disable-next-line overeng/named-args -- Storybook render receives positional args/context.
   render: (args, context) => (
@@ -1286,6 +1840,19 @@ export const AllStates: Story = {
           />
         )),
       )}
+      {stateFrames.map((frame) => (
+        <div key={frame.heading}>
+          <h3 {...stylex.props(styles.stateHeading)}>{frame.heading}</h3>
+          <MeterVariants
+            {...args}
+            width="W1440"
+            panelOpen={false}
+            heightPx={240}
+            {...frame.props}
+            dark={context.globals['theme'] === 'dark'}
+          />
+        </div>
+      ))}
     </div>
   ),
 }

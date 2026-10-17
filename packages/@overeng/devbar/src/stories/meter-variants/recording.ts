@@ -381,13 +381,31 @@ export const recording = {
   subscriptions: recordSubscriptions(),
 } as const
 
-/** `Live` loops the recording in real time; `Pinned` holds the clock at the recording end. */
+/** `Live` loops the recording in real time; `Pinned` holds the clock at the scenario's instant. */
 export type Playback = 'Live' | 'Pinned'
+
+/**
+ * Fixture states for the same series. Only `Recording` supports `Live`; the others pin the
+ * clock so the state is deterministic.
+ * - `Recording`: clock at the recording end (60 s).
+ * - `NoData`: every source is registered but appends nothing before evaluation.
+ * - `Stale`: the recording ended 15 s before evaluation and does not loop.
+ * - `Disconnected`: clock at 33 s, while the WebSocket is offline (since 32 s).
+ */
+export type Scenario = 'Recording' | 'NoData' | 'Stale' | 'Disconnected'
+
+const scenarioClock: Record<Scenario, { readonly pinnedAtMs: number; readonly loop: boolean }> = {
+  Recording: { pinnedAtMs: recordingDurationMs, loop: true },
+  NoData: { pinnedAtMs: recordingDurationMs, loop: false },
+  Stale: { pinnedAtMs: recordingDurationMs + 15_000, loop: false },
+  Disconnected: { pinnedAtMs: 33_000, loop: false },
+}
 
 /** An ordinary event source that appends recorded samples once the replay clock reaches them. */
 const replaySource = <TValue>(options: {
   readonly series: Series<TValue>
   readonly samples: readonly Sample<TValue>[]
+  readonly loop: boolean
 }): SourceRegistration =>
   makeSource<TValue>({
     id: options.series.id,
@@ -402,6 +420,7 @@ const replaySource = <TValue>(options: {
           for (;;) {
             const sample = options.samples[cursor]
             if (sample === undefined) {
+              if (options.loop === false) return
               pass++
               cursor = 0
               continue
@@ -417,12 +436,15 @@ const replaySource = <TValue>(options: {
       }),
   })
 
-/** Host replay clock: starts at the recording end so the full history is visible at once. */
-const replayPlatform = (playback: Playback): Platform => {
+/** Host replay clock: pinned at the scenario instant, or running from the recording end. */
+const replayPlatform = (options: {
+  readonly playback: Playback
+  readonly pinnedAtMs: number
+}): Platform => {
   const browser = makeBrowserPlatform()
-  if (playback === 'Pinned')
+  if (options.playback === 'Pinned')
     return {
-      now: () => recordingDurationMs,
+      now: () => options.pinnedAtMs,
       timeOriginMs: browser.timeOriginMs,
       requestFrame: browser.requestFrame,
       cancelFrame: browser.cancelFrame,
@@ -432,7 +454,7 @@ const replayPlatform = (playback: Playback): Platform => {
       supportsFrames: () => false,
     }
   const origin = browser.now()
-  const now = (): number => recordingDurationMs + (browser.now() - origin)
+  const now = (): number => options.pinnedAtMs + (browser.now() - origin)
   return {
     now,
     timeOriginMs: browser.timeOriginMs,
@@ -445,17 +467,32 @@ const replayPlatform = (playback: Playback): Platform => {
 }
 
 /** An inert replay session; the caller's scope owns `meters.start`. */
-export const makeReplayMeters = (playback: Playback): Meters =>
-  makeMeters({
-    platform: replayPlatform(playback),
+export const makeReplayMeters = (options: {
+  readonly playback: Playback
+  readonly scenario: Scenario
+}): Meters => {
+  const { pinnedAtMs, loop } = scenarioClock[options.scenario]
+  const empty = options.scenario === 'NoData'
+  const source = <TValue>(input: {
+    readonly series: Series<TValue>
+    readonly samples: readonly Sample<TValue>[]
+  }): SourceRegistration =>
+    replaySource({ series: input.series, samples: empty === true ? [] : input.samples, loop })
+  return makeMeters({
+    platform: replayPlatform({
+      // Only the full recording can run live; fixture states stay pinned.
+      playback: options.scenario === 'Recording' ? options.playback : 'Pinned',
+      pinnedAtMs,
+    }),
     sources: [
-      replaySource({ series: recordingSeries.messages, samples: recording.messages }),
-      replaySource({ series: recordingSeries.httpLatency, samples: recording.httpLatency }),
-      replaySource({ series: recordingSeries.httpErrors, samples: recording.httpErrors }),
-      replaySource({ series: recordingSeries.websocket, samples: recording.websocket }),
-      replaySource({ series: recordingSeries.commits, samples: recording.commits }),
-      replaySource({ series: recordingSeries.longFrames, samples: recording.longFrames }),
-      replaySource({ series: recordingSeries.frames, samples: recording.frames }),
-      replaySource({ series: recordingSeries.subscriptions, samples: recording.subscriptions }),
+      source({ series: recordingSeries.messages, samples: recording.messages }),
+      source({ series: recordingSeries.httpLatency, samples: recording.httpLatency }),
+      source({ series: recordingSeries.httpErrors, samples: recording.httpErrors }),
+      source({ series: recordingSeries.websocket, samples: recording.websocket }),
+      source({ series: recordingSeries.commits, samples: recording.commits }),
+      source({ series: recordingSeries.longFrames, samples: recording.longFrames }),
+      source({ series: recordingSeries.frames, samples: recording.frames }),
+      source({ series: recordingSeries.subscriptions, samples: recording.subscriptions }),
     ],
   })
+}
