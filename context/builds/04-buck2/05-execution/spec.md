@@ -47,14 +47,26 @@ selected Linux executor -> mandatory linux-bwrap -> admitted check/emit
 selected Darwin executor -> darwin-unsandboxed   -> local execution, no admission/reuse
 ```
 
-The Linux TS check, emit and package-tree run actions use the declared Nix
-Bubblewrap capability. There is no unsandboxed fallback: a missing capability,
-failed namespace setup, denied access or failed compiler makes the action fail.
-A scoped product root that does not declare the sandbox's Bun, launcher-shell
-and Linux Bubblewrap capabilities declares no sandbox toolchain, so every TS
-action rule fails analysis there. Action tools beyond Bun (effect-tsgo,
-`buck2-fingerprint`) bind closures attested by the consuming rule's own
-toolchain dependencies; package-tree actions therefore do not depend on them.
+The exported `hermetic_sandboxed_action` in `@rules//buck2:hermetic.bzl`
+accepts the sandbox capability and a caller-supplied map of tool closures.
+Other cells can use the same boundary for admitted non-TS tools: each supplied
+closure is attested by a consuming toolchain dependency, with its capability
+artifacts declared as hidden tool inputs. No payload tool is implicitly bound.
+The thin `ts_action` caller supplies Bun plus its consuming rule's additional
+tool closures (effect-tsgo, `buck2-fingerprint`); package-tree actions therefore
+do not depend on compiler tools.
+
+The Linux actions use the declared Nix Bubblewrap capability. There is no
+unsandboxed fallback: a missing capability, failed namespace setup, denied
+access or failed payload makes the action fail. Admission and the native
+`darwin-unsandboxed` lane are shared and unchanged: Darwin runs locally without
+cache upload or containment admission. A scoped product root lacking the
+sandbox's Bun, launcher-shell and Linux Bubblewrap capabilities declares no
+current sandbox toolchain, so dependent action rules fail analysis there.
+The `buck2/tests/ts_sandbox` suite exercises both the TS wrapper and a Bash-only
+payload through the shared launcher, including declared reads, denied
+undeclared reads and denied external TCP connections.
+
 Analysis emits the exact bind argv in a declared shell argument script. The
 scrubbed, Nix-pinned Bash entry creates output directories and immediately
 execs Bubblewrap; no Bun containment observer or per-input realpath/stat walk

@@ -1,6 +1,6 @@
-"""Linux containment probes run through the production TS action boundary."""
+"""Linux containment probes run through the shared production action boundary."""
 
-load("//buck2:hermetic.bzl", "hermetic_bun_command", "ts_action", "ts_action_attrs")
+load("//buck2:hermetic.bzl", "hermetic_bun_command", "hermetic_sandboxed_action", "ts_action", "ts_action_attrs")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints", "ts_action_admission_status")
 load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
 
@@ -14,6 +14,21 @@ def _ts_sandbox_probe_impl(ctx):
         })
         return [DefaultInfo(default_output = unsupported)]
     sandbox = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo]
+    if ctx.attrs.non_ts:
+        receipt = ctx.actions.declare_output("receipt", dir = True)
+        summary = receipt.project("summary.json")
+        hermetic_sandboxed_action(
+            ctx,
+            sandbox,
+            {"rust-shell": sandbox.closure_paths["rust-shell"]},
+            cmd_args([sandbox.shell, "--noprofile", "--norc", ctx.attrs.probe, ctx.attrs.probe, summary]),
+            inputs = [ctx.attrs.probe],
+            outputs = [receipt],
+            cacheable = False,
+            category = "bash_sandbox_negative_probes",
+            identifier = ctx.attrs.name,
+        )
+        return [DefaultInfo(default_output = summary)]
     closure = ctx.actions.write_json("bun-closure.json", sandbox.closure_paths["bun"])
     receipt = ctx.actions.declare_output("receipt", dir = True)
     summary = receipt.project("summary.json")
@@ -43,6 +58,7 @@ _ts_sandbox_probe = cache_guarded_rule(
     impl = _ts_sandbox_probe_impl,
     attrs = dict(ts_action_attrs(), **{
         "probe": attrs.source(),
+        "non_ts": attrs.bool(default = False),
     }),
 )
 
