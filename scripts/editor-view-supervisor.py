@@ -20,7 +20,10 @@ def supervise(command, deadline, grace):
     expires = time.monotonic() + deadline
     while not interrupted and time.monotonic() < expires:
         try:
-            return child.wait(timeout=min(0.05, max(0.001, expires - time.monotonic())))
+            result = child.wait(timeout=min(0.05, max(0.001, expires - time.monotonic())))
+            if not interrupted:
+                return result
+            break
         except subprocess.TimeoutExpired:
             pass
     status = 128 + interrupted[0] if interrupted else 124

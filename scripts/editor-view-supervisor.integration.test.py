@@ -1,13 +1,47 @@
+import importlib.util
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_signal_during_wait_overrides_direct_child_success(self):
+        spec = importlib.util.spec_from_file_location(
+            "editor_view_supervisor", Path(__file__).with_name("editor-view-supervisor.py")
+        )
+        supervisor = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(supervisor)
+        child = mock.Mock(pid=9999999)
+        first_wait = True
+        def finish_after_signal(**_kwargs):
+            nonlocal first_wait
+            if first_wait:
+                first_wait = False
+                signal.raise_signal(signal.SIGTERM)
+            return 0
+        child.wait.side_effect = finish_after_signal
+        handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM)}
+        try:
+            with mock.patch.object(supervisor.subprocess, "Popen", return_value=child), \
+                 mock.patch.object(supervisor.os, "killpg", side_effect=ProcessLookupError) as kill, \
+                 mock.patch.object(supervisor.os, "waitpid", side_effect=ChildProcessError), \
+                 mock.patch.object(supervisor.time, "sleep"):
+                self.assertEqual(supervisor.supervise(["fixture"], 2, 0.1), 143)
+                self.assertEqual(kill.call_args_list, [
+                    mock.call(child.pid, signal.SIGTERM),
+                    mock.call(child.pid, signal.SIGKILL),
+                    mock.call(child.pid, 0),
+                ])
+        finally:
+            for sig, handler in handlers.items():
+                signal.signal(sig, handler)
+
     def test_kills_term_resistant_child_and_late_grandchild(self):
         with tempfile.TemporaryDirectory() as scratch:
             pids = Path(scratch) / "pids"
