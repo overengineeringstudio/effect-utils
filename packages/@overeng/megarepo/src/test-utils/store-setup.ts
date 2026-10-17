@@ -150,12 +150,11 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
           Observability.withStoreFixturePhaseSpan({ phase: 'init-bare', repo: repoKey }),
         )
 
-        // For `withRemote`, the store bare fetches from a separate upstream bare so
-        // it gains real `refs/remotes/origin/*`. The source repo pushes to that
-        // upstream (the true remote); otherwise it pushes to the store bare directly.
-        let pushTargetPath = bareRepoPath
+        // Seed a separate upstream for `withRemote`; otherwise seed the store bare.
+        // Fetching from a local source populates refs without pushing canonical branches.
+        let seedTargetPath = bareRepoPath
         if (withRemote === true) {
-          pushTargetPath = yield* Effect.gen(function* () {
+          seedTargetPath = yield* Effect.gen(function* () {
             const upstreamPath = EffectPath.ops.join(
               tmpDir,
               EffectPath.unsafe.relativeDir(`_upstream/${repoKey}.bare/`),
@@ -190,22 +189,11 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
           return yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
         }).pipe(Observability.withStoreFixturePhaseSpan({ phase: 'init-source', repo: repoKey }))
 
-        // Set up remote and push branches
+        // Populate the bare remote from local refs without any pushes.
         yield* Effect.gen(function* () {
-          yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', pushTargetPath)
-          yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main').pipe(
-            Effect.catch(() =>
-              // Try master if main fails
-              runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'master'),
-            ),
-          )
-          // Push any additional branches requested (beyond the default).
           for (const branch of repoFixture.branches ?? []) {
             if (branch === 'main' || branch === 'master') continue
             yield* runGitCommand(sourceRepoPath, 'branch', branch, commitSha).pipe(
-              Effect.catch(() => Effect.void),
-            )
-            yield* runGitCommand(sourceRepoPath, 'push', 'origin', branch).pipe(
               Effect.catch(() => Effect.void),
             )
           }
@@ -213,8 +201,15 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
           // Create tags if requested
           for (const tag of repoFixture.tags ?? []) {
             yield* runGitCommand(sourceRepoPath, 'tag', '--no-sign', tag)
-            yield* runGitCommand(sourceRepoPath, 'push', 'origin', tag)
           }
+          yield* runGitCommand(
+            seedTargetPath,
+            'fetch',
+            '--no-write-fetch-head',
+            sourceRepoPath,
+            '+refs/heads/*:refs/heads/*',
+            '+refs/tags/*:refs/tags/*',
+          )
         }).pipe(Observability.withStoreFixturePhaseSpan({ phase: 'push-refs', repo: repoKey }))
 
         // Wire the store bare to the upstream so it gains `refs/remotes/origin/*`

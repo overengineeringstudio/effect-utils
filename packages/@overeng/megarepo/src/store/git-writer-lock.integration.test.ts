@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -11,6 +11,7 @@ import { expect } from 'vitest'
 import { EffectPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
+import { startGitWriterProcess, withGitWriterLock } from './git-writer-lock.ts'
 
 const worker = fileURLToPath(new URL('../test-utils/git-writer-lock-worker.ts', import.meta.url))
 const cli = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
@@ -101,6 +102,23 @@ const expectBlocked = Effect.fn('test/writer-lock/expectBlocked')(function* (mar
 })
 
 describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_000 }, () => {
+  it.live('passes lazy-fetch suppression to the native locked writer process', () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const output = yield* Effect.gen(function* () {
+        const child = yield* startGitWriterProcess({
+          command: bun,
+          args: ['-e', 'process.stdout.write(process.env.GIT_NO_LAZY_FETCH ?? "unset")'],
+          env: { GIT_NO_LAZY_FETCH: '1' },
+        })
+        const chunks = yield* Stream.runCollect(child.stdout)
+        expect(yield* child.exitCode).toBe(0)
+        return Buffer.concat(chunks).toString()
+      }).pipe(withGitWriterLock({ path: f.bare }))
+      expect(output).toBe('1')
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+
   it.live('serializes primitive and external CLI writers across bare/worktree/symlink paths', () =>
     Effect.gen(function* () {
       const f = yield* fixture
