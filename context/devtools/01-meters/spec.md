@@ -1003,9 +1003,11 @@ through on-demand evidence.
 
 The tile consumes source-owned freshness and has no renderer stale policy: when
 the newest observation is `Unavailable` `Stale` or `Disconnected`, it mutes the
-sparkline and shows `stale` or `offline` in the value slot beside its label. In
-that case the full description adds the last-known gauge value, or, for event
-and counter tiles, only the last observation time.
+sparkline and shows `stale` or `offline` in the value slot beside its label.
+Draw and describe derive this state once from the same read, so the description
+then reports it too, even when the newest completed bucket holds a value. It adds
+the last-known gauge value, or, for event and counter tiles, only the last
+observation time.
 
 ## Headless Snapshots and Measure Brackets
 

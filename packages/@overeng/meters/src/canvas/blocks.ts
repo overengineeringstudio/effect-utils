@@ -680,6 +680,8 @@ export type TileAggregation = Extract<BlockAggregation, { readonly _tag: 'Bucket
 interface TileScratch<TValue> {
   readonly values: Float64Array
   carried: Sample<TValue> | undefined
+  /** Source-materialized Stale/Disconnected newest observation; draw and describe both use it. */
+  freshness: Extract<Sample<TValue>, { readonly _tag: 'Unavailable' }> | undefined
   filling: boolean
   readonly range: {
     minimum: number
@@ -739,6 +741,7 @@ export const tileBlock = <TValue>(
       scratch = {
         values: new Float64Array(buckets),
         carried: undefined,
+        freshness: undefined,
         filling: false,
         range: {
           minimum: Infinity,
@@ -757,6 +760,13 @@ export const tileBlock = <TValue>(
     const target = scratch
     target.filling = true
     target.carried = undefined
+    // Freshness is source-owned: only materialized Stale/Disconnected dims the tile.
+    const latest = history.latest
+    target.freshness =
+      latest?._tag === 'Unavailable' &&
+      (latest.reason === 'Stale' || latest.reason === 'Disconnected')
+        ? latest
+        : undefined
     try {
       scanBins({
         history,
@@ -782,6 +792,24 @@ export const tileBlock = <TValue>(
     }
     return target
   }
+  const unavailable = ({
+    sample,
+    format,
+  }: {
+    readonly sample: Extract<Sample<TValue>, { readonly _tag: 'Unavailable' }>
+    readonly format: MeterValueFormat
+  }): string => {
+    const lastKnown = sample.lastKnown
+    if (lastKnown === undefined || format !== 'full') return `n/a (${sample.reason})`
+    // A single sample is not a bucket aggregate: event and counter tiles name only its time.
+    if (policy.mode !== 'Gauge')
+      return `n/a (${sample.reason}; last observation at ${lastKnown.atMs}ms)`
+    const value = options.value(lastKnown.value)
+    if (Number.isFinite(value) === false)
+      return `n/a (${sample.reason}; last observation at ${lastKnown.atMs}ms)`
+    const known = formatMeterValue({ value, unit: policy.unit, format })
+    return `n/a (${sample.reason}; last known ${known} at ${lastKnown.atMs}ms)`
+  }
   const text = ({
     scratch,
     format,
@@ -789,23 +817,14 @@ export const tileBlock = <TValue>(
     readonly scratch: TileScratch<TValue>
     readonly format: MeterValueFormat
   }): string => {
+    // A stale or offline source outranks the newest completed bucket, as the drawn status does.
+    if (scratch.freshness !== undefined) return unavailable({ sample: scratch.freshness, format })
     const newest = scratch.values[policy.buckets - 1] ?? NaN
     if (Number.isNaN(newest) === false)
       return formatMeterValue({ value: newest, unit: policy.unit, format })
     const sample = scratch.carried
     if (sample === undefined) return 'n/a (NoSamples)'
-    if (sample._tag === 'Unavailable') {
-      const lastKnown = sample.lastKnown
-      if (lastKnown === undefined || format !== 'full') return `n/a (${sample.reason})`
-      // A single sample is not a bucket aggregate: event and counter tiles name only its time.
-      if (policy.mode !== 'Gauge')
-        return `n/a (${sample.reason}; last observation at ${lastKnown.atMs}ms)`
-      const value = options.value(lastKnown.value)
-      if (Number.isFinite(value) === false)
-        return `n/a (${sample.reason}; last observation at ${lastKnown.atMs}ms)`
-      const known = formatMeterValue({ value, unit: policy.unit, format })
-      return `n/a (${sample.reason}; last known ${known} at ${lastKnown.atMs}ms)`
-    }
+    if (sample._tag === 'Unavailable') return unavailable({ sample, format })
     if (sample._tag === 'Gap') return `n/a (${sample.reason} gap)`
     return 'n/a (MeasurementFailed)'
   }
@@ -821,16 +840,12 @@ export const tileBlock = <TValue>(
       const values = scratch.values
       const rangeState = scratch.range
       const resolvedRange = rangeState.target
-      // Freshness is source-owned: the tile dims only on materialized Stale/Disconnected.
-      const latest = history.latest
       const status =
-        latest?._tag !== 'Unavailable'
+        scratch.freshness === undefined
           ? undefined
-          : latest.reason === 'Stale'
+          : scratch.freshness.reason === 'Stale'
             ? 'stale'
-            : latest.reason === 'Disconnected'
-              ? 'offline'
-              : undefined
+            : 'offline'
       ctx.save()
       ctx.beginPath()
       ctx.rect(rect.x, rect.y, rect.width, rect.height)

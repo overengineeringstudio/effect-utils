@@ -1442,6 +1442,27 @@ describe('tile block', () => {
     expect(f.surface.context.fillStyle).toBe(lightMeterTheme.muted)
   })
 
+  it('describes the same stale state it draws even when the newest completed bucket holds a value', () => {
+    const f = tileFixture()
+    f.value(1500, 4)
+    f.value(2500, 3)
+    f.append({
+      _tag: 'Unavailable',
+      atMs: 3200,
+      reason: 'Stale',
+      lastKnown: { atMs: 2500, value: { _tag: 'Number', value: 3 } },
+    })
+    const nowMs = 3250
+    // The completed bucket [2000, 3000) still holds 3; the source has since materialized Stale.
+    const known = formatMeterValue({ value: 3, unit: 'count' })
+    const evidence = `n/a (Stale; last known ${known} at 2500ms)`
+    expect(f.reader.describe({ nowMs })).toBe(evidence)
+    expect(f.reader.evidence({ nowMs }).text).toBe(evidence)
+    f.draw({ nowMs, width: 200 })
+    expect(f.surface.texts).toEqual(['Requests', 'stale'])
+    expect(f.surface.context.strokeStyle).toBe(lightMeterTheme.muted)
+  })
+
   it('dims a disconnected counter and names only the last observation time', () => {
     const f = tileFixture({ ...gauge, mode: 'Counter' })
     f.value(500, 10)
