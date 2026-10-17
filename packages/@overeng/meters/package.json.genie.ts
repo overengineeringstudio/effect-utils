@@ -62,6 +62,7 @@ const entries: ReadonlyArray<{ subpath: string; src: string; environment: Enviro
   { subpath: './platform/browser', src: 'platform/browser.ts', environment: 'browser' },
   { subpath: './sources/frame', src: 'sources/frame/index.ts', environment: 'browser' },
   { subpath: './sources/long-frames', src: 'sources/long-frames/index.ts', environment: 'browser' },
+  { subpath: './sources/user-timing', src: 'sources/user-timing/index.ts', environment: 'browser' },
   { subpath: './sources/memory', src: 'sources/memory/index.ts', environment: 'browser' },
   { subpath: './sources/fibers', src: 'sources/fibers/index.ts', environment: 'isomorphic-es2024' },
   { subpath: './sources/spans', src: 'sources/spans/index.ts', environment: 'isomorphic-es2024' },
