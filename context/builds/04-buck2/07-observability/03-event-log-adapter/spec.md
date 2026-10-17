@@ -56,6 +56,19 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 - **Cache-hit classification:** each action's first end sets `buck2.execution_kind`
   and `buck2.cache_hit`; the same classification produces the command summary
   hit counts ([04](../04-trace-views/spec.md#command-summary-attributes)).
+- **Command outcome:** `buck2.is_success` comes from the final `CommandResult`,
+  not the deprecated `CommandEnd.is_success` (unset by current writers).
+  Top-level errors fail; build/BXL responses succeed only with no errors;
+  targets responses require zero errors; test responses require no build
+  errors and a zero executor exit code. Other typed responses succeed.
+  Without a final typed response the attribute is absent, not false.
+  Both trace views preserve the same outcome.
+  The outcome fixtures retain only native command boundaries and the final
+  response: `successful-build.pb.zst` projects the existing `local-build.pb.zst`;
+  `failed-build.pb.zst` captures `buck2 build //:missing` in an empty root
+  using the pinned 2026-09-01 writer. Headers, argv, metadata, target lists,
+  response paths and error text are stripped or sanitized; outcome fields
+  retain their native wire presence.
 
 ## Producer Metrics
 
