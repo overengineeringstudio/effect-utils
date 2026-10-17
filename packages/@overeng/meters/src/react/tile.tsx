@@ -38,7 +38,10 @@ const latestText = (evidence: BlockEvidence): string => {
     case 'Value':
       return `latest sample ${before}`
     case 'Unavailable':
-      return `unavailable (${latest.reason}) ${before}`
+      // Source-owned freshness keeps the last real sample's time; its age shares the instant.
+      return latest.lastKnownAtMs === undefined
+        ? `unavailable (${latest.reason}) ${before}`
+        : `unavailable (${latest.reason}) ${before}; last sample ${seconds(evidence.evaluatedAtMs - latest.lastKnownAtMs)} before evaluation`
     case 'Gap':
       return `gap (${latest.reason}, ${seconds(latest.durationMs)}) ending ${before}`
   }

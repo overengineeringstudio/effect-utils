@@ -401,11 +401,17 @@ const scenarioClock: Record<Scenario, { readonly pinnedAtMs: number; readonly lo
   Disconnected: { pinnedAtMs: 33_000, loop: false },
 }
 
-/** An ordinary event source that appends recorded samples once the replay clock reaches them. */
+/**
+ * An ordinary event source that appends recorded samples once the replay clock reaches them.
+ * With `staleAfterMs`, a finished recording also replays what a source-owned freshness window
+ * would have published: one `Stale` observation `staleAfterMs` after the last value, carrying
+ * that value as `lastKnown`.
+ */
 const replaySource = <TValue>(options: {
   readonly series: Series<TValue>
   readonly samples: readonly Sample<TValue>[]
   readonly loop: boolean
+  readonly staleAfterMs: number | undefined
 }): SourceRegistration =>
   makeSource<TValue>({
     id: options.series.id,
@@ -415,21 +421,40 @@ const replaySource = <TValue>(options: {
       Effect.gen(function* () {
         let pass = 0
         let cursor = 0
+        let lastValue: Extract<Sample<TValue>, { readonly _tag: 'Value' }> | undefined
+        let staled = false
         const pump = (nowMs: number): void => {
           if (options.samples.length === 0) return
           for (;;) {
             const sample = options.samples[cursor]
             if (sample === undefined) {
-              if (options.loop === false) return
+              if (options.loop === false) break
               pass++
               cursor = 0
               continue
             }
             const atMs = sample.atMs + pass * recordingDurationMs
             if (atMs > nowMs) return
-            sink.append({ sample: { ...sample, atMs } })
+            const shifted = { ...sample, atMs }
+            if (shifted._tag === 'Value') lastValue = shifted
+            sink.append({ sample: shifted })
             cursor++
           }
+          if (options.staleAfterMs === undefined || lastValue === undefined || staled === true)
+            return
+          // Never before the newest replayed observation, which the store keeps ordered.
+          const newestAtMs = options.samples.at(-1)?.atMs ?? lastValue.atMs
+          const staleAtMs = Math.max(newestAtMs, lastValue.atMs + options.staleAfterMs)
+          if (staleAtMs > nowMs) return
+          staled = true
+          sink.append({
+            sample: {
+              _tag: 'Unavailable',
+              atMs: staleAtMs,
+              reason: 'Stale',
+              lastKnown: { atMs: lastValue.atMs, value: lastValue.value },
+            },
+          })
         }
         pump(clock.now())
         yield* clock.subscribe({ phase: 'Source', listener: (tick) => pump(tick.atMs) })
@@ -466,10 +491,14 @@ const replayPlatform = (options: {
   }
 }
 
-/** An inert replay session; the caller's scope owns `meters.start`. */
+/**
+ * An inert replay session; the caller's scope owns `meters.start`. `staleAfterMs` opts every
+ * source into replaying a source-owned freshness window, so a finished recording reads `Stale`.
+ */
 export const makeReplayMeters = (options: {
   readonly playback: Playback
   readonly scenario: Scenario
+  readonly staleAfterMs?: number
 }): Meters => {
   const { pinnedAtMs, loop } = scenarioClock[options.scenario]
   const empty = options.scenario === 'NoData'
@@ -477,7 +506,12 @@ export const makeReplayMeters = (options: {
     readonly series: Series<TValue>
     readonly samples: readonly Sample<TValue>[]
   }): SourceRegistration =>
-    replaySource({ series: input.series, samples: empty === true ? [] : input.samples, loop })
+    replaySource({
+      series: input.series,
+      samples: empty === true ? [] : input.samples,
+      loop,
+      staleAfterMs: options.staleAfterMs,
+    })
   return makeMeters({
     platform: replayPlatform({
       // Only the full recording can run live; fixture states stay pinned.

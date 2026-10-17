@@ -40,6 +40,8 @@ const tileWidthPx = 64
 const tileHeightPx = 30
 /** 30 one-second buckets: the tile history and the evidence range window. */
 const perSecond = { _tag: 'Bucket', bucketMs: 1000, buckets: 30 } as const
+/** Source freshness window replayed by the Stale fixture. */
+const staleWindowMs = 5_000
 
 interface TileRow {
   readonly block: CanvasBlockSpec
@@ -142,7 +144,12 @@ const useReplayMeters = (options: {
     { readonly key: string; readonly meters: Meters } | undefined
   >(undefined)
   React.useEffect(() => {
-    const meters = makeReplayMeters({ playback, scenario })
+    // Only the Stale fixture replays source freshness; live recordings never go stale.
+    const meters = makeReplayMeters({
+      playback,
+      scenario,
+      ...(scenario === 'Stale' ? { staleAfterMs: staleWindowMs } : {}),
+    })
     return runScoped(
       meters.start.pipe(
         Effect.andThen(Effect.sync(() => setStarted({ key: `${playback}:${scenario}`, meters }))),
@@ -384,8 +391,23 @@ export const NoData: Story = {
   },
 }
 
-/** Recording ended 15 s before evaluation. */
-export const Stale: Story = { args: { scenario: 'Stale' } }
+/**
+ * The recording ended 15 s before evaluation and each source's 5 s freshness window lapsed:
+ * tiles keep their label, mute the sparkline and read `stale`; the card dates the last sample.
+ */
+export const Stale: Story = {
+  args: { scenario: 'Stale' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const tile = await canvas.findByRole('button', { name: 'p95' })
+    tile.focus()
+    const card = await canvas.findByRole('tooltip')
+    await expect(card).toHaveTextContent('unavailable (Stale)')
+    await expect(card).toHaveTextContent(/last sample \d+\.\d s before evaluation/)
+    await expect(card).not.toHaveTextContent(/\bago\b/)
+    await expect(tile).toHaveAccessibleName('p95')
+  },
+}
 
 /** Dark theme at desktop width. */
 export const Dark: Story = { args: { dark: true } }

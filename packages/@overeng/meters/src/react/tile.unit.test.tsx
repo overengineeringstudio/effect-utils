@@ -184,6 +184,26 @@ describe('MeterEvidence', () => {
       'gap (Hidden, 0.4 s) ending 1.0 s before evaluation',
     )
   })
+
+  it('dates a stale source by its last real sample, relative to evaluation', () => {
+    render(
+      <MeterEvidence
+        id="stale"
+        evidence={evidence({
+          text: 'n/a (Stale; last known 4 at 6500ms)',
+          latest: { _tag: 'Unavailable', atMs: 9_500, reason: 'Stale', lastKnownAtMs: 6_500 },
+        })}
+        trigger="Refresh"
+        frozen={false}
+        theme={lightMeterTheme}
+      />,
+    )
+    const text = document.getElementById('stale')?.textContent ?? ''
+    expect(text).toContain(
+      'unavailable (Stale) 0.5 s before evaluation; last sample 3.5 s before evaluation',
+    )
+    expect(text).not.toMatch(/\bago\b|\bnow\b|\bcurrent\b/)
+  })
 })
 
 describe('MeterTile', () => {
