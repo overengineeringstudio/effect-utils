@@ -943,7 +943,7 @@ const decodeSidecarEntry = ({
   }
 }
 
-/** Decodes and validates the committed sha256 sidecar schema. */
+/** Decodes and validates the sidecar in the canonical key order emitted by the generator. */
 export const decodePnpmSha256Sidecar = (value: unknown): PnpmSha256Sidecar => {
   const sidecar = recordAt({ value: value, location: 'pnpm sha256 sidecar' })
   rejectUnknownFields({
@@ -1000,10 +1000,10 @@ export const decodePnpmSha256Sidecar = (value: unknown): PnpmSha256Sidecar => {
   return {
     schema: pnpmSha256SidecarSchema,
     lockfileFingerprint: lockfileFingerprint as `sha256:${string}`,
+    packages,
     source: 'pnpm-lock.yaml',
     generator: 'buck2/dependencies/pnpm-lock.sha256.json.genie.ts',
     regenerate: 'devenv tasks run genie:run',
-    packages,
     fingerprint: fingerprint as `sha256:${string}`,
   }
 }
