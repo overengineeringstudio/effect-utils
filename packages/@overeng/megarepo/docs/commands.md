@@ -55,17 +55,36 @@ warm apply is ready after selecting the exact-commit fallback.
 Member lock rewrites are opt-in with `--lock-sync=direct` or `--lock-sync=recursive`.
 Lock sync refuses shared canonical worktrees under `refs/commits/*`, `refs/heads/*`,
 and `refs/tags/*`, including symlinked targets, before rewriting any member.
-Top-level apply may materialize `repos/` in its invoking canonical branch workspace
-under `refs/heads/*`; it does not switch that workspace's ref or rewrite its locks.
+The invoking non-default author branch workspace, proved from Git worktree
+metadata, may materialize `repos/` and author its own config, `megarepo.lock`,
+generator outputs, and Nix lock files. Pin/unpin and `mr fetch --only` use the same
+author-workspace grant. Requested paths and physical destinations must remain
+inside that workspace; symlink escapes, including a symlink followed by `..`,
+stay refused. Writers create directories and files only at the returned physical
+destination, never along the original traversal path. Default-branch canonical
+worktrees remain shared caches; invoking a command there does not grant ownership.
+`mr apply --verify-shared --lock-sync off` verifies selected members read-only in
+shared canonical workspaces, and otherwise applies normally. Every selected mount
+must be a symlink to its configured local source or the correct store repository
+and locked ref/commit, with remote `HEAD` at the locked commit and clean tracking
+branches. Commit-member selectors apply the same source-identity checks to every
+mount in their nested locked trees. Missing, dirty, or drifted
+members fail with instructions to prepare from the owning workspace or use an
+owned worktree. No generators, lock sync, registry, or cache-manifest writes run
+on this read-only path. `mr:setup` uses this mode. It respects `--only`/`--skip`,
+requires lock sync off, and cannot be combined with `--all`.
+Setup probes `mr apply --help` once before selecting this flag. Pre-publication
+products without the capability retain their deployed lock-sync-off invocation
+and canonical-mutation refusal; a failed probe stops setup without running apply.
 With `--all --lock-sync=off`, recursive apply may also materialize `repos/` in
 commit worktrees freshly created by the same invocation under the worktree lock.
 That permission covers only the recorded physical root and its mount directory:
 pre-existing canonical roots, escaped symlink destinations, and authoring outputs
 remain protected. It is not retained across invocations or granted to tag/branch
 members. Config, lock, and generator writers never receive this permission.
-Use `--lock-sync=off` to materialize members without changing their lockfiles, or
-sync locks in an owned worktree outside the canonical store layout. Config, lock,
-generator, member lock sync, and branch advancement writes retain canonical protection.
+Use `--lock-sync=off` to materialize members without changing their lockfiles.
+Shared canonical caches retain file-write protection; branch/ref switching and
+destructive canonical Git operations remain protected even in author workspaces.
 `MEGAREPO_ALLOW_CANONICAL_MUTATION=1` is an explicit administrative override;
 other values do not authorize writes.
 

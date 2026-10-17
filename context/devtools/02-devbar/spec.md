@@ -35,6 +35,8 @@ export interface DevbarPanel {
 }
 export interface DevbarSegment {
   readonly id: string
+  /** Display name for hidden-item announcements; defaults to `id`. */
+  readonly label?: string
   /** Higher values remain visible longer; default 0. */
   readonly priority?: number
   readonly render: () => React.ReactNode
@@ -133,7 +135,7 @@ Each segment has a natural-width inner node. Hidden segments stay mounted inside
 
 One `ResizeObserver` observes the segment group, row, controls, natural-width nodes, and overflow sample. The budget is computed from the row's inner width minus its padding, gaps, nonshrinking controls, and `stripMinWidth`, never from the current visible set. The group's flex basis remains the sum of all natural widths and gaps even while items are hidden. This makes hiding independent of the widths it changes. Initial layout measurement occurs before paint; source snapshots publish only when measurements change. Natural/control widths round up and the available budget rounds down to CSS pixels to avoid boundary oscillation. There is no polling, animation-frame loop, or internal status scrollbar.
 
-The native `+N` button's accessible name is `N more status items: <hidden ids in declaration order>`; its expanded state and controls relationship identify the named `More status items` dialog. Opening focuses the nonmodal native auto-popover, which uses the shared above/below collision placement in the browser's top layer and retains inherited host theme tokens. It renders hidden segments in declaration order at full natural width; unusually wide or tall content can scroll within the disclosure rather than being truncated. Pointer light dismissal is browser-owned. While overflow is open, element-level `onKeyDown` handlers on its trigger and dialog consume unhandled Escape, close overflow before the shell panel's handler, and return focus to the trigger. Once Tab moves focus outside those elements and their React descendants, Escape no longer closes overflow through these handlers; an unconsumed event inside the bar may reach the shell panel, while events outside the bar remain untouched. Fitting away the final hidden item closes the disclosure.
+The native `+N` button's accessible name is `N more status items: <hidden labels in declaration order>`, where each hidden segment contributes `label ?? id`; its expanded state and controls relationship identify the named `More status items` dialog. Opening focuses the nonmodal native auto-popover, which uses the shared above/below collision placement in the browser's top layer and retains inherited host theme tokens. It renders hidden segments in declaration order at full natural width; unusually wide or tall content can scroll within the disclosure rather than being truncated. Pointer light dismissal is browser-owned. While overflow is open, element-level `onKeyDown` handlers on its trigger and dialog consume unhandled Escape, close overflow before the shell panel's handler, and return focus to the trigger. Once Tab moves focus outside those elements and their React descendants, Escape no longer closes overflow through these handlers; an unconsumed event inside the bar may reach the shell panel, while events outside the bar remain untouched. Fitting away the final hidden item closes the disclosure.
 
 Hidden `hasAlert` values aggregate onto the overflow dot and append
 `, including unseen changes` to its accessible name. Hosts explicitly mirror
@@ -270,6 +272,8 @@ must still be focused inside the bar when the panel is removed; moving focus to
 the host app before a later controlled close prevents focus theft.
 
 The meter renderer owns DOM focus targets, text equivalents, and tooltips. `MeterStrip.onOpenDetail({ id })` delegates click and Enter/Space activation to the host; focus alone shows a tooltip without opening a panel. Tooltip access remains possible without hover. Freeze is a distinct named button/action and affects rendering, not source collection or headless readers. A repeated activation of the already-open meter keeps its panel open.
+
+Hosts may instead compose [`MeterTile`](../01-meters/spec.md#react-bindings)s as ordinary segments, one per meter, each with a `label` naming it in the overflow announcement, plus one `MeterFreezeButton` segment over a host-owned `freezeMeters` snapshot. The shell treats them as opaque segments: `fitSegments` hides low-priority tiles into `+N`, and devbar's non-story sources never import meters. The `Developer Bar/Meter Tiles` story is that composition.
 
 The host-composition story supplies two panels, `rpc` and `meters`, yielding three bottom-row controls: Dev tools, RPC, and Meters. Non-RPC strip activation sets the host-selected meter and opens `meters`; `rpc.*` activation opens `rpc`. The Meters panel uses [`MetersPanel`](../01-meters/spec.md#react-bindings) to list every supplied block and render the existing detail view for the selection, including RPC meter readings. It does not register one shell panel per meter. Panel-local selection, persistence, and unknown-meter fallback belong to the host; see [host integration](../04-rpc-devtools/spec.md#host-integration). This composition is an example, not shell defaults.
 

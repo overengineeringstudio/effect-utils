@@ -237,7 +237,7 @@ export const validateStoreMembers = ({
       }
 
       // Check dirty/unpushed (warnings)
-      const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
+      const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath }).pipe(
         Effect.orElseSucceed(() => ({ isDirty: false, hasUnpushed: false, changesCount: 0 })),
       )
 

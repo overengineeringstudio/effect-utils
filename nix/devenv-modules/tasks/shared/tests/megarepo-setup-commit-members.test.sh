@@ -34,6 +34,15 @@ status_calls="$tmpdir/status-calls"
 cat > "$tmpdir/bin/mr" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "$*" = 'apply --help' ]; then
+  printf '%s\n' probe >> "${MR_PROBE_CALLS:?}"
+  if [ "${MR_HELP_EXIT:-0}" -ne 0 ]; then exit "$MR_HELP_EXIT"; fi
+  printf '%s\n' 'mr apply --worktree-mode tracking --lock-sync off'
+  if [ "${MR_SUPPORTS_VERIFY_SHARED:-1}" = 1 ]; then
+    printf '%s\n' '--verify-shared'
+  fi
+  exit 0
+fi
 printf '%s\n' "$*" >> "${MR_CALLS:?}"
 case "$*" in
   'root --output json') printf '{"_tag":"Success","root":"%s"}\n' "${MR_ROOT:?}" ;;
@@ -58,12 +67,22 @@ case "$*" in
     esac
     printf '{"syncNeeded":false,"applyNeeded":%s}\n' "$needed"
     ;;
-  apply*) ;;
+  apply*)
+    if [ "${MR_SUPPORTS_VERIFY_SHARED:-1}" = 0 ] && [[ " $* " == *' --verify-shared '* ]]; then
+      echo 'unsupported --verify-shared' >&2
+      exit 64
+    fi
+    if [ "${MR_SHARED_ROOT:-0}" = 1 ] && [[ " $* " != *' --verify-shared '* ]]; then
+      echo 'Refusing to mutate canonical worktree' >&2
+      exit 1
+    fi
+    ;;
   *) echo "unexpected mr invocation: $*" >&2; exit 2 ;;
 esac
 EOF
 chmod +x "$tmpdir/bin/mr"
 export PATH="$tmpdir/bin:$PATH" MR_ROOT="$workspace" MR_CALLS="$calls" MR_STATUS_CALLS="$status_calls"
+export MR_PROBE_CALLS="$tmpdir/probe-calls"
 # Local cases must not inherit the runner's CI marker.
 unset CI
 
@@ -72,6 +91,7 @@ run_script() {
   local script="$1"
   : > "$calls"
   : > "$status_calls"
+  : > "$MR_PROBE_CALLS"
   set +e
   (cd "$workspace" && bash -c "$script") >/dev/null 2>&1
   local code=$?
@@ -90,12 +110,13 @@ fail() {
 
 echo "Running megarepo setup commit-members tests..."
 
-echo "Test 1: option unset keeps plain tracking setup"
+echo "Test 1: option unset keeps tracking setup with shared-cache verification"
 exec_unset="$(setup_task_attr '[ ]' exec)"
 status_unset="$(setup_task_attr '[ ]' status)"
 [ "$(run_script "$exec_unset")" = 0 ] || fail "unset setup exec failed"
-grep -qx 'apply --worktree-mode tracking --lock-sync off' "$calls" \
-  || fail "unset setup must run the plain tracking apply"
+grep -qx 'apply --worktree-mode tracking --lock-sync off --verify-shared' "$calls" \
+  || fail "unset setup must select tracking with read-only shared-cache verification"
+[ "$(wc -l < "$MR_PROBE_CALLS")" -eq 1 ] || fail "setup must probe capabilities exactly once"
 [ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 run_script "$status_unset")" = 0 ] \
   || fail "unset cache-hit readiness must pass on root mounts"
 grep -qx 'status --output json' "$calls" \
@@ -110,7 +131,7 @@ echo "Test 2: listed members are applied with recursive commit preparation"
 exec_set="$(setup_task_attr '[ "nested" "plain" ]' exec)"
 status_set="$(setup_task_attr '[ "nested" "plain" ]' status)"
 [ "$(run_script "$exec_set")" = 0 ] || fail "set setup exec failed"
-grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off' "$calls" \
+grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off --verify-shared' "$calls" \
   || fail "set setup must pass exactly the listed members"
 echo "  ok"
 
@@ -161,7 +182,7 @@ for cache_hit in 0 1; do
 done
 rm "$workspace/repos/nested/drift"
 [ "$(MEGAREPO_SKIP_MEMBERS=nested run_script "$exec_set")" = 0 ] || fail "skipped setup exec failed"
-grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off --skip nested' "$calls" \
+grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off --verify-shared --skip nested' "$calls" \
   || fail "exec must preserve the skip selection"
 echo "  ok"
 
@@ -175,10 +196,10 @@ echo "  ok"
 
 echo "Test 8: CI applies commit worktrees and prepares every root member's tree"
 [ "$(CI=true run_script "$exec_unset")" = 0 ] || fail "unset CI setup exec failed"
-grep -qx 'apply --worktree-mode commit --lock-sync off' "$calls" \
+grep -qx 'apply --worktree-mode commit --lock-sync off --verify-shared' "$calls" \
   || fail "unset CI setup must apply commit worktrees"
 [ "$(CI=true run_script "$exec_set")" = 0 ] || fail "set CI setup exec failed"
-grep -qx 'apply --worktree-mode commit --commit-all-members --lock-sync off' "$calls" \
+grep -qx 'apply --worktree-mode commit --commit-all-members --lock-sync off --verify-shared' "$calls" \
   || fail "set CI setup must prepare every member that mr status --all inspects"
 if grep -q 'tracking' "$calls"; then
   fail "CI setup must never use tracking worktrees"
@@ -194,6 +215,28 @@ for cache_hit in 0 1; do
   [ "$(CI=true DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" MR_UNLISTED_APPLY_NEEDED=false run_script "$status_set")" = 0 ] \
     || fail "CI readiness must converge when all nested trees are prepared"
 done
+echo "  ok"
+
+echo "Test 10: pre-publication products keep the old invocation and canonical refusal"
+for ci in false true; do
+  [ "$(CI="$ci" MR_SUPPORTS_VERIFY_SHARED=0 run_script "$exec_unset")" = 0 ] \
+    || fail "legacy product must accept setup without the unpublished flag"
+  mode=tracking
+  if [ "$ci" = true ]; then mode=commit; fi
+  grep -qx "apply --worktree-mode $mode --lock-sync off" "$calls" \
+    || fail "legacy product must retain the deployed invocation"
+  [ "$(wc -l < "$MR_PROBE_CALLS")" -eq 1 ] || fail "legacy setup must probe once"
+  [ "$(CI="$ci" MR_SUPPORTS_VERIFY_SHARED=0 MR_SHARED_ROOT=1 run_script "$exec_unset")" = 1 ] \
+    || fail "legacy canonical refusal must remain fail-closed"
+  [ "$(CI="$ci" MR_SUPPORTS_VERIFY_SHARED=1 MR_SHARED_ROOT=1 run_script "$exec_unset")" = 0 ] \
+    || fail "capable products must verify shared roots"
+done
+echo "  ok"
+
+echo "Test 11: failed capability probes do not run apply"
+[ "$(MR_HELP_EXIT=42 run_script "$exec_unset")" = 42 ] \
+  || fail "help failures must propagate"
+[ ! -s "$calls" ] || fail "a failed probe must never execute apply"
 echo "  ok"
 
 echo "All megarepo setup commit-members tests passed"

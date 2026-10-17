@@ -26,6 +26,12 @@ export const applyCommand = Cli.Command.make(
       Cli.Flag.withDescription('Show what would be done without making changes'),
       Cli.Flag.withDefault(false),
     ),
+    verifyShared: Cli.Flag.Boolean('verify-shared').pipe(
+      Cli.Flag.withDescription(
+        'Verify prepared members without writes in shared canonical caches; otherwise apply normally (root members only, requires --lock-sync off)',
+      ),
+      Cli.Flag.withDefault(false),
+    ),
     force: Cli.Flag.Boolean('force').pipe(
       Cli.Flag.withAlias('f'),
       Cli.Flag.withDescription('Force updates for pinned members'),
@@ -73,6 +79,7 @@ export const applyCommand = Cli.Command.make(
   ({
     output,
     dryRun,
+    verifyShared,
     force,
     all,
     commitMembers,
@@ -90,6 +97,7 @@ export const applyCommand = Cli.Command.make(
           mode: 'apply',
           output: outputMode,
           dryRun,
+          verifyShared,
           force,
           all,
           only,

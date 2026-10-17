@@ -91,7 +91,7 @@ export const assessLossless = (args: {
       bareRepoPath: args.bareRepoPath,
       worktreeHead: args.worktreeHead,
     })
-    const status = yield* Git.getWorktreeStatus(args.worktreePath)
+    const status = yield* Git.getWorktreeStatus({ worktreePath: args.worktreePath })
     const stash = yield* hasStash({ bareRepoPath: args.bareRepoPath })
 
     return {
