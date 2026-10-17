@@ -36,6 +36,7 @@ pkgs.runCommand "buck2-rules"
     nativeBuildInputs = [
       pkgs.gnutar
       pkgs.gzip
+      pkgs.patch
     ];
     passthru = {
       inherit inventory;
@@ -197,6 +198,9 @@ pkgs.runCommand "buck2-rules"
     chmod -R u+w "$out"
     mkdir -p "$out/prelude"
     tar -xzf ${buck2.passthru.prelude} --strip-components=1 -C "$out/prelude"
+    # Default-off analysis seam only; no lane is admitted by this patch.
+    patch --batch --fuzz=0 -p2 -d "$out/prelude" \
+      -i ${./patches/rust-action-adapter.patch}
     # Prelude-generated linker and Cargo buildscript shims run in Nix sandboxes,
     # where /usr/bin/env does not exist. Bind their interpreter to the declared
     # shell rather than relying on the host filesystem.

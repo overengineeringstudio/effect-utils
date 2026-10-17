@@ -186,17 +186,20 @@ export const startGitWriterProcess = Effect.fnUntraced(
     command,
     args,
     cwd,
+    env,
     inheritStdio = false,
   }: {
     command: string
     args: ReadonlyArray<string>
     cwd?: string
+    env?: Record<string, string>
     inheritStdio?: boolean
   }) {
     const descriptor = yield* Effect.serviceOption(WriterDescriptor)
     if (Option.isNone(descriptor) === true) {
       const child: GitWriterProcess = yield* Command.make(command, args, {
         cwd,
+        ...(env === undefined ? {} : { env, extendEnv: true }),
         stdin: inheritStdio === true ? 'inherit' : 'pipe',
         stdout: inheritStdio === true ? 'inherit' : 'pipe',
         stderr: inheritStdio === true ? 'inherit' : 'pipe',
@@ -207,6 +210,7 @@ export const startGitWriterProcess = Effect.fnUntraced(
     // ChildProcess.CommandOptions. No shell parsing or command rewriting occurs.
     const child = spawn(command, args, {
       cwd,
+      ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
       stdio: [
         inheritStdio === true ? 'inherit' : 'pipe',
         inheritStdio === true ? 'inherit' : 'pipe',

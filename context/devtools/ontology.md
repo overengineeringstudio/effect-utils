@@ -13,7 +13,8 @@ and inspector client retain their [explorer meanings](../effect-rpc-explorer/ont
 - **FrameClock:** The shared sequence of visible frame opportunities within a meters session. It coordinates frame-driven observation and drawing without making a renderer the owner of collection.
 - **Renderer:** A consumer that projects series evidence into a visual, textual, or headless representation. Rendering does not acquire the underlying source.
 - **Strip:** A contiguous visual surface containing meter blocks. A strip is one presentation of evidence, not an independent collection session.
-- **Block:** The history-and-value presentation for a selected meter within a strip. _Avoid_: source, when referring to a drawing region.
+- **Block:** The history-and-value presentation for a selected meter, composed into a strip or shown as a tile. _Avoid_: source, when referring to a drawing region.
+- **Tile:** A standalone presentation of one block outside a strip, with a static action and on-demand evidence. Like a strip, a tile renders a block's typed reader and owns no collection; it differs from a strip only in composition and accessible-evidence policy. _Avoid_: block, when referring to the standalone presentation.
 - **Segment:** Host-supplied status or action content in the bar outside the meter strip. A connection-status segment is not itself a diagnostic connection.
 - **Panel:** A detail surface associated with a selectable diagnostic view and displayed above the bar. _Avoid_: block, when referring to an expanded detail surface.
 - **Host:** The application that owns the runtime, transports, enabling policy, and composition of diagnostics. _Avoid_: collector, when referring to the integrating application.

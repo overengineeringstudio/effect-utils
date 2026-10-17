@@ -359,6 +359,27 @@ credentials, authenticated key logs, AC instance mangling per repo, validation
 and a purge runbook. Public PR write denial is server-enforced. This admission
 contract does not operate the cache or create credentials (axe record `4pmebr`).
 
+### Default-off Rust Prelude adapter
+
+`nix/buck2.nix` pins Prelude as a hashed `.tar.gz`; its materialization in
+`nix/buck2-rules/default.nix` applies the versioned
+`patches/rust-action-adapter.patch`. The
+[upstream contribution](https://github.com/facebook/buck2/pull/1580)
+is the removal authority: drop the patch and its applicator once it lands and
+the pinned Prelude includes it. Keep the default-off posture regression.
+
+`rust.action_adapter_enabled` defaults to `false`. Opt-in also requires a
+declared `RustToolchainInfo.rustc_action_adapter` executable. It intercepts the
+complete rustc action before argument parsing, with Buck's declared-input
+metadata and a versioned manifest of every command output, including diagnostics
+and hidden output directories. Its `RunInfo` owns all runtime resources. The
+default rustc executable and inputs remain unchanged; the posture test compares
+real executor action digests with a bypassed baseline and explicit false.
+
+This seam enables no lane and grants no `cache_hermetic` admission. Native Rust,
+build scripts, rustdoc and linkers remain denied until each lane's complete
+action set has its own containment and key-stability proof.
+
 ### Audited action inventory
 
 Admission is the execution constraint `@rules//buck2/platforms:cache_hermetic`,

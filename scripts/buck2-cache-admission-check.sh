@@ -14,6 +14,7 @@ scratch_parent="${RUNNER_TEMP:-$repo_root/tmp}"
 mkdir -p "$scratch_parent"
 work="$(mktemp -d "$scratch_parent/buck2-cache-admission.XXXXXXXX")"
 cleanup() {
+  (cd "$work" && "$buck" --isolation-dir rust-adapter-posture kill >/dev/null 2>&1) || true
   (cd "$work" && "$buck" --isolation-dir cache-admission-check kill >/dev/null 2>&1) || true
   rm -rf "$work"
 }
@@ -25,6 +26,14 @@ trap cleanup EXIT
 # One Darwin-branch launcher fixture additionally executes pinned host tools to
 # prove that a fresh declared directory exists before a nested verdict is written.
 cp -R "$repo_root/buck2" "$work/buck2"
+# Exercise the exact vendored seam without replacing the bundled Prelude used
+# by the existing posture fixtures. git apply selects only its new module.
+git -C / apply --unsafe-paths --include='*/action_adapter.bzl' \
+  --directory="$work/adapter-source" "$repo_root/nix/buck2-rules/patches/rust-action-adapter.patch"
+mkdir -p "$work/adapter-source/prelude/rust"
+touch "$work/adapter-source/prelude/rust/BUCK"
+cp "$repo_root/scripts/fixtures/rust-action-adapter.bzl" "$work/rust-action-adapter.bzl"
+cp "$repo_root/scripts/fixtures/rust-action-adapter.sh" "$work/rust-action-adapter.sh"
 mkdir -p "$work/capabilities" "$work/packages/@overeng/buck2-tools"
 touch "$work/.buckroot"
 printf 'CAPABILITIES = {}\nGENERATION = "analysis-only"\n' > "$work/capabilities/defs.bzl"
@@ -267,8 +276,11 @@ load("//buck2:typescript.bzl", "tsgo_emit")
 load("@rules//buck2:javascript.bzl", "vitest_collect")
 load("@rules//buck2:package_tools.bzl", "package_bin_check")
 load("@prelude//:prelude.bzl", "native")
+load("//:rust-action-adapter.bzl", "fixture_rust_adapter")
 
 native.export_file(name = "fixture-dependency.txt", visibility = ["PUBLIC"])
+native.export_file(name = "rust-action-adapter.sh", visibility = ["PUBLIC"])
+fixture_rust_adapter(name = "rust_adapter_posture")
 
 fixture_dependency(name = "package_tree", visibility = ["PUBLIC"])
 fixture_materialization_cases("default")
@@ -495,3 +507,45 @@ if ! grep -Fq 'Error coercing attribute `_cache_admission_constraint`' "$work/ov
   exit 1
 fi
 printf 'PASS rejected: caller_override\n'
+
+# Compare actual executor action digests, not action keys or source snapshots.
+# Cleaning only this disposable fixture forces a real execution in each posture.
+# The baseline bypasses the adapter completely; absent/false must be identical.
+adapter_digest() {
+  local posture="$1"
+  shift
+  (cd "$work" && "$buck" --isolation-dir rust-adapter-posture clean >/dev/null 2>&1)
+  (cd "$work" && "$buck" --isolation-dir rust-adapter-posture build \
+    effect_utils//:rust_adapter_posture "$@" >/dev/null)
+  (cd "$work" && "$buck" --isolation-dir rust-adapter-posture log show --recent 0) > "$work/adapter-$posture.jsonl"
+  "${JQ_BIN:-jq}" -rs -e '
+    [.. | objects | .LocalCommand?.action_digest? // .OmittedLocalCommand?.action_digest? // empty]
+    | unique | if length == 1 then .[0] else error("expected one executed action digest") end
+  ' "$work/adapter-$posture.jsonl"
+}
+baseline_digest="$(adapter_digest baseline -c fixture.bypass_adapter=true)"
+default_digest="$(adapter_digest default)"
+disabled_digest="$(adapter_digest disabled -c rust.action_adapter_enabled=false)"
+[[ "$baseline_digest" == "$default_digest" && "$baseline_digest" == "$disabled_digest" ]] || {
+  printf 'Default-off Rust adapter changed the action digest\n' >&2
+  exit 1
+}
+enabled_digest="$(adapter_digest enabled -c rust.action_adapter_enabled=true)"
+[[ "$enabled_digest" != "$baseline_digest" ]] || {
+  printf 'Enabled Rust adapter did not change the action digest\n' >&2
+  exit 1
+}
+for config in rust.action_adapter_enabled=invalid fixture.missing_adapter=true; do
+  if (cd "$work" && "$buck" --isolation-dir rust-adapter-posture audit providers \
+      -c rust.action_adapter_enabled=true -c "$config" \
+      effect_utils//:rust_adapter_posture) > "$work/adapter-rejected.log" 2>&1; then
+    printf 'Invalid Rust adapter posture unexpectedly accepted: %s\n' "$config" >&2
+    exit 1
+  fi
+  if ! grep -Eq 'rust.action_adapter_enabled (must be true or false|requires a declared rustc_action_adapter)' "$work/adapter-rejected.log"; then
+    cat "$work/adapter-rejected.log" >&2
+    exit 1
+  fi
+done
+(cd "$work" && "$buck" --isolation-dir rust-adapter-posture kill >/dev/null 2>&1)
+printf 'PASS Rust adapter digests: default/false=%s enabled=%s\n' "$baseline_digest" "$enabled_digest"

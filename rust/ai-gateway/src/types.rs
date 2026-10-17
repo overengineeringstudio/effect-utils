@@ -66,6 +66,48 @@ pub struct ChatResponse {
     pub finish_reason: Option<String>,
 }
 
+/// Completed bounded tool run, including every successful model exchange.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolRun {
+    pub response: ChatResponse,
+    pub exchanges: Vec<Option<Usage>>,
+    pub total: Option<Usage>,
+}
+
+pub(crate) fn aggregate_usage(exchanges: &[Option<Usage>]) -> Option<Usage> {
+    let (first, rest) = exchanges.split_first()?;
+    let mut total = first.clone()?;
+    for usage in rest {
+        let usage = usage.as_ref()?;
+        total.input = total
+            .input
+            .zip(usage.input)
+            .and_then(|(a, b)| a.checked_add(b));
+        total.output = total
+            .output
+            .zip(usage.output)
+            .and_then(|(a, b)| a.checked_add(b));
+        total.total = total
+            .total
+            .zip(usage.total)
+            .and_then(|(a, b)| a.checked_add(b));
+        total.cached = total
+            .cached
+            .zip(usage.cached)
+            .and_then(|(a, b)| a.checked_add(b));
+        total.reasoning = total
+            .reasoning
+            .zip(usage.reasoning)
+            .and_then(|(a, b)| a.checked_add(b));
+        total.cost = total
+            .cost
+            .zip(usage.cost)
+            .map(|(a, b)| a + b)
+            .filter(|sum| sum.is_finite());
+    }
+    Some(total)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum StreamEvent {
     Delta {
@@ -114,5 +156,60 @@ impl Usage {
                 .map(u64::from),
             cost: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn aggregate_requires_every_exchange_and_each_field(
+            values in prop::collection::vec(
+                prop::option::of(prop::array::uniform6(prop::option::of(0_u16..1000))),
+                0..12,
+            ),
+        ) {
+            let exchanges: Vec<_> = values.iter().map(|value| value.map(|fields| Usage {
+                input: fields[0].map(u64::from),
+                output: fields[1].map(u64::from),
+                total: fields[2].map(u64::from),
+                cached: fields[3].map(u64::from),
+                reasoning: fields[4].map(u64::from),
+                cost: fields[5].map(f64::from),
+            })).collect();
+            let aggregate = aggregate_usage(&exchanges);
+            if values.is_empty() || values.iter().any(Option::is_none) {
+                prop_assert_eq!(aggregate, None);
+            } else {
+                let total = aggregate.unwrap();
+                let actual = [total.input, total.output, total.total, total.cached, total.reasoning];
+                for (field, actual) in actual.into_iter().enumerate() {
+                    let expected: Option<u64> = values.iter()
+                        .map(|value| value.unwrap()[field].map(u64::from)).sum();
+                    prop_assert_eq!(actual, expected);
+                }
+                let expected: Option<f64> = values.iter()
+                    .map(|value| value.unwrap()[5].map(f64::from)).sum();
+                prop_assert_eq!(total.cost, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn aggregate_does_not_wrap_overflowing_counts() {
+        let exchanges = [
+            Some(Usage {
+                input: Some(u64::MAX),
+                ..Usage::default()
+            }),
+            Some(Usage {
+                input: Some(1),
+                ..Usage::default()
+            }),
+        ];
+        assert_eq!(aggregate_usage(&exchanges).unwrap().input, None);
     }
 }

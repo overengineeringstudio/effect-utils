@@ -83,3 +83,8 @@ introducing an RPC dependency into meters.
 
 - **DT.MET-R33 Clean surface:** All callers, examples, and tests must use the source/session/renderer contracts without deprecated aliases or compatibility shims. Sources must own sampling independently of block factories and renderer grids; instrumentation must be explicit and non-destructive, without global bags.
 - **DT.MET-R34 Deterministic evidence:** Tests must drive injected clock/visibility/observer/probe capabilities and prove independent readers, source-specific overflow, calibration transitions, lifecycle cleanup, bracket integrity/completeness, DPR rendering, and accessible action parity, in addition to the system's disabled-boundary tests.
+
+### Must offer an optional single-meter tile
+
+- **DT.MET-R35 Tile presentation:** An optional Tile must present one block's label, value, and bucketed history entirely on canvas through the session's shared frame clock, with a static accessible name equal to its drawn label and no DOM writes or React commits per sample. Tiles are additive: they must not replace or alter strip blocks, MeterStrip accessible text (R30), or the devbar strip geometry (DT-R18, R29).
+- **DT.MET-R36 Tile evidence:** A Tile must give keyboard access, on focus and activation, to evidence captured on demand from the same store or a frozen view: labelled evaluation time, the value with unit or the unavailable reason, the age of each typed time, the aggregation window, and the retained range. It must offer explicit refresh and the existing renderer-scoped freeze action. Evidence must not be published live or through aria-live, and the canvas must not be the sole evidence.
