@@ -10,6 +10,102 @@ import {
 } from './index.ts'
 
 describe('bounded shared histories', () => {
+  it('publishes a committed append after its source hook fails and preserves all notification defects', () => {
+    const series = makeSeries<number>({ id: 'faults', label: '', unit: 'count', capacity: 1 })
+    const store = makeSeriesStore()
+    const sourceFault = new Error('source hook fault')
+    const readerFault = new Error('reader fault')
+    const writer = store.register({
+      series,
+      onAppend: () => {
+        throw sourceFault
+      },
+    })
+    store.subscribe({
+      notify: () => {
+        throw readerFault
+      },
+    })
+    let delivered = false
+    store.subscribe({
+      notify: () => {
+        delivered = true
+      },
+    })
+    let reported: unknown
+    try {
+      writer.append({ sample: { _tag: 'Value', atMs: 0, value: 1 } })
+    } catch (cause) {
+      reported = cause
+    }
+    expect(reported).toBeInstanceOf(AggregateError)
+    if (reported instanceof AggregateError) {
+      expect(reported.errors[0]).toBe(sourceFault)
+      expect(reported.errors[1]).toBeInstanceOf(AggregateError)
+      expect(reported.errors[1].errors).toEqual([readerFault])
+    }
+    expect(delivered).toBe(true)
+    expect(store.getRevision()).toBe(1)
+    expect(store.read({ series }).latest).toEqual({ _tag: 'Value', atMs: 0, value: 1 })
+  })
+
+  it('commits typed last-known evidence immutably before notifying readers', () => {
+    const series = makeSeries<NumberValue>({
+      id: 'last-known',
+      label: '',
+      unit: 'count',
+      capacity: 1,
+    })
+    const store = makeSeriesStore()
+    const order: string[] = []
+    const writer = store.register({
+      series,
+      onAppend: () => {
+        expect(store.read({ series }).latest?._tag).toBe('Unavailable')
+        order.push('source')
+      },
+    })
+    store.subscribe({
+      notify: () => {
+        order.push('reader')
+      },
+    })
+    const lastKnown: { readonly atMs: number; readonly value: NumberValue } = {
+      atMs: 1,
+      value: { _tag: 'Number', value: 0 },
+    }
+    writer.append({ sample: { _tag: 'Unavailable', atMs: 2, reason: 'Stale', lastKnown } })
+    expect(order).toEqual(['source', 'reader'])
+    expect(Object.isFrozen(lastKnown)).toBe(true)
+    expect(Object.isFrozen(lastKnown.value)).toBe(true)
+    expect(store.snapshotSeries({ series }).samples[0]).toEqual({
+      _tag: 'Unavailable',
+      atMs: 2,
+      reason: 'Stale',
+      lastKnown,
+    })
+    expect(() =>
+      writer.append({
+        sample: {
+          _tag: 'Unavailable',
+          atMs: 3,
+          reason: 'Disconnected',
+          lastKnown: { atMs: 4, value: { _tag: 'Number', value: 1 } },
+        },
+      }),
+    ).toThrow('Last-known timestamp')
+    expect(() =>
+      writer.append({
+        sample: {
+          _tag: 'Unavailable',
+          atMs: 3,
+          reason: 'Stale',
+          lastKnown: { atMs: 1, value: { _tag: 'Number', value: Number.NaN } },
+        },
+      }),
+    ).toThrow('finite')
+  })
+
   it.effect.prop(
     'retains exactly the latest capacity without draining either reader',
     [
