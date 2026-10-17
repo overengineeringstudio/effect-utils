@@ -430,14 +430,16 @@ source-only modes. Product executable/support staging remains unadmitted where
 the target also owns native compilation; a copy action alone cannot admit its
 target's other actions. Rust build scripts remain host-dependent and denied.
 
-Hash-and-size-validated pnpm archive acquisition is admitted separately from
-offline extraction. The network source is an explicit CAS/registry acquisition
-capability; a successful output must match both declared digest and byte size
-before atomic publication. Nix-backed acquisition reads the explicit immutable
-store root and verifies the same output identity. Complete acquisition/import
-sources and projected Bun participate in the action key; launchers clear env,
-dotenv/preloads and implicit installation. Endpoint availability can fail an
-acquisition but cannot alter a successful output's pinned bytes.
+Hash-and-size-validated pnpm archive acquisition is separate from offline
+extraction and command-action cache admission. Standalone builds register
+native `download_file` with the canonical registry URL, reviewed SHA-256 and
+byte size; Buck verifies the output and owns deferred materialization. There
+is no runtime CAS fetch command or automatic origin fallback. Nix-backed
+acquisition retains the explicit immutable store root and copy-and-verify
+action: complete import sources and projected Bun participate in its action
+key, and launchers clear env, dotenv/preloads and implicit installation.
+Endpoint availability can fail a required download but cannot alter a
+successful output's pinned bytes.
 
 Linux TS check/emit and package-tree projections provide the OS boundary
 defined above. The remaining local runners do not provide a general OS

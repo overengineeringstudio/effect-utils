@@ -27,7 +27,6 @@ describe('declared Buck2 job cache posture', () => {
         id,
         standaloneCachePostureConfig({
           current: '',
-          trustedOrigin: { tier: 'private', urlPrefix: 'https://cache.example/cas/' },
           env: { ...job.env, BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
         }),
       ]),

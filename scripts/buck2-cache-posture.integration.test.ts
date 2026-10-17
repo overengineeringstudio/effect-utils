@@ -15,11 +15,6 @@ import {
   standaloneCachePostureConfig,
 } from './buck2-cache-posture.ts'
 
-const trustedOrigin = {
-  tier: 'private',
-  urlPrefix: 'https://trusted-cache.example/cas/',
-} as const
-
 const temporaryRoots: string[] = []
 const replayProcesses = new Set<Bun.Subprocess<'ignore', 'pipe', 'pipe'>>()
 
@@ -73,13 +68,7 @@ const stopReplayProcesses = async (
 
 const makeRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), 'buck2-cache-posture-'))
-  writeFileSync(
-    join(root, '.buckconfig'),
-    `[archive_origin]
-  trusted_url_prefix = ${trustedOrigin.urlPrefix}
-  trusted_tier = ${trustedOrigin.tier}
-`,
-  )
+  writeFileSync(join(root, '.buckconfig'), '[buck2]\n  remote_cache_enabled = true\n')
   temporaryRoots.push(root)
   return root
 }
@@ -121,20 +110,16 @@ describe('replay subprocess cleanup', () => {
 })
 
 describe('standalone Buck cache posture', () => {
-  it('selects registry for the exact public-lane opt-out and CAS otherwise', () => {
+  it('disables remote cache only for the exact opt-out without selecting an archive origin', () => {
     expect(
       standaloneCachePostureConfig({
         current: '',
         env: { BUCK2_NO_REMOTE_CACHE: '1' },
-        trustedOrigin,
       }),
     ).toBe(`# effect-utils standalone cache posture: begin
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
-[archive_origin]
-  url_prefix =
-  tier = public
 # effect-utils standalone cache posture: end
 `)
 
@@ -143,12 +128,8 @@ describe('standalone Buck cache posture', () => {
         standaloneCachePostureConfig({
           current: '',
           env: { BUCK2_NO_REMOTE_CACHE: value },
-          trustedOrigin,
         }),
       ).toBe(`# effect-utils standalone cache posture: begin
-[archive_origin]
-  url_prefix = https://trusted-cache.example/cas/
-  tier = private
 # effect-utils standalone cache posture: end
 `)
   })
@@ -157,18 +138,16 @@ describe('standalone Buck cache posture', () => {
     const prLane = standaloneCachePostureConfig({
       current: '',
       env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
-      trustedOrigin,
     })
 
     expect(prLane).toContain('remote_cache_enabled = true')
     expect(prLane).toContain('allow_cache_uploads = false')
-    expect(prLane).toContain('url_prefix =\n  tier = public')
+    expect(prLane).not.toContain('[archive_origin]')
     expect(prLane).not.toContain('http_headers')
 
     const escapeHatch = standaloneCachePostureConfig({
       current: prLane,
       env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1', BUCK2_NO_REMOTE_CACHE: '1' },
-      trustedOrigin,
     })
     expect(escapeHatch).toContain('remote_cache_enabled = false')
     expect(escapeHatch).toContain('allow_cache_uploads = false')
@@ -181,7 +160,6 @@ describe('standalone Buck cache posture', () => {
     const publisher = standaloneCachePostureConfig({
       current: '',
       env: { BUCK2_NO_REMOTE_CACHE: '0', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
-      trustedOrigin,
     })
     expect(publisher).toBe(`# effect-utils standalone cache posture: begin
 [buck2]
@@ -189,9 +167,6 @@ describe('standalone Buck cache posture', () => {
   default_allow_cache_upload = true
 [buck2_re_client]
   http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH
-[archive_origin]
-  url_prefix =
-  tier = public
 # effect-utils standalone cache posture: end
 `)
     expect(publisher).not.toContain(credential)
@@ -201,7 +176,6 @@ describe('standalone Buck cache posture', () => {
         standaloneCachePostureConfig({
           current: '',
           env: { BUCK2_CACHE_WRITE_BASIC_AUTH: value },
-          trustedOrigin,
         }),
       ).not.toContain('allow_cache_uploads = true')
 
@@ -210,7 +184,6 @@ describe('standalone Buck cache posture', () => {
       standaloneCachePostureConfig({
         current: '',
         env: { BUCK2_NO_REMOTE_CACHE: '1', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
-        trustedOrigin,
       }),
     ).not.toContain('allow_cache_uploads = true')
   })
@@ -222,13 +195,13 @@ describe('standalone Buck cache posture', () => {
       BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://private-cache.example:41045',
       BUCK2_CACHE_WRITE_BASIC_AUTH: 'publisher-credential',
     }
-    const writer = standaloneCachePostureConfig({ current: '', env, trustedOrigin })
+    const writer = standaloneCachePostureConfig({ current: '', env })
     expect(writer).toContain('allow_cache_uploads = true')
     for (const field of ['action_cache_address', 'cas_address', 'engine_address'])
       expect(writer).toContain(`${field} = ${env.BUCK2_PRIVATE_CACHE_ADDRESS}`)
     expect(writer).toContain('tls = false')
     expect(writer).toContain('$BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH')
-    expect(writer).toContain(`url_prefix = ${trustedOrigin.urlPrefix}`)
+    expect(writer).not.toContain('[archive_origin]')
     expect(writer).not.toContain(credential)
     expect(writer).not.toContain('$BUCK2_CACHE_WRITE_BASIC_AUTH')
     for (const override of [
@@ -238,7 +211,6 @@ describe('standalone Buck cache posture', () => {
       const reader = standaloneCachePostureConfig({
         current: writer,
         env: { ...env, ...override },
-        trustedOrigin,
       })
       expect(reader).toContain('allow_cache_uploads = false')
       expect(reader).not.toContain('http_headers')
@@ -248,7 +220,6 @@ describe('standalone Buck cache posture', () => {
       standaloneCachePostureConfig({
         current: '',
         env: { BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential },
-        trustedOrigin,
       }),
     ).toThrow()
   })
@@ -257,12 +228,10 @@ describe('standalone Buck cache posture', () => {
     const publisher = standaloneCachePostureConfig({
       current: '',
       env: { BUCK2_CACHE_WRITE_BASIC_AUTH: 'd3JpdGVyOnNlY3JldA==' },
-      trustedOrigin,
     })
     const reader = standaloneCachePostureConfig({
       current: publisher,
       env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
-      trustedOrigin,
     })
 
     expect(reader).toContain('remote_cache_enabled = true')
@@ -285,9 +254,6 @@ describe('standalone Buck cache posture', () => {
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
-[archive_origin]
-  url_prefix =
-  tier = public
 # effect-utils standalone cache posture: end
 `)
 
@@ -295,14 +261,11 @@ describe('standalone Buck cache posture', () => {
     expect(readFileSync(output, 'utf8')).toBe(`${local.trimEnd()}
 
 # effect-utils standalone cache posture: begin
-[archive_origin]
-  url_prefix = https://trusted-cache.example/cas/
-  tier = private
 # effect-utils standalone cache posture: end
 `)
   })
 
-  it('replaces the public posture when a checkout returns to the trusted tier', () => {
+  it('removes the public posture when a checkout returns to its default cache tier', () => {
     const root = makeRoot()
     const output = join(root, '.buckconfig.local')
 
@@ -310,9 +273,7 @@ describe('standalone Buck cache posture', () => {
     expect(existsSync(output)).toBeTrue()
 
     reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '0' } })
-    expect(readFileSync(output, 'utf8')).toContain(
-      'url_prefix = https://trusted-cache.example/cas/',
-    )
+    expect(readFileSync(output, 'utf8')).not.toContain('[archive_origin]')
     expect(readFileSync(output, 'utf8')).not.toContain('remote_cache_enabled = false')
   })
 })

@@ -144,7 +144,6 @@ describe('generated CI cache trust behavior', () => {
           // Reader policy wins even if an accidental credential reaches the resolver.
           const config = standaloneCachePostureConfig({
             current: '',
-            trustedOrigin: { tier: 'private', urlPrefix: 'https://cache.example/cas/' },
             env: { ...env, BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-credential' },
           })
           expect(config).toContain(
