@@ -323,14 +323,23 @@ Requirement trace: R13, R14, R15, R16, R17.
 
 Retry is based on typed error tags, not raw exit codes.
 
-| Error tag                     | Current policy                                          |
-| ----------------------------- | ------------------------------------------------------- |
-| `ProviderProjectLookupFailed` | recorded as retryable; no provider retry loop currently |
-| `ProviderOperationFailed`     | retryable only when classified as transient             |
-| `VerificationFailed`          | retry verification before failing the deploy            |
-| all others                    | no retry                                                |
+| Error tag                     | Current policy                                         |
+| ----------------------------- | ------------------------------------------------------ |
+| `ProviderProjectLookupFailed` | recorded as retryable; Netlify API rate limits retried |
+| `ProviderOperationFailed`     | retryable only when classified as transient            |
+| `VerificationFailed`          | retry verification before failing the deploy           |
+| all others                    | no retry                                               |
 
 Attempt count is included in `DeployResultV1` and workflow-report records.
+
+A Netlify site lookup answered with HTTP 429 is transient. The adapter retries
+it at most three times. It never retries before the provider deadline:
+`Retry-After` (seconds or HTTP date) takes precedence, then
+`X-RateLimit-Reset` (Unix seconds). If neither header is present, it backs off
+exponentially from one second. Scheduled waits are capped at 60 seconds in
+total. When the provider's deadline lies beyond that cap, the adapter fails
+immediately and does not retry early. No upload runs until the lookup succeeds.
+The recorded attempt count includes every lookup request.
 
 ## Workflow Report Emission
 
@@ -433,6 +442,8 @@ Required cases:
 
 - success record is emitted
 - known provider lookup failure is classified and marked retryable
+- a rate-limited Netlify lookup waits for the provider deadline, retries, and
+  bounds repeated rate limits
 - unauthorized auth is classified and not retried
 - unauthorized optional previews emit a skipped record only under the explicit
   skip policy
