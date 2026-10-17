@@ -219,7 +219,7 @@ pkgs.runCommand "buck2-rules"
       --replace-fail '    ensure_rustc_available(' \
         '    env["RUSTC"] = os.path.abspath(os.path.join(cwd, env["RUSTC"]))
 
-    ensure_rustc_available('
+        ensure_rustc_available('
     ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
       # Product binaries intentionally use the portable /lib64 interpreter.
       # A Cargo build script is an executable build-time tool, however, and
