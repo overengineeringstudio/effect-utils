@@ -227,6 +227,7 @@ import {
 export default githubWorkflow({
   name: 'Rust CI',
   on: { pull_request: githubWorkflowEvent.all, push: { branches: ['main'] } },
+  linuxNixSandboxCapabilities: { test: 'supported' },
   actionlint: defaultActionlintConfig,
   jobs: {
     fmt: cargoFmtJob({ namespacePrivilege: 'trusted' }),
@@ -273,6 +274,20 @@ installers also apply both settings to daemon configuration. Neither an inherite
 disabled sandbox nor an unavailable sandbox may silently run a build unsandboxed.
 The settings are conditional on `runner.os == 'Linux'`, leaving Darwin policy
 unchanged; they do not grant privileges or bypass fork admission guards.
+
+For jobs using the shared Install Nix action, `ciWorkflow` validates `runs-on`
+before generation. Namespace Linux labels (`namespace-profile-*` or `nscloud-*`)
+must include `container.privileged=true`, on the machine label or a separate
+`namespace-features:` label. Literal expression alternatives are checked
+independently; one privileged branch cannot cover an unprivileged branch.
+Interpolated run IDs and trusted-only privilege suffixes retain their literal
+features without changing runtime fork admission. Opaque runner expressions
+fail closed with the job ID and remediation guidance.
+`linuxNixSandboxCapabilities: { [jobId]: 'supported' }` attests that every
+possible Linux runner supports strict sandboxing for such expressions. This
+generation-only option cannot override a statically unprivileged Namespace
+label. Self-hosted, macOS, and jobs without the shared installer keep their
+existing behavior and sandbox policy.
 
 The source-only `default-ref-policy` job must not evaluate the checkout's flake
 before checking its refs. Genie freezes the root `flake.lock` nixpkgs revision
