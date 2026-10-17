@@ -19,8 +19,12 @@ afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop()
 })
 
-const start = async (handler: (request: Request) => Response | Promise<Response>) => {
+const start = async (
+  handler: (request: Request) => Response | Promise<Response>,
+  onRequest?: () => void,
+) => {
   const server = Http.createServer(async (incoming, outgoing) => {
+    onRequest?.()
     try {
       const chunks: Buffer[] = []
       for await (const chunk of incoming) chunks.push(Buffer.from(chunk))
@@ -61,12 +65,14 @@ const gateway = async (
     { name: 'fixture-consumer', tokenSha256: createHash('sha256').update('secret').digest('hex') },
   ],
   maxModelLabels?: number,
+  maxRequestBodyBytes?: number,
 ) => {
   const { router, metrics } = makeRoutes({
     config: {
       upstream: new URL(upstream),
       consumers,
       ...(maxModelLabels === undefined ? {} : { maxModelLabels }),
+      ...(maxRequestBodyBytes === undefined ? {} : { maxRequestBodyBytes }),
     },
   })
   const server = Http.createServer()
@@ -154,6 +160,95 @@ describe('consumer verifier isolation (AIG.EDGE-R01, AIG.EDGE-R05, AIG.EDGE-R06)
   })
 })
 
+describe('authenticated request body limit (AIG.EDGE-R03, AIG.EDGE-R05, AIG.EDGE-R06)', () => {
+  const body = JSON.stringify({ model: 'example', messages: [{ content: 'é' }] })
+  const limit = Buffer.byteLength(body)
+  const paths = ['/v1/chat/completions', '/v1/systemone', '/alpha/decisions']
+
+  it.each(paths)('forwards exactly the byte limit unchanged on %s', async (path) => {
+    const received: string[] = []
+    const upstream = await start(async (request) => {
+      received.push(await request.text())
+      return Response.json({})
+    })
+    const { url } = await gateway(upstream, undefined, undefined, limit)
+    const response = await fetch(`${url}${path}`, {
+      method: 'POST',
+      headers: auth,
+      body,
+    })
+    expect(response.status).toBe(200)
+    await response.text()
+    expect(received).toEqual([body])
+  })
+
+  it.each(paths)('rejects declared and chunked limit+1 before completion on %s', async (path) => {
+    let forwarded = 0
+    const upstream = await start(
+      () => Response.json({}),
+      () => {
+        forwarded++
+      },
+    )
+    const { url, metrics } = await gateway(upstream, undefined, undefined, limit)
+    const complete = await fetch(`${url}${path}`, {
+      method: 'POST',
+      headers: auth,
+      body: `${body} `,
+    })
+    expect(complete.status).toBe(413)
+    expect(await complete.json()).toEqual({
+      error: { message: 'Request body too large', type: 'gateway_error', code: null },
+    })
+    expect(forwarded).toBe(0)
+    for (const declared of [true, false]) {
+      const response = await new Promise<{ status: number | undefined; body: string }>(
+        (resolve, reject) => {
+          const request = Http.request(
+            `${url}${path}`,
+            {
+              method: 'POST',
+              headers: {
+                ...auth,
+                ...(declared === true
+                  ? { 'content-length': String(limit + 1) }
+                  : { 'transfer-encoding': 'chunked' }),
+              },
+            },
+            (response) => {
+              const chunks: Buffer[] = []
+              response.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+              response.on('error', reject)
+              response.on('end', () => {
+                resolve({
+                  status: response.statusCode,
+                  body: Buffer.concat(chunks).toString('utf8'),
+                })
+                request.destroy()
+              })
+            },
+          )
+          request.on('error', reject)
+          request.flushHeaders()
+          if (declared === false) {
+            request.write(body)
+            request.write(' ')
+          }
+          // Leave the upload open: rejection must not wait for EOF or the declared body.
+        },
+      )
+      expect(response.status).toBe(413)
+      expect(JSON.parse(response.body)).toEqual({
+        error: { message: 'Request body too large', type: 'gateway_error', code: null },
+      })
+      expect(forwarded).toBe(0)
+    }
+    expect(metrics.render()).toContain(
+      'requests_total{consumer="fixture-consumer",model="_rejected",status="413"} 3',
+    )
+  })
+})
+
 describe('gateway proxy (AIG.EDGE-R02, AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R05, AIG.EDGE-R06)', () => {
   it('loads a real JSON config with a string upstream URL', async () => {
     await Effect.runPromise(
@@ -170,12 +265,14 @@ describe('gateway proxy (AIG.EDGE-R02, AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R05,
             },
           ],
           maxModelLabels: 2,
+          maxRequestBodyBytes: 2048,
         })
         yield* fs.writeFileString(path, configJson)
         const config = yield* loadConfig(path)
         expect(config.upstream.href).toBe('http://localhost/')
         expect(config.consumers[0]?.name).toBe('fixture-consumer')
         expect(config.maxModelLabels).toBe(2)
+        expect(config.maxRequestBodyBytes).toBe(2048)
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     )
   })
