@@ -12,7 +12,9 @@ import { systemError, type PlatformError } from 'effect/PlatformError'
  * set at clone time to the remote's default). Subdirectories, detached or mismatched
  * worktrees and unresolvable defaults are not authored.
  */
-const isAuthorBranchWorkspace = (root: string) =>
+export const isAuthorBranchWorkspace = (
+  root: string,
+): Effect.Effect<boolean, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const repo = root.match(/^(.+?)\/refs\/heads\/.+$/)?.[1]
     if (repo === undefined) return false
@@ -42,7 +44,7 @@ export const assertCanonicalMutationAllowed = ({
   materializationRoot,
   materializedRoot,
   commitApplyRoot,
-  lockFile,
+  authoringRoot,
 }: {
   target: string
   materializationRoot?: string
@@ -50,8 +52,8 @@ export const assertCanonicalMutationAllowed = ({
   materializedRoot?: string
   /** Exact physical commit root whose Git root and HEAD top-level apply proved, with lock sync off. */
   commitApplyRoot?: string
-  /** Top-level fetch also owns the invoking branch workspace's own lock file (a direct child of it). */
-  lockFile?: string
+  /** Invoking author workspace for file writes; aliases must remain inside its physical root. */
+  authoringRoot?: string
 }): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     if (process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] === '1') return
@@ -92,11 +94,29 @@ export const assertCanonicalMutationAllowed = ({
         existingPath = parent
       }
     }
+    const physicalAuthoringRoot =
+      authoringRoot === undefined ? undefined : yield* fs.realPath(authoringRoot)
     if (
       materializedRoot !== undefined ||
       commitApplyRoot !== undefined ||
+      (physicalAuthoringRoot !== undefined &&
+        /\/refs\/(?:commits|heads|tags)\/.+/.test(physicalAuthoringRoot) === true) ||
       /\/refs\/(?:commits|heads|tags)\/.+/.test(resolvedPath) === true
     ) {
+      if (authoringRoot !== undefined && physicalAuthoringRoot !== undefined) {
+        const workspacePath = path.resolve(authoringRoot)
+        const targetPath = path.resolve(target)
+        const destination = path.join(resolvedPath, missingPath)
+        if (
+          (targetPath === workspacePath ||
+            targetPath.startsWith(`${workspacePath}${path.sep}`) === true) &&
+          (destination === physicalAuthoringRoot ||
+            destination.startsWith(`${physicalAuthoringRoot}${path.sep}`) === true) &&
+          (yield* isAuthorBranchWorkspace(physicalAuthoringRoot)) === true
+        ) {
+          return
+        }
+      }
       const commitRoot = materializedRoot ?? commitApplyRoot
       if (commitRoot !== undefined) {
         const root = path.resolve(commitRoot)
@@ -112,8 +132,7 @@ export const assertCanonicalMutationAllowed = ({
           return
         }
       }
-      // Only top-level apply/fetch owns an invoking non-default branch workspace's mount
-      // directory, and only top-level fetch additionally owns its lock file.
+      // Top-level apply/fetch owns an invoking non-default branch workspace's mount directory.
       // Fresh recursive materialization never authorizes authoring outputs.
       if (materializationRoot !== undefined && materializedRoot === undefined) {
         const root = yield* fs.realPath(materializationRoot)
@@ -124,10 +143,7 @@ export const assertCanonicalMutationAllowed = ({
           root.match(/\/refs\/(commits|heads|tags)\/.+/)?.[1] === 'heads' &&
           ((targetPath === workspacePath && destination === root) ||
             (targetPath === path.join(workspacePath, 'repos') &&
-              destination === path.join(root, 'repos')) ||
-            (lockFile !== undefined &&
-              targetPath === path.resolve(lockFile) &&
-              destination === path.join(root, path.basename(lockFile)))) &&
+              destination === path.join(root, 'repos'))) &&
           (yield* isAuthorBranchWorkspace(root)) === true
         ) {
           return
@@ -140,11 +156,25 @@ export const assertCanonicalMutationAllowed = ({
         pathOrDescriptor: resolvedPath,
         description:
           `Refusing to mutate canonical worktree '${resolvedPath}'. ` +
-          'Use --lock-sync=off for member lock sync, or an owned worktree. ' +
+          (authoringRoot !== undefined
+            ? 'Authoring writes require an owned author workspace and must stay inside it; shared canonical caches remain protected. '
+            : materializationRoot !== undefined
+              ? 'Member mount preparation is not allowed in this shared canonical cache. Prepare it from the owning workspace, or use an owned worktree. '
+              : 'Lock and other protected authoring writes require an owned worktree; disabling lock sync does not authorize these writes. ') +
           'Explicit administrative override: MEGAREPO_ALLOW_CANONICAL_MUTATION=1.',
       })
     }
   })
+
+/** Authorize lock, config, and generator writes without granting ref or branch mutation. */
+export const authorizeAuthorWorkspaceWrite = ({
+  target,
+  workspaceRoot,
+}: {
+  target: string
+  workspaceRoot: string
+}): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
+  assertCanonicalMutationAllowed({ target, authoringRoot: workspaceRoot })
 
 /**
  * Abbreviate a megarepo store path to owner/repo@ref format.

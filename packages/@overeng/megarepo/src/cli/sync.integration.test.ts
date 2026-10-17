@@ -6,6 +6,7 @@ import { describe, it } from '@effect/vitest'
 import { Cause, Deferred, Effect, Exit, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -25,6 +26,7 @@ import {
 import { generateSchema, generateVscode } from '../generators/mod.ts'
 import { StoreLock } from '../store/store-lock.ts'
 import { makeStoreLayer } from '../store/store.ts'
+import { inspectMemberMount } from '../sync/member-mount.ts'
 import { collectSyncErrors } from '../sync/mod.ts'
 import { MegarepoSyncTree, SyncErrorItem } from '../sync/schema.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
@@ -255,6 +257,32 @@ const makeStoreWorktree = ({
           : ['worktree', 'add', '-b', worktreeRef, worktree, 'HEAD']),
     )
     return EffectPath.unsafe.absoluteDir(`${worktree}/`)
+  })
+
+/** Include Git metadata, contents, and mtimes, but not read-side atime changes. */
+const snapshotWorkspaceTree = (
+  root: string,
+): Effect.Effect<ReadonlyArray<unknown>, PlatformError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const rootStat = yield* fs.stat(root)
+    const entries = yield* fs.readDirectory(root)
+    const children = yield* Effect.forEach(entries.sort(), (name) =>
+      Effect.gen(function* () {
+        const entry = path.join(root, name)
+        const mount = yield* inspectMemberMount(entry)
+        if (mount._tag === 'Symlink') return [name, 'symlink', mount.target]
+        const stat = yield* fs.stat(entry)
+        return [
+          name,
+          stat.mtime,
+          stat.type === 'Directory'
+            ? yield* snapshotWorkspaceTree(entry)
+            : yield* fs.readFile(entry),
+        ]
+      }),
+    )
+    return [rootStat.mtime, children]
   })
 
 const createCommitRemnantFixture = Effect.gen(function* () {
@@ -2533,6 +2561,208 @@ const createNestedMegarepoLockRefMatchFixture = () =>
   })
 
 describe('canonical member mutation guard', () => {
+  for (const scenario of [
+    'prepared',
+    'missing',
+    'wrong-source',
+    'wrong-ref',
+    'drifted-head',
+    'local-drift',
+    'skipped',
+    'only',
+  ] as const) {
+    it.effect(
+      `apply --verify-shared checks ${scenario} canonical members without any writes`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const store = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'victim', branches: ['main'] },
+            { host: 'github.com', owner: 'acme', repo: 'other', branches: ['main'] },
+          ])
+          const workspacePath = `${yield* makeCanonicalTempDirectoryScoped()}/`
+          const repoDir = `${workspacePath}store/github.com/acme/workspace`
+          const canonicalRoot = yield* makeStoreWorktree({
+            repoDir,
+            kind: 'heads',
+            ref: 'main',
+          })
+          const victim = store.worktreePaths['github.com/acme/victim#main']!
+          if (scenario !== 'wrong-ref') {
+            yield* runGitCommand(victim, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+          }
+          const other = store.worktreePaths['github.com/acme/other#main']!
+          const target = scenario === 'wrong-source' ? other : victim
+          const commit = yield* Git.getCurrentCommit(target)
+          const local = `${workspacePath}local`
+          const otherLocal = `${workspacePath}other-local`
+          yield* fs.makeDirectory(local)
+          yield* fs.makeDirectory(otherLocal)
+          yield* fs.writeFileString(
+            `${canonicalRoot}megarepo.json`,
+            encodeJson({
+              members: { victim: 'acme/victim#main', local },
+              generators: { vscode: { enabled: true } },
+            }),
+          )
+          yield* fs.writeFileString(
+            `${canonicalRoot}megarepo.lock`,
+            encodeJson({
+              version: 1,
+              members: {
+                victim: createLockedMember({
+                  url: 'https://github.com/acme/victim',
+                  ref: 'main',
+                  commit,
+                }),
+              },
+            }),
+          )
+          yield* fs.makeDirectory(`${canonicalRoot}.vscode`)
+          yield* fs.writeFileString(`${canonicalRoot}.vscode/megarepo.code-workspace`, 'sentinel\n')
+          yield* fs.makeDirectory(`${canonicalRoot}repos`)
+          yield* fs.symlink(
+            scenario === 'local-drift' ? otherLocal : local,
+            `${canonicalRoot}repos/local`,
+          )
+          if (scenario !== 'missing' && scenario !== 'skipped' && scenario !== 'only') {
+            yield* fs.symlink(target.replace(/\/$/, ''), `${canonicalRoot}repos/victim`)
+          }
+          if (scenario === 'drifted-head') {
+            yield* fs.writeFileString(`${victim}drift.txt`, 'advanced\n')
+            yield* addCommit({ repoPath: victim, message: 'Advance member' })
+          }
+          const beforeWorkspace = yield* snapshotWorkspaceTree(repoDir)
+          const beforeStore = yield* snapshotWorkspaceTree(store.storePath)
+          const result = yield* runApplyCommand({
+            cwd: canonicalRoot,
+            args: [
+              '--output',
+              'json',
+              '--worktree-mode',
+              'tracking',
+              '--lock-sync',
+              'off',
+              '--verify-shared',
+              ...(scenario === 'skipped' ? ['--skip', 'victim'] : []),
+              ...(scenario === 'only' ? ['--only', 'local'] : []),
+            ],
+            env: { MEGAREPO_STORE: store.storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+          })
+          const succeeds = scenario === 'prepared' || scenario === 'skipped' || scenario === 'only'
+          const diagnostic =
+            Exit.isFailure(result.exit) === true
+              ? Cause.pretty(result.exit.cause)
+              : `${result.stdout}\n${result.stderr}`
+          expect(result.exitCode, diagnostic).toBe(succeeds === true ? 0 : 1)
+          expect(result.stdout).toContain('"generatedFiles":[]')
+          if (succeeds === false) {
+            expect(result.stdout).toContain('Prepare it from the owning workspace')
+            expect(result.stdout).toContain('or use an owned worktree')
+          }
+          expect(yield* snapshotWorkspaceTree(repoDir)).toEqual(beforeWorkspace)
+          expect(yield* snapshotWorkspaceTree(store.storePath)).toEqual(beforeStore)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
+  for (const verifyShared of [false, true]) {
+    it.effect(
+      `apply (verify-shared: ${verifyShared}) materializes and generates in a slash-prefixed author workspace`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const workspacePath = `${yield* makeCanonicalTempDirectoryScoped()}/`
+          const canonicalRoot = yield* makeStoreWorktree({
+            repoDir: `${workspacePath}store/github.com/acme/workspace`,
+            kind: 'heads',
+            ref: 'schickling-assistant/team/feature',
+          })
+          const local = `${workspacePath}local`
+          yield* fs.makeDirectory(local)
+          yield* fs.writeFileString(
+            `${canonicalRoot}megarepo.json`,
+            encodeJson({
+              members: { local },
+              generators: { vscode: { enabled: true } },
+            }),
+          )
+          yield* fs.writeFileString(
+            `${canonicalRoot}megarepo.lock`,
+            encodeJson({ version: 1, members: {} }),
+          )
+          const result = yield* runApplyCommand({
+            cwd: canonicalRoot,
+            args: [
+              '--output',
+              'json',
+              '--worktree-mode',
+              'tracking',
+              '--lock-sync',
+              'off',
+              ...(verifyShared === true ? ['--verify-shared'] : []),
+            ],
+            env: {
+              MEGAREPO_STORE: `${workspacePath}store`,
+              MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+            },
+          })
+          expect(result.exitCode).toBe(0)
+          expect(yield* fs.realPath(`${canonicalRoot}repos/local`)).toBe(local)
+          expect(yield* fs.exists(`${canonicalRoot}.vscode/megarepo.code-workspace`)).toBe(true)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
+  for (const generator of ['vscode', 'schema'] as const) {
+    for (const scenario of ['author', 'shared', 'escaped-author'] as const) {
+      it.effect(
+        `${generator} generator authorizes ${scenario} workspace outputs without escaping ownership`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const workspacePath = `${yield* makeCanonicalTempDirectoryScoped()}/`
+            const canonicalRoot = yield* makeStoreWorktree({
+              repoDir: `${workspacePath}store/github.com/acme/workspace`,
+              kind: 'heads',
+              ref: scenario === 'shared' ? 'main' : 'schickling-assistant/team/feature',
+            })
+            const config = new MegarepoConfig({ members: {} })
+            const outputDir = generator === 'vscode' ? '.vscode' : 'schema'
+            const outputFile =
+              generator === 'vscode' ? 'megarepo.code-workspace' : 'megarepo.schema.json'
+            const external = `${workspacePath}external`
+            yield* fs.makeDirectory(external)
+            if (scenario === 'escaped-author') {
+              yield* fs.symlink(external, `${canonicalRoot}${outputDir}`)
+            }
+            const before = yield* snapshotWorkspaceTree(canonicalRoot)
+            const result = yield* Effect.exit(
+              generator === 'vscode'
+                ? generateVscode({ megarepoRoot: canonicalRoot, config })
+                : generateSchema({ megarepoRoot: canonicalRoot, config }),
+            )
+            expect(Exit.isSuccess(result)).toBe(scenario === 'author')
+            if (scenario === 'author') {
+              expect(yield* fs.exists(`${canonicalRoot}${outputDir}/${outputFile}`)).toBe(true)
+            } else {
+              expect(yield* snapshotWorkspaceTree(canonicalRoot)).toEqual(before)
+            }
+            expect(yield* fs.readDirectory(external)).toEqual([])
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    }
+  }
+
   for (const [refKind, ref, lockSync, granted] of [
     ['heads', 'team/feature', 'off', true],
     ['heads', 'main', 'off', false],
@@ -2786,8 +3016,9 @@ describe('canonical member mutation guard', () => {
               ? Cause.pretty(refused.exit.cause)
               : `${refused.stdout}\n${refused.stderr}`
           expect(diagnostic).toContain(physicalMember)
-          expect(diagnostic).toContain('--lock-sync=off')
-          expect(diagnostic).toContain('owned worktree')
+          expect(diagnostic).toContain('Authoring writes require an owned author workspace')
+          expect(diagnostic).not.toContain('Use --lock-sync=off')
+          expect(diagnostic).toContain('owned author workspace')
           for (const [name, content] of Object.entries(originals)) {
             expect(yield* fs.readFileString(`${physicalMember}/${name}`)).toBe(content)
           }
@@ -4332,6 +4563,48 @@ describe('mr fetch', () => {
       '--lock-sync',
       'off',
     ]
+
+    for (const author of [true, false]) {
+      it.effect(
+        `fetch --only writes only the invoking author lock (author: ${author})`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const { storePath, initialCommit, newCommit, lockAt, makeStoreBare, makeStoreRoot } =
+              yield* createAdvancedRemoteFixture
+            yield* makeStoreBare('workspace')
+            const branch = author === true ? 'schickling-assistant/team/feature' : 'main'
+            const root = yield* makeStoreRoot('workspace', `heads/${branch}`, {
+              'test-repo': 'test-owner/test-repo',
+            })
+            const originalLock = lockAt(initialCommit)
+            yield* fs.writeFileString(`${root}megarepo.lock`, originalLock)
+            const headBefore = yield* Git.getCurrentCommit(root)
+            const result = yield* runFetchCommand({
+              cwd: root,
+              args: ['--output', 'json', '--only', 'test-repo'],
+              env: { MEGAREPO_STORE: storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+            })
+            expect(result.exitCode).toBe(author === true ? 0 : 1)
+            expect(yield* Git.getCurrentCommit(root)).toBe(headBefore)
+            expect(Option.getOrUndefined(yield* Git.getCurrentBranch(root))).toBe(branch)
+            expect(yield* fs.exists(`${root}repos`)).toBe(false)
+            if (author === true) {
+              expect(yield* fs.readFileString(`${root}megarepo.lock`)).toContain(newCommit)
+            } else {
+              expect(yield* fs.readFileString(`${root}megarepo.lock`)).toBe(originalLock)
+              expect(Exit.isFailure(result.exit)).toBe(true)
+              if (Exit.isFailure(result.exit) === true) {
+                expect(Cause.pretty(result.exit.cause)).toContain('Refusing to mutate canonical')
+              }
+            }
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+        { timeout: 30_000 },
+      )
+    }
 
     const authorRootCases = [
       { name: 'a feature branch', ref: 'heads/feat/x', bare: true, granted: true },

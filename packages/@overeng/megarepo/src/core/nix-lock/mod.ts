@@ -16,7 +16,7 @@ import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
-import { assertCanonicalMutationAllowed } from '../../store/store-path.ts'
+import { authorizeAuthorWorkspaceWrite } from '../../store/store-path.ts'
 import { findConfigPath, getMemberPath, type MegarepoConfig } from '../config.ts'
 import {
   LOCK_FILE_NAME,
@@ -330,10 +330,12 @@ interface NodeUpdateInfo {
 }
 
 const syncSingleLockFile = ({
+  memberPath,
   lockPath,
   lockType,
   megarepoMembers,
 }: {
+  memberPath: AbsoluteDirPath
   lockPath: AbsoluteFilePath
   lockType: 'flake.lock' | 'devenv.lock'
   megarepoMembers: Record<string, LockedMember>
@@ -498,7 +500,7 @@ const syncSingleLockFile = ({
     // Write updated lock file if any changes were made
     if (updatedInputs.length > 0 || schemeNormalized === true) {
       const updatedContent = yield* Schema.encodeEffect(RawFlakeLockJson)(rawJson)
-      yield* assertCanonicalMutationAllowed({ target: lockPath })
+      yield* authorizeAuthorWorkspaceWrite({ target: lockPath, workspaceRoot: memberPath })
       yield* fs.writeFileString(lockPath, updatedContent + '\n')
     }
 
@@ -619,10 +621,12 @@ const DEVENV_YAML = 'devenv.yaml'
  * For devenv.yaml: replaces `url: OLD_URL` lines with the updated URL.
  */
 export const syncSourceFileRevs = ({
+  memberPath,
   filePath,
   fileType,
   megarepoMembers,
 }: {
+  memberPath: AbsoluteDirPath
   filePath: AbsoluteFilePath
   fileType: 'flake.nix' | 'devenv.yaml'
   megarepoMembers: Record<string, LockedMember>
@@ -674,7 +678,7 @@ export const syncSourceFileRevs = ({
     }
 
     if (updatedContent !== content) {
-      yield* assertCanonicalMutationAllowed({ target: filePath })
+      yield* authorizeAuthorWorkspaceWrite({ target: filePath, workspaceRoot: memberPath })
       yield* fs.writeFileString(filePath, updatedContent)
     }
 
@@ -854,10 +858,8 @@ const applySharedInputSource = ({
       if (memberName === sourceMemberName) continue
       if (excludeMembers.has(memberName) === true) continue
 
-      const lockPath = EffectPath.ops.join(
-        getMemberPath({ megarepoRoot, name: memberName }),
-        EffectPath.unsafe.relativeFile(DEVENV_LOCK),
-      )
+      const memberPath = getMemberPath({ megarepoRoot, name: memberName })
+      const lockPath = EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile(DEVENV_LOCK))
       if ((yield* fs.exists(lockPath)) === false) continue
 
       const content = yield* fs.readFileString(lockPath)
@@ -890,7 +892,7 @@ const applySharedInputSource = ({
       }
 
       if (updatedInputs.length > 0) {
-        yield* assertCanonicalMutationAllowed({ target: lockPath })
+        yield* authorizeAuthorWorkspaceWrite({ target: lockPath, workspaceRoot: memberPath })
         yield* fs.writeFileString(lockPath, encodeRawLockJson(parsed))
         updatedMembers.push({ name: memberName, updatedInputs })
       }
@@ -1001,7 +1003,7 @@ const syncMemberRefs = ({
         }
 
         if (finalContent !== content) {
-          yield* assertCanonicalMutationAllowed({ target: filePath })
+          yield* authorizeAuthorWorkspaceWrite({ target: filePath, workspaceRoot: memberPath })
           yield* fs.writeFileString(filePath, finalContent)
           if (updatedInputDetails.length > 0) {
             results.push({
@@ -1078,7 +1080,7 @@ const syncMemberRefs = ({
         const lockJsonOpt = Schema.decodeOption(RawLockJson)(currentContent)
         if (Option.isNone(lockJsonOpt) === true) {
           if (currentContent !== content) {
-            yield* assertCanonicalMutationAllowed({ target: filePath })
+            yield* authorizeAuthorWorkspaceWrite({ target: filePath, workspaceRoot: memberPath })
             yield* fs.writeFileString(filePath, currentContent)
             results.push({ path: filePath, type: fileType, updatedInputs: updatedInputDetails })
           }
@@ -1114,7 +1116,7 @@ const syncMemberRefs = ({
         }
 
         if (currentContent !== content) {
-          yield* assertCanonicalMutationAllowed({ target: filePath })
+          yield* authorizeAuthorWorkspaceWrite({ target: filePath, workspaceRoot: memberPath })
           yield* fs.writeFileString(filePath, currentContent)
           if (updatedInputDetails.length > 0) {
             results.push({
@@ -1164,14 +1166,15 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
     for (const name of memberNames) {
       const memberPath = getMemberPath({ megarepoRoot: options.megarepoRoot, name })
       if ((yield* fs.exists(memberPath)) === true) {
-        yield* assertCanonicalMutationAllowed({ target: memberPath })
+        yield* authorizeAuthorWorkspaceWrite({ target: memberPath, workspaceRoot: memberPath })
         const filenames =
           scope === 'recursive'
             ? [FLAKE_LOCK, DEVENV_LOCK, FLAKE_NIX, DEVENV_YAML, MEGAREPO_LOCK]
             : [FLAKE_LOCK, DEVENV_LOCK, FLAKE_NIX, DEVENV_YAML]
         for (const filename of filenames) {
-          yield* assertCanonicalMutationAllowed({
+          yield* authorizeAuthorWorkspaceWrite({
             target: EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile(filename)),
+            workspaceRoot: memberPath,
           })
         }
       }
@@ -1234,6 +1237,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
           const hasFlakeLock = yield* fs.exists(flakeLockPath)
           if (hasFlakeLock === true) {
             const result = yield* syncSingleLockFile({
+              memberPath,
               lockPath: flakeLockPath,
               lockType: 'flake.lock',
               megarepoMembers,
@@ -1262,6 +1266,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
           const hasDevenvLock = yield* fs.exists(devenvLockPath)
           if (hasDevenvLock === true) {
             const result = yield* syncSingleLockFile({
+              memberPath,
               lockPath: devenvLockPath,
               lockType: 'devenv.lock',
               megarepoMembers,
@@ -1323,6 +1328,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
           const hasFlakeNix = yield* fs.exists(flakeNixPath)
           if (hasFlakeNix === true) {
             const result = yield* syncSourceFileRevs({
+              memberPath,
               filePath: flakeNixPath,
               fileType: 'flake.nix',
               megarepoMembers,
@@ -1340,6 +1346,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
           const hasDevenvYaml = yield* fs.exists(devenvYamlPath)
           if (hasDevenvYaml === true) {
             const result = yield* syncSourceFileRevs({
+              memberPath,
               filePath: devenvYamlPath,
               fileType: 'devenv.yaml',
               megarepoMembers,

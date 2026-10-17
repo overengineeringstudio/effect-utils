@@ -13,6 +13,8 @@
  * - Local path: "./path", "../path", "/absolute/path"
  */
 
+import path from 'node:path'
+
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
@@ -24,7 +26,7 @@ import {
 } from '@overeng/effect-path'
 import { parseKdl } from '@overeng/kdl-effect'
 
-import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
+import { authorizeAuthorWorkspaceWrite } from '../store/store-path.ts'
 import { parseSourceRef } from './ref.ts'
 
 // =============================================================================
@@ -338,7 +340,10 @@ export const writeMegarepoConfig = ({
   config: MegarepoConfig
 }) =>
   Effect.gen(function* () {
-    yield* assertCanonicalMutationAllowed({ target: configPath })
+    yield* authorizeAuthorWorkspaceWrite({
+      target: configPath,
+      workspaceRoot: path.dirname(configPath),
+    })
     const fs = yield* FileSystem.FileSystem
     const format: ConfigFormat = configPath.endsWith('.kdl') === true ? 'kdl' : 'json'
 

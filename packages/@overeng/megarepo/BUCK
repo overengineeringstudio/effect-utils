@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:f7906c6370c5b00fc0c67838fa4f6e8f6fbc1b2427fbb0513206ad68eeaa3366
+# Semantic fingerprint: sha256:6f40788bd058817b8a39ba7a6d0e8da984464315e720405bcf64de90845b4e37
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -202,6 +202,7 @@ export_materialization_inputs([
     "src/core/nix-lock/input-discovery.ts",
     "src/core/nix-lock/input-discovery.unit.test.ts",
     "src/core/nix-lock/matcher.ts",
+    "src/core/nix-lock/mod.integration.test.ts",
     "src/core/nix-lock/mod.ts",
     "src/core/nix-lock/mod.unit.test.ts",
     "src/core/nix-lock/schema.ts",
@@ -499,6 +500,7 @@ package_view(
         "src/core/nix-lock/input-discovery.ts": "src/core/nix-lock/input-discovery.ts",
         "src/core/nix-lock/input-discovery.unit.test.ts": "src/core/nix-lock/input-discovery.unit.test.ts",
         "src/core/nix-lock/matcher.ts": "src/core/nix-lock/matcher.ts",
+        "src/core/nix-lock/mod.integration.test.ts": "src/core/nix-lock/mod.integration.test.ts",
         "src/core/nix-lock/mod.ts": "src/core/nix-lock/mod.ts",
         "src/core/nix-lock/mod.unit.test.ts": "src/core/nix-lock/mod.unit.test.ts",
         "src/core/nix-lock/schema.ts": "src/core/nix-lock/schema.ts",
@@ -798,6 +800,7 @@ package_view(
         "src/core/nix-lock/input-discovery.ts": "src/core/nix-lock/input-discovery.ts",
         "src/core/nix-lock/input-discovery.unit.test.ts": "src/core/nix-lock/input-discovery.unit.test.ts",
         "src/core/nix-lock/matcher.ts": "src/core/nix-lock/matcher.ts",
+        "src/core/nix-lock/mod.integration.test.ts": "src/core/nix-lock/mod.integration.test.ts",
         "src/core/nix-lock/mod.ts": "src/core/nix-lock/mod.ts",
         "src/core/nix-lock/mod.unit.test.ts": "src/core/nix-lock/mod.unit.test.ts",
         "src/core/nix-lock/schema.ts": "src/core/nix-lock/schema.ts",
@@ -1092,6 +1095,7 @@ package_view(
         "src/core/nix-lock/input-discovery.ts": "src/core/nix-lock/input-discovery.ts",
         "src/core/nix-lock/input-discovery.unit.test.ts": "src/core/nix-lock/input-discovery.unit.test.ts",
         "src/core/nix-lock/matcher.ts": "src/core/nix-lock/matcher.ts",
+        "src/core/nix-lock/mod.integration.test.ts": "src/core/nix-lock/mod.integration.test.ts",
         "src/core/nix-lock/mod.ts": "src/core/nix-lock/mod.ts",
         "src/core/nix-lock/mod.unit.test.ts": "src/core/nix-lock/mod.unit.test.ts",
         "src/core/nix-lock/schema.ts": "src/core/nix-lock/schema.ts",
@@ -1269,6 +1273,7 @@ vitest_test(
         "src/core/git-memory.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
+        "src/core/nix-lock/mod.integration.test.ts",
         "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
@@ -1304,6 +1309,7 @@ vitest_collect(
         "src/core/git-memory.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
+        "src/core/nix-lock/mod.integration.test.ts",
         "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",

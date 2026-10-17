@@ -14,7 +14,7 @@ import {
   MEMBER_ROOT_DIR,
   type MegarepoConfig,
 } from '../core/config.ts'
-import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
+import { authorizeAuthorWorkspaceWrite } from '../store/store-path.ts'
 
 /** Options for the VSCode workspace generator */
 export interface VscodeGeneratorOptions {
@@ -257,7 +257,10 @@ export const generateVscode = (options: VscodeGeneratorOptions) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     // Root authorization prevents a canonical caller from escaping through an output alias.
-    yield* assertCanonicalMutationAllowed({ target: options.megarepoRoot })
+    yield* authorizeAuthorWorkspaceWrite({
+      target: options.megarepoRoot,
+      workspaceRoot: options.megarepoRoot,
+    })
 
     const content = generateVscodeContent(options)
     const vscodeDir = EffectPath.ops.join(
@@ -268,7 +271,10 @@ export const generateVscode = (options: VscodeGeneratorOptions) =>
       vscodeDir,
       EffectPath.unsafe.relativeFile('megarepo.code-workspace'),
     )
-    yield* assertCanonicalMutationAllowed({ target: outputPath })
+    yield* authorizeAuthorWorkspaceWrite({
+      target: outputPath,
+      workspaceRoot: options.megarepoRoot,
+    })
 
     // Ensure .vscode directory exists
     yield* fs.makeDirectory(vscodeDir, { recursive: true })

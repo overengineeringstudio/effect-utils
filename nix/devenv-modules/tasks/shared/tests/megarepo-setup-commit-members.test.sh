@@ -90,12 +90,12 @@ fail() {
 
 echo "Running megarepo setup commit-members tests..."
 
-echo "Test 1: option unset keeps plain tracking setup"
+echo "Test 1: option unset keeps tracking setup with shared-cache verification"
 exec_unset="$(setup_task_attr '[ ]' exec)"
 status_unset="$(setup_task_attr '[ ]' status)"
 [ "$(run_script "$exec_unset")" = 0 ] || fail "unset setup exec failed"
-grep -qx 'apply --worktree-mode tracking --lock-sync off' "$calls" \
-  || fail "unset setup must run the plain tracking apply"
+grep -qx 'apply --worktree-mode tracking --lock-sync off --verify-shared' "$calls" \
+  || fail "unset setup must select tracking with read-only shared-cache verification"
 [ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 run_script "$status_unset")" = 0 ] \
   || fail "unset cache-hit readiness must pass on root mounts"
 grep -qx 'status --output json' "$calls" \
@@ -110,7 +110,7 @@ echo "Test 2: listed members are applied with recursive commit preparation"
 exec_set="$(setup_task_attr '[ "nested" "plain" ]' exec)"
 status_set="$(setup_task_attr '[ "nested" "plain" ]' status)"
 [ "$(run_script "$exec_set")" = 0 ] || fail "set setup exec failed"
-grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off' "$calls" \
+grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off --verify-shared' "$calls" \
   || fail "set setup must pass exactly the listed members"
 echo "  ok"
 
@@ -161,7 +161,7 @@ for cache_hit in 0 1; do
 done
 rm "$workspace/repos/nested/drift"
 [ "$(MEGAREPO_SKIP_MEMBERS=nested run_script "$exec_set")" = 0 ] || fail "skipped setup exec failed"
-grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off --skip nested' "$calls" \
+grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off --verify-shared --skip nested' "$calls" \
   || fail "exec must preserve the skip selection"
 echo "  ok"
 
@@ -175,10 +175,10 @@ echo "  ok"
 
 echo "Test 8: CI applies commit worktrees and prepares every root member's tree"
 [ "$(CI=true run_script "$exec_unset")" = 0 ] || fail "unset CI setup exec failed"
-grep -qx 'apply --worktree-mode commit --lock-sync off' "$calls" \
+grep -qx 'apply --worktree-mode commit --lock-sync off --verify-shared' "$calls" \
   || fail "unset CI setup must apply commit worktrees"
 [ "$(CI=true run_script "$exec_set")" = 0 ] || fail "set CI setup exec failed"
-grep -qx 'apply --worktree-mode commit --commit-all-members --lock-sync off' "$calls" \
+grep -qx 'apply --worktree-mode commit --commit-all-members --lock-sync off --verify-shared' "$calls" \
   || fail "set CI setup must prepare every member that mr status --all inspects"
 if grep -q 'tracking' "$calls"; then
   fail "CI setup must never use tracking worktrees"

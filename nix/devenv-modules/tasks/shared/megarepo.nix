@@ -272,11 +272,10 @@ let
           # semantics) and never advances shared branch worktrees.
           # With nested trees, readiness is `mr status --all`, which inspects
           # every root member's nested tree, so every root member is prepared.
-          mr apply --worktree-mode commit${lib.optionalString setupNestedTrees " --commit-all-members"} --lock-sync off "''${MR_SKIP_ARGS[@]}"
+          mr apply --worktree-mode commit${lib.optionalString setupNestedTrees " --commit-all-members"} --lock-sync off --verify-shared "''${MR_SKIP_ARGS[@]}"
         else
-          mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off "''${MR_SKIP_ARGS[@]}"
+          mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off --verify-shared "''${MR_SKIP_ARGS[@]}"
         fi
-        ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:setup" "binary" (mkMrStatusCheck {
         recursive = setupNestedTrees;

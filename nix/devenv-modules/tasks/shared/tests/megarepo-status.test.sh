@@ -225,4 +225,17 @@ done
 echo "  ok: shared mutation tasks stop after a failed mr command"
 
 echo ""
+echo "Test 9: setup delegates shared-cache verification without writing a manifest"
+setup_block="$(sed -n '/"mr:setup" = {/,/status =/p' "$module_file")"
+if [ "$(grep -c -- '--lock-sync off --verify-shared' <<< "$setup_block")" -ne 2 ]; then
+  echo "FAIL: both setup worktree strategies must verify shared caches read-only"
+  exit 1
+fi
+if grep -F 'recordWorkspaceMembers' <<< "$setup_block" >/dev/null; then
+  echo "FAIL: shared-cache setup must not write a cache manifest after verification"
+  exit 1
+fi
+echo "  ok: setup performs read-only shared-cache verification"
+
+echo ""
 echo "All megarepo status tests passed"
