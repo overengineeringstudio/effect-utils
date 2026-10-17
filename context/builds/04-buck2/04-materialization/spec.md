@@ -210,3 +210,167 @@ The declared closure above is the per-package fetch-and-verify tier that the
 retired package-evidence regime anticipated. It is introduced with live
 consumers (the admitted packages) under the Buck admission contract; no
 evidence infrastructure from the retired regime is revived.
+
+## Shared Byte-Owned Root Store — Draft
+
+**Status: Draft; design review only, not the current publisher realization.**
+This section refines BUILD.BUCK.MAT-R04/R05/R06/R07. It shares retained,
+byte-owned artifacts within one worktree; it does not link to disposable Buck
+outputs, introduce a cross-worktree cache, or infer editor-process liveness.
+
+### Layout and identity
+
+```text
+<repo>/.editor-view/
+  .roots-v1/<component-key>/
+    root.json
+    members/<member-id>/             # owned files and relocated graph links
+  .root-publish.lock                # serializes all worktree view roots and GC
+<editor-root>/.store-v3/<view>-<view-key>/
+  editor-view.json                  # admission, members, complete component set
+  node_modules -> <relative shared member path>
+<editor-root>/<view> -> .store-v3/<view>-<view-key>
+```
+
+One shared store serves both the repository-root and package editor roots.
+The provider supplies each declared root's portable identity as the canonical
+object `{cell, target, output}`; absolute output paths and per-view `.backing`
+ordinals are not identities. `member-id` is its framed SHA-256. A root's file
+inventory hashes relative paths, entry kinds, and regular-file bytes. Each
+link hashes its lexical destination as `(member-id, path-within-member)`,
+preserving intermediate link hops rather than collapsing them with `realpath`.
+Containment and resolution proofs still reject links outside admitted roots.
+
+Declared roots form a directed link graph. Strongly connected components are
+stored together so cyclic package dependencies do not require circular Merkle
+hashes. Compute component keys bottom-up on the acyclic component graph:
+frame byte-sorted member identities and inventories, internal edges by member
+identity, and external edges by destination component key and member identity.
+This makes equal dependency graphs share storage across views and Buck path
+changes. A changed dependency can re-key its ancestors; unaffected components
+remain reusable. No hash relies on a partially populated destination.
+
+The repository owns the `effect-utils/editor-view-shared-root/v1` record
+namespace and a new `effect-utils/editor-view/v3` view record. Keys are
+lowercase 64-hex SHA-256, member identities are case-sensitive, and records use
+exact field sets, byte-sorted lists, explicit schemas, and framed hashing.
+Unknown schemas, duplicate members, mismatched self-addresses, escaping
+paths, or unknown edge targets fail closed. Root records bind member payload
+digests and dependency keys; view records bind existing exact admission
+fingerprints, the selected member, and the complete reachable component set.
+The view key hashes that entire record identity, not just its selected root.
+
+### Link relocation and publication
+
+```text
+admit + hash graph -> validate/reuse roots OR copy missing component
+                  -> seal roots -> seal view manifest -> atomic current flip
+                  -> retain current/previous -> mark -> sweep
+```
+
+Acquire the common worktree lock before any view-root lock, following one fixed
+order. It retains the current exact-token, fail-fast recovery policy; there is
+no concurrent publisher or GC in the shared namespace. Admission validates
+whole-workspace authority and fingerprints every source before copying.
+
+For each missing component, copy its members into a same-filesystem candidate
+with independent source inodes. Relocate internal links between candidate
+members and external links to already sealed dependency components. The
+component DAG orders creation; internal cycles use relative member paths.
+Compare copied bytes and the pre-relocation literal-link inventory to admission
+to reject concurrent source changes, including a same-resolution retarget.
+Harden and verify the complete component before installation. An existing key
+is fully verified against its immutable record and admitted graph before reuse,
+never repaired in place or overwritten. The allowed payload link boundary
+changes from one snapshot to the explicitly recorded shared component closure,
+not to arbitrary worktree paths.
+
+View candidates contain only immutable admission/closure metadata and a
+relative `node_modules` link into the shared store. All roots are installed and
+validated before sealing the view and atomically renaming its current pointer.
+First-hop adoption and language-server settle signalling keep their existing
+contracts. A pre-flip failure leaves the previous view usable. A post-flip GC
+failure leaves a complete usable current view and conservative extra storage.
+
+Directory links are deliberate: a module's real path lands in a complete,
+relocated shared member whose own dependency links remain resolvable. Merely
+symlinking individual files from a per-view tree into an edge-free CAS payload
+would break Node's realpath-based package resolution. Hardlinks to Buck outputs
+remain forbidden; no shared component depends on `buck-out` or `/nix/store`.
+
+### Reachability, bounded retention, and crash safety
+
+Use **mark-and-sweep, not persisted refcounts**. Under the common lock, mark
+the component closure of every current and previous v3 snapshot across both
+editor-root namespaces, plus durable in-progress transaction manifests.
+Enumerate installed snapshots rather than trusting only the latest source
+registry: a removed consumer cannot silently lose its published roots.
+Removing a consumer is an explicit authority-backed operation that removes its
+pointer/retention record before releasing its roots. Unknown or malformed
+ownership, pointers, manifests, or root records abort sweeping.
+
+First prune older completed view snapshots using the existing ownership checks.
+Then mark all remaining owned snapshot manifests, including conservatively
+retained crash debris. Only unmarked, validated shared entries may be renamed
+to same-filesystem transaction trash and deleted. The live current pointer and
+previous snapshot are never swept. The bound is two completed snapshots per
+view plus their union of reachable components; candidates/failed transactions
+are separately recoverable, not silently aged out.
+
+Root files and records are flushed before their candidate rename; directory
+entries are flushed before installing the view and before flipping the pointer.
+A durable transaction record lists its owner token, pre-flip pointer, proposed
+view, newly installed roots, and GC trash. Pointer-flip crash ambiguity is
+resolved by comparing the actual pointer with that record, not by timestamps.
+Exact-token recovery validates either the old or new complete view, discards
+only proven abandoned candidates, rebuilds the mark set, and resumes eligible
+trash deletion. It cannot steal an active lock or delete ambiguous state.
+Orphan sealed roots are harmless until a subsequent locked sweep proves them
+unreferenced. No reference can be created during sweep or trash deletion.
+
+Current plus previous preserves the existing read-overlap window, not an
+indefinite lease for an unmanaged editor pinned to an older generation.
+Managed consumers needing longer retention require explicit durable leases
+whose component closure is also marked; such a lease protocol is outside this
+draft and is not approximated with PID scans, refcount guesses, or timeouts.
+
+### Migration and acceptance
+
+The snapshot state is a rebuildable local projection, but its currently selected
+generation remains reader-visible. Stop old publisher/watch daemons and upgrade
+every task/daemon caller before activating v3; old readers may coexist, old
+writers may not. The current v2 publisher does not implement the common lock or
+a v3 layout fence, so a schema change alone is not writer fencing. Migration
+requires an explicit single-writer maintenance boundary, with an interrupted
+cutover remaining at the last validated pointer.
+
+Introduce v3 and the shared namespace alongside read-only v2 stores. Under the
+common lock, validate each admitted view, publish its complete v3 replacement,
+and atomically flip that view without deleting its v2 previous generation.
+Migration can consume fresh Buck artifacts or fully validated v2 owned payloads;
+it cannot trust old directory names alone. Existing v2 snapshots keep owning
+their bytes and need no shared-root marks. Keep one previous generation across
+both schemas, then prune v2 through ordinary per-view retention as it ages out.
+Once no pointers/retention records name v2, remove its empty store and retire
+the v2 reader. A mixed store never requires an all-at-once destructive reset.
+The new publisher rejects unknown active-layout versions; rollback to an old
+publisher requires returning every pointer to a complete v2 generation first.
+
+Acceptance proofs: equal roots across sibling views occupy one component;
+unchanged republish copies zero payload bytes; changed roots cannot alias old
+keys; cyclic closures and Node runtime/editor resolution survive relocation;
+root tampering and source mutation fail closed; current/previous readers
+survive a flip and GC; deleting all Buck artifacts leaves views usable; crash
+injection at every install/flip/trash boundary preserves a validated view and
+recovery converges; mixed v2/v3 migration retains the correct previous view.
+
+**DQ1 Component economics:** Measure SCC sizes, ancestor re-keying, and overlay
+metadata on the real workspace graph. The sampled current-view duplication
+suggests an upper-bound saving of approximately 4.97 GB per worktree, but only
+an implemented graph-layout measurement can establish the realized saving.
+
+**DQ2 Resolver and live-source boundary:** Prove the shared member's realpath
+semantics with the Node/Bun runtimes, editor language servers, and the existing
+live-workspace sibling realization (BUILD.BUCK.MAT-R03) before admission.
+Sharing dependency bytes must not turn live-source links into frozen sources.
+
