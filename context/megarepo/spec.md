@@ -262,6 +262,19 @@ workspace shape — an owned worktree at `P/repos/<owned>`, read-only `cp -a`
 mounts, dist overlays, per-workspace capability projection, and a synthesized
 Buck root — is retired (principal q5, 2026-09-25).
 
+By default, `mr store worktree new` bootstraps a missing bare repository and
+fetches remote refs (including tags). For source-only branch work from objects
+already in the store, use
+`mr store worktree new owner/repo --no-fetch --ref feature/local --base <full-commit-sha>`.
+`--no-fetch` requires an existing bare repository and a full 40-character SHA
+of a commit already present locally; branch names and abbreviated SHAs are
+rejected. It never clones or fetches, including Git's implicit lazy fetching
+from promisor remotes. Missing partial-clone objects fail locally during base
+validation or checkout. Only the requested branch and standalone
+worktree registration are created; existing refs, Git configuration, and
+`FETCH_HEAD` are not refreshed. It does not write megarepo configuration, lock
+files, or composition state.
+
 ## CLI Surface
 
 | Command                          | Responsibility | Contract                                                              |
