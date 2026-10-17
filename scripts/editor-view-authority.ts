@@ -1,4 +1,7 @@
 #!/usr/bin/env -S bun
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { join, posix } from 'node:path'
 import process from 'node:process'
 
 import testScheduling from '../genie/ci-workflow/test-scheduling.json'
@@ -116,6 +119,87 @@ export const resolveEditorViewPackageScope = ({
   }
 }
 
+/** Read the lockfile authority for workspace trees embedded in consumer snapshots. */
+export const workspaceEditorDependencies = (
+  serialized: string,
+): Readonly<Record<string, readonly string[]>> => {
+  const lock = Bun.YAML.parse(serialized) as {
+    importers?: Record<
+      string,
+      Record<string, Record<string, { specifier: string; version: string }>>
+    >
+  }
+  if (lock.importers === undefined) throw new Error('lockfile has no importers')
+  return Object.fromEntries(
+    Object.entries(lock.importers).map(([packagePath, importer]) => [
+      packagePath,
+      ['dependencies', 'devDependencies', 'optionalDependencies'].flatMap((field) =>
+        Object.values(importer[field] ?? {}).flatMap(({ specifier, version }) => {
+          if (specifier.startsWith('workspace:') !== true) return []
+          if (version.startsWith('link:') !== true)
+            throw new Error(`unresolved workspace dependency in ${packagePath}`)
+          const dependency = posix.normalize(posix.join(packagePath, version.slice(5)))
+          if (lock.importers?.[dependency] === undefined)
+            throw new Error(`missing workspace importer ${dependency}`)
+          return [dependency]
+        }),
+      ),
+    ]),
+  )
+}
+
+/** Use the pnpm importer reverse closure; global or unproven changes require all views. */
+export const changedEditorConsumers = ({
+  changed,
+  packagePaths,
+  readDependencies,
+}: {
+  readonly changed: readonly string[]
+  readonly packagePaths: readonly string[]
+  readonly readDependencies?: () => Readonly<Record<string, readonly string[]>>
+}): readonly string[] => {
+  if (changed.length === 0) return []
+  const owners = changed.map((file) =>
+    packagePaths.find((packagePath) => packagePath !== '.' && file.startsWith(`${packagePath}/`)),
+  )
+  if (
+    owners.some((owner) => owner === undefined) === true ||
+    changed.some((file) =>
+      /(?:^|\/)(?:BUCK|package\.json|pnpm-lock\.yaml)$|\.genie\.ts$/u.test(file),
+    ) === true ||
+    readDependencies === undefined
+  ) {
+    process.stderr.write(
+      'Editor-view change has a global or unknown owner, or no importer graph; selecting all consumers.\n',
+    )
+    return packagePaths
+  }
+  try {
+    const dependencies = readDependencies()
+    if (packagePaths.some((packagePath) => dependencies[packagePath] === undefined) === true)
+      throw new Error('registered consumer missing from lockfile importers')
+    const selected = new Set(owners as string[])
+    let expanded = true
+    while (expanded === true) {
+      expanded = false
+      for (const packagePath of packagePaths) {
+        if (
+          selected.has(packagePath) === false &&
+          dependencies[packagePath]?.some((dependency) => selected.has(dependency)) === true
+        ) {
+          selected.add(packagePath)
+          expanded = true
+        }
+      }
+    }
+    return packagePaths.filter((packagePath) => selected.has(packagePath))
+  } catch (error) {
+    process.stderr.write(
+      `Editor-view importer graph could not be proven (${String(error)}); selecting all consumers.\n`,
+    )
+    return packagePaths
+  }
+}
 type Command = 'authority' | 'bootstrap' | 'check' | 'publish'
 
 const fail = (message: string): never => {
@@ -160,6 +244,7 @@ const parseCli = (args: readonly string[]) => {
     '--fingerprint-tool',
     '--snapshot-retention',
     '--packages',
+    '--changed-since',
   ])
   for (const flag of values.keys())
     if (allowed.has(flag) === false) fail(`unexpected option: ${flag}`)
@@ -179,6 +264,7 @@ const parseCli = (args: readonly string[]) => {
     fingerprintTool: admitting === true ? get('--fingerprint-tool') : '',
     snapshotRetention: admitting === true ? Number(get('--snapshot-retention')) : 2,
     publicationPackages: values.get('--packages'),
+    changedSince: values.get('--changed-since'),
   }
 }
 
@@ -191,10 +277,39 @@ const main = async (): Promise<void> => {
   )
     fail('--snapshot-retention must be an integer from 2 through 32')
   const authorityPackagePaths = editorViewPackagePaths
+  let serializedPublicationPackages = options.publicationPackages
+  if (options.changedSince !== undefined) {
+    if (options.command !== 'publish') fail('--changed-since is only valid with publish')
+    serializedPublicationPackages = options.publicationPackages ?? process.env.EDITOR_VIEW_PACKAGES
+    if (serializedPublicationPackages === undefined) {
+      const changed = execFileSync(
+        options.git,
+        ['diff', '--name-only', '-z', options.changedSince, '--'],
+        { cwd: options.repoRoot, encoding: 'utf8' },
+      )
+        .split('\0')
+        .filter((entry) => entry.length > 0)
+      const selected = changedEditorConsumers({
+        changed,
+        packagePaths: authorityPackagePaths,
+        readDependencies: () =>
+          workspaceEditorDependencies(
+            readFileSync(join(options.repoRoot, 'pnpm-lock.yaml'), 'utf8'),
+          ),
+      })
+      if (selected.length === 0) {
+        process.stdout.write(
+          'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
+        )
+        return
+      }
+      serializedPublicationPackages = JSON.stringify(selected)
+    }
+  }
   const packageScope = resolveEditorViewPackageScope({
     command: options.command,
     authorityPackagePaths,
-    serializedPublicationPackages: options.publicationPackages,
+    serializedPublicationPackages,
   })
   // Scope only target construction and publication. Every publisher still refreshes and passes
   // freshly proven whole-workspace authority to each selected package view.

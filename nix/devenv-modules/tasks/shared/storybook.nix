@@ -69,7 +69,7 @@ let
         run_package_bin storybook storybook build
       '';
       cwd = pkg.path;
-      after = [ installTask ] ++ extraInstallTasks;
+      after = [ (pkg.installTask or installTask) ] ++ extraInstallTasks;
     };
   };
 
@@ -96,7 +96,7 @@ let
           run_package_bin vitest vitest run --configLoader runner --config ${playTestConfig}
         '';
         cwd = pkg.path;
-        after = [ installTask ] ++ extraInstallTasks;
+        after = [ (pkg.installTask or installTask) ] ++ extraInstallTasks;
       };
     };
 

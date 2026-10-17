@@ -253,14 +253,22 @@ ok({
   condition: reaches({ start: 'nix:flake:eval', target: 'genie:check' }),
   name: 'nix:flake:eval waits for source-side generation freshness',
 })
-// The editor bootstrap hashes Buck outputs; an aggregate materializing into `buck-out` in
-// parallel fails with "tree changed while hashing" (observed on #1362 when an unrelated edge
-// that ordered them transitively was removed).
-for (const aggregateTask of ['buck2:quick', 'buck2:all']) {
-  ok({
-    condition: reaches({ start: aggregateTask, target: 'buck2:editor:bootstrap' }),
-    name: `${aggregateTask} waits for the editor bootstrap`,
-  })
+// Bootstrap publication is an explicit preparation step, not an implicit
+// prerequisite of source generation or lint fixes (TT-148).
+for (const entrypoint of ['lint:fix', 'genie:run', 'genie:check', 'setup:strict']) {
+  requireTask(entrypoint)
+  for (const publisher of [...tasks.keys()].filter(
+    (name) =>
+      name === 'buck2:editor:bootstrap' ||
+      name === 'buck2:editor:materialize' ||
+      name === 'buck2:editor:publish' ||
+      name.startsWith('buck2:editor:publish:'),
+  )) {
+    ok({
+      condition: reaches({ start: entrypoint, target: publisher }) === false,
+      name: `${entrypoint} never implicitly schedules ${publisher}`,
+    })
+  }
 }
 for (const checkTask of ['check:quick', 'check:all']) {
   ok({
@@ -600,7 +608,7 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
     detail: `expected ${consumers.join(', ')}, received ${actualConsumers.join(', ')}`,
   })
 }
-const fullPublisherTask = requireTask('buck2:editor:publish')
+const fullPublisherTask = requireTask('buck2:editor:publish:all')
 const fullPublisherCommand = fullPublisherTask.command
 ok({
   condition: fullPublisherTask.hasExec === true || typeof fullPublisherCommand === 'string',
@@ -646,13 +654,37 @@ const closureOf = (start) => {
   closures.set(start, seen)
   return seen
 }
+const publisherScopes = new Map(
+  editorPublishers.map((name) => {
+    const command = tasks.get(name)?.command
+    const body =
+      typeof command === 'string' && existsSync(command) === true
+        ? readFileSync(command, 'utf8')
+        : ''
+    return [name, JSON.parse(body.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]')]
+  }),
+)
 const unorderedPublishers = []
 for (const entrypoint of dependencies.keys()) {
   const scheduled = editorPublishers.filter((publisher) => closureOf(entrypoint).has(publisher))
   for (const [index, left] of scheduled.entries())
     for (const right of scheduled.slice(index + 1))
-      if (closureOf(left).has(right) === false && closureOf(right).has(left) === false)
+      if (
+        closureOf(left).has(right) === false &&
+        closureOf(right).has(left) === false &&
+        (publisherScopes.get(left).length === 0 ||
+          publisherScopes.get(right).length === 0 ||
+          publisherScopes.get(left).some((path) => publisherScopes.get(right).includes(path)) ===
+            true)
+      )
         unorderedPublishers.push(`${entrypoint}: ${left} || ${right}`)
+}
+for (const name of dependencies.keys()) {
+  if (name === 'buck2:editor:publish:all') continue
+  ok({
+    condition: reaches({ start: name, target: 'buck2:editor:publish:all' }) === false,
+    name: `${name} never schedules the manual full-workspace publisher`,
+  })
 }
 ok({
   condition: unorderedPublishers.length === 0,
@@ -665,8 +697,8 @@ ok({
     reaches({
       start: 'buck2:typescript:materialize-dist',
       target: 'buck2:editor:materialize',
-    }) === true && reaches({ start: 'setup:strict', target: 'buck2:editor:materialize' }) === true,
-  name: 'mutating setup and dist publication share the ordered editor materialization barrier',
+    }) === true,
+  name: 'dist publication retains the explicit ordered editor materialization barrier',
 })
 ok({
   condition: reaches({ start: 'genie:check', target: 'genie:run' }) === false,
@@ -680,6 +712,12 @@ const taskSource = (name) => {
   const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
 }
+ok({
+  condition: taskSource('genie:editor-view-closure:check').includes(
+    '${repoPackages.genie-bootstrap-closure-check}/bin/genie-bootstrap-closure-check',
+  ),
+  name: 'generator closure checking uses the self-contained product without editor dependencies',
+})
 
 ok({
   condition: taskSource('test:buck2:unit').includes('prebuildCollection = true;'),
@@ -712,7 +750,7 @@ const orderedMaterializationSteps = [
   'devenv tasks run buck2:editor:bootstrap --mode single',
   'devenv tasks run genie:run --mode single',
   'devenv tasks run genie:check --mode single',
-  'devenv tasks run buck2:editor:publish --mode single',
+  'devenv tasks run buck2:editor:publish:generators --mode single',
 ]
 const orderedMaterializationOffsets = orderedMaterializationSteps.map((step) =>
   editorMaterializeSource.indexOf(step),
@@ -775,6 +813,13 @@ for (const term of ['--isolation-dir', 'buck-out']) {
 ok({
   condition: /\bbuck2[^\n]*\bkill\b/.test(editorViewHelper) === false,
   name: 'whole-workspace editor publisher never kills the shared Buck daemon',
+})
+ok({
+  condition:
+    editorViewHelper.includes('timeout --kill-after=5s 300s') &&
+    editorViewHelper.includes('exceeded its 300s total deadline') &&
+    editorViewHelper.includes('exit "$status"'),
+  name: 'every authority/bootstrap/publication invocation has a fail-closed process-tree deadline',
 })
 
 const capabilityPublisherHelper = source.slice(

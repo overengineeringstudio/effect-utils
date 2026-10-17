@@ -2545,6 +2545,8 @@ const budgetReservationBytes = ({
   return bytes
 }
 
+const interruptedPublicationPhases = new Set<() => void>()
+
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
 const publishEditorViewCoordinated = async ({
   options,
@@ -2563,6 +2565,9 @@ const publishEditorViewCoordinated = async ({
     phaseTimings.push([phaseName, performance.now() - phaseStartedAt])
     phaseName = name
     phaseStartedAt = performance.now()
+    process.stderr.write(
+      `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: name, elapsedMs: Math.round(performance.timeOrigin + performance.now() - startedAtMs) })}\n`,
+    )
   }
   const emitPhaseSpan = ({ created }: { readonly created: boolean }): void => {
     emitCompletedSpanAsync({
@@ -2579,6 +2584,10 @@ const publishEditorViewCoordinated = async ({
       endedAtMs: performance.timeOrigin + performance.now(),
       startedAtMs,
     })
+  }
+  const reportInterruption = (): void => {
+    enterPhase('interrupted')
+    emitPhaseSpan({ created: false })
   }
   requireRecordIdentity(options)
   const paths = makePaths(options)
@@ -2632,6 +2641,7 @@ const publishEditorViewCoordinated = async ({
     }))
   }
   try {
+    interruptedPublicationPhases.add(reportInterruption)
     enterPhase('fingerprint')
     const evictionMarker = join(paths.editorRoot, `.evicted-${paths.viewName}.json`)
     if (pathExists(evictionMarker) === true) {
@@ -3050,6 +3060,8 @@ const publishEditorViewCoordinated = async ({
     }
     return await (coordinator === undefined ? commit() : coordinator.commit(commit))
   } catch (error) {
+    enterPhase('failed')
+    emitPhaseSpan({ created: false })
     // Payload failures capture siblings immediately, before waiting for other children to settle.
     // Other failures are captured here, before cleanup can mutate the candidate's metadata.
     captureFailure()
@@ -3066,6 +3078,7 @@ const publishEditorViewCoordinated = async ({
       Object.assign(contextual, { exitCode: error.exitCode })
     throw contextual
   } finally {
+    interruptedPublicationPhases.delete(reportInterruption)
     if (candidate !== undefined && pathExists(candidate) === true) {
       // A dereferencing copy reproduces read-only source directories, so the
       // abandoned candidate must be unlocked before removal.
@@ -3599,6 +3612,11 @@ const parseCli = (args: readonly string[]): ParsedCli => {
 }
 
 const main = async (): Promise<void> => {
+  process.once('SIGTERM', () => {
+    for (const report of interruptedPublicationPhases) report()
+    // Give asynchronous span emission a bounded chance to flush before failing closed.
+    setTimeout(() => process.exit(143), 100)
+  })
   const args = process.argv.slice(2)
   if (args[0] === 'publish-batch') {
     if (args.length !== 1) fail('expected publish-batch with a JSON request array on stdin')

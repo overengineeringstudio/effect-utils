@@ -430,6 +430,7 @@ let
     )
   );
   testPackagePublisherName = name: "buck2:editor:publish:test:${name}";
+  consumerPublisherName = path: "buck2:editor:publish:consumer:${builtins.baseNameOf path}";
   standaloneTestPublicationPackages =
     allSourceTestPackages
     ++ map (lane: {
@@ -629,6 +630,13 @@ let
     }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
+  consumerPublicationPackagePaths = lib.unique (
+    map (pkg: pkg.path) packagesWithStorybook
+    ++ [
+      "packages/@overeng/notion-effect-client"
+      "packages/@overeng/notion-datasource-sync"
+    ]
+  );
   # Repository-specific semantic inputs read by Genie sources. The shared
   # Genie module already owns the direct and nested `.genie.ts` census; this
   # single list is composed into both its warm fingerprint and lint freshness.
@@ -685,6 +693,7 @@ let
       mode,
       packagePaths ? null,
       traceScope ? null,
+      changedSince ? null,
     }:
     let
       traceName = "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
@@ -696,7 +705,11 @@ let
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       ${publishBuckCapabilities}
-      exec ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
+      # Bound the whole authority/build/publication process tree, including synchronous
+      # filesystem work and lock waits that an in-process JS timer cannot interrupt.
+      status=0
+      ${pkgs.coreutils}/bin/timeout --kill-after=5s 300s \
+        ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
         --workspace-root "$root" \
         --cell effect_utils \
@@ -709,7 +722,11 @@ let
         --fingerprint-tool ${
           repoFlake.packages.${currentSystem}.buck2-fingerprint
         }/bin/buck2-fingerprint \
-        --snapshot-retention 2${packageArgument}
+        --snapshot-retention 2${packageArgument}${lib.optionalString (changedSince != null) " --changed-since ${lib.escapeShellArg changedSince}"} || status=$?
+      if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+        echo "Editor-view ${mode} exceeded its 300s total deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
+      fi
+      exit "$status"
     '';
   scopedEditorViewPublisher =
     {
@@ -839,9 +856,17 @@ in
         ) standaloneTestPublicationPackages
       );
     }
+    {
+      tasks = lib.listToAttrs (
+        map (path: lib.nameValuePair (consumerPublisherName path) (scopedEditorViewPublisher {
+          description = "Publish only the ${builtins.baseNameOf path} consumer dependency view";
+          packagePaths = [ path ];
+          traceScope = "consumer:${builtins.baseNameOf path}";
+        })) consumerPublicationPackagePaths
+      );
+    }
     (taskModules.storybook {
-      installTask = "buck2:editor:publish";
-      packages = packagesWithStorybook;
+      packages = map (pkg: pkg // { installTask = consumerPublisherName pkg.path; }) packagesWithStorybook;
     })
     (taskModules.netlify {
       siteName = "overeng-utils";
@@ -893,9 +918,8 @@ in
       # Reuse the Genie semantic-input SSOT in the cheap Git-index outer
       # fingerprint so a warm shell cannot bypass projection invalidation.
       extraFingerprintGlobs = genieExtraInputGlobs;
-      # Run the one ordered mutating entrypoint. Its internal task sequence
-      # preserves generator/freshness/publication happens-before.
-      optionalTasks = [ "buck2:editor:materialize" ];
+      # Shell entry must not publish editor views. Materialization is explicit.
+      optionalTasks = [ ];
       completionsCliNames = [
         "genie"
         "mr"
@@ -947,12 +971,9 @@ in
   # Genie product, which is also what downstream consumers set here.
   effectUtils.genie.package = genieCli;
 
-  # The packaged Genie CLI is self-contained; generator sources resolve their
-  # external imports through the committed-graph bootstrap editor views. This
-  # stage-zero publication cannot report governed Buck evidence: the closure
-  # checker first proves that the declared publication set covers every
-  # first-party runtime boundary, then genie:check proves the tracked standalone
-  # graph fresh and the authoritative publisher replays it.
+  # Genie consumes already-materialized editor dependencies but never publishes
+  # them implicitly. Cold checkouts must run buck2:editor:materialize explicitly;
+  # the static closure check remains a prerequisite without mutating editor views.
   tasks."genie:run".after = [ "genie:editor-view-closure:check" ];
   tasks."genie:check".after = lib.mkForce [
     "genie:prepare"
@@ -966,7 +987,6 @@ in
   tasks."lint:check:lockfile".exec = lib.mkForce (
     trace.exec "lint:check:lockfile" "exec genie --check"
   );
-  tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];
   tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish:test" ];
   tasks."devenv-modules:test".env = {
     OTEL_SPAN_BIN = "${otelSpan}/bin/otel-span";
@@ -976,13 +996,11 @@ in
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
   };
   tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
-  tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."test:notion-integration:notion-cli".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [
-    "buck2:editor:publish"
-  ];
-  tasks."test:notion-integration:notion-md".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."test:notion-integration:notion-react".after = lib.mkForce [ "buck2:editor:publish" ];
+  tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-effect-client") ];
+  tasks."test:notion-integration:notion-cli".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-cli") ];
+  tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-datasource-sync") ];
+  tasks."test:notion-integration:notion-md".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-md") ];
+  tasks."test:notion-integration:notion-react".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-react") ];
   tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish:otel-contract" ];
   tasks."test:pty-effect:unbounded".env = {
     NODE_PTY_NATIVE_PACKAGE = "${nodePtyNative}/node_modules/node-pty";
@@ -1245,7 +1263,7 @@ in
   };
 
   tasks."test:megarepo-cold-gc" = {
-    after = [ "buck2:editor:publish" ];
+    after = [ (consumerPublisherName "packages/@overeng/megarepo") ];
     description = "Run fixture-isolated megarepo cold-GC integration tests from the standalone checkout";
     cwd = "packages/@overeng/megarepo";
     exec = trace.exec "test:megarepo-cold-gc" ''
@@ -1425,11 +1443,10 @@ in
 
   tasks."genie:editor-view-closure:check" = {
     description = "Prove the bootstrap editor views cover every generator runtime package boundary";
-    after = [ "buck2:editor:bootstrap" ];
     exec = trace.exec "genie:editor-view-closure:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun "$root/genie/ci-scripts/bootstrap-closure-check.ts" \
+      exec ${repoPackages.genie-bootstrap-closure-check}/bin/genie-bootstrap-closure-check \
         --root "$root" \
         --editor-view-root-package-path ${lib.escapeShellArg editorBootstrapRootPackagePath} \
         --editor-view-package-paths ${lib.escapeShellArg (builtins.toJSON editorBootstrapPackagePaths)}
@@ -1440,14 +1457,14 @@ in
   # updated before freshness is checked, but standalone genie:check must remain
   # mutation-free. Keep that mutating sequence in one explicit entrypoint.
   tasks."buck2:editor:materialize" = {
-    description = "Regenerate, freshness-check, and publish every editor dependency view in order";
+    description = "Regenerate, freshness-check, and publish source-generator dependency views";
     exec = trace.exec "buck2:editor:materialize" ''
       set -euo pipefail
       export DEVENV_TUI=false
       devenv tasks run buck2:editor:bootstrap --mode single
       devenv tasks run genie:run --mode single
       devenv tasks run genie:check --mode single
-      devenv tasks run buck2:editor:publish --mode single
+      devenv tasks run buck2:editor:publish:generators --mode single
     '';
   };
 
@@ -1459,10 +1476,29 @@ in
   };
 
   tasks."buck2:editor:publish" = {
-    description = "Atomically publish every Buck-owned workspace editor dependency view";
+    description = "Publish requested editor views, or consumers changed since origin/main";
     after = [ "genie:check" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec { mode = "publish"; };
+    exec = editorViewExec {
+      mode = "publish";
+      changedSince = "origin/main";
+    };
+  };
+
+  tasks."buck2:editor:publish:all" = {
+    description = "Publish every workspace editor view under a separate total deadline";
+    after = [ "genie:check" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
+    exec = editorViewExec {
+      mode = "publish";
+      traceScope = "all";
+    };
+  };
+
+  tasks."buck2:editor:publish:generators" = scopedEditorViewPublisher {
+    description = "Publish only dependency views needed by source generators and declaration tooling";
+    packagePaths = editorBootstrapPackagePaths;
+    traceScope = "generators";
   };
 
   tasks."buck2:editor:publish:restate-effect" = scopedEditorViewPublisher {
@@ -1605,9 +1641,6 @@ in
   # capability/toolchain boundary rather than producing an admitted artifact.
   tasks."buck2:providers:check" = {
     description = "Audit cross-cell provider identity for configured Buck toolchains";
-    # `genie:check` waits for `buck2:editor:bootstrap`, which hashes Buck outputs. Aggregates
-    # that materialize into `buck-out` must not run concurrently with that hashing; before
-    # #1362 the removed `buck2:nix-bridge:check` edge provided this ordering transitively.
     after = [
       "genie:check"
       "buck2:task-guards:check"
