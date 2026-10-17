@@ -131,7 +131,8 @@ const isPreparedMemberMount = ({
       if (refType === 'branch') {
         const branch = yield* Git.getCurrentBranch(memberPath)
         if (Option.isNone(branch) === true || branch.value !== locked.ref) return false
-        if ((yield* Git.getWorktreeStatus(memberPath)).isDirty === true) return false
+        if ((yield* Git.getWorktreeStatus(memberPath, { readOnly: true })).isDirty === true)
+          return false
       }
       return (yield* Git.getCurrentCommit(memberPath)) === locked.commit
     }
