@@ -2940,6 +2940,43 @@ describe('canonical member mutation guard', () => {
     )
   }
 
+  it.effect(
+    'schema generator writes the authorized destination without creating traversed shared directories',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const workspacePath = `${yield* makeCanonicalTempDirectoryScoped()}/`
+        const repoDir = `${workspacePath}store/github.com/acme/workspace`
+        const author = yield* makeStoreWorktree({ repoDir, kind: 'heads', ref: 'feature' })
+        const shared = `${repoDir}/refs/heads/main`
+        yield* runGitCommand(
+          EffectPath.unsafe.absoluteDir(`${repoDir}/.bare/`),
+          'worktree',
+          'add',
+          shared,
+          'main',
+        )
+        const config = encodeJson({ members: {} })
+        yield* fs.writeFileString(`${author}megarepo.json`, config)
+        yield* fs.writeFileString(`${shared}/megarepo.json`, config)
+        yield* fs.symlink(shared, `${author}alias`)
+        const beforeShared = yield* snapshotWorkspaceTree(shared)
+        const result = yield* runMrCommand({
+          cwd: author,
+          command: ['generate', 'schema'],
+          args: ['--output-path', 'alias/new/../../feature/schema.json'],
+          env: { MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+        })
+        expect(Exit.isSuccess(result.exit)).toBe(true)
+        expect(yield* fs.exists(`${author}schema.json`)).toBe(true)
+        expect(yield* fs.exists(`${shared}/new`)).toBe(false)
+        expect(yield* snapshotWorkspaceTree(shared)).toEqual(beforeShared)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
   for (const [refKind, ref, lockSync, granted] of [
     ['heads', 'team/feature', 'off', true],
     ['heads', 'main', 'off', false],

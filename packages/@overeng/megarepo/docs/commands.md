@@ -60,7 +60,8 @@ metadata, may materialize `repos/` and author its own config, `megarepo.lock`,
 generator outputs, and Nix lock files. Pin/unpin and `mr fetch --only` use the same
 author-workspace grant. Requested paths and physical destinations must remain
 inside that workspace; symlink escapes, including a symlink followed by `..`,
-stay refused. Default-branch canonical
+stay refused. Writers create directories and files only at the returned physical
+destination, never along the original traversal path. Default-branch canonical
 worktrees remain shared caches; invoking a command there does not grant ownership.
 `mr apply --verify-shared --lock-sync off` verifies selected members read-only in
 shared canonical workspaces, and otherwise applies normally. Every selected mount

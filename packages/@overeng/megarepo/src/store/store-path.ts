@@ -96,10 +96,10 @@ export const assertCanonicalMutationAllowed = ({
   commitApplyRoot?: string
   /** Invoking author workspace for file writes; aliases must remain inside its physical root. */
   authoringRoot?: string
-}): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<string, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
-    if (process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] === '1') return
     const resolvedPath = yield* resolvePhysicalMutationPath(target)
+    if (process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] === '1') return resolvedPath
     const physicalAuthoringRoot =
       authoringRoot === undefined ? undefined : yield* resolvePhysicalMutationPath(authoringRoot)
     if (
@@ -120,7 +120,7 @@ export const assertCanonicalMutationAllowed = ({
             destination.startsWith(`${physicalAuthoringRoot}${path.sep}`) === true) &&
           (yield* isAuthorBranchWorkspace(physicalAuthoringRoot)) === true
         ) {
-          return
+          return resolvedPath
         }
       }
       const commitRoot = materializedRoot ?? commitApplyRoot
@@ -135,7 +135,7 @@ export const assertCanonicalMutationAllowed = ({
             (targetPath === path.join(workspacePath, 'repos') &&
               destination === path.join(root, 'repos')))
         ) {
-          return
+          return resolvedPath
         }
       }
       // Top-level apply/fetch owns an invoking non-default branch workspace's mount directory.
@@ -152,7 +152,7 @@ export const assertCanonicalMutationAllowed = ({
               destination === path.join(root, 'repos'))) &&
           (yield* isAuthorBranchWorkspace(root)) === true
         ) {
-          return
+          return resolvedPath
         }
       }
       return yield* systemError({
@@ -170,16 +170,17 @@ export const assertCanonicalMutationAllowed = ({
           'Explicit administrative override: MEGAREPO_ALLOW_CANONICAL_MUTATION=1.',
       })
     }
+    return resolvedPath
   })
 
-/** Authorize lock, config, and generator writes without granting ref or branch mutation. */
+/** Return the authorized physical path; all mkdir/write operations must use this path. */
 export const authorizeAuthorWorkspaceWrite = ({
   target,
   workspaceRoot,
 }: {
   target: string
   workspaceRoot: string
-}): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<string, PlatformError, FileSystem.FileSystem> =>
   assertCanonicalMutationAllowed({ target, authoringRoot: workspaceRoot })
 
 /**

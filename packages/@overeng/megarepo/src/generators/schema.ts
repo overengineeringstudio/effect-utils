@@ -51,17 +51,19 @@ export const generateSchema = (options: SchemaGeneratorOptions) =>
       options.megarepoRoot,
       EffectPath.unsafe.relativeFile(options.outputPath ?? 'schema/megarepo.schema.json'),
     )
-    yield* authorizeAuthorWorkspaceWrite({
-      target: outputPath,
-      workspaceRoot: options.megarepoRoot,
-    })
-    const outputDir = EffectPath.ops.parent(outputPath)
+    const authorizedPath = EffectPath.unsafe.absoluteFile(
+      yield* authorizeAuthorWorkspaceWrite({
+        target: outputPath,
+        workspaceRoot: options.megarepoRoot,
+      }),
+    )
+    const outputDir = EffectPath.ops.parent(authorizedPath)
 
     if (outputDir !== undefined) {
       yield* fs.makeDirectory(outputDir, { recursive: true })
     }
 
-    yield* fs.writeFileString(outputPath, content)
+    yield* fs.writeFileString(authorizedPath, content)
 
-    return { path: outputPath, content }
+    return { path: authorizedPath, content }
   })

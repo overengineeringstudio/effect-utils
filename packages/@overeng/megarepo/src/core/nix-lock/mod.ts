@@ -500,8 +500,11 @@ const syncSingleLockFile = ({
     // Write updated lock file if any changes were made
     if (updatedInputs.length > 0 || schemeNormalized === true) {
       const updatedContent = yield* Schema.encodeEffect(RawFlakeLockJson)(rawJson)
-      yield* authorizeAuthorWorkspaceWrite({ target: lockPath, workspaceRoot: memberPath })
-      yield* fs.writeFileString(lockPath, updatedContent + '\n')
+      const authorizedPath = yield* authorizeAuthorWorkspaceWrite({
+        target: lockPath,
+        workspaceRoot: memberPath,
+      })
+      yield* fs.writeFileString(authorizedPath, updatedContent + '\n')
     }
 
     return {
@@ -678,8 +681,11 @@ export const syncSourceFileRevs = ({
     }
 
     if (updatedContent !== content) {
-      yield* authorizeAuthorWorkspaceWrite({ target: filePath, workspaceRoot: memberPath })
-      yield* fs.writeFileString(filePath, updatedContent)
+      const authorizedPath = yield* authorizeAuthorWorkspaceWrite({
+        target: filePath,
+        workspaceRoot: memberPath,
+      })
+      yield* fs.writeFileString(authorizedPath, updatedContent)
     }
 
     return {
@@ -892,8 +898,11 @@ const applySharedInputSource = ({
       }
 
       if (updatedInputs.length > 0) {
-        yield* authorizeAuthorWorkspaceWrite({ target: lockPath, workspaceRoot: memberPath })
-        yield* fs.writeFileString(lockPath, encodeRawLockJson(parsed))
+        const authorizedPath = yield* authorizeAuthorWorkspaceWrite({
+          target: lockPath,
+          workspaceRoot: memberPath,
+        })
+        yield* fs.writeFileString(authorizedPath, encodeRawLockJson(parsed))
         updatedMembers.push({ name: memberName, updatedInputs })
       }
     }
@@ -1003,8 +1012,11 @@ const syncMemberRefs = ({
         }
 
         if (finalContent !== content) {
-          yield* authorizeAuthorWorkspaceWrite({ target: filePath, workspaceRoot: memberPath })
-          yield* fs.writeFileString(filePath, finalContent)
+          const authorizedPath = yield* authorizeAuthorWorkspaceWrite({
+            target: filePath,
+            workspaceRoot: memberPath,
+          })
+          yield* fs.writeFileString(authorizedPath, finalContent)
           if (updatedInputDetails.length > 0) {
             results.push({
               path: filePath,
@@ -1080,8 +1092,11 @@ const syncMemberRefs = ({
         const lockJsonOpt = Schema.decodeOption(RawLockJson)(currentContent)
         if (Option.isNone(lockJsonOpt) === true) {
           if (currentContent !== content) {
-            yield* authorizeAuthorWorkspaceWrite({ target: filePath, workspaceRoot: memberPath })
-            yield* fs.writeFileString(filePath, currentContent)
+            const authorizedPath = yield* authorizeAuthorWorkspaceWrite({
+              target: filePath,
+              workspaceRoot: memberPath,
+            })
+            yield* fs.writeFileString(authorizedPath, currentContent)
             results.push({ path: filePath, type: fileType, updatedInputs: updatedInputDetails })
           }
           return
@@ -1116,8 +1131,11 @@ const syncMemberRefs = ({
         }
 
         if (currentContent !== content) {
-          yield* authorizeAuthorWorkspaceWrite({ target: filePath, workspaceRoot: memberPath })
-          yield* fs.writeFileString(filePath, currentContent)
+          const authorizedPath = yield* authorizeAuthorWorkspaceWrite({
+            target: filePath,
+            workspaceRoot: memberPath,
+          })
+          yield* fs.writeFileString(authorizedPath, currentContent)
           if (updatedInputDetails.length > 0) {
             results.push({
               path: filePath,

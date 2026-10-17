@@ -271,14 +271,17 @@ export const generateVscode = (options: VscodeGeneratorOptions) =>
       vscodeDir,
       EffectPath.unsafe.relativeFile('megarepo.code-workspace'),
     )
-    yield* authorizeAuthorWorkspaceWrite({
-      target: outputPath,
-      workspaceRoot: options.megarepoRoot,
-    })
+    const authorizedPath = EffectPath.unsafe.absoluteFile(
+      yield* authorizeAuthorWorkspaceWrite({
+        target: outputPath,
+        workspaceRoot: options.megarepoRoot,
+      }),
+    )
 
     // Ensure .vscode directory exists
-    yield* fs.makeDirectory(vscodeDir, { recursive: true })
-    yield* fs.writeFileString(outputPath, content)
+    const authorizedDir = EffectPath.ops.parent(authorizedPath)
+    if (authorizedDir !== undefined) yield* fs.makeDirectory(authorizedDir, { recursive: true })
+    yield* fs.writeFileString(authorizedPath, content)
 
-    return { path: outputPath, content }
+    return { path: authorizedPath, content }
   })

@@ -15,7 +15,6 @@ import { run } from '@overeng/tui-react'
 import {
   buildSourceStringWithRef,
   MegarepoConfig,
-  getMemberPath,
   getMembersRoot,
   getSourceUrl,
   parseSourceString,
@@ -105,7 +104,7 @@ export const pinCommand = Cli.Command.make(
               target: root.value,
               workspaceRoot: root.value,
             })
-            yield* authorizeAuthorWorkspaceWrite({
+            const authorizedMembersRoot = yield* authorizeAuthorWorkspaceWrite({
               target: getMembersRoot(root.value),
               workspaceRoot: root.value,
             })
@@ -125,7 +124,7 @@ export const pinCommand = Cli.Command.make(
               return yield* new MemberNotFoundError({ message: 'Member not found', member })
             }
 
-            const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
+            const memberPath = EffectPath.unsafe.absoluteDir(`${authorizedMembersRoot}/${member}/`)
             const memberPathNormalized = memberPath.replace(/\/$/, '')
             const memberMount = yield* inspectMemberMount(memberPathNormalized)
             if (memberMount._tag === 'Foreign') {
@@ -605,7 +604,7 @@ export const unpinCommand = Cli.Command.make(
               target: root.value,
               workspaceRoot: root.value,
             })
-            yield* authorizeAuthorWorkspaceWrite({
+            const authorizedMembersRoot = yield* authorizeAuthorWorkspaceWrite({
               target: getMembersRoot(root.value),
               workspaceRoot: root.value,
             })
@@ -623,7 +622,7 @@ export const unpinCommand = Cli.Command.make(
               return yield* new MemberNotFoundError({ message: 'Member not found', member })
             }
 
-            const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
+            const memberPath = EffectPath.unsafe.absoluteDir(`${authorizedMembersRoot}/${member}/`)
             const memberPathNormalized = memberPath.replace(/\/$/, '')
             const memberMount = yield* inspectMemberMount(memberPathNormalized)
             if (memberMount._tag === 'Foreign') {

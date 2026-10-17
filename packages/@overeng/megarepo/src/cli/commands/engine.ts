@@ -491,11 +491,11 @@ export const syncMegarepo = <R = never>({
         // Fetch only updates metadata and must not create an unused repos/ directory.
         if (isLockMode === true) {
           const membersRoot = getMembersRoot(megarepoRoot)
-          yield* authorizeAuthorWorkspaceWrite({
+          const authorizedMembersRoot = yield* authorizeAuthorWorkspaceWrite({
             target: membersRoot,
             workspaceRoot: megarepoRoot,
           })
-          yield* fs.makeDirectory(membersRoot, { recursive: true })
+          yield* fs.makeDirectory(authorizedMembersRoot, { recursive: true })
         }
       } else {
         const authorization =
@@ -511,8 +511,11 @@ export const syncMegarepo = <R = never>({
               : {}
         yield* assertCanonicalMutationAllowed({ target: megarepoRoot, ...authorization })
         const membersRoot = getMembersRoot(megarepoRoot)
-        yield* assertCanonicalMutationAllowed({ target: membersRoot, ...authorization })
-        yield* fs.makeDirectory(membersRoot, { recursive: true })
+        const authorizedMembersRoot = yield* assertCanonicalMutationAllowed({
+          target: membersRoot,
+          ...authorization,
+        })
+        yield* fs.makeDirectory(authorizedMembersRoot, { recursive: true })
       }
     }
 

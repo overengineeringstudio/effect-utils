@@ -340,7 +340,7 @@ export const writeMegarepoConfig = ({
   config: MegarepoConfig
 }) =>
   Effect.gen(function* () {
-    yield* authorizeAuthorWorkspaceWrite({
+    const authorizedPath = yield* authorizeAuthorWorkspaceWrite({
       target: configPath,
       workspaceRoot: path.dirname(configPath),
     })
@@ -354,7 +354,7 @@ export const writeMegarepoConfig = ({
             config,
           )) + '\n'
 
-    yield* fs.writeFileString(configPath, content)
+    yield* fs.writeFileString(authorizedPath, content)
   })
 
 // =============================================================================

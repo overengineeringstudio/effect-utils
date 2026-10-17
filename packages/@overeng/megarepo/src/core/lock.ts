@@ -101,12 +101,12 @@ export const writeLockFile = ({
   workspaceRoot?: string
 }): Effect.Effect<void, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
-    yield* authorizeAuthorWorkspaceWrite({ target: lockPath, workspaceRoot })
+    const authorizedPath = yield* authorizeAuthorWorkspaceWrite({ target: lockPath, workspaceRoot })
     const fs = yield* FileSystem.FileSystem
     const content = yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(
       lockFile,
     )
-    yield* fs.writeFileString(lockPath, content + '\n')
+    yield* fs.writeFileString(authorizedPath, content + '\n')
   })
 
 /**
