@@ -677,69 +677,7 @@ let
     "."
     "packages/@overeng/otel-contract"
   ];
-  buck2AggregateExec =
-    taskName: target:
-    trace.exec taskName ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      export PATH=${lib.makeBinPath [ pkgs.watchman ]}
-      cd "$root"
-      ${publishBuckCapabilities}
-
-      # Pipeline logs join their job trace after the task graph. Standalone
-      # Buck commands convert locally, retaining unacknowledged OTLP chunks.
-      pipeline_spool=0
-      spool=""
-      if [ -n "''${PIPELINE_SPOOL_DIR:-}" ]; then
-        spool="$PIPELINE_SPOOL_DIR/buck2"
-        pipeline_spool=1
-        ${pkgs.coreutils}/bin/mkdir -p "$spool" || spool=""
-      elif ${pkgs.coreutils}/bin/mkdir -p "$root/.devenv/otel/buck2-events"; then
-        spool="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/otel/buck2-events/${taskName}.XXXXXXXX")" || spool=""
-      fi
-      buck_args=(build ${lib.escapeShellArg target})
-      unset BUCK_WRAPPER_UUID BUCK_COMMAND_SPAN_ID BUCK_COMMAND_START_NS \
-        BUCK_COMMAND_TRACE_ID BUCK_COMMAND_PARENT_SPAN_ID
-      if [ -n "$spool" ]; then
-        command_key="${taskName}-$(${pkgs.coreutils}/bin/date +%s%N)-$$"
-        event_log="$spool/$command_key.pb.zst"
-        sidecar="$spool/$command_key.sidecar"
-        buck_args+=(--event-log "$event_log" --write-build-id "$spool/$command_key.buck-trace-id")
-        if prepared="$("''${OTEL_SPAN_BIN:-otel-span}" buck2 --sidecar "$sidecar")"; then
-          eval "$prepared"
-        fi
-      fi
-
-      if "$BUCK2_BIN" "''${buck_args[@]}"; then
-        buck_exit=0
-      else
-        buck_exit=$?
-      fi
-      command_end_ns="$(${pkgs.coreutils}/bin/date +%s%N)" || command_end_ns=""
-      if [ -n "''${BUCK_COMMAND_TRACE_ID:-}" ] && [ -n "$command_end_ns" ]; then
-        command_status=ok
-        if [ "$buck_exit" -ne 0 ]; then command_status=error; fi
-        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
-          "''${OTEL_SPAN_BIN:-otel-span}" emit-span "effect-utils-devenv" "buck2.command build" \
-          --trace-id "$BUCK_COMMAND_TRACE_ID" \
-          --parent-span-id "$BUCK_COMMAND_PARENT_SPAN_ID" \
-          --span-id "$BUCK_COMMAND_SPAN_ID" \
-          --start-time-ns "$BUCK_COMMAND_START_NS" \
-          --end-time-ns "$command_end_ns" \
-          --status-code "$command_status" \
-          --attr-int "exit.code=$buck_exit" || true
-      fi
-      if (( ! pipeline_spool )) && [ -n "$spool" ] && [ -s "$event_log" ]; then
-        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-''${OTELITE_HTTP_ENDPOINT:-}}" \
-          ${pkgs.coreutils}/bin/timeout -k 5 60 \
-          ${repoPackages.buck2-events}/bin/buck2-events ingest "$event_log" --sidecar "$sidecar" \
-            --spool-dir "$spool/pending" || true
-        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-''${OTELITE_HTTP_ENDPOINT:-}}" \
-          ${pkgs.coreutils}/bin/timeout -k 5 60 \
-          ${repoPackages.buck2-events}/bin/buck2-events export --spool-dir "$spool/pending" || true
-      fi
-      exit "$buck_exit"
-    '';
+  buck2AggregateExec = config.effectUtils.buck2.aggregateExec;
   editorViewExec =
     {
       mode,
@@ -788,6 +726,11 @@ let
     };
 in
 {
+  effectUtils.buck2 = {
+    eventsPackage = repoPackages.buck2-events;
+    prepare = publishBuckCapabilities;
+  };
+
   imports = [
     # Git hook: prevent commits on default branch + enforce linked worktrees
     (taskModules.worktree-guard { })
@@ -1688,14 +1631,20 @@ in
       "buck2:ts-sandbox:test"
     ];
     # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
-    exec = buck2AggregateExec "buck2:quick" "//:quick";
+    exec = buck2AggregateExec "buck2:quick" [
+      "build"
+      "//:quick"
+    ];
   };
 
   tasks."buck2:all" = {
     description = "Build the complete admitted Buck aggregate";
     after = [ "buck2:providers:check" ];
     # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
-    exec = buck2AggregateExec "buck2:all" "//:all";
+    exec = buck2AggregateExec "buck2:all" [
+      "build"
+      "//:all"
+    ];
   };
 
   tasks."otel:pipeline-run:test" = {
