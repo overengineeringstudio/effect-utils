@@ -1,7 +1,7 @@
 import type { Readable } from 'node:stream'
 import { crc32, createInflateRaw } from 'node:zlib'
 
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import {
   fromBufferPromise,
   getFileNameLowLevel,
@@ -13,6 +13,7 @@ import {
 import {
   ARTIFACT_LIMITS,
   ArtifactError,
+  ArtifactReadWindow,
   type ArtifactMember,
   type ArtifactSelection,
 } from '../isomorphic/Artifacts.ts'
@@ -295,12 +296,20 @@ export const listArtifactMembers = Effect.fn('artifacts.list-members')(
 
 /** Read one exact text member; no filesystem extraction and no unbounded inflate result. */
 export const readArtifactMember = Effect.fn('artifacts.read-member')(
-  (bytes: Uint8Array, selection: ArtifactSelection, member: string) =>
+  (bytes: Uint8Array, selection: ArtifactSelection, member: string, window?: ArtifactReadWindow) =>
     withArchive({
       bytes: bytes,
       selection: selection,
       member: member,
       consume: async (zip, entries, signal) => {
+        if (window !== undefined && !Schema.is(ArtifactReadWindow)(window)) {
+          throw failure({
+            selection,
+            reason: 'invalid-selection',
+            message: 'Window requires nonnegative safe byte offsets and a length at most 256 KiB',
+            member,
+          })
+        }
         if (!validateArtifactMemberPath(member) || member.endsWith('/')) {
           throw failure({
             selection: selection,
@@ -325,7 +334,7 @@ export const readArtifactMember = Effect.fn('artifacts.read-member')(
             member: member,
           })
         }
-        if (entry.uncompressedSize > ARTIFACT_LIMITS.outputBytes) {
+        if (window === undefined && entry.uncompressedSize > ARTIFACT_LIMITS.outputBytes) {
           throw failure({
             selection: selection,
             reason: 'limit-exceeded',
@@ -347,7 +356,44 @@ export const readArtifactMember = Effect.fn('artifacts.read-member')(
           inflater?.destroy()
         }
         signal.addEventListener('abort', destroy, { once: true })
-        const chunks: Buffer[] = []
+        const totalBytes = entry.uncompressedSize
+        const offset =
+          window === undefined
+            ? 0
+            : 'tailBytes' in window
+              ? Math.max(0, totalBytes - window.tailBytes)
+              : Math.min(window.offset, totalBytes)
+        const length =
+          window === undefined
+            ? totalBytes
+            : Math.min(
+                'tailBytes' in window ? window.tailBytes : window.length,
+                totalBytes - offset,
+              )
+        // Up to three lookahead bytes locate the next boundary even for an empty window.
+        const retained = Buffer.alloc(Math.min(length + 3, totalBytes - offset))
+        const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+        const validateText = (data?: Uint8Array) => {
+          let text: string
+          try {
+            text = decoder.decode(data, { stream: data !== undefined })
+          } catch {
+            throw failure({
+              selection,
+              reason: 'binary-content',
+              message: 'Selected member is not UTF-8 text',
+              member,
+            })
+          }
+          if (containsBinaryControls(text)) {
+            throw failure({
+              selection,
+              reason: 'binary-content',
+              message: 'Selected member contains binary control bytes',
+              member,
+            })
+          }
+        }
         let size = 0
         let checksum = 0
         try {
@@ -356,14 +402,11 @@ export const readArtifactMember = Effect.fn('artifacts.read-member')(
           for await (const chunk of stream) {
             signal.throwIfAborted()
             const data: Buffer = chunk
-            if (
-              data.length > ARTIFACT_LIMITS.memberBytes - size ||
-              data.length > ARTIFACT_LIMITS.outputBytes - size
-            ) {
+            if (data.length > ARTIFACT_LIMITS.memberBytes - size) {
               throw failure({
                 selection: selection,
                 reason: 'limit-exceeded',
-                message: 'Member stream exceeds the decompression/output limit',
+                message: 'Member stream exceeds the decompression limit',
                 member: member,
               })
             }
@@ -375,9 +418,12 @@ export const readArtifactMember = Effect.fn('artifacts.read-member')(
                 member: member,
               })
             }
+            const from = Math.max(offset, size)
+            const to = Math.min(offset + retained.length, size + data.length)
+            if (to > from) data.copy(retained, from - offset, from - size, to - size)
             size += data.length
             checksum = crc32(data, checksum)
-            chunks.push(data)
+            validateText(data)
           }
         } finally {
           signal.removeEventListener('abort', destroy)
@@ -392,28 +438,23 @@ export const readArtifactMember = Effect.fn('artifacts.read-member')(
             member: member,
           })
         }
-        let text: string
-        try {
-          text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
-            Buffer.concat(chunks, size),
-          )
-        } catch {
-          throw failure({
-            selection: selection,
-            reason: 'binary-content',
-            message: 'Selected member is not UTF-8 text',
-            member: member,
-          })
+        validateText()
+        let start = 0
+        // UTF-8 continuation bytes have the leading bits 10.
+        while (((retained[start] ?? 0) & 0xc0) === 0x80) start++
+        let end = Math.max(start, length)
+        while (end > start && ((retained[end] ?? 0) & 0xc0) === 0x80) end--
+        const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+          retained.subarray(start, end),
+        )
+        return {
+          path: member,
+          text,
+          decompressedBytes: size,
+          ...(window === undefined
+            ? {}
+            : { window: { offset: offset + start, length: end - start, totalBytes: size } }),
         }
-        if (containsBinaryControls(text)) {
-          throw failure({
-            selection: selection,
-            reason: 'binary-content',
-            message: 'Selected member contains binary control bytes',
-            member: member,
-          })
-        }
-        return { path: member, text, decompressedBytes: size }
       },
     }),
 )

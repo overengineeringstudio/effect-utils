@@ -196,47 +196,12 @@ def _fetch_impl(ctx):
         if archive_root == "":
             fail("private product {} needs nix_store.root or nix_store.product_root".format(ctx.attrs.url))
     if archive_root == "":
-        url_prefix = read_config("archive_origin", "url_prefix", "")
-        if url_prefix != "" and (not url_prefix.startswith("https://") and not url_prefix.startswith("http://")):
-            fail("archive_origin.url_prefix must use http or https: {}".format(url_prefix))
-        if url_prefix != "" and not url_prefix.endswith("/cas/"):
-            fail("archive_origin.url_prefix must end with /cas/: {}".format(url_prefix))
-        if url_prefix == "":
-            out = ctx.actions.download_file(
-                "package.tgz",
-                ctx.attrs.url,
-                sha256 = ctx.attrs.sha256,
-                size_bytes = ctx.attrs.size_bytes,
-            )
-        else:
-            out = ctx.actions.declare_output("package.tgz")
-
-            # Bun resolves relative imports beside the executed script, not
-            # beside its separately materialized source artifacts.
-            sources = ctx.actions.copied_dir("acquisition_sources", {
-                "acquire-archive.ts": ctx.attrs._acquire_archive,
-                "public-archive-origin.ts": ctx.attrs._public_archive_origin,
-            })
-            hermetic_action(
-                ctx,
-                cmd_args([
-                    hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
-                    sources.project("acquire-archive.ts"),
-                    "--cas-url",
-                    "{}{}".format(url_prefix, ctx.attrs.sha256),
-                    "--registry-url",
-                    ctx.attrs.url,
-                    "--sha256",
-                    ctx.attrs.sha256,
-                    "--size",
-                    str(ctx.attrs.size_bytes),
-                    "--output",
-                    out.as_output(),
-                ], hidden = [sources]),
-                category = "pnpm_archive",
-                identifier = ctx.attrs.name,
-                local_only = True,
-            )
+        out = ctx.actions.download_file(
+            "package.tgz",
+            ctx.attrs.url,
+            sha256 = ctx.attrs.sha256,
+            size_bytes = ctx.attrs.size_bytes,
+        )
     else:
         _require_nix_store_path(archive_root, "nix_store.root")
         out = ctx.actions.declare_output("package.tgz")
@@ -270,12 +235,6 @@ _fetch = cache_guarded_rule(
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
-        )),
-        "_acquire_archive": attrs.default_only(attrs.source(
-            default = "//buck2/dependencies:acquire-archive.ts",
-        )),
-        "_public_archive_origin": attrs.default_only(attrs.source(
-            default = "//buck2/dependencies:public-archive-origin.ts",
         )),
         "_nix_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:nix-archive.ts",

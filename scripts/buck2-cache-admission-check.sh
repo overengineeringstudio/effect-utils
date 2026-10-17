@@ -143,6 +143,7 @@ def _dependency_impl(ctx):
         TsSandboxToolchainInfo(
             bubblewrap = "/analysis-only/bin/bwrap",
             bun = "/analysis-only/bin/bun",
+            bun_inputs = [artifact],
             closure_paths = {
                 "bun": ["/analysis-only"],
             },

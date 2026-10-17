@@ -43,7 +43,7 @@ if (worktreePath === undefined) {
 
 const program = Effect.gen(function* () {
   const rssStartKb = readProcKb('VmRSS')
-  const status = yield* Git.getWorktreeStatus(worktreePath)
+  const status = yield* Git.getWorktreeStatus({ worktreePath })
   const vmHwmKb = readProcKb('VmHWM')
   // eslint-disable-next-line no-console
   console.log(encodeJson({ rssStartKb, vmHwmKb, changesCount: status.changesCount }))

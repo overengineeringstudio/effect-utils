@@ -3,7 +3,12 @@ import { Effect, Schema } from 'effect'
 import { describe, expect } from 'vitest'
 
 import { ARTIFACT_LIMITS, type RetainedArtifact } from '../../isomorphic/Artifacts.ts'
-import { renderArtifactOutput, selectArtifactMember, selectArtifactRun } from './artifacts.ts'
+import {
+  renderArtifactOutput,
+  selectArtifactMember,
+  selectArtifactReadWindow,
+  selectArtifactRun,
+} from './artifacts.ts'
 
 const selection = { repo: 'owner/repository', runId: 42, artifactId: 71 }
 const artifact: RetainedArtifact = {
@@ -51,12 +56,14 @@ it.effect('renders members with artifact and run provenance, including directory
       repo: selection.repo,
       runId: selection.runId,
       artifact,
+      totalCount: 2,
       members: [
         { path: 'reports/', compressedBytes: 0, decompressedBytes: 0, directory: true },
         { path: 'reports/test.txt', compressedBytes: 5, decompressedBytes: 3, directory: false },
       ],
     }
     expect(decodeJson(yield* renderArtifactOutput(output))).toEqual(output)
+    expect(output.totalCount).toBe(output.members.length)
   }),
 )
 
@@ -203,5 +210,91 @@ it.effect('rejects unsafe or directory member selections before transport is nee
       // Never put the rejected control-bearing input into the printable error.
       expect(error.member).toBeNull()
     }
+  }),
+)
+
+describe('byte window selection', () => {
+  it.effect('preserves no-window reads and selects explicit bounded byte windows', () =>
+    Effect.gen(function* () {
+      expect(yield* selectArtifactReadWindow(selection, 'log.txt', {})).toBeUndefined()
+      for (const [flags, expected] of [
+        [{ length: 12 }, { offset: 0, length: 12 }],
+        [
+          { offset: 19, length: 12 },
+          { offset: 19, length: 12 },
+        ],
+        [
+          { offset: Number.MAX_SAFE_INTEGER, length: 0 },
+          { offset: Number.MAX_SAFE_INTEGER, length: 0 },
+        ],
+        [
+          { length: ARTIFACT_LIMITS.outputBytes },
+          { offset: 0, length: ARTIFACT_LIMITS.outputBytes },
+        ],
+        [{ tailBytes: 0 }, { tailBytes: 0 }],
+        [{ tailBytes: ARTIFACT_LIMITS.outputBytes }, { tailBytes: ARTIFACT_LIMITS.outputBytes }],
+      ] as const) {
+        expect(yield* selectArtifactReadWindow(selection, 'log.txt', flags)).toEqual(expected)
+      }
+    }),
+  )
+
+  it.effect('rejects conflicting or incomplete selections before transport is needed', () =>
+    Effect.gen(function* () {
+      for (const flags of [
+        { offset: 0 },
+        { offset: 0, tailBytes: 1 },
+        { length: 0, tailBytes: 0 },
+        { offset: 0, length: 0, tailBytes: 0 },
+        ...[-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1].flatMap((value) => [
+          { offset: value, length: 1 },
+          { length: value },
+          { tailBytes: value },
+        ]),
+        { length: ARTIFACT_LIMITS.outputBytes + 1 },
+        { tailBytes: ARTIFACT_LIMITS.outputBytes + 1 },
+      ]) {
+        const error = yield* Effect.flip(selectArtifactReadWindow(selection, 'log.txt', flags))
+        expect(error).toMatchObject({
+          ...selection,
+          _tag: 'ArtifactError',
+          member: 'log.txt',
+          reason: 'invalid-selection',
+        })
+      }
+    }),
+  )
+})
+
+it.effect('renders optional actual byte window metadata without changing whole-member output', () =>
+  Effect.gen(function* () {
+    const output = {
+      ...readOutput('hello'),
+      content: {
+        path: 'log.txt',
+        text: 'hello',
+        decompressedBytes: 1_000_000,
+        window: { offset: 123, length: 5, totalBytes: 1_000_000 },
+      },
+    }
+    expect(decodeJson(yield* renderArtifactOutput(output))).toEqual(output)
+    expect(decodeJson(yield* renderArtifactOutput(readOutput('hello')))).toEqual(
+      readOutput('hello'),
+    )
+  }),
+)
+
+it.effect('still rejects escaped oversized envelopes for otherwise bounded windows', () =>
+  Effect.gen(function* () {
+    const text = '\u001b'.repeat(50_000)
+    const output = {
+      ...readOutput(text),
+      content: {
+        ...readOutput(text).content,
+        decompressedBytes: 1_000_000,
+        window: { offset: 0, length: 50_000, totalBytes: 1_000_000 },
+      },
+    }
+    expect((yield* Effect.flip(renderArtifactOutput(output))).reason).toBe('limit-exceeded')
   }),
 )

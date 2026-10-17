@@ -4,6 +4,10 @@ Status: accepted
 
 Accepted 2026-09-22 (decision q62, confirmed by Johannes).
 
+Amendment 3 (Q58, 2026-10-17) supersedes the standalone acquisition and
+fallback clauses below; the original rationale and earlier amendments are
+retained as historical decisions.
+
 ## Context
 
 Every Buck context needs the same immutable third-party archive identity without
@@ -152,3 +156,45 @@ Every fallback emits a structured reason (`not-found`, `headers-timeout`,
 acquisitions separately by reason and includes them in the archive-origin
 fallback aggregate, distinguishing missing objects from availability stalls
 without retaining response bodies or connection diagnostics.
+
+## Amendment 3: one native download shape (Q58, 2026-10-17)
+
+Approved by Johannes (Q58, Axe `ykabk6`, 2026-10-17).
+
+The Build-cache reports `a-main.md` and `b-one-download-shape.md` compare the
+command-based archive path with native Buck downloads:
+
+| Measurement                     | Main (`166307da`)                                                                    | One download shape (`7e48ea19`)                 |
+| ------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| Commands                        | 771: 249 eligible-local archive commands, 513 local materialization commands, 9 hits | 522: 513 local materialization commands, 9 hits |
+| Native archive actions          | None                                                                                 | 249 Deferred download actions                   |
+| Warm archive transfer, each run | 141,470,139 B                                                                        | 0 B                                             |
+| Warm elapsed time, three runs   | 16.5 / 15.1 / 16.4 s                                                                 | 2.94 / 10.99 / 2.33 s                           |
+| Registry unreachable, warm root | Failed in 1.3 s                                                                      | Succeeded in 6.1 s, 0 B                         |
+
+The median warm elapsed time is approximately 5.6 times faster. The original
+G1 observation at `191d1416` attributed 188–217 seconds to archives: that was
+summed command-wall time, not elapsed build time. TypeScript had 9/9 hits;
+archive acquisition was a separate cost, not a TypeScript cache miss.
+
+Items 2–3 now use one standalone acquisition shape: `pnpm_package` registers
+native `download_file` with the canonical registry URL, reviewed SHA-256 and
+byte size. Buck owns download verification and deferred materialization.
+There is no command-based CAS fetch branch, runtime archive-origin selection,
+or automatic CAS-to-registry fallback. Amendment 2's runtime fallback and
+diagnostic contract no longer applies. REAPI/writer admission remains separate
+from archive acquisition.
+
+Deferred downloads are not reads from the RE CAS. Explicit fresh roots still
+fetch approximately 141 MB from the registry; the zero-byte result is a warm
+materialization result, not proof of cross-root archive reuse. Downstream
+actions continue to consume the same verified archive identity. The 513 cheap
+local materialization commands retain their existing admission policy.
+
+The seeder and private CAS remain optional infrastructure, with the
+verification and trust-tier rules in item 4 and Amendment 1. Neither is a
+standalone build prerequisite. Whether a future archive read path uses a
+mirror or CAS requires a separate decision; no automatic fallback is introduced.
+The Nix archive path in item 5, its per-digest fixed-output archives, and its
+copy-and-verify projection are unchanged, as are item 6's publication and
+reconstruction requirements.

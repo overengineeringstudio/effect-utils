@@ -1174,7 +1174,14 @@ const getUnpushedStatus = (worktreePath: string) =>
 /**
  * Get the status of a worktree (dirty state, unpushed commits)
  */
-export const getWorktreeStatus = (worktreePath: string) =>
+export const getWorktreeStatus = ({
+  worktreePath,
+  readOnly = false,
+}: {
+  worktreePath: string
+  /** Suppress Git's optional index refresh writes for shared-cache verification. */
+  readOnly?: boolean
+}) =>
   Effect.gen(function* () {
     // Count uncommitted changes by folding `status --porcelain` lines one at a
     // time. `--untracked-files=all` enumerates every untracked file, so a large
@@ -1183,7 +1190,12 @@ export const getWorktreeStatus = (worktreePath: string) =>
     // the EXACT `changesCount`/`isDirty` at constant memory, so verdicts are
     // unchanged.
     const changesCount = yield* streamGitCommandLines({
-      args: ['status', '--porcelain', '--untracked-files=all'],
+      args: [
+        ...(readOnly === true ? ['--no-optional-locks'] : []),
+        'status',
+        '--porcelain',
+        '--untracked-files=all',
+      ],
       cwd: worktreePath,
       sink: Sink.fold<number, string>(
         () => 0,

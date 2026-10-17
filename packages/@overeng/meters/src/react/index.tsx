@@ -1,4 +1,4 @@
-import { Cause, Effect, Fiber, type Scope } from 'effect'
+import { Effect, type Scope } from 'effect'
 import * as React from 'react'
 
 import {
@@ -16,30 +16,21 @@ import type { Sample, Series, SeriesSnapshot } from '../series/index.ts'
 import { subscribePresentation } from '../series/internal.ts'
 import type { Meters } from '../session/index.ts'
 import { associateProfiler, type ReactCommit } from './commits.ts'
+import { runScoped } from './scoped.ts'
 
 export { reactCommitsSource, type ReactCommit } from './commits.ts'
 export { MetersPanel, type MetersPanelProps } from './panel.tsx'
+export {
+  MeterEvidence,
+  MeterFreezeButton,
+  MeterTile,
+  type MeterEvidenceProps,
+  type MeterEvidenceTrigger,
+  type MeterFreezeButtonProps,
+  type MeterTileProps,
+} from './tile.tsx'
 
 const MetersContext = React.createContext<MeterSession | undefined>(undefined)
-/** Fork one scoped program on the ambient runtime; unexpected causes are logged, unmount interruption is not. */
-const forkScoped = <A, E>(program: Effect.Effect<A, E, Scope.Scope>): Fiber.Fiber<A, E> =>
-  Effect.runFork(
-    program.pipe(
-      Effect.tapCause((cause) =>
-        Cause.hasInterruptsOnly(cause) === true
-          ? Effect.void
-          : Effect.logError('Meters React effect failed', cause),
-      ),
-      Effect.scoped,
-    ),
-  )
-/** Run one scoped program and return the cancel that interrupts it; its scope closes with the fiber. */
-const runScoped = <A, E>(program: Effect.Effect<A, E, Scope.Scope>): (() => void) => {
-  const fiber = forkScoped(program)
-  return () => {
-    void Effect.runFork(Fiber.interrupt(fiber))
-  }
-}
 /** Run one scoped program for the whole component lifetime; StrictMode remounts serialize behind the session lease. */
 const useScopedLifetime = <A, E>(program: Effect.Effect<A, E, Scope.Scope>): void => {
   React.useEffect(() => runScoped(program), [program])
