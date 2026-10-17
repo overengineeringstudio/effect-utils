@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "context/opentui",
+  "cell": "effect_utils",
+  "target": "//context/opentui:editor_inputs",
+  "editorInputsFingerprint": "cfe8833a0b3f0b909e6b8b9df9e2132ff79b1bd52bbd5d4175180d87ee2a6fe0",
+  "snapshot": ".store/opentui-239f79cf523c210499e8d94e92a2b14a68738c431d1ed6ea105ed6177edd0ef9",
+  "normalizedStoreDigest": "3c91434758e40c488a54333de69da31927cf519551a56e37be19fc9a1644b30b",
+  "selectedViewDigest": "cfe8833a0b3f0b909e6b8b9df9e2132ff79b1bd52bbd5d4175180d87ee2a6fe0",
+  "byteSnapshotDigest": "baa5e6998ed4a45f19b1a595dc8ffbda6dafd8a07354a5adb087e7ba3585e9ae"
+}

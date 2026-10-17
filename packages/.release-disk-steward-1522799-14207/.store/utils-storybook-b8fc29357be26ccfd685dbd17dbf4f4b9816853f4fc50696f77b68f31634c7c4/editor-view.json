@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/utils-storybook",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/utils-storybook:editor_inputs",
+  "editorInputsFingerprint": "618ba5159371d81a8d7d7a325c122c9bf24ae1131d0575066c5a6fd31e8a083e",
+  "snapshot": ".store/utils-storybook-b8fc29357be26ccfd685dbd17dbf4f4b9816853f4fc50696f77b68f31634c7c4",
+  "normalizedStoreDigest": "3ea774365eb4eac27bfece75935bbff3c198204e389973410c9b53a53b9f2a16",
+  "selectedViewDigest": "618ba5159371d81a8d7d7a325c122c9bf24ae1131d0575066c5a6fd31e8a083e",
+  "byteSnapshotDigest": "89a80c0e5872195b0a63e02a9b3fd42fc46a590a6511414b7acbecafc1771672"
+}

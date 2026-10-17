@@ -1,0 +1,71 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/react-inspector",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
+    ]
+  },
+  "name": "@overeng/react-inspector",
+  "version": "9.0.0",
+  "type": "module",
+  "description": "Browser DevTools-style React inspectors with native Effect 4 Schema support",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./src/index.tsx"
+    }
+  },
+  "files": [
+    "package.json",
+    "dist",
+    "src",
+    "!dist/**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.json --noEmit false --outDir dist-pack --declaration true --declarationMap false --composite false --incremental false",
+    "storybook": "storybook dev -p 6011",
+    "storybook:build": "storybook build"
+  },
+  "dependencies": {
+    "is-dom": "1.1.0"
+  },
+  "devDependencies": {
+    "@overeng/utils-storybook": "workspace:^",
+    "@storybook/react": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@types/is-dom": "1.1.2",
+    "@types/react": "19.2.18",
+    "@vitejs/plugin-react": "6.1.1",
+    "effect": "4.0.0-rc.118",
+    "happy-dom": "20.14.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "storybook": "10.6.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-rc.118",
+    "react": "^19.2.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      }
+    }
+  }
+}

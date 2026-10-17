@@ -1,0 +1,67 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/notion-core",
+      "packages/@overeng/notion-effect-client",
+      "packages/@overeng/notion-effect-schema",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev"
+    ]
+  },
+  "name": "@overeng/notion-effect-client",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./test": "./src/test/integration/setup.ts"
+  },
+  "dependencies": {
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "@overeng/content-address": "workspace:^",
+    "@overeng/notion-core": "workspace:^",
+    "@overeng/notion-effect-schema": "workspace:^",
+    "@overeng/otel-contract": "workspace:^",
+    "@overeng/utils": "workspace:^",
+    "@playwright/test": "1.63.0",
+    "effect": "4.0.0-rc.118",
+    "mdast-util-gfm-strikethrough": "2.0.0",
+    "mdast-util-gfm-table": "2.0.0",
+    "mdast-util-gfm-task-list-item": "2.0.0",
+    "micromark-extension-gfm-strikethrough": "2.1.0",
+    "micromark-extension-gfm-table": "2.1.1",
+    "micromark-extension-gfm-task-list-item": "2.1.0",
+    "remark-parse": "11.0.0",
+    "remark-stringify": "11.0.0",
+    "unified": "11.0.5",
+    "unist-util-visit": "5.1.0",
+    "vitest": "5.0.3"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0-rc.118",
+    "@overeng/utils-dev": "workspace:^",
+    "@types/node": "26.5.0",
+    "effect": "4.0.0-rc.118",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      }
+    }
+  }
+}

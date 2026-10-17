@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": ".",
+  "cell": "effect_utils",
+  "target": "//:editor_inputs",
+  "editorInputsFingerprint": "b141d0d3c01f89055bfa81437d655b8789d0652bd5f042442fd246908fa71a73",
+  "snapshot": ".store/root-0c440cbbafac232e25f2bbe94d72e3f411fbe5f1047fb056c7b46340f919db97",
+  "normalizedStoreDigest": "e99b364a3f3c79a00e32324c48cedbade96733dc1b266d54850983f83af89311",
+  "selectedViewDigest": "b141d0d3c01f89055bfa81437d655b8789d0652bd5f042442fd246908fa71a73",
+  "byteSnapshotDigest": "4fff716abf7e2c5c096ed22edc4bf4febf4ea8bc1e0ab3209fd7fe119a278a4e"
+}

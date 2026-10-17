@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/react-inspector",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/react-inspector:editor_inputs",
+  "editorInputsFingerprint": "083720bae17ecdd97ec902867ce35d3685b235dbc0a9500bb36c320e31700eaa",
+  "snapshot": ".store/react-inspector-26de80172cacabe5a414957f1509144ec10d90e05196a0ffb9daf87d4969dd13",
+  "normalizedStoreDigest": "e16bac5bfbcda49146abf3bf9c9e8c2919b3fba40886bda1baf83228cbbe3246",
+  "selectedViewDigest": "083720bae17ecdd97ec902867ce35d3685b235dbc0a9500bb36c320e31700eaa",
+  "byteSnapshotDigest": "3b2b4abcfe96cc222c760ec8eafc2b05dc4dc36519f3f3a4b2df70b0f4b83b73"
+}

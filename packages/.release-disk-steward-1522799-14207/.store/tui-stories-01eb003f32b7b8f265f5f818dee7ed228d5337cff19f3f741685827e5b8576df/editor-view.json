@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/tui-stories",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/tui-stories:editor_inputs",
+  "editorInputsFingerprint": "e28d2b7f54f3320d4c06ac75c462c9306bae7e752c9ef4cebdaddc8b957c1243",
+  "snapshot": ".store/tui-stories-01eb003f32b7b8f265f5f818dee7ed228d5337cff19f3f741685827e5b8576df",
+  "normalizedStoreDigest": "7d366b0ecb179f332e8bccbd32684c96b56a5db71f1a713843d3c9867f6057a2",
+  "selectedViewDigest": "e28d2b7f54f3320d4c06ac75c462c9306bae7e752c9ef4cebdaddc8b957c1243",
+  "byteSnapshotDigest": "0ee891a1bf87c8863871d7c14f1137aab520433d9d57bdb5a90092382adf49db"
+}

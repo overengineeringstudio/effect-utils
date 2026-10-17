@@ -1,0 +1,724 @@
+import { Schema } from 'effect'
+
+import {
+  IconSchema as NotionIcon,
+  ISO8601DateTimeSchema as ISO8601DateTime,
+  NotionUUIDSchema as NotionUUID,
+  PropertyDescriptors,
+} from '@overeng/notion-effect-schema'
+
+import { NOTION_API_VERSION } from './config.ts'
+
+/** SHA-256 digest string used for canonical body and file content identity. */
+export const Sha256Digest = Schema.String.pipe(
+  Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/i)),
+).annotate({
+  identifier: 'NotionMd.Sha256Digest',
+})
+
+export type Sha256Digest = typeof Sha256Digest.Type
+
+/** Relative path inside the local workspace. */
+export const RelativePath = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (value) => {
+        if (value.length === 0 || value.startsWith('/') === true) return false
+        const segments = value.split(/[\\/]+/u)
+        return segments.every((segment) => segment !== '..')
+      },
+      { message: 'Expected a non-empty relative path without parent traversal' },
+    ),
+  ),
+).annotate({
+  identifier: 'NotionMd.RelativePath',
+})
+
+export type RelativePath = typeof RelativePath.Type
+
+/** Workspace-relative directory for machine-managed Notion Markdown state. */
+export const NMD_STATE_DIRECTORY = '.notion-md'
+
+/** Workspace-relative directory for SHA-256 content-addressed NMD objects. */
+export const NMD_OBJECT_DIRECTORY = `${NMD_STATE_DIRECTORY}/objects/sha256`
+
+/** Workspace-relative directory for per-page NMD sync-state sidecars. */
+export const NMD_SYNC_DIRECTORY = `${NMD_STATE_DIRECTORY}/sync`
+
+/** Byte ceiling for metadata that is comfortably kept inline in `.nmd` frontmatter. */
+export const NMD_SMALL_STORAGE_BYTES = 8_192
+
+/** Byte ceiling after which NMD metadata must move to object storage. */
+export const NMD_LARGE_STORAGE_BYTES = 65_536
+
+const sha256DigestPrefix = 'sha256:'
+const decodeSha256Digest = Schema.decodeUnknownSync(Sha256Digest)
+const decodeRelativePath = Schema.decodeUnknownSync(RelativePath)
+const utf8ByteLength = (content: string): number => new TextEncoder().encode(content).byteLength
+
+/** Hex portion of a validated `sha256:{hex}` digest. */
+export const nmdSha256Hex = (hash: Sha256Digest | string): string =>
+  decodeSha256Digest(hash).slice(sha256DigestPrefix.length)
+
+/** Canonical relative path for a content-addressed `.notion-md` object. */
+export const nmdObjectRelativePath = (hash: Sha256Digest | string): RelativePath => {
+  const hex = nmdSha256Hex(hash)
+  return decodeRelativePath(`${NMD_OBJECT_DIRECTORY}/${hex.slice(0, 2)}/${hex.slice(2)}.json`)
+}
+
+/** Canonical relative sidecar path for machine-managed sync state. */
+export const nmdSyncStateRelativePath = (pageId: string): RelativePath =>
+  decodeRelativePath(`${NMD_SYNC_DIRECTORY}/${pageId}.json`)
+
+/** Role of a content-addressed local object referenced by `.nmd` frontmatter. */
+export const NmdObjectRole = Schema.Literals([
+  'base_snapshot',
+  'storage_payload',
+  'file_payload',
+  'comment_payload',
+]).annotate({
+  identifier: 'NotionMd.ObjectRole',
+})
+
+export type NmdObjectRole = typeof NmdObjectRole.Type
+
+/** Strict reference to a local content-addressed object. */
+export const NmdObjectRef = Schema.TaggedStruct('object_ref', {
+  role: NmdObjectRole,
+  hash: Sha256Digest,
+  path: RelativePath,
+  media_type: Schema.String,
+  byte_length: Schema.Natural,
+}).annotate({
+  identifier: 'NotionMd.ObjectRef',
+})
+
+export type NmdObjectRef = typeof NmdObjectRef.Type
+
+const decodeNmdObjectRef = Schema.decodeUnknownSync(NmdObjectRef)
+
+/** Build a strict content-addressed object ref using the canonical NMD object path. */
+export const makeNmdObjectRef = (opts: {
+  readonly role: NmdObjectRole
+  readonly hash: Sha256Digest
+  readonly content: string
+  readonly mediaType?: string
+}): NmdObjectRef =>
+  decodeNmdObjectRef({
+    _tag: 'object_ref',
+    role: opts.role,
+    hash: opts.hash,
+    path: nmdObjectRelativePath(opts.hash),
+    media_type: opts.mediaType ?? 'application/json',
+    byte_length: utf8ByteLength(opts.content),
+  })
+
+/**
+ * Sync direction declared by a self-describing `.nmd` file (R34).
+ *
+ * The engine dispatches on this value, never on CLI flags or invocation
+ * arity:
+ *
+ * - `local`  — authored locally, pushed to Notion. The only value that may be
+ *   unbound (`page_id: null` ⇒ create-on-push).
+ * - `remote` — authored in Notion, pulled to local. Local hand-edits are not
+ *   pushed; must carry a `page_id`.
+ * - `shared` — bidirectional. The ONLY value that engages the base snapshot +
+ *   3-way merge apparatus (R32); must carry a `page_id`.
+ */
+export const NmdSource = Schema.Literals(['local', 'remote', 'shared']).annotate({
+  identifier: 'NotionMd.Source',
+})
+
+export type NmdSource = typeof NmdSource.Type
+
+/** Parent location of a synced Notion page. */
+export const NmdParentRef = Schema.Union([
+  Schema.TaggedStruct('page', {
+    id: NotionUUID,
+  }),
+  Schema.TaggedStruct('data_source', {
+    id: NotionUUID,
+    database_id: Schema.optional(NotionUUID),
+  }),
+  Schema.TaggedStruct('database', {
+    id: NotionUUID,
+  }),
+  Schema.TaggedStruct('block', {
+    id: NotionUUID,
+  }),
+  Schema.TaggedStruct('workspace', {}),
+  Schema.TaggedStruct('agent', {
+    id: NotionUUID,
+  }),
+  Schema.TaggedStruct('unknown', {
+    raw: Schema.Unknown,
+  }),
+]).annotate({
+  identifier: 'NotionMd.ParentRef',
+})
+
+export type NmdParentRef = typeof NmdParentRef.Type
+
+/** Canonicalized Notion enhanced Markdown body state. */
+export const NmdBodyState = Schema.Struct({
+  format: Schema.Literal('notion-enhanced-markdown'),
+  hash: Sha256Digest,
+  base: NmdObjectRef,
+  last_pulled_at: ISO8601DateTime,
+  remote_last_edited_time: ISO8601DateTime,
+  truncated: Schema.Boolean,
+  unknown_block_ids: Schema.Array(NotionUUID),
+}).annotate({
+  identifier: 'NotionMd.BodyState',
+})
+
+export type NmdBodyState = typeof NmdBodyState.Type
+
+/** Page icon state preserved outside the Markdown body. */
+export const NmdPageIcon = Schema.NullOr(NotionIcon).annotate({
+  identifier: 'NotionMd.PageIcon',
+})
+
+export type NmdPageIcon = typeof NmdPageIcon.Type
+
+/** Page cover backed by an external URL. */
+export const NmdExternalFile = Schema.Struct({
+  type: Schema.Literal('external'),
+  external: Schema.Struct({
+    url: Schema.String,
+  }),
+}).annotate({
+  identifier: 'NotionMd.ExternalFile',
+})
+
+export type NmdExternalFile = typeof NmdExternalFile.Type
+
+/** Page cover backed by an expiring Notion-hosted URL. */
+export const NmdNotionFile = Schema.Struct({
+  type: Schema.Literal('file'),
+  file: Schema.Struct({
+    url: Schema.String,
+    expiry_time: ISO8601DateTime,
+  }),
+}).annotate({
+  identifier: 'NotionMd.NotionFile',
+})
+
+export type NmdNotionFile = typeof NmdNotionFile.Type
+
+/** Page cover state preserved outside the Markdown body. */
+export const NmdPageCover = Schema.NullOr(Schema.Union([NmdExternalFile, NmdNotionFile])).annotate({
+  identifier: 'NotionMd.PageCover',
+})
+
+export type NmdPageCover = typeof NmdPageCover.Type
+
+/** Page-level state that lives outside the Markdown body. */
+export const NmdPageState = Schema.Struct({
+  title: Schema.String,
+  icon: NmdPageIcon,
+  cover: NmdPageCover,
+  in_trash: Schema.Boolean,
+  is_locked: Schema.Boolean,
+}).annotate({
+  identifier: 'NotionMd.PageState',
+})
+
+export type NmdPageState = typeof NmdPageState.Type
+
+/** Date value used by typed page-property frontmatter. */
+export const NmdDateValue = Schema.Struct({
+  start: Schema.String,
+  end: Schema.NullOr(Schema.String),
+  time_zone: Schema.NullOr(Schema.String),
+}).annotate({
+  identifier: 'NotionMd.DateValue',
+})
+
+export type NmdDateValue = typeof NmdDateValue.Type
+
+/** File reference used by typed file properties. */
+export const NmdPropertyFileRef = Schema.Union([
+  Schema.TaggedStruct('local_file', {
+    path: RelativePath,
+    content_hash: Schema.optional(Sha256Digest),
+  }),
+  Schema.TaggedStruct('notion_file', {
+    block_id: Schema.optional(NotionUUID),
+    file_upload_id: Schema.optional(NotionUUID),
+    filename: Schema.String,
+    content_type: Schema.optional(Schema.String),
+    content_length: Schema.optional(Schema.Finite),
+  }),
+  Schema.TaggedStruct('external_url', {
+    url: Schema.String,
+  }),
+]).annotate({
+  identifier: 'NotionMd.PropertyFileRef',
+})
+
+export type NmdPropertyFileRef = typeof NmdPropertyFileRef.Type
+
+/** Place value used by typed page-property frontmatter. */
+export const NmdPlaceValue = Schema.Struct({
+  lat: Schema.Finite,
+  lon: Schema.Finite,
+  name: Schema.optional(Schema.NullOr(Schema.String)),
+  address: Schema.optional(Schema.NullOr(Schema.String)),
+  google_place_id: Schema.optional(Schema.NullOr(Schema.String)),
+  aws_place_id: Schema.optional(Schema.NullOr(Schema.String)),
+}).annotate({
+  identifier: 'NotionMd.PlaceValue',
+})
+
+export type NmdPlaceValue = typeof NmdPlaceValue.Type
+
+/** Verification value used by typed page-property frontmatter. */
+export const NmdVerificationValue = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal('verified'),
+    date: Schema.optional(NmdDateValue),
+  }),
+  Schema.Struct({
+    state: Schema.Literal('unverified'),
+  }),
+]).annotate({
+  identifier: 'NotionMd.VerificationValue',
+})
+
+export type NmdVerificationValue = typeof NmdVerificationValue.Type
+
+/** Typed, human-editable page-property value stored in frontmatter. */
+export const NmdPropertyValue = Schema.Union([
+  Schema.TaggedStruct('title', { value: Schema.String }),
+  Schema.TaggedStruct('rich_text', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('number', { value: Schema.NullOr(Schema.Finite) }),
+  Schema.TaggedStruct('select', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('multi_select', { value: Schema.Array(Schema.String) }),
+  Schema.TaggedStruct('status', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('date', { value: Schema.NullOr(NmdDateValue) }),
+  Schema.TaggedStruct('people', { value: Schema.Array(NotionUUID) }),
+  Schema.TaggedStruct('files', { value: Schema.Array(NmdPropertyFileRef) }),
+  Schema.TaggedStruct('checkbox', { value: Schema.Boolean }),
+  Schema.TaggedStruct('url', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('email', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('phone_number', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('relation', { value: Schema.Array(NotionUUID) }),
+  Schema.TaggedStruct('place', { value: Schema.NullOr(NmdPlaceValue) }),
+  Schema.TaggedStruct('verification', { value: NmdVerificationValue }),
+  Schema.TaggedStruct('read_only', {
+    property_type: Schema.String,
+    value: Schema.Unknown,
+  }),
+]).annotate({
+  identifier: 'NotionMd.PropertyValue',
+})
+
+export type NmdPropertyValue = typeof NmdPropertyValue.Type
+
+/** Data-source binding used when a page is also a database/data-source row. */
+export const NmdDataSourceBinding = Schema.Struct({
+  database_id: NotionUUID,
+  data_source_id: NotionUUID,
+  schema_hash: Sha256Digest,
+  title_property: Schema.String,
+  property_ids: Schema.Record(Schema.String, Schema.String),
+  read_only_properties: Schema.Array(Schema.String),
+}).annotate({
+  identifier: 'NotionMd.DataSourceBinding',
+})
+
+export type NmdDataSourceBinding = typeof NmdDataSourceBinding.Type
+
+/** Compact block snapshot for unsupported Notion blocks kept in self-contained frontmatter. */
+export const NmdUnsupportedBlockUnit = Schema.TaggedStruct('unsupported_block', {
+  block_id: NotionUUID,
+  block_type: Schema.String,
+  placeholder: Schema.String,
+  snapshot: Schema.Struct({
+    object: Schema.Literal('block'),
+    id: NotionUUID,
+    type: Schema.String,
+    has_children: Schema.Boolean,
+    in_trash: Schema.Boolean,
+    parent: Schema.Unknown,
+    created_time: ISO8601DateTime,
+    last_edited_time: ISO8601DateTime,
+    payload: Schema.Unknown,
+  }),
+}).annotate({
+  identifier: 'NotionMd.UnsupportedBlockUnit',
+})
+
+export type NmdUnsupportedBlockUnit = typeof NmdUnsupportedBlockUnit.Type
+
+/** File/upload lifecycle unit small enough to keep in frontmatter. */
+export const NmdFileUnit = Schema.TaggedStruct('file_unit', {
+  id: Schema.String,
+  role: Schema.Literals(['property_file', 'block_file', 'block_image', 'upload']),
+  filename: Schema.String,
+  content_type: Schema.optional(Schema.String),
+  content_length: Schema.optional(Schema.Finite),
+  local_path: Schema.optional(RelativePath),
+  content_hash: Schema.optional(Sha256Digest),
+  block_id: Schema.optional(NotionUUID),
+  file_upload_id: Schema.optional(NotionUUID),
+  status: Schema.optional(Schema.String),
+}).annotate({
+  identifier: 'NotionMd.FileUnit',
+})
+
+export type NmdFileUnit = typeof NmdFileUnit.Type
+
+/** Optional local review bridge metadata for Roughdraft/Notion comments. */
+export const NmdCommentUnit = Schema.TaggedStruct('comment_unit', {
+  id: Schema.String,
+  roughdraft_id: Schema.optional(Schema.String),
+  notion_comment_id: Schema.optional(NotionUUID),
+  notion_discussion_id: Schema.optional(NotionUUID),
+  anchor_text: Schema.optional(Schema.String),
+}).annotate({
+  identifier: 'NotionMd.CommentUnit',
+})
+
+export type NmdCommentUnit = typeof NmdCommentUnit.Type
+
+/** Storage strategy declared by a local `.nmd` file. */
+export const NmdStorage = Schema.Union([
+  Schema.TaggedStruct('self_contained', {
+    unsupported_blocks: Schema.Array(NmdUnsupportedBlockUnit),
+    files: Schema.Array(NmdFileUnit),
+    comments: Schema.Array(NmdCommentUnit),
+  }),
+  Schema.TaggedStruct('object_store', {
+    object: NmdObjectRef,
+    unsupported_block_ids: Schema.Array(NotionUUID),
+    file_ids: Schema.Array(Schema.String),
+    comment_ids: Schema.Array(Schema.String),
+  }),
+]).annotate({
+  identifier: 'NotionMd.Storage',
+})
+
+export type NmdStorage = typeof NmdStorage.Type
+
+/** Versioned local `.nmd` frontmatter envelope. */
+export const NmdFrontmatterV1 = Schema.Struct({
+  notion_md: Schema.Struct({
+    version: Schema.Literal(1),
+    api_version: Schema.Literal(NOTION_API_VERSION),
+    object: Schema.Literal('page'),
+    page_id: NotionUUID,
+    url: Schema.optional(Schema.String),
+    parent: NmdParentRef,
+    body: NmdBodyState,
+    page: NmdPageState,
+    data_source: Schema.NullOr(NmdDataSourceBinding),
+    properties: Schema.Record(Schema.String, NmdPropertyValue),
+    storage: NmdStorage,
+  }),
+}).annotate({
+  identifier: 'NotionMd.FrontmatterV1',
+})
+
+export type NmdFrontmatterV1 = typeof NmdFrontmatterV1.Type
+
+/**
+ * Writable subset of `NmdPropertyValue`, used by the V2 split: read-only
+ * echoes move to the sidecar sync state, so the frontmatter only carries
+ * the property tags a user can actually edit.
+ */
+export const NmdWritablePropertyValue = Schema.Union([
+  Schema.TaggedStruct('title', { value: Schema.String }),
+  Schema.TaggedStruct('rich_text', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('number', { value: Schema.NullOr(Schema.Finite) }),
+  Schema.TaggedStruct('select', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('multi_select', { value: Schema.Array(Schema.String) }),
+  Schema.TaggedStruct('status', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('date', { value: Schema.NullOr(NmdDateValue) }),
+  Schema.TaggedStruct('people', { value: Schema.Array(NotionUUID) }),
+  Schema.TaggedStruct('files', { value: Schema.Array(NmdPropertyFileRef) }),
+  Schema.TaggedStruct('checkbox', { value: Schema.Boolean }),
+  Schema.TaggedStruct('url', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('email', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('phone_number', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('relation', { value: Schema.Array(NotionUUID) }),
+  Schema.TaggedStruct('place', { value: Schema.NullOr(NmdPlaceValue) }),
+  Schema.TaggedStruct('verification', { value: NmdVerificationValue }),
+]).annotate({ identifier: 'NotionMd.WritablePropertyValue' })
+
+export type NmdWritablePropertyValue = typeof NmdWritablePropertyValue.Type
+
+/**
+ * V2 frontmatter — user-facing state only.
+ *
+ * Two-tier split from V1: derived sync bookkeeping (body hash, base
+ * snapshot ref, last-pulled timestamps, unknown-block ids, storage
+ * inventory, read-only property echoes, data-source binding) moves to
+ * the sidecar `NmdSyncStateV1` at `.notion-md/sync/{page_id}.json`.
+ *
+ * `page_id` is nullable. A `null` page id marks an *unbound* `.nmd` file —
+ * a page that should exist on Notion but has not been created yet. The
+ * unified `sync <path>` reconcile engine creates the remote page on the
+ * next pass and writes the real id back through the canonical renderer.
+ * A bound (`page_id !== null`) file participates in guarded two-way sync.
+ */
+/**
+ * The `notion_md` envelope body. `source` is required so every v-next file is
+ * self-describing (R34). A `remote`/`shared` file MUST carry a `page_id` (a
+ * null/absent page id is the create-on-push case, legal only for
+ * `source: local`).
+ */
+const NmdFrontmatterBody = Schema.Struct({
+  version: Schema.Literal(2),
+  api_version: Schema.Literal(NOTION_API_VERSION),
+  object: Schema.Literal('page'),
+  source: NmdSource,
+  page_id: Schema.NullOr(NotionUUID),
+  url: Schema.optional(Schema.NullOr(Schema.String)),
+  parent: NmdParentRef,
+  page: NmdPageState,
+  properties: Schema.Record(Schema.String, NmdWritablePropertyValue),
+  /**
+   * Optional compact, non-authoritative property identity hints (R09–R14).
+   * Keyed by visible property name; each descriptor carries the stable
+   * `property_id`, `property_type`, `data_source_id`, and `config_hash` so
+   * higher-layer consumers can identify which Notion property a field claims
+   * to edit without re-fetching the live schema. Absent when unknown or when
+   * the page is not a datasource member. Decoded strictly — unknown fields
+   * are rejected so a descriptor with extra proof-shaped keys fails closed
+   * (R13). Never contains freshness, base, outbox, or settlement state (R10).
+   */
+  property_descriptors: Schema.optional(PropertyDescriptors),
+}).pipe(
+  Schema.check(
+    Schema.makeFilter((body) =>
+      body.source !== 'local' && body.page_id === null
+        ? {
+            path: ['page_id'],
+            issue: `source: ${body.source} requires a page_id (only source: local may be unbound / create-on-push)`,
+          }
+        : undefined,
+    ),
+  ),
+)
+
+/** Top-level `.nmd` frontmatter envelope (V2): the single `notion_md` body carrying version/identity/source and the page snapshot. */
+export const NmdFrontmatterV2 = Schema.Struct({
+  notion_md: NmdFrontmatterBody,
+}).annotate({ identifier: 'NotionMd.FrontmatterV2' })
+
+export type NmdFrontmatterV2 = typeof NmdFrontmatterV2.Type
+
+/**
+ * Sidecar sync state — machine-managed bookkeeping that lives at
+ * `.notion-md/sync/{page_id}.json`. Mirrors the `.git/` model: working
+ * tree is human-facing, sidecar is machine state. Files survive `git mv`
+ * since they're keyed by immutable `page_id`, not filename.
+ */
+export const NmdSyncStateV1 = Schema.Struct({
+  version: Schema.Literal(1),
+  page_id: NotionUUID,
+  body: NmdBodyState,
+  storage: NmdStorage,
+  read_only_properties: Schema.Record(
+    Schema.String,
+    Schema.Struct({
+      property_type: Schema.String,
+      value: Schema.Unknown,
+    }),
+  ),
+  data_source: Schema.NullOr(NmdDataSourceBinding),
+}).annotate({ identifier: 'NotionMd.SyncStateV1' })
+
+export type NmdSyncStateV1 = typeof NmdSyncStateV1.Type
+
+/** Strict parse options for local sync metadata; extra keys are schema violations. */
+export const nmdStrictParseOptions = {
+  errors: 'all',
+  onExcessProperty: 'error',
+} as const
+
+/** Decode `.nmd` frontmatter with strict excess-property checks. */
+export const decodeNmdFrontmatterV1 = Schema.decodeUnknownEffect(
+  NmdFrontmatterV1,
+  nmdStrictParseOptions,
+)
+
+/** Synchronous strict decoder for tests and CLI preflight paths. */
+export const decodeNmdFrontmatterV1Sync = Schema.decodeUnknownSync(
+  NmdFrontmatterV1,
+  nmdStrictParseOptions,
+)
+
+/** Decode V2 frontmatter with strict excess-property checks. */
+export const decodeNmdFrontmatterV2 = Schema.decodeUnknownEffect(
+  NmdFrontmatterV2,
+  nmdStrictParseOptions,
+)
+
+/** Synchronous strict decoder for V2 frontmatter. */
+export const decodeNmdFrontmatterV2Sync = Schema.decodeUnknownSync(
+  NmdFrontmatterV2,
+  nmdStrictParseOptions,
+)
+
+/** Decode sidecar sync state with strict excess-property checks. */
+export const decodeNmdSyncStateV1 = Schema.decodeUnknownEffect(
+  NmdSyncStateV1,
+  nmdStrictParseOptions,
+)
+
+/**
+ * Result of pairing a decoded `.nmd` frontmatter with its (optional) page-id
+ * keyed sidecar sync state, gated by the statelessness invariant (R31/R32,
+ * DQ-2).
+ *
+ * This tagged union is the structural enforcement of single-source
+ * statelessness: only the `shared-bound` branch carries a `syncState` (hence a
+ * base snapshot ref). The `local`/`remote` branches make a base
+ * *unconstructible* at the type level — a single-source code path that wanted
+ * to read a base would have no field to read it from. R31/R32 are therefore a
+ * type property, not a discipline.
+ */
+type NotionUUIDValue = NotionUUID
+
+/** Resolved local `.nmd` state: the source/sidecar combination classified into a tagged stateless/bound/remote/shared case (R31). */
+export type NmdLocalState =
+  | {
+      readonly _tag: 'local-unbound'
+      readonly frontmatter: NmdFrontmatterV2
+    }
+  | {
+      readonly _tag: 'local-bound'
+      readonly frontmatter: NmdFrontmatterV2
+      readonly pageId: NotionUUIDValue
+    }
+  | {
+      readonly _tag: 'remote'
+      readonly frontmatter: NmdFrontmatterV2
+      readonly pageId: NotionUUIDValue
+    }
+  | {
+      readonly _tag: 'shared-bound'
+      readonly frontmatter: NmdFrontmatterV2
+      readonly pageId: NotionUUIDValue
+      readonly syncState: NmdSyncStateV1
+    }
+
+/** Reason a frontmatter + sidecar pair violates the statelessness gate. */
+export class NmdStatelessnessError extends Schema.TaggedError<NmdStatelessnessError>()(
+  'NotionMd.StatelessnessError',
+  {
+    source: NmdSource,
+    page_id: Schema.NullOr(NotionUUID),
+    has_sidecar: Schema.Boolean,
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Pair a decoded frontmatter with its optional sidecar and enforce R31/R32:
+ *
+ * - `source: local | remote` MUST NOT carry a sidecar (stored base) — a single
+ *   source page is stateless, so a present base is a schema violation, not a
+ *   recoverable condition.
+ * - a bound `source: shared` MUST carry a sidecar (it needs the base for the
+ *   3-way merge).
+ *
+ * `source: remote | shared` with no `page_id` is already a frontmatter decode
+ * error (see `NmdFrontmatterBody`), so this gate only sees those bound.
+ */
+const unboundDirectionError = (source: 'remote' | 'shared'): NmdStatelessnessError =>
+  new NmdStatelessnessError({
+    source,
+    page_id: null,
+    has_sidecar: false,
+    message: `source: ${source} requires a page_id (only source: local may be unbound)`,
+  })
+
+/** Classify a `.nmd` frontmatter + optional sidecar into an {@link NmdLocalState}, or an `NmdStatelessnessError` if source/sidecar disagree (R31). */
+export const gateNmdLocalState = (input: {
+  readonly frontmatter: NmdFrontmatterV2
+  readonly syncState: NmdSyncStateV1 | undefined
+}): NmdLocalState | NmdStatelessnessError => {
+  const { source, page_id } = input.frontmatter.notion_md
+  const hasSidecar = input.syncState !== undefined
+
+  switch (source) {
+    case 'local':
+    case 'remote': {
+      if (hasSidecar === true) {
+        return new NmdStatelessnessError({
+          source,
+          page_id,
+          has_sidecar: true,
+          message: `source: ${source} is single-source and must be stateless, but a stored base snapshot (sidecar) was found; single-source pages carry no .notion-md/ sidecar (R31)`,
+        })
+      }
+      if (source === 'local') {
+        return page_id === null
+          ? { _tag: 'local-unbound', frontmatter: input.frontmatter }
+          : { _tag: 'local-bound', frontmatter: input.frontmatter, pageId: page_id }
+      }
+      /*
+       * source === 'remote' — the frontmatter gate already rejects a null
+       * page_id, so this is unreachable; the explicit check both gives TS the
+       * narrowing and is defense-in-depth if the frontmatter gate is bypassed.
+       */
+      if (page_id === null) return unboundDirectionError(source)
+      return { _tag: 'remote', frontmatter: input.frontmatter, pageId: page_id }
+    }
+    case 'shared': {
+      if (page_id === null) return unboundDirectionError(source)
+      if (input.syncState === undefined) {
+        return new NmdStatelessnessError({
+          source,
+          page_id,
+          has_sidecar: false,
+          message: `source: shared requires an established base snapshot (sidecar) for the 3-way merge, but none was found (R32)`,
+        })
+      }
+      return {
+        _tag: 'shared-bound',
+        frontmatter: input.frontmatter,
+        pageId: page_id,
+        syncState: input.syncState,
+      }
+    }
+  }
+}
+
+/** Size class for deciding whether `.nmd` metadata can stay in frontmatter. */
+export type NmdFrontmatterPayloadClass = 'small' | 'large' | 'too_large'
+
+/** Byte thresholds for `.nmd` frontmatter storage classification. */
+export interface ClassifyNmdFrontmatterPayloadOptions {
+  readonly smallBytes?: number
+  readonly largeBytes?: number
+}
+
+/** Classify whether frontmatter metadata should remain self-contained or move to object storage. */
+// oxlint-disable-next-line overeng/named-args -- public helper already accepts value plus optional thresholds.
+export const classifyNmdFrontmatterPayload = (
+  value: NmdFrontmatterV1,
+  options?: ClassifyNmdFrontmatterPayloadOptions,
+): {
+  readonly bytes: number
+  readonly classification: NmdFrontmatterPayloadClass
+} => {
+  const smallBytes = options?.smallBytes ?? NMD_SMALL_STORAGE_BYTES
+  const largeBytes = options?.largeBytes ?? NMD_LARGE_STORAGE_BYTES
+  const bytes = new TextEncoder().encode(JSON.stringify(value.notion_md.storage)).byteLength
+
+  if (bytes <= smallBytes) {
+    return { bytes, classification: 'small' }
+  }
+
+  if (bytes <= largeBytes) {
+    return { bytes, classification: 'large' }
+  }
+
+  return { bytes, classification: 'too_large' }
+}

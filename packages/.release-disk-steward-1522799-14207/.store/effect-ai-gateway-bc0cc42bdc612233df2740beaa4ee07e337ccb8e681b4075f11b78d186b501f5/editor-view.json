@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/effect-ai-gateway",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/effect-ai-gateway:editor_inputs",
+  "editorInputsFingerprint": "0cfd3f3ce86ba6faef61f7cfd3f3d723896f880503763b99fae8f1a9cd5dfbba",
+  "snapshot": ".store/effect-ai-gateway-bc0cc42bdc612233df2740beaa4ee07e337ccb8e681b4075f11b78d186b501f5",
+  "normalizedStoreDigest": "dbcdb7f096888043f7611748b82197158fcde783081e2583e4faa46eebcbc62b",
+  "selectedViewDigest": "0cfd3f3ce86ba6faef61f7cfd3f3d723896f880503763b99fae8f1a9cd5dfbba",
+  "byteSnapshotDigest": "51a93f86c16af300018c0700970bdb78b9720206c7619486fae61e9b9d797d27"
+}

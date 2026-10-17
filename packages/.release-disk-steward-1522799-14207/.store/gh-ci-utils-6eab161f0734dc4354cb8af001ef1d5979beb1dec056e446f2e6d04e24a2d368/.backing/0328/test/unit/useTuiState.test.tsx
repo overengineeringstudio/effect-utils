@@ -1,0 +1,271 @@
+/**
+ * Tests for TuiApp (createTuiApp pattern)
+ */
+
+import { it } from '@effect/vitest'
+import { Effect, Schema } from 'effect'
+import { describe, expect, beforeEach, afterEach } from 'vitest'
+
+import { createTestTuiState, testModeLayer } from '../../src/effect/testing.tsx'
+import { createTuiApp } from '../../src/effect/TuiApp.tsx'
+
+// =============================================================================
+// Test State and Action Schemas
+// =============================================================================
+
+const TestState = Schema.Union([
+  Schema.TaggedStruct('Idle', {}),
+  Schema.TaggedStruct('Running', {
+    count: Schema.Finite,
+  }),
+  Schema.TaggedStruct('Complete', {
+    total: Schema.Finite,
+  }),
+])
+
+type TestState = Schema.Schema.Type<typeof TestState>
+
+const TestAction = Schema.Union([
+  Schema.TaggedStruct('Start', {}),
+  Schema.TaggedStruct('Increment', {}),
+  Schema.TaggedStruct('Finish', { total: Schema.Finite }),
+])
+
+type TestAction = Schema.Schema.Type<typeof TestAction>
+
+const decodeState = (json: string): TestState =>
+  Schema.decodeSync(Schema.fromJsonString(TestState))(json)
+
+// =============================================================================
+// Reducer
+// =============================================================================
+
+const testReducer = ({ state, action }: { state: TestState; action: TestAction }): TestState => {
+  switch (action._tag) {
+    case 'Start':
+      return { _tag: 'Running', count: 0 }
+    case 'Increment':
+      if (state._tag === 'Running') {
+        return { _tag: 'Running', count: state.count + 1 }
+      }
+      return state
+    case 'Finish':
+      return { _tag: 'Complete', total: action.total }
+  }
+}
+
+// =============================================================================
+// Test App
+// =============================================================================
+
+const TestApp = createTuiApp({
+  stateSchema: TestState,
+  actionSchema: TestAction,
+  initial: { _tag: 'Idle' } as TestState,
+  reducer: testReducer,
+})
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+describe('createTuiApp', () => {
+  let originalLog: typeof console.log
+  let capturedOutput: string[]
+
+  beforeEach(() => {
+    originalLog = console.log
+    capturedOutput = []
+    console.log = (msg: string) => {
+      capturedOutput.push(msg)
+    }
+  })
+
+  afterEach(() => {
+    console.log = originalLog
+  })
+
+  describe('state management', () => {
+    it.effect('initializes with provided initial state', () =>
+      Effect.gen(function* () {
+        const tui = yield* TestApp.run()
+        const result = tui.getState()
+        expect(result).toEqual({ _tag: 'Idle' })
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
+    )
+
+    it.effect('dispatch updates state via reducer', () =>
+      Effect.gen(function* () {
+        const tui = yield* TestApp.run()
+        tui.dispatch({ _tag: 'Start' })
+        const result = tui.getState()
+        expect(result).toEqual({ _tag: 'Running', count: 0 })
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
+    )
+
+    it.effect('multiple dispatches apply reducer sequentially', () =>
+      Effect.gen(function* () {
+        const tui = yield* TestApp.run()
+        tui.dispatch({ _tag: 'Start' })
+        tui.dispatch({ _tag: 'Increment' })
+        tui.dispatch({ _tag: 'Increment' })
+        tui.dispatch({ _tag: 'Increment' })
+        const result = tui.getState()
+        expect(result).toEqual({ _tag: 'Running', count: 3 })
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
+    )
+
+    it.effect('dispatch with payload', () =>
+      Effect.gen(function* () {
+        const tui = yield* TestApp.run()
+        tui.dispatch({ _tag: 'Start' })
+        tui.dispatch({ _tag: 'Increment' })
+        tui.dispatch({ _tag: 'Finish', total: 42 })
+        const result = tui.getState()
+        expect(result).toEqual({ _tag: 'Complete', total: 42 })
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
+    )
+  })
+
+  describe('json mode', () => {
+    it.effect('outputs final raw state on scope close', () =>
+      Effect.gen(function* () {
+        const tui = yield* TestApp.run()
+        tui.dispatch({ _tag: 'Start' })
+        tui.dispatch({ _tag: 'Increment' })
+        tui.dispatch({ _tag: 'Finish', total: 10 })
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(1)
+            const parsed = decodeState(capturedOutput[0]!)
+            expect(parsed).toEqual({ _tag: 'Complete', total: 10 })
+          }),
+        ),
+      ),
+    )
+
+    it.effect('outputs initial state when nothing was dispatched', () =>
+      TestApp.run().pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(1)
+            const parsed = decodeState(capturedOutput[0]!)
+            expect(parsed).toEqual({ _tag: 'Idle' })
+          }),
+        ),
+      ),
+    )
+  })
+
+  describe('ndjson mode', () => {
+    it.live('streams each state change as a raw JSON line', () =>
+      Effect.gen(function* () {
+        const tui = yield* TestApp.run()
+        yield* Effect.sleep('10 millis')
+        tui.dispatch({ _tag: 'Start' })
+        yield* Effect.sleep('10 millis')
+        tui.dispatch({ _tag: 'Finish', total: 10 })
+        yield* Effect.sleep('10 millis')
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('ndjson')),
+        Effect.andThen(
+          Effect.sync(() => {
+            // Initial snapshot + one line per state change. No trailing envelope.
+            expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
+
+            // The point of this assertion is that each line is raw parseable JSON
+            // (wire-format check), not that it matches a schema.
+            for (const line of capturedOutput) {
+              expect(() => JSON.parse(line)).not.toThrow()
+            }
+
+            const firstParsed = decodeState(capturedOutput[0]!)
+            expect(firstParsed._tag).toBe('Idle')
+
+            const lastParsed = decodeState(capturedOutput[capturedOutput.length - 1]!)
+            expect(lastParsed._tag).toBe('Complete')
+          }),
+        ),
+      ),
+    )
+  })
+
+  describe('pipe mode', () => {
+    it.effect('does not output anything', () =>
+      Effect.gen(function* () {
+        const tui = yield* TestApp.run()
+        tui.dispatch({ _tag: 'Start' })
+        tui.dispatch({ _tag: 'Finish', total: 10 })
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('log')),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(0)
+          }),
+        ),
+      ),
+    )
+  })
+
+  describe('stateAtom access', () => {
+    it.effect('stateAtom can be used with getState()', () => {
+      const states: TestState[] = []
+
+      return Effect.gen(function* () {
+        const tui = yield* TestApp.run()
+
+        // Get current state
+        const current = tui.getState()
+        states.push(current)
+
+        tui.dispatch({ _tag: 'Start' })
+        const updated = tui.getState()
+        states.push(updated)
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('log')),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
+          }),
+        ),
+      )
+    })
+  })
+})
+
+describe('createTestTuiState', () => {
+  it.live('captures all state changes', () =>
+    Effect.gen(function* () {
+      const { api, getStates, getFinalState } = yield* createTestTuiState({
+        stateSchema: TestState,
+        actionSchema: TestAction,
+        initial: { _tag: 'Idle' } as TestState,
+        reducer: testReducer,
+      })
+
+      api.dispatch({ _tag: 'Start' })
+      api.dispatch({ _tag: 'Increment' })
+      api.dispatch({ _tag: 'Increment' })
+      api.dispatch({ _tag: 'Finish', total: 5 })
+
+      // Small delay to allow stream to process
+      yield* Effect.sleep('10 millis')
+
+      const states = getStates()
+      const final = getFinalState()
+
+      expect(states).toHaveLength(5) // initial + 4 dispatches
+      expect(states[0]).toEqual({ _tag: 'Idle' })
+      expect(states[4]).toEqual({ _tag: 'Complete', total: 5 })
+      expect(final).toEqual({ _tag: 'Complete', total: 5 })
+    }).pipe(Effect.scoped),
+  )
+})

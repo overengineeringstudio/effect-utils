@@ -1,0 +1,192 @@
+/**
+ * Ls Command
+ *
+ * List all members in the megarepo.
+ */
+
+import { Effect, Option, type Schema } from 'effect'
+import * as Cli from 'effect/cli'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
+import React from 'react'
+
+import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { run } from '@overeng/tui-react'
+
+import {
+  ConfigNotFoundError,
+  findConfigPath,
+  getMemberPath,
+  readMegarepoConfig,
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
+import { type MegarepoTraversal, withMegarepoTraversal } from '../../core/megarepo-traversal.ts'
+import {
+  Cwd,
+  detectCurrentMemberPath,
+  findMegarepoRoot,
+  outputOption,
+  outputModeLayer,
+  resolveOutputOption,
+} from '../context.ts'
+import * as Observability from '../observability.ts'
+import { LsApp, LsView } from '../renderers/LsOutput/mod.ts'
+import type { MemberInfo } from '../renderers/LsOutput/schema.ts'
+
+/**
+ * Recursively scan members and build flat list with owner info.
+ */
+const scanMembersRecursive = ({
+  megarepoRoot,
+  ownerPath,
+  traversal,
+  all,
+  depth = 0,
+}: {
+  megarepoRoot: AbsoluteDirPath
+  /** Path to owning megarepo (undefined = root megarepo) */
+  ownerPath?: readonly [string, ...string[]]
+  traversal: MegarepoTraversal
+  all: boolean
+  depth?: number
+}): Effect.Effect<
+  MemberInfo[],
+  PlatformError | Schema.SchemaError | Error,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const enterResult = yield* traversal.enterRoot({ root: megarepoRoot, depth })
+    if (enterResult._tag === 'Cycle') {
+      return []
+    }
+
+    const fs = yield* FileSystem.FileSystem
+
+    // Load config
+    const configResult = yield* readMegarepoConfig(megarepoRoot).pipe(
+      Effect.catchIf(
+        (e): e is ConfigNotFoundError => e instanceof ConfigNotFoundError,
+        () => Effect.void,
+      ),
+    )
+    if (configResult === undefined) {
+      return []
+    }
+    const { config } = configResult
+
+    const members: MemberInfo[] = []
+
+    for (const [memberName, sourceString] of Object.entries(config.members)) {
+      const memberPath = getMemberPath({ megarepoRoot, name: memberName })
+      const memberExists = yield* fs.exists(memberPath)
+
+      // Check if this member is itself a megarepo
+      const isMegarepo =
+        memberExists === true
+          ? (yield* findConfigPath(memberPath).pipe(Effect.orElseSucceed(() => undefined))) !==
+            undefined
+          : false
+
+      members.push({
+        name: memberName,
+        source: sourceString,
+        owner: ownerPath === undefined ? { _tag: 'Root' } : { _tag: 'Nested', path: ownerPath },
+        isMegarepo,
+      })
+
+      // Recursively scan nested megarepos if --all is used
+      if (all === true && isMegarepo === true && memberExists === true) {
+        const nestedRoot = EffectPath.unsafe.absoluteDir(
+          memberPath.endsWith('/') === true ? memberPath : `${memberPath}/`,
+        )
+        const nestedOwnerPath: [string, ...string[]] =
+          ownerPath === undefined ? [memberName] : [...ownerPath, memberName]
+        const nestedMembers = yield* scanMembersRecursive({
+          megarepoRoot: nestedRoot,
+          ownerPath: nestedOwnerPath,
+          traversal,
+          all,
+          depth: depth + 1,
+        })
+        members.push(...nestedMembers)
+      }
+    }
+
+    return members
+  })
+
+/** List members */
+export const lsCommand = Cli.Command.make(
+  'ls',
+  {
+    output: outputOption,
+    all: Cli.Flag.Boolean('all').pipe(
+      Cli.Flag.withDescription('Recursively list members from nested megarepos'),
+      Cli.Flag.withDefault(false),
+    ),
+  },
+  ({ output, all }) =>
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.gen(function* () {
+        const cwd = yield* Cwd
+        const root = yield* findMegarepoRoot(cwd)
+
+        // Run TuiApp for all output (handles JSON/TTY modes automatically)
+        yield* run(
+          LsApp,
+          (tui) =>
+            Effect.gen(function* () {
+              if (Option.isNone(root) === true) {
+                // Dispatch error state
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'not_found',
+                  message: 'No megarepo.json found',
+                })
+                return
+              }
+
+              // Get megarepo name
+              const megarepoName = yield* Git.deriveMegarepoName(root.value)
+
+              // Scan members (recursively if --all)
+              const members = yield* withMegarepoTraversal({
+                purpose: 'ls',
+                root: root.value,
+                all,
+                effect: (traversal) =>
+                  scanMembersRecursive({
+                    megarepoRoot: root.value,
+                    all,
+                    traversal,
+                  }),
+              })
+
+              // Detect current member path for scope dimming
+              const currentMemberPath = detectCurrentMemberPath({
+                cwd,
+                megarepoRoot: root.value,
+                all,
+              })
+
+              tui.dispatch({
+                _tag: 'SetMembers',
+                members,
+                all,
+                megarepoName,
+                root: root.value,
+                currentMemberPath,
+              })
+            }),
+          { view: React.createElement(LsView, { stateAtom: LsApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
+      }).pipe(
+        Observability.withCommandSpan({
+          name: 'megarepo/ls',
+          command: 'ls',
+          output: outputMode,
+          all,
+        }),
+      ),
+    ),
+).pipe(Cli.Command.withDescription('List all members in the megarepo'))

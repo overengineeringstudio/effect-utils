@@ -1,0 +1,1037 @@
+/**
+ * StoreOutput View
+ *
+ * React component for rendering all store command outputs.
+ * Handles ls, status, fetch, gc, add, and error states.
+ */
+
+import type { Atom } from 'effect/reactivity'
+import React from 'react'
+
+import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
+
+import type {
+  StoreState,
+  StoreGcResult,
+  StoreFixResult,
+  StoreWorktreeStatus,
+  StoreWorktreeIssue,
+  StoreGcWarning,
+} from './schema.ts'
+
+// =============================================================================
+// Main Component
+// =============================================================================
+
+/** Props for the StoreView component that renders store subcommand outputs. */
+export interface StoreViewProps {
+  stateAtom: Atom.Atom<StoreState>
+}
+
+/**
+ * StoreView - View for all store commands.
+ *
+ * Renders based on the _tag discriminator:
+ * - Ls: list of repos
+ * - Status: worktree status with issues
+ * - Fetch: fetch results
+ * - Gc: garbage collection results
+ * - Add: add confirmation
+ * - Error: error message
+ */
+export const StoreView = ({ stateAtom }: StoreViewProps) => {
+  const state = useTuiAtomValue(stateAtom)
+
+  switch (state._tag) {
+    case 'Ls':
+      return <StoreLsView basePath={state.basePath} repos={state.repos} />
+    case 'Status':
+      return (
+        <StoreStatusView
+          basePath={state.basePath}
+          repoCount={state.repoCount}
+          worktreeCount={state.worktreeCount}
+          diskUsage={state.diskUsage}
+          worktrees={state.worktrees}
+        />
+      )
+    case 'Fetch':
+      return (
+        <StoreFetchView
+          basePath={state.basePath}
+          results={state.results}
+          elapsedMs={state.elapsedMs}
+        />
+      )
+    case 'Gc':
+      return (
+        <StoreGcView
+          basePath={state.basePath}
+          results={state.results}
+          dryRun={state.dryRun}
+          warning={state.warning}
+          showForceHint={state.showForceHint}
+          processedCount={state.processedCount}
+          repoCount={state.repoCount}
+          completedRepoCount={state.completedRepoCount}
+          discoveredWorktreeCount={state.discoveredWorktreeCount}
+          activeWorktreeCount={state.activeWorktreeCount}
+          statusMessage={state.statusMessage}
+          done={state.done}
+          interrupted={state.interrupted}
+        />
+      )
+    case 'Add':
+      return (
+        <StoreAddView
+          source={state.source}
+          ref={state.ref}
+          commit={state.commit}
+          path={state.path}
+          alreadyExists={state.status === 'already_exists'}
+        />
+      )
+    case 'WorktreeNew':
+      return (
+        <StoreWorktreeNewView
+          source={state.source}
+          ref={state.ref}
+          path={state.path}
+          commit={state.commit}
+          autoBootstrap={state.autoBootstrap}
+          branchCreated={state.branchCreated}
+        />
+      )
+    case 'Fix':
+      return (
+        <StoreFixView
+          basePath={state.basePath}
+          results={state.results}
+          dryRun={state.dryRun}
+          noIssues={state.noIssues}
+        />
+      )
+    case 'Error':
+      return <StoreErrorView error={state.error} message={state.message} source={state.source} />
+    case 'Interrupted':
+      return <Text dim>Store command interrupted</Text>
+  }
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+// Shorthand for commonly used symbols
+const SYMBOLS = {
+  check: unicodeSymbols.status.check,
+  cross: unicodeSymbols.status.cross,
+  warning: unicodeSymbols.status.warning,
+  circle: unicodeSymbols.status.circle,
+  dot: unicodeSymbols.status.dot,
+  arrow: unicodeSymbols.arrows.right,
+}
+
+/** Format elapsed time */
+const formatElapsed = (ms: number): string => {
+  if (ms < 1000) return `${ms}ms`
+  const seconds = Math.floor(ms / 1000)
+  const remainingMs = ms % 1000
+  if (seconds < 60)
+    return remainingMs > 0 ? `${seconds}.${Math.floor(remainingMs / 100)}s` : `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSecs = seconds % 60
+  return `${minutes}m ${remainingSecs}s`
+}
+
+// =============================================================================
+// Sub-Views
+// =============================================================================
+
+/** Header component shared by most views */
+const StoreHeader = ({ basePath, title = 'store' }: { basePath: string; title?: string }) => {
+  return (
+    <Box flexDirection="column">
+      <Text bold>{title}</Text>
+      <Text dim> path</Text>
+      <Text>: {basePath}</Text>
+      <Text> </Text>
+    </Box>
+  )
+}
+
+/** Ls view - list repos */
+const StoreLsView = ({
+  basePath,
+  repos,
+}: {
+  basePath: string
+  repos: readonly { relativePath: string }[]
+}) => {
+  return (
+    <Box flexDirection="column">
+      <StoreHeader basePath={basePath} />
+      <Text dim>{'─'.repeat(40)}</Text>
+      <Text> </Text>
+      {repos.length === 0 ? (
+        <Text dim>(empty)</Text>
+      ) : (
+        <>
+          {repos.map((repo) => (
+            <Box key={repo.relativePath} flexDirection="row">
+              <Text color="green">{SYMBOLS.check}</Text>
+              <Text> {repo.relativePath}</Text>
+            </Box>
+          ))}
+          <Text> </Text>
+          <Text dim>{repos.length} repositories</Text>
+        </>
+      )}
+    </Box>
+  )
+}
+
+/** Status view - show worktree status */
+const StoreStatusView = ({
+  basePath,
+  repoCount,
+  worktreeCount,
+  diskUsage,
+  worktrees,
+}: {
+  basePath: string
+  repoCount: number
+  worktreeCount: number
+  diskUsage?: string | undefined
+  worktrees: readonly StoreWorktreeStatus[]
+}) => {
+  // Filter to only worktrees with issues
+  const worktreesWithIssues = worktrees.filter((w) => w.issues.length > 0)
+
+  // Count issues by severity
+  const errorCount = worktrees.reduce(
+    (acc, w) => acc + w.issues.filter((i) => i.severity === 'error').length,
+    0,
+  )
+  const warningCount = worktrees.reduce(
+    (acc, w) => acc + w.issues.filter((i) => i.severity === 'warning').length,
+    0,
+  )
+  const infoCount = worktrees.reduce(
+    (acc, w) => acc + w.issues.filter((i) => i.severity === 'info').length,
+    0,
+  )
+
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          <Text bold>Store: </Text>
+          <Text>{basePath}</Text>
+          {diskUsage && <Text dim> ({diskUsage})</Text>}
+        </Box>
+        <Text dim>
+          {'  '}
+          {repoCount} repo{repoCount !== 1 ? 's' : ''}, {worktreeCount} worktree
+          {worktreeCount !== 1 ? 's' : ''}
+        </Text>
+        <Text> </Text>
+      </Box>
+      {worktreesWithIssues.length > 0 && (
+        <>
+          <Text bold>Issues:</Text>
+          {worktreesWithIssues.map((worktree) => (
+            <StoreStatusWorktreeRow
+              key={`${worktree.repo}-${worktree.refType}-${worktree.ref}`}
+              worktree={worktree}
+            />
+          ))}
+          <Text> </Text>
+        </>
+      )}
+      <StoreStatusSummary
+        errorCount={errorCount}
+        warningCount={warningCount}
+        infoCount={infoCount}
+      />
+    </Box>
+  )
+}
+
+const getColor = (
+  severity: 'error' | 'warning' | 'info',
+): 'red' | 'yellow' | 'gray' | undefined => {
+  switch (severity) {
+    case 'error':
+      return 'red'
+    case 'warning':
+      return 'yellow'
+    case 'info':
+      return 'gray'
+  }
+}
+
+/** Get hint for an issue type */
+const getIssueHint = ({
+  issue,
+  worktree,
+}: {
+  issue: StoreWorktreeIssue
+  worktree: StoreWorktreeStatus
+}): { fix: string; explanation: string } | undefined => {
+  switch (issue.type) {
+    case 'dirty':
+      return {
+        fix: `cd ~/.megarepo/${worktree.repo}/refs/${worktree.refType}/${worktree.ref}`,
+        explanation: 'commit or stash changes',
+      }
+    case 'unpushed':
+      return {
+        fix: `cd ~/.megarepo/${worktree.repo}/refs/${worktree.refType}/${worktree.ref}`,
+        explanation: 'push commits or reset',
+      }
+    case 'ref_mismatch': {
+      // Extract actual ref from message like "path says 'main' but HEAD is 'feat/foo'"
+      const match = issue.message.match(/HEAD is '([^']+)'/)
+      const actualRef = match?.[1] ?? 'actual-ref'
+      return {
+        fix: `mr config pin <member> -c ${actualRef}`,
+        explanation: 'create proper worktree for current branch',
+      }
+    }
+    case 'orphaned':
+      return {
+        fix: 'mr store gc',
+        explanation: 'remove unrooted commit worktrees',
+      }
+    case 'missing_bare':
+    case 'broken_worktree':
+      return {
+        fix: 'mr store gc --force',
+        explanation: 'remove broken worktree',
+      }
+    default:
+      return undefined
+  }
+}
+
+/** Single worktree with issues */
+const StoreStatusWorktreeRow = ({ worktree }: { worktree: StoreWorktreeStatus }) => {
+  // Get highest severity for the header
+  const highestSeverity = worktree.issues.reduce<'error' | 'warning' | 'info'>((acc, issue) => {
+    if (issue.severity === 'error') return 'error'
+    if (issue.severity === 'warning' && acc !== 'error') return 'warning'
+    return acc
+  }, 'info')
+
+  const getSymbol = (severity: 'error' | 'warning' | 'info') => {
+    switch (severity) {
+      case 'error':
+        return <Text color="red">{SYMBOLS.cross}</Text>
+      case 'warning':
+        return <Text color="yellow">{SYMBOLS.warning}</Text>
+      case 'info':
+        return <Text dim>{SYMBOLS.circle}</Text>
+    }
+  }
+
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        {getSymbol(highestSeverity)}
+        <Text> </Text>
+        <Text>{worktree.repo}</Text>
+        <Text dim>/refs/{worktree.refType}/</Text>
+        <Text bold>{worktree.ref}</Text>
+      </Box>
+      {worktree.issues.map((issue) => {
+        const hint = getIssueHint({ issue, worktree })
+        return (
+          <Box key={`${issue.type}-${issue.message}`} flexDirection="column">
+            <Box flexDirection="row">
+              <Text>{'    '}</Text>
+              <Text color={getColor(issue.severity)}>{issue.type}</Text>
+              <Text dim>: {issue.message}</Text>
+            </Box>
+            {hint && (
+              <>
+                <Box flexDirection="row">
+                  <Text>{'      '}</Text>
+                  <Text color="cyan">fix: </Text>
+                  <Text>{hint.fix}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{'             '}</Text>
+                  <Text dim>→ {hint.explanation}</Text>
+                </Box>
+              </>
+            )}
+          </Box>
+        )
+      })}
+    </Box>
+  )
+}
+
+/** Status summary */
+const StoreStatusSummary = ({
+  errorCount,
+  warningCount,
+  infoCount,
+}: {
+  errorCount: number
+  warningCount: number
+  infoCount: number
+}) => {
+  const totalIssues = errorCount + warningCount + infoCount
+
+  if (totalIssues === 0) {
+    return (
+      <Box flexDirection="row">
+        <Text color="green">{SYMBOLS.check}</Text>
+        <Text> All worktrees healthy</Text>
+      </Box>
+    )
+  }
+
+  const parts: Array<{ key: string; node: React.ReactNode }> = []
+  if (errorCount > 0) {
+    parts.push({
+      key: 'errors',
+      node: (
+        <Text color="red">
+          {errorCount} error{errorCount !== 1 ? 's' : ''}
+        </Text>
+      ),
+    })
+  }
+  if (warningCount > 0) {
+    parts.push({
+      key: 'warnings',
+      node: (
+        <Text color="yellow">
+          {warningCount} warning{warningCount !== 1 ? 's' : ''}
+        </Text>
+      ),
+    })
+  }
+  if (infoCount > 0) {
+    parts.push({
+      key: 'info',
+      node: <Text dim>{infoCount} info</Text>,
+    })
+  }
+
+  return (
+    <Box flexDirection="row">
+      {parts.map((part, i) => (
+        <React.Fragment key={part.key}>
+          {i > 0 && <Text dim> {SYMBOLS.dot} </Text>}
+          {part.node}
+        </React.Fragment>
+      ))}
+    </Box>
+  )
+}
+
+/** Fetch view - show fetch results */
+const StoreFetchView = ({
+  basePath,
+  results,
+  elapsedMs,
+}: {
+  basePath: string
+  results: readonly { path: string; status: 'fetched' | 'error'; message?: string | undefined }[]
+  elapsedMs: number
+}) => {
+  const fetchedCount = results.filter((r) => r.status === 'fetched').length
+  const errorCount = results.filter((r) => r.status === 'error').length
+
+  return (
+    <Box flexDirection="column">
+      <StoreHeader basePath={basePath} />
+      <Text dim>{'─'.repeat(40)}</Text>
+      <Text> </Text>
+      {results.map((result) => (
+        <Box key={result.path} flexDirection="row">
+          {result.status === 'error' ? (
+            <Text color="red">{SYMBOLS.cross}</Text>
+          ) : (
+            <Text color="green">{SYMBOLS.check}</Text>
+          )}
+          <Text> {result.path}</Text>
+          {result.status === 'error' && result.message && <Text dim> ({result.message})</Text>}
+        </Box>
+      ))}
+      <Text> </Text>
+      <Box flexDirection="row">
+        <Text dim>{fetchedCount} fetched</Text>
+        {errorCount > 0 && (
+          <>
+            <Text dim> {SYMBOLS.dot} </Text>
+            <Text color="red">
+              {errorCount} error{errorCount > 1 ? 's' : ''}
+            </Text>
+          </>
+        )}
+        <Text dim>
+          {' '}
+          {SYMBOLS.dot} {formatElapsed(elapsedMs)}
+        </Text>
+      </Box>
+    </Box>
+  )
+}
+
+/** GC view - show garbage collection results */
+// oxlint-disable-next-line overeng/exports-first -- exported for focused renderer contract tests
+export const StoreGcView = ({
+  basePath,
+  results,
+  dryRun,
+  warning,
+  showForceHint,
+  processedCount,
+  repoCount,
+  completedRepoCount,
+  discoveredWorktreeCount,
+  activeWorktreeCount,
+  statusMessage,
+  done,
+  interrupted,
+  maxInUseToShow = 5,
+}: {
+  basePath: string
+  results: readonly StoreGcResult[]
+  dryRun: boolean
+  warning?: StoreGcWarning | undefined
+  showForceHint: boolean
+  processedCount?: number | undefined
+  repoCount?: number | undefined
+  completedRepoCount?: number | undefined
+  discoveredWorktreeCount?: number | undefined
+  activeWorktreeCount?: number | undefined
+  statusMessage?: string | undefined
+  done?: boolean | undefined
+  interrupted?: boolean | undefined
+  maxInUseToShow?: number
+}) => {
+  const removed = results.filter(
+    (r) => r.status === 'removed' || r.outcome === 'would-delete' || r.outcome === 'deleted',
+  )
+  const archived = results.filter((r) => r.status === 'archived')
+  const reaped = results.filter((r) => r.status === 'reaped')
+  const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
+  const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
+  const kept = results.filter(
+    (r) =>
+      r.status === 'kept' &&
+      r.outcome !== 'would-delete' &&
+      r.outcome !== 'deleted' &&
+      r.outcome !== 'unknown',
+  )
+  const unknown = results.filter((r) => r.outcome === 'unknown')
+  const errors = results.filter((r) => r.status === 'error')
+
+  // Determine which results to show
+  const showInUse = skippedInUse.length <= maxInUseToShow
+  const showKept = kept.length <= maxInUseToShow
+
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="column">
+        <Text bold>store gc</Text>
+        <Text dim> path</Text>
+        <Text>: {basePath}</Text>
+        {dryRun && (
+          <Text dim> mode: dry run (remotes not refreshed; preview uses last-known refs)</Text>
+        )}
+        {(done === false || interrupted === true) && (
+          <>
+            {statusMessage !== undefined && <Text dim> status: {statusMessage}</Text>}
+            <Text dim>
+              progress: {processedCount ?? results.length} checked
+              {discoveredWorktreeCount !== undefined ? ` / ${discoveredWorktreeCount} found` : ''}
+              {activeWorktreeCount !== undefined && activeWorktreeCount > 0
+                ? `, ${activeWorktreeCount} active`
+                : ''}
+              {repoCount !== undefined && completedRepoCount !== undefined
+                ? `, ${completedRepoCount}/${repoCount} repos`
+                : ''}
+            </Text>
+          </>
+        )}
+        <Text> </Text>
+      </Box>
+      {warning && <StoreGcWarningRow warning={warning} />}
+      <Text dim>{'─'.repeat(40)}</Text>
+      <Text> </Text>
+      {results.length === 0 ? (
+        <Text dim>
+          {interrupted === true
+            ? 'Interrupted before any worktrees completed'
+            : done === false
+              ? 'Scanning worktrees...'
+              : 'No worktrees found'}
+        </Text>
+      ) : (
+        <>
+          {removed.map((result) => (
+            <StoreGcResultRow key={`${result.path}-removed`} result={result} dryRun={dryRun} />
+          ))}
+          {archived.map((result) => (
+            <StoreGcResultRow
+              key={`${result.repo}-${result.ref}-archived`}
+              result={result}
+              dryRun={dryRun}
+            />
+          ))}
+          {reaped.map((result) => (
+            <StoreGcResultRow
+              key={`${result.repo}-${result.ref}-reaped`}
+              result={result}
+              dryRun={dryRun}
+            />
+          ))}
+          {skippedDirty.map((result) => (
+            <StoreGcResultRow
+              key={`${result.repo}-${result.ref}-dirty`}
+              result={result}
+              dryRun={dryRun}
+            />
+          ))}
+          {showInUse &&
+            skippedInUse.map((result) => (
+              <StoreGcResultRow
+                key={`${result.repo}-${result.ref}-in-use`}
+                result={result}
+                dryRun={dryRun}
+              />
+            ))}
+          {showKept &&
+            kept.map((result) => (
+              <StoreGcResultRow key={`${result.path}-kept`} result={result} dryRun={dryRun} />
+            ))}
+          {unknown.map((result) => (
+            <StoreGcResultRow key={`${result.path}-unknown`} result={result} dryRun={dryRun} />
+          ))}
+          {errors.map((result) => (
+            <StoreGcResultRow
+              key={`${result.repo}-${result.ref}-error`}
+              result={result}
+              dryRun={dryRun}
+            />
+          ))}
+        </>
+      )}
+      <Text> </Text>
+      {interrupted === true ? (
+        <Text color="yellow">
+          Interrupted after {processedCount ?? results.length} checked
+          {discoveredWorktreeCount !== undefined ? ` / ${discoveredWorktreeCount} found` : ''}
+        </Text>
+      ) : done === false && results.length === 0 ? null : (
+        <StoreGcSummary
+          removed={removed.length}
+          archived={archived.length}
+          reaped={reaped.length}
+          skippedDirty={skippedDirty.length}
+          skippedInUse={skippedInUse.length}
+          kept={kept.length}
+          unknown={unknown.length}
+          errors={errors.length}
+          dryRun={dryRun}
+        />
+      )}
+      {showForceHint && skippedDirty.length > 0 && (
+        <Text dim>Use --force to remove dirty worktrees</Text>
+      )}
+    </Box>
+  )
+}
+
+/** GC Warning component */
+const StoreGcWarningRow = ({ warning }: { warning: StoreGcWarning }) => {
+  if (warning.type === 'not_in_megarepo') {
+    return (
+      <Box flexDirection="column">
+        <Text dim>Not in a megarepo - only named refs and dirty worktrees are protected</Text>
+        <Text> </Text>
+      </Box>
+    )
+  }
+
+  if (warning.type === 'only_current_megarepo') {
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          <Text color="yellow">{SYMBOLS.warning}</Text>
+          <Text color="yellow"> Using registered megarepo workspaces for liveness</Text>
+        </Box>
+        <Text dim> Unregistered commit worktrees may be removed when clean</Text>
+        <Text dim> Run mr status from active megarepos to refresh their root-set records</Text>
+        <Text> </Text>
+      </Box>
+    )
+  }
+
+  // Custom warning
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        <Text color="yellow">{SYMBOLS.warning}</Text>
+        <Text> {warning.message}</Text>
+      </Box>
+      <Text> </Text>
+    </Box>
+  )
+}
+
+/** GC Result line component */
+// oxlint-disable-next-line overeng/exports-first -- exported for focused renderer contract tests
+export const StoreGcResultRow = ({
+  result,
+  dryRun,
+}: {
+  result: StoreGcResult
+  dryRun: boolean
+}) => {
+  const isGeneratedDeletion =
+    result.kind === 'generated-artifact' &&
+    (result.outcome === 'would-delete' || result.outcome === 'deleted')
+  const isGeneratedUnknown = result.kind === 'generated-artifact' && result.outcome === 'unknown'
+
+  const getSymbol = () => {
+    if (isGeneratedDeletion === true) return <Text color="green">{SYMBOLS.check}</Text>
+    if (isGeneratedUnknown === true) return <Text color="yellow">{SYMBOLS.circle}</Text>
+
+    switch (result.status) {
+      case 'removed':
+        return <Text color="green">{SYMBOLS.check}</Text>
+      case 'archived':
+        return <Text color="cyan">{SYMBOLS.check}</Text>
+      case 'reaped':
+        return <Text color="green">{SYMBOLS.check}</Text>
+      case 'error':
+        return <Text color="red">{SYMBOLS.cross}</Text>
+      case 'skipped_dirty':
+        return <Text color="yellow">{SYMBOLS.circle}</Text>
+      case 'skipped_in_use':
+        return <Text dim>{SYMBOLS.check}</Text>
+      case 'kept':
+        return <Text dim>{SYMBOLS.circle}</Text>
+    }
+  }
+
+  const getStatusText = () => {
+    if (isGeneratedDeletion === true) {
+      return <Text dim> ({result.outcome === 'would-delete' ? 'would delete' : 'deleted'})</Text>
+    }
+    if (isGeneratedUnknown === true) {
+      return <Text color="yellow"> (unknown: {result.reason ?? result.message})</Text>
+    }
+
+    switch (result.status) {
+      case 'removed':
+        return <Text dim> ({dryRun === true ? 'would remove' : 'removed'})</Text>
+      case 'archived':
+        return (
+          <Text dim>
+            {' '}
+            ({dryRun === true ? 'would archive' : 'archived'}: {result.reason ?? 'stale'})
+          </Text>
+        )
+      case 'reaped':
+        return <Text dim> ({dryRun === true ? 'would reap' : 'reaped'} past retention)</Text>
+      case 'kept':
+        return <Text dim> (kept: {result.reason ?? result.message ?? 'cold'})</Text>
+      case 'skipped_dirty':
+        return <Text dim> ({result.message ?? 'dirty'})</Text>
+      case 'skipped_in_use':
+        return <Text dim> ({result.message ?? 'in use'})</Text>
+      case 'error':
+        return <Text color="red"> (error: {result.message})</Text>
+    }
+  }
+
+  const isDim =
+    isGeneratedDeletion === false &&
+    (result.status === 'skipped_in_use' || result.status === 'kept')
+  const label =
+    result.kind === 'generated-artifact'
+      ? result.workspacePath === undefined
+        ? result.path
+        : `${result.workspacePath}/${result.artifactClass ?? 'generated artifact'}`
+      : `${result.repo}refs/${result.refType}/${result.ref}`
+
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        {getSymbol()}
+        {isDim === true ? <Text dim> {label} </Text> : <Text> {label} </Text>}
+        {getStatusText()}
+      </Box>
+      {result.status === 'archived' && result.recoverPath !== undefined && (
+        <Text dim> recover from: {result.recoverPath}</Text>
+      )}
+    </Box>
+  )
+}
+
+/** GC Summary component */
+const StoreGcSummary = ({
+  removed,
+  archived,
+  reaped,
+  skippedDirty,
+  skippedInUse,
+  kept,
+  unknown,
+  errors,
+  dryRun,
+}: {
+  removed: number
+  archived: number
+  reaped: number
+  skippedDirty: number
+  skippedInUse: number
+  kept: number
+  unknown: number
+  errors: number
+  dryRun: boolean
+}) => {
+  const parts: Array<{ key: string; element: React.ReactNode }> = []
+
+  if (removed > 0) {
+    parts.push({
+      key: 'removed',
+      element: (
+        <Text>
+          {removed} {dryRun === true ? 'would be removed' : 'removed'}
+        </Text>
+      ),
+    })
+  }
+  if (archived > 0) {
+    parts.push({
+      key: 'archived',
+      element: (
+        <Text>
+          {archived} {dryRun === true ? 'would be archived' : 'archived'}
+        </Text>
+      ),
+    })
+  }
+  if (reaped > 0) {
+    parts.push({
+      key: 'reaped',
+      element: (
+        <Text>
+          {reaped} {dryRun === true ? 'would be reaped' : 'reaped'}
+        </Text>
+      ),
+    })
+  }
+  if (skippedDirty > 0) {
+    parts.push({
+      key: 'dirty',
+      element: <Text>{skippedDirty} skipped (dirty)</Text>,
+    })
+  }
+  if (skippedInUse > 0) {
+    parts.push({
+      key: 'in-use',
+      element: <Text>{skippedInUse} in use</Text>,
+    })
+  }
+  if (kept > 0) {
+    parts.push({
+      key: 'kept',
+      element: <Text>{kept} kept</Text>,
+    })
+  }
+  if (unknown > 0) {
+    parts.push({
+      key: 'unknown',
+      element: <Text color="yellow">{unknown} unknown</Text>,
+    })
+  }
+  if (errors > 0) {
+    parts.push({
+      key: 'errors',
+      element: (
+        <Text color="red">
+          {errors} error{errors > 1 ? 's' : ''}
+        </Text>
+      ),
+    })
+  }
+
+  if (parts.length === 0) {
+    return <Text dim>Nothing to clean up</Text>
+  }
+
+  return (
+    <Box flexDirection="row">
+      <Text dim>
+        {parts.map((part, i) => (
+          <React.Fragment key={part.key}>
+            {i > 0 && ` ${SYMBOLS.dot} `}
+            {part.element}
+          </React.Fragment>
+        ))}
+      </Text>
+    </Box>
+  )
+}
+
+/** Add view - show add result */
+const StoreAddView = ({
+  source,
+  ref,
+  commit,
+  path,
+  alreadyExists,
+}: {
+  source: string
+  ref: string
+  commit?: string | undefined
+  path: string
+  alreadyExists: boolean
+}) => {
+  const status = alreadyExists === true ? 'already in store' : 'added to store'
+
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        {alreadyExists === true ? (
+          <Text dim>{SYMBOLS.check}</Text>
+        ) : (
+          <Text color="green">{SYMBOLS.check}</Text>
+        )}
+        <Text> </Text>
+        <Text bold>{source}</Text>
+        <Text dim> ({status})</Text>
+      </Box>
+      <Text dim> ref: {ref}</Text>
+      {commit && <Text dim> commit: {commit.slice(0, 7)}</Text>}
+      <Text dim> path: {path}</Text>
+    </Box>
+  )
+}
+
+/** Fix view - show fix results */
+const StoreFixView = ({
+  basePath,
+  results,
+  dryRun,
+  noIssues,
+}: {
+  basePath: string
+  results: readonly StoreFixResult[]
+  dryRun: boolean
+  noIssues: boolean
+}) => {
+  if (noIssues === true) {
+    return (
+      <Box flexDirection="column">
+        <StoreHeader basePath={basePath} title="store fix" />
+        <Box flexDirection="row">
+          <Text color="green">{SYMBOLS.check}</Text>
+          <Text> No issues found</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  const fixed = results.filter((r) => r.status === 'fixed')
+  const skipped = results.filter((r) => r.status === 'skipped')
+  const errors = results.filter((r) => r.status === 'error')
+
+  return (
+    <Box flexDirection="column">
+      <StoreHeader basePath={basePath} title="store fix" />
+      {dryRun && <Text dim>mode: dry run</Text>}
+      <Text dim>{'─'.repeat(40)}</Text>
+      <Text> </Text>
+      {results.map((result) => (
+        <Box key={`${result.memberName}-${result.issueType}-${result.message}`} flexDirection="row">
+          {result.status === 'fixed' ? (
+            <Text color="green">{SYMBOLS.check}</Text>
+          ) : result.status === 'error' ? (
+            <Text color="red">{SYMBOLS.cross}</Text>
+          ) : (
+            <Text dim>{SYMBOLS.circle}</Text>
+          )}
+          <Text> </Text>
+          <Text bold>{result.memberName}</Text>
+          <Text dim> ({result.issueType})</Text>
+          <Text> {result.message}</Text>
+        </Box>
+      ))}
+      <Text> </Text>
+      <Box flexDirection="row">
+        {fixed.length > 0 && <Text color="green">{fixed.length} fixed</Text>}
+        {fixed.length > 0 && (skipped.length > 0 || errors.length > 0) && (
+          <Text dim> {SYMBOLS.dot} </Text>
+        )}
+        {skipped.length > 0 && <Text dim>{skipped.length} skipped</Text>}
+        {skipped.length > 0 && errors.length > 0 && <Text dim> {SYMBOLS.dot} </Text>}
+        {errors.length > 0 && (
+          <Text color="red">
+            {errors.length} error{errors.length !== 1 ? 's' : ''}
+          </Text>
+        )}
+      </Box>
+    </Box>
+  )
+}
+
+/** WorktreeNew view - show worktree creation result */
+const StoreWorktreeNewView = ({
+  source,
+  ref,
+  path,
+  commit,
+  autoBootstrap,
+  branchCreated,
+}: {
+  source: string
+  ref: string
+  path: string
+  commit?: string | undefined
+  autoBootstrap: boolean
+  branchCreated: boolean
+}) => {
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        <Text color="green">{SYMBOLS.check}</Text>
+        <Text> {path}</Text>
+      </Box>
+      <Text dim> source: {source}</Text>
+      <Text dim> ref: {ref}</Text>
+      {commit && <Text dim> commit: {commit.slice(0, 7)}</Text>}
+      {autoBootstrap === true && <Text dim> auto-bootstrapped bare repo</Text>}
+      <Text dim> {branchCreated === true ? 'created branch' : 'checked out existing branch'}</Text>
+    </Box>
+  )
+}
+
+/** Error view - show error message */
+const StoreErrorView = ({
+  error: _error,
+  message,
+  source: _source,
+}: {
+  error: string
+  message: string
+  source?: string | undefined
+}) => {
+  return (
+    <Box flexDirection="row">
+      <Text color="red">{SYMBOLS.cross}</Text>
+      <Text> {message}</Text>
+    </Box>
+  )
+}

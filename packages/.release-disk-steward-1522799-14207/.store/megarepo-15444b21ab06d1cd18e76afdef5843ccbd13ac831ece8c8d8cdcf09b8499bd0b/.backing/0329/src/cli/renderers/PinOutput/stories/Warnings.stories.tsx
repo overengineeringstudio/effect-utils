@@ -1,0 +1,89 @@
+/**
+ * Warning stories for PinOutput - non-blocking issues.
+ */
+
+import type { Meta, StoryObj } from '@storybook/react'
+import React, { useMemo } from 'react'
+
+import {
+  ALL_OUTPUT_TABS,
+  commonArgTypes,
+  defaultStoryArgs,
+  TuiStoryPreview,
+} from '@overeng/tui-react/storybook'
+
+import { flagArgTypes } from '../../_story-constants.ts'
+import { PinApp } from '../mod.ts'
+import { PinView } from '../view.tsx'
+import * as fixtures from './_fixtures.ts'
+
+type StoryArgs = {
+  height: number
+  interactive: boolean
+  playbackSpeed: number
+  dryRun: boolean
+}
+
+export default {
+  component: PinView,
+  title: 'CLI/Config/Pin/Warnings',
+  parameters: {
+    layout: 'fullscreen',
+  },
+  args: {
+    ...defaultStoryArgs,
+    dryRun: false,
+  },
+  argTypes: {
+    ...commonArgTypes,
+    dryRun: flagArgTypes.dryRun,
+  },
+} satisfies Meta
+
+type Story = StoryObj<StoryArgs>
+
+/** Warning: Worktree for pinned ref not available */
+const WarningWorktreeNotAvailableRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createWarningWorktreeNotAvailable(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
+export const WarningWorktreeNotAvailable: Story = {
+  render: WarningWorktreeNotAvailableRender,
+}
+
+/** Warning: Member was removed from config */
+const WarningMemberRemovedFromConfigRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createWarningMemberRemovedFromConfig(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
+export const WarningMemberRemovedFromConfig: Story = {
+  render: WarningMemberRemovedFromConfigRender,
+}

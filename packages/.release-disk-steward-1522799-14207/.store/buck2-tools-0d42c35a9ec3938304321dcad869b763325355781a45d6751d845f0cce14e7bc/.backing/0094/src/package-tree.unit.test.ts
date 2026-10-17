@@ -1,0 +1,372 @@
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, isAbsolute, join, relative } from 'node:path'
+
+import { afterEach, describe, expect, it } from 'vitest'
+
+import { runPackageTreeCli } from './package-tree.ts'
+
+const scratchDirectories: string[] = []
+type AssemblyFixture = {
+  readonly root: string
+  readonly nodeModules: string
+  readonly packageDirectory: string
+  readonly output: string
+}
+
+const createAssemblyFixture = (): AssemblyFixture => {
+  const root = mkdtempSync(join(tmpdir(), 'package-tree-'))
+  scratchDirectories.push(root)
+  const nodeModules = join(root, 'source', 'node_modules')
+  const packageDirectory = join(nodeModules, '.pnpm', 'safe', 'node_modules', 'safe')
+  const output = join(root, 'output')
+  mkdirSync(packageDirectory, { recursive: true })
+  writeFileSync(join(packageDirectory, 'package.json'), '{"name":"safe"}\n')
+  return { root, nodeModules, packageDirectory, output }
+}
+
+const assemble = ({ nodeModules, output }: AssemblyFixture): void =>
+  runPackageTreeCli(['--output', output, '--node-modules', nodeModules])
+
+afterEach(() => {
+  for (const directory of scratchDirectories.splice(0)) rmSync(directory, { recursive: true })
+})
+
+describe('Buck package-tree dependency boundaries', () => {
+  it('materializes an explicit empty node_modules boundary', () => {
+    const fixture = createAssemblyFixture()
+
+    runPackageTreeCli(['--output', fixture.output, '--empty-node-modules', 'true'])
+
+    expect(statSync(join(fixture.output, 'node_modules')).isDirectory()).toBe(true)
+  })
+})
+
+describe('Buck package-tree symlink containment', () => {
+  it('retains a safe relative symlink whose destination is inside the assembled tree', () => {
+    const fixture = createAssemblyFixture()
+    symlinkSync('.pnpm/safe/node_modules/safe', join(fixture.nodeModules, 'safe'))
+
+    assemble(fixture)
+
+    expect(readlinkSync(join(fixture.output, 'node_modules', 'safe'))).toBe(
+      '.pnpm/safe/node_modules/safe',
+    )
+  })
+
+  it('does not alias regular source files into the mutable Buck output tree', () => {
+    const fixture = createAssemblyFixture()
+    const source = join(fixture.packageDirectory, 'package.json')
+    chmodSync(source, 0o444)
+
+    assemble(fixture)
+
+    const output = join(
+      fixture.output,
+      'node_modules',
+      '.pnpm',
+      'safe',
+      'node_modules',
+      'safe',
+      'package.json',
+    )
+    expect(statSync(output).ino).not.toBe(statSync(source).ino)
+    chmodSync(output, 0o644)
+    expect(statSync(source).mode & 0o777).toBe(0o444)
+  })
+
+  it('rejects an existing absolute target and removes the incomplete package tree', () => {
+    const fixture = createAssemblyFixture()
+    symlinkSync(fixture.packageDirectory, join(fixture.nodeModules, 'absolute-target'))
+
+    expect(() => assemble(fixture)).toThrow('absolute target')
+    expect(existsSync(fixture.output)).toBe(false)
+  })
+
+  it('rejects a relative target that escapes the assembled tree', () => {
+    const fixture = createAssemblyFixture()
+    writeFileSync(join(fixture.root, 'outside.txt'), 'outside\n')
+    symlinkSync('../../outside.txt', join(fixture.nodeModules, 'relative-escape'))
+
+    expect(() => assemble(fixture)).toThrow('target escapes tree')
+    expect(existsSync(fixture.output)).toBe(false)
+  })
+
+  it('rejects a dangling relative target', () => {
+    const fixture = createAssemblyFixture()
+    symlinkSync('missing', join(fixture.nodeModules, 'dangling'))
+
+    expect(() => assemble(fixture)).toThrow('target is dangling')
+    expect(existsSync(fixture.output)).toBe(false)
+  })
+
+  it('rejects a cyclic relative target', () => {
+    const fixture = createAssemblyFixture()
+    symlinkSync('cycle-b', join(fixture.nodeModules, 'cycle-a'))
+    symlinkSync('cycle-a', join(fixture.nodeModules, 'cycle-b'))
+
+    expect(() => assemble(fixture)).toThrow('target is cyclic')
+    expect(existsSync(fixture.output)).toBe(false)
+  })
+
+  it('rejects a contained relative link whose chained target escapes the assembled tree', () => {
+    const fixture = createAssemblyFixture()
+    writeFileSync(join(fixture.root, 'outside.txt'), 'outside\n')
+    symlinkSync('../../outside.txt', join(fixture.nodeModules, 'redirect'))
+    symlinkSync('redirect', join(fixture.nodeModules, 'chained-escape'))
+
+    expect(() => assemble(fixture)).toThrow('chained target resolves outside tree')
+    expect(existsSync(fixture.output)).toBe(false)
+  })
+})
+
+describe('Buck package view over a normalized dependency view', () => {
+  it('links the dependency view instead of copying a dependency closure', () => {
+    const fixture = createAssemblyFixture()
+    symlinkSync('.pnpm/safe/node_modules/safe', join(fixture.nodeModules, 'safe'))
+    const source = join(fixture.root, 'src', 'mod.ts')
+    mkdirSync(join(fixture.root, 'src'), { recursive: true })
+    writeFileSync(source, 'export const value = 1\n')
+
+    runPackageTreeCli([
+      '--output',
+      fixture.output,
+      '--dependency-view',
+      fixture.nodeModules,
+      '--file',
+      'src/mod.ts',
+      source,
+    ])
+
+    // The package view owns its own sources and one relative first hop; not a
+    // single dependency byte is duplicated into it.
+    const link = join(fixture.output, 'node_modules')
+    const target = readlinkSync(link)
+    expect(isAbsolute(target)).toBe(false)
+    expect(lstatSync(link).isSymbolicLink()).toBe(true)
+    expect(statSync(join(link, 'safe', 'package.json')).isFile()).toBe(true)
+    expect(statSync(join(fixture.output, 'src', 'mod.ts')).isFile()).toBe(true)
+  })
+  it('strips authored workspace project references from a bounded package view', () => {
+    const fixture = createAssemblyFixture()
+    const source = join(fixture.root, 'tsconfig.json')
+    writeFileSync(
+      source,
+      '// generated JSONC\n{"compilerOptions":{"jsx":"react-jsx"},"references":[{"path":"../sibling"}]}\n',
+    )
+
+    runPackageTreeCli([
+      '--output',
+      fixture.output,
+      '--dependency-view',
+      fixture.nodeModules,
+      '--strip-project-references',
+      'true',
+      '--file',
+      'tsconfig.json',
+      source,
+    ])
+
+    expect(JSON.parse(readFileSync(join(fixture.output, 'tsconfig.json'), 'utf8'))).toEqual({
+      compilerOptions: { jsx: 'react-jsx' },
+      references: [],
+    })
+    expect(readFileSync(source, 'utf8')).toContain('../sibling')
+  })
+
+  it.each([
+    ['absent', '// generated JSONC\n{"compilerOptions":{"jsx":"react-jsx"}}\n'],
+    ['empty', '// generated JSONC\n{"compilerOptions":{"jsx":"react-jsx"},"references":[]}\n'],
+  ])('preserves tsconfig bytes when project references are %s', (_case, contents) => {
+    const fixture = createAssemblyFixture()
+    const source = join(fixture.root, 'tsconfig.json')
+    writeFileSync(source, contents)
+
+    runPackageTreeCli([
+      '--output',
+      fixture.output,
+      '--dependency-view',
+      fixture.nodeModules,
+      '--strip-project-references',
+      'true',
+      '--file',
+      'tsconfig.json',
+      source,
+    ])
+
+    expect(readFileSync(join(fixture.output, 'tsconfig.json'), 'utf8')).toBe(contents)
+  })
+
+  it('rejects project-reference stripping without a staged tsconfig.json', () => {
+    const fixture = createAssemblyFixture()
+    const source = join(fixture.root, 'src', 'mod.ts')
+    mkdirSync(dirname(source), { recursive: true })
+    writeFileSync(source, 'export const value = 1\n')
+
+    expect(() =>
+      runPackageTreeCli([
+        '--output',
+        fixture.output,
+        '--dependency-view',
+        fixture.nodeModules,
+        '--strip-project-references',
+        'true',
+        '--file',
+        'src/mod.ts',
+        source,
+      ]),
+    ).toThrow('--strip-project-references declared but no tsconfig.json was staged')
+    expect(existsSync(fixture.output)).toBe(false)
+  })
+
+  it('overlays authoritative workspace declarations without copying dependency bytes', () => {
+    const fixture = createAssemblyFixture()
+    symlinkSync('.pnpm/safe/node_modules/safe', join(fixture.nodeModules, 'safe'))
+    const scope = join(fixture.nodeModules, '@overeng')
+    mkdirSync(scope)
+    symlinkSync('../.pnpm/safe/node_modules/safe', join(scope, 'workspace'))
+    symlinkSync('../.pnpm/safe/node_modules/safe', join(scope, 'other'))
+    const declarations = join(fixture.root, 'workspace-dist')
+    mkdirSync(declarations)
+    writeFileSync(join(declarations, 'index.d.ts'), 'export declare const authoritative: true\n')
+    const workspacePackageTree = join(fixture.root, 'workspace-package-tree')
+    const transitiveLink = join(workspacePackageTree, 'node_modules', 'transitive')
+    mkdirSync(join(workspacePackageTree, 'node_modules'), { recursive: true })
+    mkdirSync(join(workspacePackageTree, 'src'))
+    writeFileSync(join(workspacePackageTree, 'src', 'mod.ts'), 'export const runtime = true\n')
+    symlinkSync(
+      relative(join(workspacePackageTree, 'node_modules'), fixture.packageDirectory),
+      transitiveLink,
+    )
+
+    runPackageTreeCli([
+      '--output',
+      fixture.output,
+      '--dependency-view',
+      fixture.nodeModules,
+      '--workspace-file',
+      'node_modules/@overeng/workspace/dist',
+      declarations,
+      '--workspace-dependency-view',
+      'node_modules/@overeng/workspace/node_modules',
+      workspacePackageTree,
+    ])
+
+    const nodeModules = join(fixture.output, 'node_modules')
+    expect(lstatSync(nodeModules).isDirectory()).toBe(true)
+    expect(
+      readFileSync(join(nodeModules, '@overeng', 'workspace', 'dist', 'index.d.ts'), 'utf8'),
+    ).toBe('export declare const authoritative: true\n')
+    expect(readFileSync(join(nodeModules, '@overeng', 'workspace', 'src', 'mod.ts'), 'utf8')).toBe(
+      'export const runtime = true\n',
+    )
+    expect(statSync(join(nodeModules, 'safe', 'package.json')).isFile()).toBe(true)
+    expect(statSync(join(nodeModules, '@overeng', 'other', 'package.json')).isFile()).toBe(true)
+    expect(
+      statSync(
+        join(nodeModules, '@overeng', 'workspace', 'node_modules', 'transitive', 'package.json'),
+      ).isFile(),
+    ).toBe(true)
+    expect(existsSync(join(fixture.nodeModules, '@overeng', 'workspace', 'dist'))).toBe(false)
+  })
+
+  it('rejects a dependency view for a package without a workspace overlay', () => {
+    const fixture = createAssemblyFixture()
+    const scope = join(fixture.nodeModules, '@overeng')
+    const workspacePackageTree = join(fixture.root, 'workspace-package-tree')
+    mkdirSync(join(workspacePackageTree, 'node_modules'), { recursive: true })
+    mkdirSync(scope)
+    symlinkSync(relative(scope, workspacePackageTree), join(scope, 'poison'))
+    const declarations = join(fixture.root, 'workspace-dist')
+    mkdirSync(declarations)
+
+    expect(() =>
+      runPackageTreeCli([
+        '--output',
+        fixture.output,
+        '--dependency-view',
+        fixture.nodeModules,
+        '--workspace-file',
+        'node_modules/@overeng/workspace/dist',
+        declarations,
+        '--workspace-dependency-view',
+        'node_modules/@overeng/poison/node_modules',
+        workspacePackageTree,
+      ]),
+    ).toThrow('workspace dependency view has no matching workspace overlay')
+    expect(statSync(join(workspacePackageTree, 'node_modules')).isDirectory()).toBe(true)
+  })
+
+  it.each(['--file', '--workspace-link'] as const)(
+    'rejects %s writes through the linked dependency boundary',
+    (flag) => {
+      const fixture = createAssemblyFixture()
+      const source = join(fixture.root, 'source.ts')
+      writeFileSync(source, 'export const value = 1\n')
+      const args =
+        flag === '--workspace-link'
+          ? [flag, 'node_modules/poison', 'source.ts']
+          : [flag, 'node_modules/poison', source]
+
+      expect(() =>
+        runPackageTreeCli([
+          '--output',
+          fixture.output,
+          '--dependency-view',
+          fixture.nodeModules,
+          ...args,
+        ]),
+      ).toThrow('destination enters linked dependency view')
+      expect(existsSync(join(fixture.nodeModules, 'poison'))).toBe(false)
+      expect(existsSync(fixture.output)).toBe(false)
+    },
+  )
+
+  it('rejects declaring both a copied closure and a linked dependency view', () => {
+    const fixture = createAssemblyFixture()
+
+    expect(() =>
+      runPackageTreeCli([
+        '--output',
+        fixture.output,
+        '--node-modules',
+        fixture.nodeModules,
+        '--dependency-view',
+        fixture.nodeModules,
+      ]),
+    ).toThrow('unexpected argument: --dependency-view')
+  })
+
+  it('still rejects an unsafe symlink among package-owned sources', () => {
+    const fixture = createAssemblyFixture()
+    const owned = join(fixture.root, 'owned')
+    mkdirSync(owned, { recursive: true })
+    writeFileSync(join(fixture.root, 'outside.txt'), 'outside\n')
+    symlinkSync('../../outside.txt', join(owned, 'escape'))
+
+    expect(() =>
+      runPackageTreeCli([
+        '--output',
+        fixture.output,
+        '--dependency-view',
+        fixture.nodeModules,
+        '--file',
+        'owned',
+        owned,
+      ]),
+    ).toThrow('target escapes tree')
+    expect(existsSync(fixture.output)).toBe(false)
+  })
+})

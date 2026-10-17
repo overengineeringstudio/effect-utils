@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/kdl-effect",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/kdl-effect:editor_inputs",
+  "editorInputsFingerprint": "1c2850a0e99d979be8a5654a5187dff4bccb3510b4899c7f0a47d3373a939909",
+  "snapshot": ".store/kdl-effect-b57af80e9e490f55bf2521dd31cd12e747204e95e02d14813573128a422bb0ed",
+  "normalizedStoreDigest": "176f5bd000cd484505f6b4226b95c3e97da146eb4e7151fdaedfb021f5032c58",
+  "selectedViewDigest": "1c2850a0e99d979be8a5654a5187dff4bccb3510b4899c7f0a47d3373a939909",
+  "byteSnapshotDigest": "adfb4932ef1aac21f8dd96c713c73f3fb30e34ef7641bac70b31609cc1892d2f"
+}

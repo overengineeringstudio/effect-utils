@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/utils-dev",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/utils-dev:editor_inputs",
+  "editorInputsFingerprint": "6a92a0572a5683faedfb080bec7fe88b6f589c3e3069090cd608324e361e7264",
+  "snapshot": ".store/utils-dev-b64b3f1f2878e968c0319079297f8959e2216257f7de22dcd3d6c96a3005a1a2",
+  "normalizedStoreDigest": "fa055784017f284d4d9e2ac429448d0a7c0953633009b4850c50d5fc0ba90277",
+  "selectedViewDigest": "6a92a0572a5683faedfb080bec7fe88b6f589c3e3069090cd608324e361e7264",
+  "byteSnapshotDigest": "77311af6073859da93d308d91140d9979a16a96f996a1790c2602bd5260001c8"
+}

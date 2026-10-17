@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/ci-tools",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/ci-tools:editor_inputs",
+  "editorInputsFingerprint": "f1865ad76830eeac8e2b335c6afcd61c3ef3b9210dfe9e2abcb361c9f1bb4964",
+  "snapshot": ".store/ci-tools-c13fd6ca42f00484698fe8b0079d43ae420bcf754f371d13f6e0e471e91a7fb8",
+  "normalizedStoreDigest": "e98e3a112771b3f2ade3cc4c4e2497530030b413369ce76f2441b15fd05ef4bd",
+  "selectedViewDigest": "f1865ad76830eeac8e2b335c6afcd61c3ef3b9210dfe9e2abcb361c9f1bb4964",
+  "byteSnapshotDigest": "998cd555a3247a4e822b1b2193a8fbb103f4e6bca91204f24fc46f7db45e7eb3"
+}

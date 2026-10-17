@@ -1,0 +1,206 @@
+/**
+ * Generate Commands
+ *
+ * Commands for generating configuration files.
+ */
+
+import { Effect, Option } from 'effect'
+import * as Cli from 'effect/cli'
+import React from 'react'
+
+import { run } from '@overeng/tui-react'
+
+import { readMegarepoConfig } from '../../../core/config.ts'
+import { generateAll } from '../../../generators/mod.ts'
+import { generateSchema } from '../../../generators/schema.ts'
+import { generateVscode } from '../../../generators/vscode.ts'
+import {
+  Cwd,
+  findMegarepoRoot,
+  outputOption,
+  outputModeLayer,
+  resolveOutputOption,
+} from '../../context.ts'
+import { GenerateError } from '../../errors.ts'
+import * as Observability from '../../observability.ts'
+import { GenerateApp, GenerateView } from '../../renderers/GenerateOutput/mod.ts'
+
+/** Generate VSCode workspace file */
+const generateVscodeCommand = Cli.Command.make(
+  'vscode',
+  {
+    output: outputOption,
+    exclude: Cli.Flag.String('exclude').pipe(
+      Cli.Flag.withDescription('Comma-separated list of members to exclude'),
+      Cli.Flag.optional,
+    ),
+  },
+  ({ output, exclude }) =>
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.gen(function* () {
+        const cwd = yield* Cwd
+        const root = yield* findMegarepoRoot(cwd)
+
+        yield* run(
+          GenerateApp,
+          (tui) =>
+            Effect.gen(function* () {
+              if (Option.isNone(root) === true) {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'not_found',
+                  message: 'Not in a megarepo',
+                })
+                return yield* new GenerateError({ message: 'Not in a megarepo' })
+              }
+
+              tui.dispatch({ _tag: 'Start', generator: 'vscode' })
+
+              // Load config
+              const { config } = yield* readMegarepoConfig(root.value)
+
+              const excludeList = Option.map(exclude, (e) => e.split(',').map((s) => s.trim()))
+
+              yield* generateVscode({
+                megarepoRoot: root.value,
+                config,
+                ...(Option.isSome(excludeList) === true ? { exclude: excludeList.value } : {}),
+              })
+
+              tui.dispatch({
+                _tag: 'SetSuccess',
+                results: [{ generator: 'vscode', status: '.vscode/megarepo.code-workspace' }],
+              })
+            }),
+          { view: React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
+      }).pipe(
+        Observability.withCommandSpan({
+          name: 'megarepo/generate/vscode',
+          command: 'generate vscode',
+          label: 'vscode',
+          output: outputMode,
+        }),
+      ),
+    ),
+).pipe(Cli.Command.withDescription('Generate VS Code workspace file'))
+
+/** Generate JSON Schema */
+const generateSchemaCommand = Cli.Command.make(
+  'schema',
+  {
+    output: outputOption,
+    outputPath: Cli.Flag.String('output-path').pipe(
+      Cli.Flag.withAlias('p'),
+      Cli.Flag.withDescription('Output path (relative to megarepo root)'),
+      Cli.Flag.withDefault('schema/megarepo.schema.json'),
+    ),
+  },
+  ({ output, outputPath }) =>
+    Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+      Effect.gen(function* () {
+        const cwd = yield* Cwd
+        const root = yield* findMegarepoRoot(cwd)
+
+        yield* run(
+          GenerateApp,
+          (tui) =>
+            Effect.gen(function* () {
+              if (Option.isNone(root) === true) {
+                tui.dispatch({
+                  _tag: 'SetError',
+                  error: 'not_found',
+                  message: 'Not in a megarepo',
+                })
+                return yield* new GenerateError({ message: 'Not in a megarepo' })
+              }
+
+              tui.dispatch({ _tag: 'Start', generator: 'schema' })
+
+              // Load config
+              const { config } = yield* readMegarepoConfig(root.value)
+
+              yield* generateSchema({
+                megarepoRoot: root.value,
+                config,
+                outputPath,
+              })
+
+              tui.dispatch({
+                _tag: 'SetSuccess',
+                results: [{ generator: 'schema', status: outputPath }],
+              })
+            }),
+          { view: React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(outputMode)))
+      }).pipe(
+        Observability.withCommandSpan({
+          name: 'megarepo/generate/schema',
+          command: 'generate schema',
+          label: 'schema',
+          output: outputMode,
+        }),
+      ),
+    ),
+).pipe(Cli.Command.withDescription('Generate JSON schema for megarepo.json'))
+
+/** Generate all configured outputs */
+const generateAllCommand = Cli.Command.make('all', { output: outputOption }, ({ output }) =>
+  Effect.flatMap(resolveOutputOption(output), (outputMode) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const root = yield* findMegarepoRoot(cwd)
+
+      yield* run(
+        GenerateApp,
+        (tui) =>
+          Effect.gen(function* () {
+            if (Option.isNone(root) === true) {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'not_found',
+                message: 'Not in a megarepo',
+              })
+              return yield* new GenerateError({ message: 'Not in a megarepo' })
+            }
+
+            tui.dispatch({ _tag: 'Start', generator: 'all' })
+
+            // Load config
+            const { config } = yield* readMegarepoConfig(root.value)
+
+            const outputs = yield* generateAll({
+              megarepoRoot: root.value,
+              outermostRoot: root.value,
+              config,
+            })
+
+            const results = outputs.flatMap((genOutput) => {
+              switch (genOutput._tag) {
+                case 'vscode':
+                  return [{ generator: 'vscode', status: '.vscode/megarepo.code-workspace' }]
+                default:
+                  return []
+              }
+            })
+
+            tui.dispatch({ _tag: 'SetSuccess', results })
+          }),
+        { view: React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }) },
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
+    }).pipe(
+      Observability.withCommandSpan({
+        name: 'megarepo/generate/all',
+        command: 'generate all',
+        label: 'all',
+        output: outputMode,
+      }),
+    ),
+  ),
+).pipe(Cli.Command.withDescription('Generate all configured outputs'))
+
+/** Generate subcommand group */
+export const generateCommand = Cli.Command.make('generate', {}).pipe(
+  Cli.Command.withSubcommands([generateAllCommand, generateSchemaCommand, generateVscodeCommand]),
+  Cli.Command.withDescription('Generate configuration files'),
+)

@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/outline",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/outline:editor_inputs",
+  "editorInputsFingerprint": "3346733a8db42187437c47f6a5c7475d581644ea4d2695dd71836a7b56202750",
+  "snapshot": ".store/outline-777596857a0202695847174bcec203ffdd92e05af1c3bade89e8d02e09c7f9f3",
+  "normalizedStoreDigest": "da2d6bb71d6563b7b4b6ec8e900205b8869b5dd1b1edd365b92f57f029efcf72",
+  "selectedViewDigest": "3346733a8db42187437c47f6a5c7475d581644ea4d2695dd71836a7b56202750",
+  "byteSnapshotDigest": "26375f21c03a15741ffe63e3d96c6c272bde46962c16cbfb10ca02dd29db4843"
+}

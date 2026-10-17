@@ -1,0 +1,1319 @@
+import { createHash, randomUUID } from 'node:crypto'
+import * as nodeFsSync from 'node:fs'
+import nodeFs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+import {
+  Duration,
+  Effect,
+  Exit,
+  FileSystem,
+  Option,
+  Result,
+  Schema,
+  Semaphore,
+  Stream,
+} from 'effect'
+import type { Path } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
+import * as Command from 'effect/process/ChildProcess'
+import * as CommandExecutor from 'effect/process/ChildProcessSpawner'
+import type { Node } from 'typescript/unstable/ast'
+import {
+  isIdentifier,
+  isMetaProperty,
+  isPropertyAccessExpression,
+  SyntaxKind,
+} from 'typescript/unstable/ast'
+
+import { DistributedSemaphore } from '@overeng/utils/lock'
+import { FileSystemBacking } from '@overeng/utils/node'
+
+import type { GenieOutput } from '../runtime/mod.ts'
+import { isAnalyzableSourcePath, runTsFileAnalysis } from '../runtime/node/ts-api.ts'
+import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
+import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
+import { ensureImportMapResolver, isCompiledBinary } from './discovery.ts'
+import {
+  GenieCheckError,
+  GenieFileError,
+  GenieImportError,
+  InvalidOxfmtConfigError,
+} from './errors.ts'
+import { resolveImportMapsInSource } from './import-map/mod.ts'
+import { resolveMegarepoMemberSpecifierSync } from './import-map/sync-resolver.ts'
+import * as Observability from './observability.ts'
+import type { GenerateSuccess, GenieContext } from './types.ts'
+
+/** Loaded genie module plus base context reused across check and validation phases. */
+export type LoadedGenieFile = {
+  genieFilePath: string
+  output: GenieOutput<unknown>
+  ctx: GenieContext
+}
+
+/** Bundled compiled-generation entry and its owning temporary staging directory. */
+export type StagedCompiledBinaryImportGraph = {
+  stagePath: string
+  tempRoot: string
+}
+
+// Compiled Bun builds share process-global state; keep staging through import single-flight.
+const compiledBinaryImportGraphSemaphore = Semaphore.makeUnsafe(1)
+
+const withCompiledBinaryImportGraphPermit = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> => compiledBinaryImportGraphSemaphore.withPermits(1)(effect)
+
+const IMPORT_SPECIFIER_REGEX = /(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?(['"])([^'"]+)\1/g
+
+const isRelativeImportSpecifier = (specifier: string): boolean =>
+  specifier.startsWith('./') === true || specifier.startsWith('../') === true
+
+type ImportMetaIdentityField = 'url' | 'dirname' | 'filename'
+
+const isImportMetaIdentityField = (name: string): name is ImportMetaIdentityField =>
+  name === 'url' || name === 'dirname' || name === 'filename'
+
+const importMetaIdentityLiteral = ({
+  field,
+  sourcePath,
+}: {
+  field: ImportMetaIdentityField
+  sourcePath: string
+}): string => {
+  if (field === 'url') return JSON.stringify(pathToFileURL(sourcePath).href)
+  if (field === 'dirname') return JSON.stringify(path.dirname(sourcePath))
+  return JSON.stringify(sourcePath)
+}
+
+/**
+ * Rewrites a staged module's own `import.meta` identity to its original source location.
+ *
+ * The staged graph is bundled into a single temporary entry before import, and a bundle has
+ * exactly one `import.meta`: every module would otherwise report the bundle path. Generators
+ * that derive their repository-relative identity from `import.meta.url` — every
+ * `defineRepoContext`/`modulePathFromUrl` caller, including the Cargo Buck projections —
+ * would then resolve neither a repository nor a package. Pinning the literal before bundling
+ * keeps that identity exact, so no path-shape recovery is needed downstream.
+ *
+ * The rewrite is syntax-aware: only the exact spans of `import.meta.{url,dirname,filename}`
+ * property accesses that the TypeScript parser reports as executable expressions are replaced.
+ * A textual pass cannot make that distinction and would also rewrite the same characters inside
+ * comments, string literals, and template-literal text — a generator that documents or emits
+ * `import.meta.url` (genie itself generates TypeScript) would have its output silently altered.
+ * Every byte outside those spans, including arbitrary whitespace within a matched access, is
+ * preserved verbatim.
+ */
+const pinStagedModuleIdentityWithAnalysis = async ({
+  analysis,
+  sourceCode,
+  sourcePath,
+}: {
+  analysis: TsFileAnalysisSession
+  sourceCode: string
+  sourcePath: string
+}): Promise<string> => {
+  const outcome = await analysis.analyze(sourcePath)
+  if (outcome.kind !== 'analyzed') {
+    const reason =
+      outcome.kind === 'failed'
+        ? outcome.reason
+        : `unsupported source extension ${path.extname(sourcePath)}`
+    throw new Error(`Cannot pin import.meta identity in ${sourcePath}: ${reason}`)
+  }
+
+  const sourceFile = outcome.analysis.sourceFile
+  const rewrites: { start: number; end: number; text: string }[] = []
+
+  const visit = (node: Node): void => {
+    if (
+      isPropertyAccessExpression(node) === true &&
+      isMetaProperty(node.expression) === true &&
+      node.expression.keywordToken === SyntaxKind.ImportKeyword &&
+      node.expression.name.text === 'meta' &&
+      isIdentifier(node.name) === true &&
+      isImportMetaIdentityField(node.name.text) === true
+    ) {
+      rewrites.push({
+        // `pos` includes leading trivia (comments keep their own bytes); `getStart` lands on the
+        // `import` keyword itself, so only the access expression is replaced.
+        start: node.getStart(sourceFile),
+        end: node.end,
+        text: importMetaIdentityLiteral({ field: node.name.text, sourcePath }),
+      })
+      return
+    }
+    node.forEachChild((child) => {
+      visit(child)
+      return undefined
+    })
+  }
+
+  sourceFile.forEachChild((node) => {
+    visit(node)
+    return undefined
+  })
+
+  if (rewrites.length === 0) return sourceCode
+
+  // Apply back-to-front so earlier spans keep their original offsets. Spans never nest (a match
+  // is not descended into), so ordering by start is total.
+  return rewrites
+    .toSorted((left, right) => left.start - right.start)
+    .reduceRight(
+      (code, { start, end, text }) => `${code.slice(0, start)}${text}${code.slice(end)}`,
+      sourceCode,
+    )
+}
+
+/** Pins import-meta identity reads to the staged module's original source URL. */
+export const pinStagedModuleIdentity = ({
+  sourceCode,
+  sourcePath,
+}: {
+  sourceCode: string
+  sourcePath: string
+}): Promise<string> =>
+  runTsFileAnalysis({
+    cwd: path.dirname(sourcePath),
+    use: (analysis) => pinStagedModuleIdentityWithAnalysis({ analysis, sourceCode, sourcePath }),
+  })
+
+const resolveImportFilePath = async ({
+  resolvedBase,
+}: {
+  resolvedBase: string
+}): Promise<string | undefined> => {
+  const candidates = [
+    resolvedBase,
+    `${resolvedBase}.ts`,
+    `${resolvedBase}.tsx`,
+    `${resolvedBase}.mts`,
+    `${resolvedBase}.cts`,
+    `${resolvedBase}.js`,
+    `${resolvedBase}.mjs`,
+    path.join(resolvedBase, 'index.ts'),
+    path.join(resolvedBase, 'index.tsx'),
+    path.join(resolvedBase, 'mod.ts'),
+    path.join(resolvedBase, 'mod.tsx'),
+  ]
+
+  const resolvedCandidates = await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        const stat = await nodeFs.stat(candidate)
+        return stat.isFile() === true ? candidate : undefined
+      } catch {
+        return undefined
+      }
+    }),
+  )
+
+  return resolvedCandidates.find((candidate) => candidate !== undefined)
+}
+
+const collectRelativeImportPaths = async ({
+  sourceCode,
+  sourcePath,
+}: {
+  sourceCode: string
+  sourcePath: string
+}): Promise<string[]> => {
+  const importSpecifierRegex = new RegExp(IMPORT_SPECIFIER_REGEX)
+  const relativeSpecifiers: string[] = []
+  let match: RegExpExecArray | null = importSpecifierRegex.exec(sourceCode)
+  while (match !== null) {
+    const specifier = match[2]
+    if (specifier !== undefined && isRelativeImportSpecifier(specifier) === true) {
+      relativeSpecifiers.push(specifier)
+    }
+    match = importSpecifierRegex.exec(sourceCode)
+  }
+
+  const resolvedPaths = await Promise.all(
+    relativeSpecifiers.map((specifier) =>
+      resolveImportFilePath({
+        resolvedBase: path.resolve(path.dirname(sourcePath), specifier),
+      }),
+    ),
+  )
+
+  return Array.from(
+    new Set(resolvedPaths.filter((resolved): resolved is string => resolved !== undefined)),
+  )
+}
+
+const collectMegarepoMemberSpecifiers = (sourceCode: string): string[] => {
+  const importSpecifierRegex = new RegExp(IMPORT_SPECIFIER_REGEX)
+  const memberSpecifiers: string[] = []
+  let match: RegExpExecArray | null = importSpecifierRegex.exec(sourceCode)
+  while (match !== null) {
+    const specifier = match[2]
+    if (specifier?.startsWith('#mr/') === true) {
+      memberSpecifiers.push(specifier)
+    }
+    match = importSpecifierRegex.exec(sourceCode)
+  }
+
+  return Array.from(new Set(memberSpecifiers))
+}
+
+const stampStagedModuleSource = ({
+  nonce,
+  sourceCode,
+}: {
+  nonce: string
+  sourceCode: string
+}): string => {
+  const banner = `// genie-staging-nonce:${nonce}\n`
+  if (sourceCode.startsWith('#!') === false) return `${banner}${sourceCode}`
+
+  const shebangEnd = sourceCode.indexOf('\n')
+  return shebangEnd === -1
+    ? `${sourceCode}\n${banner}`
+    : `${sourceCode.slice(0, shebangEnd + 1)}${banner}${sourceCode.slice(shebangEnd + 1)}`
+}
+
+const hasFileSystemErrorCode = ({ error, code }: { error: unknown; code: string }): boolean =>
+  typeof error === 'object' && error !== null && 'code' in error && error.code === code
+
+const mirrorNodeModulesSearchPaths = async ({
+  sourcePath,
+  tempRoot,
+}: {
+  sourcePath: string
+  tempRoot: string
+}): Promise<void> => {
+  const sourceRoot = path.parse(sourcePath).root
+  const sourceDirs: string[] = []
+  let sourceDir = path.dirname(sourcePath)
+
+  while (true) {
+    sourceDirs.push(sourceDir)
+    if (sourceDir === sourceRoot) {
+      break
+    }
+    sourceDir = path.dirname(sourceDir)
+  }
+
+  await Promise.all(
+    sourceDirs.map(async (currentSourceDir) => {
+      const sourceNodeModules = path.join(currentSourceDir, 'node_modules')
+      try {
+        const stat = await nodeFs.lstat(sourceNodeModules)
+        if (stat.isDirectory() === false && stat.isSymbolicLink() === false) {
+          return
+        }
+
+        const stagedDir = path.join(tempRoot, path.relative(sourceRoot, currentSourceDir))
+        const stagedNodeModules = path.join(stagedDir, 'node_modules')
+        await nodeFs.mkdir(stagedDir, { recursive: true })
+        try {
+          await nodeFs.symlink(
+            sourceNodeModules,
+            stagedNodeModules,
+            process.platform === 'win32' ? 'junction' : 'dir',
+          )
+        } catch (error) {
+          if (hasFileSystemErrorCode({ error, code: 'EEXIST' }) === false) {
+            throw error
+          }
+        }
+      } catch (error) {
+        if (hasFileSystemErrorCode({ error, code: 'ENOENT' }) === false) {
+          throw error
+        }
+      }
+    }),
+  )
+}
+
+/** Stage and bundle a compiled-generation import graph in an isolated temporary directory. */
+export const stageCompiledBinaryImportGraph = ({
+  entryPath,
+}: {
+  entryPath: string
+}): Effect.Effect<StagedCompiledBinaryImportGraph, GenieImportError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const tempRoot = yield* Effect.tryPromise({
+      try: () => nodeFs.mkdtemp(path.join(os.tmpdir(), 'genie-import-')),
+      catch: (error) =>
+        new GenieImportError({
+          genieFilePath: entryPath,
+          message: `Failed to create compiled-binary staging directory for ${entryPath}: ${safeErrorString(error)}`,
+          cause: error,
+        }),
+    })
+
+    // Ownership of the staging root passes to the caller only on success: any failure or
+    // interruption between mkdtemp and the returned graph removes the root here, so a failed
+    // or interrupted staging cannot leak temporary directories.
+    return yield* stageGraphWithinRoot({ entryPath, tempRoot }).pipe(
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit) === true ? removeStagingRoot(tempRoot) : Effect.void,
+      ),
+    )
+  })
+
+const stageGraphWithinRoot = ({
+  entryPath,
+  tempRoot,
+}: {
+  entryPath: string
+  tempRoot: string
+}): Effect.Effect<StagedCompiledBinaryImportGraph, GenieImportError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const stagedPaths = new Map<string, string>()
+    const relativeEntryPath = entryPath.replace(/^(?:[A-Za-z]:)?[\\/]+/, '')
+
+    const stageModule = ({
+      analysis,
+      sourcePath,
+    }: {
+      analysis: TsFileAnalysisSession
+      sourcePath: string
+    }): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
+      Effect.gen(function* () {
+        const existingStagePath = stagedPaths.get(sourcePath)
+        if (existingStagePath !== undefined) {
+          return existingStagePath
+        }
+
+        const relativeSourcePath =
+          sourcePath === entryPath
+            ? relativeEntryPath
+            : path.relative(path.parse(sourcePath).root, sourcePath)
+        const stagePath = path.join(tempRoot, relativeSourcePath)
+        stagedPaths.set(sourcePath, stagePath)
+
+        const sourceCode = yield* Effect.tryPromise({
+          try: () => nodeFs.readFile(sourcePath, 'utf8'),
+          catch: (error) =>
+            new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to read ${sourcePath} while staging compiled-binary imports: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+        })
+        const pinnedSource = yield* Effect.tryPromise({
+          try: () => pinStagedModuleIdentityWithAnalysis({ analysis, sourceCode, sourcePath }),
+          catch: (error) =>
+            new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to pin import.meta identity in ${sourcePath} for compiled-binary staging: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+        })
+
+        const stagedMegarepoMemberPaths = new Map<string, string>()
+        for (const specifier of collectMegarepoMemberSpecifiers(sourceCode)) {
+          const resolvedMemberPath = resolveMegarepoMemberSpecifierSync({
+            specifier,
+            importerPath: sourcePath,
+          })
+          if (resolvedMemberPath === undefined) continue
+
+          const memberSourcePath = yield* Effect.tryPromise({
+            try: () => resolveImportFilePath({ resolvedBase: resolvedMemberPath }),
+            catch: (error) =>
+              new GenieImportError({
+                genieFilePath: entryPath,
+                message: `Failed to resolve ${specifier} in ${sourcePath} for compiled-binary staging: ${safeErrorString(error)}`,
+                cause: error,
+              }),
+          })
+          if (memberSourcePath === undefined) continue
+          // Assets such as `.json` carry no TypeScript program to pin or stamp, and staging one
+          // would fail the import.meta pin above. Leave such specifiers untouched so the
+          // absolute-path rewrite of resolveImportMapsInSource carries them instead.
+          if (isAnalyzableSourcePath(memberSourcePath) === false) continue
+
+          stagedMegarepoMemberPaths.set(
+            specifier,
+            yield* stageModule({ analysis, sourcePath: memberSourcePath }),
+          )
+        }
+        const sourceWithStagedMegarepoMembers = pinnedSource.replace(
+          new RegExp(IMPORT_SPECIFIER_REGEX),
+          (match, _quote, specifier: string) => {
+            const stagedMemberPath = stagedMegarepoMemberPaths.get(specifier)
+            if (stagedMemberPath === undefined) return match
+
+            const relativeStagePath = path
+              .relative(path.dirname(stagePath), stagedMemberPath)
+              .split(path.sep)
+              .join('/')
+            const stagedSpecifier =
+              relativeStagePath.startsWith('.') === true
+                ? relativeStagePath
+                : `./${relativeStagePath}`
+            return match.replace(specifier, stagedSpecifier)
+          },
+        )
+        const transformedSource = yield* resolveImportMapsInSource({
+          sourceCode: sourceWithStagedMegarepoMembers,
+          sourcePath,
+        }).pipe(
+          Effect.mapError(
+            (error) =>
+              new GenieImportError({
+                genieFilePath: entryPath,
+                message: `Failed to resolve imports in ${sourcePath} for compiled-binary staging: ${safeErrorString(error)}`,
+                cause: error,
+              }),
+          ),
+        )
+
+        const relativeImportPaths = yield* Effect.tryPromise({
+          try: () => collectRelativeImportPaths({ sourceCode, sourcePath }),
+          catch: (error) =>
+            new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to analyze imports in ${sourcePath} for compiled-binary staging: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+        })
+
+        yield* Effect.tryPromise({
+          try: async () => {
+            await nodeFs.mkdir(path.dirname(stagePath), { recursive: true })
+            // Bun's persistent transpiler cache keys modules by source content while retaining the
+            // first module location. A fresh module stamp prevents either another run or another
+            // same-content module from reusing this short-lived graph location.
+            await nodeFs.writeFile(
+              stagePath,
+              stampStagedModuleSource({ nonce: randomUUID(), sourceCode: transformedSource }),
+            )
+            await mirrorNodeModulesSearchPaths({ sourcePath, tempRoot })
+          },
+          catch: (error) =>
+            new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to stage module ${sourcePath}: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+        })
+
+        for (const relativeImportPath of relativeImportPaths) {
+          yield* stageModule({ analysis, sourcePath: relativeImportPath })
+        }
+
+        return stagePath
+      })
+
+    const context = yield* Effect.context<FileSystem.FileSystem>()
+    const stagedEntryPath = yield* Effect.tryPromise({
+      try: () =>
+        runTsFileAnalysis({
+          cwd: path.dirname(entryPath),
+          use: (analysis) =>
+            Effect.runPromiseWith(context)(stageModule({ analysis, sourcePath: entryPath })),
+        }),
+      catch: (error) =>
+        error instanceof GenieImportError
+          ? error
+          : new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to analyze compiled-binary staging graph for ${entryPath}: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+    })
+    const bundleResult = yield* Effect.tryPromise({
+      try: () =>
+        Bun.build({
+          entrypoints: [stagedEntryPath],
+          naming: 'genie-entry.js',
+          outdir: path.join(tempRoot, 'bundle'),
+          root: tempRoot,
+          target: 'bun',
+          throw: false,
+          treeShaking: false,
+        }),
+      catch: (error) =>
+        new GenieImportError({
+          genieFilePath: entryPath,
+          message: `Failed to bundle staged import graph for ${entryPath}: ${safeErrorString(error)}`,
+          cause: error,
+        }),
+    })
+    if (bundleResult.success === false) {
+      return yield* new GenieImportError({
+        genieFilePath: entryPath,
+        message: `Failed to bundle staged import graph for ${entryPath}: ${bundleResult.logs.map(safeErrorString).join('\n')}`,
+        cause: bundleResult.logs,
+      })
+    }
+
+    const bundledEntryPath = bundleResult.outputs[0]?.path
+    if (bundledEntryPath === undefined) {
+      return yield* new GenieImportError({
+        genieFilePath: entryPath,
+        message: `Failed to bundle staged import graph for ${entryPath}: Bun produced no output`,
+        cause: new Error('Bun produced no output'),
+      })
+    }
+
+    return { stagePath: bundledEntryPath, tempRoot }
+  })
+
+/** Remove a compiled-binary staging root; used both for failed staging and consumer cleanup. */
+const removeStagingRoot = (tempRoot: string): Effect.Effect<void> =>
+  Effect.sync(() => nodeFsSync.rmSync(tempRoot, { recursive: true, force: true })).pipe(
+    Effect.ignore,
+  )
+
+/**
+ * Safely convert error to string.
+ * In compiled Bun binaries, String(error) can throw for Bun's internal error types
+ * due to class identity mismatches. We catch and return a fallback.
+ */
+const safeErrorString = (error: unknown): string => {
+  try {
+    return String(error)
+  } catch {
+    // Bun compiled binary issue - just return the constructor name
+    if (error !== null && typeof error === 'object') {
+      return `[${error.constructor?.name ?? 'Error'}]`
+    }
+    return '[Error]'
+  }
+}
+
+/**
+ * Check if an error is a Temporal Dead Zone (TDZ) error.
+ *
+ * ## Problem
+ *
+ * When genie files import from a shared module that throws during initialization,
+ * ESM leaves the module's exports in an uninitialized state. Subsequent imports
+ * from that module produce TDZ errors instead of re-throwing the original error.
+ *
+ * ## Example Scenario
+ *
+ * ```
+ * // genie/internal.ts - throws during initialization
+ * export const catalog = (() => { throw new Error('Missing DATABASE_URL') })()
+ *
+ * // apps/app/package.json.genie.ts - imports from internal.ts
+ * import { catalog } from '../../genie/internal.ts'  // TDZ error!
+ * ```
+ *
+ * During parallel generation, one file gets the original error while others get:
+ * `ReferenceError: Cannot access 'catalog' before initialization`
+ *
+ * This function detects TDZ errors so we can re-validate and find the root cause.
+ */
+export const isTdzError = (error: unknown): error is ReferenceError =>
+  error instanceof ReferenceError &&
+  /Cannot access .* before initialization/.test((error as Error).message)
+
+/**
+ * Check if an error (or its cause chain) contains a CatalogConflictError.
+ *
+ * CatalogConflictErrors thrown during module initialization abort the module,
+ * causing all downstream imports to produce TDZ errors. Detecting the original
+ * CatalogConflictError in the cause chain lets us surface the root cause.
+ */
+export const findCatalogConflictError = (error: unknown): CatalogConflictError | undefined => {
+  let current: unknown = error
+  while (current instanceof Error) {
+    if (current instanceof CatalogConflictError) return current
+    current = current.cause
+  }
+  return undefined
+}
+
+/**
+ * Check if an error originated in the given file (vs being propagated from a dependency).
+ *
+ * ## Purpose
+ *
+ * When re-validating after TDZ detection, we need to distinguish between:
+ * - **Root cause errors**: The actual file that threw (appears in stack trace)
+ * - **Cascaded errors**: Files that failed because they import from a failing module
+ *
+ * ## Error Attribution Rules
+ *
+ * 1. TDZ errors → Never originate in the file (always from dependencies)
+ * 2. Other errors → Check if the file path appears in the stack trace
+ *
+ * ## Example
+ *
+ * If `genie/internal.ts` throws and `apps/app/package.json.genie.ts` imports from it:
+ * - `errorOriginatesInFile(error, 'genie/internal.ts')` → true (root cause)
+ * - `errorOriginatesInFile(error, 'apps/app/package.json.genie.ts')` → false (dependent)
+ */
+export const errorOriginatesInFile = ({
+  error,
+  filePath,
+}: {
+  error: unknown
+  filePath: string
+}): boolean => {
+  // TDZ errors never originate in the file - they're always from dependencies
+  if (isTdzError(error) === true) return false
+  // Check if the stack trace includes this file path
+  if (error instanceof Error) {
+    return error.stack?.includes(filePath) ?? false
+  }
+  return false
+}
+
+/** File extensions that oxfmt can format */
+const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
+
+type OxfmtConfig = Readonly<Record<string, unknown>>
+
+/** Permissive JSON decode for an oxfmt config (shape is cast, not validated). */
+const decodeOxfmtConfig = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
+
+const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
+  configPath,
+}: {
+  configPath: Option.Option<string>
+}) {
+  yield* Observability.annotatePath({
+    label: Option.isSome(configPath) === true ? 'oxfmt-config' : 'oxfmt-default',
+    path: Option.isSome(configPath) === true ? configPath.value : process.cwd(),
+  })
+  if (Option.isNone(configPath) === true) {
+    return Option.none()
+  }
+
+  const fs = yield* FileSystem.FileSystem
+  const raw = yield* fs.readFileString(configPath.value)
+  const config = yield* Effect.try({
+    try: () => decodeOxfmtConfig(raw) as OxfmtConfig,
+    catch: () =>
+      new InvalidOxfmtConfigError({
+        message: 'Invalid oxfmt config JSON',
+      }),
+  })
+
+  return Option.some(config)
+})
+
+/**
+ * Get the appropriate header comment for a generated file based on its extension.
+ *
+ * The source file reference uses just the basename (e.g., `package.json.genie.ts`) rather than
+ * a path relative to the working directory. This design choice avoids ambiguity when genie runs
+ * in a monorepo with git submodules: if the source path were relative to cwd, running genie from
+ * the parent repo would produce paths like `submodules/child-repo/packages/.../file.genie.ts`,
+ * while running from the child repo would produce `packages/.../file.genie.ts`. Using basename
+ * ensures consistent output regardless of where genie is invoked, since the `.genie.ts` source
+ * file is always a sibling of the generated file.
+ */
+export const getHeaderComment = ({
+  targetFilePath,
+  sourceFile,
+}: {
+  targetFilePath: string
+  sourceFile: string
+}): string => {
+  const ext = path.extname(targetFilePath)
+  const basename = path.basename(targetFilePath)
+
+  // tsconfig*.json files support JS-style comments
+  if (basename.startsWith('tsconfig') === true && ext === '.json') {
+    return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
+  }
+
+  // JSONC files support JS-style comments
+  if (ext === '.jsonc') {
+    return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
+  }
+
+  // Strict JSON formats rely on read-only permissions + .gitattributes, not comments.
+  if (ext === '.json' || basename === '.watchmanconfig') {
+    return ''
+  }
+
+  if (ext === '.yml' || ext === '.yaml') {
+    return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
+  }
+
+  if (
+    basename === '.buckconfig' ||
+    basename === 'BUCK' ||
+    ext === '.bzl' ||
+    ext === '.bxl' ||
+    ext === '.nix'
+  ) {
+    return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
+  }
+
+  if (ext === '.sh') {
+    return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
+  }
+
+  // Default to JS/TS style comments
+  return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
+}
+
+/**
+ * Prepend the generated-file header to content, preserving a leading `#!` shebang line
+ * (the banner is inserted after the shebang, not before it).
+ *
+ * A hashbang is only valid as the very first bytes of a file. That is a hard rule for scripts of any
+ * language, not just `.sh`: putting a comment banner ahead of `#!` in a `.mjs` makes the file a
+ * `SyntaxError` rather than merely mis-executing it. So this keys off the shebang itself, not the
+ * extension.
+ */
+export const addHeaderComment = ({ content, header }: { content: string; header: string }) => {
+  if (content.startsWith('#!') === false) {
+    return header + content
+  }
+
+  const firstNewlineIndex = content.indexOf('\n')
+  if (firstNewlineIndex < 0) {
+    return `${content}\n${header}`
+  }
+
+  const shebangLine = content.slice(0, firstNewlineIndex + 1)
+  const rest = content.slice(firstNewlineIndex + 1)
+  return shebangLine + header + rest
+}
+
+const generatedFileMode = ({
+  readOnly,
+  targetFilePath,
+}: {
+  readOnly: boolean
+  targetFilePath: string
+}) => {
+  if (path.extname(targetFilePath) === '.sh') {
+    return readOnly === true ? 0o555 : 0o755
+  }
+
+  return readOnly === true ? 0o444 : undefined
+}
+
+/** Format content using oxfmt if the file type is supported */
+const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
+  targetFilePath,
+  content,
+  configPath,
+}: {
+  targetFilePath: string
+  content: string
+  configPath: Option.Option<string>
+}) {
+  yield* Observability.annotateOxfmt({
+    targetFilePath,
+    hasConfig: Option.isSome(configPath),
+  })
+  const ext = path.extname(targetFilePath)
+
+  if (oxfmtSupportedExtensions.has(ext) === false) {
+    return content
+  }
+
+  const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.result)
+  if (Result.isFailure(optionsResult) === true) {
+    return content
+  }
+
+  const args = Option.match(configPath, {
+    onNone: () => ['--stdin-filepath', targetFilePath],
+    onSome: (cfg) => ['-c', cfg, '--stdin-filepath', targetFilePath],
+  })
+
+  const result = yield* Effect.gen(function* () {
+    const spawner = yield* CommandExecutor.ChildProcessSpawner
+    return yield* spawner.string(
+      Command.make('oxfmt', args, {
+        stdin: { stream: Stream.make(content).pipe(Stream.encodeText) },
+      }),
+    )
+  }).pipe(Effect.orElseSucceed(() => content))
+
+  // If oxfmt returned empty output (e.g., failed to parse), return original content.
+  // This handles YAML with GitHub Actions ${{ }} expressions in flow sequences (inline arrays)
+  // which Prettier's YAML parser can't handle - it interprets ${{ as a nested flow mapping.
+  // See: https://github.com/prettier/prettier/issues/6517 (Helm template syntax)
+  // See: https://github.com/eemeli/yaml/issues/328 (flow sequence parsing)
+  if (result.length === 0 && content.length > 0) {
+    return content
+  }
+
+  return result
+})
+
+/**
+ * Find the nearest repo root for a genie file.
+ * Prefers a local megarepo config (megarepo.kdl or megarepo.json), falls back to .git.
+ */
+const repoRootCache = new Map<string, string>()
+
+const findRepoRoot = Effect.fn('findRepoRoot')(function* ({
+  startDir,
+  cwd,
+}: {
+  startDir: string
+  cwd: string
+}) {
+  yield* Observability.annotatePath({ label: 'repo-root', path: startDir })
+  const cacheKey = `${cwd}::${startDir}`
+  const cached = repoRootCache.get(cacheKey)
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const fs = yield* FileSystem.FileSystem
+  let current = startDir
+  let last = ''
+
+  while (current !== last) {
+    if (
+      (yield* fs.exists(path.join(current, 'megarepo.kdl'))) === true ||
+      (yield* fs.exists(path.join(current, 'megarepo.json'))) === true
+    ) {
+      repoRootCache.set(cacheKey, current)
+      return current
+    }
+    if ((yield* fs.exists(path.join(current, '.git'))) === true) {
+      repoRootCache.set(cacheKey, current)
+      return current
+    }
+    last = current
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+
+  repoRootCache.set(cacheKey, cwd)
+  return cwd
+})
+
+/**
+ * Compute the package location from a genie file path.
+ * Example: '/repo/packages/@overeng/utils/package.json.genie.ts' with repo root '/repo'
+ *          → 'packages/@overeng/utils'
+ */
+const computeLocationFromPath = ({
+  genieFilePath,
+  repoRoot,
+}: {
+  genieFilePath: string
+  repoRoot: string
+}): string => {
+  const targetFilePath = genieFilePath.replace('.genie.ts', '')
+  const targetDir = path.dirname(targetFilePath)
+  const relativePath = path.relative(repoRoot, targetDir)
+  // Normalize to forward slashes and handle root case
+  return relativePath === '' ? '.' : relativePath.split(path.sep).join('/')
+}
+
+/**
+ * Import a genie file and return its typed output plus the base context.
+ *
+ * A Bun import resolver is registered once so `#...` specifiers are resolved
+ * using the import map closest to the importing file (including transitive imports).
+ */
+export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
+  genieFilePath,
+  cwd,
+  compiledBinaryImportGraphLoader,
+}: {
+  genieFilePath: string
+  cwd: string
+  /** Injectable boundary for embedding and deterministic concurrency verification. */
+  compiledBinaryImportGraphLoader?:
+    | (() => Effect.Effect<Record<string, unknown>, GenieImportError, FileSystem.FileSystem>)
+    | undefined
+}) {
+  yield* Observability.annotateFile({
+    label: Observability.relativePath({ cwd, filePath: genieFilePath }),
+    cwd,
+    genieFilePath,
+    targetFilePath: genieFilePath.replace('.genie.ts', ''),
+  })
+  yield* ensureImportMapResolver
+
+  const importModule = (
+    importPath: string,
+  ): Effect.Effect<Record<string, unknown>, GenieImportError> =>
+    Effect.tryPromise({
+      // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
+      try: () => import(importPath),
+      catch: (error) =>
+        new GenieImportError({
+          genieFilePath,
+          message: `Failed to import ${genieFilePath}: ${safeErrorString(error)}`,
+          cause: error,
+        }),
+    })
+
+  const loadCompiledBinaryImportGraph =
+    compiledBinaryImportGraphLoader ??
+    (() =>
+      Effect.gen(function* () {
+        const staged = yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath })
+        const importPath = `${pathToFileURL(staged.stagePath).href}?import=${Date.now()}`
+        return yield* importModule(importPath).pipe(
+          Effect.ensuring(removeStagingRoot(staged.tempRoot)),
+        )
+      }))
+
+  const module =
+    isCompiledBinary() === true
+      ? yield* loadCompiledBinaryImportGraph().pipe(withCompiledBinaryImportGraphPermit)
+      : yield* importModule(`${genieFilePath}?import=${Date.now()}`)
+
+  const exported = module.default
+
+  // Genie files must export a GenieOutput object with { data, stringify }
+  if (
+    typeof exported !== 'object' ||
+    exported === null ||
+    !('stringify' in exported) ||
+    typeof exported.stringify !== 'function'
+  ) {
+    return yield* new GenieImportError({
+      genieFilePath,
+      message: `Genie file must export a GenieOutput object with { data, stringify }, got ${typeof exported}`,
+      cause: new Error(`Invalid export type: ${typeof exported}`),
+    })
+  }
+
+  // Create context and call the stringify function
+  const repoRoot = yield* findRepoRoot({
+    startDir: path.dirname(genieFilePath),
+    cwd,
+  })
+  const location = computeLocationFromPath({ genieFilePath, repoRoot })
+  const ctx: GenieContext = { location, cwd }
+
+  return { genieFilePath, output: exported as GenieOutput<unknown>, ctx }
+})
+
+/** Generate expected content for a genie file (shared between generate and dry-run) */
+export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
+  genieFilePath,
+  cwd,
+  oxfmtConfigPath,
+  loadedGenieFile,
+}: {
+  genieFilePath: string
+  cwd: string
+  oxfmtConfigPath: Option.Option<string>
+  loadedGenieFile?: LoadedGenieFile
+}) {
+  yield* Observability.annotateFile({
+    label: Observability.relativePath({
+      cwd,
+      filePath: genieFilePath.replace('.genie.ts', ''),
+    }),
+    cwd,
+    genieFilePath,
+    targetFilePath: genieFilePath.replace('.genie.ts', ''),
+  })
+  const targetFilePath = genieFilePath.replace('.genie.ts', '')
+  const sourceFile = path.basename(genieFilePath)
+  const loaded =
+    loadedGenieFile === undefined ? yield* loadGenieFile({ genieFilePath, cwd }) : loadedGenieFile
+  const rawContent = loaded.output.stringify(loaded.ctx)
+
+  const header = getHeaderComment({ targetFilePath, sourceFile })
+  const formattedContent = yield* formatWithOxfmt({
+    targetFilePath,
+    content: rawContent,
+    configPath: oxfmtConfigPath,
+  })
+
+  return {
+    targetFilePath,
+    content: addHeaderComment({
+      content: formattedContent,
+      header,
+    }),
+  }
+})
+
+/** Generate a brief diff summary showing line count changes */
+const generateDiffSummary = ({
+  oldContent,
+  newContent,
+}: {
+  oldContent: string
+  newContent: string
+}): string | undefined => {
+  if (oldContent === newContent) return undefined
+
+  const oldLines = oldContent.split('\n').length
+  const newLines = newContent.split('\n').length
+  const diff = newLines - oldLines
+
+  if (diff > 0) {
+    return `(+${diff} lines)`
+  } else if (diff < 0) {
+    return `(${diff} lines)`
+  }
+  return '(content changed)'
+}
+
+/**
+ * Atomically write a file by writing to a temp file first, then renaming.
+ * This prevents file corruption if an error occurs during write.
+ */
+const atomicWriteFile = ({
+  targetFilePath,
+  content,
+  mode,
+}: {
+  targetFilePath: string
+  content: string
+  mode?: number
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const tempPath = `${targetFilePath}.genie.tmp`
+
+    // Make target writable if it exists (for read-only files)
+    const targetExists = yield* fs.exists(targetFilePath)
+    if (targetExists === true) {
+      yield* fs.chmod(targetFilePath, 0o644).pipe(Effect.ignore)
+    }
+
+    // Write to temp file first
+    yield* fs.writeFileString(tempPath, content)
+
+    // Set permissions on temp file before rename
+    if (mode !== undefined) {
+      yield* fs.chmod(tempPath, mode)
+    }
+
+    // Atomic rename - either fully succeeds or original file remains untouched
+    yield* fs.rename(tempPath, targetFilePath)
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        // Clean up temp file on failure
+        const fs = yield* FileSystem.FileSystem
+        const tempPath = `${targetFilePath}.genie.tmp`
+        yield* fs.remove(tempPath, { force: true }).pipe(Effect.ignore)
+        return yield* error
+      }),
+    ),
+    Observability.withAtomicWriteSpan({
+      targetFilePath,
+      ...(mode === undefined ? {} : { mode }),
+    }),
+  )
+
+const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
+  cwd,
+  targetFilePath,
+  effect,
+}: {
+  cwd: string
+  targetFilePath: string
+  effect: Effect.Effect<void, E, FileSystem.FileSystem>
+}) {
+  yield* Observability.annotateTargetLock({ cwd, targetFilePath })
+  // User-owned state keeps locks outside source roots and avoids shared /tmp UID conflicts.
+  const configuredStateHome = process.env.XDG_STATE_HOME
+  const stateHome =
+    configuredStateHome !== undefined && path.isAbsolute(configuredStateHome) === true
+      ? configuredStateHome
+      : path.join(os.homedir(), '.local', 'state')
+  const lockDir = path.join(stateHome, 'genie', 'locks')
+  const lockLayer = FileSystemBacking.layer({ lockDir })
+  const lockKey = `genie:file:${createHash('sha256').update(path.resolve(targetFilePath)).digest('hex')}`
+
+  const semaphore = yield* DistributedSemaphore.make(lockKey, {
+    limit: 1,
+    ttl: Duration.seconds(120),
+  }).pipe(Effect.provide(lockLayer))
+
+  return yield* semaphore.withPermits(1)(effect).pipe(Effect.provide(lockLayer))
+})
+
+/** Generate output file from a genie template */
+export const generateFile = ({
+  genieFilePath,
+  cwd,
+  readOnly,
+  dryRun = false,
+  oxfmtConfigPath,
+}: {
+  genieFilePath: string
+  cwd: string
+  readOnly: boolean
+  dryRun?: boolean
+  oxfmtConfigPath: Option.Option<string>
+}): Effect.Effect<
+  GenerateSuccess,
+  GenieFileError,
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner | Path.Path
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const targetFilePath = genieFilePath.replace('.genie.ts', '')
+    const targetDir = path.dirname(targetFilePath)
+
+    const { content: fileContentString } = yield* getExpectedContent({
+      genieFilePath,
+      cwd,
+      oxfmtConfigPath,
+    })
+
+    const targetDirExists = yield* fs.exists(targetDir)
+    if (targetDirExists === false) {
+      const reason = `Parent directory missing: ${targetDir}`
+      return { _tag: 'skipped' as const, targetFilePath, reason }
+    }
+
+    // Check if file exists and get current content
+    const fileExists = yield* fs.exists(targetFilePath)
+    const currentContent =
+      fileExists === true
+        ? yield* fs.readFileString(targetFilePath).pipe(Effect.orElseSucceed(() => ''))
+        : ''
+
+    const isUnchanged = fileExists === true && currentContent === fileContentString
+
+    // Compute diff summary for updated files
+    const diffSummary =
+      fileExists === true && isUnchanged === false
+        ? generateDiffSummary({ oldContent: currentContent, newContent: fileContentString })
+        : undefined
+
+    if (dryRun === true) {
+      if (fileExists === false) {
+        return { _tag: 'created', targetFilePath } as const
+      }
+      if (isUnchanged === true) {
+        return { _tag: 'unchanged', targetFilePath } as const
+      }
+      return { _tag: 'updated', targetFilePath, diffSummary } as const
+    }
+
+    if (isUnchanged === true) {
+      // Restore read-only permissions if needed (e.g. after a --writeable run or manual chmod)
+      const mode = generatedFileMode({ readOnly, targetFilePath })
+      if (mode !== undefined) {
+        yield* fs.chmod(targetFilePath, mode).pipe(Effect.ignore)
+      }
+      return { _tag: 'unchanged', targetFilePath } as const
+    }
+
+    // Atomically write the file (write to temp, then rename)
+    const mode = generatedFileMode({ readOnly, targetFilePath })
+    yield* withTargetLock({
+      cwd,
+      targetFilePath,
+      effect: atomicWriteFile({
+        targetFilePath,
+        content: fileContentString,
+        ...(mode === undefined ? {} : { mode }),
+      }),
+    })
+
+    if (fileExists === false) {
+      return { _tag: 'created', targetFilePath } as const
+    }
+
+    return { _tag: 'updated', targetFilePath, diffSummary } as const
+  }).pipe(
+    Effect.map((_) => _ as GenerateSuccess),
+    Effect.mapError((cause) => {
+      const targetFilePath = genieFilePath.replace('.genie.ts', '')
+      // Extract the underlying error for TDZ detection
+      // Only unwrap GenieImportError (check _tag to avoid unwrapping native Error.cause)
+      const underlyingError = cause instanceof GenieImportError ? cause.cause : cause
+      return new GenieFileError({
+        targetFilePath,
+        message: `Failed to generate ${targetFilePath}: ${safeErrorString(cause)}`,
+        cause:
+          underlyingError instanceof Error ? underlyingError : new Error(safeErrorString(cause)),
+      })
+    }),
+    Effect.catchDefect((defect) => {
+      const targetFilePath = genieFilePath.replace('.genie.ts', '')
+      return Effect.fail(
+        new GenieFileError({
+          targetFilePath,
+          message: `Failed to generate ${targetFilePath}: ${safeErrorString(defect)}`,
+          cause: defect instanceof Error ? defect : new Error(safeErrorString(defect)),
+        }),
+      )
+    }),
+    Observability.withFileSpan({
+      cwd,
+      genieFilePath,
+      targetFilePath: genieFilePath.replace('.genie.ts', ''),
+      readOnly,
+      dryRun,
+    }),
+  )
+
+/** Check if a generated file matches its expected content */
+export const checkFile = ({
+  genieFilePath,
+  cwd,
+  oxfmtConfigPath,
+}: {
+  genieFilePath: string
+  cwd: string
+  oxfmtConfigPath: Option.Option<string>
+}): Effect.Effect<
+  void,
+  GenieCheckError | GenieImportError | PlatformError,
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
+> => checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.asVoid)
+
+/** Check a generated file and return the loaded genie module for downstream validation reuse. */
+export const checkFileDetailed = ({
+  genieFilePath,
+  cwd,
+  oxfmtConfigPath,
+}: {
+  genieFilePath: string
+  cwd: string
+  oxfmtConfigPath: Option.Option<string>
+}): Effect.Effect<
+  { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
+  GenieCheckError | GenieImportError | PlatformError,
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const loadedGenieFile = yield* loadGenieFile({ genieFilePath, cwd })
+    const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
+      genieFilePath,
+      cwd,
+      oxfmtConfigPath,
+      loadedGenieFile,
+    })
+
+    const fileExists = yield* fs.exists(targetFilePath)
+    if (fileExists === false) {
+      return yield* new GenieCheckError({
+        targetFilePath,
+        message: `File does not exist. Run 'genie' to generate it.`,
+      })
+    }
+
+    const actualContent = yield* fs.readFileString(targetFilePath)
+
+    if (actualContent !== expectedContent) {
+      return yield* new GenieCheckError({
+        targetFilePath,
+        message: `File content is out of date. Run 'genie' to regenerate it.`,
+      })
+    }
+
+    return { targetFilePath, loadedGenieFile }
+  }).pipe(
+    Observability.withFileSpan({
+      label: Observability.relativePath({ cwd, filePath: genieFilePath.replace('.genie.ts', '') }),
+      cwd,
+      genieFilePath,
+      targetFilePath: genieFilePath.replace('.genie.ts', ''),
+    }),
+  )

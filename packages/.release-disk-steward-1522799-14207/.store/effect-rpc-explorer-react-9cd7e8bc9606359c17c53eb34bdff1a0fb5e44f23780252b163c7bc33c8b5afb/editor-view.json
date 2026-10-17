@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/effect-rpc-explorer-react",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/effect-rpc-explorer-react:editor_inputs",
+  "editorInputsFingerprint": "be66a428e9a87039bb8ae1871dc53d95e0bfd119888c1bce6edc509bdddae757",
+  "snapshot": ".store/effect-rpc-explorer-react-9cd7e8bc9606359c17c53eb34bdff1a0fb5e44f23780252b163c7bc33c8b5afb",
+  "normalizedStoreDigest": "98ede2e6a6b7f61cc9c7e9d2cdf81078e02ba5f3c8347e3445324803a7c9c2ee",
+  "selectedViewDigest": "be66a428e9a87039bb8ae1871dc53d95e0bfd119888c1bce6edc509bdddae757",
+  "byteSnapshotDigest": "c7c6e06a213c428cc6d5e260ebe900b0413942c38f6eb646cc4bbc69ab29d601"
+}

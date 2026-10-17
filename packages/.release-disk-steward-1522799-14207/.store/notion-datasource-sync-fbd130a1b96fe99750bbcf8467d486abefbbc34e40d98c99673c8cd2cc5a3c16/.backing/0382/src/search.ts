@@ -1,0 +1,135 @@
+import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import type { HttpClient } from 'effect/http/HttpClient'
+
+import type { NotionConfig } from './config.ts'
+import type { NotionApiError } from './error.ts'
+import { post } from './internal/http.ts'
+import {
+  PaginatedResponse,
+  type PaginatedResult,
+  type PaginationOptions,
+  toPaginatedResult,
+} from './internal/pagination.ts'
+
+// -----------------------------------------------------------------------------
+// Temporary schemas until Phase 3 (Core Object Schemas) is complete
+// -----------------------------------------------------------------------------
+
+/** Search result can be a page or data source */
+const SearchResultSchema = Schema.Struct({
+  object: Schema.Literals(['page', 'data_source']),
+  id: Schema.String,
+}).annotate({ identifier: 'SearchResult' })
+
+type SearchResult = typeof SearchResultSchema.Type
+
+/** Search response */
+const SearchResponseSchema = PaginatedResponse(SearchResultSchema)
+
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+
+/** Filter for search (page or data_source) */
+export interface SearchFilter {
+  readonly property: 'object'
+  readonly value: 'page' | 'data_source'
+}
+
+/** Sort for search */
+export interface SearchSort {
+  readonly direction: 'ascending' | 'descending'
+  readonly timestamp: 'last_edited_time'
+}
+
+/** Options for searching */
+export interface SearchOptions extends PaginationOptions {
+  /** Text to search for in page/database titles */
+  readonly query?: string
+  /** Filter to pages or databases only */
+  readonly filter?: SearchFilter
+  /** Sort order */
+  readonly sort?: SearchSort
+}
+
+// -----------------------------------------------------------------------------
+// Service Implementation
+// -----------------------------------------------------------------------------
+
+/** Internal helper to build search body */
+const buildSearchBody = (opts: SearchOptions): Record<string, unknown> => {
+  const body: Record<string, unknown> = {}
+  if (opts.query !== undefined) body.query = opts.query
+  if (opts.filter !== undefined) body.filter = opts.filter
+  if (opts.sort !== undefined) body.sort = opts.sort
+  if (opts.startCursor !== undefined) body.start_cursor = opts.startCursor
+  if (opts.pageSize !== undefined) body.page_size = opts.pageSize
+  return body
+}
+
+/** Internal raw search - used by both search and searchStream */
+const searchRaw = Effect.fn('NotionSearch.search')(function* (opts: SearchOptions) {
+  const body = buildSearchBody(opts)
+  const response = yield* post({
+    path: '/search',
+    body,
+    responseSchema: SearchResponseSchema,
+  })
+  return toPaginatedResult(response)
+})
+
+/**
+ * Search pages and databases.
+ *
+ * Returns a single page of results with cursor for next page.
+ *
+ * @see https://developers.notion.com/reference/post-search
+ */
+export const search = (
+  opts: SearchOptions = {},
+): Effect.Effect<PaginatedResult<SearchResult>, NotionApiError, NotionConfig | HttpClient> =>
+  searchRaw(opts)
+
+/**
+ * Search pages and databases with automatic pagination.
+ *
+ * Returns a stream that automatically fetches all pages.
+ *
+ * @see https://developers.notion.com/reference/post-search
+ */
+export const searchStream = (
+  opts: Omit<SearchOptions, 'startCursor'> = {},
+): Stream.Stream<SearchResult, NotionApiError, NotionConfig | HttpClient> =>
+  Stream.flattenIterable(
+    Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
+      Option.match(maybeNextCursor, {
+        // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
+        onNone: () => Effect.succeed(undefined),
+        onSome: (cursor) => {
+          const searchOpts: SearchOptions =
+            Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
+          return searchRaw(searchOpts).pipe(
+            Effect.map((result) => {
+              const chunk = Chunk.fromIterable(result.results)
+
+              if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
+                return [chunk, Option.none()] as const
+              }
+
+              return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
+            }),
+          )
+        },
+      }),
+    ),
+  )
+
+// -----------------------------------------------------------------------------
+// Namespace Export
+// -----------------------------------------------------------------------------
+
+/** Notion Search API */
+export const NotionSearch = {
+  search,
+  searchStream,
+} as const

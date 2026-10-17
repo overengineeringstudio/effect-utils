@@ -1,0 +1,139 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-path",
+      "packages/@overeng/kdl",
+      "packages/@overeng/kdl-effect",
+      "packages/@overeng/megarepo",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/tui-core",
+      "packages/@overeng/tui-react",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
+    ]
+  },
+  "name": "@overeng/megarepo",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./buck2-manifest": {
+      "types": "./dist/src/buck2-manifest.d.ts",
+      "default": "./src/buck2-manifest.ts"
+    },
+    "./cli": {
+      "types": "./dist/src/cli/mod.d.ts",
+      "default": "./src/cli/mod.ts"
+    }
+  },
+  "scripts": {
+    "storybook": "storybook dev -p 6007",
+    "storybook:build": "storybook build"
+  },
+  "dependencies": {
+    "@effect/atom-react": "4.0.0-rc.118",
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "@opentui/core": "0.5.11",
+    "@opentui/react": "0.5.11",
+    "@overeng/effect-path": "workspace:^",
+    "@overeng/kdl": "workspace:^",
+    "@overeng/kdl-effect": "workspace:^",
+    "@overeng/otel-contract": "workspace:^",
+    "@overeng/tui-react": "workspace:^",
+    "@overeng/utils": "workspace:^",
+    "@playwright/test": "1.63.0",
+    "@storybook/react": "10.6.0",
+    "@types/react": "19.2.18",
+    "@types/react-reconciler": "0.33.0",
+    "effect": "4.0.0-rc.118",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-reconciler": "0.33.0",
+    "vitest": "5.0.3"
+  },
+  "dependenciesMeta": {
+    "@overeng/tui-react": {
+      "injected": true
+    }
+  },
+  "devDependencies": {
+    "@effect/atom-react": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "@overeng/tui-core": "workspace:^",
+    "@overeng/utils-dev": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
+    "@storybook/react": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
+    "@types/bun": "1.4.2",
+    "@types/node": "26.5.0",
+    "@types/react": "19.2.18",
+    "@vitejs/plugin-react": "6.1.1",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "effect": "4.0.0-rc.118",
+    "react-dom": "19.2.8",
+    "react-reconciler": "0.33.0",
+    "storybook": "10.6.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "@effect/atom-react": "4.0.0-rc.118",
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@opentui/core": "^0.5.11",
+    "@opentui/react": "^0.5.11",
+    "@playwright/test": "^1.63.0",
+    "@storybook/react": "^10.6.0",
+    "@storybook/react-vite": "^10.6.0",
+    "@types/react": "^19.2.18",
+    "@types/react-reconciler": "^0.33.0",
+    "@vitest/browser-playwright": "^5.0.3",
+    "effect": "4.0.0-rc.118",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-reconciler": "^0.33.0",
+    "storybook": "^10.6.0"
+  },
+  "peerDependenciesMeta": {
+    "@storybook/react-vite": {
+      "optional": true
+    },
+    "@vitest/browser-playwright": {
+      "optional": true
+    },
+    "storybook": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./buck2-manifest": {
+        "types": "./dist/src/buck2-manifest.d.ts",
+        "default": "./dist/src/buck2-manifest.js"
+      },
+      "./cli": {
+        "types": "./dist/src/cli/mod.d.ts",
+        "default": "./dist/src/cli/mod.js"
+      }
+    }
+  }
+}

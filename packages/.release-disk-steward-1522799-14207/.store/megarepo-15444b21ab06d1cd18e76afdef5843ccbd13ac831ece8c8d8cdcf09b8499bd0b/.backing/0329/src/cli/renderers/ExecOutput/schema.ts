@@ -1,0 +1,205 @@
+/**
+ * ExecOutput Schema
+ *
+ * Effect Schema definitions for the exec command output.
+ * Supports running state with multiple members and completion with results.
+ */
+
+import { Schema } from 'effect'
+
+// =============================================================================
+// Member Exec Status
+// =============================================================================
+
+/** Schema for a member's execution status including exit code and captured output. */
+export const MemberExecStatus = Schema.Struct({
+  /** Member name */
+  name: Schema.String,
+  /** Current execution status */
+  status: Schema.Literals(['pending', 'running', 'success', 'error', 'skipped']),
+  /** Exit code (0 = success, non-zero = error) */
+  exitCode: Schema.optional(Schema.Finite),
+  /** Combined stdout output */
+  stdout: Schema.optional(Schema.String),
+  /** Combined stderr output */
+  stderr: Schema.optional(Schema.String),
+})
+
+/** Inferred type for a member's execution status. */
+export type MemberExecStatus = Schema.Schema.Type<typeof MemberExecStatus>
+
+// =============================================================================
+// Exec State (Union of Running, Complete, Error)
+// =============================================================================
+
+/**
+ * Running state - exec is in progress.
+ * JSON output: { "_tag": "Running", "command": "...", "members": [...], ... }
+ */
+export const ExecRunningState = Schema.TaggedStruct('Running', {
+  /** Command being executed */
+  command: Schema.String,
+  /** Execution mode */
+  mode: Schema.Literals(['parallel', 'sequential']),
+  /** Verbose mode enabled */
+  verbose: Schema.Boolean,
+  /** All member statuses */
+  members: Schema.Array(MemberExecStatus),
+})
+
+/**
+ * Complete state - exec finished (success or with errors).
+ * JSON output: { "_tag": "Complete", "command": "...", "members": [...], "hasErrors": ... }
+ */
+export const ExecCompleteState = Schema.TaggedStruct('Complete', {
+  /** Command that was executed */
+  command: Schema.String,
+  /** Execution mode used */
+  mode: Schema.Literals(['parallel', 'sequential']),
+  /** Verbose mode enabled */
+  verbose: Schema.Boolean,
+  /** All member results */
+  members: Schema.Array(MemberExecStatus),
+  /** Whether any errors occurred */
+  hasErrors: Schema.Boolean,
+})
+
+/**
+ * Error state - exec failed to start.
+ * JSON output: { "_tag": "Error", "error": "...", "message": "..." }
+ */
+export const ExecErrorState = Schema.TaggedStruct('Error', {
+  error: Schema.String,
+  message: Schema.String,
+})
+
+/**
+ * State for exec command - discriminated by _tag property.
+ */
+export const ExecState = Schema.Union([ExecRunningState, ExecCompleteState, ExecErrorState])
+
+export type ExecState = typeof ExecState.Type
+
+// =============================================================================
+// Type Guards
+// =============================================================================
+
+/** Type guard that checks if the exec state is an error. */
+export const isExecError = (state: ExecState): state is typeof ExecErrorState.Type =>
+  state._tag === 'Error'
+
+/** Type guard that checks if the exec state is complete (finished with results). */
+export const isExecComplete = (state: ExecState): state is typeof ExecCompleteState.Type =>
+  state._tag === 'Complete'
+
+/** Type guard that checks if the exec state is currently running. */
+export const isExecRunning = (state: ExecState): state is typeof ExecRunningState.Type =>
+  state._tag === 'Running'
+
+// =============================================================================
+// Exec Actions
+// =============================================================================
+
+/** Tagged union of actions that can be dispatched to update exec state. */
+export const ExecAction = Schema.Union([
+  /** Initialize exec with members */
+  Schema.TaggedStruct('Start', {
+    command: Schema.String,
+    mode: Schema.Literals(['parallel', 'sequential']),
+    verbose: Schema.Boolean,
+    members: Schema.Array(Schema.String),
+  }),
+
+  /** Update a member's status */
+  Schema.TaggedStruct('UpdateMember', {
+    name: Schema.String,
+    status: Schema.Literals(['pending', 'running', 'success', 'error', 'skipped']),
+    exitCode: Schema.optional(Schema.Finite),
+    stdout: Schema.optional(Schema.String),
+    stderr: Schema.optional(Schema.String),
+  }),
+
+  /** Mark exec as complete */
+  Schema.TaggedStruct('Complete', {}),
+
+  /** Set error state */
+  Schema.TaggedStruct('SetError', {
+    error: Schema.String,
+    message: Schema.String,
+  }),
+])
+
+/** Inferred type for exec actions. */
+export type ExecAction = Schema.Schema.Type<typeof ExecAction>
+
+// =============================================================================
+// Reducer
+// =============================================================================
+
+/** Reduces exec actions into state, handling start, member updates, completion, and errors. */
+export const execReducer = ({
+  state,
+  action,
+}: {
+  state: ExecState
+  action: ExecAction
+}): ExecState => {
+  switch (action._tag) {
+    case 'Start':
+      return {
+        _tag: 'Running',
+        command: action.command,
+        mode: action.mode,
+        verbose: action.verbose,
+        members: action.members.map((name) => ({
+          name,
+          status: 'pending' as const,
+        })),
+      }
+
+    case 'UpdateMember': {
+      if (state._tag === 'Error') return state
+
+      const members = state.members.map((m) =>
+        m.name === action.name
+          ? {
+              ...m,
+              status: action.status,
+              exitCode: action.exitCode,
+              stdout: action.stdout,
+              stderr: action.stderr,
+            }
+          : m,
+      )
+
+      return {
+        ...state,
+        members,
+      }
+    }
+
+    case 'Complete': {
+      if (state._tag === 'Error') return state
+
+      const hasErrors = state.members.some(
+        (m) => m.status === 'error' || (m.exitCode !== undefined && m.exitCode !== 0),
+      )
+
+      return {
+        _tag: 'Complete',
+        command: state.command,
+        mode: state.mode,
+        verbose: state.verbose,
+        members: state.members,
+        hasErrors,
+      }
+    }
+
+    case 'SetError':
+      return {
+        _tag: 'Error',
+        error: action.error,
+        message: action.message,
+      }
+  }
+}

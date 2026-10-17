@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/tui-core",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/tui-core:editor_inputs",
+  "editorInputsFingerprint": "176486950a4052559b996f0a88fcc4833b543bba510dc7ff483a5a87f9d0230a",
+  "snapshot": ".store/tui-core-bfc0e6955bd5a199033e778f783abeb1da915da75ea00dce2d4668c9750ccc1e",
+  "normalizedStoreDigest": "86b568538c85c32008c95c0b03ea94c5049afb2216eea9124d8c237f0006b821",
+  "selectedViewDigest": "176486950a4052559b996f0a88fcc4833b543bba510dc7ff483a5a87f9d0230a",
+  "byteSnapshotDigest": "e56d34636d33da53ebfb796b5f667cd5e65004e2095442dbb5c2fee002212145"
+}

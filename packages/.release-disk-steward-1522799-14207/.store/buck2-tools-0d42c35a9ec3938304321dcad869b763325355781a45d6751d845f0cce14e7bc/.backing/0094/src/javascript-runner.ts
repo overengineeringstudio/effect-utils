@@ -1,0 +1,761 @@
+/** Pinned Bun runner for Buck JavaScript commands and tests. */
+import { Buffer } from 'node:buffer'
+import { rmSync } from 'node:fs'
+import { mkdir, mkdtemp, realpath } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { publishTestVerdict } from './test-verdict.ts'
+import { hashDeclaredInputRoots, requireFingerprintTool } from './typescript-runner.ts'
+
+type JavaScriptCommand = 'exec' | 'vitest' | 'vitest-collect' | 'bun-test' | 'shell-tests'
+type VitestRuntime = 'bun' | 'node'
+
+/**
+ * Fully resolved action description for one Buck JavaScript command. Every path and timeout is
+ * declared by the action. Ambient state is reachable only through the explicitly declared
+ * `inheritedEnv` names and the executor's scratch and result variables.
+ */
+export type JavaScriptRunOptions = {
+  readonly command: JavaScriptCommand
+  readonly bun: string
+  readonly packageTree: string
+  readonly fingerprintTool: string
+  readonly readRoots: readonly string[]
+  readonly environment: Readonly<Record<string, string>>
+  readonly externalInputs: Readonly<Record<string, string>>
+  readonly inheritedEnv: readonly string[]
+  readonly writableDirectories: Readonly<Record<string, string>>
+  readonly entrypoint: string | undefined
+  readonly config: string | undefined
+  readonly timeoutMs: number
+  readonly hookTimeoutMs: number
+  readonly tests: readonly string[]
+  readonly excludes: readonly string[]
+  readonly args: readonly string[]
+  readonly vitestRuntime: VitestRuntime
+  readonly collectOutput: string | undefined
+  readonly staticParse: boolean
+  readonly verdictOutput?: string | undefined
+  readonly operation?: string | undefined
+}
+
+const COLLECTION_REPORT_NAME = 'vitest-collection.json'
+/** Schema version of the published Vitest collection artifact. */
+export const COLLECTION_SCHEMA_VERSION = 1
+const fail = (message: string): never => {
+  throw new Error(`javascript runner: ${message}`)
+}
+const requireArgument = ({
+  args,
+  index,
+  name,
+}: {
+  readonly args: readonly string[]
+  readonly index: number
+  readonly name: string
+}): string => args[index] ?? fail(`missing ${name}`)
+
+const requireRelativePath = ({
+  field,
+  value,
+}: {
+  readonly field: string
+  readonly value: string
+}): string => {
+  if (
+    value.length === 0 ||
+    isAbsolute(value) === true ||
+    value.includes('\\') === true ||
+    value.split('/').some((part) => part === '' || part === '.' || part === '..') === true
+  ) {
+    fail(`${field} must be a normalized portable relative path: ${value}`)
+  }
+  return value
+}
+const requireBun = (value: string): string =>
+  /^\/nix\/store\/[^/]+\/bin\/bun$/u.test(value) === true
+    ? value
+    : fail(`Bun must be an immutable /nix/store executable: ${value}`)
+const requireTimeout = ({
+  field,
+  value,
+}: {
+  readonly field: string
+  readonly value: string
+}): number => {
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) === true && parsed > 0
+    ? parsed
+    : fail(`${field} must be positive: ${value}`)
+}
+const requireEnvironmentName = (value: string): string =>
+  /^[A-Z_][A-Z0-9_]*$/u.test(value) === true ? value : fail(`invalid environment name: ${value}`)
+const requireLiteralEnvironmentValue = (value: string): string =>
+  value.startsWith('$') === false ? value : fail('environment values must be literal action inputs')
+const requireExternalPath = (value: string): string => {
+  const resolved = resolve(value)
+  return resolved.startsWith('/nix/store/') === true
+    ? resolved
+    : fail(`external path must be an immutable /nix/store input: ${value}`)
+}
+const requireCommand = (value: string): JavaScriptCommand => {
+  if (
+    value === 'exec' ||
+    value === 'vitest' ||
+    value === 'vitest-collect' ||
+    value === 'bun-test' ||
+    value === 'shell-tests'
+  )
+    return value
+  return fail(`unknown command: ${value}`)
+}
+const requireVitestRuntime = (value: string): VitestRuntime =>
+  value === 'bun' || value === 'node' ? value : fail(`unknown vitest runtime: ${value}`)
+const requireBoolean = (value: string): boolean =>
+  value === 'true' ? true : value === 'false' ? false : fail(`expected boolean: ${value}`)
+
+/**
+ * Decodes the positional action argv into options, rejecting anything the sandbox cannot
+ * reproduce: non-store Bun binaries, absolute or escaping relative paths, non-literal
+ * environment values and unknown commands. Positional layout varies per command.
+ */
+export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRunOptions => {
+  const command = requireCommand(requireArgument({ args, index: 0, name: 'command' }))
+  const bun = requireBun(requireArgument({ args, index: 1, name: 'Bun' }))
+  const packageTree = resolve(requireArgument({ args, index: 2, name: 'package tree' }))
+  let index = 3
+  let entrypoint: string | undefined
+  let config: string | undefined
+  let timeoutMs = 30_000
+  let hookTimeoutMs = 30_000
+  if (command === 'exec') {
+    entrypoint = requireRelativePath({
+      field: 'entrypoint',
+      value: requireArgument({ args, index, name: 'entrypoint' }),
+    })
+    index += 1
+  } else if (command === 'vitest') {
+    config = requireRelativePath({
+      field: 'config',
+      value: requireArgument({ args, index, name: 'config' }),
+    })
+    timeoutMs = requireTimeout({
+      field: 'test timeout',
+      value: requireArgument({ args, index: index + 1, name: 'test timeout' }),
+    })
+    hookTimeoutMs = requireTimeout({
+      field: 'hook timeout',
+      value: requireArgument({ args, index: index + 2, name: 'hook timeout' }),
+    })
+    index += 3
+  } else if (command === 'vitest-collect') {
+    config = requireRelativePath({
+      field: 'config',
+      value: requireArgument({ args, index, name: 'config' }),
+    })
+    index += 1
+  } else {
+    timeoutMs = requireTimeout({
+      field: 'test timeout',
+      value: requireArgument({ args, index, name: 'test timeout' }),
+    })
+    index += 1
+  }
+
+  const tests: string[] = []
+  const excludes: string[] = []
+  const readRoots: string[] = []
+  const environment: Record<string, string> = {}
+  const externalInputs: Record<string, string> = {}
+  const inheritedEnv: string[] = []
+  const writableDirectories: Record<string, string> = {}
+  const forwardedArgs: string[] = []
+  let vitestRuntime: VitestRuntime = 'bun'
+  let collectOutput: string | undefined
+  let fingerprintTool: string | undefined
+  let staticParse: boolean | undefined
+  let verdictOutput: string | undefined
+  let operation: string | undefined
+  while (index < args.length) {
+    const flag = requireArgument({ args, index, name: 'flag' })
+    if (flag === '--') {
+      forwardedArgs.push(...args.slice(index + 1))
+      break
+    }
+    if (flag === '--env' || flag === '--input') {
+      const name = requireEnvironmentName(
+        requireArgument({ args, index: index + 1, name: `${flag} name` }),
+      )
+      const value = requireArgument({ args, index: index + 2, name: `${flag} value` })
+      if (flag === '--env') environment[name] = requireLiteralEnvironmentValue(value)
+      else externalInputs[name] = resolve(value)
+      index += 3
+      continue
+    }
+    if (flag === '--external-path') {
+      const name = requireEnvironmentName(
+        requireArgument({ args, index: index + 1, name: `${flag} name` }),
+      )
+      externalInputs[name] = requireExternalPath(
+        requireArgument({ args, index: index + 2, name: `${flag} value` }),
+      )
+      index += 3
+      continue
+    }
+    if (flag === '--writable-directory') {
+      const name = requireEnvironmentName(
+        requireArgument({ args, index: index + 1, name: `${flag} name` }),
+      )
+      writableDirectories[name] = requireRelativePath({
+        field: 'writable directory',
+        value: requireArgument({ args, index: index + 2, name: `${flag} value` }),
+      })
+      index += 3
+      continue
+    }
+    const value = requireArgument({ args, index: index + 1, name: `value for ${flag}` })
+    if (flag === '--test') tests.push(requireRelativePath({ field: 'test', value }))
+    else if (flag === '--exclude') excludes.push(requireRelativePath({ field: 'exclude', value }))
+    else if (flag === '--read-root') {
+      const root = resolve(value)
+      if (value.length === 0 || root === '/') fail(`invalid declared read root: ${value}`)
+      readRoots.push(root)
+    } else if (flag === '--fingerprint-tool') {
+      if (fingerprintTool !== undefined) fail('duplicate --fingerprint-tool')
+      fingerprintTool = requireFingerprintTool(value)
+    } else if (flag === '--inherit-env') inheritedEnv.push(requireEnvironmentName(value))
+    else if (flag === '--vitest-runtime') vitestRuntime = requireVitestRuntime(value)
+    else if (flag === '--collect-output') collectOutput = resolve(value)
+    else if (flag === '--verdict-output') verdictOutput = resolve(value)
+    else if (flag === '--operation') operation = value
+    else if (flag === '--static-parse') staticParse = requireBoolean(value)
+    else fail(`unexpected argument: ${flag}`)
+    index += 2
+  }
+  if (command === 'vitest-collect' && collectOutput === undefined)
+    fail('vitest-collect requires the declared --collect-output build output')
+  if (command !== 'vitest-collect' && collectOutput !== undefined)
+    fail(`--collect-output is only admissible for vitest-collect, not ${command}`)
+  if (command !== 'vitest-collect' && staticParse !== undefined)
+    fail(`--static-parse is only admissible for vitest-collect, not ${command}`)
+  if (verdictOutput !== undefined && (command !== 'vitest' || operation === undefined))
+    fail('--verdict-output requires a Vitest suite and --operation')
+  return {
+    command,
+    bun,
+    fingerprintTool: fingerprintTool ?? fail('missing --fingerprint-tool'),
+    packageTree,
+    entrypoint,
+    config,
+    timeoutMs,
+    hookTimeoutMs,
+    tests,
+    excludes,
+    args: forwardedArgs,
+    vitestRuntime,
+    collectOutput,
+    verdictOutput,
+    operation,
+    staticParse: staticParse ?? false,
+    readRoots: [...new Set(readRoots)].toSorted(),
+    environment,
+    externalInputs,
+    inheritedEnv: [...new Set(inheritedEnv)].toSorted(),
+    writableDirectories,
+  }
+}
+
+/**
+ * Builds the exact `vitest run` argv for a declared config, always emitting both the default
+ * and JSON reporters so the run stays deterministic and machine readable regardless of caller.
+ */
+export const vitestArgv = (options: {
+  readonly runtime: string
+  readonly packageTree: string
+  readonly config: string
+  readonly timeoutMs: number
+  readonly hookTimeoutMs: number
+  readonly report: string
+  readonly tests: readonly string[]
+  readonly excludes: readonly string[]
+}): readonly string[] => [
+  options.runtime,
+  join(options.packageTree, 'node_modules/vitest/vitest.mjs'),
+  'run',
+  '--config',
+  join(options.packageTree, options.config),
+  '--configLoader=runner',
+  '--no-cache',
+  '--testTimeout',
+  String(options.timeoutMs),
+  '--hookTimeout',
+  String(options.hookTimeoutMs),
+  '--reporter=default',
+  '--reporter=json',
+  `--outputFile.json=${options.report}`,
+  ...options.tests,
+  ...options.excludes.flatMap((path) => ['--exclude', path]),
+]
+
+/**
+ * Builds the argv for the pinned Vitest `list` CLI, which enumerates the declared selection
+ * without executing assertions and writes the raw collection to the scratch report path. The
+ * raw report is Vitest's own shape and is normalised before anything is published.
+ */
+export const vitestCollectArgv = (options: {
+  readonly runtime: string
+  readonly packageTree: string
+  readonly config: string
+  readonly report: string
+  readonly tests: readonly string[]
+  readonly excludes: readonly string[]
+  readonly staticParse: boolean
+}): readonly string[] => [
+  options.runtime,
+  join(options.packageTree, 'node_modules/vitest/vitest.mjs'),
+  'list',
+  '--config',
+  join(options.packageTree, options.config),
+  '--configLoader=runner',
+  '--no-cache',
+  options.staticParse === true ? '--staticParse' : '--no-staticParse',
+  `--json=${options.report}`,
+  ...options.tests,
+  ...options.excludes.flatMap((path) => ['--exclude', path]),
+]
+
+/** One collected test identity, addressed by its package-relative file and full test name. */
+export type CollectedTest = {
+  readonly file: string
+  readonly name: string
+}
+/**
+ * The published collection artifact: a versioned, byte-sorted inventory of the tests a Vitest
+ * lane owns. Consumers diff it against the source-owned selection, so its bytes must depend
+ * only on the declared inputs.
+ */
+export type VitestCollection = {
+  readonly schemaVersion: typeof COLLECTION_SCHEMA_VERSION
+  readonly tests: readonly CollectedTest[]
+}
+
+const collectedTest = ({
+  entry,
+  index,
+  packageTree,
+}: {
+  readonly entry: unknown
+  readonly index: number
+  readonly packageTree: string
+}): CollectedTest => {
+  if (typeof entry !== 'object' || entry === null || Array.isArray(entry) === true)
+    return fail(`collected test ${index} is not an object: ${JSON.stringify(entry)}`)
+  const { file, name } = entry as { readonly file?: unknown; readonly name?: unknown }
+  if (typeof file !== 'string' || file.length === 0)
+    return fail(`collected test ${index} has no test file`)
+  if (typeof name !== 'string' || name.length === 0)
+    return fail(`collected test ${index} in ${file} has no test name`)
+  return {
+    file: requireRelativePath({
+      field: `collected test file (entry ${index})`,
+      value: relative(packageTree, isAbsolute(file) === true ? file : resolve(packageTree, file)),
+    }),
+    name,
+  }
+}
+
+/**
+ * Normalises Vitest's raw `list --json` array into the published artifact: every record is
+ * validated, every file is rewritten to a normalised path inside the declared package tree, and
+ * the inventory is byte-sorted by file then name. Anything Vitest emits that the contract cannot
+ * express — a non-array report, a record without a file or name, a path outside the package tree
+ * — rejects instead of being published.
+ */
+export const normalizeVitestCollection = ({
+  packageTree,
+  raw,
+}: {
+  readonly packageTree: string
+  readonly raw: unknown
+}): VitestCollection => {
+  if (Array.isArray(raw) === false)
+    return fail(`vitest list did not write a JSON array of collected tests: ${typeof raw}`)
+  const tree = resolve(packageTree)
+  const keyed = raw.map((entry, index) => {
+    const test = collectedTest({ entry, index, packageTree: tree })
+    return {
+      file: Buffer.from(test.file, 'utf8'),
+      name: Buffer.from(test.name, 'utf8'),
+      test,
+    }
+  })
+  keyed.sort((left, right) => {
+    const byFile = Buffer.compare(left.file, right.file)
+    return byFile !== 0 ? byFile : Buffer.compare(left.name, right.name)
+  })
+  return {
+    schemaVersion: COLLECTION_SCHEMA_VERSION,
+    tests: keyed.map(({ test }) => test),
+  }
+}
+
+/**
+ * Decision about where an action may write: `root` is undefined when no executor scratch was
+ * declared and a temporary directory has to be created instead.
+ */
+export type ScratchPlan = {
+  readonly root: string | undefined
+  readonly declaredResults: string | undefined
+}
+/**
+ * An acquired scratch area; `release` is idempotent and only deletes storage this process
+ * created, never a directory owned by the executor.
+ */
+export interface ScratchLease {
+  readonly root: string
+  readonly results: string
+  readonly release: () => void
+}
+const externalTestCommand: Record<JavaScriptCommand, boolean> = {
+  exec: false,
+  vitest: true,
+  'vitest-collect': false,
+  'bun-test': true,
+  'shell-tests': true,
+}
+const interruptSignals = [
+  'SIGINT',
+  'SIGTERM',
+  'SIGHUP',
+] as const satisfies readonly NodeJS.Signals[]
+const declaredDirectory = (value: string | undefined): string | undefined =>
+  value === undefined || value.length === 0 ? undefined : resolve(value)
+
+/**
+ * Resolves the scratch strategy from the declared executor environment. Commands that Buck runs
+ * as external tests may fall back to a temporary directory; every other command fails rather
+ * than writing outside a declared location.
+ */
+export const planScratch = ({
+  command,
+  env,
+}: {
+  readonly command: JavaScriptCommand
+  readonly env: Readonly<Record<string, string | undefined>>
+}): ScratchPlan => {
+  const declaredScratch = declaredDirectory(env['BUCK_SCRATCH_PATH'])
+  const declaredResults = declaredDirectory(env['TEST_RESULT_ARTIFACTS_DIR'])
+  if (declaredScratch !== undefined) return { root: declaredScratch, declaredResults }
+  if (declaredResults !== undefined) return { root: declaredResults, declaredResults }
+  if (externalTestCommand[command] === true) return { root: undefined, declaredResults }
+  return fail(`BUCK_SCRATCH_PATH must be declared by the executor for the ${command} action`)
+}
+
+/**
+ * Materialises the planned scratch and results directories. A temporary root is additionally
+ * wired to exit and interrupt handlers so an aborted action leaves nothing behind; the signal
+ * is re-raised after cleanup to preserve the original termination status.
+ */
+export const acquireScratch = async (plan: ScratchPlan): Promise<ScratchLease> => {
+  if (plan.root !== undefined) {
+    const results = plan.declaredResults ?? join(plan.root, 'results')
+    await Promise.all([mkdir(plan.root, { recursive: true }), mkdir(results, { recursive: true })])
+    return { root: plan.root, results, release: () => {} }
+  }
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'buck2-javascript-test-'))
+  const results = plan.declaredResults ?? join(root, 'results')
+  await mkdir(results, { recursive: true })
+  let released = false
+  const remove = (): void => {
+    if (released === true) return
+    released = true
+    process.off('exit', remove)
+    for (const signal of interruptSignals) process.off(signal, onSignal)
+    rmSync(root, { recursive: true, force: true })
+  }
+  const onSignal = (signal: NodeJS.Signals): void => {
+    remove()
+    process.kill(process.pid, signal)
+  }
+  process.once('exit', remove)
+  for (const signal of interruptSignals) process.once(signal, onSignal)
+  return { root, results, release: remove }
+}
+
+const actionEnvironment = (scratch: string): Record<string, string> => ({
+  CACHE_DIR: join(scratch, 'cache'),
+  HOME: join(scratch, 'home'),
+  LANG: 'C',
+  LC_ALL: 'C',
+  PATH: '',
+  TMPDIR: join(scratch, 'tmp'),
+  TZ: 'UTC',
+  XDG_CACHE_HOME: join(scratch, 'cache'),
+})
+
+const runShellTest = async (options: {
+  readonly bash: string
+  readonly environment: Readonly<Record<string, string>>
+  readonly source: string
+  readonly test: string
+  readonly timeoutMs: number
+}): Promise<number> => {
+  console.log(`Running ${options.test}`)
+  const child = Bun.spawn([options.bash, join(options.source, options.test)], {
+    cwd: options.source,
+    env: {
+      ...options.environment,
+      BASH_BIN: options.bash,
+      NIX_FLAKE_REF: `path:${options.source}`,
+      PATH: options.environment['PATH'] ?? fail('missing declared tool PATH'),
+    },
+    stdin: 'ignore',
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  const timer = setTimeout(() => child.kill(), options.timeoutMs)
+  const status = await child.exited
+  clearTimeout(timer)
+  return status
+}
+
+const runShellTestsSequential = async (options: {
+  readonly bash: string
+  readonly environment: Readonly<Record<string, string>>
+  readonly source: string
+  readonly tests: readonly string[]
+  readonly timeoutMs: number
+}): Promise<number> => {
+  const [test, ...rest] = options.tests
+  if (test === undefined) return 0
+  const status = await runShellTest({ ...options, test })
+  return status === 0 ? runShellTestsSequential({ ...options, tests: rest }) : status
+}
+
+const runShellTests = async (options: {
+  readonly environment: Readonly<Record<string, string>>
+  readonly run: JavaScriptRunOptions
+}): Promise<number> => {
+  const source =
+    options.run.externalInputs['DEVENV_MODULE_SOURCE'] ?? fail('missing DEVENV_MODULE_SOURCE')
+  const bash = options.run.externalInputs['BASH_BIN'] ?? fail('missing BASH_BIN')
+  if (options.run.externalInputs['NIX_BIN'] === undefined) fail('missing NIX_BIN')
+  const tests = [
+    ...new Bun.Glob('nix/devenv-modules/**/*.test.sh').scanSync({ cwd: source }),
+  ].toSorted()
+  if (tests.length === 0) fail('devenv module source contains no test scripts')
+  return runShellTestsSequential({
+    bash,
+    environment: options.environment,
+    source,
+    tests,
+    timeoutMs: options.run.timeoutMs,
+  })
+}
+
+const runCommand = async ({
+  options,
+  results,
+  scratch,
+}: {
+  readonly options: JavaScriptRunOptions
+  readonly results: string
+  readonly scratch: string
+}): Promise<number> => {
+  const writableEnvironment = Object.fromEntries(
+    await Promise.all(
+      Object.entries(options.writableDirectories).map(async ([name, directory]) => {
+        const target = join(scratch, 'writable', directory)
+        await mkdir(target, { recursive: true })
+        return [name, target] as const
+      }),
+    ),
+  )
+  await Promise.all(
+    ['cache', 'home', 'tmp'].map((directory) =>
+      mkdir(join(scratch, directory), { recursive: true }),
+    ),
+  )
+  const environment = {
+    ...actionEnvironment(scratch),
+    ...options.environment,
+    ...options.externalInputs,
+    PATH: [
+      ...new Set(
+        Object.values(options.externalInputs).map((path) =>
+          path.endsWith('/bin') === true ? path : dirname(path),
+        ),
+      ),
+    ]
+      .toSorted()
+      .join(':'),
+    ...writableEnvironment,
+    ...Object.fromEntries(
+      options.inheritedEnv.map((name) => [
+        name,
+        process.env[name] ?? fail(`required inherited environment variable is missing: ${name}`),
+      ]),
+    ),
+    CI: options.environment['CI'] ?? 'true',
+  }
+  if (options.command === 'shell-tests') return runShellTests({ environment, run: options })
+  const runtime =
+    options.vitestRuntime === 'bun'
+      ? options.bun
+      : (options.externalInputs['NODE_BIN'] ??
+        fail('vitest runtime "node" requires the declared NODE_BIN tool'))
+  const command =
+    options.command === 'vitest'
+      ? vitestArgv({
+          runtime,
+          packageTree: options.packageTree,
+          config: options.config ?? fail('missing config'),
+          timeoutMs: options.timeoutMs,
+          hookTimeoutMs: options.hookTimeoutMs,
+          report: join(results, 'vitest.json'),
+          tests: options.tests,
+          excludes: options.excludes,
+        })
+      : options.command === 'vitest-collect'
+        ? vitestCollectArgv({
+            runtime,
+            packageTree: options.packageTree,
+            config: options.config ?? fail('missing config'),
+            report: join(results, COLLECTION_REPORT_NAME),
+            tests: options.tests,
+            staticParse: options.staticParse,
+            excludes: options.excludes,
+          })
+        : options.command === 'bun-test'
+          ? [options.bun, 'test', '--timeout', String(options.timeoutMs), ...options.tests]
+          : [
+              options.bun,
+              join(options.packageTree, options.entrypoint ?? fail('missing entrypoint')),
+              ...options.args,
+            ]
+  const containedCommand = [...command]
+  if (containedCommand[0] === options.bun) {
+    const bunConfig = join(scratch, 'bunfig.toml')
+    await Bun.write(bunConfig, '')
+    containedCommand.splice(1, 0, '--no-env-file', '--no-install', `--config=${bunConfig}`)
+  }
+  const child = Bun.spawn(containedCommand, {
+    cwd: options.packageTree,
+    env: environment,
+    stdin: 'ignore',
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  return child.exited
+}
+
+const parseCollectionReport = (text: string): unknown => {
+  try {
+    return JSON.parse(text) as unknown
+  } catch (error) {
+    return fail(
+      `vitest list wrote an unparseable ${COLLECTION_REPORT_NAME}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
+/**
+ * Publishes the declared build output from the scratch report. Vitest's `list` command exits
+ * zero after printing collection errors without writing any report, so a missing, unparseable or
+ * contract-violating report must reject here: the declared output is only written once a valid
+ * normalised collection exists, and Buck fails the action when it is absent.
+ */
+const publishCollection = async ({
+  output,
+  packageTree,
+  results,
+}: {
+  readonly output: string
+  readonly packageTree: string
+  readonly results: string
+}): Promise<void> => {
+  const report = Bun.file(join(results, COLLECTION_REPORT_NAME))
+  if ((await report.exists()) === false)
+    fail(`vitest list wrote no ${COLLECTION_REPORT_NAME} collection artifact`)
+  const collection = normalizeVitestCollection({
+    packageTree,
+    raw: parseCollectionReport(await report.text()),
+  })
+  await mkdir(dirname(output), { recursive: true })
+  await Bun.write(output, `${JSON.stringify(collection)}\n`)
+}
+
+const runOuter = async (options: JavaScriptRunOptions): Promise<number> => {
+  const inputRoots = [
+    dirname(fileURLToPath(import.meta.url)),
+    options.packageTree,
+    ...options.readRoots,
+    ...Object.values(options.externalInputs),
+  ]
+  const before = await hashDeclaredInputRoots({
+    roots: inputRoots,
+    fingerprintTool: options.fingerprintTool,
+  })
+  const lease = await acquireScratch(planScratch({ command: options.command, env: process.env }))
+  let status = 1
+  let primaryError: unknown
+  try {
+    status = await runCommand({ options, results: lease.results, scratch: lease.root })
+    if (status === 0 && options.collectOutput !== undefined)
+      await publishCollection({
+        output: options.collectOutput,
+        packageTree: options.packageTree,
+        results: lease.results,
+      })
+    if (options.verdictOutput !== undefined)
+      await publishTestVerdict({
+        output: options.verdictOutput,
+        operation: options.operation ?? fail('missing operation'),
+        packageTree: options.packageTree,
+        report: join(lease.results, 'vitest.json'),
+        status,
+      })
+  } catch (error) {
+    primaryError = error
+  }
+  let invariantError: unknown
+  try {
+    const after = await hashDeclaredInputRoots({
+      roots: inputRoots,
+      fingerprintTool: options.fingerprintTool,
+    })
+    if (after !== before)
+      invariantError = new Error(
+        `javascript runner: declared inputs changed while the command was running (before ${before}, after ${after})`,
+      )
+  } catch (error) {
+    invariantError = error
+  }
+  lease.release()
+  if (primaryError !== undefined) console.error(primaryError)
+  if (invariantError !== undefined) console.error(invariantError)
+  return primaryError !== undefined || invariantError !== undefined
+    ? status === 0
+      ? 1
+      : status
+    : status
+}
+
+/**
+ * Entrypoint for the runner: returns the process exit code instead of exiting, so callers and
+ * tests own the exit decision. Command failures surface as a non-zero code. Argument validation
+ * and scratch acquisition reject, so callers must handle both outcomes.
+ */
+export const runJavaScriptCli = async (args: readonly string[]): Promise<number> =>
+  runOuter(parseJavaScriptRunOptions(args))
+
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    process.exit(await runJavaScriptCli(process.argv.slice(2)))
+  } catch (error) {
+    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error))
+    process.exit(1)
+  }
+}

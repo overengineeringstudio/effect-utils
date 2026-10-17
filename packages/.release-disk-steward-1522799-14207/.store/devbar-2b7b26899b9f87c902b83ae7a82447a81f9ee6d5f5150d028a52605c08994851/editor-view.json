@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/devbar",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/devbar:editor_inputs",
+  "editorInputsFingerprint": "9dab1cab8c0cb5347894125e15c7f6f464316d1f665450722ac1621641c1c9ea",
+  "snapshot": ".store/devbar-2b7b26899b9f87c902b83ae7a82447a81f9ee6d5f5150d028a52605c08994851",
+  "normalizedStoreDigest": "fbbb45e210ab088277c8c17405c71a481f94ea3427a9da344a07d2dd18101b8e",
+  "selectedViewDigest": "9dab1cab8c0cb5347894125e15c7f6f464316d1f665450722ac1621641c1c9ea",
+  "byteSnapshotDigest": "827d262348fb96c74a013d3aa24dfe8c40471ccc3469feabafeb0076dbe878a8"
+}

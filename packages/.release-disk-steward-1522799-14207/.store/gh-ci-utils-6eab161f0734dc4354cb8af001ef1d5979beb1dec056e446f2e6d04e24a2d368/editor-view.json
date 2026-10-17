@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/gh-ci-utils",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/gh-ci-utils:editor_inputs",
+  "editorInputsFingerprint": "32f6226da9ab6d949f167de0fbcb605a3d93967e90d4a6e335fdd73de924a53a",
+  "snapshot": ".store/gh-ci-utils-6eab161f0734dc4354cb8af001ef1d5979beb1dec056e446f2e6d04e24a2d368",
+  "normalizedStoreDigest": "82592065cdd79ed6d81ddaffaea0907d0149d69d559fda45428e746f5e9da1fe",
+  "selectedViewDigest": "32f6226da9ab6d949f167de0fbcb605a3d93967e90d4a6e335fdd73de924a53a",
+  "byteSnapshotDigest": "e8ee1813e1376f866f511d8cbaf9b0473de94cdd5c4e3c23ed594a25add5f166"
+}

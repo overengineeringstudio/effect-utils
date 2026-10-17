@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/otel-browser",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/otel-browser:editor_inputs",
+  "editorInputsFingerprint": "f53e6ac4cf04b2d15ecf6421a938db29af14e2a10b38d675bf490b4372adca7b",
+  "snapshot": ".store/otel-browser-b373a7d1c9dad1260a5b1422938da6ea4ce1397fadd68b2d96ee1203fb24fa45",
+  "normalizedStoreDigest": "18483ada0f5e28eae61c6b65095082efa233346856ff687b20bdd4a33e5021b3",
+  "selectedViewDigest": "f53e6ac4cf04b2d15ecf6421a938db29af14e2a10b38d675bf490b4372adca7b",
+  "byteSnapshotDigest": "d5518cc17fcbb6d1f4051a0e790e4ee5e818978fd952f0acc36b0fa51852b8d5"
+}

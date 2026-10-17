@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/notion-react",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/notion-react:editor_inputs",
+  "editorInputsFingerprint": "403c082148b5f802f175f2a337682d66f1097cd112bbda4557276d2b25cf0b45",
+  "snapshot": ".store/notion-react-85d14318d35bd43bb4c6f4ca18161c8f5477b15841f87417134e59e06fa81b30",
+  "normalizedStoreDigest": "afce574b3ffd83adbe6c9d1378d2c9b49038b2a9388730be443f7d1b66979665",
+  "selectedViewDigest": "403c082148b5f802f175f2a337682d66f1097cd112bbda4557276d2b25cf0b45",
+  "byteSnapshotDigest": "b08a6014f7cb3d1056eed502bbfcda7d6f9148d2a1ce0b20c4d879d1ce04ce0d"
+}

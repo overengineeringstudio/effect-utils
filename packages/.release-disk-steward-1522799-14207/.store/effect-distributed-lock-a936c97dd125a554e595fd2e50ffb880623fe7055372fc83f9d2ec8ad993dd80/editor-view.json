@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/effect-distributed-lock",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/effect-distributed-lock:editor_inputs",
+  "editorInputsFingerprint": "fe43f7a91df3026eeb7f6c5cff2e008679761de4c7b6479edf22bafde45c8314",
+  "snapshot": ".store/effect-distributed-lock-a936c97dd125a554e595fd2e50ffb880623fe7055372fc83f9d2ec8ad993dd80",
+  "normalizedStoreDigest": "763a4bec95dd44956345088b4be3efa784a8f2420d99ad8225fff51514bff73c",
+  "selectedViewDigest": "fe43f7a91df3026eeb7f6c5cff2e008679761de4c7b6479edf22bafde45c8314",
+  "byteSnapshotDigest": "23012f7b0550bacac763d1b0457e235ee539a4901eb2de2864ffc70e6fc14812"
+}

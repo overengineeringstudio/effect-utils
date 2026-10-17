@@ -1,0 +1,73 @@
+/**
+ * A Workflow: one `run` handler (exactly-once per workflow ID), plus `signal`
+ * and `query` shared handlers, coordinated through a durable promise.
+ *
+ * - `run` has the full capability set (`StateRead + StateWrite + DurablePromise +
+ *   ObjectKey`): it awaits a durable promise and records the outcome in State.
+ * - `approve` / `reject` are SIGNALS (shared handlers): they resolve the durable
+ *   promise. A durable promise is the rendezvous between `run` (which awaits it)
+ *   and a signal (which resolves it).
+ * - `status` is a QUERY (shared, read-only State): a `State.set` here would not
+ *   type-check.
+ *
+ * Verified end-to-end by `src/examples.integration.test.ts`.
+ */
+import { Effect, Schema } from 'effect'
+
+import { DurablePromise, RestateWorkflow, State } from '../src/mod.ts'
+
+/* ── A durable promise typed by its payload Schema (Workflow handlers only) ── */
+
+const Decision = Schema.Struct({ approved: Schema.Boolean })
+const Approval = DurablePromise.for(Decision)
+
+/* ── Typed State observable via the `status` query ── */
+
+export const StatusState = {
+  status: Schema.Literals(['pending', 'approved', 'rejected']),
+} as const
+const Status = State.for(StatusState)
+
+export const ApprovalWf = RestateWorkflow.contract({
+  name: 'approval',
+  def: {
+    state: StatusState,
+    /* `payload` is the `run` handler's I/O. */
+    payload: { input: Schema.String, success: Schema.Boolean },
+    signals: {
+      approve: { input: Schema.Void, success: Schema.Void },
+      reject: { input: Schema.Void, success: Schema.Void },
+    },
+    queries: {
+      status: { input: Schema.Void, success: Schema.String },
+    },
+  },
+})
+
+export const ApprovalLive = RestateWorkflow.implement<typeof ApprovalWf>({
+  contractValue: ApprovalWf,
+  impl: {
+    /* The single `run` (full caps): mark pending, AWAIT the durable promise (the
+     * invocation durably suspends here until a signal resolves it), record the
+     * outcome. The await survives process restarts — it is journaled, not in-memory. */
+    run: () =>
+      Effect.gen(function* () {
+        /* `State.*` and `DurablePromise.*` have a CLEAN `E` (#1) — no `orDie`. A
+         * promise `reject` arrives terminally at the boundary (the `'rejected'` path),
+         * an infra failure is a defect there. */
+        yield* Status.set({ key: 'status', value: 'pending' })
+        const decision = yield* Approval.get('decision') // blocks until resolved
+        yield* Status.set({
+          key: 'status',
+          value: decision.approved === true ? 'approved' : 'rejected',
+        })
+        return decision.approved
+      }),
+    /* Signals (shared): resolve the durable promise. `reject` drives the
+     * `'rejected'` State path, observable via the `status` query. */
+    approve: () => Approval.resolve({ name: 'decision', value: { approved: true } }),
+    reject: () => Approval.resolve({ name: 'decision', value: { approved: false } }),
+    /* Query (shared, read-only State). */
+    status: () => Status.get('status').pipe(Effect.map((s) => s ?? 'pending')),
+  },
+})

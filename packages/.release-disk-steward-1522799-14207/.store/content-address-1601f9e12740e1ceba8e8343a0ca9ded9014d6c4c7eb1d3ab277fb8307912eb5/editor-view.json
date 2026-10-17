@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/content-address",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/content-address:editor_inputs",
+  "editorInputsFingerprint": "47c8c6d971af33df9d919d7b8b4de3ba0c016b1f9fe354f43ee2369ea1b27b79",
+  "snapshot": ".store/content-address-1601f9e12740e1ceba8e8343a0ca9ded9014d6c4c7eb1d3ab277fb8307912eb5",
+  "normalizedStoreDigest": "8e7714569e84d798ec7399ed280a060cd1707aa829976bac0c5fcac32bc3f321",
+  "selectedViewDigest": "47c8c6d971af33df9d919d7b8b4de3ba0c016b1f9fe354f43ee2369ea1b27b79",
+  "byteSnapshotDigest": "8f3969d0e0c427d432a09ed4653bf6879b5d7175869ba78b7e1dff9b8c67ae91"
+}

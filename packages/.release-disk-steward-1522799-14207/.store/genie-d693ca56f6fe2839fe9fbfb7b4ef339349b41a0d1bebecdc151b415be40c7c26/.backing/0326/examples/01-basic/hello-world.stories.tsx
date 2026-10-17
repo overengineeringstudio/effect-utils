@@ -1,0 +1,203 @@
+/**
+ * Hello World - Storybook Stories
+ *
+ * Demonstrates the simplest tui-react example in Storybook with:
+ * - Visual/Fullscreen/String/JSON/NDJSON tabs
+ * - Timeline playback
+ * - State controls
+ */
+
+import type { Meta, StoryObj } from '@storybook/react'
+import React from 'react'
+
+import { createTuiApp } from '../../src/mod.tsx'
+import { TuiStoryPreview } from '../../src/storybook/TuiStoryPreview.tsx'
+import { AppState, AppAction, appReducer } from './schema.ts'
+import { HelloWorldView } from './view.tsx'
+
+const HelloApp = createTuiApp({
+  stateSchema: AppState,
+  actionSchema: AppAction,
+  initial: { _tag: 'Displaying', secondsRemaining: 3 } as AppState,
+  reducer: appReducer,
+})
+
+// =============================================================================
+// Initial States
+// =============================================================================
+
+const displayingState = (secondsRemaining: number): AppState => ({
+  _tag: 'Displaying',
+  secondsRemaining,
+})
+
+const finishedState: AppState = {
+  _tag: 'Finished',
+  message: 'Demo completed successfully!',
+}
+
+const interruptedState: AppState = {
+  _tag: 'Interrupted',
+}
+
+// =============================================================================
+// Timeline - simulates CLI execution
+// =============================================================================
+
+const demoTimeline: Array<{ at: number; action: AppAction }> = [
+  // Countdown from 3
+  { at: 1000, action: { _tag: 'Tick' } }, // 3 -> 2
+  { at: 2000, action: { _tag: 'Tick' } }, // 2 -> 1
+  { at: 3000, action: { _tag: 'Tick' } }, // 1 -> 0
+  { at: 3100, action: { _tag: 'Finish' } },
+]
+
+const interruptTimeline: Array<{ at: number; action: AppAction }> = [
+  { at: 1000, action: { _tag: 'Tick' } },
+  { at: 1500, action: { _tag: 'Interrupted' } },
+]
+
+// =============================================================================
+// Story Meta
+// =============================================================================
+
+export default {
+  component: HelloWorldView,
+  title: 'Examples/01 Basic/Hello World',
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        component: `
+The simplest possible tui-react example.
+
+**Demonstrates:**
+- Effect CLI integration for proper signal handling
+- createTuiApp pattern (even for simple apps)
+- Using Box and Text components
+- Basic styling (colors, bold)
+- Graceful Ctrl+C handling
+
+**CLI Usage:**
+\`\`\`bash
+bun examples/01-basic/hello-world.tsx
+bun examples/01-basic/hello-world.tsx --json
+bun examples/01-basic/hello-world.tsx --help
+\`\`\`
+        `,
+      },
+    },
+  },
+} satisfies Meta
+
+// =============================================================================
+// Stories
+// =============================================================================
+
+type Story = StoryObj<{
+  autoRun: boolean
+  playbackSpeed: number
+  height: number
+}>
+
+/**
+ * Full demo with countdown and auto-finish.
+ */
+export const Demo: Story = {
+  args: {
+    autoRun: true,
+    playbackSpeed: 1,
+    height: 300,
+  },
+  argTypes: {
+    autoRun: { control: 'boolean', description: 'Auto-start timeline' },
+    playbackSpeed: { control: { type: 'range', min: 0.5, max: 3, step: 0.5 } },
+    height: { control: { type: 'range', min: 200, max: 500, step: 50 } },
+  },
+  render: (args) => (
+    <TuiStoryPreview
+      View={HelloWorldView}
+      app={HelloApp}
+      initialState={displayingState(3)}
+      timeline={demoTimeline}
+      autoRun={args.autoRun}
+      playbackSpeed={args.playbackSpeed}
+      height={args.height}
+      command="hello-world"
+    />
+  ),
+}
+
+/**
+ * Static view showing the countdown state.
+ */
+export const Displaying: Story = {
+  args: { height: 300 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={HelloWorldView}
+      app={HelloApp}
+      initialState={displayingState(3)}
+      height={args.height}
+      autoRun={false}
+      command="hello-world"
+    />
+  ),
+}
+
+/**
+ * Static view showing the finished state.
+ */
+export const Finished: Story = {
+  args: { height: 300 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={HelloWorldView}
+      app={HelloApp}
+      initialState={finishedState}
+      height={args.height}
+      autoRun={false}
+      command="hello-world"
+    />
+  ),
+}
+
+/**
+ * Demo showing interrupt behavior (Ctrl+C).
+ */
+export const InterruptDemo: Story = {
+  args: {
+    autoRun: true,
+    playbackSpeed: 1,
+    height: 300,
+  },
+  render: (args) => (
+    <TuiStoryPreview
+      View={HelloWorldView}
+      app={HelloApp}
+      initialState={displayingState(3)}
+      timeline={interruptTimeline}
+      autoRun={args.autoRun}
+      playbackSpeed={args.playbackSpeed}
+      height={args.height}
+      command="hello-world"
+    />
+  ),
+}
+
+/**
+ * Static view showing the interrupted state.
+ */
+export const Interrupted: Story = {
+  args: { height: 300 },
+  render: (args) => (
+    <TuiStoryPreview
+      View={HelloWorldView}
+      app={HelloApp}
+      initialState={interruptedState}
+      height={args.height}
+      autoRun={false}
+      command="hello-world"
+    />
+  ),
+}

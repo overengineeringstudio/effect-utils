@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/oxc-config",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/oxc-config:editor_inputs",
+  "editorInputsFingerprint": "f09ed1c10135650dfb2f9367add8a33471ac554ab32d5b42541df733549cc187",
+  "snapshot": ".store/oxc-config-aa612344acc62ae562c11f4bd5a4cfea58a3a0c4c76c48f6c8212a2755b34c36",
+  "normalizedStoreDigest": "b710839a05d9daba692c54e3a2f29754a15611325eaf3bbf29310f156603ad97",
+  "selectedViewDigest": "f09ed1c10135650dfb2f9367add8a33471ac554ab32d5b42541df733549cc187",
+  "byteSnapshotDigest": "b20fe2f6aae76ddd308762de4f0d00728248304ee4d4ef0c39ced3ce74d3d126"
+}

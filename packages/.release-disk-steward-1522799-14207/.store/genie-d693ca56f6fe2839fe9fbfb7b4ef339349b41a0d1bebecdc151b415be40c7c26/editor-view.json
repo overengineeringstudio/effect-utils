@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/genie",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/genie:editor_inputs",
+  "editorInputsFingerprint": "b141d0d3c01f89055bfa81437d655b8789d0652bd5f042442fd246908fa71a73",
+  "snapshot": ".store/genie-d693ca56f6fe2839fe9fbfb7b4ef339349b41a0d1bebecdc151b415be40c7c26",
+  "normalizedStoreDigest": "b6f70f80a33a756559965dec669323fbf1af86c6fbfd9098bc3b6bce358cee0a",
+  "selectedViewDigest": "b141d0d3c01f89055bfa81437d655b8789d0652bd5f042442fd246908fa71a73",
+  "byteSnapshotDigest": "2a224c10e99fbd34c8ae60a5515ec32e291792b9df8d9d14c702a95b85f07edb"
+}

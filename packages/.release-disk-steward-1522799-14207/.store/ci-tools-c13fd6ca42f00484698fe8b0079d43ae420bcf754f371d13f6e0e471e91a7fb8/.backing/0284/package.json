@@ -1,0 +1,72 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/ci-tools",
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev"
+    ]
+  },
+  "name": "@overeng/ci-tools",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./cli": {
+      "types": "./dist/src/cli-command.d.ts",
+      "default": "./src/cli-command.ts"
+    }
+  },
+  "dependencies": {
+    "@overeng/otel-contract": "workspace:^",
+    "@overeng/utils": "workspace:^"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "@overeng/utils": "workspace:^",
+    "@overeng/utils-dev": "workspace:^",
+    "@types/bun": "1.4.2",
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@playwright/test": "^1.63.0",
+    "@storybook/react-vite": "^10.6.0",
+    "@vitest/browser-playwright": "^5.0.3",
+    "effect": "4.0.0-rc.118",
+    "storybook": "^10.6.0"
+  },
+  "peerDependenciesMeta": {
+    "@storybook/react-vite": {
+      "optional": true
+    },
+    "@vitest/browser-playwright": {
+      "optional": true
+    },
+    "storybook": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "bin": {
+      "ci-tools": "./dist/bin/ci-tools.js"
+    },
+    "exports": {
+      ".": "./dist/src/mod.js",
+      "./cli": "./dist/src/cli-command.js"
+    }
+  }
+}

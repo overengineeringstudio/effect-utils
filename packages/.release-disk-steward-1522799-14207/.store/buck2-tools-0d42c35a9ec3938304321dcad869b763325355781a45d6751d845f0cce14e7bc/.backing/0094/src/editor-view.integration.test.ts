@@ -1,0 +1,1060 @@
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+import {
+  canonicalTreeFingerprint,
+  canonicalTreeFingerprintWithResolvedLinks,
+  checkEditorView,
+  publishEditorView,
+  recoverEditorViewLock,
+  verifyEditorViewSnapshot,
+  type EditorViewOptions,
+} from './editor-view.ts'
+
+/** Reads one Buck-declared immutable tool path; nothing resolves through an ambient PATH. */
+const requireTool = (name: string): string => {
+  const tool = process.env[name]
+  if (tool === undefined || tool === '')
+    throw new Error(`declared test tool is unavailable: ${name}`)
+  return tool
+}
+
+const cp = requireTool('CP_BIN')
+const mv = requireTool('MV_BIN')
+const falseTool = requireTool('FALSE_BIN')
+const fingerprintTool = requireTool('FINGERPRINT_BIN')
+
+type Fixture = {
+  readonly root: string
+  readonly packageDir: string
+  readonly editorRoot: string
+  readonly editorInputs: string
+  readonly nodeModules: string
+  readonly options: EditorViewOptions
+  readonly workspaceAuthority: string
+  readonly consumerCache: string
+}
+
+/** One package view fixture; `packageName` also names the published editor view. */
+const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}): Fixture => {
+  const root = mkdtempSync(join(tmpdir(), 'editor-view-integration-'))
+  const packagePath = `packages/@overeng/${packageName}`
+  const packageDir = join(root, 'packages', '@overeng', packageName)
+  const editorRoot = join(root, 'packages', '.editor-view')
+  const editorInputs = join(root, 'inputs', 'editor_inputs')
+  const nodeModules = join(root, 'inputs', 'node_modules')
+  const workspaceAuthority = join(root, 'workspace-authority.json')
+  const consumerCache = join(root, '.devenv', 'vite-cache', packageName)
+  mkdirSync(join(packageDir, 'node_modules'), { recursive: true })
+  writeFileSync(join(packageDir, 'package.json'), '{}\n')
+  writeFileSync(join(packageDir, 'node_modules', 'legacy-root-install'), 'retained')
+  mkdirSync(editorInputs, { recursive: true })
+  writeFileSync(join(editorInputs, 'install-descriptor.json'), '{"revision":1}\n')
+  mkdirSync(join(nodeModules, '.pnpm', 'dep@1', 'node_modules', 'dep'), { recursive: true })
+  writeFileSync(
+    join(nodeModules, '.pnpm', 'dep@1', 'node_modules', 'dep', 'index.js'),
+    'export default 1\n',
+  )
+  symlinkSync('.pnpm/dep@1/node_modules/dep', join(nodeModules, 'dep'))
+  writeFileSync(
+    workspaceAuthority,
+    `${JSON.stringify({
+      schema: 'effect-utils/workspace-dependency-authority/v1',
+      requiredPackages: [packagePath],
+      ownedPackages: [packagePath],
+    })}\n`,
+  )
+  const options: EditorViewOptions = {
+    repoRoot: root,
+    package: packagePath,
+    viewName: packageName,
+    cell: packageName,
+    target: `//${packagePath}:editor_inputs`,
+    editorInputs,
+    nodeModules,
+    cp,
+    fingerprintTool,
+    workspaceAuthority,
+    consumerCache,
+    snapshotRetention: 2,
+    mv,
+  }
+  return {
+    root,
+    packageDir,
+    editorRoot,
+    editorInputs,
+    nodeModules,
+    workspaceAuthority,
+    consumerCache,
+    options,
+  }
+}
+const makeWritable = (path: string): void => {
+  const status = lstatSync(path)
+  if (status.isSymbolicLink() === true) return
+  if (status.isDirectory() === true) {
+    chmodSync(path, 0o700)
+    for (const name of readdirSync(path)) makeWritable(join(path, name))
+    return
+  }
+  chmodSync(path, 0o600)
+}
+
+const cleanup = (fixture: Fixture): void => {
+  makeWritable(fixture.root)
+  rmSync(fixture.root, { recursive: true, force: true })
+}
+
+const currentTarget = (fixture: Fixture): string =>
+  readlinkSync(join(fixture.editorRoot, fixture.options.viewName))
+
+const recordPath = (fixture: Fixture, target = currentTarget(fixture)): string =>
+  join(fixture.editorRoot, target, 'editor-view.json')
+
+/** Store-relative snapshot directory name carried by a record's `snapshot` pointer. */
+const storeName = (snapshot: string): string => snapshot.slice('.store/'.length)
+
+const ownedSnapshots = (fixture: Fixture): readonly string[] =>
+  readdirSync(join(fixture.editorRoot, '.store')).filter((name) =>
+    name.startsWith(`${fixture.options.viewName}-`),
+  )
+
+/** A second package view publishing into the fixture's shared `packages/.editor-view` store. */
+const makeSiblingView = ({
+  fixture,
+  packageName,
+}: {
+  fixture: Fixture
+  packageName: string
+}): { readonly options: EditorViewOptions; readonly editorInputs: string } => {
+  const packagePath = `packages/@overeng/${packageName}`
+  const packageDir = join(fixture.root, 'packages', '@overeng', packageName)
+  const editorInputs = join(fixture.root, 'inputs', `${packageName}-editor-inputs`)
+  const nodeModules = join(fixture.root, 'inputs', `${packageName}-node-modules`)
+  const workspaceAuthority = join(fixture.root, `${packageName}-workspace-authority.json`)
+  mkdirSync(join(packageDir, 'node_modules'), { recursive: true })
+  writeFileSync(join(packageDir, 'package.json'), '{}\n')
+  mkdirSync(editorInputs)
+  writeFileSync(join(editorInputs, 'install-descriptor.json'), '{"revision":1}\n')
+  mkdirSync(join(nodeModules, 'dep'), { recursive: true })
+  writeFileSync(join(nodeModules, 'dep', 'index.js'), `export default "${packageName}"\n`)
+  writeFileSync(
+    workspaceAuthority,
+    `${JSON.stringify({
+      schema: 'effect-utils/workspace-dependency-authority/v1',
+      requiredPackages: [packagePath],
+      ownedPackages: [packagePath],
+    })}\n`,
+  )
+  return {
+    editorInputs,
+    options: {
+      ...fixture.options,
+      package: packagePath,
+      viewName: packageName,
+      cell: packageName,
+      target: `//${packagePath}:editor_inputs`,
+      editorInputs,
+      nodeModules,
+      workspaceAuthority,
+      consumerCache: join(fixture.root, '.devenv', 'vite-cache', packageName),
+    },
+  }
+}
+
+describe('editor view publisher', () => {
+  it('fingerprints deterministically with byte ordering, path framing, and dereferencing', async () => {
+    const fixture = makeFixture()
+    try {
+      const second = join(fixture.root, 'second')
+      const collisionShape = join(fixture.root, 'collision')
+      mkdirSync(second)
+      writeFileSync(join(second, 'z'), 'last')
+      mkdirSync(join(second, 'a'))
+      writeFileSync(join(second, 'a', 'bc'), 'value')
+      const first = join(fixture.root, 'first')
+      mkdirSync(join(first, 'a'), { recursive: true })
+      writeFileSync(join(first, 'a', 'bc'), 'value')
+      writeFileSync(join(first, 'z'), 'last')
+      mkdirSync(join(collisionShape, 'ab'), { recursive: true })
+      writeFileSync(join(collisionShape, 'ab', 'c'), 'value')
+      writeFileSync(join(collisionShape, 'z'), 'last')
+
+      const fingerprint = await canonicalTreeFingerprint({ tree: first })
+      expect(await canonicalTreeFingerprint({ tree: second })).toBe(fingerprint)
+      expect(await canonicalTreeFingerprint({ tree: first, fingerprintTool })).toBe(fingerprint)
+      expect(await canonicalTreeFingerprint({ tree: collisionShape })).not.toBe(fingerprint)
+
+      // A dereferenced view digest equals the plain digest of the same bytes
+      // materialized without links, which is what the byte snapshot contains.
+      const linked = join(fixture.root, 'linked')
+      mkdirSync(join(linked, 'real'), { recursive: true })
+      writeFileSync(join(linked, 'real', 'index.js'), 'export default 1\n')
+      symlinkSync('real', join(linked, 'alias'))
+      const materialized = join(fixture.root, 'materialized')
+      mkdirSync(join(materialized, 'alias'), { recursive: true })
+      mkdirSync(join(materialized, 'real'))
+      writeFileSync(join(materialized, 'alias', 'index.js'), 'export default 1\n')
+      writeFileSync(join(materialized, 'real', 'index.js'), 'export default 1\n')
+      expect(await canonicalTreeFingerprint({ tree: linked, dereference: true })).toBe(
+        await canonicalTreeFingerprint({ tree: materialized }),
+      )
+      expect(
+        await canonicalTreeFingerprint({ tree: linked, dereference: true, fingerprintTool }),
+      ).toBe(await canonicalTreeFingerprint({ tree: materialized }))
+      expect(await canonicalTreeFingerprint({ tree: linked })).not.toBe(
+        await canonicalTreeFingerprint({ tree: linked, dereference: true }),
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('matches Rust and TypeScript inventories for in-root, cross-root and owner-root links', async () => {
+    const fixture = makeFixture()
+    try {
+      const tree = join(fixture.root, 'parity-tree')
+      const backing = join(fixture.root, 'parity-backing')
+      mkdirSync(join(tree, 'dir'), { recursive: true })
+      mkdirSync(backing)
+      writeFileSync(join(tree, 'dir', 'first.txt'), 'first\n')
+      writeFileSync(join(backing, 'external.txt'), 'external\n')
+      symlinkSync('dir/first.txt', join(tree, 'in-root'))
+      symlinkSync('../parity-backing', join(tree, 'owner-root'))
+      symlinkSync('../parity-backing/external.txt', join(tree, 'cross-root'))
+      const linkOwners = [
+        { source: tree, identity: 'source' },
+        { source: backing, identity: 'backing' },
+      ]
+      expect(
+        await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners, fingerprintTool }),
+      ).toEqual(await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners }))
+      expect(
+        await canonicalTreeFingerprint({
+          tree,
+          dereference: true,
+          backingRoots: [backing],
+          fingerprintTool,
+        }),
+      ).toBe(await canonicalTreeFingerprint({ tree, dereference: true, backingRoots: [backing] }))
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('publishes a dereferenced byte-owned snapshot with distinct inodes and stable hops', async () => {
+    const fixture = makeFixture()
+    try {
+      const packageManifest = join(fixture.packageDir, 'package.json')
+      const manifestContent = readFileSync(packageManifest)
+      const manifestIdentity = statSync(packageManifest, { bigint: true }).ino
+      const record = await publishEditorView(fixture.options)
+      expect(readFileSync(packageManifest)).toEqual(manifestContent)
+      expect(statSync(packageManifest, { bigint: true }).ino).not.toBe(manifestIdentity)
+      expect(statSync(fixture.consumerCache).mode & 0o200).not.toBe(0)
+      expect(readlinkSync(join(fixture.packageDir, 'node_modules'))).toBe(
+        '../../.editor-view/tui-core/node_modules',
+      )
+      // The pointer names the snapshot by its combined store identity, not by the
+      // editor-inputs fingerprint alone.
+      expect(readlinkSync(join(fixture.editorRoot, 'tui-core'))).toBe(record.snapshot)
+      expect(record.snapshot).toMatch(/^\.store\/tui-core-[0-9a-f]{64}$/u)
+      expect(record.byteSnapshotDigest).toBe(record.normalizedStoreDigest)
+      expect(record.selectedViewDigest).not.toBe(record.normalizedStoreDigest)
+      const snapshotRoot = join(fixture.editorRoot, record.snapshot)
+      const admittedFile = join(
+        fixture.nodeModules,
+        '.pnpm',
+        'dep@1',
+        'node_modules',
+        'dep',
+        'index.js',
+      )
+      const snapshotFile = join(
+        snapshotRoot,
+        'node_modules',
+        '.pnpm',
+        'dep@1',
+        'node_modules',
+        'dep',
+        'index.js',
+      )
+      const admittedStatus = statSync(admittedFile, { bigint: true })
+      const snapshotStatus = lstatSync(snapshotFile, { bigint: true })
+      expect(snapshotStatus.isFile()).toBe(true)
+      expect([snapshotStatus.dev, snapshotStatus.ino]).not.toEqual([
+        admittedStatus.dev,
+        admittedStatus.ino,
+      ])
+      expect(snapshotStatus.nlink).toBe(1n)
+      // The admitted view's symlink is dereferenced into owned bytes.
+      const dereferenced = join(snapshotRoot, 'node_modules', 'dep')
+      expect(lstatSync(dereferenced).isSymbolicLink()).toBe(false)
+      expect(readFileSync(join(dereferenced, 'index.js'), 'utf8')).toBe('export default 1\n')
+      expect(statSync(snapshotRoot).mode & 0o222).toBe(0)
+      expect(statSync(join(snapshotRoot, 'node_modules')).mode & 0o222).toBe(0)
+      expect(statSync(join(snapshotRoot, 'node_modules', '.pnpm')).mode & 0o222).toBe(0)
+      expect(statSync(snapshotFile).mode & 0o222).toBe(0)
+      expect(statSync(recordPath(fixture)).mode & 0o222).toBe(0)
+      const legacyEntries = readdirSync(join(fixture.editorRoot, '.legacy'))
+      expect(legacyEntries).toHaveLength(1)
+      expect(
+        readFileSync(
+          join(fixture.editorRoot, '.legacy', legacyEntries[0]!, 'legacy-root-install'),
+          'utf8',
+        ),
+      ).toBe('retained')
+      const before = statSync(recordPath(fixture), { bigint: true }).mtimeNs
+      await publishEditorView(fixture.options)
+      expect(statSync(recordPath(fixture), { bigint: true }).mtimeNs).toBe(before)
+      expect(readdirSync(join(fixture.editorRoot, '.legacy'))).toEqual(legacyEntries)
+      await expect(checkEditorView(fixture.options)).resolves.toEqual(record)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('publishes the source-generator dependency closure at the repository root', async () => {
+    const fixture = makeFixture()
+    try {
+      writeFileSync(join(fixture.root, 'package.json'), '{"private":true}\n')
+      mkdirSync(join(fixture.root, 'node_modules'))
+      writeFileSync(join(fixture.root, 'node_modules', 'legacy-root-install'), 'retained')
+      writeFileSync(
+        fixture.workspaceAuthority,
+        `${JSON.stringify({
+          schema: 'effect-utils/workspace-dependency-authority/v1',
+          requiredPackages: ['.'],
+          ownedPackages: ['.'],
+        })}\n`,
+      )
+      const options: EditorViewOptions = {
+        ...fixture.options,
+        package: '.',
+        viewName: 'root',
+        cell: 'effect_utils',
+        target: '//:editor_inputs',
+        consumerCache: join(fixture.root, '.devenv', 'vite-cache', 'root'),
+      }
+
+      const record = await publishEditorView(options)
+
+      expect(readlinkSync(join(fixture.root, 'node_modules'))).toBe(
+        '.editor-view/root/node_modules',
+      )
+      expect(readlinkSync(join(fixture.root, '.editor-view', 'root'))).toBe(record.snapshot)
+      await expect(checkEditorView(options)).resolves.toEqual(record)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('survives deletion of every backing artifact', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      rmSync(join(fixture.root, 'inputs'), { recursive: true, force: true })
+      expect(
+        readFileSync(join(fixture.packageDir, 'node_modules', 'dep', 'index.js'), 'utf8'),
+      ).toBe('export default 1\n')
+      await expect(verifyEditorViewSnapshot(fixture.options)).resolves.toEqual(record)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('atomically flips old to new while retaining the bounded rollback snapshot', async () => {
+    const fixture = makeFixture()
+    try {
+      const oldRecord = await publishEditorView(fixture.options)
+      const oldTarget = currentTarget(fixture)
+      const firstHopBefore = lstatSync(join(fixture.packageDir, 'node_modules'), { bigint: true })
+      writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":2}\n')
+      const refreshedNodeModules = join(fixture.root, 'inputs', 'node_modules-v2')
+      mkdirSync(join(refreshedNodeModules, '.pnpm', 'dep@1', 'node_modules', 'dep'), {
+        recursive: true,
+      })
+      writeFileSync(
+        join(refreshedNodeModules, '.pnpm', 'dep@1', 'node_modules', 'dep', 'index.js'),
+        'export default 2\n',
+      )
+      symlinkSync('.pnpm/dep@1/node_modules/dep', join(refreshedNodeModules, 'dep'))
+      const refreshedOptions = { ...fixture.options, nodeModules: refreshedNodeModules }
+      const newRecord = await publishEditorView(refreshedOptions)
+      expect(newRecord.editorInputsFingerprint).not.toBe(oldRecord.editorInputsFingerprint)
+      expect(currentTarget(fixture)).not.toBe(oldTarget)
+      expect(
+        readFileSync(join(fixture.editorRoot, oldTarget, 'editor-view.json'), 'utf8'),
+      ).toContain(oldRecord.editorInputsFingerprint)
+      expect(
+        readFileSync(
+          join(fixture.editorRoot, oldTarget, 'node_modules', 'dep', 'index.js'),
+          'utf8',
+        ),
+      ).toBe('export default 1\n')
+      const firstHopAfter = lstatSync(join(fixture.packageDir, 'node_modules'), { bigint: true })
+      expect([firstHopAfter.dev, firstHopAfter.ino]).toEqual([
+        firstHopBefore.dev,
+        firstHopBefore.ino,
+      ])
+      expect(ownedSnapshots(fixture)).toHaveLength(2)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+  it('keeps the current and previous snapshots while preserving in-flight candidates', async () => {
+    const fixture = makeFixture()
+    try {
+      const oldest = await publishEditorView(fixture.options)
+      const inFlight = join(fixture.editorRoot, '.store', '.candidate-in-flight')
+      mkdirSync(inFlight)
+      for (const revision of [2, 3]) {
+        writeFileSync(
+          join(fixture.editorInputs, 'install-descriptor.json'),
+          `${JSON.stringify({ revision })}\n`,
+        )
+        const nodeModules = join(fixture.root, 'inputs', `node_modules-v${revision}`)
+        mkdirSync(join(nodeModules, 'dep'), { recursive: true })
+        writeFileSync(join(nodeModules, 'dep', 'index.js'), `export default ${revision}\n`)
+        await publishEditorView({ ...fixture.options, nodeModules })
+      }
+      const snapshots = ownedSnapshots(fixture)
+      expect(snapshots).toHaveLength(2)
+      expect(snapshots).toContain(currentTarget(fixture).replace('.store/', ''))
+      expect(snapshots).not.toContain(storeName(oldest.snapshot))
+      expect(statSync(inFlight).isDirectory()).toBe(true)
+      const retention = JSON.parse(
+        readFileSync(
+          join(fixture.editorRoot, `.retention-${fixture.options.viewName}.json`),
+          'utf8',
+        ),
+      ) as { snapshots: readonly string[] }
+      expect(retention.snapshots).toHaveLength(2)
+      expect(retention.snapshots[0]).toBe(currentTarget(fixture).replace('.store/', ''))
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('fails closed on incomplete whole-workspace authority and cache paths inside the package', async () => {
+    const fixture = makeFixture()
+    try {
+      writeFileSync(
+        fixture.workspaceAuthority,
+        `${JSON.stringify({
+          schema: 'effect-utils/workspace-dependency-authority/v1',
+          requiredPackages: ['packages/@overeng/tui-core', 'packages/@overeng/tui-react'],
+          ownedPackages: ['packages/@overeng/buck2-tools', 'packages/@overeng/tui-core'],
+        })}\n`,
+      )
+      await expect(publishEditorView(fixture.options)).rejects.toThrow(
+        'missing=["packages/@overeng/tui-react"] extra=["packages/@overeng/buck2-tools"]',
+      )
+      expect(() => lstatSync(fixture.editorRoot)).toThrow()
+
+      writeFileSync(
+        fixture.workspaceAuthority,
+        `${JSON.stringify({
+          schema: 'effect-utils/workspace-dependency-authority/v1',
+          requiredPackages: ['packages/@overeng/tui-core'],
+          ownedPackages: ['packages/@overeng/tui-core'],
+        })}\n`,
+      )
+      await expect(
+        publishEditorView({
+          ...fixture.options,
+          consumerCache: join(fixture.packageDir, '.vite'),
+        }),
+      ).rejects.toThrow('consumer cache must be inside the repository and outside package')
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('accepts links into declared backing roots and rejects undeclared escapes', async () => {
+    const fixture = makeFixture()
+    try {
+      const backingRoot = join(fixture.root, 'inputs', 'store-entry')
+      mkdirSync(join(backingRoot, 'dep'), { recursive: true })
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "external"\n')
+      const backingAlias = join(fixture.root, 'inputs', 'store-entry-alias')
+      symlinkSync(backingRoot, backingAlias, 'dir')
+      const linkedView = join(fixture.root, 'inputs', 'node_modules-linked')
+      mkdirSync(linkedView)
+      symlinkSync(join(backingAlias, 'dep'), join(linkedView, 'dep'))
+
+      await expect(
+        publishEditorView({ ...fixture.options, nodeModules: linkedView }),
+      ).rejects.toThrow('outside declared backing roots')
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+
+      const options = {
+        ...fixture.options,
+        nodeModules: linkedView,
+        backingRoots: [backingRoot],
+      }
+      const record = await publishEditorView(options)
+      expect(
+        readFileSync(
+          join(fixture.editorRoot, record.snapshot, 'node_modules', 'dep', 'index.js'),
+          'utf8',
+        ),
+      ).toBe('export default "external"\n')
+      await expect(checkEditorView(options)).resolves.toEqual(record)
+    } finally {
+      cleanup(fixture)
+    }
+
+    const residual = makeFixture()
+    try {
+      const record = await publishEditorView(residual.options)
+      const snapshotNodeModules = join(residual.editorRoot, record.snapshot, 'node_modules')
+      chmodSync(snapshotNodeModules, 0o700)
+      symlinkSync('dep', join(snapshotNodeModules, 'alias'))
+      chmodSync(snapshotNodeModules, 0o555)
+      await expect(verifyEditorViewSnapshot(residual.options)).rejects.toThrow(
+        'snapshot contains a symbolic link',
+      )
+    } finally {
+      cleanup(residual)
+    }
+  })
+
+  it('fails closed when a declared backing root changes while materializing', async () => {
+    const fixture = makeFixture()
+    try {
+      const backingRoot = join(fixture.root, 'inputs', 'store-entry')
+      mkdirSync(join(backingRoot, 'dep'), { recursive: true })
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "first"\n')
+      const linkedView = join(fixture.root, 'inputs', 'node_modules-linked')
+      mkdirSync(linkedView)
+      symlinkSync(join(backingRoot, 'dep'), join(linkedView, 'dep'))
+      const options = { ...fixture.options, nodeModules: linkedView, backingRoots: [backingRoot] }
+
+      await expect(
+        publishEditorView({
+          ...options,
+          beforeMaterialize: () => {
+            makeWritable(backingRoot)
+            writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "swapped"\n')
+          },
+        }),
+      ).rejects.toThrow('declared backing roots changed while materializing')
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+      expect(
+        readdirSync(join(fixture.editorRoot, '.store')).some((name) =>
+          name.startsWith('.candidate-'),
+        ),
+      ).toBe(false)
+
+      // The unmodified roots still publish the exact record a clean run produces.
+      makeWritable(backingRoot)
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "first"\n')
+      const record = await publishEditorView(options)
+      await expect(checkEditorView(options)).resolves.toEqual(record)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('fails closed when a declared root link is retargeted while materializing', async () => {
+    const fixture = makeFixture()
+    try {
+      const backingRoot = join(fixture.root, 'inputs', 'store-entry')
+      mkdirSync(join(backingRoot, 'dep'), { recursive: true })
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "first"\n')
+      const linkedView = join(fixture.root, 'inputs', 'node_modules-linked')
+      mkdirSync(linkedView)
+      const depLink = join(linkedView, 'dep')
+      symlinkSync(join(backingRoot, 'dep'), depLink)
+      const options = { ...fixture.options, nodeModules: linkedView, backingRoots: [backingRoot] }
+
+      await expect(
+        publishEditorView({
+          ...options,
+          beforeMaterialize: () => {
+            rmSync(depLink)
+            // A different spelling of the same resolved path: the owner-resolved
+            // digest alone accepts it, the copied link inventory must not.
+            symlinkSync(`${backingRoot}/./dep`, depLink)
+          },
+        }),
+      ).rejects.toThrow('declared backing roots changed while materializing')
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+      expect(
+        readdirSync(join(fixture.editorRoot, '.store')).some((name) =>
+          name.startsWith('.candidate-'),
+        ),
+      ).toBe(false)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('emits one completed editor-view.phases span per publication when tracing is active', async () => {
+    const otelDirectory = mkdtempSync(join(tmpdir(), 'editor-view-otel-'))
+    const otelSpan = join(otelDirectory, 'otel-span')
+    const capture = join(otelDirectory, 'captured.txt')
+    writeFileSync(otelSpan, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(capture)}\n`)
+    chmodSync(otelSpan, 0o755)
+    const savedPath = process.env.PATH
+    const savedTraceparent = process.env.TRACEPARENT
+    const savedSpool = process.env.OTEL_SPAN_SPOOL_DIR
+    const savedSpanBin = process.env.OTEL_SPAN_BIN
+    const savedTaskTraceparent = process.env.OTEL_TASK_TRACEPARENT
+    const savedHttpEndpoint = process.env.OTELITE_HTTP_ENDPOINT
+    const savedOtlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+    process.env.PATH = `${otelDirectory}:${savedPath ?? ''}`
+    process.env.TRACEPARENT = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
+    process.env.OTEL_SPAN_SPOOL_DIR = otelDirectory
+    delete process.env.OTEL_SPAN_BIN
+    delete process.env.OTEL_TASK_TRACEPARENT
+    delete process.env.OTELITE_HTTP_ENDPOINT
+    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      const captured = readFileSync(capture, 'utf8')
+      expect(captured).toContain('emit-span effect-utils-devenv editor-view.phases')
+      expect(captured).toContain('--attr-bool snapshot.created=true')
+      expect(captured).toContain('--attr-int phase.fingerprint.ms=')
+      expect(captured).toContain('--attr-int phase.pointers.ms=')
+      expect(captured).toContain('--attr-string package.path=packages/@overeng/tui-core')
+      expect(captured).toContain('--attr-string span.label=phases tui-core')
+    } finally {
+      cleanup(fixture)
+      process.env.PATH = savedPath
+      if (savedTraceparent === undefined) delete process.env.TRACEPARENT
+      else process.env.TRACEPARENT = savedTraceparent
+      if (savedSpool === undefined) delete process.env.OTEL_SPAN_SPOOL_DIR
+      else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
+      if (savedSpanBin === undefined) delete process.env.OTEL_SPAN_BIN
+      else process.env.OTEL_SPAN_BIN = savedSpanBin
+      if (savedTaskTraceparent === undefined) delete process.env.OTEL_TASK_TRACEPARENT
+      else process.env.OTEL_TASK_TRACEPARENT = savedTaskTraceparent
+      if (savedHttpEndpoint === undefined) delete process.env.OTELITE_HTTP_ENDPOINT
+      else process.env.OTELITE_HTTP_ENDPOINT = savedHttpEndpoint
+      if (savedOtlpEndpoint === undefined) delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+      else process.env.OTEL_EXPORTER_OTLP_ENDPOINT = savedOtlpEndpoint
+      rmSync(otelDirectory, { recursive: true, force: true })
+    }
+  })
+
+  it('republishes a distinct snapshot when only declared backing-root bytes change', async () => {
+    const fixture = makeFixture()
+    try {
+      const backingRoot = join(fixture.root, 'inputs', 'store-entry')
+      mkdirSync(join(backingRoot, 'dep'), { recursive: true })
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "first"\n')
+      const linkedView = join(fixture.root, 'inputs', 'node_modules-linked')
+      mkdirSync(linkedView)
+      symlinkSync(join(backingRoot, 'dep'), join(linkedView, 'dep'))
+      const options = { ...fixture.options, nodeModules: linkedView, backingRoots: [backingRoot] }
+
+      const first = await publishEditorView(options)
+      // The admitted view reaches its bytes through the declared root, so moving those
+      // bytes leaves BOTH the editor-inputs fingerprint and the admitted view digest
+      // unchanged. Only the normalized store digest moves, and the store key has to
+      // cover it or the second publication collides with the first immutable snapshot.
+      makeWritable(backingRoot)
+      writeFileSync(join(backingRoot, 'dep', 'index.js'), 'export default "second"\n')
+      const second = await publishEditorView(options)
+
+      expect(second.editorInputsFingerprint).toBe(first.editorInputsFingerprint)
+      expect(second.selectedViewDigest).toBe(first.selectedViewDigest)
+      expect(second.normalizedStoreDigest).not.toBe(first.normalizedStoreDigest)
+      expect(second.snapshot).not.toBe(first.snapshot)
+      expect(currentTarget(fixture)).toBe(second.snapshot)
+      // Retention keeps the superseded snapshot, and it still holds its own bytes.
+      expect(ownedSnapshots(fixture).toSorted()).toEqual(
+        [storeName(first.snapshot), storeName(second.snapshot)].toSorted(),
+      )
+      const dependency = (record: { snapshot: string }): string =>
+        readFileSync(
+          join(fixture.editorRoot, record.snapshot, 'node_modules', 'dep', 'index.js'),
+          'utf8',
+        )
+      expect(dependency(first)).toBe('export default "first"\n')
+      expect(dependency(second)).toBe('export default "second"\n')
+      await expect(checkEditorView(options)).resolves.toEqual(second)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('publishes a finite byte-owned snapshot of a declared cyclic store component', async () => {
+    const fixture = makeFixture()
+    try {
+      const view = join(fixture.root, 'inputs', 'cyclic-view')
+      const group = join(fixture.root, 'inputs', 'cyclic-group')
+      const aModules = join(group, 'a-key', 'node_modules')
+      const bModules = join(group, 'b-key', 'node_modules')
+      mkdirSync(join(aModules, 'a'), { recursive: true })
+      mkdirSync(join(bModules, 'b'), { recursive: true })
+      writeFileSync(join(aModules, 'a', 'index.js'), 'export const name = "a"\n')
+      writeFileSync(join(bModules, 'b', 'index.js'), 'export const name = "b"\n')
+      symlinkSync('../../b-key/node_modules/b', join(aModules, 'b'))
+      symlinkSync('../../a-key/node_modules/a', join(bModules, 'a'))
+      mkdirSync(view)
+      symlinkSync(join(aModules, 'a'), join(view, 'a'))
+
+      const options = {
+        ...fixture.options,
+        nodeModules: view,
+        backingRoots: [view, group, group],
+      }
+      const record = await publishEditorView(options)
+      const snapshot = join(fixture.editorRoot, record.snapshot)
+      expect(readlinkSync(join(snapshot, 'node_modules', 'a'))).not.toContain(fixture.root)
+      const ownedA = realpathSync(join(snapshot, 'node_modules', 'a'))
+      const ownedB = realpathSync(join(dirname(ownedA), 'b'))
+      expect(readFileSync(join(ownedA, 'index.js'), 'utf8')).toBe('export const name = "a"\n')
+      expect(readFileSync(join(ownedB, 'index.js'), 'utf8')).toBe('export const name = "b"\n')
+      expect(realpathSync(join(dirname(ownedB), 'a'))).toBe(ownedA)
+      expect(readdirSync(join(snapshot, '.backing'))).toHaveLength(1)
+
+      rmSync(join(fixture.root, 'inputs'), { recursive: true, force: true })
+      await expect(verifyEditorViewSnapshot(fixture.options)).resolves.toEqual(record)
+      expect(readFileSync(join(ownedB, 'index.js'), 'utf8')).toBe('export const name = "b"\n')
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('detects a writable published snapshot even when its content digest is unchanged', async () => {
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      chmodSync(join(fixture.editorRoot, currentTarget(fixture)), 0o700)
+      await expect(checkEditorView(fixture.options)).rejects.toThrow(
+        'snapshot immutability violation',
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('publishes, checks, and garbage-collects two package views independently', async () => {
+    const first = makeFixture()
+    const secondPackage = 'tui-react'
+    const { options: secondOptions, editorInputs: secondInputs } = makeSiblingView({
+      fixture: first,
+      packageName: secondPackage,
+    })
+    try {
+      let firstCurrent = await publishEditorView(first.options)
+      let secondCurrent = await publishEditorView(secondOptions)
+      await expect(checkEditorView(first.options)).resolves.toEqual(firstCurrent)
+      await expect(checkEditorView(secondOptions)).resolves.toEqual(secondCurrent)
+
+      for (const revision of [2, 3]) {
+        writeFileSync(
+          join(first.editorInputs, 'install-descriptor.json'),
+          `${JSON.stringify({ revision })}\n`,
+        )
+        const firstNodeModules = join(first.root, 'inputs', `first-node-modules-${revision}`)
+        mkdirSync(join(firstNodeModules, 'dep'), { recursive: true })
+        writeFileSync(join(firstNodeModules, 'dep', 'index.js'), `export default ${revision}\n`)
+        firstCurrent = await publishEditorView({
+          ...first.options,
+          nodeModules: firstNodeModules,
+        })
+
+        writeFileSync(
+          join(secondInputs, 'install-descriptor.json'),
+          `${JSON.stringify({ revision })}\n`,
+        )
+        const secondRevisionModules = join(first.root, 'inputs', `second-node-modules-${revision}`)
+        mkdirSync(join(secondRevisionModules, 'dep'), { recursive: true })
+        writeFileSync(
+          join(secondRevisionModules, 'dep', 'index.js'),
+          `export default "second-${revision}"\n`,
+        )
+        secondCurrent = await publishEditorView({
+          ...secondOptions,
+          nodeModules: secondRevisionModules,
+        })
+      }
+
+      expect(ownedSnapshots(first)).toHaveLength(2)
+      expect(
+        readdirSync(join(first.editorRoot, '.store')).filter((name) =>
+          name.startsWith(`${secondPackage}-`),
+        ),
+      ).toHaveLength(2)
+      await expect(
+        checkEditorView({
+          ...first.options,
+          nodeModules: join(first.root, 'inputs', 'first-node-modules-3'),
+        }),
+      ).resolves.toEqual(firstCurrent)
+      await expect(
+        checkEditorView({
+          ...secondOptions,
+          nodeModules: join(first.root, 'inputs', 'second-node-modules-3'),
+        }),
+      ).resolves.toEqual(secondCurrent)
+    } finally {
+      cleanup(first)
+    }
+  })
+
+  it('publishes a sibling without re-walking a foreign payload that its owner still rejects', async () => {
+    const first = makeFixture()
+    const sibling = makeSiblingView({ fixture: first, packageName: 'tui-react' })
+    try {
+      await publishEditorView(first.options)
+      await publishEditorView(sibling.options)
+      chmodSync(
+        join(first.editorRoot, currentTarget(first), 'node_modules', 'dep', 'index.js'),
+        0o644,
+      )
+
+      // A sibling publication shares the store but not the tampered payload: it proves only the
+      // foreign entry's self-addressed record and read-only root, so its retention cost does not
+      // grow with the payload of every view already published into the store.
+      await expect(publishEditorView(sibling.options)).resolves.toMatchObject({
+        package: sibling.options.package,
+      })
+
+      await expect(checkEditorView(first.options)).rejects.toThrow(
+        'snapshot immutability violation',
+      )
+      await expect(publishEditorView(first.options)).rejects.toThrow(
+        /snapshot file is writable: .*\/node_modules\/dep\/index\.js$/,
+      )
+    } finally {
+      cleanup(first)
+    }
+  })
+
+  it('refuses garbage collection when snapshot ownership is ambiguous', async () => {
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      const current = currentTarget(fixture)
+      mkdirSync(join(fixture.editorRoot, '.store', 'unowned'))
+      await expect(publishEditorView(fixture.options)).rejects.toThrow(
+        'snapshot store contains an ambiguously owned entry',
+      )
+      expect(currentTarget(fixture)).toBe(current)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('leaves the old view current when byte snapshot creation fails before flip', async () => {
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      const oldTarget = currentTarget(fixture)
+      writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":2}\n')
+      await expect(publishEditorView({ ...fixture.options, cp: falseTool })).rejects.toThrow(
+        'cp --dereference --reflink=auto failed',
+      )
+      expect(currentTarget(fixture)).toBe(oldTarget)
+      expect(ownedSnapshots(fixture)).toHaveLength(1)
+      expect(
+        readdirSync(join(fixture.editorRoot, '.store')).some((name) =>
+          name.startsWith('.candidate-'),
+        ),
+      ).toBe(false)
+      await expect(checkEditorView(fixture.options)).rejects.toThrow(
+        'editor_inputs fingerprint mismatch',
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('rejects an existing lock and requires exact-token explicit recovery', async () => {
+    const fixture = makeFixture()
+    try {
+      mkdirSync(fixture.editorRoot, { recursive: true })
+      const lock = join(fixture.editorRoot, '.publish.lock')
+      mkdirSync(lock)
+      writeFileSync(
+        join(lock, 'owner.json'),
+        '{"schema":"effect-utils/editor-view-lock/v1","token":"held-token","pid":1}\n',
+      )
+      await expect(publishEditorView(fixture.options)).rejects.toThrow('publication lock exists')
+      expect(() => recoverEditorViewLock({ options: fixture.options, token: 'wrong' })).toThrow(
+        'token mismatch',
+      )
+      expect(() =>
+        recoverEditorViewLock({ options: fixture.options, token: 'held-token' }),
+      ).not.toThrow()
+      await expect(publishEditorView(fixture.options)).resolves.toBeDefined()
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('publishes any admitted package identity and rejects mismatched identity', async () => {
+    const fixture = makeFixture({ packageName: 'tui-react' })
+    try {
+      const record = await publishEditorView(fixture.options)
+      expect(record.package).toBe('packages/@overeng/tui-react')
+      expect(record.target).toBe('//packages/@overeng/tui-react:editor_inputs')
+      expect(readlinkSync(join(fixture.packageDir, 'node_modules'))).toBe(
+        '../../.editor-view/tui-react/node_modules',
+      )
+      expect(readlinkSync(join(fixture.editorRoot, 'tui-react'))).toBe(record.snapshot)
+      expect(record.snapshot).toMatch(/^\.store\/tui-react-[0-9a-f]{64}$/u)
+      await expect(checkEditorView(fixture.options)).resolves.toEqual(record)
+      await expect(
+        publishEditorView({
+          ...fixture.options,
+          target: '//packages/@overeng/other:editor_inputs',
+        }),
+      ).rejects.toThrow('target must be the stable label')
+      await expect(
+        publishEditorView({ ...fixture.options, viewName: 'tui.react' }),
+      ).rejects.toThrow('view name must be a portable identifier')
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('rejects escaping and dangling current pointers with both fingerprints named', async () => {
+    const escaping = makeFixture()
+    try {
+      const record = await publishEditorView(escaping.options)
+      rmSync(join(escaping.editorRoot, 'tui-core'))
+      symlinkSync('../../escape', join(escaping.editorRoot, 'tui-core'))
+      await expect(checkEditorView(escaping.options)).rejects.toThrow(
+        `recorded fingerprint=<invalid-pointer>; current fingerprint=${record.editorInputsFingerprint}`,
+      )
+    } finally {
+      cleanup(escaping)
+    }
+
+    const dangling = makeFixture()
+    try {
+      const record = await publishEditorView(dangling.options)
+      rmSync(join(dangling.editorRoot, 'tui-core'))
+      symlinkSync(record.snapshot, join(dangling.editorRoot, 'tui-core'))
+      makeWritable(join(dangling.editorRoot, record.snapshot))
+      rmSync(join(dangling.editorRoot, record.snapshot), { recursive: true })
+      const identity = storeName(record.snapshot).slice('tui-core-'.length)
+      await expect(checkEditorView(dangling.options)).rejects.toThrow(
+        `recorded fingerprint=${identity}; current fingerprint=${record.editorInputsFingerprint}`,
+      )
+    } finally {
+      cleanup(dangling)
+    }
+  })
+
+  it('names recorded and current hashes for descriptor mismatch and mutated snapshot', async () => {
+    const mismatch = makeFixture()
+    try {
+      const record = await publishEditorView(mismatch.options)
+      writeFileSync(join(mismatch.editorInputs, 'install-descriptor.json'), '{"revision":2}\n')
+      const current = await canonicalTreeFingerprint({ tree: mismatch.editorInputs })
+      await expect(checkEditorView(mismatch.options)).rejects.toThrow(
+        `recorded fingerprint=${record.editorInputsFingerprint}; current fingerprint=${current}`,
+      )
+    } finally {
+      cleanup(mismatch)
+    }
+
+    const mutated = makeFixture()
+    try {
+      const record = await publishEditorView(mutated.options)
+      const snapshotNodeModules = join(mutated.editorRoot, record.snapshot, 'node_modules')
+      chmodSync(snapshotNodeModules, 0o700)
+      chmodSync(join(snapshotNodeModules, 'dep'), 0o700)
+      rmSync(join(snapshotNodeModules, 'dep'), { recursive: true })
+      chmodSync(snapshotNodeModules, 0o555)
+      await expect(verifyEditorViewSnapshot(mutated.options)).rejects.toThrow(
+        `snapshot byte digest mismatch`,
+      )
+      await expect(checkEditorView(mutated.options)).rejects.toThrow(
+        `recorded fingerprint=${record.editorInputsFingerprint}; current fingerprint=${record.editorInputsFingerprint}`,
+      )
+    } finally {
+      cleanup(mutated)
+    }
+  })
+
+  it('refuses a store published by an earlier record schema', async () => {
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      const path = recordPath(fixture)
+      const record = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+      chmodSync(path, 0o600)
+      writeFileSync(
+        path,
+        `${JSON.stringify({
+          schema: 'effect-utils/editor-view/v1',
+          package: record.package,
+          cell: record.cell,
+          target: record.target,
+          editorInputsFingerprint: record.editorInputsFingerprint,
+          snapshot: record.snapshot,
+          nodeModulesTreeDigest: record.byteSnapshotDigest,
+        })}\n`,
+      )
+      chmodSync(path, 0o444)
+      await expect(verifyEditorViewSnapshot(fixture.options)).rejects.toThrow(
+        'was published by incompatible editor view schema effect-utils/editor-view/v1',
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('rejects unknown record fields and package paths containing symlink components', async () => {
+    const malformed = makeFixture()
+    try {
+      await publishEditorView(malformed.options)
+      const path = recordPath(malformed)
+      const record = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+      record.untrusted = true
+      chmodSync(path, 0o600)
+      writeFileSync(path, `${JSON.stringify(record)}\n`)
+      await expect(checkEditorView(malformed.options)).rejects.toThrow(
+        'record has unknown or missing fields',
+      )
+    } finally {
+      cleanup(malformed)
+    }
+
+    const root = mkdtempSync(join(tmpdir(), 'editor-view-symlink-root-'))
+    const outside = mkdtempSync(join(tmpdir(), 'editor-view-symlink-outside-'))
+    try {
+      mkdirSync(join(outside, 'packages', '@overeng', 'tui-core'), { recursive: true })
+      symlinkSync(join(outside, 'packages'), join(root, 'packages'))
+      const options = {
+        ...malformed.options,
+        repoRoot: root,
+        editorInputs: join(outside, 'inputs'),
+        nodeModules: join(outside, 'node_modules'),
+      }
+      await expect(publishEditorView(options)).rejects.toThrow(
+        'package path must not contain symbolic links',
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+})

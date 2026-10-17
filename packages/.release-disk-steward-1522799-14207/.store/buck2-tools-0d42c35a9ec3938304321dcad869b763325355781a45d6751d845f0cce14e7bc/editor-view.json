@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/buck2-tools",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/buck2-tools:editor_inputs",
+  "editorInputsFingerprint": "3a2d4934982688492680dbf0b46c0b171a03017fdb71d64c342e3a3fbb279762",
+  "snapshot": ".store/buck2-tools-0d42c35a9ec3938304321dcad869b763325355781a45d6751d845f0cce14e7bc",
+  "normalizedStoreDigest": "1a60b22b70ba16b24ab710d6c9deb820cf9dbf9e879528e99ef21f9be401b143",
+  "selectedViewDigest": "3a2d4934982688492680dbf0b46c0b171a03017fdb71d64c342e3a3fbb279762",
+  "byteSnapshotDigest": "2fe1f69c2d9de6b7dda11f799f17507a99992a1381830c289262a36662ec6205"
+}

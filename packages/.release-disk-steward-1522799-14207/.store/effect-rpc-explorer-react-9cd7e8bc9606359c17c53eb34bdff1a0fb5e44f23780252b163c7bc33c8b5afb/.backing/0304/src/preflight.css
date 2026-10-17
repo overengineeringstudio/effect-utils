@@ -1,0 +1,57 @@
+/* Pixel-parity subset of Tailwind CSS v4 preflight (MIT, tailwindlabs/tailwindcss).
+ * Component styling belongs in StyleX; this file provides only the shared reset. */
+/* Declared inside `overeng.reset` because the StyleX compiler now emits its rules
+ * into cascade layers. Layered CSS loses to ANY unlayered CSS, so an unlayered
+ * reset would beat every component rule for `margin`, `padding`, `border` and
+ * `box-sizing` — the four properties this file sets on `*`. The layer ORDER is
+ * not left to stylesheet concatenation order: the compiler is configured with
+ * `before: ['overeng.reset']`, so its `@layer overeng.reset, priority1, ...;`
+ * statement pins this layer below every StyleX priority regardless of which
+ * stylesheet the browser parses first. */
+@layer overeng.reset {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+  }
+
+  html,
+  :host {
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+    tab-size: 4;
+    font-family:
+      ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+      'Segoe UI Symbol', 'Noto Color Emoji';
+  }
+
+  body {
+    line-height: inherit;
+  }
+
+  button,
+  input,
+  optgroup,
+  select,
+  textarea {
+    font: inherit;
+    font-feature-settings: inherit;
+    font-variation-settings: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    opacity: 1;
+    background-color: transparent;
+    border-radius: 0;
+  }
+
+  button,
+  input:where([type='button'], [type='reset'], [type='submit']),
+  ::file-selector-button {
+    appearance: button;
+  }
+}

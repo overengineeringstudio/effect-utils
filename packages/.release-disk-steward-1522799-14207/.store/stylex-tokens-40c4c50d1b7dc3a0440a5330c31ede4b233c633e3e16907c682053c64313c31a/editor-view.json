@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/stylex-tokens",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/stylex-tokens:editor_inputs",
+  "editorInputsFingerprint": "b8120a9f1ab40a90535813aa3f02023c4e760cfe61a44475da3087a5dba071f8",
+  "snapshot": ".store/stylex-tokens-40c4c50d1b7dc3a0440a5330c31ede4b233c633e3e16907c682053c64313c31a",
+  "normalizedStoreDigest": "a9bffa2da32c66a5c31259bac9028fa75e83b2e69a9e9cc3b673406a8d9db9c3",
+  "selectedViewDigest": "b8120a9f1ab40a90535813aa3f02023c4e760cfe61a44475da3087a5dba071f8",
+  "byteSnapshotDigest": "3f39ab9f68ca3a4e297be94180fff0bd1d75c4b46cfaa7089c51493f80d88e84"
+}

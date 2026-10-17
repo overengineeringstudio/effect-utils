@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/notion-cli",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/notion-cli:editor_inputs",
+  "editorInputsFingerprint": "13fe5437fd04dc970de2c455424790ecbec4c74d580db664e3fc3459d4f51b0b",
+  "snapshot": ".store/notion-cli-bd7750904df4024c373c9413541a7d01f636ced17bec2a9aaa7202c8fa635961",
+  "normalizedStoreDigest": "3a4f69b9df883b5914243c2fa2102b43eaaf7bb50bfd6ad1a69da4bbbeceead9",
+  "selectedViewDigest": "13fe5437fd04dc970de2c455424790ecbec4c74d580db664e3fc3459d4f51b0b",
+  "byteSnapshotDigest": "b7843e81530b03dc964128a07cee945296dbe55c37125928ce6fc3ddb01eb2ca"
+}

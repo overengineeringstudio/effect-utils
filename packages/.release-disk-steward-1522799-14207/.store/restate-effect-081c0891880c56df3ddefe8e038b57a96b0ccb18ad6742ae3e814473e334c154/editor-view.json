@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/restate-effect",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/restate-effect:editor_inputs",
+  "editorInputsFingerprint": "fa0aac19752164d6fa039c615535d88ad078994cd85874e9a05b9a7122c676bc",
+  "snapshot": ".store/restate-effect-081c0891880c56df3ddefe8e038b57a96b0ccb18ad6742ae3e814473e334c154",
+  "normalizedStoreDigest": "16c87a91c2819c2979eb61a4b02f2791f777bb4376df69cf83c9e8f971efdc6e",
+  "selectedViewDigest": "fa0aac19752164d6fa039c615535d88ad078994cd85874e9a05b9a7122c676bc",
+  "byteSnapshotDigest": "4166870eadcecdc9ac398576d200a40f480ae1185049f4a66613c61fccfb8c2c"
+}

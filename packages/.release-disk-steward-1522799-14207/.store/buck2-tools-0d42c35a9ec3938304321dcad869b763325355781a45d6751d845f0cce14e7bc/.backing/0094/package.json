@@ -1,0 +1,40 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/buck2-tools",
+      "packages/@overeng/utils-dev"
+    ]
+  },
+  "name": "@overeng/buck2-tools",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    }
+  },
+  "dependencies": {
+    "acorn": "8.18.0",
+    "acorn-walk": "8.3.5"
+  },
+  "devDependencies": {
+    "@overeng/utils-dev": "workspace:^",
+    "@types/bun": "1.4.2",
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      }
+    }
+  }
+}

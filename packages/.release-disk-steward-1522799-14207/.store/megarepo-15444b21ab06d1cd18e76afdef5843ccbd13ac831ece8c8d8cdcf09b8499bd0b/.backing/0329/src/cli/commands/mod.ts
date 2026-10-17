@@ -1,0 +1,27 @@
+/**
+ * CLI Commands
+ *
+ * Re-exports all CLI commands for assembly in the main CLI.
+ */
+
+export { addCommand } from './add.ts'
+export { applyCommand } from './apply.ts'
+export { checkCommand } from './check.ts'
+export { depsCommand } from './deps.ts'
+export { syncMegarepo } from './engine.ts'
+export { envCommand } from './env.ts'
+export { execCommand } from './exec.ts'
+export { fetchCommand } from './fetch.ts'
+export { initCommand } from './init.ts'
+export { lockCommand } from './lock.ts'
+export { lsCommand } from './ls.ts'
+export { configCommand } from './config/mod.ts'
+export { rootCommand } from './root.ts'
+export { statusCommand } from './status.ts'
+
+// Re-export errors from centralized errors module
+export { NotInMegarepoError, LockFileRequiredError, StaleLockFileError } from '../errors.ts'
+
+// Subcommand groups
+export { storeCommand } from './store/mod.ts'
+export { generateCommand } from './generate/mod.ts'

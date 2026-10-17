@@ -1,0 +1,425 @@
+/**
+ * Effect-native OTEL adapter layering on the core `onEvent` hook.
+ *
+ * Primary o11y path for Effect consumers (pixeltrail, forge, ...). Converts
+ * {@link SyncEvent}s into Effect tracer spans using the ambient Effect
+ * `Tracer` service. Consumers wire any `@effect/opentelemetry` exporter
+ * layer at the top of their runtime — this adapter does not depend on
+ * `@opentelemetry/*` directly.
+ *
+ * Design:
+ *   - Emitted spans carry an explicit `service.name` attribute (default
+ *     `'notion-react'`) so a consumer's Grafana datasource can query
+ *     notion-react separately from the caller service, while trace context
+ *     propagation still ties the two together.
+ *   - A single root span (`notion-react.sync`) per sync invocation, with
+ *     child spans per HTTP op (`notion-react.op.<kind>`).
+ *   - Span correlation uses `OpIssued.id` as a Map key so out-of-order
+ *     terminal events still resolve correctly.
+ */
+import { Cause, Context, Effect, Exit, Option, Schema } from 'effect'
+import type { Tracer } from 'effect'
+import type { HttpClient } from 'effect/http/HttpClient'
+import type { ReactNode } from 'react'
+
+import type { NotionConfig } from '@overeng/notion-effect-client'
+import { OtelAttr, OtelAttrs } from '@overeng/otel-contract'
+
+import type { NotionCache } from '../cache/types.ts'
+import {
+  NotionReactBatchBatched,
+  NotionReactBatchIssued,
+  NotionReactBlockId,
+  NotionReactCheckpointBytes,
+  NotionReactDurationMs,
+  NotionReactFallbackReason,
+  NotionReactNoopReason,
+  NotionReactOk,
+  NotionReactOpCount,
+  NotionReactOpDurationMs,
+  NotionReactOpError,
+  NotionReactOpId,
+  NotionReactOpKind,
+  NotionReactOpNote,
+  NotionReactOpResultCount,
+  NotionReactPageId,
+  NotionReactRootBlockCount,
+} from '../notion-react.contract.ts'
+import type { NotionSyncError } from '../renderer/errors.ts'
+import type { SyncResult } from '../renderer/render-to-notion.ts'
+import { SyncEvent, type SyncEventHandler } from '../renderer/sync-events.ts'
+import { sync, type ColdBaseline } from '../renderer/sync.ts'
+import type { OnUploadIdRejected } from '../renderer/upload-id-retry.ts'
+
+/** Default service name embedded on every emitted span. */
+export const DEFAULT_SERVICE_NAME = 'notion-react'
+
+/** Shorten a Notion uuid for span labels: first 8 hex chars. */
+const shortId = (id: string): string => id.replaceAll('-', '').slice(0, 8)
+
+/** Milliseconds → nanoseconds (bigint) for Tracer.Span APIs. */
+const msToNs = (ms: number): bigint => BigInt(Math.trunc(ms * 1_000_000))
+
+const OpKind = Schema.Literals(['append', 'update', 'delete', 'retrieve'])
+const CacheKind = Schema.Literals(['hit', 'miss', 'drift', 'page-id-drift'])
+
+// Bundles are REBUILT from the registered `notion-react.*` catalog schemas (SC-R13/R14 — the
+// contract is the single SSOT for the projection AND these runtime encoders). `service.name`
+// (a resource attribute) and `span.label` stay plain inline `OtelAttr.*` fields (excluded from
+// the registry). Encode is byte-identical to the pre-migration inline schemas (equivalence test).
+const SyncStartAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    pageId: NotionReactPageId,
+    rootBlockCount: NotionReactRootBlockCount,
+  }),
+)
+
+const SyncEndAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    ok: NotionReactOk,
+    opCount: NotionReactOpCount,
+    durationMs: NotionReactDurationMs,
+    fallbackReason: Schema.optional(NotionReactFallbackReason),
+  }),
+)
+
+const OpStartAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    label: OpKind.pipe(OtelAttr.spanLabel()),
+    id: NotionReactOpId,
+    kind: NotionReactOpKind,
+  }),
+)
+
+const OpSucceededAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    durationMs: NotionReactOpDurationMs,
+    resultCount: NotionReactOpResultCount,
+    note: Schema.optional(NotionReactOpNote),
+  }),
+)
+
+const OpFailedAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    durationMs: NotionReactOpDurationMs,
+    error: NotionReactOpError,
+  }),
+)
+
+const CacheEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  }),
+)
+
+const FallbackEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    reason: NotionReactFallbackReason,
+  }),
+)
+
+const BatchFlushEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    issued: NotionReactBatchIssued,
+    batched: NotionReactBatchBatched,
+  }),
+)
+
+const UpdateNoopEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    blockId: NotionReactBlockId,
+    reason: NotionReactNoopReason,
+  }),
+)
+
+const CheckpointWrittenEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    bytes: Schema.optional(NotionReactCheckpointBytes),
+  }),
+)
+
+/** Build a successful / failed Exit for Span.end. */
+const successExit: Exit.Exit<void, never> = Exit.void
+const failureExit: Exit.Exit<void, string> = Exit.fail('notion-react.sync.failed')
+
+/** Config for {@link makeEffectSpanHandler}. */
+export interface EffectSpanHandlerConfig {
+  /**
+   * Service name embedded as a span attribute (`service.name`). Defaults to
+   * `'notion-react'`. Override when the caller's dashboards need to
+   * differentiate multiple notion-react consumers.
+   */
+  readonly serviceName?: string
+  /** Effect tracer service used to mint spans. */
+  readonly tracer: Tracer.Tracer
+  /** Optional parent span for the `notion-react.sync` root span. */
+  readonly parent?: Tracer.AnySpan
+  /** Tracer context; defaults to `Context.empty()`. */
+  readonly context?: Context.Context<never>
+}
+
+interface OpenSpan {
+  readonly span: Tracer.Span
+}
+
+/**
+ * Build a synchronous `SyncEventHandler` that opens/closes Effect tracer
+ * spans in response to sync events. Each op span is correlated via its
+ * `OpIssued.id`.
+ */
+export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEventHandler => {
+  const serviceName = config.serviceName ?? DEFAULT_SERVICE_NAME
+  const tracer = config.tracer
+  const parentOption: Option.Option<Tracer.AnySpan> =
+    config.parent !== undefined ? Option.some(config.parent) : Option.none()
+  const ctx = config.context ?? Context.empty()
+  let rootSpan: Tracer.Span | undefined
+  const opSpans = new Map<number, OpenSpan>()
+
+  const cacheEventAttrs = (kind: typeof CacheKind.Type) =>
+    CacheEventAttrs.encodeSync({ serviceName, label: `cache:${kind}` })
+
+  return (event: SyncEvent): void => {
+    switch (event._tag) {
+      case 'SyncStart': {
+        rootSpan = tracer.span({
+          name: 'notion-react.sync',
+          parent: parentOption,
+          annotations: ctx,
+          links: [],
+          startTime: msToNs(event.at),
+          kind: 'internal',
+          root: false,
+          sampled: true,
+        })
+        for (const [k, v] of Object.entries(
+          SyncStartAttrs.encodeSync({
+            serviceName,
+            label: shortId(event.pageId),
+            pageId: event.pageId,
+            rootBlockCount: event.rootBlockCount,
+          }),
+        )) {
+          rootSpan.attribute(k, v)
+        }
+        break
+      }
+      case 'SyncEnd': {
+        if (rootSpan === undefined) break
+        for (const [k, v] of Object.entries(
+          SyncEndAttrs.encodeSync({
+            ok: event.ok,
+            opCount: event.opCount,
+            durationMs: event.durationMs,
+            ...(event.fallbackReason === undefined ? {} : { fallbackReason: event.fallbackReason }),
+          }),
+        )) {
+          rootSpan.attribute(k, v)
+        }
+        rootSpan.end(msToNs(event.at), event.ok ? successExit : failureExit)
+        rootSpan = undefined
+        // Flush any lingering op spans so none leak on error paths.
+        for (const { span } of opSpans.values()) {
+          span.end(msToNs(event.at), failureExit)
+        }
+        opSpans.clear()
+        break
+      }
+      case 'OpIssued': {
+        const parent: Option.Option<Tracer.AnySpan> =
+          rootSpan !== undefined ? Option.some(rootSpan) : parentOption
+        const span = tracer.span({
+          name: `notion-react.op.${event.kind}`,
+          parent,
+          annotations: ctx,
+          links: [],
+          startTime: msToNs(event.at),
+          kind: 'internal',
+          root: false,
+          sampled: true,
+        })
+        for (const [k, v] of Object.entries(
+          OpStartAttrs.encodeSync({
+            serviceName,
+            label: event.kind,
+            id: event.id,
+            kind: event.kind,
+          }),
+        )) {
+          span.attribute(k, v)
+        }
+        opSpans.set(event.id, { span })
+        break
+      }
+      case 'OpSucceeded': {
+        const open = opSpans.get(event.id)
+        if (open === undefined) break
+        for (const [k, v] of Object.entries(
+          OpSucceededAttrs.encodeSync({
+            durationMs: event.durationMs,
+            resultCount: event.resultCount,
+            ...(event.note === undefined ? {} : { note: event.note }),
+          }),
+        )) {
+          open.span.attribute(k, v)
+        }
+        open.span.end(msToNs(event.at), successExit)
+        opSpans.delete(event.id)
+        break
+      }
+      case 'OpFailed': {
+        const open = opSpans.get(event.id)
+        if (open === undefined) break
+        for (const [k, v] of Object.entries(
+          OpFailedAttrs.encodeSync({ durationMs: event.durationMs, error: event.error }),
+        )) {
+          open.span.attribute(k, v)
+        }
+        open.span.end(msToNs(event.at), Exit.fail(event.error))
+        opSpans.delete(event.id)
+        break
+      }
+      case 'CacheOutcome': {
+        if (rootSpan === undefined) break
+        rootSpan.event(`cache:${event.kind}`, msToNs(event.at), cacheEventAttrs(event.kind))
+        break
+      }
+      case 'FallbackTriggered': {
+        if (rootSpan === undefined) break
+        rootSpan.event(
+          'fallback',
+          msToNs(event.at),
+          FallbackEventAttrs.encodeSync({ serviceName, reason: event.reason }),
+        )
+        break
+      }
+      case 'BatchFlush': {
+        if (rootSpan === undefined) break
+        rootSpan.event(
+          'batch-flush',
+          msToNs(event.at),
+          BatchFlushEventAttrs.encodeSync({
+            serviceName,
+            issued: event.issued,
+            batched: event.batched,
+          }),
+        )
+        break
+      }
+      case 'UpdateNoop': {
+        if (rootSpan === undefined) break
+        rootSpan.event(
+          'update-noop',
+          msToNs(event.at),
+          UpdateNoopEventAttrs.encodeSync({
+            serviceName,
+            blockId: event.blockId,
+            reason: event.reason,
+          }),
+        )
+        break
+      }
+      case 'CheckpointWritten': {
+        if (rootSpan === undefined) break
+        rootSpan.event(
+          'checkpoint-written',
+          msToNs(event.at),
+          CheckpointWrittenEventAttrs.encodeSync({
+            serviceName,
+            ...(event.bytes === undefined ? {} : { bytes: event.bytes }),
+          }),
+        )
+        break
+      }
+    }
+  }
+}
+
+/**
+ * Convenience wrapper: `sync()` wired with the Effect span handler. Picks
+ * up the ambient `Tracer.Tracer` service so consumers only need to provide
+ * an `@effect/opentelemetry` exporter layer.
+ *
+ * @example
+ * ```ts
+ * import { instrumentedSync } from '@overeng/notion-react/o11y/effect'
+ *
+ * yield* instrumentedSync(<Page />, { pageId, cache, serviceName: 'pixeltrail-sync' })
+ * ```
+ */
+export const instrumentedSync = (
+  element: ReactNode,
+  opts: {
+    readonly pageId: string
+    readonly cache: NotionCache
+    readonly serviceName?: string
+    readonly coldBaseline?: ColdBaseline
+    /** Additional handler composed after the OTEL one (for counters / logging). */
+    readonly onEvent?: SyncEventHandler
+    readonly onUploadIdRejected?: OnUploadIdRejected
+  },
+): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient> =>
+  Effect.gen(function* () {
+    const tracer = yield* Effect.tracer
+    const parent = yield* Effect.currentSpan.pipe(Effect.orElseSucceed(() => undefined))
+    const otelHandler = makeEffectSpanHandler({
+      tracer,
+      ...(opts.serviceName !== undefined ? { serviceName: opts.serviceName } : {}),
+      ...(parent !== undefined ? { parent } : {}),
+    })
+    const composed: SyncEventHandler =
+      opts.onEvent === undefined
+        ? otelHandler
+        : (e) => {
+            otelHandler(e)
+            opts.onEvent!(e)
+          }
+    return yield* sync(element, {
+      pageId: opts.pageId,
+      cache: opts.cache,
+      onEvent: composed,
+      ...(opts.coldBaseline !== undefined ? { coldBaseline: opts.coldBaseline } : {}),
+      ...(opts.onUploadIdRejected !== undefined
+        ? { onUploadIdRejected: opts.onUploadIdRejected }
+        : {}),
+    }).pipe(emitSyncEndOnInterrupt({ pageId: opts.pageId, onEvent: composed }))
+  })
+
+/**
+ * `sync()` only emits a failure `SyncEnd` via `tapError` on typed errors.
+ * Interrupts flow as `Cause.Interrupt` and bypass that path, which leaves
+ * the `notion-react.sync` root span open (orphaning all
+ * `notion-react.op.*` children). This helper observes the exit directly
+ * and emits a synthetic `SyncEnd` on interrupt so the span handler closes
+ * the root.
+ */
+export const emitSyncEndOnInterrupt =
+  (args: { readonly pageId: string; readonly onEvent: SyncEventHandler }) =>
+  <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
+    const start = Date.now()
+    return self.pipe(
+      Effect.onExit((exit) =>
+        Effect.sync(() => {
+          if (Exit.isSuccess(exit)) return
+          if (Cause.hasInterruptsOnly(exit.cause) === false) return
+          args.onEvent(
+            SyncEvent.SyncEnd({
+              pageId: args.pageId,
+              durationMs: Date.now() - start,
+              ok: false,
+              opCount: 0,
+              at: Date.now(),
+            }),
+          )
+        }),
+      ),
+    )
+  }

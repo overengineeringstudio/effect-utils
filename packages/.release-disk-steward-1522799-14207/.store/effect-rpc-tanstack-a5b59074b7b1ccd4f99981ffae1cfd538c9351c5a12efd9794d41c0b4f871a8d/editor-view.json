@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/effect-rpc-tanstack",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/effect-rpc-tanstack:editor_inputs",
+  "editorInputsFingerprint": "e9349ecabff011c4be85c3157aa3350db47923fc7567997bc9f64980b4a6dae3",
+  "snapshot": ".store/effect-rpc-tanstack-a5b59074b7b1ccd4f99981ffae1cfd538c9351c5a12efd9794d41c0b4f871a8d",
+  "normalizedStoreDigest": "dd2d6bf4132bf432deba02a1d8857502ecf3d17c4522ae8cbb7353eb0251e3ce",
+  "selectedViewDigest": "e9349ecabff011c4be85c3157aa3350db47923fc7567997bc9f64980b4a6dae3",
+  "byteSnapshotDigest": "57191f327172352e55668e80bb2c2db7aa9d506b5408d8d7f7c16fa4e3e6625d"
+}

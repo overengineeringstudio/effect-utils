@@ -1,0 +1,76 @@
+/**
+ * SyncOutput TuiApp
+ *
+ * createTuiApp instance for the sync command.
+ * Handles all output modes: TTY, CI, JSON, NDJSON.
+ */
+
+import { createTuiApp } from '@overeng/tui-react'
+
+import { SyncState, SyncAction, syncReducer } from './schema.ts'
+
+/**
+ * Initial empty state for sync output.
+ */
+export const createInitialSyncState = (params: {
+  workspaceName: string
+  workspaceRoot: string
+}): SyncState => ({
+  _tag: 'Syncing',
+  workspace: {
+    name: params.workspaceName,
+    root: params.workspaceRoot,
+  },
+  options: {
+    mode: 'apply',
+    dryRun: false,
+    all: false,
+  },
+  members: [],
+  activeMembers: [],
+  results: [],
+  logs: [],
+  startedAt: null,
+  nestedMegarepos: [],
+  generatedFiles: [],
+  lockSyncResults: [],
+  sharedSourceUpdates: [],
+  syncTree: {
+    root: params.workspaceRoot,
+    results: [],
+    nestedMegarepos: [],
+    nestedResults: [],
+  },
+  syncErrors: [],
+  syncErrorCount: 0,
+  preflightIssues: [],
+})
+
+/**
+ * TuiApp for sync output.
+ *
+ * Usage in CLI:
+ * ```typescript
+ * const tui = yield* SyncApp.run(<SyncView stateAtom={SyncApp.stateAtom} />).pipe(
+ *   Effect.provide(outputModeLayer(output))
+ * )
+ *
+ * // Dispatch state updates
+ * tui.dispatch({ _tag: 'AddResult', result: memberResult })
+ *
+ * // Or set final state
+ * tui.dispatch({ _tag: 'SetState', state: finalState })
+ * ```
+ */
+export const SyncApp = createTuiApp({
+  stateSchema: SyncState,
+  actionSchema: SyncAction,
+  initial: createInitialSyncState({ workspaceName: '', workspaceRoot: '' }),
+  reducer: syncReducer,
+  exitCode: (state) => {
+    if (state._tag === 'Interrupted') return 130 // SIGINT
+    if (state._tag === 'Error') return 1
+    if (state._tag === 'PreflightFailed') return 1
+    return 0
+  },
+})

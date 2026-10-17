@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/tui-react",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/tui-react:editor_inputs",
+  "editorInputsFingerprint": "f062bf4b05edb715c3602f6c93141269256d4abcffecb9e7a25ae48d3b68843e",
+  "snapshot": ".store/tui-react-3b5b44382cace08cb3ac63ff9eb4e19f3883ae32315e5540d7231af354501445",
+  "normalizedStoreDigest": "e54c16b160f9d010962aa82eb2e125a20ec59dded16164fee99ec54d456b488c",
+  "selectedViewDigest": "f062bf4b05edb715c3602f6c93141269256d4abcffecb9e7a25ae48d3b68843e",
+  "byteSnapshotDigest": "3cd0596fca6f22beab08b17ddbe25c286d0e65f115959cd5dd8d13d5f44372e9"
+}

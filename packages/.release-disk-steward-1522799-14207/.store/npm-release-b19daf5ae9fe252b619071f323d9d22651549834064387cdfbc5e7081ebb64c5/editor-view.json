@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/npm-release",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/npm-release:editor_inputs",
+  "editorInputsFingerprint": "c6ecb580b873be0ca91a9bbfe829b19b9dbe6e45ad4af4f96c1df7c8890631b0",
+  "snapshot": ".store/npm-release-b19daf5ae9fe252b619071f323d9d22651549834064387cdfbc5e7081ebb64c5",
+  "normalizedStoreDigest": "7c7d9d44bdecfb18e396f8d0d5f8356c76fe40b1b026d563d093e699172d2286",
+  "selectedViewDigest": "c6ecb580b873be0ca91a9bbfe829b19b9dbe6e45ad4af4f96c1df7c8890631b0",
+  "byteSnapshotDigest": "818a6362688b3ad9e45cfedabb1736ce0835e2bb77814e5a087f3585fee910a7"
+}

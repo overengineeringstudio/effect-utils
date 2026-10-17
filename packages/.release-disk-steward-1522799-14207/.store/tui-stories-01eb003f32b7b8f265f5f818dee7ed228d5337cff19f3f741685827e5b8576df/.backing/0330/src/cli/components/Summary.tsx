@@ -1,0 +1,148 @@
+/**
+ * Summary Component
+ *
+ * Result counts summary line.
+ */
+
+import React from 'react'
+
+import { Box, Text } from '@overeng/tui-react'
+
+import { symbols } from './tokens.ts'
+
+// =============================================================================
+// Types
+// =============================================================================
+
+/** Counts of sync results by category, used to render the summary line. */
+export interface SummaryCounts {
+  cloned?: number
+  synced?: number
+  updated?: number
+  recorded?: number
+  applied?: number
+  removed?: number
+  errors?: number
+  skipped?: number
+  alreadySynced?: number
+}
+
+/** Props for the Summary component that renders a dot-separated result counts line. */
+export interface SummaryProps {
+  /** Result counts */
+  counts: SummaryCounts
+  /** Whether this is a dry run (changes "cloned" to "to clone", etc.) */
+  dryRun?: boolean
+  /** Sync mode — affects display labels (e.g. "fetched" vs "updated") */
+  mode?: 'fetch' | 'apply' | 'lock'
+}
+
+// =============================================================================
+// Component
+// =============================================================================
+
+/**
+ * Summary - Result counts summary
+ *
+ * Renders a dot-separated summary of results:
+ * ```
+ * 3 cloned · 2 synced · 1 updated · 1 error
+ * ```
+ *
+ * In dry run mode:
+ * ```
+ * 3 to clone · 2 to sync · 1 to update
+ * ```
+ *
+ * @example
+ * ```tsx
+ * <Summary counts={{ cloned: 3, synced: 2, errors: 1 }} />
+ * <Summary counts={{ cloned: 3, synced: 2 }} dryRun />
+ * ```
+ */
+export const Summary = ({ counts, dryRun = false, mode }: SummaryProps) => {
+  const parts: Array<{ key: string; element: React.ReactNode }> = []
+  const isFetch = mode === 'fetch'
+  const updatedLabel = isFetch === true ? 'fetched' : 'updated'
+  const unchangedLabel = 'already up to date'
+
+  if (dryRun === true) {
+    const toUpdateLabel = isFetch === true ? 'to fetch' : 'to update'
+    if (counts.cloned !== undefined && counts.cloned > 0)
+      parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} to clone</Text> })
+    if (counts.synced !== undefined && counts.synced > 0)
+      parts.push({ key: 'synced', element: <Text dim>{counts.synced} to sync</Text> })
+    if (counts.updated !== undefined && counts.updated > 0)
+      parts.push({
+        key: 'updated',
+        element: (
+          <Text dim>
+            {counts.updated} {toUpdateLabel}
+          </Text>
+        ),
+      })
+    if (counts.recorded !== undefined && counts.recorded > 0)
+      parts.push({ key: 'recorded', element: <Text dim>{counts.recorded} to record</Text> })
+    if (counts.applied !== undefined && counts.applied > 0)
+      parts.push({ key: 'applied', element: <Text dim>{counts.applied} to check out</Text> })
+    if (counts.removed !== undefined && counts.removed > 0)
+      parts.push({ key: 'removed', element: <Text color="red">{counts.removed} to remove</Text> })
+    if (counts.errors !== undefined && counts.errors > 0)
+      parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
+    if (counts.alreadySynced !== undefined && counts.alreadySynced > 0)
+      parts.push({
+        key: 'unchanged',
+        element: (
+          <Text dim>
+            {counts.alreadySynced} {unchangedLabel}
+          </Text>
+        ),
+      })
+  } else {
+    if (counts.cloned !== undefined && counts.cloned > 0)
+      parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} cloned</Text> })
+    if (counts.synced !== undefined && counts.synced > 0)
+      parts.push({ key: 'synced', element: <Text dim>{counts.synced} synced</Text> })
+    if (counts.updated !== undefined && counts.updated > 0)
+      parts.push({
+        key: 'updated',
+        element: (
+          <Text dim>
+            {counts.updated} {updatedLabel}
+          </Text>
+        ),
+      })
+    if (counts.recorded !== undefined && counts.recorded > 0)
+      parts.push({ key: 'recorded', element: <Text dim>{counts.recorded} recorded</Text> })
+    if (counts.applied !== undefined && counts.applied > 0)
+      parts.push({ key: 'applied', element: <Text dim>{counts.applied} checked out</Text> })
+    if (counts.removed !== undefined && counts.removed > 0)
+      parts.push({ key: 'removed', element: <Text color="red">{counts.removed} removed</Text> })
+    if (counts.errors !== undefined && counts.errors > 0)
+      parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
+    if (counts.alreadySynced !== undefined && counts.alreadySynced > 0)
+      parts.push({
+        key: 'unchanged',
+        element: (
+          <Text dim>
+            {counts.alreadySynced} {unchangedLabel}
+          </Text>
+        ),
+      })
+  }
+
+  if (parts.length === 0) {
+    parts.push({ key: 'no-changes', element: <Text dim>no changes</Text> })
+  }
+
+  return (
+    <Box flexDirection="row">
+      {parts.map((part, i) => (
+        <React.Fragment key={part.key}>
+          {i > 0 && <Text dim> {symbols.dot} </Text>}
+          {part.element}
+        </React.Fragment>
+      ))}
+    </Box>
+  )
+}

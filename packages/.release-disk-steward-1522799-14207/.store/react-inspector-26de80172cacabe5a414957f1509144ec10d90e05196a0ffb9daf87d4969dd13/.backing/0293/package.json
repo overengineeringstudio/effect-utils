@@ -1,0 +1,40 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/utils-dev"
+    ]
+  },
+  "name": "@overeng/effect-distributed-lock",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    }
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0-rc.118",
+    "@overeng/utils-dev": "workspace:^",
+    "@types/node": "26.5.0",
+    "effect": "4.0.0-rc.118",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-rc.118"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      }
+    }
+  }
+}

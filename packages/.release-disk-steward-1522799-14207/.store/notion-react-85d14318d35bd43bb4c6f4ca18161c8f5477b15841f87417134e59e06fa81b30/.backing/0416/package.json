@@ -1,0 +1,162 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/notion-core",
+      "packages/@overeng/notion-effect-client",
+      "packages/@overeng/notion-effect-schema",
+      "packages/@overeng/notion-md",
+      "packages/@overeng/notion-property-write",
+      "packages/@overeng/notion-react",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/tui-core",
+      "packages/@overeng/tui-react",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
+    ]
+  },
+  "name": "@overeng/notion-react",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./markdown": {
+      "types": "./dist/src/markdown/mod.d.ts",
+      "default": "./src/markdown/mod.ts"
+    },
+    "./o11y": {
+      "types": "./dist/src/o11y/mod.d.ts",
+      "default": "./src/o11y/mod.ts"
+    },
+    "./o11y/effect": {
+      "types": "./dist/src/o11y/effect-adapter.d.ts",
+      "default": "./src/o11y/effect-adapter.ts"
+    },
+    "./o11y/otel": {
+      "types": "./dist/src/o11y/otel-adapter.d.ts",
+      "default": "./src/o11y/otel-adapter.ts"
+    },
+    "./renderer": {
+      "types": "./dist/src/renderer/mod.d.ts",
+      "default": "./src/renderer/mod.ts"
+    },
+    "./test": "./src/test/integration/e2e/helpers.ts",
+    "./web": {
+      "types": "./dist/src/web/mod.d.ts",
+      "default": "./src/web/mod.ts"
+    },
+    "./web/katex.css": "./src/web/katex.css",
+    "./web/styles.css": "./src/web/styles.css"
+  },
+  "scripts": {
+    "storybook": "storybook dev -p 6014",
+    "storybook:build": "storybook build",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:e2e": "vitest run --config vitest.integration.config.ts e2e"
+  },
+  "dependencies": {
+    "@effect/atom-react": "4.0.0-rc.118",
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "@opentui/core": "0.5.11",
+    "@opentui/react": "0.5.11",
+    "@overeng/notion-effect-client": "workspace:^",
+    "@overeng/notion-effect-schema": "workspace:^",
+    "@overeng/otel-contract": "workspace:^",
+    "@playwright/test": "1.63.0",
+    "@storybook/react": "10.6.0",
+    "@types/react": "19.2.18",
+    "@types/react-reconciler": "0.33.0",
+    "effect": "4.0.0-rc.118",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-reconciler": "0.33.0",
+    "vitest": "5.0.3"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0-rc.118",
+    "@opentelemetry/api": "1.9.1",
+    "@overeng/notion-md": "workspace:^",
+    "@overeng/utils-dev": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
+    "@storybook/react": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
+    "@types/node": "26.5.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@types/react-reconciler": "0.33.0",
+    "effect": "4.0.0-rc.118",
+    "katex": "0.18.7",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-reconciler": "0.33.0",
+    "shiki": "4.4.3",
+    "storybook": "10.6.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "effect": "4.0.0-rc.118",
+    "katex": "^0.18.7",
+    "react": "^19.2.8",
+    "react-reconciler": "^0.33.0",
+    "shiki": "^4.4.3"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    },
+    "katex": {
+      "optional": true
+    },
+    "shiki": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./markdown": {
+        "types": "./dist/src/markdown/mod.d.ts",
+        "default": "./dist/src/markdown/mod.js"
+      },
+      "./renderer": {
+        "types": "./dist/src/renderer/mod.d.ts",
+        "default": "./dist/src/renderer/mod.js"
+      },
+      "./o11y": {
+        "types": "./dist/src/o11y/mod.d.ts",
+        "default": "./dist/src/o11y/mod.js"
+      },
+      "./o11y/effect": {
+        "types": "./dist/src/o11y/effect-adapter.d.ts",
+        "default": "./dist/src/o11y/effect-adapter.js"
+      },
+      "./o11y/otel": {
+        "types": "./dist/src/o11y/otel-adapter.d.ts",
+        "default": "./dist/src/o11y/otel-adapter.js"
+      },
+      "./web": {
+        "types": "./dist/src/web/mod.d.ts",
+        "default": "./dist/src/web/mod.js"
+      },
+      "./web/styles.css": "./src/web/styles.css",
+      "./web/katex.css": "./src/web/katex.css"
+    }
+  }
+}

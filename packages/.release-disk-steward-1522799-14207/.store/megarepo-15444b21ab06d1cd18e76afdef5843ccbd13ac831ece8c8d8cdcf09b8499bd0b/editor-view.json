@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/megarepo",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/megarepo:editor_inputs",
+  "editorInputsFingerprint": "b85e6414281461f016e3c91369e65688abf8a926473c9a4c650f5a7ecea945d1",
+  "snapshot": ".store/megarepo-15444b21ab06d1cd18e76afdef5843ccbd13ac831ece8c8d8cdcf09b8499bd0b",
+  "normalizedStoreDigest": "44c5d44cb33db92fcc5de9425fdfbdb39b756fb3d3e125cef47a92850d9bd734",
+  "selectedViewDigest": "b85e6414281461f016e3c91369e65688abf8a926473c9a4c650f5a7ecea945d1",
+  "byteSnapshotDigest": "07222ae87ab82a9262660a9acd11357b56dceb369ae570f272047147956afb18"
+}

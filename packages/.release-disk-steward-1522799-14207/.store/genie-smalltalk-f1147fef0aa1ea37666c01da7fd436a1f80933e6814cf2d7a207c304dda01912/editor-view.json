@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/genie-smalltalk",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/genie-smalltalk:editor_inputs",
+  "editorInputsFingerprint": "cd1b0fbafcca732e957635386e968d4a3e26728616c34bde41cea32701ea4ca1",
+  "snapshot": ".store/genie-smalltalk-f1147fef0aa1ea37666c01da7fd436a1f80933e6814cf2d7a207c304dda01912",
+  "normalizedStoreDigest": "e0eb161e9debac32990e06b037836d2c24ec85977ce2db7a39ce3ca0b5bd249e",
+  "selectedViewDigest": "cd1b0fbafcca732e957635386e968d4a3e26728616c34bde41cea32701ea4ca1",
+  "byteSnapshotDigest": "0573059201f0baa3ec2cd860866d36169699a131acd9b2255340d3ffaae0b3be"
+}

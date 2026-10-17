@@ -1,0 +1,60 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/utils-dev"
+    ]
+  },
+  "name": "@overeng/utils-dev",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./cli-contract": {
+      "types": "./dist/src/cli-contract.d.ts",
+      "default": "./src/cli-contract.ts"
+    },
+    "./node-vitest": {
+      "types": "./dist/src/node-vitest/mod.d.ts",
+      "default": "./src/node-vitest/mod.ts"
+    },
+    "./otelite": {
+      "types": "./dist/src/otelite/mod.d.ts",
+      "default": "./src/otelite/mod.ts"
+    }
+  },
+  "devDependencies": {
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "@types/node": "26.5.0",
+    "effect": "4.0.0-rc.118",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "effect": "4.0.0-rc.118",
+    "vitest": "^5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./node-vitest": {
+        "types": "./dist/src/node-vitest/mod.d.ts",
+        "default": "./dist/src/node-vitest/mod.js"
+      },
+      "./otelite": {
+        "types": "./dist/src/otelite/mod.d.ts",
+        "default": "./dist/src/otelite/mod.js"
+      },
+      "./cli-contract": {
+        "types": "./dist/src/cli-contract.d.ts",
+        "default": "./dist/src/cli-contract.js"
+      }
+    }
+  }
+}

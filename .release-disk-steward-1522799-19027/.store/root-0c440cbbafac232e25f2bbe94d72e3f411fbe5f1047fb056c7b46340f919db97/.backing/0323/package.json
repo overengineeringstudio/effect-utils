@@ -1,0 +1,116 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/genie",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/tui-core",
+      "packages/@overeng/tui-react",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
+    ]
+  },
+  "name": "@overeng/genie",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/runtime/mod.d.ts",
+      "default": "./src/runtime/mod.ts"
+    },
+    "./cli": {
+      "types": "./dist/src/build/mod.d.ts",
+      "default": "./src/build/mod.tsx"
+    },
+    "./composition": {
+      "types": "./dist/src/runtime/composition/mod.d.ts",
+      "default": "./src/runtime/composition/mod.ts"
+    },
+    "./node": {
+      "types": "./dist/src/runtime/node/mod.d.ts",
+      "default": "./src/runtime/node/mod.ts"
+    },
+    "./sdk": {
+      "types": "./dist/src/sdk/mod.d.ts",
+      "default": "./src/sdk/mod.ts"
+    }
+  },
+  "scripts": {
+    "storybook": "storybook dev -p 6008",
+    "storybook:build": "storybook build"
+  },
+  "dependencies": {
+    "@effect/atom-react": "4.0.0-rc.118",
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "@opentui/core": "0.5.11",
+    "@opentui/react": "0.5.11",
+    "@overeng/otel-contract": "workspace:^",
+    "@overeng/tui-react": "workspace:^",
+    "@overeng/utils": "workspace:^",
+    "@playwright/test": "1.63.0",
+    "@storybook/react": "10.6.0",
+    "@types/react": "19.2.18",
+    "@types/react-reconciler": "0.33.0",
+    "effect": "4.0.0-rc.118",
+    "jsonc-parser": "3.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-reconciler": "0.33.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "dependenciesMeta": {
+    "@overeng/tui-react": {
+      "injected": true
+    }
+  },
+  "devDependencies": {
+    "@effect/atom-react": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "@overeng/utils-dev": "workspace:^",
+    "@overeng/utils-storybook": "workspace:^",
+    "@storybook/react": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
+    "@types/bun": "1.4.2",
+    "@types/node": "26.5.0",
+    "@types/react": "19.2.18",
+    "@types/react-reconciler": "0.33.0",
+    "prettier": "3.9.6",
+    "storybook": "10.6.0",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/runtime/mod.d.ts",
+        "default": "./dist/src/runtime/mod.js"
+      },
+      "./node": {
+        "types": "./dist/src/runtime/node/mod.d.ts",
+        "default": "./dist/src/runtime/node/mod.js"
+      },
+      "./composition": {
+        "types": "./dist/src/runtime/composition/mod.d.ts",
+        "default": "./dist/src/runtime/composition/mod.js"
+      },
+      "./cli": {
+        "types": "./dist/src/build/mod.d.ts",
+        "default": "./dist/src/build/mod.js"
+      },
+      "./sdk": {
+        "types": "./dist/src/sdk/mod.d.ts",
+        "default": "./dist/src/sdk/mod.js"
+      }
+    }
+  }
+}

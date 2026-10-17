@@ -1,0 +1,279 @@
+import { utimesSync } from 'node:fs'
+import * as nodePath from 'node:path'
+
+import { Effect, FileSystem } from 'effect'
+import { expect } from 'vitest'
+
+import { Vitest } from '@overeng/utils-dev/node-vitest'
+
+import {
+  appendJsonlArtifact,
+  TestLayer,
+  expectSingleArtifact,
+  makeTempJsonlArtifact,
+  rewriteJsonlArtifact,
+  stringifyJson,
+} from './adapters.integration-test-helpers.ts'
+import { makeCodexAdapter } from './adapters/codex.ts'
+
+Vitest.describe('codex adapter integration', () => {
+  Vitest.it.effect('ingests Codex JSONL session records incrementally', () =>
+    Effect.gen(function* () {
+      const { root: sessionsRoot, artifactPath } = yield* makeTempJsonlArtifact({
+        rootDirectoryName: 'sessions',
+        relativeDirectory: '.',
+        filename: 'rollout.jsonl',
+        records: [
+          {
+            timestamp: '2026-03-10T10:00:00.000Z',
+            type: 'session_meta',
+            payload: {
+              id: 'sess_1',
+              timestamp: '2026-03-10T10:00:00.000Z',
+              cwd: '/tmp/repo',
+            },
+          },
+          {
+            timestamp: '2026-03-10T10:00:01.000Z',
+            type: 'response_item',
+            payload: {
+              type: 'function_call_output',
+              call_id: 'call_1',
+              output: 'done',
+            },
+          },
+        ],
+      })
+
+      const adapter = makeCodexAdapter({ sessionsRoot })
+      const artifact = yield* expectSingleArtifact(adapter)
+      const first = yield* adapter.ingestArtifact({ artifact, checkpoint: undefined })
+      expect(first.records).toHaveLength(2)
+
+      yield* appendJsonlArtifact({
+        path: artifactPath,
+        records: [
+          {
+            timestamp: '2026-03-10T10:00:02.000Z',
+            type: 'turn_context',
+            payload: {
+              cwd: '/tmp/repo',
+            },
+          },
+        ],
+      })
+
+      const second = yield* adapter.ingestArtifact({
+        artifact,
+        checkpoint: first.checkpoint,
+      })
+      expect(second.records).toHaveLength(1)
+      const record = second.records[0]
+      expect(record !== undefined && 'type' in record ? record.type : undefined).toBe(
+        'turn_context',
+      )
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+
+  Vitest.it.effect('filters stale Codex artifacts and seeds large first reads from the tail', () =>
+    Effect.gen(function* () {
+      const { root: sessionsRoot } = yield* makeTempJsonlArtifact({
+        rootDirectoryName: 'sessions',
+        relativeDirectory: '.',
+        filename: 'stale.jsonl',
+        records: [
+          {
+            timestamp: '2026-01-01T10:00:00.000Z',
+            type: 'response_item',
+            payload: {
+              type: 'function_call_output',
+              call_id: 'call_stale',
+              output: 'stale',
+            },
+          },
+        ],
+      })
+
+      const recentArtifactPath = nodePath.join(sessionsRoot, 'recent.jsonl')
+      yield* rewriteJsonlArtifact({
+        path: recentArtifactPath,
+        records: [
+          {
+            timestamp: '2026-03-10T10:00:00.000Z',
+            type: 'session_meta',
+            payload: {
+              id: 'sess_recent',
+              timestamp: '2026-03-10T10:00:00.000Z',
+              cwd: '/tmp/repo',
+            },
+          },
+          {
+            timestamp: '2026-03-10T10:00:01.000Z',
+            type: 'response_item',
+            payload: {
+              type: 'function_call_output',
+              call_id: 'call_recent',
+              output: 'recent',
+            },
+          },
+        ],
+      })
+
+      yield* Effect.sync(() => {
+        const staleTime = new Date('2026-01-01T10:00:00.000Z')
+        const recentTime = new Date('2026-03-10T10:00:00.000Z')
+        utimesSync(nodePath.join(sessionsRoot, 'stale.jsonl'), staleTime, staleTime)
+        utimesSync(recentArtifactPath, recentTime, recentTime)
+      })
+
+      const adapter = makeCodexAdapter({
+        sessionsRoot,
+        discoverySinceEpochMs: Date.parse('2026-03-01T00:00:00.000Z'),
+        initialReadMaxBytes: 180,
+      })
+
+      const artifacts = yield* adapter.discoverArtifacts
+      expect(artifacts).toHaveLength(1)
+      expect(artifacts[0]?.artifactId).toBe('recent')
+
+      const artifact = artifacts[0]
+      if (artifact === undefined) {
+        return yield* Effect.die('Expected recent Codex artifact to exist')
+      }
+
+      const ingested = yield* adapter.ingestArtifact({ artifact, checkpoint: undefined })
+      expect(ingested.records).toHaveLength(1)
+      const record = ingested.records[0]
+      expect(
+        record !== undefined && 'payload' in record ? record.payload : undefined,
+      ).toMatchObject({
+        type: 'function_call_output',
+        output: 'recent',
+      })
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+
+  Vitest.it.effect(
+    'skips incomplete trailing Codex JSONL records and keeps unique artifact ids',
+    () =>
+      Effect.gen(function* () {
+        const { root: sessionsRoot } = yield* makeTempJsonlArtifact({
+          rootDirectoryName: 'sessions',
+          relativeDirectory: '2026/03/10',
+          filename: 'shared.jsonl',
+          records: [
+            {
+              timestamp: '2026-03-10T10:00:00.000Z',
+              type: 'turn_context',
+              payload: { cwd: '/tmp/repo-a' },
+            },
+          ],
+        })
+
+        const nestedDirectory = nodePath.join(sessionsRoot, '2026', '03', '11')
+        const artifactPath = nodePath.join(nestedDirectory, 'shared.jsonl')
+        const fs = yield* FileSystem.FileSystem
+        yield* fs.makeDirectory(nestedDirectory, { recursive: true })
+        yield* fs.writeFileString(
+          artifactPath,
+          `${stringifyJson({
+            timestamp: '2026-03-11T10:00:00.000Z',
+            type: 'turn_context',
+            payload: { cwd: '/tmp/repo-b' },
+          })}\n{"timestamp":"2026-03-11T10:00:01.000Z","type":"response_item"`,
+        )
+
+        const adapter = makeCodexAdapter({ sessionsRoot })
+        const artifacts = yield* adapter.discoverArtifacts
+        expect(artifacts).toHaveLength(2)
+        expect(new Set(artifacts.map((artifact) => artifact.artifactId)).size).toBe(2)
+
+        const targetArtifact = artifacts.find((artifact) => artifact.path === artifactPath)
+        if (targetArtifact === undefined) {
+          return yield* Effect.die('Expected nested Codex artifact to exist')
+        }
+
+        const ingested = yield* adapter.ingestArtifact({
+          artifact: targetArtifact,
+          checkpoint: undefined,
+        })
+        expect(ingested.records).toHaveLength(1)
+        expect(ingested.records[0]).toMatchObject({
+          type: 'turn_context',
+        })
+      }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+})
+
+Vitest.describe('codex adapter wire baselines (cross-major invariant)', () => {
+  Vitest.it.effect('ingests representative Codex JSONL records as byte-identical JSON', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const sessionsRoot = yield* fs.makeTempDirectoryScoped()
+      const artifactPath = nodePath.join(sessionsRoot, '2026', '07', '28', 'rollout.jsonl')
+      yield* fs.makeDirectory(nodePath.dirname(artifactPath), { recursive: true })
+
+      const jsonl = [
+        '{"timestamp":"2026-07-28T08:00:00.000Z","type":"session_meta","payload":{"id":"sess_世界","timestamp":"2026-07-28T08:00:00.000Z","cwd":"/tmp/repo with spaces","originator":"","cli_version":"0.145.0","instructions":""}}',
+        '{"timestamp":"2026-07-28T08:00:01.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Line 1\\r\\nLine 2 résumé"},{"type":"input_image","detail":"high","file_id":"file_123"}]}}',
+        '{"timestamp":"2026-07-28T08:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"mcp__server__tool","arguments":"{\\"empty\\":\\"\\",\\"nullable\\":null,\\"unicode\\":\\"東京\\",\\"nan\\":\\"NaN\\",\\"impossibleDate\\":\\"2026-02-31\\"}","call_id":"call_1"}}',
+        '{"timestamp":"2026-07-28T08:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":9007199254740991},"last_token_usage":null,"model_context_window":200000}}}',
+        '{"timestamp":"2026-07-28T08:00:04.000Z","type":"turn_context","payload":{"cwd":"/tmp/repo","approval_policy":"never","sandbox_policy":{"mode":"danger-full-access"},"model":"codex-baseline","effort":""}}',
+        '',
+      ].join('\n')
+      yield* fs.writeFileString(artifactPath, jsonl)
+
+      const adapter = makeCodexAdapter({ sessionsRoot })
+      const artifact = yield* expectSingleArtifact(adapter)
+      const ingested = yield* adapter.ingestArtifact({ artifact, checkpoint: undefined })
+
+      expect(jsonl).toMatchInlineSnapshot(`
+        "{"timestamp":"2026-07-28T08:00:00.000Z","type":"session_meta","payload":{"id":"sess_世界","timestamp":"2026-07-28T08:00:00.000Z","cwd":"/tmp/repo with spaces","originator":"","cli_version":"0.145.0","instructions":""}}
+        {"timestamp":"2026-07-28T08:00:01.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Line 1\\r\\nLine 2 résumé"},{"type":"input_image","detail":"high","file_id":"file_123"}]}}
+        {"timestamp":"2026-07-28T08:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"mcp__server__tool","arguments":"{\\"empty\\":\\"\\",\\"nullable\\":null,\\"unicode\\":\\"東京\\",\\"nan\\":\\"NaN\\",\\"impossibleDate\\":\\"2026-02-31\\"}","call_id":"call_1"}}
+        {"timestamp":"2026-07-28T08:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":9007199254740991},"last_token_usage":null,"model_context_window":200000}}}
+        {"timestamp":"2026-07-28T08:00:04.000Z","type":"turn_context","payload":{"cwd":"/tmp/repo","approval_policy":"never","sandbox_policy":{"mode":"danger-full-access"},"model":"codex-baseline","effort":""}}
+        "
+      `)
+      expect(stringifyJson(ingested.records)).toMatchInlineSnapshot(
+        `"[{"timestamp":"2026-07-28T08:00:00.000Z","type":"session_meta","payload":{"id":"sess_世界","timestamp":"2026-07-28T08:00:00.000Z","cwd":"/tmp/repo with spaces","originator":"","cli_version":"0.145.0","instructions":""}},{"timestamp":"2026-07-28T08:00:01.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Line 1\\r\\nLine 2 résumé"},{"type":"input_image","file_id":"file_123","detail":"high"}]}},{"timestamp":"2026-07-28T08:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"mcp__server__tool","arguments":"{\\"empty\\":\\"\\",\\"nullable\\":null,\\"unicode\\":\\"東京\\",\\"nan\\":\\"NaN\\",\\"impossibleDate\\":\\"2026-02-31\\"}","call_id":"call_1"}},{"timestamp":"2026-07-28T08:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":9007199254740991},"last_token_usage":null,"model_context_window":200000}}},{"timestamp":"2026-07-28T08:00:04.000Z","type":"turn_context","payload":{"cwd":"/tmp/repo","approval_policy":"never","sandbox_policy":{"mode":"danger-full-access"},"model":"codex-baseline","effort":""}}]"`,
+      )
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+
+  Vitest.it.effect('captures the Codex JSONL decode failure partition as stable JSON', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const sessionsRoot = yield* fs.makeTempDirectoryScoped()
+      const artifactPath = nodePath.join(sessionsRoot, 'bad.jsonl')
+      yield* fs.writeFileString(
+        artifactPath,
+        '{"timestamp":null,"type":"response_item","payload":{"type":"function_call","name":"tool","arguments":"{}","call_id":"call_bad"}}\n',
+      )
+
+      const adapter = makeCodexAdapter({ sessionsRoot })
+      const artifact = yield* expectSingleArtifact(adapter)
+      const result = yield* adapter
+        .ingestArtifact({ artifact, checkpoint: undefined })
+        .pipe(Effect.result)
+
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') {
+        expect(result.failure._tag).toBe('SessionArtifactDecodeError')
+      }
+      if (result._tag === 'Failure' && result.failure._tag === 'SessionArtifactDecodeError') {
+        expect(
+          stringifyJson({
+            _tag: result.failure._tag,
+            message: result.failure.message,
+            sourceId: result.failure.sourceId,
+            artifactId: result.failure.artifactId,
+            rawRecord: result.failure.rawRecord,
+          }),
+        ).toMatchInlineSnapshot(
+          `"{"_tag":"SessionArtifactDecodeError","message":"Failed to decode Codex session record","sourceId":"codex","artifactId":"bad","rawRecord":"{\\"timestamp\\":null,\\"type\\":\\"response_item\\",\\"payload\\":{\\"type\\":\\"function_call\\",\\"name\\":\\"tool\\",\\"arguments\\":\\"{}\\",\\"call_id\\":\\"call_bad\\"}}"}"`,
+        )
+      }
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+})

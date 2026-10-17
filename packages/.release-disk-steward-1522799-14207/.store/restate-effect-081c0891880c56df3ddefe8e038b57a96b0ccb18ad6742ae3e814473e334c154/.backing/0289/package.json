@@ -1,0 +1,123 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/restate-effect",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev"
+    ]
+  },
+  "name": "@overeng/restate-effect",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./admin": {
+      "types": "./dist/src/admin/admin.d.ts",
+      "default": "./src/admin/admin.ts"
+    },
+    "./otel": {
+      "types": "./dist/src/observability/otel.d.ts",
+      "default": "./src/observability/otel.ts"
+    },
+    "./testing": {
+      "types": "./dist/src/testing/testing.d.ts",
+      "default": "./src/testing/testing.ts"
+    }
+  },
+  "dependencies": {
+    "@overeng/otel-contract": "workspace:^",
+    "@overeng/utils": "workspace:^",
+    "@restatedev/restate-sdk": "1.17.0",
+    "@restatedev/restate-sdk-clients": "1.17.0"
+  },
+  "devDependencies": {
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/vitest": "4.0.0-rc.118",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/resources": "2.11.0",
+    "@opentelemetry/sdk-logs": "0.222.0",
+    "@opentelemetry/sdk-metrics": "2.11.0",
+    "@opentelemetry/sdk-trace-base": "2.11.0",
+    "@opentelemetry/sdk-trace-node": "2.11.0",
+    "@opentelemetry/sdk-trace-web": "2.11.0",
+    "@opentelemetry/semantic-conventions": "1.43.0",
+    "@overeng/utils-dev": "workspace:^",
+    "@playwright/test": "1.63.0",
+    "@restatedev/restate-sdk-opentelemetry": "1.17.0",
+    "@storybook/react-vite": "10.6.0",
+    "@types/node": "26.5.0",
+    "@vitest/browser-playwright": "5.0.3",
+    "effect": "4.0.0-rc.118",
+    "storybook": "10.6.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "@effect/opentelemetry": "4.0.0-rc.118",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/resources": "^2.11.0",
+    "@opentelemetry/sdk-metrics": "^2.11.0",
+    "@opentelemetry/sdk-trace-base": "^2.11.0",
+    "@opentelemetry/sdk-trace-node": "^2.11.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "@restatedev/restate-sdk-opentelemetry": "^1.17.0",
+    "effect": "4.0.0-rc.118"
+  },
+  "peerDependenciesMeta": {
+    "@effect/opentelemetry": {
+      "optional": true
+    },
+    "@opentelemetry/api": {
+      "optional": true
+    },
+    "@opentelemetry/resources": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-metrics": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-trace-base": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-trace-node": {
+      "optional": true
+    },
+    "@opentelemetry/semantic-conventions": {
+      "optional": true
+    },
+    "@restatedev/restate-sdk-opentelemetry": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./admin": {
+        "types": "./dist/src/admin/admin.d.ts",
+        "default": "./dist/src/admin/admin.js"
+      },
+      "./otel": {
+        "types": "./dist/src/observability/otel.d.ts",
+        "default": "./dist/src/observability/otel.js"
+      },
+      "./testing": {
+        "types": "./dist/src/testing/testing.d.ts",
+        "default": "./dist/src/testing/testing.js"
+      }
+    }
+  }
+}

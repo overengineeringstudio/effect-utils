@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/otel-contract",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/otel-contract:editor_inputs",
+  "editorInputsFingerprint": "957f92ca1f12a180e6dea295926076eab0a1a2a427b45122ee2483d65f4ff8e2",
+  "snapshot": ".store/otel-contract-7ce1087188b48a4974c1497994fdfdbde4dbf4a64627d56a09192af5828f2e5f",
+  "normalizedStoreDigest": "d70bccf4090840354ee37f8ea272dd2b85fcb1aca800df89a0ac296d84bd46d7",
+  "selectedViewDigest": "957f92ca1f12a180e6dea295926076eab0a1a2a427b45122ee2483d65f4ff8e2",
+  "byteSnapshotDigest": "97669d9f9cbbc1f5e0a8592bd152984e033c121c365d415ddaf139769d1835a7"
+}

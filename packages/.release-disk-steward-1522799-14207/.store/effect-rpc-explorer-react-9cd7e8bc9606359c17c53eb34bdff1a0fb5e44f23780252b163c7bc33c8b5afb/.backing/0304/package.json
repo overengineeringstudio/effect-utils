@@ -1,0 +1,38 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/stylex-tokens"
+    ]
+  },
+  "name": "@overeng/stylex-tokens",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Shared StyleX design-token scales and reset stylesheet (browser-only)",
+  "exports": {
+    "./preflight.css": "./src/preflight.css",
+    "./tokens.stylex": {
+      "types": "./dist/src/tokens.stylex.d.ts",
+      "default": "./src/tokens.stylex.ts"
+    }
+  },
+  "devDependencies": {
+    "@stylexjs/stylex": "0.19.0",
+    "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "@stylexjs/stylex": "^0.19.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./tokens.stylex": {
+        "types": "./dist/src/tokens.stylex.d.ts",
+        "default": "./dist/src/tokens.stylex.js"
+      },
+      "./preflight.css": "./src/preflight.css"
+    }
+  }
+}

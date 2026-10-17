@@ -1,0 +1,72 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-react",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev",
+      "packages/@overeng/utils-storybook"
+    ]
+  },
+  "name": "@overeng/effect-react",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./react-aria": {
+      "types": "./dist/src/react-aria/mod.d.ts",
+      "default": "./src/react-aria/mod.ts"
+    }
+  },
+  "scripts": {
+    "storybook": "storybook dev -p 6009",
+    "storybook:build": "storybook build"
+  },
+  "dependencies": {
+    "@overeng/otel-contract": "workspace:^"
+  },
+  "devDependencies": {
+    "@overeng/utils-storybook": "workspace:^",
+    "@storybook/react": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
+    "@types/node": "26.5.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "effect": "4.0.0-rc.118",
+    "react": "19.2.8",
+    "react-aria-components": "1.21.1",
+    "react-dom": "19.2.8",
+    "storybook": "10.6.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-rc.118",
+    "react": "^19.2.8",
+    "react-aria-components": "^1.21.1",
+    "react-dom": "^19.2.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./react-aria": {
+        "types": "./dist/src/react-aria/mod.d.ts",
+        "default": "./dist/src/react-aria/mod.js"
+      }
+    }
+  }
+}

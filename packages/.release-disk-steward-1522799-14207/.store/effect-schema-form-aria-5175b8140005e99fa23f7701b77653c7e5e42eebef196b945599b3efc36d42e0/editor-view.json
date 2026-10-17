@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/effect-schema-form-aria",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/effect-schema-form-aria:editor_inputs",
+  "editorInputsFingerprint": "a3324761d750da3fc2b21ab6d519ef570547f6267eb55bd0518f3cd7e998a0b5",
+  "snapshot": ".store/effect-schema-form-aria-5175b8140005e99fa23f7701b77653c7e5e42eebef196b945599b3efc36d42e0",
+  "normalizedStoreDigest": "39d520abb84dcf0eef2ea5b7f75124c8613e49c674d32d641ec5879d171c3fe7",
+  "selectedViewDigest": "a3324761d750da3fc2b21ab6d519ef570547f6267eb55bd0518f3cd7e998a0b5",
+  "byteSnapshotDigest": "6bc93aff74bcb42c6d1a914176851d1b434df681c625311c9e993aa8af4b1c21"
+}

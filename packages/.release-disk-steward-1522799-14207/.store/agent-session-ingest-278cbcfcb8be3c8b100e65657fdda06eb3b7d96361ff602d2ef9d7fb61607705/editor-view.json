@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/agent-session-ingest",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/agent-session-ingest:editor_inputs",
+  "editorInputsFingerprint": "4bf198ef1fc71eed5d4765a64e75ae7aa14b260fbfa908a9c98b995e6ed2cfce",
+  "snapshot": ".store/agent-session-ingest-278cbcfcb8be3c8b100e65657fdda06eb3b7d96361ff602d2ef9d7fb61607705",
+  "normalizedStoreDigest": "f370541b37de342168b424b36f74c8e5adfaa38e8f772de035ea6ff83787cd0e",
+  "selectedViewDigest": "4bf198ef1fc71eed5d4765a64e75ae7aa14b260fbfa908a9c98b995e6ed2cfce",
+  "byteSnapshotDigest": "5ef5f2236b63c60c931563873c8dcdd4656ec31fbdff6df8bdb68f2082c4f7e6"
+}

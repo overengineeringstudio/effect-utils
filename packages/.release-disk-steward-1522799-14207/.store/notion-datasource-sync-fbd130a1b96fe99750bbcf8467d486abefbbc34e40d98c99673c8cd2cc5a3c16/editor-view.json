@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/notion-datasource-sync",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/notion-datasource-sync:editor_inputs",
+  "editorInputsFingerprint": "adbdf5901f374615ba91df3d322e77825ae00e7c79c1e3e7bd48e084b234d220",
+  "snapshot": ".store/notion-datasource-sync-fbd130a1b96fe99750bbcf8467d486abefbbc34e40d98c99673c8cd2cc5a3c16",
+  "normalizedStoreDigest": "ed4abb1c8fd0ba506badfd2e8919607b9bd45174eb25f8940793370e2a4a0300",
+  "selectedViewDigest": "adbdf5901f374615ba91df3d322e77825ae00e7c79c1e3e7bd48e084b234d220",
+  "byteSnapshotDigest": "127dd8a09b152f89e7b839ae2a8f0a58378c3acecb8f92376f5ecd28b9d7ab54"
+}

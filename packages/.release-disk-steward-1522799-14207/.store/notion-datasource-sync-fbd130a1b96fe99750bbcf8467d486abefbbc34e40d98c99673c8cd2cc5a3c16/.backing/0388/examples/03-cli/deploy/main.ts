@@ -1,0 +1,112 @@
+/**
+ * Deploy CLI - Full Example with Effect CLI
+ *
+ * Demonstrates:
+ * - Effect CLI for argument parsing and signal handling
+ * - `--output` modes plus the `--json` shorthand
+ * - createTuiApp for state management
+ * - Multiple output modes (tty, ci, pipe, json, ndjson, etc.)
+ * - Graceful Ctrl+C handling with Interrupted state
+ *
+ * Run:
+ *   bun examples/03-cli/deploy/main.ts --services api,web
+ *   bun examples/03-cli/deploy/main.ts --services api,web --output json
+ *   bun examples/03-cli/deploy/main.ts --services api,web --output ndjson
+ *   bun examples/03-cli/deploy/main.ts --services api,web --dry-run
+ *   bun examples/03-cli/deploy/main.ts --help
+ */
+
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
+import { Effect } from 'effect'
+import { Command, Flag as Options } from 'effect/cli'
+
+import { outputOption, outputModeLayer, resolveOutputOption } from '../../../src/node/mod.ts'
+import { DeployError, runDeploy } from './deploy.tsx'
+
+// =============================================================================
+// Command Options
+// =============================================================================
+
+const services = Options.String('services').pipe(
+  Options.withAlias('s'),
+  Options.withDescription('Comma-separated list of services to deploy'),
+)
+
+const env = Options.String('env').pipe(
+  Options.withAlias('e'),
+  Options.withDefault('production'),
+  Options.withDescription('Environment to deploy to'),
+)
+
+const dryRun = Options.Boolean('dry-run').pipe(
+  Options.withDefault(false),
+  Options.withDescription('Validate without deploying'),
+)
+
+const timeout = Options.Int('timeout').pipe(
+  Options.withAlias('t'),
+  Options.withDefault(30000),
+  Options.withDescription('Deployment timeout in milliseconds'),
+)
+
+const force = Options.Boolean('force').pipe(
+  Options.withAlias('f'),
+  Options.withDefault(false),
+  Options.withDescription('Force deployment even with warnings'),
+)
+
+// =============================================================================
+// Command Definition
+// =============================================================================
+
+const deploy = Command.make(
+  'deploy',
+  {
+    services,
+    env,
+    dryRun,
+    timeout,
+    force,
+    output: outputOption,
+  },
+  ({
+    services: servicesArg,
+    env: envArg,
+    dryRun: dryRunArg,
+    timeout: timeoutArg,
+    force: forceArg,
+    output,
+  }) =>
+    Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
+      return yield* runDeploy({
+        services: servicesArg
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        environment: envArg,
+        dryRun: dryRunArg,
+        timeout: timeoutArg,
+        force: forceArg,
+      }).pipe(
+        Effect.provide(outputModeLayer(outputMode)),
+        Effect.scoped,
+        // Exit with appropriate code based on result
+        Effect.filterOrFail(
+          (result) => result.success !== false,
+          (result) => new DeployError({ message: result.error ?? 'Deployment failed' }),
+        ),
+      )
+    }),
+)
+
+// =============================================================================
+// CLI Runner
+// =============================================================================
+
+const cli = Command.runWith(deploy, {
+  version: '1.0.0',
+})
+
+// Run with Effect CLI (handles SIGINT/SIGTERM properly)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

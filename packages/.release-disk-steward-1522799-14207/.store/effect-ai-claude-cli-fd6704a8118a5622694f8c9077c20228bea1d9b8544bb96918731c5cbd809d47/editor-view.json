@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/effect-ai-claude-cli",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/effect-ai-claude-cli:editor_inputs",
+  "editorInputsFingerprint": "89e2f6d8040885b3184c5dc458061a4cb0e88e8e4d165a4e8757f15033e83579",
+  "snapshot": ".store/effect-ai-claude-cli-fd6704a8118a5622694f8c9077c20228bea1d9b8544bb96918731c5cbd809d47",
+  "normalizedStoreDigest": "c1ff225f5e26f1abb2a9c421540660d03c712e28e78aef8ddf0fceed4043bfa5",
+  "selectedViewDigest": "89e2f6d8040885b3184c5dc458061a4cb0e88e8e4d165a4e8757f15033e83579",
+  "byteSnapshotDigest": "6ad5ddd1d8e7cd48e214aa5996684c8ceae16f38b2c1c43d67d9c8024860da44"
+}

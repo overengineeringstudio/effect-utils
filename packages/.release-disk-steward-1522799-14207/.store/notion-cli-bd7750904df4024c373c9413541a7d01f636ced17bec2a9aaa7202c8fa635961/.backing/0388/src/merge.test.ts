@@ -1,0 +1,164 @@
+import { describe, expect, it } from '@effect/vitest'
+import { Schema } from 'effect'
+
+import { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
+import { normalizeMarkdownLineEndings } from './hash.ts'
+import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
+
+const applyMarkdownUpdate = (opts: {
+  readonly baseBody: string
+  readonly remoteBody: string
+  readonly desiredBody: string
+}): string => {
+  const command = planMarkdownUpdate({
+    baseBody: opts.baseBody,
+    remoteBody: opts.remoteBody,
+    desiredBody: opts.desiredBody,
+  })
+  if (command._tag === 'replace_content') return normalizeMarkdownLineEndings(command.markdown)
+
+  return normalizeMarkdownLineEndings(
+    command.contentUpdates.reduce(
+      (body, update) =>
+        update.replaceAllMatches === true
+          ? body.replaceAll(update.oldStr, update.newStr)
+          : body.replace(update.oldStr, update.newStr),
+      normalizeMarkdownLineEndings(opts.remoteBody),
+    ),
+  )
+}
+
+describe('notion-md merge planning', () => {
+  it('merges non-overlapping local and remote body edits', () => {
+    const merged = tryMergeMarkdownBodies({
+      baseBody: '# Probe\n\nLine A\nLine B',
+      localBody: '# Probe\n\nLocal line A\nLine B',
+      remoteBody: '# Probe\n\nLine A\nRemote line B',
+    })
+
+    expect(merged).toBe('# Probe\n\nLocal line A\nRemote line B\n')
+  })
+
+  it('preserves identical overlapping edits and rejects conflicting overlaps', () => {
+    expect(
+      tryMergeMarkdownBodies({
+        baseBody: '# Probe\n\nBody',
+        localBody: '# Probe\n\nSame body',
+        remoteBody: '# Probe\n\nSame body',
+      }),
+    ).toBe('# Probe\n\nSame body\n')
+
+    expect(
+      tryMergeMarkdownBodies({
+        baseBody: '# Probe\n\nBody',
+        localBody: '# Probe\n\nLocal body',
+        remoteBody: '# Probe\n\nRemote body',
+      }),
+    ).toBeUndefined()
+  })
+
+  it('uses targeted updates only when the base hunk is unique in remote content', () => {
+    expect(
+      planMarkdownUpdate({
+        baseBody: '# Probe\n\nBody',
+        remoteBody: '# Probe\n\nBody',
+        desiredBody: '# Probe\n\nLocal body',
+      }),
+    ).toEqual({
+      _tag: 'update_content',
+      contentUpdates: [{ oldStr: 'B', newStr: 'Local b' }],
+      expectedMarkdown: '# Probe\n\nLocal body\n',
+    })
+
+    expect(
+      planMarkdownUpdate({
+        baseBody: '# Probe\n\nRepeat\nRepeat',
+        remoteBody: '# Probe\n\nRepeat\nRepeat',
+        desiredBody: '# Probe\n\nRepeat\nChanged repeat',
+      }),
+    ).toEqual({
+      _tag: 'replace_content',
+      markdown: '# Probe\n\nRepeat\nChanged repeat\n',
+    })
+  })
+
+  it('falls back to replace_content when a remote change invalidates the intended patch', () => {
+    expect(
+      planMarkdownUpdate({
+        baseBody: '# Probe\n\nLine A\nLine B',
+        remoteBody: '# Probe\n\nRemote line A\nLine B',
+        desiredBody: '# Probe\n\nLocal line A\nLine B',
+      }),
+    ).toEqual({
+      _tag: 'replace_content',
+      markdown: '# Probe\n\nLocal line A\nLine B\n',
+    })
+  })
+
+  it('plans an update over a canonical base/remote and reconstructs the desired body', () => {
+    // Post-consolidation, base and remote come from pull → they are already the
+    // canonical (tight-list) form. The user's desired buffer is raw. The plan's
+    // `oldStr`/`newStr` are deliberately raw substrings Notion matches verbatim,
+    // so `desired` is NOT canonicalized — applying the plan to the canonical
+    // remote must reconstruct exactly the desired body (decision 0019, §3.3).
+    const base = canonicalizeBlockMarkdown('# Notes\n\n- alpha\n\n- beta\n')
+    const remote = base
+    expect(base).toBe('# Notes\n\n- alpha\n- beta\n') // canonical: tight list
+    const desired = '# Notes\n\n- alpha\n- gamma\n'
+
+    const command = planMarkdownUpdate({ baseBody: base, remoteBody: remote, desiredBody: desired })
+    expect(command).toEqual({
+      _tag: 'update_content',
+      contentUpdates: [{ oldStr: 'bet', newStr: 'gamm' }],
+      expectedMarkdown: '# Notes\n\n- alpha\n- gamma\n',
+    })
+    expect(applyMarkdownUpdate({ baseBody: base, remoteBody: remote, desiredBody: desired })).toBe(
+      normalizeMarkdownLineEndings(desired),
+    )
+  })
+
+  it.prop(
+    'keeps local body when remote equals the base snapshot',
+    [Schema.String.check(Schema.isMaxLength(80)), Schema.String.check(Schema.isMaxLength(80))],
+    ([baseBody, localBody]) => {
+      expect(
+        tryMergeMarkdownBodies({
+          baseBody,
+          localBody,
+          remoteBody: baseBody,
+        }),
+      ).toBe(normalizeMarkdownLineEndings(localBody))
+    },
+    { arbitrary: { runs: 80 } },
+  )
+
+  it.prop(
+    'keeps remote body when local equals the base snapshot',
+    [Schema.String.check(Schema.isMaxLength(80)), Schema.String.check(Schema.isMaxLength(80))],
+    ([baseBody, remoteBody]) => {
+      expect(
+        tryMergeMarkdownBodies({
+          baseBody,
+          localBody: baseBody,
+          remoteBody,
+        }),
+      ).toBe(normalizeMarkdownLineEndings(remoteBody))
+    },
+    { arbitrary: { runs: 80 } },
+  )
+
+  it.prop(
+    'plans Markdown updates that transform the current remote body into the desired body',
+    [
+      Schema.String.check(Schema.isMaxLength(80)),
+      Schema.String.check(Schema.isMaxLength(80)),
+      Schema.String.check(Schema.isMaxLength(80)),
+    ],
+    ([baseBody, remoteBody, desiredBody]) => {
+      expect(applyMarkdownUpdate({ baseBody, remoteBody, desiredBody })).toBe(
+        normalizeMarkdownLineEndings(desiredBody),
+      )
+    },
+    { arbitrary: { runs: 80 } },
+  )
+})

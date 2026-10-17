@@ -1,0 +1,287 @@
+/**
+ * StatusOutput Schema
+ *
+ * Effect Schema definitions for the status command output.
+ * Designed for static output - no progressive updates needed.
+ */
+
+import { Schema } from 'effect'
+
+import { RefMismatch } from '../../../core/issues.ts'
+
+// =============================================================================
+// Git Status
+// =============================================================================
+
+/** Schema for a member's git working tree status (dirty, unpushed, branch info). */
+export const GitStatus = Schema.Struct({
+  isDirty: Schema.Boolean,
+  changesCount: Schema.Finite,
+  hasUnpushed: Schema.Boolean,
+  branch: Schema.optional(Schema.String),
+  shortRev: Schema.optional(Schema.String),
+})
+
+/** Inferred type for git working tree status. */
+export type GitStatus = Schema.Schema.Type<typeof GitStatus>
+
+// =============================================================================
+// Stale Lock
+// =============================================================================
+
+/**
+ * Schema for detecting when the lock file ref doesn't match the current state.
+ *
+ * This happens when:
+ * - User was working on a branch (lock tracked it)
+ * - User switched back to main (via git checkout or mr config pin)
+ * - Lock wasn't updated
+ *
+ * The current state (symlink + git HEAD) matches the source intent,
+ * but the lock is outdated.
+ */
+export const StaleLock = Schema.Struct({
+  /** The ref recorded in the lock file (stale) */
+  lockRef: Schema.String,
+  /** The ref from source/symlink/git HEAD (current actual state) */
+  actualRef: Schema.String,
+})
+
+/** Inferred type for stale lock information. */
+export type StaleLock = Schema.Schema.Type<typeof StaleLock>
+
+// =============================================================================
+// Symlink Drift
+// =============================================================================
+
+/**
+ * Schema for detecting true symlink drift: symlink follows lock but lock differs from source.
+ *
+ * This happens when:
+ * - Lock was updated to track a branch (e.g., feat/x)
+ * - Symlink points to that branch's worktree
+ * - But megarepo.json says to track a different ref (e.g., main)
+ *
+ * The lock and symlink are in sync, but they don't match the config intent.
+ */
+export const SymlinkDrift = Schema.Struct({
+  /** The ref the symlink path corresponds to (matches lock) */
+  symlinkRef: Schema.String,
+  /** The ref from megarepo.json (the intended ref) */
+  sourceRef: Schema.String,
+  /** The actual git branch inside the worktree */
+  actualGitBranch: Schema.optional(Schema.String),
+})
+
+/** Inferred type for symlink drift information. */
+export type SymlinkDrift = Schema.Schema.Type<typeof SymlinkDrift>
+
+// =============================================================================
+// Commit Drift
+// =============================================================================
+
+/** Schema for detecting when a local worktree commit differs from the locked commit. */
+export const CommitDrift = Schema.Struct({
+  /** The commit SHA in the local worktree */
+  localCommit: Schema.String,
+  /** The commit SHA recorded in the lock file */
+  lockedCommit: Schema.String,
+})
+
+/** Inferred type for commit drift information. */
+export type CommitDrift = Schema.Schema.Type<typeof CommitDrift>
+
+// =============================================================================
+// Lock Info
+// =============================================================================
+
+/** Schema for lock file entry info (ref, commit, and whether pinned). */
+export const LockInfo = Schema.Struct({
+  ref: Schema.String,
+  commit: Schema.String,
+  pinned: Schema.Boolean,
+})
+
+/** Inferred type for lock file entry info. */
+export type LockInfo = Schema.Schema.Type<typeof LockInfo>
+
+// =============================================================================
+// Member Status (recursive)
+// =============================================================================
+
+/** Recursive interface representing a member's full status including git, symlink, and nested members. */
+export interface MemberStatus {
+  name: string
+  /** Whether the worktree exists in ~/.megarepo (for remote members) */
+  exists: boolean
+  /** Whether the symlink exists in repos/<name> */
+  symlinkExists: boolean
+  source: string
+  isLocal: boolean
+  lockInfo?: LockInfo | undefined
+  isMegarepo: boolean
+  nestedMembers?: readonly MemberStatus[] | undefined
+  gitStatus?: GitStatus | undefined
+  /**
+   * Present when lock ref doesn't match current state, but current state matches source intent.
+   * Fix: run `mr lock` to update lock.
+   */
+  staleLock?: StaleLock | undefined
+  /**
+   * Present when symlink/lock ref differs from source ref.
+   * Fix: edit megarepo.json or run `mr apply`.
+   */
+  symlinkDrift?: SymlinkDrift | undefined
+  /** Present when local worktree commit differs from locked commit */
+  commitDrift?: CommitDrift | undefined
+  /**
+   * Present when worktree git HEAD differs from store path ref (Issue #88).
+   * This happens when a user runs `git checkout <branch>` directly in the worktree.
+   */
+  refMismatch?: RefMismatch | undefined
+}
+
+/** Recursive schema for member status, using `Schema.suspend` to support nested megarepo trees. */
+export const MemberStatus: Schema.Codec<MemberStatus, MemberStatus> = Schema.suspend(() =>
+  Schema.Struct({
+    name: Schema.String,
+    /** Whether the worktree exists in ~/.megarepo (for remote members) */
+    exists: Schema.Boolean,
+    /** Whether the symlink exists in repos/<name> */
+    symlinkExists: Schema.Boolean,
+    source: Schema.String,
+    isLocal: Schema.Boolean,
+    lockInfo: Schema.optional(LockInfo),
+    isMegarepo: Schema.Boolean,
+    nestedMembers: Schema.optional(Schema.Array(MemberStatus)),
+    gitStatus: Schema.optional(GitStatus),
+    /**
+     * Present when lock ref doesn't match current state, but current state matches source intent.
+     * Fix: run `mr lock` to update lock.
+     */
+    staleLock: Schema.optional(StaleLock),
+    /**
+     * Present when symlink/lock ref differs from source ref.
+     * Fix: edit megarepo.json or run `mr apply`.
+     */
+    symlinkDrift: Schema.optional(SymlinkDrift),
+    /** Present when local worktree commit differs from locked commit */
+    commitDrift: Schema.optional(CommitDrift),
+    /**
+     * Present when worktree git HEAD differs from store path ref (Issue #88).
+     * This happens when a user runs `git checkout <branch>` directly in the worktree.
+     */
+    refMismatch: Schema.optional(RefMismatch),
+  }),
+)
+
+// =============================================================================
+// Lock Staleness
+// =============================================================================
+
+/** Schema for lock file staleness info (missing or extra entries compared to config). */
+export const LockStaleness = Schema.Struct({
+  exists: Schema.Boolean,
+  missingFromLock: Schema.Array(Schema.String),
+  extraInLock: Schema.Array(Schema.String),
+})
+
+/** Inferred type for lock file staleness info. */
+export type LockStaleness = Schema.Schema.Type<typeof LockStaleness>
+
+// =============================================================================
+// Status State
+// =============================================================================
+
+/**
+ * State for status command.
+ *
+ * This is static output - all data is computed upfront.
+ *
+ * JSON output structure:
+ * ```json
+ * {
+ *   "name": "my-workspace",
+ *   "root": "/path/to/workspace",
+ *   "syncNeeded": true,
+ *   "syncReasons": ["Member 'foo' symlink missing", "Lock file stale"],
+ *   "members": [...],
+ *   "all": false,
+ *   "lastSyncTime": "2024-01-30T12:00:00Z",
+ *   "lockStaleness": { ... },
+ *   "currentMemberPath": ["member1", "nested-member"]
+ * }
+ * ```
+ */
+export const StatusState = Schema.Struct({
+  /** Workspace name */
+  name: Schema.String,
+
+  /** Workspace root path */
+  root: Schema.String,
+
+  /** Quick boolean: does the workspace need a sync? */
+  syncNeeded: Schema.Boolean,
+
+  /** Whether workspace needs mr apply to match the lock */
+  applyNeeded: Schema.Boolean,
+
+  /** Whether megarepo.lock needs mr lock to match the workspace */
+  lockNeeded: Schema.Boolean,
+
+  /** Human-readable reasons why sync is needed (empty if syncNeeded=false) */
+  syncReasons: Schema.Array(Schema.String),
+
+  /** All member statuses (recursive tree when --all is used) */
+  members: Schema.Array(MemberStatus),
+
+  /** Whether --all was used (shows nested megarepos recursively) */
+  all: Schema.Boolean,
+
+  /** Last sync timestamp (ISO string for JSON compat) */
+  lastSyncTime: Schema.optional(Schema.String),
+
+  /** Lock file staleness info */
+  lockStaleness: Schema.optional(LockStaleness),
+
+  /** Path to current member (for highlighting) */
+  currentMemberPath: Schema.optional(Schema.Array(Schema.String)),
+})
+
+/** Inferred type for the full status command state. */
+export type StatusState = Schema.Schema.Type<typeof StatusState>
+
+// =============================================================================
+// Status Actions
+// =============================================================================
+
+/**
+ * Actions for status output.
+ *
+ * Status is static output, so we only need SetState to populate the final result.
+ */
+export const StatusAction = Schema.Union([
+  /** Replace entire state */
+  Schema.TaggedStruct('SetState', { state: StatusState }),
+])
+
+/** Inferred type for status actions. */
+export type StatusAction = Schema.Schema.Type<typeof StatusAction>
+
+// =============================================================================
+// Reducer
+// =============================================================================
+
+/** Reduces status actions into state by replacing with the provided state snapshot. */
+export const statusReducer = ({
+  state: _state,
+  action,
+}: {
+  state: StatusState
+  action: StatusAction
+}): StatusState => {
+  switch (action._tag) {
+    case 'SetState':
+      return action.state
+  }
+}

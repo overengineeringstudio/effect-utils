@@ -1,0 +1,11 @@
+{
+  "schema": "effect-utils/editor-view/v2",
+  "package": "packages/@overeng/pty-effect",
+  "cell": "effect_utils",
+  "target": "//packages/@overeng/pty-effect:editor_inputs",
+  "editorInputsFingerprint": "0c3abf9d979bf12c5d74764aa73c100ea3c2e3438c212c019b40a8635a522e96",
+  "snapshot": ".store/pty-effect-36000419ddd571efdfcb42bceddf8a527b3355c6c5ba2c37b00b62412ee9c680",
+  "normalizedStoreDigest": "01aecb7a519c984e21b0aa2939c00c5245779abd15059cd846d6f5c61171953f",
+  "selectedViewDigest": "0c3abf9d979bf12c5d74764aa73c100ea3c2e3438c212c019b40a8635a522e96",
+  "byteSnapshotDigest": "025ce8736ab646b9463baf78b2ff6d61919c9bb00bdb5df879357a2ee3cf9e6f"
+}

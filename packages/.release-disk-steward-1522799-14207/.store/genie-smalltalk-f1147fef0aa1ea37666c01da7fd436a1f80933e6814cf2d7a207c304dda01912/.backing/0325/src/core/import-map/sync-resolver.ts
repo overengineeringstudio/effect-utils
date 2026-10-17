@@ -1,0 +1,457 @@
+/**
+ * Bootstrap-safe synchronous import-map / megarepo-member resolution.
+ *
+ * These resolvers use ONLY `node:fs` and `node:path` — no `effect`, no `@effect/platform`, and no
+ * observability — so they are importable during genie bootstrap (before install), unlike the
+ * Effect-based resolvers in `./mod.ts` which pull the runtime dependency graph. `mod.ts` re-exports
+ * the public sync API from here for backward compatibility.
+ */
+
+import fs from 'node:fs'
+import * as path from 'node:path'
+
+/** Parsed import map from package.json#imports */
+export type ImportMap = Record<string, string>
+
+/** Parse the `imports` field out of a package.json content string. Returns an empty map on any parse error. */
+export const parseImportMapFromPackageJsonContent = (content: string): ImportMap => {
+  try {
+    const parsed = JSON.parse(content) as { imports?: ImportMap }
+    if (parsed.imports !== undefined && Object.keys(parsed.imports).length > 0) {
+      return parsed.imports
+    }
+  } catch {
+    // Ignore JSON parse errors and return empty map
+  }
+
+  return {}
+}
+
+/** Parse an `imports:` object literal out of a `package.json.genie.ts` source (bootstrap fallback before the generated package.json exists). */
+export const parseImportMapFromGenieSource = (sourceContent: string): ImportMap => {
+  const importsMatch = sourceContent.match(/imports:\s*\{([^}]+)\}/)
+  if (importsMatch === null) {
+    return {}
+  }
+
+  const importsBlock = importsMatch[1]!
+  const importMap: ImportMap = {}
+  const pairRegex = /'([^']+)':\s*'([^']+)'/g
+  let match: RegExpExecArray | null = pairRegex.exec(importsBlock)
+  while (match !== null) {
+    importMap[match[1]!] = match[2]!
+    match = pairRegex.exec(importsBlock)
+  }
+
+  return importMap
+}
+
+/**
+ * Synchronous version of findPackageJsonWithImports for Bun resolver hooks.
+ */
+export const findPackageJsonWithImportsSync = (fromPath: string): string | undefined => {
+  let dir = path.dirname(fromPath)
+  const root = path.parse(dir).root
+
+  while (dir !== root) {
+    const packageJsonPath = path.join(dir, 'package.json')
+
+    if (fs.existsSync(packageJsonPath) === true) {
+      try {
+        const content = fs.readFileSync(packageJsonPath, 'utf8')
+        const importMap = parseImportMapFromPackageJsonContent(content)
+        if (Object.keys(importMap).length > 0) {
+          return packageJsonPath
+        }
+      } catch {
+        // Ignore parse/read errors and continue searching upward
+      }
+    }
+
+    const genieSourcePath = path.join(dir, 'package.json.genie.ts')
+    if (fs.existsSync(genieSourcePath) === true) {
+      try {
+        const sourceContent = fs.readFileSync(genieSourcePath, 'utf8')
+        const importMap = parseImportMapFromGenieSource(sourceContent)
+        if (Object.keys(importMap).length > 0) {
+          return packageJsonPath
+        }
+      } catch {
+        // Ignore read errors and continue searching upward
+      }
+    }
+
+    dir = path.dirname(dir)
+  }
+
+  return undefined
+}
+
+/**
+ * Synchronous import map extraction for resolver hooks.
+ */
+export const extractImportMapSync = (packageJsonPath: string): ImportMap => {
+  if (fs.existsSync(packageJsonPath) === true) {
+    try {
+      const content = fs.readFileSync(packageJsonPath, 'utf8')
+      const importMap = parseImportMapFromPackageJsonContent(content)
+      if (Object.keys(importMap).length > 0) {
+        return importMap
+      }
+    } catch {
+      // Ignore parse/read errors and continue to genie source fallback
+    }
+  }
+
+  const genieSourcePath = `${packageJsonPath}.genie.ts`
+  if (fs.existsSync(genieSourcePath) === true) {
+    try {
+      const sourceContent = fs.readFileSync(genieSourcePath, 'utf8')
+      const importMap = parseImportMapFromGenieSource(sourceContent)
+      if (Object.keys(importMap).length > 0) {
+        return importMap
+      }
+    } catch {
+      // Ignore parse/read errors and return empty map
+    }
+  }
+
+  return {}
+}
+
+const MEGAREPO_MEMBER_PREFIX = '#mr/'
+const GENIE_MEMBER_OVERRIDE_MAP_ENV = 'GENIE_MEMBER_OVERRIDE_MAP'
+const GENIE_MEMBER_SOURCE_MAP_ENV = 'GENIE_MEMBER_SOURCE_MAP'
+
+type MemberSourceMap = Record<string, string>
+
+type MegarepoLockMember = {
+  readonly url: string
+  readonly ref: string
+  readonly commit?: string
+}
+
+type MegarepoLock = {
+  readonly members?: Record<string, MegarepoLockMember>
+}
+
+const parseMemberSourceMap = (value: string | undefined): MemberSourceMap => {
+  if (value === undefined || value === '') return {}
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (parsed === null || typeof parsed !== 'object') return {}
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([key, sourcePath]) =>
+          key.length > 0 && typeof sourcePath === 'string' && sourcePath.length > 0,
+      ),
+    )
+  } catch {
+    return {}
+  }
+}
+
+const parseMegarepoLockContent = (content: string): MegarepoLock => {
+  try {
+    return JSON.parse(content) as MegarepoLock
+  } catch {
+    return {}
+  }
+}
+
+const classifyMegarepoRef = (ref: string): 'commit' | 'tag' | 'branch' => {
+  if (/^[a-f0-9]{40}$/.test(ref) === true) return 'commit'
+  if (/^v?\d+(?:\.\d+)*(?:[-+].+)?$/.test(ref) === true) return 'tag'
+  return 'branch'
+}
+
+const refTypeToPathSegment = (refType: 'commit' | 'tag' | 'branch'): string => {
+  switch (refType) {
+    case 'commit':
+      return 'commits'
+    case 'tag':
+      return 'tags'
+    case 'branch':
+      return 'heads'
+  }
+}
+
+const parseMemberSpecifier = (
+  specifier: string,
+): { memberName: string; subPath: string } | undefined => {
+  if (specifier.startsWith(MEGAREPO_MEMBER_PREFIX) === false) {
+    return undefined
+  }
+
+  const remainder = specifier.slice(MEGAREPO_MEMBER_PREFIX.length)
+  if (remainder.length === 0) return undefined
+
+  const [memberName, ...rest] = remainder.split('/')
+  if (memberName === undefined || memberName.length === 0) {
+    return undefined
+  }
+
+  return {
+    memberName,
+    subPath: rest.join('/'),
+  }
+}
+
+const joinMemberSubPath = ({
+  memberRoot,
+  subPath,
+}: {
+  memberRoot: string
+  subPath: string
+}): string => (subPath.length === 0 ? memberRoot : path.join(memberRoot, subPath))
+
+const getMegarepoStoreBasePath = (): string =>
+  process.env.MEGAREPO_STORE ?? path.join(process.env.HOME ?? '~', '.megarepo')
+
+const deriveStoreWorktreePath = ({
+  selector,
+  url,
+}: {
+  selector: string
+  url: string
+}): string | undefined => {
+  const normalizedUrl = url.replace(/^https?:\/\//, '')
+  const [host, owner, repo] = normalizedUrl.split('/')
+  if (
+    host === undefined ||
+    host.length === 0 ||
+    owner === undefined ||
+    owner.length === 0 ||
+    repo === undefined ||
+    repo.length === 0
+  ) {
+    return undefined
+  }
+
+  const refType = classifyMegarepoRef(selector)
+  return path.join(
+    getMegarepoStoreBasePath(),
+    host,
+    owner,
+    repo,
+    'refs',
+    refTypeToPathSegment(refType),
+    selector,
+  )
+}
+
+const deriveStoreWorktreePathFromLockMember = ({
+  member,
+}: {
+  member: MegarepoLockMember
+}): string | undefined => {
+  const selectors = [
+    ...(member.commit !== undefined && member.commit.length > 0 ? [member.commit] : []),
+    member.ref,
+  ]
+
+  for (const selector of selectors) {
+    const derivedPath = deriveStoreWorktreePath({
+      selector,
+      url: member.url,
+    })
+    if (derivedPath !== undefined && fs.existsSync(derivedPath) === true) {
+      return derivedPath
+    }
+  }
+
+  return selectors
+    .map((selector) =>
+      deriveStoreWorktreePath({
+        selector,
+        url: member.url,
+      }),
+    )
+    .find((derivedPath): derivedPath is string => derivedPath !== undefined)
+}
+
+const findRepoRootSync = (fromPath: string): string | undefined => {
+  let current = path.dirname(fromPath)
+  let previous = ''
+
+  while (current !== previous) {
+    if (
+      fs.existsSync(path.join(current, 'megarepo.lock')) === true ||
+      fs.existsSync(path.join(current, 'megarepo.kdl')) === true ||
+      fs.existsSync(path.join(current, 'megarepo.json')) === true ||
+      fs.existsSync(path.join(current, '.git')) === true
+    ) {
+      return current
+    }
+
+    previous = current
+    current = path.dirname(current)
+  }
+
+  return undefined
+}
+
+const resolveLocalMegarepoMemberRootSync = ({
+  memberName,
+  importerPath,
+}: {
+  memberName: string
+  importerPath: string
+}): string | undefined => {
+  const repoRoot = findRepoRootSync(importerPath)
+  if (repoRoot === undefined) return undefined
+
+  const lockPath = path.join(repoRoot, 'megarepo.lock')
+  if (fs.existsSync(lockPath) === true) {
+    try {
+      const lockContent = fs.readFileSync(lockPath, 'utf8')
+      const lock = parseMegarepoLockContent(lockContent)
+      const lockMember = lock.members?.[memberName]
+      if (lockMember !== undefined) {
+        const derivedPath = deriveStoreWorktreePathFromLockMember({ member: lockMember })
+        if (derivedPath !== undefined && fs.existsSync(derivedPath) === true) {
+          return derivedPath
+        }
+      }
+    } catch {
+      // Ignore lock parse/read errors and continue to local symlink fallback.
+    }
+  }
+
+  const memberPath = path.join(repoRoot, 'repos', memberName)
+  if (fs.existsSync(memberPath) === true) {
+    try {
+      return fs.realpathSync(memberPath)
+    } catch {
+      return memberPath
+    }
+  }
+
+  return undefined
+}
+
+/** Resolve a `#mr/<member>/...` specifier to an absolute path via override map, local repo root, or `GENIE_MEMBER_SOURCE_MAP`. Returns undefined for non-`#mr` specifiers. */
+export const resolveMegarepoMemberSpecifierSync = ({
+  specifier,
+  importerPath,
+}: {
+  specifier: string
+  importerPath: string
+}): string | undefined => {
+  const parsed = parseMemberSpecifier(specifier)
+  if (parsed === undefined) {
+    return undefined
+  }
+
+  const overrideMap = parseMemberSourceMap(process.env[GENIE_MEMBER_OVERRIDE_MAP_ENV])
+  const overrideRoot = overrideMap[parsed.memberName]
+  if (overrideRoot !== undefined) {
+    return joinMemberSubPath({ memberRoot: overrideRoot, subPath: parsed.subPath })
+  }
+
+  const localRoot = resolveLocalMegarepoMemberRootSync({
+    memberName: parsed.memberName,
+    importerPath,
+  })
+  if (localRoot !== undefined) {
+    return joinMemberSubPath({ memberRoot: localRoot, subPath: parsed.subPath })
+  }
+
+  const sourceMap = parseMemberSourceMap(process.env[GENIE_MEMBER_SOURCE_MAP_ENV])
+  const sourceRoot = sourceMap[parsed.memberName]
+  if (sourceRoot !== undefined) {
+    return joinMemberSubPath({ memberRoot: sourceRoot, subPath: parsed.subPath })
+  }
+
+  return undefined
+}
+
+/**
+ * Check if a specifier is an import map specifier (starts with #).
+ */
+export const isImportMapSpecifier = (specifier: string): boolean => {
+  return specifier.startsWith('#')
+}
+
+/**
+ * Resolve an import map specifier to an absolute file path.
+ *
+ * Supports wildcard patterns like `#genie/*` -> `./path/to/*`
+ *
+ * @param specifier - The import specifier (e.g., `#genie/mod.ts`)
+ * @param importMap - The parsed import map from package.json
+ * @param packageJsonDir - The directory containing the package.json
+ * @returns The resolved absolute path, or null if no match
+ */
+export const resolveImportMapSpecifier = ({
+  specifier,
+  importMap,
+  packageJsonDir,
+}: {
+  specifier: string
+  importMap: ImportMap
+  packageJsonDir: string
+}): string | null => {
+  // Try exact match first
+  if (specifier in importMap) {
+    const target = importMap[specifier]!
+    return path.resolve(packageJsonDir, target)
+  }
+
+  // Try wildcard patterns (e.g., #genie/* -> ./path/*)
+  for (const [pattern, target] of Object.entries(importMap)) {
+    if (pattern.endsWith('/*') === false || target.endsWith('/*') === false) continue
+
+    const prefix = pattern.slice(0, -1) // Remove trailing *
+    if (specifier.startsWith(prefix) === true) {
+      const suffix = specifier.slice(prefix.length)
+      const resolvedTarget = target.slice(0, -1) + suffix // Replace * with suffix
+      return path.resolve(packageJsonDir, resolvedTarget)
+    }
+  }
+
+  return null
+}
+
+/**
+ * Synchronous import map resolution for Bun resolver hooks.
+ */
+export const resolveImportMapSpecifierForImporterSync = ({
+  specifier,
+  importerPath,
+}: {
+  specifier: string
+  importerPath: string
+}): string | undefined => {
+  if (isImportMapSpecifier(specifier) === false) {
+    return undefined
+  }
+
+  const resolvedMegarepoMember = resolveMegarepoMemberSpecifierSync({
+    specifier,
+    importerPath,
+  })
+  if (resolvedMegarepoMember !== undefined) {
+    return resolvedMegarepoMember
+  }
+
+  const packageJsonPath = findPackageJsonWithImportsSync(importerPath)
+  if (packageJsonPath === undefined) {
+    return undefined
+  }
+
+  const importMap = extractImportMapSync(packageJsonPath)
+  if (Object.keys(importMap).length === 0) {
+    return undefined
+  }
+
+  return (
+    resolveImportMapSpecifier({
+      specifier,
+      importMap,
+      packageJsonDir: path.dirname(packageJsonPath),
+    }) ?? undefined
+  )
+}

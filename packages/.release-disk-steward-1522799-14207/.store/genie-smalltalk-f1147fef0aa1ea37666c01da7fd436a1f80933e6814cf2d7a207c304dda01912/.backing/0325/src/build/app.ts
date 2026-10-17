@@ -1,0 +1,43 @@
+/**
+ * Genie TuiApp
+ *
+ * createTuiApp instance for the genie command.
+ * Handles all output modes: TTY, CI, JSON, NDJSON.
+ */
+
+import { createTuiApp } from '@overeng/tui-react'
+
+import { GenieState, GenieAction, genieReducer, createInitialGenieState } from '../core/schema.ts'
+
+/**
+ * TuiApp for genie output.
+ *
+ * Usage in CLI:
+ * ```typescript
+ * const outputMode = yield* resolveOutputOption(output)
+ * const tui = yield* GenieApp.run(<GenieView stateAtom={GenieApp.stateAtom} />).pipe(
+ *   Effect.provide(outputModeLayer(outputMode))
+ * )
+ *
+ * // Dispatch state updates
+ * tui.dispatch({ _tag: 'FileCompleted', path, status, message })
+ *
+ * // Or set final state
+ * tui.dispatch({ _tag: 'SetState', state: finalState })
+ * ```
+ */
+export const GenieApp = createTuiApp({
+  stateSchema: GenieState,
+  actionSchema: GenieAction,
+  initial: createInitialGenieState({ cwd: '', mode: 'generate' }),
+  reducer: genieReducer,
+  exitCode: (state) => {
+    if (state.phase === 'error') return 1
+    // Check if any files failed
+    const hasFailures = state.files.some((f) => f.status === 'error')
+    if (hasFailures) return 1
+    // Check summary if available
+    if (state.summary && state.summary.failed > 0) return 1
+    return 0
+  },
+})

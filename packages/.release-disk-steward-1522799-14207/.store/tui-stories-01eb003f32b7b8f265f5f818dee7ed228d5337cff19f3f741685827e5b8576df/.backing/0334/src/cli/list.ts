@@ -1,0 +1,45 @@
+import { Effect } from 'effect'
+import { Command, Flag as Options } from 'effect/cli'
+import React from 'react'
+
+import { run } from '@overeng/tui-react'
+import { outputOption, outputModeLayer, resolveOutputOption } from '@overeng/tui-react/node'
+
+import { discoverStories } from '../StoryDiscovery.ts'
+import { ListApp, ListView } from './renderers/ListOutput/mod.ts'
+
+const pathOption = Options.String('path').pipe(
+  Options.withDescription('Package directory to search for stories'),
+)
+
+/** CLI subcommand to list all discovered stories */
+export const listCommand = Command.make(
+  'list',
+  { path: pathOption, output: outputOption },
+  ({ path, output }) =>
+    Effect.gen(function* () {
+      const outputMode = yield* resolveOutputOption(output)
+      const { modules, skippedCount } = yield* discoverStories({ packageDirs: [path] })
+
+      const groups = modules.map((mod) => ({
+        title: mod.meta.title,
+        stories: mod.stories.map((story) => ({
+          name: story.name,
+          hasTimeline: story.args.interactive !== undefined,
+          argCount: Object.keys(story.argTypes).length,
+        })),
+      }))
+
+      yield* run(
+        ListApp,
+        (tui) =>
+          Effect.sync(() => {
+            tui.dispatch({
+              _tag: 'SetState',
+              state: { groups, skippedCount, packagePath: path },
+            })
+          }),
+        { view: React.createElement(ListView, { stateAtom: ListApp.stateAtom }) },
+      ).pipe(Effect.provide(outputModeLayer(outputMode)))
+    }),
+).pipe(Command.withDescription('List all discovered stories'))

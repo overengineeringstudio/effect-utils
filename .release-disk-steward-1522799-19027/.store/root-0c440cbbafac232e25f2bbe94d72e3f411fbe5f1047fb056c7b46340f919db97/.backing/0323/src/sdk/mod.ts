@@ -1,0 +1,146 @@
+import path from 'node:path'
+
+import { Effect, FileSystem, Option, PubSub } from 'effect'
+import type { Path } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
+import type * as CommandExecutor from 'effect/process/ChildProcessSpawner'
+
+import {
+  type GenieGenerateResult,
+  checkAll,
+  generateAll,
+  resolveOxfmtConfigPath,
+} from '../core/core.ts'
+import type { GenieGenerationFailedError } from '../core/errors.ts'
+import { type GenieEvent, GenieEventBus } from '../core/events.ts'
+
+export type { GenieGenerateResult } from '../core/core.ts'
+export type { GenieSummary } from '../core/schema.ts'
+export type { GenerateSuccess } from '../core/types.ts'
+export { GenieCheckError, GenieGenerationFailedError, GenieImportError } from '../core/errors.ts'
+export { type GenieEvent, GenieEventBus } from '../core/events.ts'
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/** Options controlling which workspace to generate and how to write output files. */
+export type GenieGenerateOptions = {
+  cwd: string
+  writeable?: boolean
+  dryRun?: boolean
+  env?: Record<string, string>
+  oxfmtConfigPath?: string
+}
+
+/** Options for verifying that all generated files are up to date. */
+export type GenieCheckOptions = {
+  cwd: string
+  env?: Record<string, string>
+  oxfmtConfigPath?: string
+}
+
+/** Temporarily set env vars, run an effect, then restore original values. */
+const withEnv = <A, E, R>({
+  env,
+  effect,
+}: {
+  env: Record<string, string>
+  effect: Effect.Effect<A, E, R>
+}): Effect.Effect<A, E, R> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const saved: Record<string, string | undefined> = {}
+      for (const [key, value] of Object.entries(env)) {
+        saved[key] = process.env[key]
+        process.env[key] = value
+      }
+      return saved
+    }),
+    () => effect,
+    (saved) =>
+      Effect.sync(() => {
+        for (const [key, value] of Object.entries(saved)) {
+          if (value === undefined) {
+            delete process.env[key]
+          } else {
+            process.env[key] = value
+          }
+        }
+      }),
+  )
+
+/** Resolve cwd to a real path, normalizing symlinks. */
+const resolveCwd = (inputCwd: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const absoluteCwd = path.isAbsolute(inputCwd) === true ? inputCwd : path.resolve(inputCwd)
+    return yield* fs.realPath(absoluteCwd).pipe(Effect.orElseSucceed(() => absoluteCwd))
+  })
+
+/** Provide a no-subscriber event bus (events are silently dropped). */
+const withSilentEventBus = <A, E, R>(
+  effect: Effect.Effect<A, E, R | GenieEventBus>,
+): Effect.Effect<A, E, Exclude<R, GenieEventBus>> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const bus = yield* PubSub.unbounded<GenieEvent>()
+      return yield* effect.pipe(Effect.provideService(GenieEventBus, bus))
+    }),
+  ) as Effect.Effect<A, E, Exclude<R, GenieEventBus>>
+
+/** Generate files from all discovered .genie.ts sources. */
+export const generate = ({
+  cwd: inputCwd,
+  writeable = false,
+  dryRun = false,
+  env,
+  oxfmtConfigPath: explicitOxfmtPath,
+}: GenieGenerateOptions): Effect.Effect<
+  GenieGenerateResult,
+  GenieGenerationFailedError | PlatformError,
+  FileSystem.FileSystem | Path.Path | CommandExecutor.ChildProcessSpawner
+> => {
+  const core = Effect.gen(function* () {
+    const cwd = yield* resolveCwd(inputCwd)
+    const oxfmtConfigPath = yield* resolveOxfmtConfigPath({
+      explicitPath:
+        explicitOxfmtPath !== undefined ? Option.some(explicitOxfmtPath) : Option.none(),
+      cwd,
+    })
+    return yield* withSilentEventBus(
+      generateAll({ cwd, readOnly: !writeable, dryRun, oxfmtConfigPath }),
+    )
+  })
+
+  if (env !== undefined && Object.keys(env).length > 0) {
+    return withEnv({ env, effect: core })
+  }
+  return core
+}
+
+/** Check that all generated files are up to date. */
+export const check = ({
+  cwd: inputCwd,
+  env,
+  oxfmtConfigPath: explicitOxfmtPath,
+}: GenieCheckOptions): Effect.Effect<
+  void,
+  GenieGenerationFailedError | PlatformError,
+  FileSystem.FileSystem | Path.Path | CommandExecutor.ChildProcessSpawner
+> => {
+  const core = Effect.gen(function* () {
+    const cwd = yield* resolveCwd(inputCwd)
+    const oxfmtConfigPath = yield* resolveOxfmtConfigPath({
+      explicitPath:
+        explicitOxfmtPath !== undefined ? Option.some(explicitOxfmtPath) : Option.none(),
+      cwd,
+    })
+    return yield* withSilentEventBus(checkAll({ cwd, oxfmtConfigPath }))
+  })
+
+  if (env !== undefined && Object.keys(env).length > 0) {
+    return withEnv({ env, effect: core })
+  }
+  return core
+}

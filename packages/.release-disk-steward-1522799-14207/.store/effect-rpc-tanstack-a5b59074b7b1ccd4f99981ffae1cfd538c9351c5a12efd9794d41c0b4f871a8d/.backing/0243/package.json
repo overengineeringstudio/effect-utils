@@ -1,0 +1,79 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-rpc-tanstack",
+      "packages/@overeng/effect-rpc-tanstack/examples/basic",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev"
+    ]
+  },
+  "name": "@overeng/effect-rpc-tanstack",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./client": {
+      "types": "./dist/src/client.d.ts",
+      "default": "./src/client.ts"
+    },
+    "./router": {
+      "types": "./dist/src/router.d.ts",
+      "default": "./src/router.ts"
+    },
+    "./server": {
+      "types": "./dist/src/server.d.ts",
+      "default": "./src/server.ts"
+    }
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@overeng/utils": "workspace:^",
+    "@tanstack/react-router": "1.170.33",
+    "@tanstack/react-start": "1.168.50",
+    "@types/react": "19.2.18",
+    "effect": "4.0.0-rc.118",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "@effect/platform-node": "4.0.0-rc.118",
+    "@tanstack/react-router": "^1.170.33",
+    "@tanstack/react-start": "^1.168.50",
+    "effect": "4.0.0-rc.118",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./client": {
+        "types": "./dist/src/client.d.ts",
+        "default": "./dist/src/client.js"
+      },
+      "./server": {
+        "types": "./dist/src/server.d.ts",
+        "default": "./dist/src/server.js"
+      },
+      "./router": {
+        "types": "./dist/src/router.d.ts",
+        "default": "./dist/src/router.js"
+      }
+    }
+  }
+}

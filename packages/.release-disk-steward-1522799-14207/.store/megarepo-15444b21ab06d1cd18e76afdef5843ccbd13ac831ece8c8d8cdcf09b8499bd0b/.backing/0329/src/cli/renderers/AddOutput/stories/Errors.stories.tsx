@@ -1,0 +1,102 @@
+/**
+ * Error state stories for AddOutput - various error scenarios.
+ */
+
+import type { Meta, StoryObj } from '@storybook/react'
+import React, { useMemo } from 'react'
+
+import { ALL_OUTPUT_TABS, commonArgTypes, TuiStoryPreview } from '@overeng/tui-react/storybook'
+
+import { AddApp } from '../mod.ts'
+import { AddView } from '../view.tsx'
+import * as fixtures from './_fixtures.ts'
+
+type StoryArgs = {
+  height: number
+  repo: string
+  name: string
+}
+
+export default {
+  component: AddView,
+  title: 'CLI/Add/Errors',
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        component: 'Output for the `mr add` command - error scenarios.',
+      },
+    },
+  },
+  args: {
+    height: 400,
+    repo: 'not-a-valid-repo',
+    name: 'core-lib',
+  },
+  argTypes: {
+    height: commonArgTypes.height,
+    repo: {
+      description: 'Repository reference that triggers the error',
+      control: { type: 'text' },
+    },
+    name: {
+      description: '--name flag: member name that triggers the error',
+      control: { type: 'text' },
+    },
+  },
+} satisfies Meta
+
+type Story = StoryObj<StoryArgs>
+
+/** Error: not inside a megarepo */
+export const ErrorNotInMegarepo: Story = {
+  render: (args) => (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr add"
+      View={AddView}
+      app={AddApp}
+      initialState={fixtures.createErrorNotInMegarepoState()}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+    />
+  ),
+}
+
+/** Error: invalid repository reference */
+const ErrorInvalidRepoRender = (args: StoryArgs) => {
+  const state = useMemo(() => fixtures.createErrorInvalidRepoState(args.repo), [args.repo])
+  return (
+    <TuiStoryPreview
+      command="mr add"
+      View={AddView}
+      app={AddApp}
+      initialState={state}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+    />
+  )
+}
+
+export const ErrorInvalidRepo: Story = {
+  render: ErrorInvalidRepoRender,
+}
+
+/** Error: member already exists */
+const ErrorAlreadyExistsRender = (args: StoryArgs) => {
+  const state = useMemo(() => fixtures.createErrorAlreadyExistsState(args.name), [args.name])
+  return (
+    <TuiStoryPreview
+      command="mr add"
+      View={AddView}
+      app={AddApp}
+      initialState={state}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+    />
+  )
+}
+
+export const ErrorAlreadyExists: Story = {
+  render: ErrorAlreadyExistsRender,
+}

@@ -1,0 +1,294 @@
+/**
+ * Effect-native HTTP client for the Notion API.
+ *
+ * Uses `@effect/platform` HttpClient for all API calls.
+ *
+ * @see https://developers.notion.com/reference
+ * @module
+ */
+
+import { Layer } from 'effect'
+
+import { type NotionClientConfig, NotionConfig } from './config.ts'
+
+// -----------------------------------------------------------------------------
+// Re-exports
+// -----------------------------------------------------------------------------
+
+export type {
+  AppendBlockChildrenOptions,
+  BlockTree,
+  BlockTreeNode,
+  BlockWithDepth,
+  DeleteBlockOptions,
+  RetrieveBlockChildrenOptions,
+  RetrieveBlockOptions,
+  RetrieveNestedOptions,
+  UpdateBlockOptions,
+} from './blocks.ts'
+export { type BlockInsertPosition, NotionBlocks } from './blocks.ts'
+export type { NotionBodyObservation } from './body-observation.ts'
+export {
+  NotionBody,
+  NotionBodyObservationChangedError,
+  observeFromSnapshots as observeNotionBodyFromSnapshots,
+} from './body-observation.ts'
+export type { BodyEvidenceFingerprint, RemoteBodyObservationEvidence } from './body-evidence.ts'
+export {
+  BodyEvidenceFingerprint as BodyEvidenceFingerprintSchema,
+  descriptorDigest as bodyEvidenceDescriptorDigest,
+  fingerprintBodyEvidence,
+  makeRemoteBodyObservationEvidence,
+  RemoteBodyObservationEvidence as RemoteBodyObservationEvidenceSchema,
+} from './body-evidence.ts'
+// Comments
+export type { CommentParentInput, CreateCommentOptions, ListCommentsOptions } from './comments.ts'
+export { NotionComments } from './comments.ts'
+// Config
+export {
+  NOTION_API_BASE_URL,
+  NOTION_API_VERSION,
+  NOTION_TOKEN_ENV_VARS,
+  type NotionClientConfig,
+  NotionConfig,
+  notionTokenFingerprint,
+  NotionTokenMissing,
+  resolveNotionToken,
+} from './config.ts'
+export type {
+  ArchiveDatabaseOptions,
+  CreateDatabaseOptions,
+  DatabaseQueryTarget,
+  DatabaseFilter,
+  DatabaseSort,
+  QueryDatabaseOptions,
+  QueryDatabaseOptionsBase,
+  QueryDatabaseWithSchemaOptions,
+  RetrieveDatabaseOptions,
+  ResolveQueryTargetOptions,
+  TypedPaginatedResult,
+  UpdateDatabaseOptions,
+} from './databases.ts'
+// Custom emojis
+export type { CustomEmoji } from './custom-emojis.ts'
+export { NotionCustomEmojis } from './custom-emojis.ts'
+// Data sources
+export type {
+  CreateDataSourceOptions,
+  RetrieveDataSourceOptions,
+  UpdateDataSourceOptions,
+} from './data-sources.ts'
+export { NotionDataSources } from './data-sources.ts'
+// Schema-backed Notion wire objects surfaced by the client boundary.
+export type {
+  DatabaseSchema as NotionDatabase,
+  DataSourceSchema as NotionDataSource,
+  Page as NotionPage,
+  PagePropertyItem as NotionPagePropertyItem,
+} from '@overeng/notion-effect-schema'
+export {
+  compactNotionUuid,
+  formatNotionUuid,
+  notionObjectUrl,
+  parseNotionUuid,
+} from '@overeng/notion-effect-schema'
+// Services
+export { NotionDatabases } from './databases.ts'
+// Error
+export { NotionApiError, NotionErrorCode, NotionErrorResponse } from './error.ts'
+// File uploads
+export type { UploadFileOptions } from './files.ts'
+export { NotionFiles } from './files.ts'
+// Pagination utilities
+export type {
+  FetchPage,
+  PaginateEmit,
+  PaginateOptions,
+  PaginatedResult,
+  PaginationOptions,
+} from './internal/pagination.ts'
+export { paginate } from './internal/pagination.ts'
+export type {
+  NotionHttpRouteInfo,
+  NotionHttpTelemetryEvent,
+  NotionHttpTelemetryReporter,
+  RateLimitInfo,
+} from './internal/http.ts'
+export {
+  NotionHttpTelemetry,
+  notionHttpRouteInfo,
+  notionTracerHeaderFilter,
+  parseRateLimitHeaders,
+} from './internal/http.ts'
+export { NotionTracerHeaderFilterLive } from './internal/http.ts'
+// Rate-limit pressure metrics (decision 0017 Half 2)
+export { NotionRateLimitMetrics } from './internal/metrics.ts'
+// Request throttle
+export type { NotionThrottleOptions, NotionThrottleShape } from './internal/throttle.ts'
+export { NotionThrottle, NotionThrottleLive } from './internal/throttle.ts'
+// Markdown converter
+export type {
+  AnyBlockTransformer,
+  BlocksToMarkdownOptions,
+  BlockTransformer,
+  BlockTransformerEffect,
+  BlockTransformers,
+  BlockWithData,
+  NotionBlockCreate,
+  NotionRichTextCreate,
+  NotionTableRowBlockCreate,
+  PageToMarkdownOptions,
+} from './markdown.ts'
+export {
+  BlockHelpers,
+  getBlockCaption,
+  getBlockRichText,
+  getBlockUrl,
+  getCalloutIcon,
+  getParagraphIcon,
+  getChildDatabaseTitle,
+  getChildPageTitle,
+  getCodeLanguage,
+  getEquationExpression,
+  getTableRowCells,
+  isTodoChecked,
+  markdownToBlocks,
+  NotionMarkdown,
+} from './markdown.ts'
+export { canonicalizeBlockMarkdown, canonicalizeSemanticMarkdown } from './canonical-markdown.ts'
+export { canonicalizeMediaUrl, canonicalizeMediaUrlsInMarkdown } from './media-url.ts'
+// Notion Markdown local format
+export type {
+  ClassifyNmdFrontmatterPayloadOptions,
+  NmdBodyState,
+  NmdCommentUnit,
+  NmdDataSourceBinding,
+  NmdDateValue,
+  NmdFileUnit,
+  NmdFrontmatterPayloadClass,
+  NmdFrontmatterV1,
+  NmdFrontmatterV2,
+  NmdLocalState,
+  NmdObjectRef,
+  NmdObjectRole,
+  NmdPageState,
+  NmdParentRef,
+  NmdPropertyFileRef,
+  NmdPropertyValue,
+  NmdSource,
+  NmdStorage,
+  NmdSyncStateV1,
+  NmdUnsupportedBlockUnit,
+  NmdWritablePropertyValue,
+  RelativePath,
+  Sha256Digest,
+} from './nmd.ts'
+export {
+  classifyNmdFrontmatterPayload,
+  decodeNmdFrontmatterV1,
+  decodeNmdFrontmatterV1Sync,
+  decodeNmdFrontmatterV2,
+  decodeNmdFrontmatterV2Sync,
+  decodeNmdSyncStateV1,
+  gateNmdLocalState,
+  makeNmdObjectRef,
+  NmdSource as NmdSourceSchema,
+  NmdStatelessnessError,
+  NMD_LARGE_STORAGE_BYTES,
+  NMD_OBJECT_DIRECTORY,
+  NMD_SMALL_STORAGE_BYTES,
+  NMD_STATE_DIRECTORY,
+  NMD_SYNC_DIRECTORY,
+  nmdObjectRelativePath,
+  nmdSha256Hex,
+  nmdSyncStateRelativePath,
+  NmdBodyState as NmdBodyStateSchema,
+  NmdCommentUnit as NmdCommentUnitSchema,
+  NmdDataSourceBinding as NmdDataSourceBindingSchema,
+  NmdDateValue as NmdDateValueSchema,
+  NmdFileUnit as NmdFileUnitSchema,
+  NmdFrontmatterV1 as NmdFrontmatterV1Schema,
+  NmdFrontmatterV2 as NmdFrontmatterV2Schema,
+  NmdObjectRef as NmdObjectRefSchema,
+  NmdObjectRole as NmdObjectRoleSchema,
+  NmdPageState as NmdPageStateSchema,
+  NmdParentRef as NmdParentRefSchema,
+  NmdPropertyFileRef as NmdPropertyFileRefSchema,
+  NmdPropertyValue as NmdPropertyValueSchema,
+  NmdStorage as NmdStorageSchema,
+  nmdStrictParseOptions,
+  NmdSyncStateV1 as NmdSyncStateV1Schema,
+  NmdUnsupportedBlockUnit as NmdUnsupportedBlockUnitSchema,
+  NmdWritablePropertyValue as NmdWritablePropertyValueSchema,
+  RelativePath as RelativePathSchema,
+  Sha256Digest as Sha256DigestSchema,
+} from './nmd.ts'
+export type {
+  ArchivePageOptions,
+  CreatePageOptions,
+  GetMarkdownOptions,
+  MarkdownContentUpdate,
+  MovePageOptions,
+  PageParent,
+  RetrievePageOptions,
+  RetrievePageOptionsBase,
+  RetrievePagePropertyOptions,
+  RetrievePagePropertyResult,
+  RetrievePageWithSchemaOptions,
+  UpdateMarkdownOptions,
+  UpdatePageOptions,
+} from './pages.ts'
+export { NotionPages } from './pages.ts'
+// Schema helpers for database metadata
+export type { RelationTarget, RollupConfig } from './schema-helpers.ts'
+export { SchemaHelpers, SchemaMismatchError, SchemaMetaMissingError } from './schema-helpers.ts'
+export type { SearchFilter, SearchOptions, SearchSort } from './search.ts'
+export { NotionSearch } from './search.ts'
+// Typed page utilities
+export { PageDecodeError, type TypedPage } from './typed-page.ts'
+export type { ListUsersOptions, RetrieveUserOptions } from './users.ts'
+export { NotionUsers } from './users.ts'
+// Views
+export type {
+  CreateViewOptions,
+  DeleteViewOptions,
+  ListViewsOptions,
+  RetrieveViewOptions,
+  UpdateViewOptions,
+} from './views.ts'
+export { NotionViews } from './views.ts'
+
+// -----------------------------------------------------------------------------
+// Layer
+// -----------------------------------------------------------------------------
+
+/**
+ * Create a layer providing NotionConfig from configuration.
+ *
+ * @example
+ * ```ts
+ * import { Effect, Layer, Redacted } from 'effect'
+ * import { HttpClient } from 'effect/http/HttpClient'
+ * import { NotionConfigLive, NotionDatabases } from '@overeng/notion-effect-client'
+ *
+ * const program = Effect.gen(function* () {
+ *   const { dataSourceId } = yield* NotionDatabases.resolveQueryTarget({
+ *     databaseId: 'abc-123',
+ *   })
+ *
+ *   const result = yield* NotionDatabases.query({
+ *     dataSourceId,
+ *   })
+ *   return result
+ * })
+ *
+ * const MainLayer = Layer.mergeAll(
+ *   NotionConfigLive({ authToken: Redacted.make(process.env.NOTION_API_TOKEN ?? '') }),
+ *   HttpClient.layer,
+ * )
+ *
+ * program.pipe(Effect.provide(MainLayer), Effect.runPromise)
+ * ```
+ */
+export const NotionConfigLive = (config: NotionClientConfig): Layer.Layer<NotionConfig> =>
+  Layer.succeed(NotionConfig, config)
