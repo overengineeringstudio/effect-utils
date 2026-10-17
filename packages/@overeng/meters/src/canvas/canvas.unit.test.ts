@@ -83,6 +83,40 @@ const fixture = () => {
 }
 
 describe('canvas strip', () => {
+  it('describes the shared stale evidence without treating last-known values as live', () => {
+    const series = makeSeries<NumberValue>({
+      id: 'stale',
+      label: 'Stale',
+      unit: 'count',
+      capacity: 4,
+    })
+    const store = makeSeriesStore()
+    const sink = store.register({ series })
+    const reader = numberBlock({ id: 'stale', series }).read(store)
+    sink.append({ sample: { _tag: 'Value', atMs: 0, value: { _tag: 'Number', value: 4 } } })
+    expect(reader.describe({ nowMs: 0 })).toBe('4')
+    sink.append({
+      sample: {
+        _tag: 'Unavailable',
+        atMs: 100,
+        reason: 'Stale',
+        lastKnown: { atMs: 0, value: { _tag: 'Number', value: 4 } },
+      },
+    })
+    expect(reader.describe({ nowMs: 150 })).toBe('n/a (Stale; last known 4 at 0ms)')
+    expect(reader.snapshot().describe({ nowMs: 150 })).toBe(reader.describe({ nowMs: 150 }))
+    const evidence = reader.evidence({ nowMs: 150 })
+    expect(evidence.evaluatedAtMs).toBe(150)
+    expect(evidence.latest).toEqual({
+      _tag: 'Unavailable',
+      atMs: 100,
+      reason: 'Stale',
+      lastKnownAtMs: 0,
+    })
+    expect(evidence).toEqual(reader.snapshot().evidence({ nowMs: 150 }))
+    expect(store.read({ series }).latest?._tag).toBe('Unavailable')
+  })
+
   it('resolves completed bucket metadata from explicit time and validates its derived domain', () => {
     const aggregation = {
       _tag: 'Bucket',
@@ -326,6 +360,7 @@ describe('canvas strip', () => {
       atMs: 23,
       reason: 'MeasurementFailed',
     })
+    expect(unavailable.latest).not.toHaveProperty('lastKnownAtMs')
     extraPayload.secret = 'changed after capture'
     expect(unavailable).toEqual(reader.snapshot().evidence({ nowMs: 24 }))
     expect(gapEvidence.latest).toEqual({
