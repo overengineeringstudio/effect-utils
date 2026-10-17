@@ -111,6 +111,79 @@ it.effect(
 )
 
 it.effect(
+  'rejects conflicting definitions before reusing a selected upstream status',
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-definition-status-' })
+      yield* Effect.gen(function* () {
+        const sourceKind = yield* Schema.decodeEffect(NodeKind)('definition-source')
+        const parentKind = yield* Schema.decodeEffect(NodeKind)('definition-parent')
+        const sourceV1: NodeDef = {
+          _tag: 'Derive',
+          kind: sourceKind,
+          outputs: ['value'],
+          inputs: () => ({}),
+          recipe: () => ({ kind: sourceKind, version: '1', config: {} }),
+          execute: () =>
+            Effect.succeed({
+              _tag: 'Accepted',
+              receipts: [],
+              outputs: { value: { bytes: utf8Bytes('source'), mediaType: 'text/plain' } },
+            }),
+        }
+        const sourceV2: NodeDef = {
+          ...sourceV1,
+          recipe: () => ({ kind: sourceKind, version: '2', config: {} }),
+        }
+        let secondSource = sourceV1
+        const parent: NodeDef = {
+          _tag: 'Observe',
+          kind: parentKind,
+          outputs: ['value'],
+          inputs: () => ({
+            a: DataGraph.ref({ node: sourceV1, scope: {}, output: 'value' }),
+            b: DataGraph.ref({ node: secondSource, scope: {}, output: 'value' }),
+          }),
+          recipe: () => ({ kind: parentKind, version: '1', config: {} }),
+          execute: () =>
+            Effect.succeed({
+              _tag: 'Accepted',
+              receipts: [],
+              outputs: { value: { bytes: utf8Bytes('parent'), mediaType: 'text/plain' } },
+            }),
+        }
+        const target = DataGraph.ref({ node: parent, scope: {}, output: 'value' })
+        yield* DataGraph.materialize(target, {
+          refresh: [DataGraph.nodeId({ kind: parentKind, scope: {} })],
+        })
+        const accepted = yield* DataGraph.getSelectionStatus(target)
+        const now = Option.getOrThrow(accepted.head).lastConfirmedAt! + 100
+        expect(accepted.acceptance).toBe('Current')
+        expect(DataGraph.checkFreshness({ status: accepted, now, maxAge: 1000 })).toBe(true)
+
+        secondSource = sourceV2
+        const materialized = yield* DataGraph.materialize(target).pipe(Effect.result)
+        expect(materialized).toMatchObject({
+          _tag: 'Failure',
+          failure: { _tag: 'GraphError', message: 'Conflicting definitions for one node kind' },
+        })
+        const status = yield* DataGraph.getSelectionStatus(target).pipe(Effect.result)
+        // A rejected graph must never authorize publication of the Observe parent within TTL.
+        expect(
+          status._tag === 'Success' &&
+            DataGraph.checkFreshness({ status: status.success, now, maxAge: 1000 }),
+        ).toBe(false)
+        expect(status).toMatchObject({
+          _tag: 'Failure',
+          failure: { _tag: 'GraphError', message: 'Conflicting definitions for one node kind' },
+        })
+      }).pipe(Effect.provide(GraphStore.fileSystem(root)))
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  { timeout: 60_000 },
+)
+
+it.effect(
   'prioritizes opaque consumer tiers then overdue age within budget',
   () =>
     Effect.gen(function* () {
