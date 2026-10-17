@@ -10,7 +10,7 @@ import {
 } from '../series/index.ts'
 import { scanBins } from '../series/internal.ts'
 import type { FpsValue } from '../session/frame.ts'
-import { fitText, historyX, layoutBlockText, type Rect } from './layout.ts'
+import { historyX, layoutBlockText, type Rect } from './layout.ts'
 
 /** Semantic color/font values; hosts may resolve StyleX tokens or CSS variables. */
 export interface MeterTheme {
@@ -121,6 +121,7 @@ export interface BlockEvidence {
         readonly _tag: 'Unavailable'
         readonly atMs: number
         readonly reason: UnavailableReason
+        readonly lastKnownAtMs?: number
       }
     | {
         readonly _tag: 'Gap'
@@ -186,7 +187,14 @@ export const block = <TValue>(options: {
             : latest._tag === 'Value'
               ? { _tag: 'Value', atMs: latest.atMs }
               : latest._tag === 'Unavailable'
-                ? { _tag: 'Unavailable', atMs: latest.atMs, reason: latest.reason }
+                ? {
+                    _tag: 'Unavailable',
+                    atMs: latest.atMs,
+                    reason: latest.reason,
+                    ...(latest.lastKnown === undefined
+                      ? {}
+                      : { lastKnownAtMs: latest.lastKnown.atMs }),
+                  }
                 : {
                     _tag: 'Gap',
                     atMs: latest.atMs,
@@ -375,7 +383,6 @@ export const numericBlock = <TValue>(
       readonly format: MeterValueFormat
     }) => string
     readonly mode?: 'Gauge' | 'Event' | 'Counter'
-    readonly staleAfterMs?: number
   },
 ): CanvasBlockSpec => {
   const nominalMax = options.nominalMax ?? 1
@@ -407,7 +414,17 @@ export const numericBlock = <TValue>(
   }): string => {
     const latest = history.latest
     if (latest === undefined) return 'n/a (NoSamples)'
-    if (latest._tag === 'Unavailable') return `n/a (${latest.reason})`
+    if (latest._tag === 'Unavailable') {
+      if (latest.lastKnown === undefined || format !== 'full') return `n/a (${latest.reason})`
+      const value =
+        options.describeValue?.({ value: latest.lastKnown.value, format }) ??
+        formatMeterValue({
+          value: total(latest.lastKnown.value),
+          unit: options.series.unit,
+          format,
+        })
+      return `n/a (${latest.reason}; last known ${value} at ${latest.lastKnown.atMs}ms)`
+    }
     if (latest._tag === 'Gap') return `n/a (${latest.reason} gap)`
     return (
       options.describeValue?.({ value: latest.value, format }) ??
@@ -433,6 +450,10 @@ export const numericBlock = <TValue>(
         width: rect.width - 8,
         height: Math.max(1, rect.height - 20),
       }
+      const latest = history.latest
+      const dimmed =
+        latest?._tag === 'Unavailable' &&
+        (latest.reason === 'Stale' || latest.reason === 'Disconnected')
       const bins = Math.max(1, Math.floor(chart.width))
       if (options.range !== undefined) {
         ctx.save()
@@ -545,8 +566,6 @@ export const numericBlock = <TValue>(
             ctx.fillRect(x, chart.y, chart.width / bins, chart.height)
             return
           }
-          const stale =
-            options.staleAfterMs !== undefined && atMs - previous.atMs > options.staleAfterMs
           const parts =
             options.mode === 'Event' || options.mode === 'Counter'
               ? eventTotal
@@ -566,7 +585,7 @@ export const numericBlock = <TValue>(
               height = chart.height * ((top - baseline) / span)
             }
             ctx.fillStyle =
-              stale === true
+              dimmed === true
                 ? theme.muted
                 : part % 3 === 0
                   ? theme.normal
@@ -613,21 +632,6 @@ export const numericBlock = <TValue>(
       if (header.label !== undefined) ctx.fillText(header.label.text, header.label.x, rect.y + 3)
       ctx.fillStyle = theme.foreground
       if (header.value !== undefined) ctx.fillText(header.value.text, header.value.x, rect.y + 3)
-      const latest = history.latest
-      if (
-        options.staleAfterMs !== undefined &&
-        latest?._tag === 'Value' &&
-        nowMs - latest.atMs > options.staleAfterMs
-      ) {
-        ctx.fillStyle = theme.muted
-        const stale = fitText({
-          text: `stale ${Math.round(nowMs - latest.atMs)}ms`,
-          maxWidth: chart.width,
-          measure,
-        })
-        if (stale !== undefined)
-          ctx.fillText(stale.text, chart.x + chart.width - stale.width, chart.y)
-      }
       ctx.restore()
     },
   })
@@ -636,7 +640,6 @@ export const numericBlock = <TValue>(
 export const numberBlock = <TValue extends { readonly value: number }>(
   options: BlockOptions<TValue> & {
     readonly mode?: 'Gauge' | 'Event' | 'Counter'
-    readonly staleAfterMs?: number
   },
 ): CanvasBlockSpec => numericBlock({ ...options, values: (value) => value.value })
 /** Cumulative counter increments aggregated per timestamp bin, not summed totals. */

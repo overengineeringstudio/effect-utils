@@ -79,10 +79,17 @@ type UnavailableReason =
   | 'HistoryLost'
   | 'CalibrationInvalid'
   | 'Stopped'
+  | 'Stale'
+  | 'Disconnected'
 
 type Sample<TValue> =
   | { readonly _tag: 'Value'; readonly atMs: number; readonly value: TValue }
-  | { readonly _tag: 'Unavailable'; readonly atMs: number; readonly reason: UnavailableReason }
+  | {
+      readonly _tag: 'Unavailable'
+      readonly atMs: number
+      readonly reason: UnavailableReason
+      readonly lastKnown?: { readonly atMs: number; readonly value: TValue }
+    }
   | {
       readonly _tag: 'Gap'
       readonly atMs: number
@@ -247,6 +254,8 @@ interface FrameClock {
 }
 interface SourceRegistration<TEnv = never> {
   readonly id: string
+  readonly series: { readonly id: string }
+  readonly freshness?: Freshness
   readonly cadence: Cadence
   // opaque, type-erased registration closure; no public untyped writer
 }
@@ -257,10 +266,14 @@ interface Source<TValue, TEnv = never> extends SourceRegistration<TEnv> {
     readonly clock: FrameClock
   }) => Effect.Effect<void, SourceError, TEnv | Scope.Scope>
 }
+type Freshness =
+  | { readonly _tag: 'Window'; readonly ms: number }
+  | { readonly _tag: 'While'; readonly status: Series<StatusValue>; readonly state: 'Connected' }
 declare const makeSource: <TValue, TEnv = never>(options: {
   readonly id: string
   readonly cadence: Cadence
   readonly series: Series<TValue>
+  readonly freshness?: Freshness
   readonly start: Source<TValue, TEnv>['start']
 }) => Source<TValue, TEnv>
 
@@ -314,6 +327,95 @@ frames. Finalization cancels browser callbacks synchronously before awaiting
 asynchronous cleanup; a late probe checks its acquisition generation and
 cannot append after release. Reacquisition waits behind unfinished cleanup.
 A new session is the cumulative-counter reset boundary.
+
+### Source freshness policy
+
+Trace: DT.MET-R03–R06, R13–R16, R28, R30, R33–R34.
+
+```text
+actual source observation -> generation/visibility guard -> policy -> ring commit
+selected status commit -------------------------------> policy       |
+scoped monotonic deadline ----------------------------> policy       v
+                                                   shared reader publication
+```
+
+`makeSource.freshness` is optional and inert. The store has no temporal work,
+status subscriptions, or freshness interpretation. Each selected registration
+has one direct post-commit/pre-publication adapter. Explicit dependents share
+one status-series dispatcher that captures the committed typed sample for each
+transition. Its FIFO drain delivers that captured sample to every dependent
+before delivering transitions queued by reentrant appends.
+The session validates exact selected status identity and an acyclic dependency
+graph before acquisition. It prepares generation guards and all dependency
+listeners before starting any collector, then acquires dependencies first.
+Existing current-generation status is delivered at subscription time; retained
+status from a previous generation is not current connection evidence.
+Neither selecting a dependent nor subscribing a reader selects another source
+or acquires a transport.
+
+| Policy/event                            | Materialized evidence                                                                                                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Window { ms }`                         | Positive finite monotonic age budget, independent of connection status                                                                                                 |
+| Actual `Value`                          | Renews deadline at observation `atMs + ms`; updates typed `lastKnown`                                                                                                  |
+| Actual `Unavailable(MeasurementFailed)` | Renews deadline but remains unavailable; preserves prior actual `lastKnown`                                                                                            |
+| Other explicit failure                  | Remains unavailable with its reason; cancels a previous window deadline                                                                                                |
+| Gap or renderer draw                    | Never renews a deadline                                                                                                                                                |
+| Deadline reached                        | One `Unavailable(Stale)` with prior actual `lastKnown`, even without readers or rAF                                                                                    |
+| `While` status not `Value(Connected)`   | `Unavailable(Disconnected)`; dependent values are not accepted                                                                                                         |
+| Reconnect                               | Remains unavailable: prior explicit failure if present, otherwise `Stale`; never restores a value                                                                      |
+| Next accepted observation               | Supplies new evidence, not a replay of the disconnected value                                                                                                          |
+| Hidden periodic source                  | `Hidden` dominates deadline and status callbacks; periodic collection remains paused                                                                                   |
+| Periodic resume                         | Retains the hidden gap, then unavailable evidence until a new observation; disconnected/explicit failure reasons are preserved, an expired measured failure is `Stale` |
+| Final release or acquisition rollback   | Synchronous `Stopped` dominates; old writers and callbacks cannot change evidence during asynchronous cleanup                                                          |
+
+An event source continues to observe real events while hidden; its window age
+still advances. A periodic source cannot publish values while hidden.
+Window scheduling is one scope-owned worker with at most one pending Effect
+deadline wait. An observation can extend its deadline without cancelling and
+recreating a timer on each observation; waking at the old deadline schedules
+only the remaining real duration. There is no frame subscription or periodic
+freshness polling. Scope closure interrupts pending waits.
+Committed source hooks and dependent notifications use the same aggregate
+delivery contract: every listener and originating reader publication is
+attempted before notification defects propagate. Window ownership is installed
+by its scoped committed-observation hook, not after successful publication.
+Expiry retires that ownership before publishing `Stale`, so a reentrant
+observation can own the next deadline; retiring cleanup clears only its own
+token. A publication defect cannot suppress initial scheduling, strand a
+renewal, or prevent a later dependent from observing disconnection.
+Status callback faults are isolated during the complete FIFO drain, then thrown
+as an aggregate from its outermost originating append. A fault in a reentrantly
+queued transition surfaces once from that outermost append, not its nested
+enqueueing append; it cannot skip other dependents or queued transitions.
+Periodic resume independently attempts its gap and unavailable commits, then
+reports aggregate notification defects. The unavailable commit is conditional
+on the exact gap sample still being latest in that series: evidence committed
+reentrantly by a gap subscriber supersedes it and is never overwritten by the
+resume transition. Unrelated series revisions cannot suppress the transition.
+Callback and Window-worker defects preserve their original Effect causes and
+are explicitly delivered through Effect's `ErrorReporter` boundary. The host
+supplies its selected `ErrorReporter` layer; the default reporter set is empty.
+The collector captures that context on its first lease. The library installs
+neither a console nor a default reporter, and reporting does not turn a failed
+effect into a healthy result.
+
+Synthetic evidence is appended at the injected session clock time.
+Source timestamps remain finite, session-local and nondecreasing: policy-bound
+writers reject delayed observations older than already committed evidence
+instead of retimestamping/resurrecting them. An otherwise ordered observation
+already outside its window materializes `Stale` immediately, with the actual
+observed value/time in `lastKnown`, never a transient live value.
+`lastKnown` is only the last actual accepted value, not a zero, a failed request,
+or a synthetic sample. Its timestamp/payload and retained samples are immutable;
+it may outlive the corresponding value's ring slot and survives lease restart
+without making that value live.
+
+There is no renderer-local validity policy. The removed
+`numericBlock`/`numberBlock.staleAfterMs` option migrates to
+`makeSource({ freshness: { _tag: 'Window', ms } })`. Renderers may format
+observation age, last-known evidence and history, but cannot reinterpret a
+stored `Value` as stale. Numeric descriptions expose unavailable reason and
+last-known value with its session timestamp.
 
 ## Frame Bookkeeping
 
@@ -636,6 +738,7 @@ interface BlockEvidence {
         readonly _tag: 'Unavailable'
         readonly atMs: number
         readonly reason: UnavailableReason
+        readonly lastKnownAtMs?: number
       }
     | {
         readonly _tag: 'Gap'
@@ -761,8 +864,12 @@ canvas scaling and unsaturated aggregation remain unchanged.
 `evaluatedAtMs` is exactly the supplied evaluation time. `latest.atMs` is the
 timestamp of the latest typed evidence, which may be a synthetic state
 transition rather than a measurement; it must not be interpreted as measurement age.
-Metadata projects only declared tag/timestamp/reason/gap duration, never extra
-payload fields. Evidence performs no store lookup, subscription or caching.
+For unavailable evidence, optional `latest.lastKnownAtMs` projects only the
+actual prior observation timestamp from `Sample.lastKnown.atMs`, never its
+payload. It is absent when there is no last-known observation. This remains
+distinct from both synthetic transition time and explicit evaluation time.
+Metadata projects only declared tags, timestamps, reasons and gap duration,
+never extra payload fields. Evidence performs no store lookup, subscription or caching.
 
 Aggregation defaults to `Latest` with the series unit. An optional `Bucket`
 policy specifies mode, duration, count and explicit output unit. The pure
@@ -887,11 +994,17 @@ const UnavailableReason = Schema.Literals([
   'HistoryLost',
   'CalibrationInvalid',
   'Stopped',
+  'Stale',
+  'Disconnected',
 ])
 const NumberValue = Schema.TaggedStruct('Number', { value: Schema.Finite })
 const NumberSample = Schema.Union([
   Schema.TaggedStruct('Value', { atMs: Schema.Finite, value: NumberValue }),
-  Schema.TaggedStruct('Unavailable', { atMs: Schema.Finite, reason: UnavailableReason }),
+  Schema.TaggedStruct('Unavailable', {
+    atMs: Schema.Finite,
+    reason: UnavailableReason,
+    lastKnown: Schema.optionalKey(Schema.Struct({ atMs: Schema.Finite, value: NumberValue })),
+  }),
   Schema.TaggedStruct('Gap', {
     atMs: Schema.Finite,
     durationMs: NonNegativeFinite,
