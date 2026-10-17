@@ -710,8 +710,11 @@ export const tileBlock = <TValue>(
   validateScale({ nominalMax, minSpanRatio })
   if (typeof options.range === 'object') validateRange(options.range)
   const policy = options.aggregation
-  // Validate the bucket policy inertly before any buffer is sized from it.
+  // Validate the bucket policy once, inertly, before any buffer is sized from it. Draws then
+  // derive the same completed boundary inline instead of allocating evidence per frame.
   resolveBlockAggregation({ aggregation: policy, nowMs: 0 })
+  const { bucketMs, buckets } = policy
+  const spanMs = bucketMs * buckets
   const label = options.shortLabel ?? options.series.label
   const rangeMode = typeof options.range === 'string' ? options.range : 'fixed'
   // block() exposes no per-reader state, so scratch is keyed by the bound history: live
@@ -726,12 +729,12 @@ export const tileBlock = <TValue>(
     readonly history: SeriesView<TValue>
     readonly nowMs: number
   }): TileScratch<TValue> => {
-    const aggregation = resolveBlockAggregation({ aggregation: policy, nowMs })
-    if (aggregation._tag !== 'Bucket') throw new TypeError('Tiles require bucket aggregation')
+    // Same completed boundary as resolveBlockAggregation, which describe evidence reports.
+    const completedEndMs = Math.floor(nowMs / bucketMs) * bucketMs
     let scratch = scratches.get(history)
     if (scratch === undefined) {
       scratch = {
-        values: new Float64Array(policy.buckets),
+        values: new Float64Array(buckets),
         carried: undefined,
         filling: false,
         range: {
@@ -754,9 +757,9 @@ export const tileBlock = <TValue>(
     try {
       scanBins({
         history,
-        endMs: aggregation.endMs,
-        spanMs: policy.bucketMs * policy.buckets,
-        bins: policy.buckets,
+        endMs: completedEndMs,
+        spanMs,
+        bins: buckets,
         mode: policy.mode,
         value: options.value,
         saturate: true,
@@ -837,8 +840,7 @@ export const tileBlock = <TValue>(
       // Normalize first so opposite finite extrema cannot overflow the denominator.
       const scale = Math.max(Math.abs(minimum), Math.abs(maximum))
       const span = maximum / scale - minimum / scale
-      const y = (value: number): number =>
-        chart.y + chart.height * ((maximum / scale - value / scale) / span)
+      const top = maximum / scale
       ctx.save()
       ctx.beginPath()
       ctx.rect(chart.x, chart.y, chart.width, chart.height)
@@ -847,7 +849,8 @@ export const tileBlock = <TValue>(
       ctx.fillRect(chart.x, chart.y + chart.height - 1, chart.width, 1)
       for (const mark of options.marks ?? noValues) {
         if (Number.isFinite(mark) === false || mark < minimum || mark > maximum) continue
-        ctx.fillRect(chart.x, Math.min(chart.y + chart.height - 1, y(mark)), chart.width, 1)
+        const markY = chart.y + chart.height * ((top - mark / scale) / span)
+        ctx.fillRect(chart.x, Math.min(chart.y + chart.height - 1, markY), chart.width, 1)
       }
       const step = chart.width / policy.buckets
       ctx.strokeStyle = theme.normal
@@ -862,14 +865,15 @@ export const tileBlock = <TValue>(
           continue
         }
         const x = chart.x + (bin + 0.5) * step
-        if (open === true) ctx.lineTo(x, y(value))
-        else ctx.moveTo(x, y(value))
+        const y = chart.y + chart.height * ((top - value / scale) / span)
+        if (open === true) ctx.lineTo(x, y)
+        else ctx.moveTo(x, y)
         open = true
         // Undefined buckets break the line; an isolated observation remains visible.
         const before = bin === 0 ? NaN : (values[bin - 1] ?? NaN)
         const after = bin === policy.buckets - 1 ? NaN : (values[bin + 1] ?? NaN)
         if (Number.isNaN(before) === true && Number.isNaN(after) === true)
-          ctx.fillRect(x - 1, y(value) - 1, 2, 2)
+          ctx.fillRect(x - 1, y - 1, 2, 2)
       }
       ctx.stroke()
       ctx.restore()
