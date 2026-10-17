@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/meters/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:6d30a2742795b283826de46090ad81c76c510536f922869b270540e66934a45f
+# Semantic fingerprint: sha256:dcf8300d97b7c1219e835e38513a303340e8bc3b5b5284d4dabc0876b86b366c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -75,6 +75,8 @@ export_materialization_inputs([
     "src/sources/spans/spans.unit.test.ts",
     "src/sources/status/index.ts",
     "src/sources/status/status.unit.test.ts",
+    "src/sources/user-timing/index.ts",
+    "src/sources/user-timing/user-timing.unit.test.ts",
     "src/stories/Availability.stories.tsx",
     "src/stories/MeterStrip.stories.tsx",
     "src/stories/MeterTile.stories.tsx",
@@ -175,6 +177,8 @@ package_view(
         "src/sources/spans/spans.unit.test.ts": "src/sources/spans/spans.unit.test.ts",
         "src/sources/status/index.ts": "src/sources/status/index.ts",
         "src/sources/status/status.unit.test.ts": "src/sources/status/status.unit.test.ts",
+        "src/sources/user-timing/index.ts": "src/sources/user-timing/index.ts",
+        "src/sources/user-timing/user-timing.unit.test.ts": "src/sources/user-timing/user-timing.unit.test.ts",
         "src/stories/Availability.stories.tsx": "src/stories/Availability.stories.tsx",
         "src/stories/MeterStrip.stories.tsx": "src/stories/MeterStrip.stories.tsx",
         "src/stories/MeterTile.stories.tsx": "src/stories/MeterTile.stories.tsx",
@@ -253,6 +257,8 @@ package_view(
         "src/sources/spans/spans.unit.test.ts": "src/sources/spans/spans.unit.test.ts",
         "src/sources/status/index.ts": "src/sources/status/index.ts",
         "src/sources/status/status.unit.test.ts": "src/sources/status/status.unit.test.ts",
+        "src/sources/user-timing/index.ts": "src/sources/user-timing/index.ts",
+        "src/sources/user-timing/user-timing.unit.test.ts": "src/sources/user-timing/user-timing.unit.test.ts",
         "src/stories/Availability.stories.tsx": "src/stories/Availability.stories.tsx",
         "src/stories/MeterStrip.stories.tsx": "src/stories/MeterStrip.stories.tsx",
         "src/stories/MeterTile.stories.tsx": "src/stories/MeterTile.stories.tsx",
@@ -331,6 +337,8 @@ package_view(
         "src/sources/spans/spans.unit.test.ts": "src/sources/spans/spans.unit.test.ts",
         "src/sources/status/index.ts": "src/sources/status/index.ts",
         "src/sources/status/status.unit.test.ts": "src/sources/status/status.unit.test.ts",
+        "src/sources/user-timing/index.ts": "src/sources/user-timing/index.ts",
+        "src/sources/user-timing/user-timing.unit.test.ts": "src/sources/user-timing/user-timing.unit.test.ts",
         "src/stories/Availability.stories.tsx": "src/stories/Availability.stories.tsx",
         "src/stories/MeterStrip.stories.tsx": "src/stories/MeterStrip.stories.tsx",
         "src/stories/MeterTile.stories.tsx": "src/stories/MeterTile.stories.tsx",

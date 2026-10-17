@@ -917,7 +917,8 @@
         "src/sources/memory/memory.unit.test.ts",
         "src/sources/otel-browser/otel-browser.unit.test.ts",
         "src/sources/spans/spans.unit.test.ts",
-        "src/sources/status/status.unit.test.ts"
+        "src/sources/status/status.unit.test.ts",
+        "src/sources/user-timing/user-timing.unit.test.ts"
       ],
       "sourceOwners": {
         "e2e/meter-strip.pw.test.ts": "test:pw:meters",
@@ -948,7 +949,8 @@
         "src/sources/memory/memory.unit.test.ts",
         "src/sources/otel-browser/otel-browser.unit.test.ts",
         "src/sources/spans/spans.unit.test.ts",
-        "src/sources/status/status.unit.test.ts"
+        "src/sources/status/status.unit.test.ts",
+        "src/sources/user-timing/user-timing.unit.test.ts"
       ],
       "unboundedAfter": [],
       "unboundedFiles": []

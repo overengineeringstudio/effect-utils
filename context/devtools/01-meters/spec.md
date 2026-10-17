@@ -26,6 +26,7 @@ Trace: DT.MET-R01–R04, R21, R28, R33.
   +-- /series                deterministic storage and reducers
   +-- /sources/frame         frame evidence and calibration
   +-- /sources/long-frames   shared scoped LoAF/longtask collector adapter
+  +-- /sources/user-timing   scoped performance.measure observer (name/prefix filter)
   +-- /sources/memory        heap source and explicit app-memory probe
   +-- /sources/fibers        host-enabled runtime gauge
   +-- /sources/spans         content-free completed-span aggregation
@@ -603,6 +604,20 @@ declare const longFramesSource: (options: {
   readonly id: string
   readonly series: Series<LongFrameValue>
 }) => Source<LongFrameValue>
+interface UserTimingValue {
+  readonly _tag: 'UserTiming'
+  readonly name: string
+  readonly startedAtMs: number
+  readonly durationMs: number
+}
+type UserTimingFilter =
+  | { readonly _tag: 'Names'; readonly names: readonly string[] }
+  | { readonly _tag: 'Prefix'; readonly prefix: string }
+declare const userTimingSource: (options: {
+  readonly id: string
+  readonly series: Series<UserTimingValue>
+  readonly filter: UserTimingFilter
+}) => Source<UserTimingValue>
 declare const heapSource: (options: {
   readonly id: string
   readonly series: Series<HeapMemory>
@@ -658,6 +673,17 @@ where required. Throttled retained-ring snapshots alone cannot provide exact
 lifetime totals: old retained spans may seed visible history but never bracket
 counter baselines. OTLP sampling does not change local completion counters, and
 meters does not stack another tracer wrapper on an already instrumented host.
+
+`userTimingSource` observes `measure` entries with `buffered: true` for its
+lease, so app-owned `performance.measure()` spans (for example a host's
+`fractal:` prefix) become event samples whose durations bucket tiles reduce to
+p50/p95. A sample is dated at the measure's end mapped onto the session clock,
+clamped to its delivery instant and never before the newest recorded sample.
+Measures already recorded are not counted again when a later lease replays the
+buffer. Other entry types and names outside the filter are ignored; an empty
+filter is rejected at construction. Without `PerformanceObserver`, a
+performance clock or `measure` support the series reads `Unsupported`, and a
+non-finite or negative measure reads `MeasurementFailed`, never a zero.
 
 `appMemoryProbe` creates no automatic timer. `probe` requires its source's live
 lease; concurrent invocations share one outstanding request. Unsupported or
