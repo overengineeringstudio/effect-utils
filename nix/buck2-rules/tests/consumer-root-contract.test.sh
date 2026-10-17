@@ -418,6 +418,7 @@ load("@rules//buck2/platforms:defs.bzl", "host_platform_label")
 load("@rules//buck2/rust:defs.bzl", "rust_product_executable")
 load("@rules//buck2/rust:defs.bzl", "cargo_build_script")
 load("@rules//buck2/rust:defs.bzl", "buildscript_run")
+load("@prelude//rust:cargo_buildscript.bzl", prelude_buildscript_run = "buildscript_run")
 
 native.rust_binary(
     name = "binary",
@@ -451,8 +452,8 @@ buildscript_run(
     manifest_dir = ":build-script",
     version = "0.1.0",
 )
-# Reindeer build scripts bypass our first-party cargo_build_script launcher.
-buildscript_run(
+# Reindeer calls Prelude directly, bypassing both first-party wrapper layers.
+prelude_buildscript_run(
     name = "vendored-build-script-run",
     package_name = "consumer-root-rust",
     buildscript_rule = ":build-script-binary",
@@ -477,17 +478,12 @@ build_product(
 )
 BUCK
 # A fresh isolation captures these deliberately broken wrappers in the daemon.
-# A wrapper returning no version reproduces rustversion's ambient-wrapper failure.
-cat > "$work/ambient-rust-wrapper" <<'SH'
-#!/usr/bin/env bash
-exit 0
-SH
-chmod +x "$work/ambient-rust-wrapper"
+# Missing executables reproduce the dotfiles devenv's unavailable sccache.
 (
   cd "$work"
   buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1 || true
-  RUSTC_WRAPPER="$work/ambient-rust-wrapper" \
-    RUSTC_WORKSPACE_WRAPPER="$work/ambient-rust-wrapper" \
+  RUSTC_WRAPPER="$work/nonexistent-rust-wrapper" \
+    RUSTC_WORKSPACE_WRAPPER="$work/nonexistent-rust-wrapper" \
     buck2 --isolation-dir consumer-root-contract build \
       'fixture//rust-fixture:build-script-run[rustc_flags]' \
       'fixture//rust-fixture:vendored-build-script-run[rustc_flags]' >/dev/null
