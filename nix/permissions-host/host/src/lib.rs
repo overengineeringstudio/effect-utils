@@ -60,10 +60,10 @@ pub struct Source { pub root: PathBuf, pub sentinel: String }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CopyInput { pub source_id: String, pub files: Vec<String> }
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CopyResult { pub staging_id: String, pub files: Vec<CopiedFile> }
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct CopiedFile { pub name: String, pub bytes: u64, pub sha256: String }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -80,6 +80,27 @@ pub enum Operation {
 }
 impl Operation {
     fn id(&self) -> &'static str { match self { Self::Status(_) => "host.status", Self::Copy(_) => "documents.copy", Self::Notify(_) => "notify" } }
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationVersion { pub operation: &'static str, pub operation_version: u32 }
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusResult { pub operations: Vec<OperationVersion>, pub policy_revision: String, pub release_revision: String, pub consent_pending: bool }
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifyResult { pub notification_id: String, pub submitted: bool }
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum OperationResult { Status(StatusResult), Copy(CopyResult), Notify(NotifyResult) }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditedResult { pub audit_id: String, #[serde(flatten)] pub output: OperationResult }
+#[derive(Serialize)]
+#[serde(untagged, rename_all_fields = "camelCase")]
+pub enum Response {
+    Success { protocol_version: u32, request_id: String, ok: bool, result: AuditedResult },
+    Failure { protocol_version: u32, request_id: Option<String>, ok: bool, error: HostError },
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -159,13 +180,16 @@ impl Host {
         audit.append(&json!({"phase":"recovery","utc":utc(),"releaseRevision":config.release_revision,"policyRevision":config.policy_revision,"priorAdmittedWork":"outcome-unknown-unless-terminal-recorded"}))?;
         Ok(Self { config, audit: Mutex::new(audit), work: Mutex::new(()), consent_pending, last_notification: Mutex::new(None) })
     }
-    fn execute(&self, operation: &Operation, cancelled: &dyn Fn() -> bool) -> Result<Value, HostError> {
+    fn execute(&self, operation: &Operation, cancelled: &dyn Fn() -> bool) -> Result<OperationResult, HostError> {
         match operation {
-            Operation::Status(_) => Ok(json!({"operations":[{"operation":"host.status","operationVersion":1},{"operation":"documents.copy","operationVersion":1},{"operation":"notify","operationVersion":1}],"policyRevision":self.config.policy_revision,"releaseRevision":self.config.release_revision,"consentPending":self.consent_pending})),
+            Operation::Status(_) => Ok(OperationResult::Status(StatusResult {
+                operations: ["host.status", "documents.copy", "notify"].into_iter().map(|operation| OperationVersion { operation, operation_version: 1 }).collect(),
+                policy_revision: self.config.policy_revision.clone(), release_revision: self.config.release_revision.clone(), consent_pending: self.consent_pending,
+            })),
             Operation::Copy(input) => {
                 self.config.grant("full-disk-access")?;
                 if self.consent_pending { return Err(HostError::permission("full-disk-access", "Documents consent is pending human-present onboarding")); }
-                documents::copy(&self.config.documents, &self.config.staging, input, cancelled).and_then(|r| serde_json::to_value(r).map_err(|_| HostError::new("operation-failed", "Receipt encoding failed")))
+                documents::copy(&self.config.documents, &self.config.staging, input, cancelled).map(OperationResult::Copy)
             },
             Operation::Notify(input) => {
                 self.config.grant("notifications")?;
@@ -175,7 +199,7 @@ impl Host {
                 if last.is_some_and(|instant| instant.elapsed().as_millis() < u128::from(self.config.notification_min_interval_ms)) { return Err(HostError::new("busy", "Notification rate limit reached")); }
                 *last = Some(Instant::now());
                 let id = native::notify(label, &input.title, &input.body, cancelled)?;
-                Ok(json!({"notificationId":id,"submitted":true}))
+                Ok(OperationResult::Notify(NotifyResult { notification_id: id, submitted: true }))
             }
         }
     }
@@ -198,13 +222,15 @@ impl Host {
         let mut audit = self.audit.lock();
         if let Err(error) = audit.append(&json!({"phase":"outcome","auditId":id,"utc":utc(),"requestId":correlation,"durationMs":start.elapsed().as_millis(),"outcome":outcome})) { return failure(correlation, error); }
         match result {
-            Ok(mut value) => { value["auditId"] = json!(id); json!({"protocolVersion":1,"requestId":correlation,"ok":true,"result":value}) },
+            Ok(output) => serde_json::to_value(Response::Success { protocol_version: 1, request_id: correlation.unwrap_or_default(), ok: true, result: AuditedResult { audit_id: id, output } }).expect("Response contains only JSON-safe types"),
             Err(mut error) => { error.audit_id = Some(id); failure(correlation, error) }
         }
     }
     pub fn serve(self) -> Result<(), HostError> { transport::serve(Arc::new(self)) }
 }
-fn failure(request_id: Option<String>, error: HostError) -> Value { json!({"protocolVersion":1,"requestId":request_id,"ok":false,"error":error}) }
+fn failure(request_id: Option<String>, error: HostError) -> Value {
+    serde_json::to_value(Response::Failure { protocol_version: 1, request_id, ok: false, error }).expect("Error response contains only JSON-safe types")
+}
 fn consent_path(config: &Config) -> PathBuf { config.audit.with_extension("onboarding.json") }
 fn read_consent(config: &Config) -> bool {
     let Ok(mut file) = OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(consent_path(config)) else { return false; };
