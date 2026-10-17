@@ -237,7 +237,8 @@ devenv tasks run buck2:editor:materialize
 ```
 
 Publish only requested consumers (JSON package paths), or omit the environment
-variable to select consumers changed since `origin/main`:
+variable to reconcile changes since `origin/main`. Automatic selection conservatively
+includes all consumers, including reverse dependencies, whenever tracked files changed.
 
 ```bash
 EDITOR_VIEW_PACKAGES='["packages/@overeng/notion-core"]' devenv tasks run buck2:editor:publish

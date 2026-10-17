@@ -117,23 +117,14 @@ export const resolveEditorViewPackageScope = ({
   }
 }
 
-/** Select the deepest owning workspace consumer for each changed source path. */
+/** Fail closed to all consumers until Buck proves a narrower reverse dependency closure. */
 export const changedEditorConsumers = ({
   changed,
   packagePaths,
 }: {
   readonly changed: readonly string[]
   readonly packagePaths: readonly string[]
-}): readonly string[] => {
-  const selected = new Set<string>()
-  for (const file of changed) {
-    const owner = packagePaths
-      .filter((packagePath) => packagePath !== '.' && file.startsWith(`${packagePath}/`))
-      .toSorted((left, right) => right.length - left.length)[0]
-    selected.add(owner ?? '.')
-  }
-  return [...selected].toSorted()
-}
+}): readonly string[] => (changed.length === 0 ? [] : packagePaths)
 type Command = 'authority' | 'bootstrap' | 'check' | 'publish'
 
 const fail = (message: string): never => {

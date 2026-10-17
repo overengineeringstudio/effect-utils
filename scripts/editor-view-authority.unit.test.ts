@@ -12,15 +12,10 @@ import {
 } from './editor-view-authority.ts'
 
 describe('editor view authority orchestration', () => {
-  it('scopes changed source paths to unique deepest consumers and root files', () => {
+  it('fails closed to all consumers for changes, including reverse dependencies and global inputs', () => {
     expect(
       changedEditorConsumers({
-        changed: [
-          'packages/a/src/one.ts',
-          'packages/a/src/two.ts',
-          'packages/ab/x.ts',
-          'devenv.nix',
-        ],
+        changed: ['packages/a/src/one.ts'],
         packagePaths: ['.', 'packages/a', 'packages/ab'],
       }),
     ).toEqual(['.', 'packages/a', 'packages/ab'])

@@ -78,6 +78,11 @@ const baseSteps = [
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
   validateNixStoreStep,
+  {
+    name: 'Prepare source generator dependency views',
+    env: githubTokenEnv(),
+    run: runDevenvTasksBefore('buck2:editor:bootstrap'),
+  },
   /**
    * Temporary debug switch for #272 to validate failure-path diagnostics without waiting for a real flake.
    * Remove once #201/#272 are root-caused and diagnostics instrumentation is removed.
@@ -160,7 +165,7 @@ const liveNetlifyCiToolsE2EStep = {
     [
       'netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"',
       'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
-      'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
+      'EDITOR_VIEW_PACKAGES=\'["packages/@overeng/ci-tools"]\' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
       'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts',
     ].join('\n'),
   ),
@@ -222,7 +227,7 @@ const liveVercelCiToolsE2EStep = {
     [
       'vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"',
       'export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_pkg/bin/vercel"',
-      'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
+      'EDITOR_VIEW_PACKAGES=\'["packages/@overeng/ci-tools"]\' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
       'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts',
     ].join('\n'),
   ),
@@ -911,6 +916,11 @@ const extraJobs: Record<string, any> = {
       preparePinnedDevenvStep,
       validateNixStoreStep,
       {
+        name: 'Prepare source generator dependency views',
+        env: githubTokenEnv(),
+        run: runDevenvTasksBefore('buck2:editor:bootstrap'),
+      },
+      {
         name: 'Check generated sources',
         env: githubTokenEnv(),
         run: runDevenvTasksBefore('genie:check'),
@@ -1365,7 +1375,7 @@ const extraJobs: Record<string, any> = {
       setupSteps: baseSteps,
       taskProbes: [
         {
-          task: 'buck2:editor:publish',
+          task: 'buck2:editor:publish:all',
           label: 'Editor dependency publication',
           group: 'workspace setup',
           description: 'Publishes the complete Buck-owned editor dependency surface.',

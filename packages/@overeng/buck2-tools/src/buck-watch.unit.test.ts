@@ -382,7 +382,7 @@ describe('Buck watch reconciliation', () => {
       expect(invocations).toHaveLength(2)
       expect(invocations[0]?.signal).toBe(shutdown.signal)
       expect(invocations[0]?.detached).toBeUndefined()
-      expect(invocations[1]?.detached).toBe(true)
+      expect(invocations[1]?.detached).toBeUndefined()
       expect(invocations[1]?.signal).toBeUndefined()
       expect(invocations[1]?.command).toBe('/tools/bun')
       expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
@@ -399,6 +399,7 @@ describe('Buck watch reconciliation', () => {
         command: string
         args: readonly string[]
         input: string | undefined
+        detached: boolean | undefined
       }[] = []
       await reconcileBuckViews({
         request: {
@@ -419,8 +420,8 @@ describe('Buck watch reconciliation', () => {
           mv: '/tools/mv',
           fingerprintTool: '/tools/buck2-fingerprint',
           snapshotRetention: 3,
-          run: async ({ command, args, input }) => {
-            batchInvocations.push({ command, args, input })
+          run: async ({ command, args, input, detached }) => {
+            batchInvocations.push({ command, args, input, detached })
             return command === '/tools/buck2'
               ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
               : { stdout: '', stderr: '' }
@@ -429,6 +430,7 @@ describe('Buck watch reconciliation', () => {
       })
       expect(batchInvocations).toHaveLength(2)
       expect(batchInvocations[1]?.args).toEqual(['/tools/editor-view', 'publish-batch'])
+      expect(batchInvocations[1]?.detached).toBeUndefined()
       expect(JSON.parse(batchInvocations[1]?.input ?? '')).toEqual([invocations[1]?.args.slice(1)])
 
       const failedInvocations: string[] = []
