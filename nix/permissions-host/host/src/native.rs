@@ -199,6 +199,20 @@ struct Point { x: f64, y: f64 }
 struct Size { width: f64, height: f64 }
 #[repr(C)]
 struct Rect { origin: Point, size: Size }
+#[link(name = "AppKit", kind = "framework")]
+unsafe extern "C" {}
+unsafe fn send4<A, B, C, D, R>(object: Id, name: &std::ffi::CStr, a: A, b: B, c: C, d: D) -> R {
+    let f: unsafe extern "C" fn(Id, Sel, A, B, C, D) -> R = unsafe { std::mem::transmute(objc_msgSend as *const ()) };
+    unsafe { f(object, selector(name), a, b, c, d) }
+}
+struct ScreenFixture(Object);
+impl Drop for ScreenFixture {
+    fn drop(&mut self) {
+        // releasedWhenClosed is disabled: close removes the window; Object then
+        // releases our sole owning reference, including on every error path.
+        unsafe { send0::<()>(self.0.0, c"close") };
+    }
+}
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
     fn CGPreflightScreenCaptureAccess() -> bool;
@@ -207,24 +221,65 @@ unsafe extern "C" {
     fn CGImageGetWidth(image: Id) -> usize;
     fn CGImageGetHeight(image: Id) -> usize;
     fn CGImageRelease(image: Id);
+    fn CGColorSpaceCreateDeviceRGB() -> Id;
+    fn CGColorSpaceRelease(space: Id);
+    fn CGBitmapContextCreate(data: *mut c_void, width: usize, height: usize, bits_per_component: usize, bytes_per_row: usize, space: Id, bitmap_info: u32) -> Id;
+    fn CGContextDrawImage(context: Id, rect: Rect, image: Id);
+    fn CGContextRelease(context: Id);
 }
 fn onboard_screen() -> Result<String, HostError> {
     unsafe {
         if !CGPreflightScreenCaptureAccess() && !CGRequestScreenCaptureAccess() {
             return Err(required("screen-recording", "Approve Screen Recording for the host; restart it if macOS requires"));
         }
-        // A single disposable desktop pixel; never retained, encoded, or returned.
-        let image = CGWindowListCreateImage(Rect { origin: Point { x: 0.0, y: 0.0 }, size: Size { width: 1.0, height: 1.0 } }, 1, 0, 0);
-        if image.is_null() { return Err(failed("Screen capture authorization did not produce a test image")); }
-        let valid = CGImageGetWidth(image) > 0 && CGImageGetHeight(image) > 0;
+        let main_thread: i8 = send0(class(c"NSThread"), c"isMainThread");
+        if main_thread == 0 { return Err(failed("Synthetic screen fixture requires the onboarding command's main thread")); }
+        let _application: Id = send0(class(c"NSApplication"), c"sharedApplication");
+        let allocated: Id = send0(class(c"NSWindow"), c"alloc");
+        let window: Id = send4(allocated, c"initWithContentRect:styleMask:backing:defer:",
+            Rect { origin: Point { x: 40.0, y: 40.0 }, size: Size { width: 32.0, height: 32.0 } },
+            0usize, 2usize, 0i8);
+        if window.is_null() { return Err(failed("Unable to create synthetic screen fixture window")); }
+        let fixture = ScreenFixture(Object(window));
+        send1::<_, ()>(fixture.0.0, c"setReleasedWhenClosed:", 0i8);
+        send1::<_, ()>(fixture.0.0, c"setOpaque:", 1i8);
+        send1::<_, ()>(fixture.0.0, c"setHasShadow:", 0i8);
+        let red: Id = send4(class(c"NSColor"), c"colorWithSRGBRed:green:blue:alpha:", 1.0f64, 0.0f64, 0.0f64, 1.0f64);
+        send1::<_, ()>(fixture.0.0, c"setBackgroundColor:", red);
+        send0::<()>(fixture.0.0, c"orderFrontRegardless");
+        send0::<()>(fixture.0.0, c"display");
+        // Give the window server a bounded turn to composite our own opaque
+        // synthetic fixture. No desktop or other application's window is selected.
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, 0);
+        let number: isize = send0(fixture.0.0, c"windowNumber");
+        let number = u32::try_from(number).map_err(|_| failed("Synthetic screen fixture has no captureable window ID"))?;
+        // CGRectNull selects the exact window bounds; including-window plus
+        // ignore-framing/nominal-resolution excludes unrelated desktop pixels.
+        let image = CGWindowListCreateImage(Rect { origin: Point { x: f64::INFINITY, y: f64::INFINITY }, size: Size { width: 0.0, height: 0.0 } }, 8, number, 17);
+        if image.is_null() { return Err(failed("Screen capture did not produce a synthetic fixture image")); }
+        let valid_size = CGImageGetWidth(image) == 32 && CGImageGetHeight(image) == 32;
+        let space = CGColorSpaceCreateDeviceRGB();
+        if space.is_null() { CGImageRelease(image); return Err(failed("Unable to create fixture verification color space")); }
+        let mut pixel = [0u8; 4];
+        // Render only the captured fixture into a disposable RGBA pixel; this
+        // normalizes image provider layout before checking its deterministic red.
+        let context = CGBitmapContextCreate(pixel.as_mut_ptr().cast(), 1, 1, 8, 4, space, 0x4001);
+        CGColorSpaceRelease(space);
+        if context.is_null() { CGImageRelease(image); return Err(failed("Unable to verify synthetic fixture capture")); }
+        CGContextDrawImage(context, Rect { origin: Point { x: 0.0, y: 0.0 }, size: Size { width: 1.0, height: 1.0 } }, image);
+        CGContextRelease(context);
         CGImageRelease(image);
-        if !valid { return Err(failed("Screen capture returned an empty test image")); }
+        if !valid_size || pixel[0] < 240 || pixel[1] > 15 || pixel[2] > 15 || pixel[3] < 240 {
+            return Err(failed("Captured screen image did not match the deterministic opaque-red fixture"));
+        }
     }
-    Ok("Captured and discarded one desktop pixel; fixture and full-operation coverage are not established".into())
+    Ok("Captured and verified the host's synthetic opaque-red 32×32 fixture, then discarded pixels and closed the window".into())
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
     fn CFRelease(value: Id);
+    fn CFRunLoopRunInMode(mode: Id, seconds: f64, return_after_source: u8) -> i32;
+    static kCFRunLoopDefaultMode: Id;
     fn CFDictionaryCreate(allocator: Id, keys: *const Id, values: *const Id, count: isize, key_callbacks: *const c_void, value_callbacks: *const c_void) -> Id;
     static kCFBooleanTrue: Id;
     static kCFTypeDictionaryKeyCallBacks: c_void;

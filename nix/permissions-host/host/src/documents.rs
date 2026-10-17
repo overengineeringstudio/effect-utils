@@ -37,6 +37,55 @@ fn basename(name: &str) -> bool {
         && !name.contains('/') && !name.contains('\0')
 }
 
+fn validate_limits(policy: &DocumentsPolicy) -> Result<(), HostError> {
+    if !(1..=4096).contains(&policy.max_items) || policy.max_bytes == 0
+        || !(1..=300_000).contains(&policy.timeout_ms)
+    {
+        return Err(denied("Documents limits must be positive; maxItems <= 4096 and timeoutMs <= 300000"));
+    }
+    Ok(())
+}
+
+fn allowed_names(
+    names: &[String],
+    check: impl Fn() -> Result<(), HostError>,
+) -> Result<HashSet<&str>, HostError> {
+    if names.is_empty() {
+        return Err(denied("Documents source must allow explicit filenames"));
+    }
+    let mut allowed = HashSet::with_capacity(names.len());
+    for name in names {
+        check()?;
+        if !basename(name) || !allowed.insert(name.as_str()) {
+            return Err(denied("Documents filename allowlist is invalid"));
+        }
+    }
+    Ok(allowed)
+}
+
+/// Pure startup validation: never opens a protected source or invokes consent APIs.
+pub fn validate_policy(policy: &DocumentsPolicy) -> Result<(), HostError> {
+    validate_limits(policy)?;
+    for (id, source) in &policy.sources {
+        if id.is_empty() || id.len() > 128
+            || !id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        {
+            return Err(denied("Documents source IDs must be 1..128 ASCII letters, digits, underscores or hyphens"));
+        }
+        let root = source.root.as_os_str().as_bytes();
+        if !source.root.is_absolute() || root.contains(&0)
+            || root.split(|byte| *byte == b'/').any(|part| part == b"." || part == b"..")
+        {
+            return Err(denied("Documents roots must be absolute without dot components"));
+        }
+        if !basename(&source.sentinel) {
+            return Err(denied("Configured sentinel must be a basename"));
+        }
+        allowed_names(&source.allowed_basenames, || Ok(()))?;
+    }
+    Ok(())
+}
+
 struct Budget<'a> {
     deadline: Instant,
     remaining: u64,
@@ -44,9 +93,7 @@ struct Budget<'a> {
 }
 impl Budget<'_> {
     fn new(policy: &DocumentsPolicy) -> Result<Self, HostError> {
-        if policy.max_items == 0 || policy.max_bytes == 0 || policy.timeout_ms == 0 {
-            return Err(denied("Documents limits must be positive"));
-        }
+        validate_limits(policy)?;
         let deadline = Instant::now().checked_add(Duration::from_millis(policy.timeout_ms))
             .ok_or_else(|| denied("Documents deadline is out of range"))?;
         Ok(Self { deadline, remaining: policy.max_bytes, cancelled: &|| false })
@@ -279,6 +326,13 @@ pub fn copy(policy: &DocumentsPolicy, staging: &Path, input: &CopyInput,
     budget.check()?;
     let source = policy.sources.get(&input.source_id)
         .ok_or_else(|| denied("Unknown Documents source"))?;
+    let allowed = allowed_names(&source.allowed_basenames, || budget.check())?;
+    for name in &input.files {
+        budget.check()?;
+        if !allowed.contains(name.as_str()) {
+            return Err(denied("Requested filename is not allowlisted for this source"));
+        }
+    }
     let root = directory(&source.root, &budget)?;
     let parent = directory(staging, &budget)?;
     private_directory(&parent).map_err(staging_error)?;
@@ -433,6 +487,54 @@ mod tests {
         assert!(cancelled.check().is_err());
     }
 
+    fn validation_policy() -> DocumentsPolicy {
+        serde_json::from_value(serde_json::json!({
+            "sources": {"test": {
+                "root": "/unopened/source", "sentinel": "sentinel", "allowedBasenames": ["file"]
+            }},
+            "maxItems": 1, "maxBytes": 1, "timeoutMs": 1
+        })).unwrap()
+    }
+
+    #[test]
+    fn policy_validation_is_pure_and_checks_roots_sentinels_and_allowlists() {
+        let mut policy = validation_policy();
+        assert!(validate_policy(&policy).is_ok());
+        for root in ["relative", "/source/./child", "/source/../child", "/source\0child"] {
+            policy.sources.get_mut("test").unwrap().root = root.into();
+            assert!(validate_policy(&policy).is_err());
+        }
+        policy.sources.get_mut("test").unwrap().root = "/unopened/source".into();
+        for sentinel in ["", ".", "..", "../sentinel"] {
+            policy.sources.get_mut("test").unwrap().sentinel = sentinel.into();
+            assert!(validate_policy(&policy).is_err());
+        }
+        policy.sources.get_mut("test").unwrap().sentinel = "sentinel".into();
+        for names in [vec![], vec!["file", "file"], vec!["../file"]] {
+            policy.sources.get_mut("test").unwrap().allowed_basenames =
+                names.into_iter().map(str::to_owned).collect();
+            assert!(validate_policy(&policy).is_err());
+        }
+    }
+
+    #[test]
+    fn policy_limits_have_exact_finite_boundaries() {
+        let mut policy = validation_policy();
+        for max_items in [0, 4097, usize::MAX] {
+            policy.max_items = max_items;
+            assert!(validate_policy(&policy).is_err());
+        }
+        policy.max_items = 4096;
+        for timeout_ms in [0, 300_001, u64::MAX] {
+            policy.timeout_ms = timeout_ms;
+            assert!(validate_policy(&policy).is_err());
+        }
+        policy.timeout_ms = 300_000;
+        assert!(validate_policy(&policy).is_ok());
+        policy.max_bytes = 0;
+        assert!(validate_policy(&policy).is_err());
+    }
+
     struct Fixture {
         root: std::path::PathBuf,
         policy: DocumentsPolicy,
@@ -451,7 +553,10 @@ mod tests {
             }
             std::fs::write(root.join("source/sentinel"), b"probe").unwrap();
             let policy = serde_json::from_value(serde_json::json!({
-                "sources": {"test": {"root": root.join("source"), "sentinel": "sentinel"}},
+                "sources": {"test": {
+                    "root": root.join("source"), "sentinel": "sentinel",
+                    "allowedBasenames": ["file", "a", "b", "missing", "link", "directory", "fifo", "sentinel"]
+                }},
                 "maxItems": 4, "maxBytes": max_bytes, "timeoutMs": 5000
             })).unwrap();
             Self { root, policy }
@@ -510,6 +615,25 @@ mod tests {
     }
 
     #[test]
+    fn unallowlisted_existing_file_is_denied_before_staging() {
+        let fixture = Fixture::new(100);
+        std::fs::write(fixture.root.join("source/not-allowed"), b"private").unwrap();
+        assert!(fixture.copy(&["not-allowed"]).is_err());
+        assert!(fixture.staging_empty());
+    }
+
+    #[test]
+    fn empty_duplicate_and_invalid_filename_policies_are_denied() {
+        let mut fixture = Fixture::new(100);
+        for names in [vec![], vec!["file", "file"], vec!["../file"], vec![""]] {
+            fixture.policy.sources.get_mut("test").unwrap().allowed_basenames =
+                names.into_iter().map(str::to_owned).collect();
+            assert!(fixture.copy(&["file"]).is_err());
+            assert!(fixture.staging_empty());
+        }
+    }
+
+    #[test]
     fn symlinks_and_nonregular_sources_are_refused() {
         use std::os::unix::fs::symlink;
         let mut fixture = Fixture::new(100);
@@ -558,6 +682,16 @@ mod tests {
     }
 
     proptest! {
+        #[test]
+        fn policy_source_id_contract_is_exact(id in any::<String>()) {
+            let expected = !id.is_empty() && id.len() <= 128
+                && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
+            let mut policy = validation_policy();
+            let source = policy.sources.remove("test").unwrap();
+            policy.sources.insert(id, source);
+            prop_assert_eq!(validate_policy(&policy).is_ok(), expected);
+        }
+
         #[test]
         fn accepted_names_are_exactly_one_normal_component(name in any::<String>()) {
             if basename(&name) {

@@ -178,6 +178,10 @@ user, mode 0700, socket mode 0600. Reuse `endpoint::bind` no-follow ancestry,
 ACL, stale-socket and same-inode cleanup checks. A non-socket or live listener
 blocks startup. No network listener or unauthenticated request-file fallback is
 part of this contract. An SSH client connects locally as the same user.
+`endpoint::bind` locks the entire socket parent directory. The standard ctl
+socket and typed `config.socket` therefore require different precreated,
+user-owned mode-0700 parent directories; different filenames in one directory
+are insufficient and would contend for the same listener lock.
 
 One newline-delimited UTF-8 JSON request and response per connection; maximum
 request 64 KiB including newline, maximum response 1 MiB. Reject invalid UTF-8,
@@ -239,6 +243,10 @@ and size limits are explicit; audit storage exhaustion refuses new work with
 work and outcome before reporting success. A crash may leave admitted work with
 unknown outcome; recovery records that uncertainty, never fabricated success.
 Same-UID audit storage is operational evidence, not tamper-proof forensics.
+Before admitting protected work, reserve capacity for its bounded terminal audit
+record under `auditMaxBytes`. Other outstanding admissions cannot consume that
+reservation; refuse new work rather than discover after a side effect that its
+outcome cannot be recorded.
 
 ## Initial operations
 
@@ -280,9 +288,10 @@ type CopyResult = {
 }
 ```
 
-This is the first protected operation. The consumer maps each source ID to a
-fixed Documents directory and sentinel; callers supply only distinct basenames
-(1..255 UTF-8 bytes, no slash, NUL, `.` or `..`), never arbitrary paths. Limit
+This is the first protected operation. Each configured source requires `root`,
+`sentinel` and explicit `allowedBasenames`; a root alone does not allow all files
+within it. Callers supply only distinct allowlisted basenames (1..255 UTF-8 bytes,
+no slash, NUL, `.` or `..`), never arbitrary paths. Limit
 file count, total bytes and duration by consumer policy. Descriptor-relative
 no-follow opens require regular files under the selected root; source changes,
 symlinks, nonregular files and bound overruns refuse publication. Copy in the
@@ -332,7 +341,7 @@ grants and Automation targets; compiled support does not itself grant a category
 | --------------------------------------- | --------------------------------------------------------------------------------------------- |
 | Full Disk Access / `full-disk-access`    | Human System Settings approval; bounded read of a configured protected sentinel                |
 | Notifications / `notifications`         | Explicit host allowance; bounded test notification, distinguish submission from visible delivery |
-| Screen Recording / `screen-recording`   | Explicit approval; bounded capture of a harmless synthetic fixture (DQ2)                       |
+| Screen Recording / `screen-recording`   | Explicit approval; capture and verify the host's synthetic red 32×32 fixture window, never an arbitrary desktop (DQ2) |
 | Accessibility / `accessibility`         | Explicit approval; bounded harmless AX interaction/observation of a test fixture (DQ3)          |
 | Microphone / `microphone`               | Explicit approval; bounded disposable test capture, never retained production audio (DQ4)      |
 | System audio / `system-audio`           | Separate AudioCapture approval; bounded process-tap capture of synthetic audio on macOS 14.4+ (DQ4) |
@@ -464,10 +473,22 @@ later lists and objects replace earlier values, not deep merge.
 the files supply the remaining runtime configuration.
 `notificationMinIntervalMs` defaults to 1000 milliseconds and must be in the
 finite inclusive range 1..3600000; it is consumer configuration, not request input.
-Outputs are unsigned `hostApp`, `runtime`, merged `policy`, `infoPlist`, `entitlements`,
-`hostSourceHash`, `requirement` and metadata-only `ctlConfig`. This module does
-not expose `ctl` or `desiredDescriptor`; the existing generic module's outputs
-above must not be mistaken for new-host integration or verification.
+Outputs include the standard `mkMacosApp` `hostApp`, `requirement`, `ctl`,
+`ctlConfig`, `generation`, `desiredDescriptor` and `primitives`, plus `runtime`,
+merged `policy`, `infoPlist`, `entitlements` and `hostSourceHash`. Outputs are
+lazy: `hostApp` is the unsigned permissions app. Building generic tooling such
+as `ctl`, `primitives` or `desiredDescriptor` may run its existing ad-hoc-signing
+build steps; that does not seal or authorize activation of the permissions app.
+The app remains unsigned until explicit sealing in the authorized session.
+
+The native runtime implements the standard ctl socket lifecycle separately
+from the policy-configured typed-operation socket. These are distinct protocols:
+ctl lifecycle commands do not reinterpret operation requests, and ordinary
+operation clients cannot trigger lifecycle changes or consent.
+
+Persisted consent state is read using an initial nonblocking open and checked
+for the expected regular-file type before decoding. A FIFO must be rejected,
+not allowed to hang startup before file-type validation.
 
 ### Implementation and verification boundary
 

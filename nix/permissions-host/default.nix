@@ -193,8 +193,17 @@ assert lib.assertMsg (
 ) "permissions-host automationTargets must be unique bundle identifiers";
 {
   inherit runtime policy infoPlist entitlements hostSourceHash;
-  inherit (assembly) hostApp requirement ctlConfig;
-  # Intentionally do not expose ctl, primitives or desiredDescriptor: they pull
-  # in the existing genericHost derivation, whose postFixup signs executables.
-  # Only a separate, explicitly invoked consumer sealing step may sign this app.
+  # Preserve the normal mkMacosApp lifecycle interface. hostApp alone stays
+  # unsigned; ctl, primitives and desiredDescriptor lazily depend on the existing
+  # genericHost tooling derivation, whose postFixup ad-hoc signs its own binaries.
+  # Those tools do not sign this app until the consumer explicitly seals it.
+  inherit (assembly)
+    hostApp
+    requirement
+    ctl
+    ctlConfig
+    generation
+    desiredDescriptor
+    primitives
+    ;
 }
