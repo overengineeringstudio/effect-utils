@@ -23,9 +23,9 @@ PROMPTS = {'automation.a.request': 'kTCCServiceAppleEvents',
 PREFLIGHTS = ['status', 'automation.a.preflight', 'automation.b.preflight',
               'microphone.preflight', 'fda.preflight']
 REVOKED = ['screen.capture', 'ax.probe', 'audio.capture', 'core.notify',
-           'private.experiment-restic-backup', 'watchman.fda']
+           'private.experiment-restic-backup']
 OPS = set(PREFLIGHTS + REVOKED + list(PROMPTS) + ['notifications.provisional',
-          'private.seed', 'watchman.start', 'watchman.events', 'watchman.reconnect', 'watchman.stop'])
+          'private.seed'])
 
 
 def append(path, value):

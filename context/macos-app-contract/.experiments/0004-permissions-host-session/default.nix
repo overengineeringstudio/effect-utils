@@ -7,10 +7,12 @@
   release ? "1",
   signer,
   allowedUid ? 501,
+  includeWatchman ? false,
 }:
 let
   inherit (pkgs) lib;
   bundleId = "dev.overeng.permissions-host.experiment";
+  workers = [ "restic" ] ++ lib.optional includeWatchman "watchman";
   sourceHash = builtins.hashString "sha256" (
     builtins.readFile ./native/Host.swift + builtins.readFile ./native/Client.swift + release
   );
@@ -25,7 +27,7 @@ let
     app="$out/MacPermissionsHostExperiment.app"
     mkdir -p "$app/Contents/Helpers" "$app/Contents/Resources"
     cp '${pkgs.restic}/bin/restic' "$app/Contents/Helpers/restic"
-    cp '${pkgs.watchman}/bin/watchman' "$app/Contents/Helpers/watchman"
+    ${lib.optionalString includeWatchman ''cp '${pkgs.watchman}/bin/watchman' "$app/Contents/Helpers/watchman"''}
     printf '%s' '${sourceHash}' > "$app/Contents/Resources/source-hash"
     python3 - "$app" '${release}' <<'PY'
     import hashlib, json, pathlib, plistlib, sys
@@ -35,7 +37,7 @@ let
     data['CFBundleVersion'] = sys.argv[2]
     info.write_bytes(plistlib.dumps(data))
     helpers = {name: hashlib.sha256((app / 'Contents/Helpers' / name).read_bytes()).hexdigest()
-               for name in ('restic', 'watchman')}
+               for name in ${builtins.toJSON workers}}
     (app / 'Contents/Resources/helpers.json').write_text(json.dumps(helpers) + '\n')
     PY
   '';
@@ -62,7 +64,9 @@ let
         identifier = "${bundleId}.${name}";
         requirement = requirementFor "${bundleId}.${name}";
         options = [ "runtime" ];
-      }) [ "restic" "watchman" ];
+      }) workers;
     };
   };
-in product // { inherit bundle; }
+in
+assert lib.hasPrefix "/nix/store/" (toString nativeBundle);
+product // { inherit bundle; }

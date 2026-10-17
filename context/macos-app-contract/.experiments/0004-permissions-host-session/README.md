@@ -26,10 +26,29 @@ SDK. Each output contains `probe-host`, `client`, and `PermissionsFixture.app`; 
 commands compile sources only and do not launch protected probes. Root `default.nix` accepts
 `pkgs`, `nixpkgsRevision`, `nativeBundle`, `release`, `signer` and optionally `allowedUid`;
 its outputs are `hostApp`, `ctl`, `ctlConfig`, `generation`, `desiredDescriptor`, `bundle`.
-Pinned restic and Watchman are bundle dependencies, not executables resolved from PATH.
+Pinned restic is a bundle dependency, not an executable resolved from PATH. Watchman is
+optional (`includeWatchman`, default `false`) and excluded from this session's v1/v2 bundles:
+the pinned package has external Nix-store dylibs, which ctl correctly rejects.
 A worker-byte-changed release requires a separately assembled/resealed bundle, not a
 post-signature helper replacement. Pre-sign `helpers.json` hashes are provenance only;
 signed resource validation and the pinned designated requirement govern installed code.
+
+On the authorized idle builder, assemble each native app using the store-first harness:
+
+```sh
+bash assemble.sh "$OUT_V1/MacPermissionsHostExperiment.app" 1 "$SIGNER_JSON" "$ASSEMBLED_V1"
+bash assemble.sh "$OUT_V2/MacPermissionsHostExperiment.app" 2 "$SIGNER_JSON" "$ASSEMBLED_V2"
+```
+
+`SIGNER_JSON` contains only the privately supplied public identity policy (`teamId` and
+`identity`), never a password. The harness first runs
+`nix store add --mode nar "$NATIVE_APP"` and then passes the returned store path as
+`nativeBundle`; this import is mandatory because build users cannot read home directories.
+Do not substitute `toString` or a home-directory path. `default.nix` rejects non-store
+inputs. Assembly exposes `hostApp`, `ctl`, `ctl-config.json`, `desired-descriptor.json`
+and `generation` under the output link. This is unsigned assembly, not install or seal.
+Inspect every native file with `otool -L`; store dylibs must be bundled/relocated before
+ctl can accept them. Never weaken ctl's non-bundled-native-path guard.
 
 Sources may be copied to an isolated builder and unsigned builds prepared there.
 **No prep sealing, artifact transfer to the runtime machine, or runtime installation.** A signer
@@ -159,12 +178,10 @@ window visible for window-only ScreenCaptureKit capture. Never capture unrelated
    `ALLOW microphone.request`. Answer that dialog and record actual capture/status evidence.
    Do not run prompt commands unattended or infer process-tap support from this result.
 10. Run `private.experiment-restic-backup`; inspect the real check/dump/hash evidence and
-    tccd host attribution. Run `watchman.start`, make fixture-only changes in its fixed
-    unprotected watch root, run `watchman.events`, `watchman.fda`, `watchman.reconnect`,
-    and `watchman.events` again. Record actual FSEvents and reconnect identity. Run
-    `watchman.stop` before host upgrades. No client argv is forwarded to helpers.
-11. Optional W2 is a **separate manually authorized experiment**, described below. It is
-    not installed or executed by these scripts. If not performed, record DQ7 W2 untested.
+    tccd host attribution. No client argv is forwarded to helpers.
+11. Record DQ7 W1 and W2 as **deferred: Watchman needs a self-contained bundled build
+    (dylib relocation) before it can live inside the host**. Do not execute Watchman
+    operations or install a root daemon in this session.
 12. Human locks the screen. Try `ax.probe` and `screen.capture` without requesting anything;
     record success or `session-unavailable` honestly. If GUI enumeration becomes unavailable,
     the harness aborts; unlock and restart with a fresh directory rather than disabling it.
@@ -185,26 +202,17 @@ window visible for window-only ScreenCaptureKit capture. Never capture unrelated
     socket, releases and generated watcher files owned by this experiment. Never run
     a broad TCC reset. Record cleanup and retained Settings entries explicitly.
 
-### W2 root LaunchDaemon (documented, not installed)
+### DQ7 Watchman (W1 and W2 deferred)
 
-W2 asks whether `AssociatedBundleIdentifiers = ["dev.overeng.permissions-host.experiment"]`
-on a **system** LaunchDaemon changes the pinned worker's TCC subject. This key is not a
-ctl host option; do not weaken ctl to accept it. A human prepares a disposable, root-owned
-plist whose `ProgramArguments` directly execute the pinned Watchman binary in foreground,
-with fixed experiment-only socket, state and log paths and a unique label. Include
-`RunAtLoad`, the associated bundle ID above, and no arbitrary-exec RPC. Validate the exact
-Watchman version's foreground arguments before the session; never invent an invocation.
-The human reviews it and explicitly runs the paired `sudo launchctl bootstrap system PLIST`
-and `sudo launchctl bootout system/LABEL`. A Background Items Added notice is not consent,
-but the tripwire policy still applies to forbidden dialog owners.
+**Deferred: Watchman needs a self-contained bundled build (dylib relocation) before it
+can live inside the host.** The pinned executable links external Nix-store Boost and
+other dylibs. It is excluded from both session bundles and the live/revocation operation
+allowlists. Neither W1 nor W2 is executed or treated as passing in this session.
 
-During the bounded W2 interval, issue Watchman's real JSON `watch-project`/event queries
-for the fixed unprotected fixture and a silent FDA-protected directory read; collect
-system tccd subject/attribution and worker results. Root success alone is not inherited
-host FDA and is not a pass. Stop after the bounded interval, bootout, and delete only the
-reviewed plist and fixture. If no reviewed root fixture, sudo authority, silent FDA probe,
-or reliable subject evidence exists, W2 remains untested. These scripts never install a
-daemon, invoke sudo, or create a root execution surface.
+The optional bundle setting is only usable after a self-contained package is provided
+and every dependency passes ctl's existing guard. This does not authorize a root daemon,
+`AssociatedBundleIdentifiers` changes or arbitrary execution, and ctl is not weakened.
+
 
 ## Pass/fail decision table
 
@@ -220,7 +228,7 @@ with evidence references. A missing log line can be caching; it is not `authValu
 | 4 audio | Real 1 kHz captured peak, separate microphone status and explicit announced positive mic test | No captured signal, extra prompt, conflating output/system/mic/process tap; process tap remains unresolved unless independently tested |
 | 5 notifications | Settings state + notificationId + human confirmation of host name/icon/title; disabled denial | Merely submitted, wrong sender/prefix, prompt, absent human observation |
 | 6 Automation | Distinct TextEdit/Calculator preflights, A does not grant B, separately announced authorized request/results per target | Cross-target preapproval, unannounced request, missing positive result/attribution |
-| 7 Watchman | W1 real events + FDA attribution + reconnect; W2 independently proves one responsible identity under root daemon | Worker/daemon owns separate TCC identity, no events/reconnect, or W2 not performed (unresolved, not assumed pass) |
+| 7 Watchman W1 and W2 | **Deferred: Watchman needs a self-contained bundled build (dylib relocation) before it can live inside the host** | Not executed in this session; neither W1 nor W2 may be reported as passing |
 | 8 pinned restic | Fixed argv, pinned signed nested helper, host FDA subject, successful real check/dump and all seeded hashes; resealed changed-worker run | Worker subject, mismatch, only sentinel, unsigned helper mutation, missing changed-worker case |
 | 9 Documents→import | **Deferred to the host build step (Q19 step 4), in the real private host repository** | Not executed in this session; never report this session as an import pass |
 
@@ -240,7 +248,7 @@ copy operation may exist, but this harness deliberately does not execute it for 
 Each live invocation writes private raw/parsed tccd JSONL, client responses, correlated
 host audit rows, human notes and session armed/abort records. The GUI heartbeat is liveness,
 not result evidence. Retain ctl release/install/verify/rollback receipts, fixture image
-and audio results, restic dump comparisons, Watchman events, notification observations,
+and audio results, restic dump comparisons, notification observations,
 OS/build and cleanup separately with references. Do not create an empty `evidence.json`
 and call it a run. Publish only sanitized actual observations; never commit raw logs,
 plist absolute paths, peer account details, sensitive screenshots or arbitrary app names.
@@ -252,7 +260,15 @@ The pure regression suite runs without any platform permission calls:
 `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s . -p 'test_evidence.py'`
 from this directory.
 
-Integration owner should review/build native releases and exercise parser fixtures,
-malformed/unrecognized AUTHREQ handling, GUI watcher bootstrap/loss, announced prompt
-scope, revocation denial and native audit correlation on the authorized machine. No
-builds, tests, signing or runtime checks were executed while authoring this harness.
+Preparation checks: the pure audit regression suite passed all four tests. `otool -L`
+on both existing release hosts, clients and fixtures found only system framework/runtime
+paths; both existing bundled restic copies link only `/usr/lib/libSystem.B.dylib`.
+The excluded Watchman executable links external Nix-store dylibs. These are dependency
+inspection results, not permission or attribution results. Existing bundles containing
+Watchman are not session candidates; reassemble with the default exclusion.
+
+The store-first assembly harness and revised worker inventory have not been built here.
+The integration owner must assemble candidates and exercise malformed/unrecognized
+AUTHREQ handling, GUI watcher bootstrap/loss, announced prompt scope, revocation denial
+and native audit correlation on the authorized machine. No signing or protected runtime
+checks were executed.
