@@ -33,6 +33,8 @@ const protectedMainIf =
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint
 export default ciWorkflow({
   trustTier: 'public',
+  // The matrix below gives every Linux profile privileged: 'always'.
+  linuxNixSandboxCapabilities: { 'publish-compiled-products': 'supported' },
   name: 'Native and Compiled Products',
   on: {
     push: { branches: ['main'] },

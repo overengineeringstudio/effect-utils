@@ -38,6 +38,26 @@ Explicit `GENIE_MEMBER_OVERRIDE_MAP` overrides have the same precedence as
 genie imports. Materialize pinned sources with
 `mr apply --worktree-mode commit --lock-sync off` before staging.
 
+The check module also exports `config.effectUtils.buck2.aggregateExec`, taking
+a task name and a list of Buck2 arguments (including the subcommand). Existing
+consumers of `tasks/shared/check.nix` need no additional import:
+
+```nix
+env.BUCK2_BIN = "${inputs.effect-utils.packages.${pkgs.stdenv.hostPlatform.system}.buck2}/bin/buck2";
+env.OTEL_SPAN_BIN = "${inputs.effect-utils.packages.${pkgs.stdenv.hostPlatform.system}.otel-span}/bin/otel-span";
+tasks."bird:build".exec = config.effectUtils.buck2.aggregateExec "bird:build" [
+  "build"
+  "//flakes/bird:dist-package"
+  "//flakes/bird:bird-candidate"
+];
+```
+
+The helper preserves task tracing, the caller-root command span, event logs/build
+IDs, pipeline spooling versus standalone ingest/export, and the Buck2 exit status.
+`effectUtils.buck2.eventsPackage` defaults to the consumer's effect-utils input;
+`effectUtils.buck2.prepare` optionally supplies repository-specific setup before
+the command (for example, effect-utils' capability publication).
+
 ## Observability
 
 Import the sibling observability module once to capture native devenv spans

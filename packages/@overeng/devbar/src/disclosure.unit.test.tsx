@@ -321,6 +321,34 @@ describe('anchored disclosure', () => {
     expect(overflow.querySelector('[data-devbar-unseen]')).toBeNull()
   })
 
+  it('names hidden segments by their display label, falling back to the ID', () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(600)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        const segment = this.parentElement?.getAttribute('data-devbar-segment')
+        return DOMRect.fromRect({
+          width:
+            segment === 'visible' ? 200 : segment === 'api.latency' || segment === 'fps' ? 300 : 40,
+        })
+      },
+    )
+    render(
+      <Devbar
+        panels={[]}
+        openPanel={undefined}
+        onOpenPanelChange={() => {}}
+        segments={[
+          { id: 'visible', priority: 5, render: () => <span>Visible</span> },
+          { id: 'api.latency', label: 'HTTP latency', priority: 1, render: () => <span>p95</span> },
+          { id: 'fps', priority: 0, render: () => <span>fps</span> },
+        ]}
+      />,
+    )
+    expect(
+      screen.getByRole('button', { name: '2 more status items: HTTP latency, fps' }),
+    ).toBeDefined()
+  })
+
   it('closes a fitted-away trigger without focus theft and notifies teardown once', () => {
     const onOpenChange = vi.fn()
     const content = (

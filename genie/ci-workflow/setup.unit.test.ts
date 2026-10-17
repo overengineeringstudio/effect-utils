@@ -13,6 +13,7 @@ import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'j
 import { pipelineIdentityStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
+import { installNixStep, linuxSandboxPrerequisitesStep, namespaceRunner } from './setup.ts'
 import {
   ciWorkflow as composeCiWorkflow,
   ciJobAdmission,
@@ -21,13 +22,8 @@ import {
   withCiAdmissionCleanup,
   linuxNixSandboxFallbackConf,
   linuxNixSandboxFallbackStep,
-} from './shared.ts'
-import {
-  installNixStep,
-  linuxSandboxPrerequisitesStep,
   namespacePrivilegeTrustedPredicate,
-  namespaceRunner,
-} from './setup.ts'
+} from './shared.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
 
 describe('namespaceRunner', () => {
@@ -246,6 +242,204 @@ describe('namespaceRunner', () => {
 })
 
 describe('Linux Nix sandbox fallback', () => {
+  const sandboxWorkflow = (
+    runsOn: string | string[],
+    capabilities?: Readonly<Record<string, 'supported'>>,
+  ) =>
+    composeCiWorkflow({
+      trustTier: 'public',
+      on: { push: { branches: ['main'] } },
+      linuxNixSandboxCapabilities: capabilities,
+      jobs: { build: { 'runs-on': runsOn, steps: [installNixStep()] } },
+    })
+
+  it('accepts privileged Namespace labels in both feature formats', () => {
+    for (const runsOn of [
+      'namespace-profile-linux-x86-64;container.privileged=true',
+      [
+        'nscloud-ubuntu-24.04-amd64-16x64-with-features',
+        'namespace-features:container.privileged=true',
+      ],
+    ])
+      expect(() => sandboxWorkflow(runsOn)).not.toThrow()
+  })
+
+  it('rejects unprivileged Namespace Linux installers with job-specific guidance', () => {
+    for (const label of [
+      'namespace-profile-linux-x86-64',
+      'nscloud-ubuntu-24.04-amd64-16x64-with-features',
+      'namespace-profile-linux-x86-64;container.privileged=false',
+      'namespace-profile-linux-x86-64;container.privileged=trueish',
+    ]) {
+      expect(() => sandboxWorkflow(label)).toThrow(/CI job "build".*container\.privileged=true/)
+      expect(() => sandboxWorkflow(label, { build: 'supported' })).toThrow()
+    }
+  })
+
+  it('leaves self-hosted, hosted, macOS, and non-installer jobs unaffected', () => {
+    for (const runsOn of [
+      ['sh-linux-x64', 'nix'],
+      ['self-hosted', 'linux'],
+      'ubuntu-latest',
+      'namespace-profile-macos-arm64',
+    ])
+      expect(() => sandboxWorkflow(runsOn)).not.toThrow()
+    expect(() =>
+      composeCiWorkflow({
+        trustTier: 'public',
+        on: { push: { branches: ['main'] } },
+        jobs: {
+          metadata: { 'runs-on': 'namespace-profile-linux-x86-64', steps: [{ run: 'true' }] },
+        },
+      }),
+    ).not.toThrow()
+  })
+
+  it('checks every expression alternative without borrowing privilege from another branch', () => {
+    const privileged = 'namespace-profile-linux-x86-64;container.privileged=true'
+    const unprivileged = 'namespace-profile-linux-arm64'
+    for (const branches of [
+      `'${privileged}' || '${unprivileged}'`,
+      `'${unprivileged}' || '${privileged}'`,
+    ])
+      expect(() => sandboxWorkflow(`\${{ inputs.fast && ${branches} }}`)).toThrow(/lacks container/)
+    expect(() =>
+      sandboxWorkflow(`\${{ inputs.fast && '${privileged}' || 'ubuntu-latest' }}`),
+    ).not.toThrow()
+    expect(() =>
+      sandboxWorkflow(
+        `namespace-profile-linux-x86-64;github.run-id=\${{ github.run_id }};container.privileged=true`,
+      ),
+    ).not.toThrow()
+  })
+
+  it('fails closed for opaque runner expressions unless support is explicitly declared', () => {
+    for (const expression of [
+      '${{ matrix.runner }}',
+      "${{ format('namespace-profile-{0};container.privileged=true', matrix.platform) }}",
+      "${{ inputs.fast && matrix.runner || 'ubuntu-latest' }}",
+    ]) {
+      expect(() => sandboxWorkflow(expression)).toThrow(
+        /cannot statically determine.*linuxNixSandboxCapabilities/,
+      )
+      const workflow = sandboxWorkflow(expression, { build: 'supported' })
+      expect(workflow.data).not.toHaveProperty('linuxNixSandboxCapabilities')
+    }
+  })
+
+  it('fails closed on opaque interpolated features rather than trusting unused literals', () => {
+    for (const runsOn of [
+      "namespace-profile-linux-x86-64;${{ inputs.features || 'container.privileged=true' }}",
+      [
+        'nscloud-ubuntu-24.04-amd64-16x64-with-features',
+        "namespace-features:${{ inputs.features || 'container.privileged=true' }}",
+      ],
+    ]) {
+      expect(() => sandboxWorkflow(runsOn)).toThrow(/cannot statically determine/)
+      if (typeof runsOn === 'string')
+        expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).toThrow(/lacks container/)
+      else expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).not.toThrow()
+    }
+    expect(() =>
+      sandboxWorkflow(
+        namespaceRunner({
+          profile: 'namespace-profile-linux-x86-64',
+          runId: '${{ github.run_id }}',
+          privileged: 'trusted',
+        }).slice(),
+      ),
+    ).not.toThrow()
+  })
+
+  it('rejects privilege features attached through the wrong runner label format', () => {
+    for (const runsOn of [
+      ['namespace-profile-linux-x86-64', 'namespace-features:container.privileged=true'],
+      [
+        'namespace-profile-linux-x86-64',
+        'nscloud-ubuntu-24.04-amd64-16x64;container.privileged=true',
+      ],
+      'nscloud-ubuntu-24.04-amd64-16x64-with-features;container.privileged=true',
+    ]) {
+      expect(() => sandboxWorkflow(runsOn)).toThrow(/supported label format/)
+      expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).toThrow(
+        /supported label format/,
+      )
+    }
+  })
+
+  it('resolves separate feature-label alternatives before validating their machine label', () => {
+    const machine = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
+    const privileged = 'namespace-features:container.privileged=true'
+    expect(() =>
+      sandboxWorkflow([
+        machine,
+        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+      ]),
+    ).not.toThrow()
+    for (const branches of [
+      `'${privileged}' || 'namespace-features:container.privileged=false'`,
+      `'namespace-features:container.privileged=false' || '${privileged}'`,
+    ]) {
+      expect(() => sandboxWorkflow([machine, `\${{ inputs.fast && ${branches} }}`])).toThrow(
+        /lacks container/,
+      )
+    }
+    expect(() =>
+      sandboxWorkflow([
+        `\${{ inputs.fast && '${machine}' || 'ubuntu-latest' }}`,
+        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+      ]),
+    ).not.toThrow()
+  })
+
+  it('does not let attestations hide static privilege facts behind opaque affinity', () => {
+    for (const runsOn of [
+      'namespace-profile-linux-x86-64;container.privileged=false;github.run-id=${{ github.run_attempt }}',
+      'namespace-profile-linux-x86-64;github.run-id=${{ github.run_attempt }}',
+      [
+        'nscloud-ubuntu-24.04-amd64-16x64-with-features',
+        'namespace-features:container.privileged=false;github.run-id=${{ github.run_attempt }}',
+      ],
+    ])
+      expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).toThrow(/container\.privileged/)
+    expect(() =>
+      sandboxWorkflow(
+        'namespace-profile-linux-x86-64;container.privileged=true;github.run-id=${{ github.run_attempt }}',
+        { build: 'supported' },
+      ),
+    ).not.toThrow()
+  })
+
+  it('excludes known macOS and self-hosted machines before checking opaque feature values', () => {
+    for (const runsOn of [
+      'namespace-profile-macos-arm64;github.run-id=${{ github.run_attempt }}',
+      ['namespace-profile-macos-arm64', 'namespace-features:${{ inputs.features }}'],
+      ['sh-linux-x64;github.run-id=${{ github.run_attempt }}', 'nix'],
+    ])
+      expect(() => sandboxWorkflow(runsOn)).not.toThrow()
+  })
+
+  it('applies an explicit self-hosted constraint to all dynamic selector labels', () => {
+    expect(() => sandboxWorkflow(['self-hosted', '${{ matrix.runner }}'])).not.toThrow()
+  })
+
+  it('rejects static false feature alternatives even beside attested opaque labels', () => {
+    const machine = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
+    for (const feature of [
+      'namespace-features:container.privileged=false',
+      "${{ inputs.fast && 'namespace-features:container.privileged=true' || 'namespace-features:container.privileged=false' }}",
+      'namespace-features:github.run-id=42',
+    ])
+      expect(() =>
+        sandboxWorkflow([machine, feature, '${{ matrix.extraLabel }}'], { build: 'supported' }),
+      ).toThrow(/container\.privileged/)
+    expect(() =>
+      sandboxWorkflow("${{ inputs.fast && 'namespace-profile-linux-x86-64' || matrix.runner }}", {
+        build: 'supported',
+      }),
+    ).toThrow(/lacks container/)
+  })
+
   it('configures fresh installers only on Linux', () => {
     expect(linuxNixSandboxFallbackConf).toBe(
       [
@@ -285,9 +479,7 @@ describe('Linux Nix sandbox fallback', () => {
     }
     expect(rendered.jobs.macos?.env?.NIX_CONFIG).toBe(macConfig)
     expect(linuxNixSandboxFallbackStep.run).toContain('"${NIX_CONFIG:-}"')
-    expect(linuxNixSandboxFallbackStep.run).toContain(
-      'sandbox = true\\nsandbox-fallback = false',
-    )
+    expect(linuxNixSandboxFallbackStep.run).toContain('sandbox = true\\nsandbox-fallback = false')
     expect(linuxNixSandboxFallbackStep.run).toContain('sandbox-fallback = false')
     const recomposed = composeCiWorkflow({
       trustTier: 'public',
@@ -314,10 +506,12 @@ describe('Linux Nix sandbox fallback', () => {
         expect(first?.id, `${path}/${jobId}`).toBe(linuxNixSandboxFallbackStep.id)
         expect(first?.if, `${path}/${jobId}`).toBe("${{ runner.os == 'Linux' }}")
         expect(first?.run, `${path}/${jobId}`).toContain('sandbox-fallback = false')
-        expect(job.steps.filter((step) => step.id === linuxNixSandboxFallbackStep.id)).toHaveLength(1)
+        expect(job.steps.filter((step) => step.id === linuxNixSandboxFallbackStep.id)).toHaveLength(
+          1,
+        )
         const labels = [job['runs-on']].flat().join(';')
-        if (/linux|ubuntu/.test(labels)) linuxJobs++
-        if (/macos|darwin/.test(labels)) macosJobs++
+        if (/linux|ubuntu/.test(labels) === true) linuxJobs++
+        if (/macos|darwin/.test(labels) === true) macosJobs++
       }
     }
     expect(linuxJobs).toBeGreaterThan(0)
@@ -386,7 +580,10 @@ describe('Linux Nix sandbox fallback', () => {
           expect(inlineSetupScripts[step.run], step.name).toBe(true)
         }
       }
-      if (step.if?.includes('always()') && /(?:\.#|git\+file:)/.test(step.run ?? '')) {
+      if (
+        step.if?.includes('always()') === true &&
+        /(?:\.#|git\+file:)/.test(step.run ?? '') === true
+      ) {
         expect(step.if, step.name).toContain(
           `steps.${defaultRefPolicyVerdictStepId}.outcome == 'success'`,
         )
@@ -405,8 +602,8 @@ describe('Linux Nix sandbox fallback', () => {
     const close = job.steps.find((step) => step.name === 'Link started job roots')!
     expect(close.if).toContain(namespacePrivilegeTrustedPredicate)
     expect(close.if).toContain("needs.default-ref-policy.result == 'success'")
-    const expression = close.if!
-      .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+    const expression = close
+      .if!.replace(/^\$\{\{\s*|\s*\}\}$/g, '')
       .replace('needs.default-ref-policy', 'needs["default-ref-policy"]')
     const allowed = new Function('github', 'needs', 'always', `return (${expression})`)
     const repository = 'overengineeringstudio/effect-utils'
@@ -449,8 +646,8 @@ describe('CI execution admission cleanup', () => {
     )
     for (const name of ['Collect Buck2 cache evidence', 'Export completed job trace']) {
       const step = job.steps.find((entry) => entry.name === name)!
-      const expression = step.if!
-        .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+      const expression = step
+        .if!.replace(/^\$\{\{\s*|\s*\}\}$/g, '')
         .replace(/steps\.([A-Za-z0-9_-]+)/g, 'steps["$1"]')
       const allowed = new Function('runner', 'steps', 'always', `return (${expression})`)
       for (const [os, outcome, expected] of [
@@ -495,9 +692,8 @@ describe('CI execution admission cleanup', () => {
           ) {
             expect(index, `${jobId}/${step.name}`).toBeGreaterThan(lastAdmission)
           }
-          if (/\b(?:always|failure|cancelled|success)\s*\(/.test(step.if ?? '') === false)
-            continue
-          if (/^actions\/(?:upload-artifact|cache\/save)@/.test(step.uses ?? '')) {
+          if (/\b(?:always|failure|cancelled|success)\s*\(/.test(step.if ?? '') === false) continue
+          if (/^actions\/(?:upload-artifact|cache\/save)@/.test(step.uses ?? '') === true) {
             safeUploads++
             expect(step.if, `${jobId}/${step.name}`).not.toContain(linuxSandboxAdmissionStepId)
             continue
@@ -538,8 +734,7 @@ describe('CI execution admission cleanup', () => {
         if (cleanup.length === 0) continue
         expect(independentRoutes[jobId], jobId).toBeDefined()
         seen.add(jobId)
-        const condition =
-          independentRoutes[jobId] === 'step' ? cleanup[0]!.if! : job.if!
+        const condition = independentRoutes[jobId] === 'step' ? cleanup[0]!.if! : job.if!
         const expression = condition
           .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
           .replace(/needs\.([A-Za-z0-9_-]+)/g, 'needs["$1"]')
@@ -597,8 +792,8 @@ describe('CI execution admission cleanup', () => {
     expect(ciJobAdmission(steps).after).toBe(1)
     expect(withCiAdmissionCleanup(guarded)).toEqual(guarded)
     expect(guarded[3]).toEqual(steps[3])
-    const expression = guarded[2]!.if!
-      .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+    const expression = guarded[2]!
+      .if!.replace(/^\$\{\{\s*|\s*\}\}$/g, '')
       .replace(/steps\.([A-Za-z0-9_-]+)/g, 'steps["$1"]')
     const allowed = new Function('runner', 'steps', 'always', 'failure', `return (${expression})`)
     for (const [namespace, verdict, expected] of [

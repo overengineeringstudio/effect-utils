@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/devbar/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b1b8906e8706d7cb7d7b4565808336245f385e81eae2312b600d94baa24b2964
+# Semantic fingerprint: sha256:755f1a9cd68b6518f2cef6419fb938e03d9713afa1ed308de59fd5d8bc3eab67
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -41,6 +41,9 @@ export_materialization_inputs([
     "src/stories/host/fixture-entry.ts",
     "src/stories/host/production-host.unit.test.ts",
     "src/stories/host/runtime.ts",
+    "src/stories/meter-tile/MeterTiles.stories.tsx",
+    "src/stories/meter-variants/MeterVariants.stories.tsx",
+    "src/stories/meter-variants/recording.ts",
     "src/themes.ts",
     "src/tokens.stylex.ts",
 ])
@@ -104,6 +107,9 @@ package_view(
         "src/stories/host/fixture-entry.ts": "src/stories/host/fixture-entry.ts",
         "src/stories/host/production-host.unit.test.ts": "src/stories/host/production-host.unit.test.ts",
         "src/stories/host/runtime.ts": "src/stories/host/runtime.ts",
+        "src/stories/meter-tile/MeterTiles.stories.tsx": "src/stories/meter-tile/MeterTiles.stories.tsx",
+        "src/stories/meter-variants/MeterVariants.stories.tsx": "src/stories/meter-variants/MeterVariants.stories.tsx",
+        "src/stories/meter-variants/recording.ts": "src/stories/meter-variants/recording.ts",
         "src/themes.ts": "src/themes.ts",
         "src/tokens.stylex.ts": "src/tokens.stylex.ts",
         "tsconfig.json": "tsconfig.json",
@@ -169,6 +175,9 @@ package_view(
         "src/stories/host/fixture-entry.ts": "src/stories/host/fixture-entry.ts",
         "src/stories/host/production-host.unit.test.ts": "src/stories/host/production-host.unit.test.ts",
         "src/stories/host/runtime.ts": "src/stories/host/runtime.ts",
+        "src/stories/meter-tile/MeterTiles.stories.tsx": "src/stories/meter-tile/MeterTiles.stories.tsx",
+        "src/stories/meter-variants/MeterVariants.stories.tsx": "src/stories/meter-variants/MeterVariants.stories.tsx",
+        "src/stories/meter-variants/recording.ts": "src/stories/meter-variants/recording.ts",
         "src/themes.ts": "src/themes.ts",
         "src/tokens.stylex.ts": "src/tokens.stylex.ts",
         "tsconfig.json": "tsconfig.json",
@@ -226,6 +235,9 @@ package_view(
         "src/stories/host/fixture-entry.ts": "src/stories/host/fixture-entry.ts",
         "src/stories/host/production-host.unit.test.ts": "src/stories/host/production-host.unit.test.ts",
         "src/stories/host/runtime.ts": "src/stories/host/runtime.ts",
+        "src/stories/meter-tile/MeterTiles.stories.tsx": "src/stories/meter-tile/MeterTiles.stories.tsx",
+        "src/stories/meter-variants/MeterVariants.stories.tsx": "src/stories/meter-variants/MeterVariants.stories.tsx",
+        "src/stories/meter-variants/recording.ts": "src/stories/meter-variants/recording.ts",
         "src/themes.ts": "src/themes.ts",
         "src/tokens.stylex.ts": "src/tokens.stylex.ts",
         "tsconfig.json": "tsconfig.json",

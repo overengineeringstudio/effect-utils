@@ -31,6 +31,20 @@ every two seconds until both the page and data source are indexed, with a
 60-second total polling timeout (including HTTP retries). The database and page
 are archived when the test scope closes, including on assertion failure.
 
+Each search readiness shape logs diagnostics on success and failure: time spent
+in the shape and since polling began, completed page count, fixture and
+non-fixture result counts, and cursor-chain mismatches. Result counts include
+repeated observations across polling attempts. Per-page details and cursor-cycle
+tracking are bounded to 100 entries; aggregate counts cover all observed pages.
+Cursor comparisons use full SHA-256 hashes, while logs retain only hash prefixes,
+never raw cursors, queries, or titles. The first page of each polling attempt has
+no predecessor, so its cursor-chain comparison is `null`.
+
+The offline `search.unit.test.ts` property test uses the existing HTTP fixture
+layer to cover both manual and streamed pagination with opaque Unicode cursors,
+an empty non-terminal page, and a terminal null cursor. It needs no credentials
+and never contacts Notion.
+
 Without a scratch parent, fixture-backed tests are skipped via
 `SKIP_FIXTURE_INTEGRATION`. Token-only search checks validate response objects
 and empty-query handling without requiring any workspace content. Without a

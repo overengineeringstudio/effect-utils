@@ -7,6 +7,7 @@ import {
   ARTIFACT_LIMITS,
   ArtifactError,
   ArtifactMember,
+  ArtifactReadWindow,
   RetainedArtifact,
   type ArtifactSelection,
 } from '../../isomorphic/Artifacts.ts'
@@ -28,7 +29,12 @@ const ArtifactOutput = Schema.Union([
     artifacts: Schema.Array(RetainedArtifact),
     hasMore: Schema.Boolean,
   }),
-  Schema.Struct({ ...Run, artifact: RetainedArtifact, members: Schema.Array(ArtifactMember) }),
+  Schema.Struct({
+    ...Run,
+    artifact: RetainedArtifact,
+    members: Schema.Array(ArtifactMember),
+    totalCount: NonNegativeInt,
+  }),
   Schema.Struct({
     ...Run,
     artifact: RetainedArtifact,
@@ -36,6 +42,13 @@ const ArtifactOutput = Schema.Union([
       path: Schema.String,
       text: Schema.String,
       decompressedBytes: NonNegativeInt,
+      window: Schema.optional(
+        Schema.Struct({
+          offset: NonNegativeInt,
+          length: NonNegativeInt,
+          totalBytes: NonNegativeInt,
+        }),
+      ),
     }),
   }),
 ])
@@ -122,6 +135,35 @@ export const selectArtifactMember = Effect.fn('artifacts.selectMember')(function
   return member
 })
 
+/** Validate byte window flags before downloading; undefined preserves whole-member reads. */
+export const selectArtifactReadWindow = Effect.fn('artifacts.selectReadWindow')(function* (
+  selection: ArtifactSelection,
+  member: string,
+  flags: {
+    readonly offset?: number | undefined
+    readonly length?: number | undefined
+    readonly tailBytes?: number | undefined
+  },
+) {
+  const invalid = () =>
+    new ArtifactError({
+      ...selection,
+      member,
+      reason: 'invalid-selection',
+      message:
+        'Use --length with optional --offset, or --tail-bytes alone; byte counts must be nonnegative safe integers and length/tail must not exceed 256 KiB',
+    })
+  if (flags.tailBytes !== undefined && (flags.offset !== undefined || flags.length !== undefined))
+    return yield* invalid()
+  if (flags.offset !== undefined && flags.length === undefined) return yield* invalid()
+  if (flags.tailBytes === undefined && flags.length === undefined) return undefined
+  return yield* Schema.decodeUnknownEffect(ArtifactReadWindow)(
+    flags.tailBytes !== undefined
+      ? { tailBytes: flags.tailBytes }
+      : { offset: flags.offset ?? 0, length: flags.length },
+  ).pipe(Effect.mapError(invalid))
+})
+
 const runArgument = Cli.Argument.String('run').pipe(
   Cli.Argument.withDescription(
     'Explicit positive numeric workflow run ID (not a PR, URL, or latest)',
@@ -169,7 +211,7 @@ const printOutput = Effect.fn('artifacts.printOutput')(function* (output: Artifa
 })
 
 const limits =
-  'Managed GitHub auth only; read-only, in-memory ZIP inspection with no extraction or output files. Limits: 1 MiB metadata, 100 artifacts/page, pages 1–1000, 32 MiB compressed archive, 1024 entries, 1024-byte paths, 8 MiB decompressed/member, 256 KiB UTF-8 text and total escaped JSON output including metadata. Oversized output fails; never truncated. No job association is inferred.'
+  'Managed GitHub auth only; read-only, in-memory ZIP inspection with no extraction or output files. Limits: 1 MiB metadata, 100 artifacts/page, pages 1–1000, 32 MiB compressed archive, 1024 entries, 1024-byte paths, 8 MiB decompressed/member, 256 KiB selected UTF-8 text and total escaped JSON output including metadata. Oversized output fails; never truncated. No job association is inferred.'
 
 const listCommand = Cli.Command.make('list', {
   run: runArgument,
@@ -217,6 +259,7 @@ const membersCommand = Cli.Command.make('members', {
         runId: selection.runId,
         artifact: downloaded.artifact,
         members,
+        totalCount: members.length,
       })
     }),
   ),
@@ -233,14 +276,35 @@ const readCommand = Cli.Command.make('read', {
       'Exact safe normalized relative file path from members (no glob, directory, or binary output)',
     ),
   ),
+  offset: Cli.Flag.Int('offset').pipe(
+    Cli.Flag.optional,
+    Cli.Flag.withDescription(
+      'Nonnegative UTF-8 byte offset; requires --length and excludes --tail-bytes',
+    ),
+  ),
+  length: Cli.Flag.Int('length').pipe(
+    Cli.Flag.optional,
+    Cli.Flag.withDescription(
+      'Byte window length, 0–262144; offset defaults to 0; excludes --tail-bytes',
+    ),
+  ),
+  tailBytes: Cli.Flag.Int('tail-bytes').pipe(
+    Cli.Flag.optional,
+    Cli.Flag.withDescription('Last 0–262144 bytes; mutually exclusive with --offset and --length'),
+  ),
 }).pipe(
-  Cli.Command.withHandler(({ run, repo, artifact, member }) =>
+  Cli.Command.withHandler(({ run, repo, artifact, member, offset, length, tailBytes }) =>
     Effect.gen(function* () {
       const selection = yield* resolveSelection(run, repo, artifact)
       const path = yield* selectArtifactMember(selection, member)
+      const window = yield* selectArtifactReadWindow(selection, path, {
+        offset: Option.getOrUndefined(offset),
+        length: Option.getOrUndefined(length),
+        tailBytes: Option.getOrUndefined(tailBytes),
+      })
       const github = yield* GitHubClient
       const downloaded = yield* github.downloadRetainedArtifact(selection)
-      const content = yield* readArtifactMember(downloaded.bytes, selection, path)
+      const content = yield* readArtifactMember(downloaded.bytes, selection, path, window)
       yield* printOutput({
         repo: selection.repo,
         runId: selection.runId,
@@ -250,7 +314,8 @@ const readCommand = Cli.Command.make('read', {
     }),
   ),
   Cli.Command.withDescription(
-    'Read one exact UTF-8 text member as JSON; binary content is rejected. ' + limits,
+    'Read one exact UTF-8 text member as JSON, optionally using a byte window. Edges align inward to complete UTF-8 codepoints; EOF offsets clamp. The entire member is checked for CRC, valid UTF-8 and binary content, even outside the window. ' +
+      limits,
   ),
 )
 
