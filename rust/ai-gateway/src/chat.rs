@@ -146,7 +146,12 @@ impl<'a> ChatBuilder<'a> {
         serde_json::from_value(request).map_err(|error| Error::validation(error.to_string()))
     }
 
-    async fn send_in(&self, format: Option<Value>, operation: &Operation) -> Result<ChatResponse> {
+    async fn send_in(
+        &self,
+        format: Option<Value>,
+        operation: &Operation,
+        exchanges: Option<&mut Vec<Option<Usage>>>,
+    ) -> Result<ChatResponse> {
         let response: CreateChatCompletionResponse = self
             .client
             .inner
@@ -155,6 +160,9 @@ impl<'a> ChatBuilder<'a> {
             .await
             .map_err(Error::from_sdk)?;
         let usage = response.usage.map(Usage::from_chat);
+        if let Some(exchanges) = exchanges {
+            exchanges.push(usage.clone());
+        }
         let choice = response.choices.into_iter().next().ok_or_else(|| {
             Error::validation("chat response has no choices").with_usage(usage.clone())
         })?;
@@ -196,7 +204,7 @@ impl<'a> ChatBuilder<'a> {
     pub async fn send(self) -> Result<ChatResponse> {
         let mut operation = Operation::new("chat", &self.model);
         let result = self
-            .send_in(None, &operation)
+            .send_in(None, &operation, None)
             .instrument(operation.span.clone())
             .await;
         operation.finish(&result);
@@ -212,7 +220,7 @@ impl<'a> ChatBuilder<'a> {
         let validator = jsonschema::validator_for(original)
             .map_err(|error| Error::validation(error.to_string()))?;
         let projected = schema::project(original)?;
-        let response = self.send_in(Some(json!({"type":"json_schema","json_schema":{"name":"response","strict":true,"schema":projected}})), operation).await?;
+        let response = self.send_in(Some(json!({"type":"json_schema","json_schema":{"name":"response","strict":true,"schema":projected}})), operation, None).await?;
         let value: Value = serde_json::from_str(&response.text).map_err(|error| {
             Error::validation(error.to_string()).with_usage(response.usage.clone())
         })?;
@@ -292,12 +300,11 @@ impl<'a> ChatBuilder<'a> {
             for step in 0..max_steps {
                 let mut operation = Operation::new("chat", &self.model);
                 let result = self
-                    .send_in(None, &operation)
+                    .send_in(None, &operation, Some(&mut exchanges))
                     .instrument(operation.span.clone())
                     .await;
                 operation.finish(&result);
                 let response = result?;
-                exchanges.push(response.usage.clone());
                 if response.tool_calls.is_empty() {
                     return Ok(response);
                 }

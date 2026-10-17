@@ -249,3 +249,39 @@ async fn failures_retain_all_completed_exchanges() {
         }
     }
 }
+
+#[tokio::test]
+async fn decoded_response_rejections_retain_the_rejected_exchange() {
+    for rejection in ["no_choices", "refusal"] {
+        for supplied_usage in [false, true] {
+            let (status, mut body) = reply(2, false, supplied_usage);
+            if rejection == "no_choices" {
+                body["choices"] = json!([]);
+            } else {
+                body["choices"][0]["message"]["refusal"] = json!("request refused");
+            }
+            let server = Server::with_replies(vec![reply(1, true, true), (status, body)]).await;
+            let mut calls = 0;
+            let error = Client::builder(&server.origin)
+                .build()
+                .unwrap()
+                .chat("fixture/tools")
+                .user("hello")
+                .tools(vec![tool()])
+                .run_tools(3, |_| {
+                    calls += 1;
+                    async { Ok("result".into()) }
+                })
+                .await
+                .unwrap_err();
+            let rejected_usage = if supplied_usage { usage(2) } else { None };
+            assert_eq!(calls, 1);
+            assert_eq!(error.exchanges, vec![usage(1), rejected_usage.clone()]);
+            assert_eq!(error.total, if supplied_usage { usage(3) } else { None });
+            let Error::Validation { usage, .. } = error.error else {
+                panic!("decoded response rejection must retain its validation error");
+            };
+            assert_eq!(usage, rejected_usage);
+        }
+    }
+}

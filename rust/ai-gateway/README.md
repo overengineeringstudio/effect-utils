@@ -177,7 +177,8 @@ chat response, and `exchanges` preserves ordered usage entries, including `None`
 only when every exchange supplied that field. Errors return `ToolRunError` with
 the underlying `error` and the same `exchanges` / `total` evidence for completed
 exchanges, including the exchange that exhausted the bound or failed validation
-or tool execution. A failed HTTP request adds no exchange.
+or tool execution. A decoded response rejected for missing choices or provider
+refusal still contributes its usage entry. A failed HTTP request adds no exchange.
 
 This example executes only a local, explicitly allowed addition function:
 

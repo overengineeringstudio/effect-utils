@@ -86,6 +86,8 @@ or transport failure retains prior completed exchanges but adds no entry for
 the failed request. The underlying error is preserved, including HTTP metadata;
 pre-request failures carry an empty exchange list. Tool calls on the final
 allowed exchange are not executed.
+Decoded responses rejected for missing choices, provider refusal, or unsupported
+tool-call shapes also contribute their usage entry before local rejection.
 The error is boxed to keep the success result small without discarding evidence.
 
 ## GenAI telemetry (AIG.RS-R09)
