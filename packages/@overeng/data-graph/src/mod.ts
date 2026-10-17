@@ -433,6 +433,18 @@ const outputsOf = Effect.fn('DataGraph.outputsOf')(function* (
   return outputs
 })
 
+/** Validate each reference before identity-based memoization can hide a conflicting definition. */
+const registerDefinition = (
+  definitions: Map<NodeKind, NodeDef>,
+  node: NodeDef,
+  id: string,
+): GraphError | undefined => {
+  const registered = definitions.get(node.kind)
+  if (registered !== undefined && registered !== node)
+    return new GraphError({ nodeId: id, message: 'Conflicting definitions for one node kind' })
+  definitions.set(node.kind, node)
+}
+
 /** Serialized pull; explicit refresh IDs authorize observations, never time-based hashes. */
 const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function* (
   target: NodeRef,
@@ -460,10 +472,8 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
         ) === true
       )
         return yield* invalid('Output names must be unique, non-empty, trimmed strings without NUL')
-      const registered = definitions.get(node.kind)
-      if (registered !== undefined && registered !== node)
-        return yield* invalid('Conflicting definitions for one node kind')
-      definitions.set(node.kind, node)
+      const conflict = registerDefinition(definitions, node, id)
+      if (conflict !== undefined) return yield* conflict
       if (visiting.has(id) === true) return yield* invalid('Declared dependency cycle')
       const previousResult = completed.get(id)
       if (previousResult !== undefined) return previousResult
@@ -659,11 +669,14 @@ export const getSelectionStatus = Effect.fn('DataGraph.getSelectionStatus')(func
   const store = yield* GraphStore
   const visiting = new Set<string>()
   const completed = new Map<string, SelectionStatus>()
+  const definitions = new Map<NodeKind, NodeDef>()
   const visit = (reference: NodeRef): Effect.Effect<SelectionStatus, GraphFailure, GraphStore> =>
     Effect.gen(function* () {
       const { node, scope } = reference
       const key = { kind: node.kind, scope }
       const id = nodeId(key)
+      const conflict = registerDefinition(definitions, node, id)
+      if (conflict !== undefined) return yield* conflict
       if (visiting.has(id) === true)
         return yield* new GraphError({ nodeId: id, message: 'Declared dependency cycle' })
       const prior = completed.get(id)
