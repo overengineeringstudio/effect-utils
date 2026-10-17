@@ -3,7 +3,7 @@ import { Effect, Fiber } from 'effect'
 import { expect } from 'vitest'
 
 import { ARTIFACT_LIMITS } from '../isomorphic/Artifacts.ts'
-import { basic, binary, bomb, duplicate, traversal } from './ArtifactArchive.fixtures.ts'
+import { basic, binary, bomb, duplicate, makeZip, traversal } from './ArtifactArchive.fixtures.ts'
 import {
   listArtifactMembers,
   readArtifactMember,
@@ -41,6 +41,111 @@ const changed = (updates: readonly { offset: number; value: number; width: 2 | 4
 }
 
 describe('retained artifact archive', () => {
+  it.effect('reads the tail of a large member without raising the output or member ceilings', () =>
+    Effect.gen(function* () {
+      const text = 'a'.repeat(569_000) + '\nlast log line\n'
+      const bytes = makeZip(text)
+      expect((yield* readArtifactMember(bytes, selection, 'log.txt', { tailBytes: 15 })).text).toBe(
+        '\nlast log line\n',
+      )
+      const content = yield* readArtifactMember(bytes, selection, 'log.txt', { tailBytes: 15 })
+      expect(content.window).toEqual({
+        offset: text.length - 15,
+        length: 15,
+        totalBytes: text.length,
+      })
+      expect(content.decompressedBytes).toBe(text.length)
+      expect(
+        (yield* readArtifactMember(bytes, selection, 'log.txt').pipe(Effect.flip)).reason,
+      ).toBe('limit-exceeded')
+    }),
+  )
+
+  it.effect('aligns UTF-8 edges inward and reports actual decompressed byte ranges', () =>
+    Effect.gen(function* () {
+      const bytes = makeZip('aé界😀z')
+      for (const [window, text, offset, length] of [
+        [{ offset: 0, length: 12 }, 'aé界😀z', 0, 11],
+        [{ offset: 2, length: 7 }, '界', 3, 3],
+        [{ offset: 4, length: 1 }, '', 6, 0],
+        [{ offset: 7, length: 0 }, '', 10, 0],
+        [{ tailBytes: 4 }, 'z', 10, 1],
+        [{ offset: Number.MAX_SAFE_INTEGER, length: 5 }, '', 11, 0],
+        [{ offset: 0, length: 0 }, '', 0, 0],
+      ] as const) {
+        const content = yield* readArtifactMember(bytes, selection, 'log.txt', window)
+        expect(content.text).toBe(text)
+        expect(content.window).toEqual({ offset, length, totalBytes: 11 })
+      }
+    }),
+  )
+
+  it.effect('validates UTF-8 and binary controls outside the returned window', () =>
+    Effect.gen(function* () {
+      for (const content of [
+        Buffer.from([0xff, 0x61]),
+        Buffer.from([0, 0x61]),
+        Buffer.from([0x61, 0xff]),
+        Buffer.from([0x61, 0]),
+      ]) {
+        const failure = yield* readArtifactMember(makeZip(content), selection, 'log.txt', {
+          offset: 1,
+          length: 0,
+        }).pipe(Effect.flip)
+        expect(failure.reason).toBe('binary-content')
+      }
+      const split = 'a'.repeat(16 * 1024 - 1) + '😀end'
+      expect(
+        (yield* readArtifactMember(makeZip(split), selection, 'log.txt', { tailBytes: 7 })).text,
+      ).toBe('😀end')
+    }),
+  )
+
+  it.effect('still verifies whole-member CRC for tiny and empty windows', () =>
+    Effect.gen(function* () {
+      const bytes = makeZip('a'.repeat(300_000) + 'end')
+      const directory = bytes.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]))
+      bytes.writeUInt32LE(0, 14)
+      bytes.writeUInt32LE(0, directory + 16)
+      for (const tailBytes of [0, 3]) {
+        const failure = yield* readArtifactMember(bytes, selection, 'log.txt', { tailBytes }).pipe(
+          Effect.flip,
+        )
+        expect(failure.reason).toBe('unsafe-archive')
+      }
+    }),
+  )
+
+  it.effect('rejects oversized window requests and never bypasses the 8 MiB member cap', () =>
+    Effect.gen(function* () {
+      for (const window of [
+        { offset: -1, length: 1 },
+        { offset: 0, length: ARTIFACT_LIMITS.outputBytes + 1 },
+        { tailBytes: ARTIFACT_LIMITS.outputBytes + 1 },
+        { tailBytes: 1.5 },
+      ]) {
+        expect(
+          (yield* readArtifactMember(basic, selection, 'cost.json', window).pipe(Effect.flip))
+            .reason,
+        ).toBe('invalid-selection')
+      }
+      expect(
+        (yield* readArtifactMember(bomb, selection, 'bomb.txt', { tailBytes: 1 }).pipe(Effect.flip))
+          .reason,
+      ).toBe('limit-exceeded')
+      const content = yield* readArtifactMember(
+        makeZip('x'.repeat(300_000)),
+        selection,
+        'log.txt',
+        {
+          offset: 0,
+          length: ARTIFACT_LIMITS.outputBytes,
+        },
+      )
+      expect(content.text.length).toBe(ARTIFACT_LIMITS.outputBytes)
+    }),
+  )
+
   it.effect(
     'lists metadata without decompressing content and reads exact synthetic text with provenance',
     () =>
