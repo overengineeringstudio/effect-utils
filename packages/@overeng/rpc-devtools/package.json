@@ -47,10 +47,10 @@
     "@overeng/meters": "workspace:^"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0",
+    "@effect/vitest": "4.0.3",
     "@stylexjs/stylex": "0.19.0",
     "@types/react": "19.2.18",
-    "effect": "4.0.0",
+    "effect": "4.0.3",
     "react": "19.2.8",
     "react-aria-components": "1.21.1",
     "react-dom": "19.2.8",
@@ -59,7 +59,7 @@
   },
   "peerDependencies": {
     "@stylexjs/stylex": "^0.19.0",
-    "effect": "^4.0.0",
+    "effect": "^4.0.3",
     "react": "^19.2.3",
     "react-aria-components": "^1.21.1",
     "react-dom": "^19.2.3"
