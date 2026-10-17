@@ -44,6 +44,9 @@ bash assemble.sh "$OUT_V2/MacPermissionsHostExperiment.app" 2 "$SIGNER_JSON" "$A
 `identity`), never a password. The harness first runs
 `nix store add --mode nar "$NATIVE_APP"` and then passes the returned store path as
 `nativeBundle`; this import is mandatory because build users cannot read home directories.
+`assemble.nix` wraps that string with `builtins.storePath` to declare it as a sandbox
+input; a context-free `--argstr` alone is insufficient. The harness uses `--impure`
+evaluation for this operation.
 Do not substitute `toString` or a home-directory path. `default.nix` rejects non-store
 inputs. Assembly exposes `hostApp`, `ctl`, `ctl-config.json`, `desired-descriptor.json`
 and `generation` under the output link. This is unsigned assembly, not install or seal.
