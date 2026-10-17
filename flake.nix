@@ -588,6 +588,13 @@ rec {
           nixpkgsRevision = nixpkgs.rev;
         } (builtins.removeAttrs args [ "pkgs" ]);
 
+      lib.mkMacosPermissionsHost =
+        args:
+        import ./nix/permissions-host/default.nix {
+          pkgs = args.pkgs;
+          nixpkgsRevision = nixpkgs.rev;
+        } (builtins.removeAttrs args [ "pkgs" ]);
+
       # Convenience helper for bundling the common genie/megarepo CLIs from
       # this effect-utils revision's tracked Buck products. An explicit
       # `products` argument remains available for manifest experiments.
