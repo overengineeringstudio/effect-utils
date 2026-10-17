@@ -376,6 +376,13 @@ from-source builder uses the same policy mapping. Unknown policies fail Nix
 evaluation with a message listing both allowed values; raw watcher-provider
 strings are not accepted.
 
+The packaged Prelude explicitly clears `RUSTC_WRAPPER` and
+`RUSTC_WORKSPACE_WRAPPER` in Reindeer build-script action environments, matching
+the Rust toolchain and first-party launcher rules. A local Buck daemon started
+inside a Cargo development shell must not introduce ambient sccache selection.
+Compiler selection and cache identity remain owned by the declared Buck tools;
+inherited sccache settings cannot activate a wrapper when these selectors are empty.
+
 TypeScript package projections retain census destinations below nested Buck packages,
 but resolve each input through its nearest owning `BUCK` (or `BUCK.genie.ts` during
 generation). For example, `src/main.ts` below `parent/src/BUCK` is staged from
