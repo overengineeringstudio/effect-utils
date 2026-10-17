@@ -794,11 +794,12 @@ const buckAllSource = taskSource('buck2:all')
 const producerOverlapSource = taskSource('check:buck2-producer-overlap')
 ok({
   condition:
-    source.includes('buck2AggregateExec =') === true &&
+    source.includes('buck2AggregateExec = config.effectUtils.buck2.aggregateExec;') === true &&
     buckProviderCheckSource.includes('audit providers') === true &&
     buckProviderCheckSource.includes('typescript-authority-runtime.ts') === false &&
-    buckQuickSource.includes('buck2AggregateExec "buck2:quick" "//:quick"') === true &&
-    buckAllSource.includes('buck2AggregateExec "buck2:all" "//:all"') === true &&
+    /buck2AggregateExec "buck2:quick" \[\s*"build"\s*"\/\/:quick"\s*\]/.test(buckQuickSource) ===
+      true &&
+    /buck2AggregateExec "buck2:all" \[\s*"build"\s*"\/\/:all"\s*\]/.test(buckAllSource) === true &&
     buckQuickSource.includes('--local-only') === false &&
     buckAllSource.includes('--local-only') === false,
   name: 'Buck check tasks separate provider audit from standalone cache-enabled aggregates',
