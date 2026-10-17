@@ -608,7 +608,7 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
     detail: `expected ${consumers.join(', ')}, received ${actualConsumers.join(', ')}`,
   })
 }
-const fullPublisherTask = requireTask('buck2:editor:publish')
+const fullPublisherTask = requireTask('buck2:editor:publish:all')
 const fullPublisherCommand = fullPublisherTask.command
 ok({
   condition: fullPublisherTask.hasExec === true || typeof fullPublisherCommand === 'string',
@@ -726,7 +726,7 @@ const orderedMaterializationSteps = [
   'devenv tasks run buck2:editor:bootstrap --mode single',
   'devenv tasks run genie:run --mode single',
   'devenv tasks run genie:check --mode single',
-  'devenv tasks run buck2:editor:publish --mode single',
+  'devenv tasks run buck2:editor:publish:all --mode single',
 ]
 const orderedMaterializationOffsets = orderedMaterializationSteps.map((step) =>
   editorMaterializeSource.indexOf(step),

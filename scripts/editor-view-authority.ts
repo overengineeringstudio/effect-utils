@@ -1,4 +1,5 @@
 #!/usr/bin/env -S bun
+import { execFileSync } from 'node:child_process'
 import process from 'node:process'
 
 import testScheduling from '../genie/ci-workflow/test-scheduling.json'
@@ -116,6 +117,23 @@ export const resolveEditorViewPackageScope = ({
   }
 }
 
+/** Select the deepest owning workspace consumer for each changed source path. */
+export const changedEditorConsumers = ({
+  changed,
+  packagePaths,
+}: {
+  readonly changed: readonly string[]
+  readonly packagePaths: readonly string[]
+}): readonly string[] => {
+  const selected = new Set<string>()
+  for (const file of changed) {
+    const owner = packagePaths
+      .filter((packagePath) => packagePath !== '.' && file.startsWith(`${packagePath}/`))
+      .toSorted((left, right) => right.length - left.length)[0]
+    selected.add(owner ?? '.')
+  }
+  return [...selected].toSorted()
+}
 type Command = 'authority' | 'bootstrap' | 'check' | 'publish'
 
 const fail = (message: string): never => {
@@ -160,6 +178,7 @@ const parseCli = (args: readonly string[]) => {
     '--fingerprint-tool',
     '--snapshot-retention',
     '--packages',
+    '--changed-since',
   ])
   for (const flag of values.keys())
     if (allowed.has(flag) === false) fail(`unexpected option: ${flag}`)
@@ -179,6 +198,7 @@ const parseCli = (args: readonly string[]) => {
     fingerprintTool: admitting === true ? get('--fingerprint-tool') : '',
     snapshotRetention: admitting === true ? Number(get('--snapshot-retention')) : 2,
     publicationPackages: values.get('--packages'),
+    changedSince: values.get('--changed-since'),
   }
 }
 
@@ -191,10 +211,32 @@ const main = async (): Promise<void> => {
   )
     fail('--snapshot-retention must be an integer from 2 through 32')
   const authorityPackagePaths = editorViewPackagePaths
+  let serializedPublicationPackages = options.publicationPackages
+  if (options.changedSince !== undefined) {
+    if (options.command !== 'publish') fail('--changed-since is only valid with publish')
+    serializedPublicationPackages = options.publicationPackages ?? process.env.EDITOR_VIEW_PACKAGES
+    if (serializedPublicationPackages === undefined) {
+      const changed = execFileSync(
+        options.git,
+        ['diff', '--name-only', '-z', options.changedSince, '--'],
+        { cwd: options.repoRoot, encoding: 'utf8' },
+      )
+        .split('\0')
+        .filter((entry) => entry.length > 0)
+      const selected = changedEditorConsumers({ changed, packagePaths: authorityPackagePaths })
+      if (selected.length === 0) {
+        process.stdout.write(
+          'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
+        )
+        return
+      }
+      serializedPublicationPackages = JSON.stringify(selected)
+    }
+  }
   const packageScope = resolveEditorViewPackageScope({
     command: options.command,
     authorityPackagePaths,
-    serializedPublicationPackages: options.publicationPackages,
+    serializedPublicationPackages,
   })
   // Scope only target construction and publication. Every publisher still refreshes and passes
   // freshly proven whole-workspace authority to each selected package view.

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import testScheduling from '../genie/ci-workflow/test-scheduling.json'
 import {
+  changedEditorConsumers,
   decodePublicationPackagePaths,
   editorViewPackagePaths,
   editorViewPlan,
@@ -11,6 +12,21 @@ import {
 } from './editor-view-authority.ts'
 
 describe('editor view authority orchestration', () => {
+  it('scopes changed source paths to unique deepest consumers and root files', () => {
+    expect(
+      changedEditorConsumers({
+        changed: [
+          'packages/a/src/one.ts',
+          'packages/a/src/two.ts',
+          'packages/ab/x.ts',
+          'devenv.nix',
+        ],
+        packagePaths: ['.', 'packages/a', 'packages/ab'],
+      }),
+    ).toEqual(['.', 'packages/a', 'packages/ab'])
+    expect(changedEditorConsumers({ changed: [], packagePaths: ['.'] })).toEqual([])
+  })
+
   it('derives one deterministic editor publication entry per workspace consumer', () => {
     const plan = editorViewPlan({ cell: 'workspace_cell' })
 

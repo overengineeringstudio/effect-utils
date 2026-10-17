@@ -747,6 +747,7 @@ let
       mode,
       packagePaths ? null,
       traceScope ? null,
+      changedSince ? null,
     }:
     let
       traceName = "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
@@ -775,7 +776,7 @@ let
         --fingerprint-tool ${
           repoFlake.packages.${currentSystem}.buck2-fingerprint
         }/bin/buck2-fingerprint \
-        --snapshot-retention 2${packageArgument} || status=$?
+        --snapshot-retention 2${packageArgument}${lib.optionalString (changedSince != null) " --changed-since ${lib.escapeShellArg changedSince}"} || status=$?
       if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
         echo "Editor-view ${mode} exceeded its 300s total deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
       fi
@@ -905,7 +906,7 @@ in
       );
     }
     (taskModules.storybook {
-      installTask = "buck2:editor:publish";
+      installTask = "buck2:editor:publish:all";
       packages = packagesWithStorybook;
     })
     (taskModules.netlify {
@@ -1036,13 +1037,13 @@ in
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
   };
   tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
-  tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."test:notion-integration:notion-cli".after = lib.mkForce [ "buck2:editor:publish" ];
+  tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish:all" ];
+  tasks."test:notion-integration:notion-cli".after = lib.mkForce [ "buck2:editor:publish:all" ];
   tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [
-    "buck2:editor:publish"
+    "buck2:editor:publish:all"
   ];
-  tasks."test:notion-integration:notion-md".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."test:notion-integration:notion-react".after = lib.mkForce [ "buck2:editor:publish" ];
+  tasks."test:notion-integration:notion-md".after = lib.mkForce [ "buck2:editor:publish:all" ];
+  tasks."test:notion-integration:notion-react".after = lib.mkForce [ "buck2:editor:publish:all" ];
   tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish:otel-contract" ];
   tasks."test:pty-effect:unbounded".env = {
     NODE_PTY_NATIVE_PACKAGE = "${nodePtyNative}/node_modules/node-pty";
@@ -1305,7 +1306,7 @@ in
   };
 
   tasks."test:megarepo-cold-gc" = {
-    after = [ "buck2:editor:publish" ];
+    after = [ "buck2:editor:publish:all" ];
     description = "Run fixture-isolated megarepo cold-GC integration tests from the standalone checkout";
     cwd = "packages/@overeng/megarepo";
     exec = trace.exec "test:megarepo-cold-gc" ''
@@ -1506,7 +1507,7 @@ in
       devenv tasks run buck2:editor:bootstrap --mode single
       devenv tasks run genie:run --mode single
       devenv tasks run genie:check --mode single
-      devenv tasks run buck2:editor:publish --mode single
+      devenv tasks run buck2:editor:publish:all --mode single
     '';
   };
 
@@ -1518,10 +1519,23 @@ in
   };
 
   tasks."buck2:editor:publish" = {
-    description = "Atomically publish every Buck-owned workspace editor dependency view";
+    description = "Publish requested editor views, or consumers changed since origin/main";
     after = [ "genie:check" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec { mode = "publish"; };
+    exec = editorViewExec {
+      mode = "publish";
+      changedSince = "origin/main";
+    };
+  };
+
+  tasks."buck2:editor:publish:all" = {
+    description = "Publish every workspace editor view under a separate total deadline";
+    after = [ "genie:check" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
+    exec = editorViewExec {
+      mode = "publish";
+      traceScope = "all";
+    };
   };
 
   tasks."buck2:editor:publish:restate-effect" = scopedEditorViewPublisher {

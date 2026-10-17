@@ -59,7 +59,6 @@ and corrupt selected-member contents are rejected. Metadata enumeration does not
 decompress members. Signed storage redirects are allowlisted and receive no GitHub
 authorization header.
 
-
 ### Notion Integration
 
 Full-featured Effect-native Notion API client with type-safe schema generation.
@@ -237,18 +236,29 @@ from the lint/Genie heavy lane:
 devenv tasks run buck2:editor:materialize
 ```
 
-To publish an already-generated, fresh graph without regeneration:
+Publish only requested consumers (JSON package paths), or omit the environment
+variable to select consumers changed since `origin/main`:
 
 ```bash
-devenv tasks run buck2:editor:publish
+EDITOR_VIEW_PACKAGES='["packages/@overeng/notion-core"]' devenv tasks run buck2:editor:publish
+```
+
+The default never substitutes a whole-workspace publication for an empty change
+set. For the separately bounded full workspace operation:
+
+```bash
+devenv tasks run buck2:editor:publish:all
 ```
 
 Each authority/bootstrap/publication invocation has a **300-second total deadline**
 (plus a 5-second forced-kill grace), including Buck builds, filesystem work and
 lock waits. Expiry prints a deadline diagnostic and fails nonzero; partial
 publication is never reported as success. This bounds shared-lane occupancy
-well below the 53-minute TT-148 incident. The publisher already limits independent
-preparations to four workers; it does not issue unbounded per-view fan-out.
+well below the 53-minute TT-148 incident. Both view preparations and fingerprint
+subprocesses are limited to four workers, matching the native host-wide walk cap.
+Only immutable Nix-store inputs are memoized, keyed by the tool and complete
+fingerprint arguments; mutable Buck outputs are always re-proven. Phase diagnostics
+are written as work advances, with phase spans on completion, failure, and SIGTERM.
 
 ### Check All TypeScript Projects
 

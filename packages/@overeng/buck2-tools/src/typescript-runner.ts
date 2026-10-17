@@ -223,10 +223,18 @@ const forEachSequential = async <T>(options: {
 const canonicalRoots = (roots: readonly string[]): readonly string[] =>
   [...new Set(roots.map((root) => resolve(root)))].toSorted()
 
-// A process-local queue prevents root Promise.all/allSettled callers from
-// spawning one child per root. The native tool separately enforces the fixed
-// host-wide walk cap across independent runners, Buck actions and publishers.
-let fingerprintQueue: Promise<void> = Promise.resolve()
+// Match the native host-wide walk cap without spawning one child per root.
+// Each lane advances after failure as well as success.
+const fingerprintWorkers = 4
+const fingerprintQueues = Array.from({ length: fingerprintWorkers }, () => Promise.resolve())
+let nextFingerprintQueue = 0
+const immutableFingerprints = new Map<
+  string,
+  {
+    readonly spawnChild: typeof spawnFingerprintChild
+    readonly result: Promise<string>
+  }
+>()
 
 /** Only the streams and lifecycle events consumed by the fingerprint runner. */
 export type FingerprintChild = {
@@ -245,7 +253,7 @@ const spawnFingerprintChild = ({
 }): FingerprintChild =>
   spawn(tool, args, { cwd: '/', env: { PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] })
 
-/** Runs one fingerprint child at a time without blocking the event loop. */
+/** Bound subprocess admission; memoize only immutable Nix inputs with identical semantics. */
 export const runFingerprintTool = ({
   tool,
   args,
@@ -258,7 +266,14 @@ export const runFingerprintTool = ({
     readonly args: readonly string[]
   }) => FingerprintChild
 }): Promise<string> => {
-  const result = fingerprintQueue.then(
+  const immutable = /^\/nix\/store\/[^/]+(?:\/|$)/u.test(args[0] ?? '')
+  const cacheKey = JSON.stringify([tool, args])
+  if (immutable === true) {
+    const cached = immutableFingerprints.get(cacheKey)
+    if (cached?.spawnChild === spawnChild) return cached.result
+  }
+  const lane = nextFingerprintQueue++ % fingerprintWorkers
+  const result = (fingerprintQueues[lane] ?? Promise.resolve()).then(
     () =>
       new Promise<string>((resolveOutput, reject) => {
         const child = spawnChild({ tool: requireFingerprintTool(tool), args })
@@ -280,10 +295,17 @@ export const runFingerprintTool = ({
   )
   // A failed root must not poison later requests, and callers still receive
   // the original rejection through result.
-  fingerprintQueue = result.then(
+  fingerprintQueues[lane] = result.then(
     () => {},
     () => {},
   )
+  if (immutable === true) {
+    immutableFingerprints.set(cacheKey, { spawnChild, result })
+    void result.catch(() => {
+      if (immutableFingerprints.get(cacheKey)?.result === result)
+        immutableFingerprints.delete(cacheKey)
+    })
+  }
   return result
 }
 
