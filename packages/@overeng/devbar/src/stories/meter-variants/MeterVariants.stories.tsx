@@ -374,55 +374,76 @@ const freshness = <TValue,>(options: {
   basis: options.basis,
 })
 
-/** Time since the source's last observation before evaluation, once past its threshold. */
-const staleForMs = (options: {
-  readonly newestAtMs: number | undefined
-  readonly nowMs: number
-  readonly staleAfterMs: number
+/** Newest observation of any kind (value, unavailable, gap) at or before `atMs`. */
+const newestAtOrBefore = (options: {
+  readonly view: SeriesView<unknown>
+  readonly atMs: number
 }): number | undefined => {
-  if (options.newestAtMs === undefined) return undefined
-  const ageMs = options.nowMs - options.newestAtMs
-  return ageMs > options.staleAfterMs ? ageMs : undefined
+  let low = 0
+  let high = options.view.length - 1
+  let found: number | undefined
+  while (low <= high) {
+    const middle = (low + high) >> 1
+    const sample = options.view.at(middle)
+    if (sample === undefined || sample.atMs > options.atMs) high = middle - 1
+    else {
+      found = sample.atMs
+      low = middle + 1
+    }
+  }
+  return found
 }
 
-/** Dim a stale tile as a whole; the label slot names the age instead of drawing over the plot. */
+/** Time since the source's last observation before `atMs`, once past its threshold. */
+const staleAt = (options: {
+  readonly freshness: Freshness
+  readonly view: SeriesView<unknown>
+  readonly atMs: number
+}): number | undefined => {
+  const newestAtMs = newestAtOrBefore({ view: options.view, atMs: options.atMs })
+  if (newestAtMs === undefined) return undefined
+  const ageMs = options.atMs - newestAtMs
+  return ageMs > options.freshness.staleAfterMs ? ageMs : undefined
+}
+
+/** The only wording that carries a stale age: readouts, the evidence card and tile descriptions. */
+const staleText = (ageMs: number): string => `stale: no observation for ${seconds(ageMs)}`
+
+/** Dim a stale tile as a whole; its label slot reads `<short> stale`, never a bare age. */
 const staleAlpha = 0.4
 
 /**
  * Bar-strip header: a short muted label plus a terse value derived from the block's own
  * description, replacing the header the block would ellipsize at strip width. A 1 px baseline
  * under the chart keeps the trend anchored on light backgrounds. Past its source's freshness
- * threshold the whole tile dims and the label slot reads `stale 15s`.
+ * threshold the whole tile dims and the header reads `msg stale`; the age stays in the evidence
+ * card and the tile description, so it can never read as a latency.
  */
 const withStripHeader = (options: {
   readonly spec: CanvasBlockSpec
   readonly label: string
+  /** Used as `<staleLabel> stale` only when `<label> stale` does not fit the strip. */
+  readonly staleLabel?: string
   readonly value: (text: string) => string
   readonly freshness: Freshness
 }): CanvasBlockSpec => {
   const bind = ({
     inner,
-    newestAtMs,
+    view,
   }: {
     readonly inner: BlockReader
-    readonly newestAtMs: () => number | undefined
+    readonly view: SeriesView<unknown>
   }): BlockReader => ({
     revision: inner.revision,
     describe: inner.describe,
     evidence: inner.evidence,
     draw: (frame) => {
       const { ctx, rect, theme, nowMs } = frame
-      const staleMs = staleForMs({
-        newestAtMs: newestAtMs(),
-        nowMs,
-        staleAfterMs: options.freshness.staleAfterMs,
-      })
+      const staleMs = staleAt({ freshness: options.freshness, view, atMs: nowMs })
       ctx.save()
       if (staleMs !== undefined) ctx.globalAlpha = staleAlpha
       inner.draw(frame)
       ctx.restore()
-      const text = inner.describe({ nowMs })
-      const value = text.startsWith('n/a') === true ? 'n/a' : options.value(text)
       const measure = (run: string): number => ctx.measureText(run).width
       ctx.save()
       ctx.beginPath()
@@ -436,22 +457,19 @@ const withStripHeader = (options: {
       ctx.textBaseline = 'top'
       ctx.textAlign = 'left'
       if (staleMs !== undefined) {
-        // The age owns the label slot; the last value follows only when it still fits.
-        const label = fitText({
-          text: `stale ${Math.floor(staleMs / 1000)}s`,
-          maxWidth: rect.width - 8,
-          measure,
-        })
+        const full = `${options.label} stale`
+        const text =
+          measure(full) <= rect.width - 8 || options.staleLabel === undefined
+            ? full
+            : `${options.staleLabel} stale`
+        const run = fitText({ text, maxWidth: rect.width - 8, measure })
         ctx.fillStyle = theme.foreground
-        if (label !== undefined) ctx.fillText(label.text, rect.x + 4, rect.y + 3)
-        const valueWidth = measure(value)
-        if (label !== undefined && label.width + 4 + valueWidth <= rect.width - 8) {
-          ctx.globalAlpha = staleAlpha
-          ctx.fillText(value, rect.x + rect.width - 4 - valueWidth, rect.y + 3)
-        }
+        if (run !== undefined) ctx.fillText(run.text, rect.x + 4, rect.y + 3)
         ctx.restore()
         return
       }
+      const text = inner.describe({ nowMs })
+      const value = text.startsWith('n/a') === true ? 'n/a' : options.value(text)
       const header = layoutBlockText({ rect, label: options.label, value, measure, gapPx: 4 })
       ctx.fillStyle = theme.muted
       if (header.label !== undefined) ctx.fillText(header.label.text, header.label.x, rect.y + 3)
@@ -459,17 +477,11 @@ const withStripHeader = (options: {
       if (header.value !== undefined) ctx.fillText(header.value.text, header.value.x, rect.y + 3)
       ctx.restore()
     },
-    snapshot: () => {
-      const frozen = newestAtMs()
-      return bind({ inner: inner.snapshot(), newestAtMs: () => frozen })
-    },
+    snapshot: () => bind({ inner: inner.snapshot(), view: freezeView(view) }),
   })
   return {
     ...options.spec,
-    read: (store) => {
-      const view = options.freshness.view(store)
-      return bind({ inner: options.spec.read(store), newestAtMs: () => view.newestAtMs })
-    },
+    read: (store) => bind({ inner: options.spec.read(store), view: options.freshness.view(store) }),
   }
 }
 
@@ -598,6 +610,8 @@ interface MeterRow {
 
 type MeterRowInput = Omit<MeterRow, 'stripSpec'> & {
   readonly stripLabel: string
+  /** Shorter label for `<label> stale`, used only when the full form does not fit the strip. */
+  readonly stripStaleLabel?: string
   /** Terse strip value derived from the block's full description (never re-measured). */
   readonly stripValue: (text: string) => string
 }
@@ -660,7 +674,7 @@ const meterRowInputs: readonly MeterRowInput[] = [
       const found = sampleAt({ view: store.read({ series: recordingSeries.messages }), atMs })
       if (found === undefined) return 'n/a'
       const { delta, snapshot, error } = found.value
-      return `${delta + snapshot + error} msg/s (delta ${delta} · snapshot ${snapshot} · error ${error})`
+      return `${delta + snapshot + error} msg/s · delta ${delta} snap ${snapshot} err ${error}`
     },
     freshness: messageFreshness,
     rangeIn: ({ store, atMs, windowMs }) =>
@@ -759,6 +773,7 @@ const meterRowInputs: readonly MeterRowInput[] = [
   {
     shortLabel: 'commit',
     stripLabel: 'commit',
+    stripStaleLabel: 'cmt',
     stripValue: (text) => text.replace(/ ms$/, ''),
     priority: 3,
     spec: commitBlock({
@@ -779,9 +794,9 @@ const meterRowInputs: readonly MeterRowInput[] = [
         atMs,
         windowMs: 1000,
       })
-      if (commits.length === 0) return 'no commits in the preceding 1 s'
+      if (commits.length === 0) return 'no commits (prior 1 s)'
       const worst = Math.max(...commits.map((commit) => commit.actualDurationMs))
-      return `${commits.length} commit${commits.length === 1 ? '' : 's'} in the preceding 1 s · worst ${worst.toFixed(1)} ms`
+      return `${commits.length} commit${commits.length === 1 ? '' : 's'} · worst ${worst.toFixed(1)} ms (prior 1 s)`
     },
     freshness: frameFreshness,
     rangeIn: ({ store, atMs, windowMs }) =>
@@ -818,8 +833,8 @@ const meterRowInputs: readonly MeterRowInput[] = [
         windowMs: 1000,
       })
       return frames.length === 0
-        ? 'none in the preceding 1 s'
-        : `${frames.length} long frame${frames.length === 1 ? '' : 's'} · worst ${Math.max(...frames.map((frame) => frame.durationMs))} ms`
+        ? 'none (prior 1 s)'
+        : `${frames.length} long frame${frames.length === 1 ? '' : 's'} · worst ${Math.max(...frames.map((frame) => frame.durationMs))} ms (prior 1 s)`
     },
     freshness: frameFreshness,
     rangeIn: ({ store, atMs, windowMs }) =>
@@ -869,11 +884,12 @@ const meterRowInputs: readonly MeterRowInput[] = [
 ]
 const meterRows: readonly MeterRow[] = meterRowInputs.map(
   // `row` is a fresh rest object, so attaching the decorated strip spec mutates nothing shared.
-  ({ stripLabel, stripValue, ...row }): MeterRow =>
+  ({ stripLabel, stripStaleLabel, stripValue, ...row }): MeterRow =>
     Object.assign(row, {
       stripSpec: withStripHeader({
         spec: row.spec,
         label: stripLabel,
+        ...(stripStaleLabel === undefined ? {} : { staleLabel: stripStaleLabel }),
         value: stripValue,
         freshness: row.freshness,
       }),
@@ -1077,7 +1093,7 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   // Block padding only: the canvas fills the measured width and draws its own inset.
-  timeline: { paddingBlock: '0.5rem', minWidth: 0 },
+  timeline: { paddingBlock: '0.25rem', minWidth: 0 },
   timelineCanvas: {
     display: 'block',
     outlineWidth: { default: 0, ':focus-visible': 2 },
@@ -1087,16 +1103,16 @@ const styles = stylex.create({
   // Anchored under the axis, outside the plot, so it never hides a row.
   readout: {
     display: 'grid',
-    // `min(…, 100%)` keeps one column inside narrow panels instead of overflowing them.
-    gridTemplateColumns: 'repeat(auto-fill, minmax(min(19rem, 100%), 1fr))',
+    // Two columns down to ~560 px panels, one below; `min(…, 100%)` never overflows the panel.
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(16.5rem, 100%), 1fr))',
     columnGap: '1rem',
-    rowGap: '0.125rem',
+    rowGap: 0,
     margin: 0,
-    paddingTop: '0.375rem',
+    paddingTop: '0.25rem',
     paddingInline: '0.25rem',
     fontFamily: devbarTokens.fontData,
     fontSize: '0.6875rem',
-    lineHeight: 1.45,
+    lineHeight: 1.35,
     color: devbarTokens.text,
   },
   readoutEntry: { minWidth: 0, overflowWrap: 'anywhere' },
@@ -1240,6 +1256,17 @@ const StripSegment = (props: {
     },
     [meters, row.stripSpec, view, theme],
   )
+  // The stale age lives in the description (and the evidence card), never in the drawn header.
+  const evaluatedAtMs = useEvaluatedAtMs({ meters, frozenAtMs })
+  const staleMs = staleAt({
+    freshness: row.freshness,
+    view: row.freshness.view(meters.store),
+    atMs: evaluatedAtMs,
+  })
+  const staleId = React.useId()
+  const describedBy = [props.describedBy, staleMs === undefined ? undefined : staleId]
+    .filter((id) => id !== undefined)
+    .join(' ')
   return (
     <button
       ref={props.tileRef}
@@ -1249,7 +1276,7 @@ const StripSegment = (props: {
       title={row.spec.label}
       aria-expanded={props.expanded}
       aria-controls={props.controls}
-      aria-describedby={props.describedBy}
+      aria-describedby={describedBy === '' ? undefined : describedBy}
       aria-keyshortcuts="R"
       onClick={(event) => {
         onInspect({ trigger: 'activation', tile: event.currentTarget })
@@ -1275,6 +1302,11 @@ const StripSegment = (props: {
       <div style={{ width: segmentWidthPx, height: heightPx }}>
         <canvas ref={attach} aria-hidden="true" style={{ display: 'block' }} />
       </div>
+      {staleMs !== undefined && (
+        <span id={staleId} {...stylex.props(styles.srOnly)}>
+          {staleText(staleMs)} before evaluation
+        </span>
+      )}
     </button>
   )
 }
@@ -1304,6 +1336,8 @@ interface Inspection {
   readonly evidence: BlockEvidence
   /** Q19 range over the history window ending at the evaluation instant. */
   readonly range: string | undefined
+  /** Freshness verdict at the evaluation instant, worded as in the Timeline readout. */
+  readonly stale: string | undefined
   readonly frozen: boolean
   readonly tile: HTMLElement
 }
@@ -1337,7 +1371,7 @@ const EvidenceCard = (props: {
   /** Re-anchor when the Devbar's height changes (panel opened or closed). */
   readonly panelOpen: boolean
 }): React.ReactNode => {
-  const { evidence, trigger, frozen, range, tile } = props.inspection
+  const { evidence, trigger, frozen, range, stale, tile } = props.inspection
   const [anchor, setAnchor] = React.useState<CardAnchor | undefined>(undefined)
   React.useLayoutEffect(() => setAnchor(anchorFor(tile)), [tile, props.panelOpen])
   return (
@@ -1351,6 +1385,7 @@ const EvidenceCard = (props: {
         <span {...stylex.props(styles.evidenceTitle)}>{evidence.label}</span> {evidence.text}
       </span>
       <span>{latestText(evidence)}</span>
+      {stale !== undefined && <span>{stale}</span>}
       <span>
         range over the {seconds(historyMs)} before evaluation:{' '}
         {range ?? 'no samples in this window'}
@@ -1556,7 +1591,17 @@ const TimelineCanvas = (props: {
   const entries = rows.map((row) => ({
     id: row.spec.id,
     label: row.shortLabel,
-    text: row.readoutAt({ store: meters.store, atMs: readAtMs }),
+    // Past the source's freshness threshold the readout says stale, not the last value.
+    text: (() => {
+      const staleMs = staleAt({
+        freshness: row.freshness,
+        view: row.freshness.view(meters.store),
+        atMs: readAtMs,
+      })
+      return staleMs === undefined
+        ? row.readoutAt({ store: meters.store, atMs: readAtMs })
+        : staleText(staleMs)
+    })(),
   }))
   // Home snaps to the first retained sample (of the linked row when there is one) instead of an
   // all-n/a left edge.
@@ -1658,10 +1703,7 @@ const TimelineCanvas = (props: {
       <dl {...stylex.props(styles.readout)}>
         <div {...stylex.props(styles.readoutEntry)}>
           <dt {...stylex.props(styles.readoutTerm)}>at</dt>
-          <dd {...stylex.props(styles.readoutValue)}>
-            {atText}
-            {cursorBeforeS === undefined ? ' · move the crosshair to inspect' : ''}
-          </dd>
+          <dd {...stylex.props(styles.readoutValue)}>{atText}</dd>
         </div>
         {entries.map((entry) => (
           <div
@@ -1745,6 +1787,16 @@ const VariantDevbar = (
       trigger: options.trigger,
       evidence: reader.evidence({ nowMs: atMs }),
       range: row.rangeIn({ store: meters.store, atMs, windowMs: historyMs }),
+      stale: (() => {
+        const staleMs = staleAt({
+          freshness: row.freshness,
+          view: row.freshness.view(meters.store),
+          atMs,
+        })
+        return staleMs === undefined
+          ? undefined
+          : `${staleText(staleMs)} before evaluation (stale after ${seconds(row.freshness.staleAfterMs)})`
+      })(),
       frozen: frozenAtMs !== undefined,
       tile: options.tile,
     })
@@ -1940,8 +1992,8 @@ const MeterVariants = (props: MeterVariantsProps): React.ReactNode => {
             .join(', ')}
           . Msg bars stack delta / snapshot, red ticks are message errors; HTTP shows p50 with a
           muted p95 tail, red ticks are failed requests; ↻ marks a WebSocket recovery. A tile dims
-          and reads “stale Ns” (N s since its source’s last observation before evaluation) past:{' '}
-          {freshnessBases.join('; ')}.
+          and reads “msg stale” once its source has not been observed for longer than its threshold
+          (the age is in the evidence card and the tile description): {freshnessBases.join('; ')}.
         </span>
       </p>
       {meters !== undefined && (
