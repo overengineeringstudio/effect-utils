@@ -46,6 +46,15 @@ for (const [task, scripts] of Object.entries(tasks)) {
       const sameGate = previous?.command === match[2] && previous.flag === match[3]
       gatedArrays.set(match[4], { command: match[2], flag: match[3], count: (sameGate ? previous.count : 0) + 1 })
     }
+    // Outside recognized guards, only an empty initialization and read-only
+    // parameter references are allowed. Fail closed on scalar/indexed writes,
+    // +=, unset/read/printf -v, or other uses this small extractor cannot prove.
+    for (const [name, gate] of gatedArrays) {
+      const outsideGuard = script.replace(capabilityGuard, '')
+        .replace(new RegExp(`^\\s*${name}=\\(\\)\\s*$`, 'gm'), '')
+        .replace(new RegExp(`\\$\\{${name}(?:\\[@\\])?\\}|\\$${name}\\b`, 'g'), '')
+      gate.unmodified = !new RegExp(`\\b${name}\\b`).test(outsideGuard)
+    }
     for (const match of script.matchAll(/\b(MR_[A-Z_]+)\+?=\(([^)\n]*)\)/g)) {
       const flags = [...match[2].matchAll(/--[a-z][a-z0-9-]*/g)].map((m) => m[0])
       arrays.set(match[1], [...(arrays.get(match[1]) ?? []), ...flags])
@@ -59,7 +68,7 @@ for (const [task, scripts] of Object.entries(tasks)) {
         }
         const gate = gatedArrays.get(variable[1])
         for (const flag of arrays.get(variable[1])) {
-          const gated = gate?.command === command && gate.flag === flag
+          const gated = gate?.unmodified && gate.command === command && gate.flag === flag
             && arrays.get(variable[1]).filter((candidate) => candidate === flag).length === gate.count
           flags.set(flag, (flags.get(flag) ?? true) && gated)
         }
@@ -88,6 +97,9 @@ if (!extracted(guarded)
   || extracted(guarded.replace('mr apply --help', 'mr status --help'))
   || extracted(guarded.replace('== *--future-option*', '== *--different-option*'))
   || extracted(`${guarded}\nmr apply --future-option`)
+  || extracted(guarded.replace('mr apply "$', 'MR_OPTION_ARGS=--future-option\nmr apply "$'))
+  || extracted(guarded.replace('mr apply "$', 'MR_OPTION_ARGS[0]=--future-option\nmr apply "$'))
+  || extracted(guarded.replace('mr apply "$', 'MR_OPTION_ARGS+=(--future-option)\nmr apply "$'))
   || extracted('mr apply --future-option')) {
   throw new Error('Product flag extraction did not preserve capability boundaries')
 }
