@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/meters/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:ce1da9200ff1fdb70e78900a9bc28ab1c2f42bf4474e0caa5e0bb51280503eac
+# Semantic fingerprint: sha256:6d30a2742795b283826de46090ad81c76c510536f922869b270540e66934a45f
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -23,6 +23,7 @@ export_file(
 export_materialization_inputs([
     "e2e/bridge.ts",
     "e2e/meter-strip.pw.test.ts",
+    "e2e/meter-tile.pw.test.ts",
     "e2e/perf-gates.pw.test.ts",
     "src/canvas/_test-canvas.ts",
     "src/canvas/blocks.ts",
@@ -44,6 +45,9 @@ export_materialization_inputs([
     "src/react/panel.tsx",
     "src/react/panel.unit.test.tsx",
     "src/react/react.unit.test.tsx",
+    "src/react/scoped.ts",
+    "src/react/tile.tsx",
+    "src/react/tile.unit.test.tsx",
     "src/series/index.ts",
     "src/series/internal.ts",
     "src/series/series.unit.test.ts",
@@ -73,6 +77,7 @@ export_materialization_inputs([
     "src/sources/status/status.unit.test.ts",
     "src/stories/Availability.stories.tsx",
     "src/stories/MeterStrip.stories.tsx",
+    "src/stories/MeterTile.stories.tsx",
     "src/stories/PerfGates.stories.tsx",
     "src/stories/fixtures.tsx",
 ])
@@ -117,6 +122,7 @@ package_view(
     files = {
         "e2e/bridge.ts": "e2e/bridge.ts",
         "e2e/meter-strip.pw.test.ts": "e2e/meter-strip.pw.test.ts",
+        "e2e/meter-tile.pw.test.ts": "e2e/meter-tile.pw.test.ts",
         "e2e/perf-gates.pw.test.ts": "e2e/perf-gates.pw.test.ts",
         "package.json": "package.json",
         "src/canvas/_test-canvas.ts": "src/canvas/_test-canvas.ts",
@@ -139,6 +145,9 @@ package_view(
         "src/react/panel.tsx": "src/react/panel.tsx",
         "src/react/panel.unit.test.tsx": "src/react/panel.unit.test.tsx",
         "src/react/react.unit.test.tsx": "src/react/react.unit.test.tsx",
+        "src/react/scoped.ts": "src/react/scoped.ts",
+        "src/react/tile.tsx": "src/react/tile.tsx",
+        "src/react/tile.unit.test.tsx": "src/react/tile.unit.test.tsx",
         "src/series/index.ts": "src/series/index.ts",
         "src/series/internal.ts": "src/series/internal.ts",
         "src/series/series.unit.test.ts": "src/series/series.unit.test.ts",
@@ -168,6 +177,7 @@ package_view(
         "src/sources/status/status.unit.test.ts": "src/sources/status/status.unit.test.ts",
         "src/stories/Availability.stories.tsx": "src/stories/Availability.stories.tsx",
         "src/stories/MeterStrip.stories.tsx": "src/stories/MeterStrip.stories.tsx",
+        "src/stories/MeterTile.stories.tsx": "src/stories/MeterTile.stories.tsx",
         "src/stories/PerfGates.stories.tsx": "src/stories/PerfGates.stories.tsx",
         "src/stories/fixtures.tsx": "src/stories/fixtures.tsx",
         "tsconfig.json": "tsconfig.json",
@@ -190,6 +200,7 @@ package_view(
     files = {
         "e2e/bridge.ts": "e2e/bridge.ts",
         "e2e/meter-strip.pw.test.ts": "e2e/meter-strip.pw.test.ts",
+        "e2e/meter-tile.pw.test.ts": "e2e/meter-tile.pw.test.ts",
         "e2e/perf-gates.pw.test.ts": "e2e/perf-gates.pw.test.ts",
         "package.json": "package.json",
         "src/canvas/_test-canvas.ts": "src/canvas/_test-canvas.ts",
@@ -212,6 +223,9 @@ package_view(
         "src/react/panel.tsx": "src/react/panel.tsx",
         "src/react/panel.unit.test.tsx": "src/react/panel.unit.test.tsx",
         "src/react/react.unit.test.tsx": "src/react/react.unit.test.tsx",
+        "src/react/scoped.ts": "src/react/scoped.ts",
+        "src/react/tile.tsx": "src/react/tile.tsx",
+        "src/react/tile.unit.test.tsx": "src/react/tile.unit.test.tsx",
         "src/series/index.ts": "src/series/index.ts",
         "src/series/internal.ts": "src/series/internal.ts",
         "src/series/series.unit.test.ts": "src/series/series.unit.test.ts",
@@ -241,6 +255,7 @@ package_view(
         "src/sources/status/status.unit.test.ts": "src/sources/status/status.unit.test.ts",
         "src/stories/Availability.stories.tsx": "src/stories/Availability.stories.tsx",
         "src/stories/MeterStrip.stories.tsx": "src/stories/MeterStrip.stories.tsx",
+        "src/stories/MeterTile.stories.tsx": "src/stories/MeterTile.stories.tsx",
         "src/stories/PerfGates.stories.tsx": "src/stories/PerfGates.stories.tsx",
         "src/stories/fixtures.tsx": "src/stories/fixtures.tsx",
         "tsconfig.json": "tsconfig.json",
@@ -263,6 +278,7 @@ package_view(
     files = {
         "e2e/bridge.ts": "e2e/bridge.ts",
         "e2e/meter-strip.pw.test.ts": "e2e/meter-strip.pw.test.ts",
+        "e2e/meter-tile.pw.test.ts": "e2e/meter-tile.pw.test.ts",
         "e2e/perf-gates.pw.test.ts": "e2e/perf-gates.pw.test.ts",
         "package.json": "package.json",
         "src/canvas/_test-canvas.ts": "src/canvas/_test-canvas.ts",
@@ -285,6 +301,9 @@ package_view(
         "src/react/panel.tsx": "src/react/panel.tsx",
         "src/react/panel.unit.test.tsx": "src/react/panel.unit.test.tsx",
         "src/react/react.unit.test.tsx": "src/react/react.unit.test.tsx",
+        "src/react/scoped.ts": "src/react/scoped.ts",
+        "src/react/tile.tsx": "src/react/tile.tsx",
+        "src/react/tile.unit.test.tsx": "src/react/tile.unit.test.tsx",
         "src/series/index.ts": "src/series/index.ts",
         "src/series/internal.ts": "src/series/internal.ts",
         "src/series/series.unit.test.ts": "src/series/series.unit.test.ts",
@@ -314,6 +333,7 @@ package_view(
         "src/sources/status/status.unit.test.ts": "src/sources/status/status.unit.test.ts",
         "src/stories/Availability.stories.tsx": "src/stories/Availability.stories.tsx",
         "src/stories/MeterStrip.stories.tsx": "src/stories/MeterStrip.stories.tsx",
+        "src/stories/MeterTile.stories.tsx": "src/stories/MeterTile.stories.tsx",
         "src/stories/PerfGates.stories.tsx": "src/stories/PerfGates.stories.tsx",
         "src/stories/fixtures.tsx": "src/stories/fixtures.tsx",
         "tsconfig.json": "tsconfig.json",

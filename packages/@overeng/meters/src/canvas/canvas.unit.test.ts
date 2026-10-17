@@ -1341,8 +1341,9 @@ describe('tile block', () => {
       [binX(2) - 1, y(4) - 1, 2, 2],
     ])
     expect(f.reader.describe({ nowMs: 4250 })).toBe('n/a (MissedFrame gap)')
-    // At 88px beside 'Requests', 26px remain: the reason is ellipsized, never squeezed.
-    expect(f.surface.texts).toEqual(['Requests', 'n/a…'])
+    // At 88px beside 'Requests', 26px remain: the canvas draws a bare n/a; the reason stays in
+    // the description.
+    expect(f.surface.texts).toEqual(['Requests', 'n/a'])
     f.draw({ nowMs: 4250, width: 200 })
     expect(f.surface.texts).toEqual(['Requests', 'n/a (MissedFrame gap)'])
   })
@@ -1362,6 +1363,23 @@ describe('tile block', () => {
     // The store admits only finite observations; a non-finite projection is a failed measurement.
     const projected = f.make({ value: (value) => value.value / 0 }).read(f.store)
     expect(projected.describe({ nowMs: 3000 })).toBe('n/a (MeasurementFailed)')
+  })
+
+  it('reports the reduced bucket range in evidence only, absent when no bucket is defined', () => {
+    const f = tileFixture()
+    expect(f.reader.evidence({ nowMs: 4250 }).range).toBeUndefined()
+    f.value(500, 2)
+    f.value(1500, 4)
+    f.value(3500, 8)
+    expect(f.reader.evidence({ nowMs: 4250 }).range).toEqual({
+      windowMs: 4000,
+      endMs: 4000,
+      minimum: 2,
+      maximum: 8,
+    })
+    // Strip blocks keep their evidence shape.
+    const strip = numberBlock({ id: 'plain', series: f.series }).read(f.store)
+    expect('range' in strip.evidence({ nowMs: 4250 })).toBe(false)
   })
 
   it('reduces events and counters per completed bucket in the policy unit', () => {

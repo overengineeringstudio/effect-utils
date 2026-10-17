@@ -108,6 +108,13 @@ export const resolveBlockAggregation = (options: {
   }
 }
 
+/** Bounds of the values a block reduced, over an explicit window ending at `endMs`. */
+export interface BlockEvidenceRange {
+  readonly windowMs: number
+  readonly endMs: number
+  readonly minimum: number
+  readonly maximum: number
+}
 /** On-demand renderer evidence; payloads stay inside the bound typed closure. */
 export interface BlockEvidence {
   readonly label: string
@@ -131,6 +138,8 @@ export interface BlockEvidence {
     | undefined
   readonly retention: Retention
   readonly aggregation: BlockAggregationEvidence
+  /** Present only for blocks that reduce a window; absent when the window holds no value. */
+  readonly range?: BlockEvidenceRange | undefined
 }
 /** Bound drawing and describing closures; no write or acquisition capability. */
 export interface BlockReader {
@@ -162,6 +171,11 @@ export const block = <TValue>(options: {
     readonly history: SeriesView<TValue>
     readonly nowMs: number
   }) => string
+  /** Optional reduced-window bounds reported by on-demand evidence, never drawn. */
+  readonly range?: (input: {
+    readonly history: SeriesView<TValue>
+    readonly nowMs: number
+  }) => BlockEvidenceRange | undefined
 }): CanvasBlockSpec => {
   validateId(options.id)
   if (Number.isFinite(options.widthPx) === false || options.widthPx <= 0)
@@ -174,6 +188,7 @@ export const block = <TValue>(options: {
     evidence: ({ nowMs }) => {
       const latest = history.latest
       const aggregation = resolveBlockAggregation({ aggregation: aggregationPolicy, nowMs })
+      const range = options.range?.({ history, nowMs })
       return {
         label: options.series.label,
         unit: aggregation._tag === 'Bucket' ? aggregation.unit : options.series.unit,
@@ -203,6 +218,7 @@ export const block = <TValue>(options: {
           nextSequence: history.nextSequence,
         },
         aggregation,
+        ...(range === undefined ? {} : { range }),
       }
     },
     draw: (input) => options.draw({ ...input, history }),
@@ -789,6 +805,8 @@ export const tileBlock = <TValue>(
     const newest = scratch.values[policy.buckets - 1] ?? NaN
     if (Number.isNaN(newest) === false)
       return formatMeterValue({ value: newest, unit: policy.unit, format })
+    // The canvas draws a bare n/a; the reason stays in the full description and evidence.
+    if (format !== 'full') return 'n/a'
     const sample = scratch.carried
     if (sample === undefined) return 'n/a (NoSamples)'
     if (sample._tag === 'Unavailable') return `n/a (${sample.reason})`
@@ -802,6 +820,20 @@ export const tileBlock = <TValue>(
     widthPx: options.widthPx,
     aggregation: policy,
     describe: ({ history, nowMs }) => text({ scratch: fill({ history, nowMs }), format: 'full' }),
+    range: ({ history, nowMs }) => {
+      const values = fill({ history, nowMs }).values
+      let minimum = Infinity
+      let maximum = -Infinity
+      for (let bin = 0; bin < buckets; bin++) {
+        const value = values[bin] ?? NaN
+        if (Number.isNaN(value) === true) continue
+        minimum = Math.min(minimum, value)
+        maximum = Math.max(maximum, value)
+      }
+      return maximum === -Infinity
+        ? undefined
+        : { windowMs: spanMs, endMs: Math.floor(nowMs / bucketMs) * bucketMs, minimum, maximum }
+    },
     draw: ({ ctx, rect, history, nowMs, theme }) => {
       const scratch = fill({ history, nowMs })
       const values = scratch.values
