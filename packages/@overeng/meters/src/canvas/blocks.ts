@@ -128,6 +128,7 @@ export interface BlockEvidence {
         readonly _tag: 'Unavailable'
         readonly atMs: number
         readonly reason: UnavailableReason
+        readonly lastKnownAtMs?: number
       }
     | {
         readonly _tag: 'Gap'
@@ -201,7 +202,14 @@ export const block = <TValue>(options: {
             : latest._tag === 'Value'
               ? { _tag: 'Value', atMs: latest.atMs }
               : latest._tag === 'Unavailable'
-                ? { _tag: 'Unavailable', atMs: latest.atMs, reason: latest.reason }
+                ? {
+                    _tag: 'Unavailable',
+                    atMs: latest.atMs,
+                    reason: latest.reason,
+                    ...(latest.lastKnown === undefined
+                      ? {}
+                      : { lastKnownAtMs: latest.lastKnown.atMs }),
+                  }
                 : {
                     _tag: 'Gap',
                     atMs: latest.atMs,
@@ -391,7 +399,6 @@ export const numericBlock = <TValue>(
       readonly format: MeterValueFormat
     }) => string
     readonly mode?: 'Gauge' | 'Event' | 'Counter'
-    readonly staleAfterMs?: number
   },
 ): CanvasBlockSpec => {
   const nominalMax = options.nominalMax ?? 1
@@ -423,7 +430,17 @@ export const numericBlock = <TValue>(
   }): string => {
     const latest = history.latest
     if (latest === undefined) return 'n/a (NoSamples)'
-    if (latest._tag === 'Unavailable') return `n/a (${latest.reason})`
+    if (latest._tag === 'Unavailable') {
+      if (latest.lastKnown === undefined || format !== 'full') return `n/a (${latest.reason})`
+      const value =
+        options.describeValue?.({ value: latest.lastKnown.value, format }) ??
+        formatMeterValue({
+          value: total(latest.lastKnown.value),
+          unit: options.series.unit,
+          format,
+        })
+      return `n/a (${latest.reason}; last known ${value} at ${latest.lastKnown.atMs}ms)`
+    }
     if (latest._tag === 'Gap') return `n/a (${latest.reason} gap)`
     return (
       options.describeValue?.({ value: latest.value, format }) ??
@@ -449,6 +466,10 @@ export const numericBlock = <TValue>(
         width: rect.width - 8,
         height: Math.max(1, rect.height - 20),
       }
+      const latest = history.latest
+      const dimmed =
+        latest?._tag === 'Unavailable' &&
+        (latest.reason === 'Stale' || latest.reason === 'Disconnected')
       const bins = Math.max(1, Math.floor(chart.width))
       if (options.range !== undefined) {
         ctx.save()
@@ -561,8 +582,6 @@ export const numericBlock = <TValue>(
             ctx.fillRect(x, chart.y, chart.width / bins, chart.height)
             return
           }
-          const stale =
-            options.staleAfterMs !== undefined && atMs - previous.atMs > options.staleAfterMs
           const parts =
             options.mode === 'Event' || options.mode === 'Counter'
               ? eventTotal
@@ -582,7 +601,7 @@ export const numericBlock = <TValue>(
               height = chart.height * ((top - baseline) / span)
             }
             ctx.fillStyle =
-              stale === true
+              dimmed === true
                 ? theme.muted
                 : part % 3 === 0
                   ? theme.normal
@@ -629,21 +648,6 @@ export const numericBlock = <TValue>(
       if (header.label !== undefined) ctx.fillText(header.label.text, header.label.x, rect.y + 3)
       ctx.fillStyle = theme.foreground
       if (header.value !== undefined) ctx.fillText(header.value.text, header.value.x, rect.y + 3)
-      const latest = history.latest
-      if (
-        options.staleAfterMs !== undefined &&
-        latest?._tag === 'Value' &&
-        nowMs - latest.atMs > options.staleAfterMs
-      ) {
-        ctx.fillStyle = theme.muted
-        const stale = fitText({
-          text: `stale ${Math.round(nowMs - latest.atMs)}ms`,
-          maxWidth: chart.width,
-          measure,
-        })
-        if (stale !== undefined)
-          ctx.fillText(stale.text, chart.x + chart.width - stale.width, chart.y)
-      }
       ctx.restore()
     },
   })
@@ -652,7 +656,6 @@ export const numericBlock = <TValue>(
 export const numberBlock = <TValue extends { readonly value: number }>(
   options: BlockOptions<TValue> & {
     readonly mode?: 'Gauge' | 'Event' | 'Counter'
-    readonly staleAfterMs?: number
   },
 ): CanvasBlockSpec => numericBlock({ ...options, values: (value) => value.value })
 /** Cumulative counter increments aggregated per timestamp bin, not summed totals. */
@@ -693,6 +696,8 @@ export type TileAggregation = Extract<BlockAggregation, { readonly _tag: 'Bucket
 interface TileScratch<TValue> {
   readonly values: Float64Array
   carried: Sample<TValue> | undefined
+  /** Source-materialized Stale/Disconnected newest observation; draw and describe both use it. */
+  freshness: Extract<Sample<TValue>, { readonly _tag: 'Unavailable' }> | undefined
   filling: boolean
   readonly range: {
     minimum: number
@@ -752,6 +757,7 @@ export const tileBlock = <TValue>(
       scratch = {
         values: new Float64Array(buckets),
         carried: undefined,
+        freshness: undefined,
         filling: false,
         range: {
           minimum: Infinity,
@@ -770,6 +776,13 @@ export const tileBlock = <TValue>(
     const target = scratch
     target.filling = true
     target.carried = undefined
+    // Freshness is source-owned: only materialized Stale/Disconnected dims the tile.
+    const latest = history.latest
+    target.freshness =
+      latest?._tag === 'Unavailable' &&
+      (latest.reason === 'Stale' || latest.reason === 'Disconnected')
+        ? latest
+        : undefined
     try {
       scanBins({
         history,
@@ -795,6 +808,26 @@ export const tileBlock = <TValue>(
     }
     return target
   }
+  const unavailable = ({
+    sample,
+    format,
+  }: {
+    readonly sample: Extract<Sample<TValue>, { readonly _tag: 'Unavailable' }>
+    readonly format: MeterValueFormat
+  }): string => {
+    const lastKnown = sample.lastKnown
+    // Compact and number forms are a bare n/a; the reason stays in the full description.
+    if (format !== 'full') return 'n/a'
+    if (lastKnown === undefined) return `n/a (${sample.reason})`
+    // A single sample is not a bucket aggregate: event and counter tiles name only its time.
+    if (policy.mode !== 'Gauge')
+      return `n/a (${sample.reason}; last observation at ${lastKnown.atMs}ms)`
+    const value = options.value(lastKnown.value)
+    if (Number.isFinite(value) === false)
+      return `n/a (${sample.reason}; last observation at ${lastKnown.atMs}ms)`
+    const known = formatMeterValue({ value, unit: policy.unit, format })
+    return `n/a (${sample.reason}; last known ${known} at ${lastKnown.atMs}ms)`
+  }
   const text = ({
     scratch,
     format,
@@ -802,14 +835,15 @@ export const tileBlock = <TValue>(
     readonly scratch: TileScratch<TValue>
     readonly format: MeterValueFormat
   }): string => {
+    // A stale or offline source outranks the newest completed bucket, as the drawn status does.
+    if (scratch.freshness !== undefined) return unavailable({ sample: scratch.freshness, format })
     const newest = scratch.values[policy.buckets - 1] ?? NaN
     if (Number.isNaN(newest) === false)
       return formatMeterValue({ value: newest, unit: policy.unit, format })
-    // The canvas draws a bare n/a; the reason stays in the full description and evidence.
     if (format !== 'full') return 'n/a'
     const sample = scratch.carried
     if (sample === undefined) return 'n/a (NoSamples)'
-    if (sample._tag === 'Unavailable') return `n/a (${sample.reason})`
+    if (sample._tag === 'Unavailable') return unavailable({ sample, format })
     if (sample._tag === 'Gap') return `n/a (${sample.reason} gap)`
     return 'n/a (MeasurementFailed)'
   }
@@ -839,6 +873,12 @@ export const tileBlock = <TValue>(
       const values = scratch.values
       const rangeState = scratch.range
       const resolvedRange = rangeState.target
+      const status =
+        scratch.freshness === undefined
+          ? undefined
+          : scratch.freshness.reason === 'Stale'
+            ? 'stale'
+            : 'offline'
       ctx.save()
       ctx.beginPath()
       ctx.rect(rect.x, rect.y, rect.width, rect.height)
@@ -885,8 +925,8 @@ export const tileBlock = <TValue>(
         ctx.fillRect(chart.x, Math.min(chart.y + chart.height - 1, markY), chart.width, 1)
       }
       const step = chart.width / policy.buckets
-      ctx.strokeStyle = theme.normal
-      ctx.fillStyle = theme.normal
+      ctx.strokeStyle = status === undefined ? theme.normal : theme.muted
+      ctx.fillStyle = status === undefined ? theme.normal : theme.muted
       ctx.lineWidth = 1.5
       ctx.beginPath()
       let open = false
@@ -910,7 +950,8 @@ export const tileBlock = <TValue>(
       ctx.stroke()
       ctx.restore()
       // The label is the tile's static accessible name, so it outranks the value. A rect
-      // narrower than the label shows an ellipsized prefix of that name and no value.
+      // narrower than the label shows an ellipsized prefix of that name and no value. A
+      // stale or offline tile keeps its label and names that state in the value slot.
       ctx.font = theme.font
       ctx.textBaseline = 'top'
       ctx.textAlign = 'left'
@@ -928,17 +969,21 @@ export const tileBlock = <TValue>(
       }
       const space = right - (left + drawnLabel.width + 6)
       let fitted: TextRun | undefined
-      for (const format of valueFormats) {
-        const candidate = text({ scratch, format })
-        const width = measure(candidate)
-        if (width <= space) {
-          fitted = { text: candidate, x: right - width, width }
-          break
+      if (status !== undefined) {
+        fitted = fitText({ text: status, maxWidth: space, measure })
+      } else {
+        for (const format of valueFormats) {
+          const candidate = text({ scratch, format })
+          const width = measure(candidate)
+          if (width <= space) {
+            fitted = { text: candidate, x: right - width, width }
+            break
+          }
         }
+        fitted ??= fitText({ text: text({ scratch, format: 'number' }), maxWidth: space, measure })
       }
-      fitted ??= fitText({ text: text({ scratch, format: 'number' }), maxWidth: space, measure })
       if (fitted !== undefined) {
-        ctx.fillStyle = theme.foreground
+        ctx.fillStyle = status === undefined ? theme.foreground : theme.muted
         ctx.fillText(fitted.text, right - fitted.width, rect.y + 3)
       }
       ctx.restore()

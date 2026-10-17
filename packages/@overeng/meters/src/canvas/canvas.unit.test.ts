@@ -83,6 +83,40 @@ const fixture = () => {
 }
 
 describe('canvas strip', () => {
+  it('describes the shared stale evidence without treating last-known values as live', () => {
+    const series = makeSeries<NumberValue>({
+      id: 'stale',
+      label: 'Stale',
+      unit: 'count',
+      capacity: 4,
+    })
+    const store = makeSeriesStore()
+    const sink = store.register({ series })
+    const reader = numberBlock({ id: 'stale', series }).read(store)
+    sink.append({ sample: { _tag: 'Value', atMs: 0, value: { _tag: 'Number', value: 4 } } })
+    expect(reader.describe({ nowMs: 0 })).toBe('4')
+    sink.append({
+      sample: {
+        _tag: 'Unavailable',
+        atMs: 100,
+        reason: 'Stale',
+        lastKnown: { atMs: 0, value: { _tag: 'Number', value: 4 } },
+      },
+    })
+    expect(reader.describe({ nowMs: 150 })).toBe('n/a (Stale; last known 4 at 0ms)')
+    expect(reader.snapshot().describe({ nowMs: 150 })).toBe(reader.describe({ nowMs: 150 }))
+    const evidence = reader.evidence({ nowMs: 150 })
+    expect(evidence.evaluatedAtMs).toBe(150)
+    expect(evidence.latest).toEqual({
+      _tag: 'Unavailable',
+      atMs: 100,
+      reason: 'Stale',
+      lastKnownAtMs: 0,
+    })
+    expect(evidence).toEqual(reader.snapshot().evidence({ nowMs: 150 }))
+    expect(store.read({ series }).latest?._tag).toBe('Unavailable')
+  })
+
   it('resolves completed bucket metadata from explicit time and validates its derived domain', () => {
     const aggregation = {
       _tag: 'Bucket',
@@ -326,6 +360,7 @@ describe('canvas strip', () => {
       atMs: 23,
       reason: 'MeasurementFailed',
     })
+    expect(unavailable.latest).not.toHaveProperty('lastKnownAtMs')
     extraPayload.secret = 'changed after capture'
     expect(unavailable).toEqual(reader.snapshot().evidence({ nowMs: 24 }))
     expect(gapEvidence.latest).toEqual({
@@ -1402,6 +1437,68 @@ describe('tile block', () => {
     expect(counter.reader.describe({ nowMs: 2000 })).toBe(
       formatMeterValue({ value: 13, unit: 'count' }),
     )
+  })
+
+  it('dims a stale gauge from source-owned freshness and keeps its label and last-known value', () => {
+    const f = tileFixture()
+    f.value(500, 2)
+    f.value(1500, 4)
+    f.draw({ nowMs: 2250, width: 200 })
+    expect(f.surface.context.strokeStyle).toBe(lightMeterTheme.normal)
+    f.append({
+      _tag: 'Unavailable',
+      atMs: 2500,
+      reason: 'Stale',
+      lastKnown: { atMs: 1500, value: { _tag: 'Number', value: 4 } },
+    })
+    const known = formatMeterValue({ value: 4, unit: 'count' })
+    expect(f.reader.describe({ nowMs: 3250 })).toBe(`n/a (Stale; last known ${known} at 1500ms)`)
+    f.draw({ nowMs: 3250, width: 200 })
+    // The label stays the static name; the value slot names the state, never a bare age.
+    expect(f.surface.texts).toEqual(['Requests', 'stale'])
+    expect(f.surface.context.strokeStyle).toBe(lightMeterTheme.muted)
+    expect(f.surface.context.fillStyle).toBe(lightMeterTheme.muted)
+  })
+
+  it('describes the same stale state it draws even when the newest completed bucket holds a value', () => {
+    const f = tileFixture()
+    f.value(1500, 4)
+    f.value(2500, 3)
+    f.append({
+      _tag: 'Unavailable',
+      atMs: 3200,
+      reason: 'Stale',
+      lastKnown: { atMs: 2500, value: { _tag: 'Number', value: 3 } },
+    })
+    const nowMs = 3250
+    // The completed bucket [2000, 3000) still holds 3; the source has since materialized Stale.
+    const known = formatMeterValue({ value: 3, unit: 'count' })
+    const evidence = `n/a (Stale; last known ${known} at 2500ms)`
+    expect(f.reader.describe({ nowMs })).toBe(evidence)
+    expect(f.reader.evidence({ nowMs }).text).toBe(evidence)
+    f.draw({ nowMs, width: 200 })
+    expect(f.surface.texts).toEqual(['Requests', 'stale'])
+    expect(f.surface.context.strokeStyle).toBe(lightMeterTheme.muted)
+  })
+
+  it('dims a disconnected counter and names only the last observation time', () => {
+    const f = tileFixture({ ...gauge, mode: 'Counter' })
+    f.value(500, 10)
+    f.value(1200, 15)
+    f.append({
+      _tag: 'Unavailable',
+      atMs: 2500,
+      reason: 'Disconnected',
+      lastKnown: { atMs: 1200, value: { _tag: 'Number', value: 15 } },
+    })
+    // One sample is not a bucket aggregate, so no counter value is projected from it.
+    expect(f.reader.describe({ nowMs: 3250 })).toBe(
+      'n/a (Disconnected; last observation at 1200ms)',
+    )
+    f.draw({ nowMs: 3250, width: 200 })
+    expect(f.surface.texts).toEqual(['Requests', 'offline'])
+    expect(f.surface.context.strokeStyle).toBe(lightMeterTheme.muted)
+    expect(f.surface.context.fillStyle).toBe(lightMeterTheme.muted)
   })
 
   it('plots with auto, explicit, and marked ranges', () => {

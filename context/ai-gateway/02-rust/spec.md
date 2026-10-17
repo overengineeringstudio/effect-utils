@@ -63,6 +63,33 @@ consumer tool results -> next chat request
 
 Preserve tool-call IDs and tool/function argument fragments. Assemble streamed arguments before attempting JSON decoding; the wrapper does not execute tools. Stream usage-only chunks with `choices: []` update operation usage rather than producing an empty-content error. A stream-level error after HTTP 200 is an error. EOF before the required completion sentinel is incomplete, and caller cancellation is not completed inference.
 
+`ChatBuilder::run_tools(max_steps, execute)` performs at most `max_steps` model
+exchanges. It returns `Result<ToolRun, Box<ToolRunError>>`; the callback continues to
+return `Result<String, Error>`. The public shapes are:
+
+```rust
+ToolRun { response: ChatResponse, exchanges: Vec<Option<Usage>>, total: Option<Usage> }
+ToolRunError { error: Error, exchanges: Vec<Option<Usage>>, total: Option<Usage> }
+```
+
+`response` is the final exchange. Each successfully decoded model response adds
+exactly one ordered `exchanges` entry, preserving absent usage as `None`.
+`total` is `None` for no completed exchanges or any absent usage entry.
+Otherwise it is `Some(Usage)` with each field summed only if every exchange
+provided that field; absent fields remain absent, never zero-filled. Integer
+overflow or a non-finite cost sum leaves that aggregate field absent.
+The final response's own `usage` remains per-exchange, following AIG-R03.
+
+Exhaustion, tool-call validation failures, and callback failures retain the
+current response's usage as well as all earlier exchanges. A subsequent HTTP
+or transport failure retains prior completed exchanges but adds no entry for
+the failed request. The underlying error is preserved, including HTTP metadata;
+pre-request failures carry an empty exchange list. Tool calls on the final
+allowed exchange are not executed.
+Decoded responses rejected for missing choices, provider refusal, or unsupported
+tool-call shapes also contribute their usage entry before local rejection.
+The error is boxed to keep the success result small without discarding evidence.
+
 ## GenAI telemetry (AIG.RS-R09)
 
 ```text
