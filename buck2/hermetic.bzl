@@ -110,11 +110,13 @@ def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs):
 def ts_action(ctx, arguments, inputs, outputs, tool_closures = {}, tool_inputs = [], cacheable = True, **kwargs):
     """TS caller of the shared boundary, with Bun's closure always admitted."""
     sandbox = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo]
+    if not sandbox.bun:
+        fail("TS sandbox: Bun capability missing; unsandboxed execution is forbidden")
     closures = dict(tool_closures)
     closures["bun"] = sandbox.closure_paths["bun"] + closures.get("bun", [])
     hermetic_sandboxed_action(
         ctx, sandbox, closures, arguments, inputs, outputs,
-        tool_inputs = tool_inputs, cacheable = cacheable, **kwargs
+        tool_inputs = tool_inputs + sandbox.bun_inputs, cacheable = cacheable, **kwargs
     )
 
 

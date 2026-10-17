@@ -61,8 +61,10 @@ unsandboxed fallback: a missing capability, failed namespace setup, denied
 access or failed payload makes the action fail. Admission and the native
 `darwin-unsandboxed` lane are shared and unchanged: Darwin runs locally without
 cache upload or containment admission. A scoped product root lacking the
-sandbox's Bun, launcher-shell and Linux Bubblewrap capabilities declares no
-current sandbox toolchain, so dependent action rules fail analysis there.
+launcher-shell or Linux Bubblewrap capability declares no sandbox toolchain,
+so dependent action rules fail analysis there. Bun is optional in the toolchain:
+the TS wrapper requires it and adds its capability artifacts to its own action
+inputs. Non-TS actions do not bind Bun or include its artifacts in their keys.
 The `buck2/tests/ts_sandbox` suite exercises both the TS wrapper and a Bash-only
 payload through the shared launcher, including declared reads, denied
 undeclared reads and denied external TCP connections.
