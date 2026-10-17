@@ -2,6 +2,7 @@
 # Source: BUCK.genie.ts
 
 load("//buck2/package_tools.bzl", "package_command_runtime")
+load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
@@ -270,7 +271,7 @@ npm_package_archive(
     visibility = ["PUBLIC"],
 )
 
-filegroup(
+runtime_modules(
     name = "package_tree_runtime",
     srcs = {
         "package-tree.ts": "src/package-tree.ts",
@@ -297,7 +298,7 @@ package_command_runtime(
     visibility = ["PUBLIC"],
 )
 
-filegroup(
+runtime_modules(
     name = "javascript_action_runtime",
     srcs = {
         "javascript-runner.ts": "src/javascript-runner.ts",
