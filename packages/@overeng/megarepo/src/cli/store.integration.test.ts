@@ -1540,6 +1540,87 @@ describe('mr store worktree new', () => {
     )
   }
 
+  for (const missingObject of ['blob', 'commit'] as const) {
+    it.effect(
+      `rejects a partial clone with a missing ${missingObject} without contacting its promisor remote`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const fixture = yield* createStoreFixture([
+            { host: 'github.com', owner: 'test-owner', repo: 'test-repo', withRemote: true },
+          ])
+          const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']!
+          const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
+          const base = yield* Git.runCommand({ args: ['rev-parse', 'main'], cwd: upstream })
+          const blob = yield* Git.runCommand({
+            args: ['rev-parse', 'main:README.md'],
+            cwd: upstream,
+          })
+          yield* Git.runCommand({
+            args: ['config', 'uploadpack.allowFilter', 'true'],
+            cwd: upstream,
+          })
+          yield* fs.remove(bare, { recursive: true })
+          yield* Git.runCommand({
+            args: ['clone', '--bare', '--filter=blob:none', `file://${upstream}`, bare],
+            cwd: fixture.storePath,
+          })
+          // Confirm this is a real filtered clone, not a complete local copy.
+          expect(
+            yield* Git.runCommand({ args: ['config', 'remote.origin.promisor'], cwd: bare }),
+          ).toBe('true')
+          expect(
+            Exit.isFailure(
+              yield* Git.runCommand({
+                args: ['cat-file', '-e', blob],
+                cwd: bare,
+                env: { GIT_NO_LAZY_FETCH: '1' },
+              }).pipe(Effect.exit),
+            ),
+          ).toBe(true)
+          const unreachable = `${fixture.storePath}nonexistent-promisor`
+          yield* Git.runCommand({
+            args: ['remote', 'set-url', 'origin', unreachable],
+            cwd: bare,
+          })
+          const tracePath = `${fixture.storePath}no-fetch-${missingObject}.trace.jsonl`
+          const result = yield* runMrCommand({
+            cwd: fixture.storePath,
+            command: [
+              'store',
+              'worktree',
+              'new',
+              'test-owner/test-repo',
+              '--no-fetch',
+              '--ref',
+              'source-patch',
+              '--base',
+              missingObject === 'blob' ? base : '0123456789012345678901234567890123456789',
+              '--output',
+              'json',
+            ],
+            env: { MEGAREPO_STORE: fixture.storePath, GIT_TRACE2_EVENT: tracePath },
+          })
+          expect(result.exitCode).toBe(1)
+          expect(String(result.exit)).toContain('StoreCommandError')
+          expect(String(result.exit)).toContain(
+            missingObject === 'blob'
+              ? 'could not create worktree from local objects'
+              : 'must resolve to a commit already present',
+          )
+          const trace = yield* fs.readFileString(tracePath)
+          expect(trace).toContain('"name":"cat-file"')
+          expect(trace).not.toContain('"name":"fetch"')
+          expect(trace).not.toContain('"name":"upload-pack"')
+          expect(trace).not.toContain('"child_class":"transport/')
+          expect(trace).not.toContain(unreachable)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
   it.effect(
     'creates from a newly fetched remote branch',
     Effect.fnUntraced(

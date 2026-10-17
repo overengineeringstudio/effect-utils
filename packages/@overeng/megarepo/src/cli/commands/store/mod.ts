@@ -4025,17 +4025,17 @@ const storeWorktreeNewCommand = Cli.Command.make(
       const bareRepoPath = store.getBareRepoPath(source)
       const bareExists = yield* store.hasBareRepo(source)
       const autoBootstrap = bareExists === false
-      let startPoint = base
       if (noFetch === true) {
         if (bareExists === false) {
           return yield* new StoreCommandError({
             message: `--no-fetch requires an existing bare repository at ${bareRepoPath}; cloning is disabled`,
           })
         }
-        // Pin the locally resolved commit before using the existing worktree writer.
-        startPoint = yield* Git.runCommand({
-          args: ['rev-parse', '--verify', '--end-of-options', `${base!}^{commit}`],
+        // Object validation must not lazily fetch from a promisor remote.
+        yield* Git.runCommand({
+          args: ['cat-file', '-e', `${base!}^{commit}`],
           cwd: bareRepoPath,
+          env: { GIT_NO_LAZY_FETCH: '1' },
         }).pipe(
           Effect.mapError(
             () =>
@@ -4108,8 +4108,17 @@ const storeWorktreeNewCommand = Cli.Command.make(
           worktreePath,
           branch: ref!,
           createBranch: true,
-          startPoint: startPoint!,
-        })
+          startPoint: base!,
+          ...(noFetch === true ? { env: { GIT_NO_LAZY_FETCH: '1' } } : {}),
+        }).pipe(
+          Effect.mapError((error) =>
+            noFetch === true
+              ? new StoreCommandError({
+                  message: `--no-fetch could not create worktree from local objects; fetching is disabled: ${error.stderr}`,
+                })
+              : error,
+          ),
+        )
       } else {
         // Existing branch or tag
         if (refType === 'tag') {
@@ -4144,9 +4153,11 @@ const storeWorktreeNewCommand = Cli.Command.make(
           ])
         }
       }
-      // Get the current commit in the new worktree
-      const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
-      const resolvedCommit = Option.getOrUndefined(commitSha)
+      // The local-only branch is already pinned to the validated full commit SHA.
+      const resolvedCommit =
+        noFetch === true
+          ? base
+          : Option.getOrUndefined(yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option))
 
       // Porcelain: raw path output for scripting (e.g. cd $(mr store worktree new ... --porcelain))
       if (porcelain === true) {

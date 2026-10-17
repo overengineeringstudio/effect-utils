@@ -259,7 +259,9 @@ already in the store, use
 `mr store worktree new owner/repo --no-fetch --ref feature/local --base <full-commit-sha>`.
 `--no-fetch` requires an existing bare repository and a full 40-character SHA
 of a commit already present locally; branch names and abbreviated SHAs are
-rejected. It never clones or fetches. Only the requested branch and standalone
+rejected. It never clones or fetches, including Git's implicit lazy fetching
+from promisor remotes. Missing partial-clone objects fail locally during base
+validation or checkout. Only the requested branch and standalone
 worktree registration are created; existing refs, Git configuration, and
 `FETCH_HEAD` are not refreshed. It does not write megarepo configuration, lock
 files, or composition state.
