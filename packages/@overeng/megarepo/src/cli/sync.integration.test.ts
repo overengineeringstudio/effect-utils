@@ -2567,6 +2567,7 @@ describe('canonical member mutation guard', () => {
     'wrong-source',
     'wrong-ref',
     'drifted-head',
+    'dirty-tracking',
     'local-drift',
     'skipped',
     'only',
@@ -2632,6 +2633,9 @@ describe('canonical member mutation guard', () => {
             yield* fs.writeFileString(`${victim}drift.txt`, 'advanced\n')
             yield* addCommit({ repoPath: victim, message: 'Advance member' })
           }
+          if (scenario === 'dirty-tracking') {
+            yield* fs.writeFileString(`${victim}README.md`, 'uncommitted tracked change\n')
+          }
           const beforeWorkspace = yield* snapshotWorkspaceTree(repoDir)
           const beforeStore = yield* snapshotWorkspaceTree(store.storePath)
           const result = yield* runApplyCommand({
@@ -2667,6 +2671,138 @@ describe('canonical member mutation guard', () => {
         Effect.scoped,
       ),
     )
+  }
+
+  for (const selector of ['--commit-members', '--commit-all-members']) {
+    for (const drift of ['prepared', 'local-target', 'remote-repository']) {
+      it.effect(
+        `apply --verify-shared ${selector} checks nested ${drift} source identity without writes`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const store = yield* createStoreFixture(
+              ['nested', 'leaf', 'wrong'].map((repo) => ({
+                host: 'github.com',
+                owner: 'acme',
+                repo,
+                branches: ['main'],
+              })),
+            )
+            const leafCommit = yield* Git.getCurrentCommit(
+              store.worktreePaths['github.com/acme/leaf#main']!,
+            )
+            const nestedCommit = yield* Git.getCurrentCommit(
+              store.worktreePaths['github.com/acme/nested#main']!,
+            )
+            const wrongBare = store.bareRepoPaths['github.com/acme/wrong']!
+            yield* runGitCommand(
+              wrongBare,
+              'fetch',
+              store.bareRepoPaths['github.com/acme/leaf']!,
+              leafCommit,
+            )
+            const mounts: Record<string, string> = {}
+            for (const [repo, commit] of [
+              ['nested', nestedCommit],
+              ['leaf', leafCommit],
+              ['wrong', leafCommit],
+            ]) {
+              const target = `${store.storePath}github.com/acme/${repo}/refs/commits/${commit}`
+              yield* runGitCommand(
+                store.bareRepoPaths[`github.com/acme/${repo}`]!,
+                'worktree',
+                'add',
+                '--detach',
+                target,
+                commit!,
+              )
+              mounts[repo!] = target
+            }
+            const workspacePath = `${yield* makeCanonicalTempDirectoryScoped()}/`
+            const repoDir = `${workspacePath}store/github.com/acme/workspace`
+            const root = yield* makeStoreWorktree({ repoDir, kind: 'heads', ref: 'main' })
+            const local = `${workspacePath}local`
+            const wrongLocal = `${workspacePath}wrong-local`
+            yield* fs.makeDirectory(local)
+            yield* fs.makeDirectory(wrongLocal)
+            const nested = mounts['nested']!
+            yield* fs.writeFileString(
+              `${nested}/megarepo.json`,
+              encodeJson({
+                members: { leaf: 'acme/leaf#main', local },
+              }),
+            )
+            yield* fs.writeFileString(
+              `${nested}/megarepo.lock`,
+              encodeJson({
+                version: 1,
+                members: {
+                  leaf: createLockedMember({
+                    url: 'https://github.com/acme/leaf',
+                    ref: 'main',
+                    commit: leafCommit,
+                  }),
+                },
+              }),
+            )
+            yield* fs.makeDirectory(`${nested}/repos`)
+            yield* fs.symlink(
+              drift === 'local-target' ? wrongLocal : local,
+              `${nested}/repos/local`,
+            )
+            yield* fs.symlink(
+              drift === 'remote-repository' ? mounts['wrong']! : mounts['leaf']!,
+              `${nested}/repos/leaf`,
+            )
+            yield* fs.writeFileString(
+              `${root}megarepo.json`,
+              encodeJson({ members: { nested: 'acme/nested#main' } }),
+            )
+            yield* fs.writeFileString(
+              `${root}megarepo.lock`,
+              encodeJson({
+                version: 1,
+                members: {
+                  nested: createLockedMember({
+                    url: 'https://github.com/acme/nested',
+                    ref: 'main',
+                    commit: nestedCommit,
+                  }),
+                },
+              }),
+            )
+            yield* fs.makeDirectory(`${root}repos`)
+            yield* fs.symlink(nested, `${root}repos/nested`)
+            const beforeWorkspace = yield* snapshotWorkspaceTree(repoDir)
+            const beforeStore = yield* snapshotWorkspaceTree(store.storePath)
+            const result = yield* runApplyCommand({
+              cwd: root,
+              args: [
+                '--output',
+                'json',
+                '--worktree-mode',
+                'tracking',
+                '--lock-sync',
+                'off',
+                '--verify-shared',
+                selector,
+                ...(selector === '--commit-members' ? ['nested'] : []),
+              ],
+              env: { MEGAREPO_STORE: store.storePath, MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+            })
+            expect(result.exitCode).toBe(drift === 'prepared' ? 0 : 1)
+            if (drift !== 'prepared') {
+              expect(result.stdout).toContain('Prepare it from the owning workspace')
+            }
+            expect(yield* snapshotWorkspaceTree(repoDir)).toEqual(beforeWorkspace)
+            expect(yield* snapshotWorkspaceTree(store.storePath)).toEqual(beforeStore)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+        { timeout: 60_000 },
+      )
+    }
   }
 
   for (const verifyShared of [false, true]) {
@@ -2761,6 +2897,47 @@ describe('canonical member mutation guard', () => {
         ),
       )
     }
+  }
+
+  for (const outputPath of ['alias/../megarepo.json', 'alias/../missing/schema.json']) {
+    it.effect(
+      `schema generator refuses symlink-parent traversal through ${outputPath}`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const workspacePath = `${yield* makeCanonicalTempDirectoryScoped()}/`
+          const repoDir = `${workspacePath}store/github.com/acme/workspace`
+          const author = yield* makeStoreWorktree({ repoDir, kind: 'heads', ref: 'team/feature' })
+          const shared = `${repoDir}/refs/heads/main`
+          yield* runGitCommand(
+            EffectPath.unsafe.absoluteDir(`${repoDir}/.bare/`),
+            'worktree',
+            'add',
+            shared,
+            'main',
+          )
+          const config = encodeJson({ members: {} })
+          yield* fs.writeFileString(`${author}megarepo.json`, config)
+          yield* fs.writeFileString(`${shared}/megarepo.json`, config)
+          yield* fs.makeDirectory(`${shared}/subdir`)
+          yield* fs.symlink(`${shared}/subdir`, `${author}alias`)
+          const before = yield* snapshotWorkspaceTree(repoDir)
+          const result = yield* runMrCommand({
+            cwd: author,
+            command: ['generate', 'schema'],
+            args: ['--output-path', outputPath],
+            env: { MEGAREPO_ALLOW_CANONICAL_MUTATION: '0' },
+          })
+          expect(Exit.isFailure(result.exit)).toBe(true)
+          if (Exit.isFailure(result.exit) === true) {
+            expect(Cause.pretty(result.exit.cause)).toContain('PermissionDenied')
+          }
+          expect(yield* snapshotWorkspaceTree(repoDir)).toEqual(before)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
   }
 
   for (const [refKind, ref, lockSync, granted] of [

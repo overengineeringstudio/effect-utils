@@ -38,6 +38,7 @@ import {
   syncLockWithConfig,
   upsertLockedMember,
   writeLockFile,
+  type LockedMember,
 } from '../../core/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../core/nix-lock/mod.ts'
 import { generateAll, getEnabledGenerators } from '../../generators/mod.ts'
@@ -87,7 +88,55 @@ import type {
 /** Policy for apply-time lock-file rewrites. */
 export type LockSyncMode = 'auto' | 'off' | 'direct' | 'recursive'
 
-const commitWorktreePattern = /\/refs\/commits\/[^/]+$/
+/** The same source-identity and readiness checks apply at every depth of a prepared tree. */
+const isPreparedMemberMount = ({
+  megarepoRoot,
+  name,
+  sourceString,
+  locked,
+  commitOnly,
+}: {
+  megarepoRoot: AbsoluteDirPath
+  name: string
+  sourceString: string
+  locked: LockedMember | undefined
+  commitOnly: boolean
+}): Effect.Effect<boolean, never, FileSystem.FileSystem | ChildProcessSpawner | Store> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const memberPath = getMemberPath({ megarepoRoot, name }).replace(/\/$/, '')
+    if ((yield* inspectMemberMount(memberPath))._tag !== 'Symlink') return false
+    const physicalMember = yield* fs.realPath(memberPath)
+    const source = parseSourceString(sourceString)
+    if (source === undefined) return false
+    if (source.type === 'path') {
+      const expected = path.resolve(
+        megarepoRoot,
+        source.path.replace(/^~/, process.env.HOME ?? '~'),
+      )
+      return (yield* fs.realPath(expected)) === physicalMember
+    }
+    if (locked === undefined) return false
+    const store = yield* Store
+    for (const refType of ['commit', 'branch', 'tag'] as const) {
+      if (commitOnly === true && refType !== 'commit') continue
+      const candidate = store.getWorktreePath({
+        source,
+        ref: refType === 'commit' ? locked.commit : locked.ref,
+        refType,
+      })
+      const physicalCandidate = yield* fs.realPath(candidate).pipe(Effect.option)
+      if (Option.isNone(physicalCandidate) === true || physicalCandidate.value !== physicalMember)
+        continue
+      if (refType === 'branch') {
+        const branch = yield* Git.getCurrentBranch(memberPath)
+        if (Option.isNone(branch) === true || branch.value !== locked.ref) return false
+        if ((yield* Git.getWorktreeStatus(memberPath)).isDirty === true) return false
+      }
+      return (yield* Git.getCurrentCommit(memberPath)) === locked.commit
+    }
+    return false
+  }).pipe(Effect.orElseSucceed(() => false))
 
 /**
  * Read-only check that a preexisting nested commit worktree already has its locked tree
@@ -100,7 +149,7 @@ const isPreparedNestedTree = ({
 }: {
   megarepoRoot: AbsoluteDirPath
   seen: Set<string>
-}): Effect.Effect<boolean, never, FileSystem.FileSystem | ChildProcessSpawner> =>
+}): Effect.Effect<boolean, never, FileSystem.FileSystem | ChildProcessSpawner | Store> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const physicalRoot = yield* fs.realPath(megarepoRoot)
@@ -117,18 +166,20 @@ const isPreparedNestedTree = ({
     )
     for (const [name, sourceString] of Object.entries(config.members)) {
       const memberPath = getMemberPath({ megarepoRoot, name })
-      const physicalMember = yield* fs.realPath(memberPath)
-      const source = parseSourceString(sourceString)
-      if (source !== undefined && isRemoteSource(source) === true) {
-        const lockedCommit = lockFile?.members[name]?.commit
-        if (lockedCommit === undefined) return false
-        if (commitWorktreePattern.test(physicalMember) === false) return false
-        if ((yield* Git.getCurrentCommit(memberPath)) !== lockedCommit) return false
-      }
+      if (
+        (yield* isPreparedMemberMount({
+          megarepoRoot,
+          name,
+          sourceString,
+          locked: lockFile?.members[name],
+          commitOnly: true,
+        })) === false
+      )
+        return false
       const nestedConfig = yield* findConfigPath(memberPath).pipe(
         Effect.orElseSucceed(() => undefined),
       )
-      if (nestedConfig !== undefined && commitWorktreePattern.test(physicalMember) === true) {
+      if (nestedConfig !== undefined) {
         const nestedRoot = EffectPath.unsafe.absoluteDir(
           memberPath.endsWith('/') === true ? memberPath : `${memberPath}/`,
         )
@@ -344,7 +395,6 @@ export const syncMegarepo = <R = never>({
     }
 
     if (verifySharedWorkspace === true) {
-      const store = yield* Store
       const results = yield* Effect.forEach(
         Object.entries(config.members).filter(([name]) => !skippedMemberNames.has(name)),
         ([name, sourceString]) =>
@@ -357,58 +407,20 @@ export const syncMegarepo = <R = never>({
                 preparationHint,
             }
             const memberRoot = getMemberPath({ megarepoRoot, name })
-            const memberPath = memberRoot.replace(/\/$/, '')
-            if ((yield* inspectMemberMount(memberPath))._tag !== 'Symlink') return unprepared
-            const physicalMember = yield* fs.realPath(memberPath).pipe(Effect.option)
-            if (Option.isNone(physicalMember) === true) return unprepared
-            const source = parseSourceString(sourceString)
-            if (source === undefined) return unprepared
-            if (source.type === 'path') {
-              const expected = path.resolve(
-                megarepoRoot,
-                source.path.replace(/^~/, process.env.HOME ?? '~'),
-              )
-              const physicalExpected = yield* fs.realPath(expected).pipe(Effect.option)
-              return Option.isSome(physicalExpected) === true &&
-                physicalExpected.value === physicalMember.value
-                ? { name, status: 'already_synced' as const }
-                : unprepared
-            }
-            const locked = lockFile?.members[name]
-            if (locked === undefined) return unprepared
             const needsCommitTree =
               options.nestedCommit?._tag === 'Tree' ||
               (options.nestedCommit?._tag === 'Root' && options.nestedCommit.members.includes(name))
-            let matched = false
-            for (const refType of ['commit', 'branch', 'tag'] as const) {
-              if (
-                (options.commitMode === true || needsCommitTree === true) &&
-                refType !== 'commit'
-              ) {
-                continue
-              }
-              const candidate = store.getWorktreePath({
-                source,
-                ref: refType === 'commit' ? locked.commit : locked.ref,
-                refType,
-              })
-              const physicalCandidate = yield* fs.realPath(candidate).pipe(Effect.option)
-              if (
-                Option.isSome(physicalCandidate) === true &&
-                physicalCandidate.value === physicalMember.value
-              ) {
-                matched = true
-                if (refType === 'branch') {
-                  const branch = yield* Git.getCurrentBranch(memberPath).pipe(
-                    Effect.orElseSucceed(() => Option.none()),
-                  )
-                  if (Option.isNone(branch) === true || branch.value !== locked.ref)
-                    return unprepared
-                }
-                break
-              }
-            }
-            if (matched === false) return unprepared
+            const locked = lockFile?.members[name]
+            if (
+              (yield* isPreparedMemberMount({
+                megarepoRoot,
+                name,
+                sourceString,
+                locked,
+                commitOnly: options.commitMode === true || needsCommitTree === true,
+              })) === false
+            )
+              return unprepared
             const nestedConfig =
               needsCommitTree === true ? yield* findConfigPath(memberRoot) : undefined
             if (
@@ -417,13 +429,13 @@ export const syncMegarepo = <R = never>({
                 megarepoRoot: memberRoot,
                 seen: new Set(),
               })) === false
-            ) {
+            )
               return unprepared
+            return {
+              name,
+              status: 'already_synced' as const,
+              ...(locked !== undefined ? { commit: locked.commit, ref: locked.ref } : {}),
             }
-            const commit = yield* Git.getCurrentCommit(memberPath).pipe(Effect.option)
-            return Option.isSome(commit) === true && commit.value === locked.commit
-              ? { name, status: 'already_synced' as const, commit: locked.commit, ref: locked.ref }
-              : unprepared
           }),
       )
       return {

@@ -38,6 +38,48 @@ export const isAuthorBranchWorkspace = (
     return defaultBranch !== undefined && defaultBranch !== branch
   })
 
+/** Preserve kernel path traversal: a symlink must be followed before a later `..`. */
+const resolvePhysicalMutationPath = (
+  target: string,
+): Effect.Effect<string, PlatformError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const absolute = path.isAbsolute(target) === true ? target : `${process.cwd()}/${target}`
+    let current = path.parse(absolute).root
+    for (const component of absolute.split(path.sep)) {
+      if (component === '' || component === '.') continue
+      if (component === '..') {
+        current = path.dirname(current)
+        continue
+      }
+      const candidate = path.join(current, component)
+      const resolved = yield* fs.realPath(candidate).pipe(
+        Effect.catchIf(
+          (error) => error.reason._tag === 'NotFound',
+          () => Effect.succeed(undefined),
+        ),
+      )
+      if (resolved !== undefined) {
+        current = resolved
+        continue
+      }
+      // A dangling symlink still determines where a later mkdir/write will go.
+      const link = yield* fs.readLink(candidate).pipe(
+        Effect.catchIf(
+          (error) => error.reason._tag === 'NotFound',
+          () => Effect.succeed(undefined),
+        ),
+      )
+      current =
+        link === undefined
+          ? candidate
+          : yield* resolvePhysicalMutationPath(
+              path.isAbsolute(link) === true ? link : `${current}/${link}`,
+            )
+    }
+    return current
+  })
+
 /** Ref worktrees are shared. Resolve aliases and missing output parents before authorizing writes. */
 export const assertCanonicalMutationAllowed = ({
   target,
@@ -57,45 +99,9 @@ export const assertCanonicalMutationAllowed = ({
 }): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     if (process.env['MEGAREPO_ALLOW_CANONICAL_MUTATION'] === '1') return
-    const fs = yield* FileSystem.FileSystem
-    let existingPath = path.resolve(target)
-    let missingPath = ''
-    let resolvedPath: string | void = undefined
-    while (typeof resolvedPath !== 'string') {
-      resolvedPath = yield* fs.realPath(existingPath).pipe(
-        Effect.catchIf(
-          (error) => error.reason._tag === 'NotFound',
-          () => Effect.void,
-        ),
-      )
-      if (typeof resolvedPath !== 'string') {
-        // realPath reports ENOENT for dangling links too; writes still follow their destinations.
-        const link = yield* fs.readLink(existingPath).pipe(
-          Effect.catchIf(
-            (error) => error.reason._tag === 'NotFound',
-            () => Effect.void,
-          ),
-        )
-        if (typeof link === 'string') {
-          existingPath = path.resolve(path.dirname(existingPath), link)
-          continue
-        }
-        const parent = path.dirname(existingPath)
-        if (parent === existingPath) {
-          return yield* systemError({
-            _tag: 'NotFound',
-            module: 'megarepo',
-            method: 'authorizeMutation',
-            pathOrDescriptor: target,
-            description: 'Cannot resolve target; refusing mutation',
-          })
-        }
-        missingPath = path.join(path.basename(existingPath), missingPath)
-        existingPath = parent
-      }
-    }
+    const resolvedPath = yield* resolvePhysicalMutationPath(target)
     const physicalAuthoringRoot =
-      authoringRoot === undefined ? undefined : yield* fs.realPath(authoringRoot)
+      authoringRoot === undefined ? undefined : yield* resolvePhysicalMutationPath(authoringRoot)
     if (
       materializedRoot !== undefined ||
       commitApplyRoot !== undefined ||
@@ -106,7 +112,7 @@ export const assertCanonicalMutationAllowed = ({
       if (authoringRoot !== undefined && physicalAuthoringRoot !== undefined) {
         const workspacePath = path.resolve(authoringRoot)
         const targetPath = path.resolve(target)
-        const destination = path.join(resolvedPath, missingPath)
+        const destination = resolvedPath
         if (
           (targetPath === workspacePath ||
             targetPath.startsWith(`${workspacePath}${path.sep}`) === true) &&
@@ -122,7 +128,7 @@ export const assertCanonicalMutationAllowed = ({
         const root = path.resolve(commitRoot)
         const workspacePath = path.resolve(materializationRoot ?? commitRoot)
         const targetPath = path.resolve(target)
-        const destination = path.join(resolvedPath, missingPath)
+        const destination = resolvedPath
         if (
           /\/refs\/commits\/[^/]+$/.test(root) === true &&
           ((targetPath === workspacePath && destination === root) ||
@@ -135,8 +141,8 @@ export const assertCanonicalMutationAllowed = ({
       // Top-level apply/fetch owns an invoking non-default branch workspace's mount directory.
       // Fresh recursive materialization never authorizes authoring outputs.
       if (materializationRoot !== undefined && materializedRoot === undefined) {
-        const root = yield* fs.realPath(materializationRoot)
-        const destination = path.join(resolvedPath, missingPath)
+        const root = yield* resolvePhysicalMutationPath(materializationRoot)
+        const destination = resolvedPath
         const targetPath = path.resolve(target)
         const workspacePath = path.resolve(materializationRoot)
         if (

@@ -59,13 +59,15 @@ The invoking non-default author branch workspace, proved from Git worktree
 metadata, may materialize `repos/` and author its own config, `megarepo.lock`,
 generator outputs, and Nix lock files. Pin/unpin and `mr fetch --only` use the same
 author-workspace grant. Requested paths and physical destinations must remain
-inside that workspace; symlink escapes stay refused. Default-branch canonical
+inside that workspace; symlink escapes, including a symlink followed by `..`,
+stay refused. Default-branch canonical
 worktrees remain shared caches; invoking a command there does not grant ownership.
 `mr apply --verify-shared --lock-sync off` verifies selected members read-only in
 shared canonical workspaces, and otherwise applies normally. Every selected mount
 must be a symlink to its configured local source or the correct store repository
-and locked ref/commit, with remote `HEAD` at the locked commit. Commit-member
-selectors also require their nested locked trees to be prepared. Missing or drifted
+and locked ref/commit, with remote `HEAD` at the locked commit and clean tracking
+branches. Commit-member selectors apply the same source-identity checks to every
+mount in their nested locked trees. Missing, dirty, or drifted
 members fail with instructions to prepare from the owning workspace or use an
 owned worktree. No generators, lock sync, registry, or cache-manifest writes run
 on this read-only path. `mr:setup` uses this mode. It respects `--only`/`--skip`,
