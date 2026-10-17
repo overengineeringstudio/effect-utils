@@ -434,11 +434,15 @@ const outputsOf = Effect.fn('DataGraph.outputsOf')(function* (
 })
 
 /** Validate each reference before identity-based memoization can hide a conflicting definition. */
-const registerDefinition = (
-  definitions: Map<NodeKind, NodeDef>,
-  node: NodeDef,
-  id: string,
-): GraphError | undefined => {
+const registerDefinition = ({
+  definitions,
+  node,
+  id,
+}: {
+  definitions: Map<NodeKind, NodeDef>
+  node: NodeDef
+  id: string
+}): GraphError | undefined => {
   const registered = definitions.get(node.kind)
   if (registered !== undefined && registered !== node)
     return new GraphError({ nodeId: id, message: 'Conflicting definitions for one node kind' })
@@ -473,7 +477,7 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
         ) === true
       )
         return yield* invalid('Output names must be unique, non-empty, trimmed strings without NUL')
-      const conflict = registerDefinition(definitions, node, id)
+      const conflict = registerDefinition({ definitions, node, id })
       if (conflict !== undefined) return yield* conflict
       if (visiting.has(id) === true) return yield* invalid('Declared dependency cycle')
       const previousResult = completed.get(id)
@@ -676,7 +680,7 @@ export const getSelectionStatus = Effect.fn('DataGraph.getSelectionStatus')(func
       const { node, scope } = reference
       const key = { kind: node.kind, scope }
       const id = nodeId(key)
-      const conflict = registerDefinition(definitions, node, id)
+      const conflict = registerDefinition({ definitions, node, id })
       if (conflict !== undefined) return yield* conflict
       if (visiting.has(id) === true)
         return yield* new GraphError({ nodeId: id, message: 'Declared dependency cycle' })
