@@ -1,0 +1,3 @@
+# First-party BUCK.genie.ts owns build.rs and its committed schema inputs.
+# Reindeer supplies registry dependencies only (include_top_level = false).
+buildscript.run = false

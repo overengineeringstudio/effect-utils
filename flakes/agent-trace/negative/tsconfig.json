@@ -1,0 +1,15 @@
+// Generated file - DO NOT EDIT
+// Source: tsconfig.json.genie.ts
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [
+    "static-safety.ts",
+    "../src/**/*",
+    "../generated/**/*"
+  ],
+  "exclude": []
+}

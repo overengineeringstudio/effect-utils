@@ -1,0 +1,5 @@
+/home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/agent-trace/rust/target/debug/deps/receipt_roundtrip-cc594b51e493ec28.d: /home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/schema-registry/rust/tests/consumer/src/bin/receipt-roundtrip.rs
+
+/home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/agent-trace/rust/target/debug/deps/receipt_roundtrip-cc594b51e493ec28: /home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/schema-registry/rust/tests/consumer/src/bin/receipt-roundtrip.rs
+
+/home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/schema-registry/rust/tests/consumer/src/bin/receipt-roundtrip.rs:

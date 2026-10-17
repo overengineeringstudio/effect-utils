@@ -1,0 +1,1 @@
+{"rustc":1625334936438085654,"features":"[]","declared_features":"[]","target":1524667692659508025,"profile":15657897354478470176,"path":16447938048146736041,"deps":[],"local":[{"CheckDepInfo":{"dep_info":"debug/.fingerprint/equivalent-4275be7f1d5d3094/dep-lib-equivalent","checksum":false}}],"rustflags":["-C","link-arg=-fuse-ld=bfd"],"config":1282902399306750302,"compile_kind":0}

@@ -1,0 +1,5 @@
+/home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/agent-trace/rust/target/debug/build/schema-registry-rust-consumer-18e1fd7de75e77bb/build_script_build-18e1fd7de75e77bb.d: /home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/schema-registry/rust/consumer/build.rs
+
+/home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/agent-trace/rust/target/debug/build/schema-registry-rust-consumer-18e1fd7de75e77bb/build_script_build-18e1fd7de75e77bb: /home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/schema-registry/rust/consumer/build.rs
+
+/home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/schema-registry/rust/consumer/build.rs:

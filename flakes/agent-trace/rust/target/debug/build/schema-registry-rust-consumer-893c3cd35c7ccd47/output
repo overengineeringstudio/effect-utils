@@ -1,0 +1,4 @@
+cargo:rerun-if-changed=../../../agent-trace/generated/AgentTraceRuntimeV1.rs
+cargo:rerun-if-changed=cases.schema.json
+cargo:rerun-if-env-changed=SCHEMA_REGISTRY_RECEIPT_SCHEMA
+cargo:rerun-if-changed=receipt.schema.json

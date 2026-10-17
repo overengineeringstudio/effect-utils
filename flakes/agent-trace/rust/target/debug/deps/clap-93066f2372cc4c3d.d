@@ -1,0 +1,9 @@
+/home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/agent-trace/rust/target/debug/deps/clap-93066f2372cc4c3d.d: /home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/lib.rs /home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/../examples/demo.rs /home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/../examples/demo.md
+
+/home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/agent-trace/rust/target/debug/deps/libclap-93066f2372cc4c3d.rlib: /home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/lib.rs /home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/../examples/demo.rs /home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/../examples/demo.md
+
+/home/schickling/.megarepo/github.com/schickling/dotfiles/refs/heads/schickling-assistant/2026-10-11-annotations-registry-foundations/flakes/agent-trace/rust/target/debug/deps/libclap-93066f2372cc4c3d.rmeta: /home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/lib.rs /home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/../examples/demo.rs /home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/../examples/demo.md
+
+/home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/lib.rs:
+/home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/../examples/demo.rs:
+/home/schickling/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clap-4.6.7/src/../examples/demo.md:

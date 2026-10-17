@@ -1,0 +1,238 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: flakes/agent-trace/rust/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:afaea2d85c934eef2142b9ef1dec64352c1781872f5962df17f850c8854e2ca1
+# Semantic inputs: flakes/agent-trace/rust/BUCK.genie.ts, flakes/agent-trace/rust/Cargo.lock, flakes/agent-trace/rust/Cargo.toml, flakes/agent-trace/rust/reindeer.toml, flakes/agent-trace/rust/schema-inputs.ts, flakes/agent-trace/rust/src/**/*.rs, flakes/agent-trace/rust/tests/**/*.rs, flakes/agent-trace/rust/third-party/BUCK, flakes/schema-registry/rust/Cargo.toml, flakes/schema-registry/rust/consumer/Cargo.toml, genie/buck2/cargo-projection.ts
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("@rules//buck2:static_checks.bzl", "static_source_set")
+load("@rules//buck2/products:defs.bzl", "build_product")
+load("@rules//buck2/platforms:defs.bzl", "host_platform_label")
+load("@rules//buck2/rust:defs.bzl", "rust_product_executable")
+load("@rules//buck2/rust:defs.bzl", "buildscript_run", "cargo_build_script")
+static_source_set(
+    name = "static_sources",
+    prefix = "flakes/agent-trace/rust",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "build.rs",
+        "src/lib.rs",
+        "src/main.rs",
+        "tests/cli.rs",
+        "tests/corpus.rs",
+        "tests/runtime.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/build.rs",
+    src = "build.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/main.rs",
+    src = "src/main.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_binary(
+    name = "agent-trace-build-script-build",
+    crate = "build_script_build",
+    crate_root = "build.rs",
+    srcs = [
+        "build.rs",
+    ],
+    deps = [
+        "//flakes/agent-trace/rust/third-party:serde_json",
+        "//flakes/schema-registry/rust:lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "agent-trace",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "build_script_build",
+        "CARGO_MANIFEST_DIR": "flakes/agent-trace/rust",
+    },
+)
+
+cargo_build_script(
+    name = "agent-trace-build-script",
+    build_script = ":agent-trace-build-script-build",
+    package_path = "flakes/agent-trace/rust",
+    srcs = {
+        "flakes/agent-trace/generated/AgentTraceRuntimeV1.schema.json": "//flakes/agent-trace:AgentTraceRuntimeV1.schema.json",
+        "flakes/agent-trace/generated/AgentTraceV2.schema.json": "//flakes/agent-trace:AgentTraceV2.schema.json",
+        "flakes/agent-trace/generated/PrivateAudienceV2.schema.json": "//flakes/agent-trace:PrivateAudienceV2.schema.json",
+        "flakes/agent-trace/generated/PrivateFooterV2.schema.json": "//flakes/agent-trace:PrivateFooterV2.schema.json",
+        "flakes/agent-trace/generated/PrivateTrailerV2.schema.json": "//flakes/agent-trace:PrivateTrailerV2.schema.json",
+        "flakes/agent-trace/generated/PublicAudienceV2.schema.json": "//flakes/agent-trace:PublicAudienceV2.schema.json",
+        "flakes/agent-trace/generated/PublicFooterV2.schema.json": "//flakes/agent-trace:PublicFooterV2.schema.json",
+        "flakes/agent-trace/generated/PublicTrailerV2.schema.json": "//flakes/agent-trace:PublicTrailerV2.schema.json",
+        "flakes/agent-trace/rust/Cargo.toml": "Cargo.toml",
+        "flakes/agent-trace/rust/build.rs": "build.rs",
+        "flakes/agent-trace/rust/src/lib.rs": "src/lib.rs",
+        "flakes/agent-trace/rust/src/main.rs": "src/main.rs",
+        "flakes/agent-trace/rust/tests/cli.rs": "tests/cli.rs",
+        "flakes/agent-trace/rust/tests/corpus.rs": "tests/corpus.rs",
+        "flakes/agent-trace/rust/tests/runtime.rs": "tests/runtime.rs",
+    },
+)
+
+buildscript_run(
+    name = "agent-trace-build-script-run",
+    package_name = "agent-trace",
+    buildscript_rule = ":agent-trace-build-script",
+    manifest_dir = ":agent-trace-build-script",
+    env = {
+        "CARGO_PKG_NAME": "agent-trace",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "build_script_build",
+        "DEBUG": "false",
+        "NUM_JOBS": "1",
+        "PROFILE": "debug",
+    },
+    version = "0.1.0",
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "agent_trace",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/lib.rs",
+        "src/main.rs",
+    ],
+    deps = [
+        "//flakes/agent-trace/rust/third-party:clap",
+        "//flakes/agent-trace/rust/third-party:regex",
+        "//flakes/agent-trace/rust/third-party:serde",
+        "//flakes/agent-trace/rust/third-party:serde_json",
+        "//flakes/agent-trace/rust/third-party:thiserror",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "agent-trace",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "agent_trace",
+        "CARGO_MANIFEST_DIR": "flakes/agent-trace/rust",
+        "OUT_DIR": "$(location :agent-trace-build-script-run[out_dir])",
+    },
+    rustc_flags = ["@$(location :agent-trace-build-script-run[rustc_flags])"],
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "agent-trace",
+    crate = "agent_trace",
+    crate_root = "src/main.rs",
+    srcs = [
+        "src/lib.rs",
+        "src/main.rs",
+    ],
+    deps = [
+        "//flakes/agent-trace/rust/third-party:clap",
+        "//flakes/agent-trace/rust/third-party:regex",
+        "//flakes/agent-trace/rust/third-party:serde",
+        "//flakes/agent-trace/rust/third-party:serde_json",
+        "//flakes/agent-trace/rust/third-party:thiserror",
+        ":lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "agent-trace",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "agent_trace",
+        "CARGO_MANIFEST_DIR": "flakes/agent-trace/rust",
+        "CARGO_BIN_NAME": "agent-trace",
+        "OUT_DIR": "$(location :agent-trace-build-script-run[out_dir])",
+    },
+    rustc_flags = ["@$(location :agent-trace-build-script-run[rustc_flags])"],
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+rust_product_executable(
+    name = "agent-trace-product-executable",
+    binary = ":agent-trace",
+    recipe = "cargo-workspace:agent-trace@0.1.0",
+    target_platform = host_platform_label(cell = "rules"),
+)
+
+build_product(
+    name = "agent-trace-product",
+    entrypoint = "bin/agent-trace",
+    executable = ":agent-trace-product-executable",
+    product_name = "agent-trace",
+    target_platform = host_platform_label(cell = "rules"),
+)

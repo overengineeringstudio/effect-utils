@@ -1,0 +1,3 @@
+cargo:rerun-if-changed=cases.schema.json
+cargo:rerun-if-env-changed=SCHEMA_REGISTRY_RECEIPT_SCHEMA
+cargo:rerun-if-changed=/run/user/1000/annotations-interview/verify/registry-foundations/gate-slot-receipt.schema.json

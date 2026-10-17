@@ -1,0 +1,135 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: flakes/schema-registry/rust/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:dfa80ef05f1530e9b96ba1c7eae8dd23c4b10d8be2bab1a141c3ac530b8e5834
+# Semantic inputs: flakes/agent-trace/rust/Cargo.lock, flakes/agent-trace/rust/Cargo.toml, flakes/agent-trace/rust/reindeer.toml, flakes/agent-trace/rust/third-party/BUCK, flakes/schema-registry/rust/BUCK.genie.ts, flakes/schema-registry/rust/Cargo.toml, flakes/schema-registry/rust/consumer/Cargo.toml, flakes/schema-registry/rust/src/**/*.rs, flakes/schema-registry/rust/tests/**/*.rs, genie/buck2/cargo-projection.ts
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("@rules//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "flakes/schema-registry/rust",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/bin/schema-registry-rust.rs",
+        "src/lib.rs",
+        "src/numbers.rs",
+        "src/runtime.rs",
+        "tests/generator.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/bin/schema-registry-rust.rs",
+    src = "src/bin/schema-registry-rust.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/numbers.rs",
+    src = "src/numbers.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/runtime.rs",
+    src = "src/runtime.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "schema_registry_rust",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/bin/schema-registry-rust.rs",
+        "src/lib.rs",
+        "src/numbers.rs",
+        "src/runtime.rs",
+    ],
+    deps = [
+        "//flakes/agent-trace/rust/third-party:regex",
+        "//flakes/agent-trace/rust/third-party:serde_json",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "schema-registry-rust",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "Strict JSON Schema to Rust serde lowering",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "schema_registry_rust",
+        "CARGO_MANIFEST_DIR": "flakes/schema-registry/rust",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "schema-registry-rust",
+    crate = "schema_registry_rust",
+    crate_root = "src/bin/schema-registry-rust.rs",
+    srcs = [
+        "src/bin/schema-registry-rust.rs",
+        "src/lib.rs",
+        "src/numbers.rs",
+        "src/runtime.rs",
+    ],
+    deps = [
+        "//flakes/agent-trace/rust/third-party:regex",
+        "//flakes/agent-trace/rust/third-party:serde_json",
+        ":lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "schema-registry-rust",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "Strict JSON Schema to Rust serde lowering",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "schema_registry_rust",
+        "CARGO_MANIFEST_DIR": "flakes/schema-registry/rust",
+        "CARGO_BIN_NAME": "schema-registry-rust",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)

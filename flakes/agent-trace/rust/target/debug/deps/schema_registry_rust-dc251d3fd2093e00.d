@@ -1,0 +1,5 @@
+/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling-assistant/2026-10-12-bakeoff-ssot-upstream/flakes/agent-trace/rust/target/debug/deps/schema_registry_rust-dc251d3fd2093e00.d: /home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling-assistant/2026-10-12-bakeoff-ssot-upstream/flakes/schema-registry/rust/src/bin/schema-registry-rust.rs
+
+/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling-assistant/2026-10-12-bakeoff-ssot-upstream/flakes/agent-trace/rust/target/debug/deps/schema_registry_rust-dc251d3fd2093e00: /home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling-assistant/2026-10-12-bakeoff-ssot-upstream/flakes/schema-registry/rust/src/bin/schema-registry-rust.rs
+
+/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling-assistant/2026-10-12-bakeoff-ssot-upstream/flakes/schema-registry/rust/src/bin/schema-registry-rust.rs:

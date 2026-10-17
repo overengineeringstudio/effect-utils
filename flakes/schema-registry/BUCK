@@ -1,0 +1,149 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: flakes/schema-registry/BUCK.genie.ts
+# Projection schema version: 13
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:c12cc81eec3817c5d82891af1daadf71802e66cc9b27ecaca6be9f0afe607e44
+# Semantic inputs: apps/notion-scan/package.json.genie.ts, buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, flakes/agent-trace/package.json.genie.ts, flakes/ai-inbox/package.json.genie.ts, flakes/approvals/package.json.genie.ts, flakes/axe-feedback/package.json.genie.ts, flakes/bird/package.json.genie.ts, flakes/boss/package.json.genie.ts, flakes/chatgpt-plugin-publish/package.json.genie.ts, flakes/factory/package.json.genie.ts, flakes/gh-ci-exporter/package.json.genie.ts, flakes/grafana-dashboards/package.json.genie.ts, flakes/http-capture/package.json.genie.ts, flakes/hub/package.json.genie.ts, flakes/info-diet-sync/package.json.genie.ts, flakes/info-diet-web/package.json.genie.ts, flakes/info-diet/package.json.genie.ts, flakes/janitor-cli/package.json.genie.ts, flakes/jellyfin-sync/package.json.genie.ts, flakes/jellyfin/package.json.genie.ts, flakes/live-migrations/package.json.genie.ts, flakes/mcporter-cli/package.json.genie.ts, flakes/notion-workers/blocky-scg/package.json.genie.ts, flakes/omp-ai-gateway/package.json.genie.ts, flakes/op-proxy/package.json.genie.ts, flakes/pixeltrail/package.json.genie.ts, flakes/pty-tag-schema/package.json.genie.ts, flakes/scg-cli/package.json.genie.ts, flakes/scg-core/package.json.genie.ts, flakes/scg-policy/package.json.genie.ts, flakes/scg-runtime-host/package.json.genie.ts, flakes/scg-runtime/package.json.genie.ts, flakes/schema-registry/BUCK.genie.ts, flakes/schema-registry/BUCK.genie.ts, flakes/schema-registry/package.json.genie.ts, flakes/schema-registry/package.json.genie.ts, flakes/schema-registry/src/**/*.css, flakes/schema-registry/src/**/*.cts, flakes/schema-registry/src/**/*.js, flakes/schema-registry/src/**/*.mts, flakes/schema-registry/src/**/*.spec.cjs, flakes/schema-registry/src/**/*.spec.jsx, flakes/schema-registry/src/**/*.spec.mjs, flakes/schema-registry/src/**/*.test.cjs, flakes/schema-registry/src/**/*.test.jsx, flakes/schema-registry/src/**/*.test.mjs, flakes/schema-registry/src/**/*.ts, flakes/schema-registry/src/**/*.tsx, flakes/schema-registry/src/**/__snapshots__/*.snap, flakes/schema-registry/tsconfig.json.genie.ts, flakes/telemetry-registry/package.json.genie.ts, flakes/ulrike-it-tray/design/package.json.genie.ts, flakes/ulrike-it/package.json.genie.ts, flakes/vista/agent-trace/package.json.genie.ts, flakes/vista/blocks/package.json.genie.ts, flakes/vista/cli/package.json.genie.ts, flakes/vista/island/package.json.genie.ts, flakes/vista/service/package.json.genie.ts, flakes/web-utils/package.json.genie.ts, flakes/webfractal/package.json.genie.ts, flakes/webfractal/packages/st3-sdk/package.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, nixpkgs/smalltalk/kit/package.json.genie.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/test-verdict.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts
+# Regenerate: devenv tasks run genie:run
+
+load("@rules//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
+load("@rules//buck2:editor_view.bzl", "editor_view_inputs")
+load("@rules//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+load("@rules//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("@rules//buck2:package_tools.bzl", "npm_package_archive")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/annotations.ts",
+    "src/artifact-registry.integration.test.ts",
+    "src/artifact-registry.ts",
+    "src/authority.ts",
+    "src/authority.unit.test.ts",
+    "src/catalog/compose.ts",
+    "src/catalog/final-bag-conformance.ts",
+    "src/catalog/keyed-map-derivation.ts",
+    "src/catalog/profile-conformance.ts",
+    "src/catalog/runtime-value-schema.ts",
+    "src/catalog/schema.ts",
+    "src/cli.ts",
+    "src/coverage.ts",
+    "src/fingerprint.unit.test.ts",
+    "src/mod.ts",
+    "src/primitives.ts",
+    "src/projection.ts",
+    "src/schema-nodes.ts",
+    "src/schema-nodes.unit.test.ts",
+    "src/usage-claims.ts",
+])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "flakes/schema-registry",
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "repository_validation_sources",
+    prefix = "flakes/schema-registry",
+    srcs = ["BUCK", "package.json", "tsconfig.json"] + glob(["**/*.genie.ts"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "nix_sources",
+    prefix = "flakes/schema-registry",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:view_flakes_schema_registry_638e3c1417bb",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "package_tree",
+    dependency_view = "//buck2/dependencies:view_flakes_schema_registry_638e3c1417bb",
+    files = {
+        "package.json": "package.json",
+        "src/annotations.ts": "src/annotations.ts",
+        "src/artifact-registry.integration.test.ts": "src/artifact-registry.integration.test.ts",
+        "src/artifact-registry.ts": "src/artifact-registry.ts",
+        "src/authority.ts": "src/authority.ts",
+        "src/authority.unit.test.ts": "src/authority.unit.test.ts",
+        "src/catalog/compose.ts": "src/catalog/compose.ts",
+        "src/catalog/final-bag-conformance.ts": "src/catalog/final-bag-conformance.ts",
+        "src/catalog/keyed-map-derivation.ts": "src/catalog/keyed-map-derivation.ts",
+        "src/catalog/profile-conformance.ts": "src/catalog/profile-conformance.ts",
+        "src/catalog/runtime-value-schema.ts": "src/catalog/runtime-value-schema.ts",
+        "src/catalog/schema.ts": "src/catalog/schema.ts",
+        "src/cli.ts": "src/cli.ts",
+        "src/coverage.ts": "src/coverage.ts",
+        "src/fingerprint.unit.test.ts": "src/fingerprint.unit.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/primitives.ts": "src/primitives.ts",
+        "src/projection.ts": "src/projection.ts",
+        "src/schema-nodes.ts": "src/schema-nodes.ts",
+        "src/schema-nodes.unit.test.ts": "src/schema-nodes.unit.test.ts",
+        "src/usage-claims.ts": "src/usage-claims.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "@rules//:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+editor_view_inputs(
+    name = "editor_view_inputs",
+    editor_inputs = ":editor_inputs",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    declaration_sources = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    typecheck = ":typecheck",
+    workspace_manifests = [
+    ],
+    output = "schema-registry.tgz",
+    visibility = ["PUBLIC"],
+)

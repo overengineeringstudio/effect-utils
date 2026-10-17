@@ -1,0 +1,7 @@
+cargo:rerun-if-changed=../generated/AgentTraceV2.schema.json
+cargo:rerun-if-changed=../generated/PublicAudienceV2.schema.json
+cargo:rerun-if-changed=../generated/PrivateAudienceV2.schema.json
+cargo:rerun-if-changed=../generated/PublicTrailerV2.schema.json
+cargo:rerun-if-changed=../generated/PrivateTrailerV2.schema.json
+cargo:rerun-if-changed=../generated/PublicFooterV2.schema.json
+cargo:rerun-if-changed=../generated/PrivateFooterV2.schema.json

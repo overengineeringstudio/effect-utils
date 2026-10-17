@@ -1,0 +1,65 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Generated from BUCK.genie.ts and rust/schema-inputs.ts; do not edit.
+# The Rust build consumes committed authority outputs, never the TypeScript generator.
+export_file(
+    name = "AgentTraceRuntimeV1.schema.json",
+    src = "generated/AgentTraceRuntimeV1.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "AgentTraceV2.schema.json",
+    src = "generated/AgentTraceV2.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "PrivateAudienceV2.schema.json",
+    src = "generated/PrivateAudienceV2.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "PrivateFooterV2.schema.json",
+    src = "generated/PrivateFooterV2.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "PrivateTrailerV2.schema.json",
+    src = "generated/PrivateTrailerV2.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "PublicAudienceV2.schema.json",
+    src = "generated/PublicAudienceV2.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "PublicFooterV2.schema.json",
+    src = "generated/PublicFooterV2.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "PublicTrailerV2.schema.json",
+    src = "generated/PublicTrailerV2.schema.json",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "codec-corpus.json",
+    src = "fixtures/codec-corpus.json",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "AgentTraceRuntimeV1.rs",
+    src = "generated/AgentTraceRuntimeV1.rs",
+    visibility = ["PUBLIC"],
+)
+
