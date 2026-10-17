@@ -13,12 +13,7 @@ import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'j
 import { pipelineIdentityStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
-import {
-  installNixStep,
-  linuxSandboxPrerequisitesStep,
-  namespacePrivilegeTrustedPredicate,
-  namespaceRunner,
-} from './setup.ts'
+import { installNixStep, linuxSandboxPrerequisitesStep, namespaceRunner } from './setup.ts'
 import {
   ciWorkflow as composeCiWorkflow,
   ciJobAdmission,
@@ -27,6 +22,7 @@ import {
   withCiAdmissionCleanup,
   linuxNixSandboxFallbackConf,
   linuxNixSandboxFallbackStep,
+  namespacePrivilegeTrustedPredicate,
 } from './shared.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
 
@@ -329,6 +325,69 @@ describe('Linux Nix sandbox fallback', () => {
       const workflow = sandboxWorkflow(expression, { build: 'supported' })
       expect(workflow.data).not.toHaveProperty('linuxNixSandboxCapabilities')
     }
+  })
+
+  it('fails closed on opaque interpolated features rather than trusting unused literals', () => {
+    for (const runsOn of [
+      "namespace-profile-linux-x86-64;${{ inputs.features || 'container.privileged=true' }}",
+      [
+        'nscloud-ubuntu-24.04-amd64-16x64-with-features',
+        "namespace-features:${{ inputs.features || 'container.privileged=true' }}",
+      ],
+    ]) {
+      expect(() => sandboxWorkflow(runsOn)).toThrow(/cannot statically determine/)
+      expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).not.toThrow()
+    }
+    expect(() =>
+      sandboxWorkflow(
+        namespaceRunner({
+          profile: 'namespace-profile-linux-x86-64',
+          runId: '${{ github.run_id }}',
+          privileged: 'trusted',
+        }).slice(),
+      ),
+    ).not.toThrow()
+  })
+
+  it('rejects privilege features attached through the wrong runner label format', () => {
+    for (const runsOn of [
+      ['namespace-profile-linux-x86-64', 'namespace-features:container.privileged=true'],
+      [
+        'namespace-profile-linux-x86-64',
+        'nscloud-ubuntu-24.04-amd64-16x64;container.privileged=true',
+      ],
+      'nscloud-ubuntu-24.04-amd64-16x64-with-features;container.privileged=true',
+    ]) {
+      expect(() => sandboxWorkflow(runsOn)).toThrow(/supported label format/)
+      expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).toThrow(
+        /supported label format/,
+      )
+    }
+  })
+
+  it('resolves separate feature-label alternatives before validating their machine label', () => {
+    const machine = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
+    const privileged = 'namespace-features:container.privileged=true'
+    expect(() =>
+      sandboxWorkflow([
+        machine,
+        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+      ]),
+    ).not.toThrow()
+    for (const branches of [
+      `'${privileged}' || 'namespace-features:container.privileged=false'`,
+      `'namespace-features:container.privileged=false' || '${privileged}'`,
+    ]) {
+      expect(() => sandboxWorkflow([machine, `\${{ inputs.fast && ${branches} }}`])).toThrow(
+        /lacks container/,
+      )
+    }
+    expect(() =>
+      sandboxWorkflow([
+        `\${{ inputs.fast && '${machine}' || 'ubuntu-latest' }}`,
+        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+      ]),
+    ).not.toThrow()
   })
 
   it('configures fresh installers only on Linux', () => {

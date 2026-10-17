@@ -277,12 +277,15 @@ unchanged; they do not grant privileges or bypass fork admission guards.
 
 For jobs using the shared Install Nix action, `ciWorkflow` validates `runs-on`
 before generation. Namespace Linux labels (`namespace-profile-*` or `nscloud-*`)
-must include `container.privileged=true`, on the machine label or a separate
-`namespace-features:` label. Literal expression alternatives are checked
-independently; one privileged branch cannot cover an unprivileged branch.
-Interpolated run IDs and trusted-only privilege suffixes retain their literal
-features without changing runtime fork admission. Opaque runner expressions
-fail closed with the job ID and remediation guidance.
+must request `container.privileged=true` in their supported format: profiles
+append it inline, while `-with-features` machines use a separate
+`namespace-features:` label. Literal alternatives in both machine and feature
+labels are resolved before validation; every alternative must request privilege
+in the applicable format. Only the shared run-ID interpolation and exact
+trusted-only privilege suffix are recognized within labels. Other interpolated
+features and opaque runner expressions fail closed with job-specific guidance,
+rather than treating incidental quoted strings as emitted feature values.
+Runtime fork admission is unchanged.
 `linuxNixSandboxCapabilities: { [jobId]: 'supported' }` attests that every
 possible Linux runner supports strict sandboxing for such expressions. This
 generation-only option cannot override a statically unprivileged Namespace

@@ -231,12 +231,29 @@ export const linuxNixSandboxFallbackConf = linuxNixSandboxSettings
   .map((setting) => `\${{ runner.os == 'Linux' && '${setting}' || '' }}`)
   .join('\n')
 
-// Interpolated run IDs and trusted-only privilege suffixes retain their literal
-// feature fragments. Runtime admission still owns trust predicates.
-const literalRunnerFragments = (label: string) =>
-  label.replace(/\$\{\{([\s\S]*?)\}\}/g, (_expression, body: string) =>
-    [...body.matchAll(/'((?:[^']|'')*)'/g)].map((match) => match[1]).join(''),
-  )
+/** Fork policy shared by runner selection, sandbox validation, and TS admission. */
+export const namespacePrivilegeTrustedPredicate =
+  "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
+
+/**
+ * Resolve bounded runner alternatives, not incidental quoted strings.
+ * The trusted suffix is the existing runtime-admitted exception; arbitrary
+ * feature interpolation must instead carry an explicit capability attestation.
+ */
+const resolveRunnerLabelAlternatives = (label: string): readonly string[] | undefined => {
+  const expression = /^\s*\$\{\{([\s\S]*?)\}\}\s*$/.exec(label)
+  if (expression !== null) {
+    const alternatives = /^[^&|]+&&\s*'((?:[^']|'')*)'\s*\|\|\s*'((?:[^']|'')*)'\s*$/.exec(
+      expression[1] ?? '',
+    )
+    return alternatives?.slice(1).map((alternative) => alternative.replaceAll("''", "'"))
+  }
+  const trustedSuffix = `\${{ (${namespacePrivilegeTrustedPredicate}) && ';container.privileged=true' || '' }}`
+  const resolved = label
+    .replaceAll(trustedSuffix, ';container.privileged=true')
+    .replace(/\$\{\{\s*github\.run_id\s*\}\}/g, 'GENIE_RUN_ID')
+  return resolved.includes('${{') === true ? undefined : [resolved]
+}
 
 /**
  * Validate the runner before emitting a workflow that installs strict-sandbox Nix.
@@ -261,45 +278,44 @@ const validateLinuxNixSandboxRunners = ({
     const fail = (reason: string): never => {
       throw new Error(
         `CI job "${jobId}": ${reason}. Install Nix requires sandbox = true and sandbox-fallback = false on Linux. ` +
-          'Add container.privileged=true to every Namespace Linux runner label (or its namespace-features label). ' +
+          'Append container.privileged=true to a Namespace profile label, or use a namespace-features label beside a -with-features machine label. ' +
           'For an opaque runs-on expression, declare linuxNixSandboxCapabilities: { ' +
           `[${JSON.stringify(jobId)}]: 'supported' } only when every possible Linux runner supports strict Nix sandboxing.`,
       )
     }
-    const validateLabel = ({ label, features }: { label: string; features: string }) => {
-      if (/^(?:namespace-profile-|nscloud-)/.test(label) === false) return
-      if (/(?:^|[-;])(?:macos|darwin)(?:[-;]|$)/.test(label) === true) return
-      if (/(?:^|[;:])container\.privileged=true(?:;|$)/.test(`${label};${features}`) === false)
-        fail(`Namespace Linux runner ${JSON.stringify(label)} lacks container.privileged=true`)
-    }
-    const features = labels
-      .filter((label) => label.startsWith('namespace-features:'))
-      .map(literalRunnerFragments)
-      .join(';')
-    for (const label of labels) {
-      const expression = /^\s*\$\{\{([\s\S]*?)\}\}\s*$/.exec(label)
-      if (expression !== null) {
-        // Deliberately bounded: arbitrary Actions programs cannot prove their
-        // runner outputs from incidental string literals (e.g. format/JSON).
-        const alternatives = /^[^&|]+&&\s*'((?:[^']|'')*)'\s*\|\|\s*'((?:[^']|'')*)'\s*$/.exec(
-          expression[1] ?? '',
-        )
-        if (alternatives === null) {
-          if (capabilities?.[jobId] !== 'supported')
-            fail(`cannot statically determine runs-on ${JSON.stringify(label)}`)
-          continue
-        }
-        for (const alternative of alternatives.slice(1))
-          validateLabel({ label: alternative, features })
-      } else {
-        if (
-          label.includes('${{') === true &&
-          /^(?:namespace-profile-|nscloud-|namespace-features:)/.test(label) === false
-        ) {
-          if (capabilities?.[jobId] !== 'supported')
-            fail(`cannot statically determine runs-on ${JSON.stringify(label)}`)
-        }
-        validateLabel({ label: literalRunnerFragments(label), features })
+    const alternatives = labels.map((label) => {
+      const resolved = resolveRunnerLabelAlternatives(label)
+      if (resolved === undefined && capabilities?.[jobId] !== 'supported')
+        fail(`cannot statically determine runs-on ${JSON.stringify(label)}`)
+      return resolved
+    })
+    const hasOpaqueLabel = alternatives.some((entry) => entry === undefined)
+    // Each runs-on entry is required simultaneously. A feature entry guarantees
+    // privilege only if *every* one of its alternatives supplies it. This avoids
+    // exponential expansion of independent label alternatives.
+    const hasPrivilegedFeatures = alternatives.some(
+      (entry) =>
+        entry !== undefined &&
+        entry.every(
+          (label) =>
+            label.startsWith('namespace-features:') === true &&
+            /(?:^|[;:])container\.privileged=true(?:;|$)/.test(label) === true,
+        ),
+    )
+    for (const entry of alternatives) {
+      if (entry === undefined) continue
+      for (const label of entry) {
+        if (/^(?:namespace-profile-|nscloud-)/.test(label) === false) continue
+        if (/(?:^|[-;])(?:macos|darwin)(?:[-;]|$)/.test(label) === true) continue
+        const machineLabel = label.split(';')[0] ?? ''
+        const privileged =
+          machineLabel.endsWith('-with-features') === true
+            ? hasPrivilegedFeatures || hasOpaqueLabel
+            : /(?:^|;)container\.privileged=true(?:;|$)/.test(label)
+        if (privileged === false)
+          fail(
+            `Namespace Linux runner ${JSON.stringify(label)} lacks container.privileged=true in its supported label format`,
+          )
       }
     }
   }
