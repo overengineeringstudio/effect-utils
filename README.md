@@ -352,6 +352,13 @@ from-source builder uses the same policy mapping. Unknown policies fail Nix
 evaluation with a message listing both allowed values; raw watcher-provider
 strings are not accepted.
 
+The packaged Prelude resolves `RUSTC` to an absolute path at action runtime,
+relative to the build script's initial working directory. Both Reindeer and
+first-party build scripts can therefore launch compiler probes after changing
+directory (for example, to `OUT_DIR`). The action environment retains its
+relative shim path during analysis, so checkout roots do not enter action keys.
+Prelude likewise resolves path-valued `CC`, `CXX`, `LD`, and `AR` at runtime.
+
 TypeScript package projections retain census destinations below nested Buck packages,
 but resolve each input through its nearest owning `BUCK` (or `BUCK.genie.ts` during
 generation). For example, `src/main.ts` below `parent/src/BUCK` is staged from
