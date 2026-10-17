@@ -364,13 +364,14 @@ let
         export PNPM_STORE_DIR="$store_dir"
         export PNPM_CONFIG_STORE_DIR="$store_dir"
         export npm_config_store_dir="$store_dir"
+        # Validate without rewriting node_modules while concurrent checks read it.
         pnpm install \
+          --lockfile-only \
           --frozen-lockfile \
           --ignore-scripts \
           --config.side-effects-cache=false \
           --config.verify-store-integrity=true \
           --config.strict-store-pkg-content-check=true \
-          --config.package-import-method=clone-or-copy \
           --pm-on-fail=ignore \
           --config.store-dir="$store_dir"
       '';
