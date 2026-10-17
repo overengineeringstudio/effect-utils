@@ -93,7 +93,6 @@ let
   ''
   + lib.optionalString archiveOriginConfigured ''
     [archive_origin]
-      url_prefix = ${archiveOriginUrlPrefix}
       trusted_url_prefix = ${archiveOriginUrlPrefix}
       trusted_tier = ${archiveOriginTier}
   '';

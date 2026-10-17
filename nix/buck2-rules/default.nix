@@ -93,12 +93,6 @@ pkgs.runCommand "buck2-rules"
     ) patchFiles}
     cat > "$out/buck2/dependencies/BUCK" <<'BUCK'
     export_file(
-        name = "acquire-archive.ts",
-        src = "acquire-archive.ts",
-        visibility = ["PUBLIC"],
-    )
-
-    export_file(
         name = "assemble-store.ts",
         src = "assemble-store.ts",
         visibility = ["PUBLIC"],

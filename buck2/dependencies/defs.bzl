@@ -236,12 +236,6 @@ _fetch = cache_guarded_rule(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
         )),
-        "_acquire_archive": attrs.default_only(attrs.source(
-            default = "//buck2/dependencies:acquire-archive.ts",
-        )),
-        "_public_archive_origin": attrs.default_only(attrs.source(
-            default = "//buck2/dependencies:public-archive-origin.ts",
-        )),
         "_nix_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:nix-archive.ts",
         )),

@@ -225,10 +225,7 @@ describe('direct pinned Buck posture', () => {
       let requests = 0
       let archiveRequests = 0
       const deadlines: string[] = []
-      const probeDeadlines: Record<'reapi' | 'archiveOrigin', AbortController[]> = {
-        reapi: [],
-        archiveOrigin: [],
-      }
+      const probeDeadlines: Record<'reapi', AbortController[]> = { reapi: [] }
       const grpc = createServer()
       grpc.on('stream', (stream: ServerHttp2Stream, headers) => {
         requests++
@@ -255,12 +252,6 @@ describe('direct pinned Buck posture', () => {
         hostname: '127.0.0.1',
         fetch: () => {
           archiveRequests++
-          if (scenario === 'both-fail' || (scenario === 'retry-success' && archiveRequests === 1)) {
-            const deadline = probeDeadlines.archiveOrigin[archiveRequests - 1]
-            if (deadline === undefined) throw new Error('expected archive attempt deadline')
-            deadline.abort()
-            return new Promise<Response>(() => {})
-          }
           return new Response(null, { status: 404 })
         },
       })
@@ -292,11 +283,9 @@ describe('direct pinned Buck posture', () => {
         if (scenario === 'both-fail')
           expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
         else expect(effective(result)['buck2.remote_cache_enabled']).not.toBe('false')
-        expect(effective(result)['archive_origin.url_prefix']).toBe(
-          scenario === 'both-fail' ? '' : `http://127.0.0.1:${archive.port}/cas/`,
-        )
+        expect(effective(result)['archive_origin.url_prefix']).toBeUndefined()
         expect(requests).toBe(scenario === 'healthy' ? 1 : 2)
-        expect(archiveRequests).toBe(scenario === 'healthy' ? 1 : 2)
+        expect(archiveRequests).toBe(0)
         expect(deadlines).toEqual(scenario === 'healthy' ? ['2500m'] : ['100m', '100m'])
         for (const attempts of Object.values(probeDeadlines)) {
           expect(attempts.map((deadline) => deadline.signal.aborted)).toEqual(
@@ -328,12 +317,11 @@ describe('direct pinned Buck posture', () => {
         for (const [index, row] of rows.entries()) {
           expect(row.admissionFallbacks).toEqual({
             reapi: scenario === 'both-fail' ? 1 : 0,
-            // The required writer selects its separate private archive posture (none in this fixture).
-            archiveOrigin: scenario === 'both-fail' && index === 0 ? 1 : 0,
+            archiveOrigin: 0,
           })
           expect(row.admissionRetrySuccesses).toEqual({
             reapi: scenario === 'retry-success' && index === 0 ? 1 : 0,
-            archiveOrigin: scenario === 'retry-success' && index === 0 ? 1 : 0,
+            archiveOrigin: 0,
           })
         }
       } finally {
@@ -474,7 +462,7 @@ console.log(JSON.stringify(outcomes));`,
     }
   })
 
-  it('falls back both unavailable endpoints without overwriting concurrent checkout configuration or run arguments', async () => {
+  it('falls back an unavailable REAPI endpoint without overwriting concurrent checkout configuration or run arguments', async () => {
     const root = fixture()
     const local = '[ui]\ncolor = false\n'
     writeFileSync(join(root, '.buckconfig.local'), local)
@@ -483,8 +471,7 @@ console.log(JSON.stringify(outcomes));`,
       args: ['run', '//:app', '--', '-c', 'buck2.remote_cache_enabled=true'],
     })
     expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
-    expect(effective(result)['archive_origin.url_prefix']).toBe('')
-    expect(effective(result)['archive_origin.tier']).toBe('public')
+    expect(effective(result)['archive_origin.url_prefix']).toBeUndefined()
     expect(result.slice(result.indexOf('--'))).toEqual([
       '--',
       '-c',
@@ -529,25 +516,18 @@ console.log(JSON.stringify(outcomes));`,
     expect(effective(result)['buck2.allow_cache_uploads']).toBe('false')
   })
 
-  it('uses effective CLI endpoints rather than the tracked endpoint, and preserves a caller registry selection', async () => {
+  it('uses effective CLI cache disabling rather than the tracked posture', async () => {
     const root = fixture()
     const result = await directBuckArguments({
       ...options(root),
-      args: [
-        'build',
-        '//:app',
-        '-c',
-        'buck2.remote_cache_enabled=false',
-        '-c',
-        'archive_origin.url_prefix=',
-      ],
+      args: ['build', '//:app', '-c', 'buck2.remote_cache_enabled=false'],
     })
     const values = effective(result)
     expect(values['buck2.remote_cache_enabled']).toBe('false')
-    expect(values['archive_origin.url_prefix']).toBe('')
+    expect(values['archive_origin.url_prefix']).toBeUndefined()
   })
 
-  it('admits cache-less source builds without validating unused sandbox archive placeholders', async () => {
+  it('admits cache-less source builds without validating unused sandbox cache placeholders', async () => {
     for (const selection of [
       { args: ['build', '--local-only', '--no-remote-cache', '//:app'], env: {} },
       { args: ['build', '//:app'], env: { BUCK2_NO_REMOTE_CACHE: '1' } },
@@ -557,23 +537,23 @@ console.log(JSON.stringify(outcomes));`,
       const result = await directBuckArguments({ ...options(root), ...selection })
       expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
       expect(effective(result)['buck2.allow_cache_uploads']).toBe('false')
-      expect(effective(result)['archive_origin.url_prefix']).toBe('')
+      expect(effective(result)['archive_origin.url_prefix']).toBeUndefined()
     }
     const root = fixture('$BUCK2_CACHE_ADDRESS', '$BUCK2_ARCHIVE_ORIGIN_URL_PREFIX')
     writeFileSync(join(root, '.buckconfig.local'), '[buck2]\nremote_cache_enabled = false\n')
     const result = await directBuckArguments({ ...options(root), args: ['build', '//:app'] })
-    expect(effective(result)['archive_origin.url_prefix']).toBe('')
+    expect(effective(result)['archive_origin.url_prefix']).toBeUndefined()
     expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
   })
 
-  it('still rejects invalid trusted origins when cache disabling is only a run argument', async () => {
-    const root = fixture('$BUCK2_CACHE_ADDRESS', '$BUCK2_ARCHIVE_ORIGIN_URL_PREFIX')
-    await expect(
-      directBuckArguments({
-        ...options(root),
-        args: ['run', '//:app', '--', '--no-remote-cache'],
-      }),
-    ).rejects.toThrow('tracked trusted archive origin')
+  it('ignores seeder-only archive metadata even when remote cache remains enabled', async () => {
+    const root = fixture('grpc://127.0.0.1:1', '$BUCK2_ARCHIVE_ORIGIN_URL_PREFIX')
+    const result = await directBuckArguments({
+      ...options(root),
+      args: ['run', '//:app', '--', '--no-remote-cache'],
+    })
+    expect(effective(result)['archive_origin.url_prefix']).toBeUndefined()
+    expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
   })
 
   it('caches healthy capabilities across hot loops but does not reuse them for a different endpoint or writer credential', async () => {
@@ -591,22 +571,12 @@ console.log(JSON.stringify(outcomes));`,
     await new Promise<void>((resolve) => grpc.once('listening', resolve))
     const bound = grpc.address()
     if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
-    const archive = Bun.serve({
-      port: 0,
-      hostname: '127.0.0.1',
-      fetch: () => new Response(null, { status: 404 }),
-    })
     try {
-      const root = fixture(
-        `grpc://127.0.0.1:${bound.port}`,
-        `http://127.0.0.1:${archive.port}/cas/`,
-      )
+      const root = fixture(`grpc://127.0.0.1:${bound.port}`)
       for (let index = 0; index < 3; index++) {
         const result = await directBuckArguments({ ...options(root), args: ['build', '//:app'] })
         expect(effective(result)['buck2.remote_cache_enabled']).not.toBe('false')
-        expect(effective(result)['archive_origin.url_prefix']).toBe(
-          `http://127.0.0.1:${archive.port}/cas/`,
-        )
+        expect(effective(result)['archive_origin.url_prefix']).toBeUndefined()
       }
       expect(requests).toBe(1)
       const ignoredClientOverride = await directBuckArguments({
@@ -622,12 +592,6 @@ console.log(JSON.stringify(outcomes));`,
       const changed = await directBuckArguments({ ...options(root), args: ['build', '//:app'] })
       expect(effective(changed)['buck2.remote_cache_enabled']).toBe('false')
       writeFileSync(join(root, '.buckconfig'), config)
-      const archiveFallback = await directBuckArguments({
-        ...options(root),
-        args: ['build', '//:app', '-c', 'archive_origin.url_prefix=http://127.0.0.1:1/cas/'],
-      })
-      expect(effective(archiveFallback)['archive_origin.url_prefix']).toBe('')
-      expect(effective(archiveFallback)['buck2.remote_cache_enabled']).not.toBe('false')
       await directBuckArguments({
         ...options(root),
         env: {
@@ -648,7 +612,6 @@ console.log(JSON.stringify(outcomes));`,
         }),
       ).rejects.toThrow('refusing to publish')
     } finally {
-      archive.stop(true)
       grpc.close()
     }
   })
