@@ -111,9 +111,11 @@ resolver; neither a link nor a Tempo query proves that export succeeded.
 ## Metrics
 
 Local conversion emits metrics alongside the completed traces. Canonical
-names are OTel dotted names; Prometheus-compatible translation adds `_seconds`
-to seconds-valued histograms, `_total` to counters, and replaces dots with
-underscores:
+names are OTel dotted names. Prometheus translation replaces dots with
+underscores; suffix-enabled translation additionally adds `_seconds` to
+seconds-valued histograms and `_total` to counters (shown below). Consumers
+must inspect their backend's translation policy: suffix-disabled OTLP ingest
+exposes `buck2_action_queue_duration_{bucket,sum,count}`, for example.
 
 | Canonical (OTel)                      | Prometheus-compatible                     | Type      | Labels (closed enums)               |
 | ------------------------------------- | ----------------------------------------- | --------- | ----------------------------------- |
@@ -124,8 +126,12 @@ underscores:
 | `buck2.action.queue.duration` (s)     | `buck2_action_queue_duration_seconds`     | histogram | category                            |
 
 These bounded dimensions support long-term trends independently of consumer-selected
-trace retention. No target, digest, run id, trace id, or host label
-enters a metric series.
+trace retention. No target, digest, run id, trace id, or host point label
+is emitted. The resource does carry the writer's `host.name`, `os.type`, and
+`host.arch`, shared with traces; see the
+[adapter resource and timing contract](../03-event-log-adapter/spec.md#producer-metrics).
+Backends may promote bounded host resource attributes to labels under their
+own cardinality policy; resource presence alone does not guarantee promotion.
 
 ## Conformance
 

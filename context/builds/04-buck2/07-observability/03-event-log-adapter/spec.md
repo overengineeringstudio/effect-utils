@@ -57,6 +57,39 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
   and `buck2.cache_hit`; the same classification produces the command summary
   hit counts ([04](../04-trace-views/spec.md#command-summary-attributes)).
 
+## Producer Metrics
+
+```text
+CommandStart.metadata -> trace + metric host resource
+ActionExecutionEnd.commands -> explicit execution / queue durations
+LocalQueued / WorkerQueued completed intervals -> missing queue-duration fallback
+  -> bounded per-category histogram -> durable metrics chunk -> OTLP export
+```
+
+The metric resource shares the trace resource's writer metadata mapping:
+`hostname` → `host.name`, `os` → `os.type`, and `arch` → `host.arch`, alongside
+`service.name=effect-utils-buck2`. These describe the machine that produced
+the log, not the post-hoc converter. Missing metadata stays absent; the adapter
+does not substitute the converter's host. Build IDs, revision, materializer,
+and pipeline identity remain trace-only.
+
+Queue timing prefers each command attempt's `metadata.queue_duration`, then
+the remote command's `queue_time`, summing available attempt timings. When no
+explicit timing exists for an action, completed local `LocalQueued` and
+`WorkerQueued` intervals under that action supply the duration. The nearest
+action ancestor owns the interval. Explicit zero is authoritative; fallback
+intervals are not added to explicit timing. Repeated ends count once and
+unclosed queue spans do not supply a measured duration. Actions with no queue
+evidence produce no queue observation, rather than a fabricated zero.
+
+Local queue stage names are `buck2.stage local_queued` and
+`buck2.stage worker_queued`; other local stages remain `buck2.stage local`.
+The queue instrument is `buck2.action.queue.duration` (seconds), with only
+the existing closed `category` point dimension. Empty data-point arrays do
+not create backend metric series. Conformance covers the retained local log
+and synthetic local/worker queues, explicit timing precedence (including
+zero), incomplete spans, repeated ends, and writer-host resource parity.
+
 ## Schema Bump Procedure
 
 1. On a Buck version bump: fetch the pinned tag's protos, regenerate.
