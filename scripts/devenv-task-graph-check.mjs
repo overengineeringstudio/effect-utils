@@ -253,14 +253,22 @@ ok({
   condition: reaches({ start: 'nix:flake:eval', target: 'genie:check' }),
   name: 'nix:flake:eval waits for source-side generation freshness',
 })
-// The editor bootstrap hashes Buck outputs; an aggregate materializing into `buck-out` in
-// parallel fails with "tree changed while hashing" (observed on #1362 when an unrelated edge
-// that ordered them transitively was removed).
-for (const aggregateTask of ['buck2:quick', 'buck2:all']) {
-  ok({
-    condition: reaches({ start: aggregateTask, target: 'buck2:editor:bootstrap' }),
-    name: `${aggregateTask} waits for the editor bootstrap`,
-  })
+// Bootstrap publication is an explicit preparation step, not an implicit
+// prerequisite of source generation or lint fixes (TT-148).
+for (const entrypoint of ['lint:fix', 'genie:run', 'genie:check', 'setup:strict']) {
+  requireTask(entrypoint)
+  for (const publisher of [...tasks.keys()].filter(
+    (name) =>
+      name === 'buck2:editor:bootstrap' ||
+      name === 'buck2:editor:materialize' ||
+      name === 'buck2:editor:publish' ||
+      name.startsWith('buck2:editor:publish:'),
+  )) {
+    ok({
+      condition: reaches({ start: entrypoint, target: publisher }) === false,
+      name: `${entrypoint} never implicitly schedules ${publisher}`,
+    })
+  }
 }
 for (const checkTask of ['check:quick', 'check:all']) {
   ok({
@@ -665,8 +673,8 @@ ok({
     reaches({
       start: 'buck2:typescript:materialize-dist',
       target: 'buck2:editor:materialize',
-    }) === true && reaches({ start: 'setup:strict', target: 'buck2:editor:materialize' }) === true,
-  name: 'mutating setup and dist publication share the ordered editor materialization barrier',
+    }) === true,
+  name: 'dist publication retains the explicit ordered editor materialization barrier',
 })
 ok({
   condition: reaches({ start: 'genie:check', target: 'genie:run' }) === false,
@@ -680,6 +688,12 @@ const taskSource = (name) => {
   const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
 }
+ok({
+  condition: taskSource('genie:editor-view-closure:check').includes(
+    '${repoPackages.genie-bootstrap-closure-check}/bin/genie-bootstrap-closure-check',
+  ),
+  name: 'generator closure checking uses the self-contained product without editor dependencies',
+})
 
 ok({
   condition: taskSource('test:buck2:unit').includes('prebuildCollection = true;'),
@@ -775,6 +789,13 @@ for (const term of ['--isolation-dir', 'buck-out']) {
 ok({
   condition: /\bbuck2[^\n]*\bkill\b/.test(editorViewHelper) === false,
   name: 'whole-workspace editor publisher never kills the shared Buck daemon',
+})
+ok({
+  condition:
+    editorViewHelper.includes('timeout --kill-after=5s 300s') &&
+    editorViewHelper.includes('exceeded its 300s total deadline') &&
+    editorViewHelper.includes('exit "$status"'),
+  name: 'every authority/bootstrap/publication invocation has a fail-closed process-tree deadline',
 })
 
 const capabilityPublisherHelper = source.slice(

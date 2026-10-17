@@ -229,9 +229,26 @@ devenv shell
 
 ### Publish Dependency Views
 
+Editor publication is explicit: shell entry, `genie:run`, and `lint:fix` never
+publish dependency views. Prepare a cold checkout (or refresh dependencies) separately
+from the lint/Genie heavy lane:
+
+```bash
+devenv tasks run buck2:editor:materialize
+```
+
+To publish an already-generated, fresh graph without regeneration:
+
 ```bash
 devenv tasks run buck2:editor:publish
 ```
+
+Each authority/bootstrap/publication invocation has a **300-second total deadline**
+(plus a 5-second forced-kill grace), including Buck builds, filesystem work and
+lock waits. Expiry prints a deadline diagnostic and fails nonzero; partial
+publication is never reported as success. This bounds shared-lane occupancy
+well below the 53-minute TT-148 incident. The publisher already limits independent
+preparations to four workers; it does not issue unbounded per-view fan-out.
 
 ### Check All TypeScript Projects
 
