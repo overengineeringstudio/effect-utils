@@ -76,7 +76,7 @@ const durations = (view: SeriesView<UserTimingValue>): number[] =>
   )
 
 describe('userTimingSource', () => {
-  it.effect('records matching measures as event samples dated at their end', () =>
+  it.effect('dates matching measures at delivery and keeps their true times', () =>
     Effect.gen(function* () {
       const f = fixture({ filter: { _tag: 'Prefix', prefix: 'fractal:' } })
       f.host.advance(2000)
@@ -88,11 +88,12 @@ describe('userTimingSource', () => {
       const view = f.meters.store.read({ series: f.series })
       expect(view.latest).toEqual({
         _tag: 'Value',
-        atMs: 1500,
+        atMs: 2000,
         value: {
           _tag: 'UserTiming',
           name: 'fractal:sidebar_interactive',
           startedAtMs: 1200,
+          endedAtMs: 1500,
           durationMs: 300,
         },
       })
@@ -104,11 +105,12 @@ describe('userTimingSource', () => {
       ])
       expect(view.latest).toEqual({
         _tag: 'Value',
-        atMs: 2950,
+        atMs: 3000,
         value: {
           _tag: 'UserTiming',
           name: 'fractal:switch_to_tail',
           startedAtMs: 2700,
+          endedAtMs: 2950,
           durationMs: 250,
         },
       })
@@ -118,7 +120,47 @@ describe('userTimingSource', () => {
     }),
   )
 
-  it.effect('filters exact names and never records a replayed measure twice', () =>
+  it.effect('records one delivery in completion order with true overlapping times', () =>
+    Effect.gen(function* () {
+      const f = fixture({ filter: { _tag: 'Prefix', prefix: 'fractal:' } })
+      f.host.advance(1000)
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* f.meters.start
+          f.deliver([f.measure('fractal:a', 0, 200), f.measure('fractal:b', 100, 10)])
+          const view = f.meters.store.read({ series: f.series })
+          const values = Array.from({ length: view.length }, (_, index) => view.at(index))
+          expect(values).toEqual([
+            {
+              _tag: 'Value',
+              atMs: 1000,
+              // performance.now() trails the session clock by 1000 ms.
+              value: {
+                _tag: 'UserTiming',
+                name: 'fractal:b',
+                startedAtMs: 1100,
+                endedAtMs: 1110,
+                durationMs: 10,
+              },
+            },
+            {
+              _tag: 'Value',
+              atMs: 1000,
+              value: {
+                _tag: 'UserTiming',
+                name: 'fractal:a',
+                startedAtMs: 1000,
+                endedAtMs: 1200,
+                durationMs: 200,
+              },
+            },
+          ])
+        }),
+      )
+    }),
+  )
+
+  it.effect('filters exact names and records each entry once across leases', () =>
     Effect.gen(function* () {
       const f = fixture({ filter: { _tag: 'Names', names: ['fractal:open_transcript'] } })
       f.host.advance(3000)
@@ -127,11 +169,34 @@ describe('userTimingSource', () => {
       yield* Effect.scoped(f.meters.start)
       const view = f.meters.store.read({ series: f.series })
       expect(durations(view)).toEqual([40])
-      // A second lease replays the whole buffer; only the new measure is recorded.
+      // A second lease replays the whole buffer: only new entries are recorded, including a
+      // distinct measure that ends exactly when an old one did.
       f.host.advance(500)
+      f.measure('fractal:open_transcript', 120, 20)
       f.measure('fractal:open_transcript', 2400, 60)
       yield* Effect.scoped(f.meters.start)
-      expect(durations(view)).toEqual([40, 60])
+      expect(durations(view)).toEqual([40, 20, 60])
+    }),
+  )
+
+  it.effect('reports an invalid measure once as MeasurementFailed', () =>
+    Effect.gen(function* () {
+      const f = fixture({ filter: { _tag: 'Prefix', prefix: 'fractal:' } })
+      f.host.advance(1000)
+      f.measure('fractal:broken', Infinity, 5)
+      f.measure('fractal:nan', 10, NaN)
+      yield* Effect.scoped(f.meters.start)
+      const view = f.meters.store.read({ series: f.series })
+      const failures = () =>
+        Array.from({ length: view.length }, (_, index) => view.at(index)).filter(
+          (sample) => sample?._tag === 'Unavailable' && sample.reason === 'MeasurementFailed',
+        ).length
+      expect(failures()).toBe(2)
+      // After a restart the replayed invalid entries are not reported again; a valid one is.
+      f.measure('fractal:open_transcript', 500, 30)
+      yield* Effect.scoped(f.meters.start)
+      expect(failures()).toBe(2)
+      expect(durations(view)).toEqual([30])
     }),
   )
 
