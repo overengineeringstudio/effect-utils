@@ -355,22 +355,75 @@ const withQuietTail = (spec: CanvasBlockSpec): CanvasBlockSpec =>
 /** Header band height the built-in blocks reserve above their chart (`chartRect`). */
 const headerHeightPx = 17
 
+/** Where a meter proves its source is alive, and how long that proof stays fresh. */
+interface Freshness {
+  /** Series whose newest observation dates the source (a window, heartbeat or frame series). */
+  readonly view: (store: SeriesStore) => SeriesView<unknown>
+  readonly staleAfterMs: number
+  /** Caption text naming the cadence behind the threshold. */
+  readonly basis: string
+}
+
+const freshness = <TValue,>(options: {
+  readonly series: Series<TValue>
+  readonly staleAfterMs: number
+  readonly basis: string
+}): Freshness => ({
+  view: (store) => store.read({ series: options.series }),
+  staleAfterMs: options.staleAfterMs,
+  basis: options.basis,
+})
+
+/** Time since the source's last observation before evaluation, once past its threshold. */
+const staleForMs = (options: {
+  readonly newestAtMs: number | undefined
+  readonly nowMs: number
+  readonly staleAfterMs: number
+}): number | undefined => {
+  if (options.newestAtMs === undefined) return undefined
+  const ageMs = options.nowMs - options.newestAtMs
+  return ageMs > options.staleAfterMs ? ageMs : undefined
+}
+
+/** Dim a stale tile as a whole; the label slot names the age instead of drawing over the plot. */
+const staleAlpha = 0.4
+
 /**
  * Bar-strip header: a short muted label plus a terse value derived from the block's own
  * description, replacing the header the block would ellipsize at strip width. A 1 px baseline
- * under the chart keeps the trend anchored on light backgrounds.
+ * under the chart keeps the trend anchored on light backgrounds. Past its source's freshness
+ * threshold the whole tile dims and the label slot reads `stale 15s`.
  */
 const withStripHeader = (options: {
   readonly spec: CanvasBlockSpec
   readonly label: string
   readonly value: (text: string) => string
-}): CanvasBlockSpec =>
-  decorate({
-    spec: options.spec,
-    draw: ({ inner, frame }) => {
-      inner.draw(frame)
+  readonly freshness: Freshness
+}): CanvasBlockSpec => {
+  const bind = ({
+    inner,
+    newestAtMs,
+  }: {
+    readonly inner: BlockReader
+    readonly newestAtMs: () => number | undefined
+  }): BlockReader => ({
+    revision: inner.revision,
+    describe: inner.describe,
+    evidence: inner.evidence,
+    draw: (frame) => {
       const { ctx, rect, theme, nowMs } = frame
+      const staleMs = staleForMs({
+        newestAtMs: newestAtMs(),
+        nowMs,
+        staleAfterMs: options.freshness.staleAfterMs,
+      })
+      ctx.save()
+      if (staleMs !== undefined) ctx.globalAlpha = staleAlpha
+      inner.draw(frame)
+      ctx.restore()
       const text = inner.describe({ nowMs })
+      const value = text.startsWith('n/a') === true ? 'n/a' : options.value(text)
+      const measure = (run: string): number => ctx.measureText(run).width
       ctx.save()
       ctx.beginPath()
       ctx.rect(rect.x, rect.y, rect.width, rect.height)
@@ -382,20 +435,43 @@ const withStripHeader = (options: {
       ctx.font = theme.font
       ctx.textBaseline = 'top'
       ctx.textAlign = 'left'
-      const header = layoutBlockText({
-        rect,
-        label: options.label,
-        value: text.startsWith('n/a') === true ? 'n/a' : options.value(text),
-        measure: (run) => ctx.measureText(run).width,
-        gapPx: 4,
-      })
+      if (staleMs !== undefined) {
+        // The age owns the label slot; the last value follows only when it still fits.
+        const label = fitText({
+          text: `stale ${Math.floor(staleMs / 1000)}s`,
+          maxWidth: rect.width - 8,
+          measure,
+        })
+        ctx.fillStyle = theme.foreground
+        if (label !== undefined) ctx.fillText(label.text, rect.x + 4, rect.y + 3)
+        const valueWidth = measure(value)
+        if (label !== undefined && label.width + 4 + valueWidth <= rect.width - 8) {
+          ctx.globalAlpha = staleAlpha
+          ctx.fillText(value, rect.x + rect.width - 4 - valueWidth, rect.y + 3)
+        }
+        ctx.restore()
+        return
+      }
+      const header = layoutBlockText({ rect, label: options.label, value, measure, gapPx: 4 })
       ctx.fillStyle = theme.muted
       if (header.label !== undefined) ctx.fillText(header.label.text, header.label.x, rect.y + 3)
       ctx.fillStyle = theme.foreground
       if (header.value !== undefined) ctx.fillText(header.value.text, header.value.x, rect.y + 3)
       ctx.restore()
     },
+    snapshot: () => {
+      const frozen = newestAtMs()
+      return bind({ inner: inner.snapshot(), newestAtMs: () => frozen })
+    },
   })
+  return {
+    ...options.spec,
+    read: (store) => {
+      const view = options.freshness.view(store)
+      return bind({ inner: options.spec.read(store), newestAtMs: () => view.newestAtMs })
+    },
+  }
+}
 
 /** Bar tiles in light mode: a tinted tile and a darker baseline separate them from the bar. */
 const lightStripTheme: MeterTheme = { ...lightMeterTheme, background: '#eeeff2', border: '#8a8f98' }
@@ -442,6 +518,23 @@ const valuesWithin = <TValue,>(options: {
   }
   return found
 }
+
+/** Q19 range: the inspected window and its bounds, `min 28 / max 667 ms`. */
+const boundsText = <TValue,>(options: {
+  readonly view: SeriesView<TValue>
+  readonly atMs: number
+  readonly windowMs: number
+  readonly project: (value: TValue) => number
+  readonly format: (value: number) => string
+  readonly unit: string
+}): string | undefined => {
+  const values = valuesWithin(options).map(options.project)
+  if (values.length === 0) return undefined
+  return `min ${options.format(Math.min(...values))} / max ${options.format(Math.max(...values))} ${options.unit}`
+}
+
+const decimal = (value: number): string => value.toFixed(1).replace(/\.0$/, '')
+const integer = (value: number): string => value.toFixed(0)
 
 interface TrendBins {
   readonly totals: readonly number[]
@@ -493,7 +586,14 @@ interface MeterRow {
   /** Higher stays longer in the bar (Devbar `fitSegments`). */
   readonly priority: number
   readonly trend: Trend
+  readonly freshness: Freshness
   readonly readoutAt: (options: { readonly store: SeriesStore; readonly atMs: number }) => string
+  /** Bounds over `[atMs - windowMs, atMs]`; undefined when the window holds no sample. */
+  readonly rangeIn: (options: {
+    readonly store: SeriesStore
+    readonly atMs: number
+    readonly windowMs: number
+  }) => string | undefined
 }
 
 type MeterRowInput = Omit<MeterRow, 'stripSpec'> & {
@@ -504,8 +604,23 @@ type MeterRowInput = Omit<MeterRow, 'stripSpec'> & {
 
 /** Fits `commit 3.8` / `ws offline` in 11 px monospace with the 4 px header padding. */
 const segmentWidthPx = 76
-/** Gauges sampled every 0.5–1 s are stale after 3 s without a sample. */
-const gaugeStaleAfterMs = 3000
+
+// Per-source freshness: each threshold is a few missed beats of the source's own cadence.
+const messageFreshness = freshness({
+  series: recordingSeries.messages,
+  staleAfterMs: 2000,
+  basis: 'msg and ws 2 s (API client reports message windows every 0.5 s, also while offline)',
+})
+const latencyFreshness = freshness({
+  series: recordingSeries.httpLatency,
+  staleAfterMs: 3000,
+  basis: 'p95 3 s (latency windows every 1 s)',
+})
+const frameFreshness = freshness({
+  series: recordingSeries.frames,
+  staleAfterMs: 1000,
+  basis: 'commit, lf and fps 1 s (frame samples every ~17 ms; idle UIs commit rarely)',
+})
 
 const meterRowInputs: readonly MeterRowInput[] = [
   {
@@ -519,7 +634,7 @@ const meterRowInputs: readonly MeterRowInput[] = [
         series: recordingSeries.messages,
         shortLabel: 'msg',
         widthPx: segmentWidthPx,
-        staleAfterMs: gaugeStaleAfterMs,
+        // Staleness lives in the strip header (`withStripHeader`), not over the plot.
         // Stacked by kind: delta (normal), snapshot resync (warning), error frames (danger).
         values: (value) => [value.delta, value.snapshot, value.error],
         describeValue: ({ value, format }) => {
@@ -547,6 +662,16 @@ const meterRowInputs: readonly MeterRowInput[] = [
       const { delta, snapshot, error } = found.value
       return `${delta + snapshot + error} msg/s (delta ${delta} · snapshot ${snapshot} · error ${error})`
     },
+    freshness: messageFreshness,
+    rangeIn: ({ store, atMs, windowMs }) =>
+      boundsText({
+        view: store.read({ series: recordingSeries.messages }),
+        atMs,
+        windowMs,
+        project: (value) => value.delta + value.snapshot + value.error,
+        format: integer,
+        unit: 'msg/s',
+      }),
   },
   {
     shortLabel: 'ws',
@@ -563,6 +688,20 @@ const meterRowInputs: readonly MeterRowInput[] = [
     readoutAt: ({ store, atMs }) =>
       sampleAt({ view: store.read({ series: recordingSeries.websocket }), atMs })?.value.label ??
       'n/a',
+    freshness: messageFreshness,
+    rangeIn: ({ store, atMs, windowMs }) => {
+      const view = store.read({ series: recordingSeries.websocket })
+      const changes = valuesWithin({ view, atMs, windowMs })
+      const entered = sampleAt({ view, atMs: atMs - windowMs })
+      const states = [
+        ...new Set([
+          ...(entered === undefined ? [] : [entered.value.label]),
+          ...changes.toReversed().map((change) => change.label),
+        ]),
+      ]
+      if (states.length === 0) return undefined
+      return `${states.join(' / ')} · ${changes.length} change${changes.length === 1 ? '' : 's'}`
+    },
   },
   {
     shortLabel: 'http',
@@ -576,7 +715,7 @@ const meterRowInputs: readonly MeterRowInput[] = [
           series: recordingSeries.httpLatency,
           shortLabel: 'http',
           widthPx: segmentWidthPx,
-          staleAfterMs: gaugeStaleAfterMs,
+          // Staleness lives in the strip header (`withStripHeader`), not over the plot.
           // p50 band (normal) with the p50→p95 tail stacked on top (painted neutral).
           values: (value) => [value.p50Ms, Math.max(0, value.p95Ms - value.p50Ms)],
           describeValue: ({ value, format }) =>
@@ -606,6 +745,16 @@ const meterRowInputs: readonly MeterRowInput[] = [
       const statuses = [...new Set(errors.map((error) => error.status))].join('/')
       return `p50 ${found.value.p50Ms} ms · p95 ${found.value.p95Ms} ms${errors.length > 0 ? ` · ${errors.length} failed (${statuses}) in the preceding 1 s` : ''}`
     },
+    freshness: latencyFreshness,
+    rangeIn: ({ store, atMs, windowMs }) =>
+      boundsText({
+        view: store.read({ series: recordingSeries.httpLatency }),
+        atMs,
+        windowMs,
+        project: (value) => value.p95Ms,
+        format: integer,
+        unit: 'ms p95',
+      }),
   },
   {
     shortLabel: 'commit',
@@ -634,6 +783,16 @@ const meterRowInputs: readonly MeterRowInput[] = [
       const worst = Math.max(...commits.map((commit) => commit.actualDurationMs))
       return `${commits.length} commit${commits.length === 1 ? '' : 's'} in the preceding 1 s · worst ${worst.toFixed(1)} ms`
     },
+    freshness: frameFreshness,
+    rangeIn: ({ store, atMs, windowMs }) =>
+      boundsText({
+        view: store.read({ series: recordingSeries.commits }),
+        atMs,
+        windowMs,
+        project: (value) => value.actualDurationMs,
+        format: decimal,
+        unit: 'ms per commit',
+      }),
   },
   {
     shortLabel: 'jank',
@@ -662,6 +821,16 @@ const meterRowInputs: readonly MeterRowInput[] = [
         ? 'none in the preceding 1 s'
         : `${frames.length} long frame${frames.length === 1 ? '' : 's'} · worst ${Math.max(...frames.map((frame) => frame.durationMs))} ms`
     },
+    freshness: frameFreshness,
+    rangeIn: ({ store, atMs, windowMs }) =>
+      boundsText({
+        view: store.read({ series: recordingSeries.longFrames }),
+        atMs,
+        windowMs,
+        project: (value) => value.durationMs,
+        format: integer,
+        unit: 'ms per long frame',
+      }) ?? 'no long frames',
   },
   {
     shortLabel: 'fps',
@@ -686,16 +855,33 @@ const meterRowInputs: readonly MeterRowInput[] = [
         ? 'n/a'
         : `${(1000 / found.value.durationMs).toFixed(0)} fps (frame ${found.value.durationMs} ms)`
     },
+    freshness: frameFreshness,
+    rangeIn: ({ store, atMs, windowMs }) =>
+      boundsText({
+        view: store.read({ series: recordingSeries.frames }),
+        atMs,
+        windowMs,
+        project: (value) => (value.durationMs > 0 ? 1000 / value.durationMs : 0),
+        format: integer,
+        unit: 'fps',
+      }),
   },
 ]
 const meterRows: readonly MeterRow[] = meterRowInputs.map(
   // `row` is a fresh rest object, so attaching the decorated strip spec mutates nothing shared.
   ({ stripLabel, stripValue, ...row }): MeterRow =>
     Object.assign(row, {
-      stripSpec: withStripHeader({ spec: row.spec, label: stripLabel, value: stripValue }),
+      stripSpec: withStripHeader({
+        spec: row.spec,
+        label: stripLabel,
+        value: stripValue,
+        freshness: row.freshness,
+      }),
     }),
 )
 const meterSpecs = meterRows.map((row) => row.spec)
+/** Distinct freshness rules, for the story caption. */
+const freshnessBases = [...new Set(meterRows.map((row) => row.freshness.basis))]
 
 // ---------------------------------------------------------------------------------------------
 // Session + canvas plumbing
@@ -901,7 +1087,8 @@ const styles = stylex.create({
   // Anchored under the axis, outside the plot, so it never hides a row.
   readout: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(19rem, 1fr))',
+    // `min(…, 100%)` keeps one column inside narrow panels instead of overflowing them.
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(19rem, 100%), 1fr))',
     columnGap: '1rem',
     rowGap: '0.125rem',
     margin: 0,
@@ -912,7 +1099,7 @@ const styles = stylex.create({
     lineHeight: 1.45,
     color: devbarTokens.text,
   },
-  readoutEntry: { minWidth: 0 },
+  readoutEntry: { minWidth: 0, overflowWrap: 'anywhere' },
   readoutTerm: { display: 'inline', color: devbarTokens.mutedText, paddingRight: '0.75rem' },
   readoutValue: { display: 'inline', margin: 0 },
   readoutSelected: {
@@ -922,6 +1109,7 @@ const styles = stylex.create({
     outlineColor: devbarTokens.focusRing,
     outlineOffset: '1px',
   },
+  freezeIcon: { display: 'block', flexShrink: 0 },
   srOnly: {
     position: 'absolute',
     width: 1,
@@ -930,10 +1118,9 @@ const styles = stylex.create({
     clipPath: 'inset(50%)',
     whiteSpace: 'nowrap',
   },
-  // Above the 32 px bar, inside the story frame.
+  // Vertical and horizontal offsets come from `anchorFor`: above the Devbar, tile-aligned.
   evidence: {
     position: 'absolute',
-    bottom: '2.5rem',
     zIndex: 201,
     display: 'grid',
     gap: '0.125rem',
@@ -1092,25 +1279,33 @@ const StripSegment = (props: {
   )
 }
 
-/** Where the evidence card sits inside the story frame, aligned with its tile. */
-type CardAnchor = { readonly left: number } | { readonly right: number }
+/** Where the evidence card sits inside the story frame: above the whole Devbar, tile-aligned. */
+type CardAnchor = { readonly bottom: number } & (
+  | { readonly left: number }
+  | { readonly right: number }
+)
 
 const anchorFor = (tile: HTMLElement): CardAnchor => {
   const frame = tile.closest('section')
-  if (frame === null) return { left: 0 }
+  if (frame === null) return { bottom: 0, left: 0 }
   const outer = frame.getBoundingClientRect()
   const inner = tile.getBoundingClientRect()
+  // Above the open panel too, so the card never covers the Timeline readout.
+  const devbarTop = (tile.closest('aside') ?? tile).getBoundingClientRect().top
+  const bottom = Math.max(0, outer.bottom - devbarTop + 4)
   return inner.left + inner.width / 2 > outer.left + outer.width / 2
-    ? { right: Math.max(0, outer.right - inner.right) }
-    : { left: Math.max(0, inner.left - outer.left) }
+    ? { bottom, right: Math.max(0, outer.right - inner.right) }
+    : { bottom, left: Math.max(0, inner.left - outer.left) }
 }
 
 interface Inspection {
   readonly id: string
   readonly trigger: InspectTrigger
   readonly evidence: BlockEvidence
+  /** Q19 range over the history window ending at the evaluation instant. */
+  readonly range: string | undefined
   readonly frozen: boolean
-  readonly anchor: CardAnchor
+  readonly tile: HTMLElement
 }
 
 const latestText = (evidence: BlockEvidence): string => {
@@ -1139,14 +1334,27 @@ const triggerText: Record<InspectTrigger, string> = {
 const EvidenceCard = (props: {
   readonly id: string
   readonly inspection: Inspection
+  /** Re-anchor when the Devbar's height changes (panel opened or closed). */
+  readonly panelOpen: boolean
 }): React.ReactNode => {
-  const { evidence, trigger, frozen, anchor } = props.inspection
+  const { evidence, trigger, frozen, range, tile } = props.inspection
+  const [anchor, setAnchor] = React.useState<CardAnchor | undefined>(undefined)
+  React.useLayoutEffect(() => setAnchor(anchorFor(tile)), [tile, props.panelOpen])
   return (
-    <div id={props.id} role="tooltip" style={anchor} {...stylex.props(styles.evidence)}>
+    <div
+      id={props.id}
+      role="tooltip"
+      style={anchor ?? { visibility: 'hidden' }}
+      {...stylex.props(styles.evidence)}
+    >
       <span>
         <span {...stylex.props(styles.evidenceTitle)}>{evidence.label}</span> {evidence.text}
       </span>
       <span>{latestText(evidence)}</span>
+      <span>
+        range over the {seconds(historyMs)} before evaluation:{' '}
+        {range ?? 'no samples in this window'}
+      </span>
       <span {...stylex.props(styles.muted)}>
         evaluated at replay clock {seconds(evidence.evaluatedAtMs)}
         {frozen === true ? ' (frozen)' : ''} · revision {evidence.revision}
@@ -1350,14 +1558,42 @@ const TimelineCanvas = (props: {
     label: row.shortLabel,
     text: row.readoutAt({ store: meters.store, atMs: readAtMs }),
   }))
-  // One debounced live line for the whole readout; it follows crosshair moves, not clock ticks.
-  const summary = `${atText}: ${entries.map((entry) => `${entry.label} ${entry.text}`).join('; ')}`
-  const summaryRef = React.useRef(summary)
-  summaryRef.current = summary
+  // Home snaps to the first retained sample (of the linked row when there is one) instead of an
+  // all-n/a left edge.
+  const linkedIndex = rows.findIndex((row) => row.spec.id === highlightId)
+  const homeReaders = linkedIndex === -1 ? readers : readers.slice(linkedIndex, linkedIndex + 1)
+  const oldestAtMs = Math.min(
+    ...homeReaders.map(
+      (reader) => reader.evidence({ nowMs: evaluatedAtMs }).retention.oldestAtMs ?? Infinity,
+    ),
+  )
+  const firstSampleBeforeS =
+    Number.isFinite(oldestAtMs) === true
+      ? Math.max(0, Math.min(historyS, Math.floor((evaluatedAtMs - oldestAtMs) / 100) / 10))
+      : historyS
+  // One debounced live line per crosshair move: the time once, then only the linked row, or
+  // (with no linked row) the rows whose value changed since the previous announcement.
+  const pending = React.useRef({ atText, entries, highlightId })
+  pending.current = { atText, entries, highlightId }
+  const announced = React.useRef<ReadonlyMap<string, string> | undefined>(undefined)
   const [announcement, setAnnouncement] = React.useState('')
   React.useEffect(() => {
     if (cursorBeforeS === undefined) return undefined
-    const timer = setTimeout(() => setAnnouncement(summaryRef.current), 500)
+    const timer = setTimeout(() => {
+      const { atText: at, entries: current, highlightId: linkedId } = pending.current
+      const previous = announced.current
+      const linked = current.find((entry) => entry.id === linkedId)
+      const spoken =
+        linked !== undefined
+          ? [linked]
+          : current.filter((entry) => previous?.get(entry.id) !== entry.text)
+      announced.current = new Map(current.map((entry) => [entry.id, entry.text]))
+      setAnnouncement(
+        spoken.length === 0
+          ? `${at}, no change`
+          : `${at}: ${spoken.map((entry) => `${entry.label} ${entry.text}`).join('; ')}`,
+      )
+    }, 500)
     return () => clearTimeout(timer)
   }, [cursorBeforeS])
   const helpId = `${props.id}-help`
@@ -1396,7 +1632,7 @@ const TimelineCanvas = (props: {
                   : event.key === 'PageUp'
                     ? from - coarseStepS
                     : event.key === 'Home'
-                      ? historyS
+                      ? firstSampleBeforeS
                       : event.key === 'End'
                         ? 0
                         : undefined
@@ -1416,7 +1652,7 @@ const TimelineCanvas = (props: {
       <span id={helpId} {...stylex.props(styles.srOnly)}>
         {rows.map((row) => row.spec.label).join(', ')} over the {historyS} s before evaluation on
         one shared time axis. Arrow keys move the crosshair {fineStepS} s, Shift+Arrow or Page
-        Up/Down {coarseStepS} s, Home and End jump to the oldest sample and the evaluation instant,
+        Up/Down {coarseStepS} s, Home and End jump to the first sample and the evaluation instant,
         Escape clears it.
       </span>
       <dl {...stylex.props(styles.readout)}>
@@ -1503,12 +1739,14 @@ const VariantDevbar = (
     const row = meterRows.find((item) => item.spec.id === options.id)
     if (row === undefined) return
     const reader = frozenReaders?.get(row.spec.id) ?? row.spec.read(meters.store)
+    const atMs = frozenAtMs ?? meters.clock.now()
     setInspection({
       id: row.spec.id,
       trigger: options.trigger,
-      evidence: reader.evidence({ nowMs: frozenAtMs ?? meters.clock.now() }),
+      evidence: reader.evidence({ nowMs: atMs }),
+      range: row.rangeIn({ store: meters.store, atMs, windowMs: historyMs }),
       frozen: frozenAtMs !== undefined,
-      anchor: anchorFor(options.tile),
+      tile: options.tile,
     })
   }
   const dismiss = (options: { readonly trigger: 'focus' | 'hover' | 'escape' }): void =>
@@ -1575,23 +1813,50 @@ const VariantDevbar = (
     setOpenPanel(detailPanel)
   }
   const expanded = openPanel === detailPanel
+  // Below 900 px the toggle collapses to an icon; its accessible name stays the same.
+  const compactFreeze = (widths.find((item) => item.id === props.width)?.px ?? 1440) < 900
+  const freezeName = 'Freeze meters'
   const freezeSegment: DevbarSegment = {
-    id: 'meters.freeze',
+    id: 'Freeze meters',
     priority: 7,
     render: () => (
       <button
         type="button"
         aria-pressed={frozenAtMs !== undefined}
+        aria-label={compactFreeze === true ? freezeName : undefined}
+        title={
+          compactFreeze === true
+            ? frozenAtMs === undefined
+              ? freezeName
+              : `Frozen at replay clock ${seconds(frozenAtMs)}`
+            : undefined
+        }
         onClick={() =>
           setFrozenAtMs((current) => (current === undefined ? meters.clock.now() : undefined))
         }
         {...stylex.props(styles.segmentButton, frozenAtMs !== undefined && styles.pressed)}
       >
-        <span {...stylex.props(styles.segmentLabel)}>
-          {frozenAtMs === undefined ? 'freeze' : 'frozen at'}
-        </span>
-        {frozenAtMs !== undefined && (
-          <span {...stylex.props(styles.segmentValue)}>{seconds(frozenAtMs)}</span>
+        {compactFreeze === true ? (
+          <svg
+            aria-hidden="true"
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="currentColor"
+            {...stylex.props(styles.freezeIcon)}
+          >
+            <rect x="2" y="1.5" width="3" height="9" rx="0.5" />
+            <rect x="7" y="1.5" width="3" height="9" rx="0.5" />
+          </svg>
+        ) : (
+          <>
+            <span {...stylex.props(styles.segmentLabel)}>
+              {frozenAtMs === undefined ? 'freeze' : 'frozen at'}
+            </span>
+            {frozenAtMs !== undefined && (
+              <span {...stylex.props(styles.segmentValue)}>{seconds(frozenAtMs)}</span>
+            )}
+          </>
         )}
       </button>
     ),
@@ -1600,7 +1865,8 @@ const VariantDevbar = (
     ...(variant === 'B' ? [] : [freezeSegment]),
     ...meterRows.map(
       (row): DevbarSegment => ({
-        id: row.spec.id,
+        // Devbar names hidden segments by ID in its +N trigger, so IDs are display names.
+        id: row.spec.label,
         priority: row.priority,
         render: () =>
           variant === 'B' ? (
@@ -1624,11 +1890,17 @@ const VariantDevbar = (
           ),
       }),
     ),
-    { id: 'api.subscriptions', priority: 5, render: () => <SubscriptionsText meters={meters} /> },
+    {
+      id: 'Live subscriptions',
+      priority: 5,
+      render: () => <SubscriptionsText meters={meters} />,
+    },
   ]
   return (
     <>
-      {inspection !== undefined && <EvidenceCard id={cardId} inspection={inspection} />}
+      {inspection !== undefined && (
+        <EvidenceCard id={cardId} inspection={inspection} panelOpen={openPanel !== undefined} />
+      )}
       <Devbar
         placement="container"
         panels={panels}
@@ -1641,7 +1913,8 @@ const VariantDevbar = (
   )
 }
 
-const defaultFrameHeightPx = 600
+/** Room for the caption, an evidence card above the open panel, the panel and the bar. */
+const defaultFrameHeightPx = 680
 
 const MeterVariants = (props: MeterVariantsProps): React.ReactNode => {
   const meters = useReplayMeters({ playback: props.playback, scenario: props.scenario })
@@ -1666,7 +1939,9 @@ const MeterVariants = (props: MeterVariantsProps): React.ReactNode => {
             .map((phase) => `${phase.label} ${phase.fromMs / 1000}–${phase.toMs / 1000} s`)
             .join(', ')}
           . Msg bars stack delta / snapshot, red ticks are message errors; HTTP shows p50 with a
-          muted p95 tail, red ticks are failed requests; ↻ marks a WebSocket recovery.
+          muted p95 tail, red ticks are failed requests; ↻ marks a WebSocket recovery. A tile dims
+          and reads “stale Ns” (N s since its source’s last observation before evaluation) past:{' '}
+          {freshnessBases.join('; ')}.
         </span>
       </p>
       {meters !== undefined && (
@@ -1847,7 +2122,7 @@ export const AllStates: Story = {
             {...args}
             width="W1440"
             panelOpen={false}
-            heightPx={240}
+            heightPx={300}
             {...frame.props}
             dark={context.globals['theme'] === 'dark'}
           />
