@@ -595,6 +595,36 @@ ${packageFields}`,
 })
 
 describe('pnpm sha256 sidecar', () => {
+  it('preserves canonical key order and serialized bytes when decoding a fresh sidecar', async () => {
+    const metadata = translatePnpmLock({
+      lockfileText: lock({
+        packages: `  bar@2.0.0:
+    resolution: {integrity: ${archiveIntegrity}}`,
+        snapshots: '  bar@2.0.0: {}',
+        importers: '  .: {}',
+      }),
+      workspaceText: workspace(),
+    })
+    const fresh = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async () => archive,
+    })
+    const serialized = JSON.stringify(fresh)
+    const cached = decodePnpmSha256Sidecar(JSON.parse(serialized))
+
+    expect(Object.keys(fresh)).toEqual([
+      'schema',
+      'lockfileFingerprint',
+      'packages',
+      'source',
+      'generator',
+      'regenerate',
+      'fingerprint',
+    ])
+    expect(Object.keys(cached)).toEqual(Object.keys(fresh))
+    expect(JSON.stringify(cached)).toBe(serialized)
+  })
+
   it('verifies sha512 before deriving sha256 and reuses integrity-matched entries', async () => {
     const metadata = translatePnpmLock({
       lockfileText: lock({

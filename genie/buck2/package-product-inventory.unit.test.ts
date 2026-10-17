@@ -16,6 +16,30 @@ const contentAddress = {
 const effectRust = { name: '@overeng/effect-rust' }
 
 describe('published package product inventory', () => {
+  it('publishes data-graph alongside its runtime package dependency closure', () => {
+    for (const name of ['@overeng/data-graph', '@overeng/content-address', '@overeng/effect-rust']) {
+      expect(cacheTargets.data).toContainEqual({
+        buildCapabilities: [
+          'action-env',
+          'archive-tool',
+          'buck2-fingerprint',
+          'bun',
+          'effect-tsgo',
+          'product',
+          'rust-shell',
+        ],
+        kind: 'package',
+        linuxBuildCapabilities: ['bubblewrap'],
+        name,
+        outputName: `${name.replace('@', '').replace('/', '-')}.tgz`,
+        packagePath: `packages/${name}`,
+        packageTreePath: `packages/${name}`,
+        target: `effect_utils//packages/${name}:dist-package`,
+        version: '0.1.0',
+      })
+    }
+  })
+
   it('publishes the content-address runtime dependency as a package product', () => {
     expect(cacheTargets.data).toContainEqual({
       buildCapabilities: [

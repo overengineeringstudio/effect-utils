@@ -40,6 +40,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
 import * as Observability from '../core/observability.ts'
+import type { GitWriterLockError } from './git-writer-lock.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
 
 /** Relative directory name of the per-repo archive holding area. */
@@ -163,7 +164,7 @@ export const archiveWorktree = (args: {
   readonly now: number
 }): Effect.Effect<
   ArchiveOutcome,
-  Git.GitCommandError | PlatformError,
+  Git.GitCommandError | GitWriterLockError | PlatformError,
   FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
@@ -259,7 +260,7 @@ export const archiveRefMismatchWorktree = (args: {
   readonly now: number
 }): Effect.Effect<
   ArchiveOutcome,
-  Git.GitCommandError | PlatformError,
+  Git.GitCommandError | GitWriterLockError | PlatformError,
   FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
@@ -331,7 +332,7 @@ export const scanArchives = (args: {
   readonly bareRepoPath: AbsoluteDirPath
 }): Effect.Effect<
   ReadonlyArray<ArchiveEntry>,
-  Git.GitCommandError | PlatformError,
+  Git.GitCommandError | GitWriterLockError | PlatformError,
   ChildProcessSpawner
 > =>
   Effect.gen(function* () {
@@ -382,7 +383,7 @@ export const reapArchive = (args: {
   readonly path: AbsoluteDirPath
 }): Effect.Effect<
   void,
-  Git.GitCommandError | PlatformError,
+  Git.GitCommandError | GitWriterLockError | PlatformError,
   FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {

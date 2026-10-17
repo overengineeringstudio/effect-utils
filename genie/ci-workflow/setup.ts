@@ -28,6 +28,8 @@ import {
   ciPnpmStore,
   ciCompositionStateRoot,
   withCiSourceRoot,
+  linuxNixSandboxFallbackConf,
+  linuxSandboxAdmissionStepId,
 } from './shared.ts'
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
@@ -248,6 +250,7 @@ export const installNixStep = (opts?: {
       renderBinaryCachesExtraConf(opts?.binaryCaches ?? []),
       `access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}`,
       ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
+      linuxNixSandboxFallbackConf,
     ].join('\n'),
     summarize: opts?.summarize ?? true,
   },
@@ -259,6 +262,7 @@ export const installNixStep = (opts?: {
  */
 export const linuxSandboxPrerequisitesStep = ({ privileged }: { privileged: NamespacePrivilege }) =>
   ({
+    id: linuxSandboxAdmissionStepId,
     name: 'Log Linux sandbox prerequisites',
     if: "${{ runner.os == 'Linux' }}",
     shell: 'bash',

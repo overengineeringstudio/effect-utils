@@ -2,6 +2,10 @@
 
 An Effect 4 graph execution contract and filesystem adapter over `@overeng/content-address`. Consumers supply topology, recipes, canonical scope JSON, output bytes, and acceptance policy. The graph does not interpret domain data.
 
+## Package distribution
+
+`@overeng/data-graph` is admitted to the Buck/Nix package-product inventory alongside `@overeng/content-address` and `@overeng/effect-rust`. Package archives resolve workspace dependency ranges to sibling package versions, so artifact-only consumers do not need workspace source edges. The normal publisher on `main` produces the cached artifact and `nix/buck2-products/manifest.json`; inventory admission alone does not publish an artifact.
+
 ## Identity and execution
 
 A `NodeDef` is a `Derive` or `Observe` template with a non-empty branded `kind`, named outputs, scope-dependent static named inputs, a recipe, and an Effect executor. A `NodeRef` binds an instance scope and one output. Node identity is canonical JSON of `{ kind, scope }`; selecting an output does not change identity. Dependencies are declared before execution, never discovered by the executor. Cycles, conflicting definitions, and invalid output sets fail explicitly.
@@ -57,8 +61,30 @@ Durable Workflow execution, retries, background scheduling, dynamic dependencies
 
 `getSelectionStatus(ref)` is a read-only, serialized snapshot of selected-head acceptance and the latest durable attempt. It computes the current recipe/input action from selected upstream heads without executing nodes, propagates stale upstream acceptance, and returns `Missing`, `Current`, or `StaleAction`. A selected historical head is not current acceptance after an action change. `latestAttempt` survives layer/process restart through a `data-graph/attempts/<node identity digest hex>` pin targeting a status manifest. Failed/rejected attempts retain their action, reason and attempt manifest; successful selections replace the status with `Accepted`. Status and head pins are individually atomic, not transactional.
 
+Both materialization and selection-status traversal reject distinct node definition objects with the same kind before reusing a memoized node result. Repeated references to the same definition are valid; a conflicting graph cannot report current acceptance or authorize freshness.
+
 Status reads decode the latest action and attempt manifests and verify their recipe, input, status, and receipt objects, even when the attempted action differs from both the historical selected action and the current recipe/input action. Missing or corrupt attempt evidence fails closed rather than returning a successful persisted rejection.
 
 `checkFreshness({ status, now, maxAge })` is a read/publication gate: only current acceptance with an unexpired selected-head confirmation passes. Expiry is evaluated without graph execution. Serving historical content after rejection is an explicit consumer choice, not implicit renewed acceptance.
 
 `planRefresh({ now, heads, policy, compareTiers, budget })` uses a consumer-supplied observation inventory. Policy returns `{ tier, maxAge }`; tier is opaque, and `compareTiers` supplies its priority (negative means the left tier is scheduled first). Stale requests rank by tier priority, then overdue age, then NodeId, within the integer budget. Planning neither reads storage nor executes nodes.
+
+## Crash recovery and scale evidence
+
+`src/recovery.integration.test.ts` interrupts publication at the action/head pin boundaries while retaining real immutable filesystem writes. It checks that unpinned objects are not selected, deterministic action-only publication recovers without executing again, and a corrupted published materialization fails closed without selecting a head.
+
+`src/scale.integration.test.ts` exercises 1,000 generic opaque observation scopes plus one deterministic aggregate in the default CI suite. It records cold build, warm all-`Reused` pull, persisted-head inventory reading, and tier-prioritized `planRefresh` timings. There is no SQLite index. The 10,000-scope case is runnable but opt-in:
+
+```sh
+DATA_GRAPH_SCALE_10K=1 CI=1 ../../../node_modules/.bin/vitest run src/scale.integration.test.ts --config vitest.config.ts -t 'benchmarks 10k'
+```
+
+Timings are printed by the actual run; they are workload/environment observations, not portable performance guarantees.
+
+### Warm pull integrity and bounded work
+
+Node resolution is memoized by NodeId within each pull, including multiple references to a shared upstream. Internal immutable CAS reads are verified once per complete descriptor per pull and retained only for that pull; executor-facing `GraphStore.get` remains uncached. A fresh pull re-verifies objects, so corruption cannot hide behind a previous cache hit. Descriptor metadata participates in the memoization key, not only the digest.
+
+Recipe/action descriptors are computed without publishing objects during selection/cache lookup. Their bytes/manifests are persisted only when execution is needed. Reusing the already selected deterministic materialization does not rewrite its recipe/action objects, head, or status pins. This both removes redundant warm I/O and prevents action construction from repairing a corrupt selected action before it is checked. Cache hits still verify manifest closure, declared output set, action binding, and content integrity.
+
+The scale test profiles warm CAS reads, unique read digests, immutable object writes, pins, and pin lookups. `src/cache.integration.test.ts` checks once-per-pull verification, shared-input resolution, zero warm publications, and fail-closed output/action corruption on subsequent pulls. Warm profiling is linear in nodes and declared edges; an index remains outside this contract.

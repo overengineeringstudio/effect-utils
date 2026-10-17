@@ -223,13 +223,26 @@ export const actionKey = ({
     schemaVersion: 1,
   }).digest
 const decoder = new TextDecoder()
+/** Internal immutable reads only; executor GraphStore.get remains uncached. */
+class PullReads extends Context.Service<PullReads, Map<string, Uint8Array>>()(
+  'DataGraph.PullReads',
+) {}
+const readVerified = Effect.fn('DataGraph.readVerified')(function* (descriptor: ContentDescriptor) {
+  const store = yield* GraphStore
+  const reads = yield* Effect.serviceOption(PullReads)
+  const identity = canonicalJsonString({ schema: ContentDescriptor, value: descriptor })
+  const cached = Option.isSome(reads) === true ? reads.value.get(identity) : undefined
+  if (cached !== undefined) return cached
+  const bytes = yield* store.get(descriptor)
+  if (Option.isSome(reads) === true) reads.value.set(identity, bytes)
+  return bytes
+})
 const readJson = Effect.fn('DataGraph.readJson')(function* <TSchema extends Schema.Codec<unknown>>(
   schema: TSchema,
   descriptor: ContentDescriptor,
 ) {
-  const store = yield* GraphStore
   return yield* Schema.decodeEffect(Schema.fromJsonString(schema))(
-    decoder.decode(yield* store.get(descriptor)),
+    decoder.decode(yield* readVerified(descriptor)),
   )
 })
 /** Persists canonical JSON with its schema before exposing its descriptor. */
@@ -374,7 +387,6 @@ const readOutputs = Effect.fn('DataGraph.readOutputs')(function* (
   kind: NodeKind,
   action?: ContentDescriptor,
 ) {
-  const store = yield* GraphStore
   const record = yield* readJson(ContentManifest, descriptor)
   const boundAction = record.entries.find((entry) => entry.role === 'action')
   if (
@@ -390,10 +402,10 @@ const readOutputs = Effect.fn('DataGraph.readOutputs')(function* (
   const actionRecord = yield* readJson(ContentManifest, boundAction.descriptor)
   if (actionRecord.role !== 'data-graph.action')
     return yield* new GraphError({ nodeId: kind, message: 'Invalid action manifest' })
-  for (const entry of actionRecord.entries) yield* store.get(entry.descriptor)
+  for (const entry of actionRecord.entries) yield* readVerified(entry.descriptor)
   const outputs: Record<string, ContentDescriptor> = Object.create(null)
   for (const entry of record.entries) {
-    yield* store.get(entry.descriptor)
+    yield* readVerified(entry.descriptor)
     if (entry.role === 'output' && entry.logicalPath !== undefined) {
       if (Object.hasOwn(outputs, entry.logicalPath) === true)
         return yield* new GraphError({
@@ -420,6 +432,23 @@ const outputsOf = Effect.fn('DataGraph.outputsOf')(function* (
     })
   return outputs
 })
+
+/** Validate each reference before identity-based memoization can hide a conflicting definition. */
+const registerDefinition = ({
+  definitions,
+  node,
+  id,
+}: {
+  definitions: Map<NodeKind, NodeDef>
+  node: NodeDef
+  id: string
+}): GraphError | undefined => {
+  const registered = definitions.get(node.kind)
+  if (registered !== undefined && registered !== node)
+    return new GraphError({ nodeId: id, message: 'Conflicting definitions for one node kind' })
+  definitions.set(node.kind, node)
+  return undefined
+}
 
 /** Serialized pull; explicit refresh IDs authorize observations, never time-based hashes. */
 const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function* (
@@ -448,10 +477,8 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
         ) === true
       )
         return yield* invalid('Output names must be unique, non-empty, trimmed strings without NUL')
-      const registered = definitions.get(node.kind)
-      if (registered !== undefined && registered !== node)
-        return yield* invalid('Conflicting definitions for one node kind')
-      definitions.set(node.kind, node)
+      const conflict = registerDefinition({ definitions, node, id })
+      if (conflict !== undefined) return yield* conflict
       if (visiting.has(id) === true) return yield* invalid('Declared dependency cycle')
       const previousResult = completed.get(id)
       if (previousResult !== undefined) return previousResult
@@ -470,10 +497,17 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
       }
       const recipe = node.recipe(scope)
       if (recipe.kind !== node.kind) return yield* invalid('Recipe kind must match node kind')
-      const recipeDescriptor = yield* writeJson(Recipe, recipe)
-      const action = yield* store.manifest(
-        actionManifest({ recipe: recipeDescriptor, inputs: inputs }),
-      )
+      const recipeDescriptor = descriptorForCanonicalJson({
+        schema: Recipe,
+        value: recipe,
+        schemaVersion: 1,
+      })
+      const actionRecord = actionManifest({ recipe: recipeDescriptor, inputs })
+      const action = descriptorForCanonicalJson({
+        schema: ContentManifest,
+        value: actionRecord,
+        schemaVersion: 1,
+      })
       const previous = yield* getHead(key)
       const finish = ({
         outcome,
@@ -513,12 +547,19 @@ const materializeUnlocked = Effect.fn('DataGraph.materializeUnlocked')(function*
         const cached = yield* store.lookup(`data-graph/actions/${hex(action.digest)}`)
         if (Option.isSome(cached) === true) {
           const outputs = yield* outputsOf(cached.value, node, action)
-          yield* selectHead(
-            Head.make({ schemaVersion: 1, key, action, materialization: cached.value }),
+          if (
+            Option.isNone(previous) === true ||
+            previous.value.action.digest !== action.digest ||
+            previous.value.materialization.digest !== cached.value.digest
           )
-          return finish({ outcome: { _tag: 'Reused' }, descriptor: cached.value, outputs: outputs })
+            yield* selectHead(
+              Head.make({ schemaVersion: 1, key, action, materialization: cached.value }),
+            )
+          return finish({ outcome: { _tag: 'Reused' }, descriptor: cached.value, outputs })
         }
       }
+      yield* writeJson(Recipe, recipe)
+      yield* store.manifest(actionRecord)
       const execution = yield* node.execute({ scope, inputs }).pipe(Effect.result)
       if (execution._tag === 'Failure') {
         yield* recordAttempt(key, action, 'Failed', String(execution.failure), [])
@@ -611,7 +652,11 @@ export const materialize = Effect.fn('DataGraph.materialize')(function* (
   options: { readonly refresh?: ReadonlyArray<string> } = {},
 ) {
   const store = yield* GraphStore
-  return yield* store.withWriteLock(materializeUnlocked(target, options))
+  return yield* store.withWriteLock(
+    Effect.suspend(() =>
+      materializeUnlocked(target, options).pipe(Effect.provideService(PullReads, new Map())),
+    ),
+  )
 })
 
 /** Read-only comparison of current action identity with the durable selected head. */
@@ -629,11 +674,14 @@ export const getSelectionStatus = Effect.fn('DataGraph.getSelectionStatus')(func
   const store = yield* GraphStore
   const visiting = new Set<string>()
   const completed = new Map<string, SelectionStatus>()
+  const definitions = new Map<NodeKind, NodeDef>()
   const visit = (reference: NodeRef): Effect.Effect<SelectionStatus, GraphFailure, GraphStore> =>
     Effect.gen(function* () {
       const { node, scope } = reference
       const key = { kind: node.kind, scope }
       const id = nodeId(key)
+      const conflict = registerDefinition({ definitions, node, id })
+      if (conflict !== undefined) return yield* conflict
       if (visiting.has(id) === true)
         return yield* new GraphError({ nodeId: id, message: 'Declared dependency cycle' })
       const prior = completed.get(id)

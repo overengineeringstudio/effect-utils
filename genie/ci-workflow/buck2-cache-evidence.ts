@@ -1,4 +1,5 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { ciJobAdmission, withCiAdmissionCleanup } from './shared.ts'
 
 /** Retain compact and complete native cache evidence independently of tailnet/OTLP delivery. */
 export const withBuck2CacheEvidence = (
@@ -11,8 +12,9 @@ export const withBuck2CacheEvidence = (
         (step) => 'uses' in step && step.uses.startsWith('actions/checkout@'),
       )
       if (checkout < 0) return [jobId, job]
+      const admission = ciJobAdmission(steps)
       const matrix = job.strategy !== undefined && 'matrix' in job.strategy
-      steps.splice(checkout + 1, 0, {
+      steps.splice(Math.max(checkout, admission.after) + 1, 0, {
         name: 'Start Buck2 cache evidence window',
         shell: 'bash',
         run: [
@@ -88,7 +90,7 @@ export const withBuck2CacheEvidence = (
                 ? '1'
                 : '0',
           },
-          steps,
+          steps: withCiAdmissionCleanup(steps),
         },
       ]
     }),

@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:a8e5fabdd3e47dc402b0891ac1360dc6842fa22ffb8ec380ea0c7eea2ef4ffd4
+# Semantic fingerprint: sha256:e880eae39e60c77789465cc25b61c1b66970f8117bccee928509c0102b2fb738
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -170,6 +170,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/commands/pin.ts": "//packages/@overeng/megarepo:src/cli/commands/pin.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/root.ts": "//packages/@overeng/megarepo:src/cli/commands/root.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/status.ts": "//packages/@overeng/megarepo:src/cli/commands/status.ts",
+        "node_modules/@overeng/megarepo/src/cli/commands/store/lock.ts": "//packages/@overeng/megarepo:src/cli/commands/store/lock.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/store/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/store/mod.ts",
         "node_modules/@overeng/megarepo/src/cli/components/Header.stories.tsx": "//packages/@overeng/megarepo:src/cli/components/Header.stories.tsx",
         "node_modules/@overeng/megarepo/src/cli/components/Header.tsx": "//packages/@overeng/megarepo:src/cli/components/Header.tsx",
@@ -344,6 +345,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/megarepo.contract.ts": "//packages/@overeng/megarepo:src/megarepo.contract.ts",
         "node_modules/@overeng/megarepo/src/mod.ts": "//packages/@overeng/megarepo:src/mod.ts",
         "node_modules/@overeng/megarepo/src/nix.contract.ts": "//packages/@overeng/megarepo:src/nix.contract.ts",
+        "node_modules/@overeng/megarepo/src/store/git-writer-lock.integration.test.ts": "//packages/@overeng/megarepo:src/store/git-writer-lock.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/git-writer-lock.ts": "//packages/@overeng/megarepo:src/store/git-writer-lock.ts",
         "node_modules/@overeng/megarepo/src/store/store-archive.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-archive.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-archive.ts": "//packages/@overeng/megarepo:src/store/store-archive.ts",
         "node_modules/@overeng/megarepo/src/store/store-branch-worktree.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-branch-worktree.integration.test.ts",
@@ -390,6 +393,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/sync/types.ts": "//packages/@overeng/megarepo:src/sync/types.ts",
         "node_modules/@overeng/megarepo/src/test-utils/consoleCapture.ts": "//packages/@overeng/megarepo:src/test-utils/consoleCapture.ts",
         "node_modules/@overeng/megarepo/src/test-utils/git-env-setup.ts": "//packages/@overeng/megarepo:src/test-utils/git-env-setup.ts",
+        "node_modules/@overeng/megarepo/src/test-utils/git-writer-lock-worker.ts": "//packages/@overeng/megarepo:src/test-utils/git-writer-lock-worker.ts",
         "node_modules/@overeng/megarepo/src/test-utils/json.ts": "//packages/@overeng/megarepo:src/test-utils/json.ts",
         "node_modules/@overeng/megarepo/src/test-utils/memory-probe.ts": "//packages/@overeng/megarepo:src/test-utils/memory-probe.ts",
         "node_modules/@overeng/megarepo/src/test-utils/mod.ts": "//packages/@overeng/megarepo:src/test-utils/mod.ts",
@@ -538,6 +542,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/commands/pin.ts": "//packages/@overeng/megarepo:src/cli/commands/pin.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/root.ts": "//packages/@overeng/megarepo:src/cli/commands/root.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/status.ts": "//packages/@overeng/megarepo:src/cli/commands/status.ts",
+        "node_modules/@overeng/megarepo/src/cli/commands/store/lock.ts": "//packages/@overeng/megarepo:src/cli/commands/store/lock.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/store/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/store/mod.ts",
         "node_modules/@overeng/megarepo/src/cli/components/Header.stories.tsx": "//packages/@overeng/megarepo:src/cli/components/Header.stories.tsx",
         "node_modules/@overeng/megarepo/src/cli/components/Header.tsx": "//packages/@overeng/megarepo:src/cli/components/Header.tsx",
@@ -712,6 +717,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/megarepo.contract.ts": "//packages/@overeng/megarepo:src/megarepo.contract.ts",
         "node_modules/@overeng/megarepo/src/mod.ts": "//packages/@overeng/megarepo:src/mod.ts",
         "node_modules/@overeng/megarepo/src/nix.contract.ts": "//packages/@overeng/megarepo:src/nix.contract.ts",
+        "node_modules/@overeng/megarepo/src/store/git-writer-lock.integration.test.ts": "//packages/@overeng/megarepo:src/store/git-writer-lock.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/git-writer-lock.ts": "//packages/@overeng/megarepo:src/store/git-writer-lock.ts",
         "node_modules/@overeng/megarepo/src/store/store-archive.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-archive.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-archive.ts": "//packages/@overeng/megarepo:src/store/store-archive.ts",
         "node_modules/@overeng/megarepo/src/store/store-branch-worktree.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-branch-worktree.integration.test.ts",
@@ -758,6 +765,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/sync/types.ts": "//packages/@overeng/megarepo:src/sync/types.ts",
         "node_modules/@overeng/megarepo/src/test-utils/consoleCapture.ts": "//packages/@overeng/megarepo:src/test-utils/consoleCapture.ts",
         "node_modules/@overeng/megarepo/src/test-utils/git-env-setup.ts": "//packages/@overeng/megarepo:src/test-utils/git-env-setup.ts",
+        "node_modules/@overeng/megarepo/src/test-utils/git-writer-lock-worker.ts": "//packages/@overeng/megarepo:src/test-utils/git-writer-lock-worker.ts",
         "node_modules/@overeng/megarepo/src/test-utils/json.ts": "//packages/@overeng/megarepo:src/test-utils/json.ts",
         "node_modules/@overeng/megarepo/src/test-utils/memory-probe.ts": "//packages/@overeng/megarepo:src/test-utils/memory-probe.ts",
         "node_modules/@overeng/megarepo/src/test-utils/mod.ts": "//packages/@overeng/megarepo:src/test-utils/mod.ts",
@@ -906,6 +914,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/commands/pin.ts": "//packages/@overeng/megarepo:src/cli/commands/pin.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/root.ts": "//packages/@overeng/megarepo:src/cli/commands/root.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/status.ts": "//packages/@overeng/megarepo:src/cli/commands/status.ts",
+        "node_modules/@overeng/megarepo/src/cli/commands/store/lock.ts": "//packages/@overeng/megarepo:src/cli/commands/store/lock.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/store/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/store/mod.ts",
         "node_modules/@overeng/megarepo/src/cli/components/Header.stories.tsx": "//packages/@overeng/megarepo:src/cli/components/Header.stories.tsx",
         "node_modules/@overeng/megarepo/src/cli/components/Header.tsx": "//packages/@overeng/megarepo:src/cli/components/Header.tsx",
@@ -1080,6 +1089,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/megarepo.contract.ts": "//packages/@overeng/megarepo:src/megarepo.contract.ts",
         "node_modules/@overeng/megarepo/src/mod.ts": "//packages/@overeng/megarepo:src/mod.ts",
         "node_modules/@overeng/megarepo/src/nix.contract.ts": "//packages/@overeng/megarepo:src/nix.contract.ts",
+        "node_modules/@overeng/megarepo/src/store/git-writer-lock.integration.test.ts": "//packages/@overeng/megarepo:src/store/git-writer-lock.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/git-writer-lock.ts": "//packages/@overeng/megarepo:src/store/git-writer-lock.ts",
         "node_modules/@overeng/megarepo/src/store/store-archive.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-archive.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-archive.ts": "//packages/@overeng/megarepo:src/store/store-archive.ts",
         "node_modules/@overeng/megarepo/src/store/store-branch-worktree.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-branch-worktree.integration.test.ts",
@@ -1126,6 +1137,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/sync/types.ts": "//packages/@overeng/megarepo:src/sync/types.ts",
         "node_modules/@overeng/megarepo/src/test-utils/consoleCapture.ts": "//packages/@overeng/megarepo:src/test-utils/consoleCapture.ts",
         "node_modules/@overeng/megarepo/src/test-utils/git-env-setup.ts": "//packages/@overeng/megarepo:src/test-utils/git-env-setup.ts",
+        "node_modules/@overeng/megarepo/src/test-utils/git-writer-lock-worker.ts": "//packages/@overeng/megarepo:src/test-utils/git-writer-lock-worker.ts",
         "node_modules/@overeng/megarepo/src/test-utils/json.ts": "//packages/@overeng/megarepo:src/test-utils/json.ts",
         "node_modules/@overeng/megarepo/src/test-utils/memory-probe.ts": "//packages/@overeng/megarepo:src/test-utils/memory-probe.ts",
         "node_modules/@overeng/megarepo/src/test-utils/mod.ts": "//packages/@overeng/megarepo:src/test-utils/mod.ts",

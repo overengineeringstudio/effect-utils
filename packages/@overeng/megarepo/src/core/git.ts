@@ -10,8 +10,8 @@ import { link, lstat, open, readFile, rename, unlink } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
 import { Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
-import * as Command from 'effect/process/ChildProcess'
 
+import { startGitWriterProcess, withGitWriterLock } from '../store/git-writer-lock.ts'
 import * as Observability from './observability.ts'
 
 // =============================================================================
@@ -228,11 +228,11 @@ const startGitProcess = ({
   cwd?: string
   env?: Record<string, string>
 }) =>
-  Command.make('git', args, {
-    cwd,
-    ...(env === undefined ? {} : { env, extendEnv: true }),
-    stderr: 'pipe',
-    stdout: 'pipe',
+  startGitWriterProcess({
+    command: 'git',
+    args,
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(env === undefined ? {} : { env }),
   })
 
 /**
@@ -455,7 +455,7 @@ const runGitCommandWithRetry = ({ args, cwd }: { args: ReadonlyArray<string>; cw
 /**
  * Clone a git repository
  */
-export const clone = (args: { url: string; targetPath: string; bare?: boolean }) =>
+const cloneUnlocked = (args: { url: string; targetPath: string; bare?: boolean }) =>
   Effect.gen(function* () {
     const cmdArgs = ['clone']
     if (args.bare === true) {
@@ -472,6 +472,12 @@ export const clone = (args: { url: string; targetPath: string; bare?: boolean })
     }),
   )
 
+/** Clone a repository, serializing shared bare targets by their common-directory identity. */
+export const clone = (args: { url: string; targetPath: string; bare?: boolean }) =>
+  args.bare === true
+    ? cloneUnlocked(args).pipe(withGitWriterLock({ path: args.targetPath, create: true }))
+    : cloneUnlocked(args)
+
 /**
  * Fetch updates from remote
  */
@@ -483,13 +489,19 @@ export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean
     }
     cmdArgs.push(args.remote ?? 'origin')
     yield* runGitCommandWithRetry({ args: cmdArgs, cwd: args.repoPath })
-  }).pipe(Observability.withRepoPathSpan({ name: 'git/fetch', path: args.repoPath }))
+  }).pipe(
+    withGitWriterLock({ path: args.repoPath }),
+    Observability.withRepoPathSpan({ name: 'git/fetch', path: args.repoPath }),
+  )
 
 /**
  * Checkout a specific ref (branch, tag, or commit)
  */
 export const checkout = (args: { repoPath: string; ref: string }) =>
-  runGitCommand({ args: ['checkout', args.ref], cwd: args.repoPath }).pipe(Effect.asVoid)
+  runGitCommand({ args: ['checkout', args.ref], cwd: args.repoPath }).pipe(
+    Effect.asVoid,
+    withGitWriterLock({ path: args.repoPath }),
+  )
 
 /**
  * Get the current branch name
@@ -576,6 +588,7 @@ export const createWorktree = (args: {
       ...(args.env === undefined ? {} : { env: args.env }),
     })
   }).pipe(
+    withGitWriterLock({ path: args.repoPath }),
     Observability.withGitBranchSpan({
       name: 'git/create-worktree',
       branch: args.branch,
@@ -591,7 +604,7 @@ export const removeWorktree = (args: { repoPath: string; worktreePath: string; f
     if (args.force === true) cmdArgs.push('--force')
     cmdArgs.push(args.worktreePath)
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
-  })
+  }).pipe(withGitWriterLock({ path: args.repoPath }))
 
 const isErrno = ({ cause, code }: { readonly cause: unknown; readonly code: string }): boolean =>
   typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === code
@@ -658,12 +671,13 @@ export const unlockWorktreeIfMatches = (args: {
       await unlink(movedPath)
       return true
     })
-  })
+  }).pipe(withGitWriterLock({ path: args.repoPath }))
 
 /** Prune stale worktree bookkeeping entries from a bare repo */
 export const pruneWorktrees = (repoPath: string) =>
   runGitCommand({ args: ['worktree', 'prune'], cwd: repoPath }).pipe(
     Effect.asVoid,
+    withGitWriterLock({ path: repoPath }),
     Observability.withRepoPathSpan({ name: 'git/worktree-prune', path: repoPath }),
   )
 
@@ -674,7 +688,7 @@ export const moveWorktree = (args: { repoPath: string; fromPath: string; toPath:
   runGitCommand({
     args: ['worktree', 'move', args.fromPath, args.toPath],
     cwd: args.repoPath,
-  }).pipe(Effect.asVoid)
+  }).pipe(Effect.asVoid, withGitWriterLock({ path: args.repoPath }))
 
 /**
  * List git worktrees
@@ -774,12 +788,39 @@ export const listRefShortNames = (args: { bareRepoPath: string; namespace: 'head
  */
 export const cloneBare = (args: { url: string; targetPath: string }) =>
   Effect.gen(function* () {
-    yield* clone({ url: args.url, targetPath: args.targetPath, bare: true })
+    // Recheck after acquiring the common-dir lock: a sibling may have finished cloning.
+    const exists = yield* Effect.tryPromise(() =>
+      lstat(args.targetPath).then(
+        () => true,
+        (cause: unknown) => {
+          if (isErrno({ cause, code: 'ENOENT' }) === true) return false
+          throw cause
+        },
+      ),
+    )
+    if (exists === true) {
+      const validationArgs = ['rev-parse', '--is-bare-repository']
+      const isBare = yield* runGitCommand({ args: validationArgs, cwd: args.targetPath })
+      if (isBare !== 'true') {
+        return yield* Effect.fail(
+          new GitCommandError({
+            args: validationArgs,
+            exitCode: 1,
+            stderr: `Clone target is not a bare repository: ${args.targetPath}`,
+          }),
+        )
+      }
+    } else {
+      yield* cloneUnlocked({ url: args.url, targetPath: args.targetPath, bare: true })
+    }
+    // Complete initialization even if a previous holder died after cloning.
     yield* runGitCommand({
       args: ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
       cwd: args.targetPath,
     })
+    return exists === false
   }).pipe(
+    withGitWriterLock({ path: args.targetPath, create: true }),
     Observability.withGitUrlSpan({
       name: 'git/clone-bare',
       label: args.url,
@@ -798,7 +839,10 @@ export const fetchBare = (args: { repoPath: string; remote?: string }) =>
       args: ['fetch', '--tags', '--prune', remote],
       cwd: args.repoPath,
     })
-  }).pipe(Observability.withRepoPathSpan({ name: 'git/fetch-bare', path: args.repoPath }))
+  }).pipe(
+    withGitWriterLock({ path: args.repoPath }),
+    Observability.withRepoPathSpan({ name: 'git/fetch-bare', path: args.repoPath }),
+  )
 
 /**
  * Fetch forge pull-request head refs into a bare repo.
@@ -820,6 +864,7 @@ export const fetchPullRequestHeads = (args: { repoPath: string; remote?: string 
       cwd: args.repoPath,
     })
   }).pipe(
+    withGitWriterLock({ path: args.repoPath }),
     Observability.withRepoPathSpan({ name: 'git/fetch-pull-request-heads', path: args.repoPath }),
   )
 
@@ -963,7 +1008,7 @@ export const createBranch = (args: { repoPath: string; branch: string; baseRef: 
     })
 
     return baseCommit
-  })
+  }).pipe(withGitWriterLock({ path: args.repoPath }))
 /** Atomically create a branch at `expectedOid`, failing if any ref already owns the name. */
 export const createBranchIfAbsent = (args: {
   repoPath: string
@@ -978,7 +1023,7 @@ export const createBranchIfAbsent = (args: {
       '0'.repeat(args.expectedOid.length),
     ],
     cwd: args.repoPath,
-  }).pipe(Effect.asVoid)
+  }).pipe(Effect.asVoid, withGitWriterLock({ path: args.repoPath }))
 
 /**
  * Delete a branch only if it still points at the observed OID and no worktree
@@ -1002,7 +1047,7 @@ export const deleteBranchIfMatches = (args: {
       args: ['branch', '--delete', '--force', args.branch],
       cwd: args.repoPath,
     })
-  })
+  }).pipe(withGitWriterLock({ path: args.repoPath }))
 
 /**
  * Delete a local branch ref in a (bare) repo.
@@ -1016,7 +1061,11 @@ export const deleteBranch = (args: { repoPath: string; branch: string; force?: b
   runGitCommand({
     args: ['branch', args.force === true ? '-D' : '-d', args.branch],
     cwd: args.repoPath,
-  }).pipe(Effect.asVoid, Observability.withGitDeleteBranchSpan(args.branch))
+  }).pipe(
+    Effect.asVoid,
+    withGitWriterLock({ path: args.repoPath }),
+    Observability.withGitDeleteBranchSpan(args.branch),
+  )
 
 /**
  * Push a branch to the remote.
@@ -1044,7 +1093,7 @@ export const pushBranch = (args: {
       args: cmdArgs,
       cwd: args.repoPath,
     })
-  })
+  }).pipe(withGitWriterLock({ path: args.repoPath }))
 
 /**
  * Create a new branch and push it to the remote.
@@ -1090,6 +1139,7 @@ export const createWorktreeDetached = (args: {
     cwd: args.repoPath,
   }).pipe(
     Effect.asVoid,
+    withGitWriterLock({ path: args.repoPath }),
     Observability.withGitCommitSpan({
       name: 'git/create-worktree-detached',
       label: args.commit.slice(0, 8),
@@ -1228,7 +1278,7 @@ export const updateWorktree = (args: { worktreePath: string; remote?: string }) 
       args: ['pull', '--ff-only', remote],
       cwd: args.worktreePath,
     })
-  })
+  }).pipe(withGitWriterLock({ path: args.worktreePath }))
 
 /**
  * Checkout a specific commit in a worktree
@@ -1237,7 +1287,7 @@ export const checkoutWorktree = (args: { worktreePath: string; ref: string }) =>
   runGitCommand({
     args: ['checkout', args.ref],
     cwd: args.worktreePath,
-  }).pipe(Effect.asVoid)
+  }).pipe(Effect.asVoid, withGitWriterLock({ path: args.worktreePath }))
 
 /**
  * Detach a worktree's HEAD from its branch (`git checkout --detach`).
@@ -1251,7 +1301,11 @@ export const detachWorktreeHead = (args: { worktreePath: string }) =>
   runGitCommand({
     args: ['checkout', '--detach'],
     cwd: args.worktreePath,
-  }).pipe(Effect.asVoid, Observability.withGitDetachWorktreeHeadSpan(args.worktreePath))
+  }).pipe(
+    Effect.asVoid,
+    withGitWriterLock({ path: args.worktreePath }),
+    Observability.withGitDetachWorktreeHeadSpan(args.worktreePath),
+  )
 
 // =============================================================================
 // Megarepo Name Derivation

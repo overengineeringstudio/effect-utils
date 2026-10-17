@@ -68,7 +68,15 @@ export const PartialData = Schema.Struct({
         'HistoryLost',
         'CalibrationInvalid',
         'Stopped',
+        'Stale',
+        'Disconnected',
       ]),
+      lastKnown: Schema.optionalKey(
+        Schema.Struct({
+          atMs: Schema.Finite,
+          value: Schema.TaggedStruct('Number', { value: Schema.Finite }),
+        }),
+      ),
     }),
     Schema.TaggedStruct('Gap', {
       atMs: Schema.Finite,
@@ -94,7 +102,15 @@ export const PartialData = Schema.Struct({
         'HistoryLost',
         'CalibrationInvalid',
         'Stopped',
+        'Stale',
+        'Disconnected',
       ]),
+      lastKnown: Schema.optionalKey(
+        Schema.Struct({
+          atMs: Schema.Finite,
+          value: Schema.TaggedStruct('Number', { value: Schema.Finite }),
+        }),
+      ),
     }),
     Schema.TaggedStruct('Gap', {
       atMs: Schema.Finite,

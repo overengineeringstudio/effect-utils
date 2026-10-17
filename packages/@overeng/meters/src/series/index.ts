@@ -1,4 +1,4 @@
-import { publishRevision, subscribePresentation } from './internal.ts'
+import { notifyListeners, publishRevision, scanBins, subscribePresentation } from './internal.ts'
 
 /** Cadence belongs to acquisition, independently of reader publication. */
 export type Cadence =
@@ -17,10 +17,17 @@ export type UnavailableReason =
   | 'HistoryLost'
   | 'CalibrationInvalid'
   | 'Stopped'
+  | 'Stale'
+  | 'Disconnected'
 /** A session-local observation, never a sentinel number. */
 export type Sample<TValue> =
   | { readonly _tag: 'Value'; readonly atMs: number; readonly value: TValue }
-  | { readonly _tag: 'Unavailable'; readonly atMs: number; readonly reason: UnavailableReason }
+  | {
+      readonly _tag: 'Unavailable'
+      readonly atMs: number
+      readonly reason: UnavailableReason
+      readonly lastKnown?: { readonly atMs: number; readonly value: TValue }
+    }
   | {
       readonly _tag: 'Gap'
       readonly atMs: number
@@ -75,6 +82,57 @@ export interface SeriesView<TValue> extends Retention {
   readonly latest: Sample<TValue> | undefined
   readonly at: (index: number) => Sample<TValue> | undefined
 }
+
+/**
+ * Chronological buckets ending at endMs. Gauge holds; Event sums; Counter sums
+ * positive deltas, resetting after non-values. A partially observed bucket uses
+ * its actual observations; missing history and a latest non-value stay undefined.
+ * Aggregates saturate at finite extrema. The returned array is allocated per call.
+ */
+export const bucketSeries = <TValue>(options: {
+  readonly history: SeriesView<TValue>
+  readonly endMs: number
+  readonly bucketMs: number
+  readonly buckets: number
+  readonly mode: 'Gauge' | 'Event' | 'Counter'
+  readonly value: (value: TValue) => number
+}): readonly (number | undefined)[] => {
+  const spanMs = options.bucketMs * options.buckets
+  if (
+    Number.isFinite(options.endMs) === false ||
+    Number.isFinite(options.bucketMs) === false ||
+    options.bucketMs <= 0 ||
+    Number.isInteger(options.buckets) === false ||
+    options.buckets <= 0 ||
+    Number.isFinite(spanMs) === false ||
+    Number.isFinite(options.endMs - spanMs) === false ||
+    // The shared scan deliberately multiplies before dividing for legacy boundaries.
+    Number.isFinite(options.buckets * spanMs) === false
+  )
+    throw new TypeError(
+      'Buckets require a finite derived window, positive duration and positive integer count',
+    )
+  const result: (number | undefined)[] = []
+  scanBins({
+    history: options.history,
+    endMs: options.endMs,
+    spanMs,
+    bins: options.buckets,
+    mode: options.mode,
+    value: options.value,
+    saturate: true,
+    // oxlint-disable-next-line overeng/named-args -- Streaming visitor avoids allocating one object per bin.
+    visit: (_bin, endMs, sample, aggregate) => {
+      if (sample?._tag !== 'Value' || sample.atMs > endMs) {
+        result.push(undefined)
+        return
+      }
+      const value = options.mode === 'Gauge' ? options.value(sample.value) : aggregate
+      result.push(Number.isFinite(value) === true ? value : undefined)
+    },
+  })
+  return result
+}
 /** An immutable, revision-stable copy materialized only on explicit reads. */
 export interface SeriesSnapshot<TValue> extends Retention {
   readonly id: string
@@ -89,7 +147,11 @@ export interface SeriesWriter<TValue> {
 }
 /** Shared non-destructive histories with independent notifications. */
 export interface SeriesStore {
-  readonly register: <TValue>(options: { readonly series: Series<TValue> }) => SeriesWriter<TValue>
+  readonly register: <TValue>(options: {
+    readonly series: Series<TValue>
+    /** Source adapter hook after commit, before shared reader publication. */
+    readonly onAppend?: () => void
+  }) => SeriesWriter<TValue>
   readonly read: <TValue>(options: { readonly series: Series<TValue> }) => SeriesView<TValue>
   readonly snapshotSeries: <TValue>(options: {
     readonly series: Series<TValue>
@@ -248,7 +310,7 @@ export const makeSeriesStore = (options?: {
     return series[binding](owner)
   }
   return {
-    register: ({ series }) => {
+    register: ({ series, onAppend }) => {
       const previous = identities.get(series.id)
       if (previous !== undefined && previous !== series)
         throw new TypeError(`Duplicate series: ${series.id}`)
@@ -267,6 +329,19 @@ export const makeSeriesStore = (options?: {
             (Number.isFinite(sample.durationMs) === false || sample.durationMs < 0)
           )
             throw new TypeError('Gap duration must be finite and nonnegative')
+          if (sample._tag === 'Unavailable' && sample.lastKnown !== undefined) {
+            if (
+              Number.isFinite(sample.lastKnown.atMs) === false ||
+              sample.lastKnown.atMs < 0 ||
+              sample.lastKnown.atMs > sample.atMs
+            )
+              throw new TypeError('Last-known timestamp must precede unavailable evidence')
+            try {
+              prepareValue(sample.lastKnown)
+            } finally {
+              seen.clear()
+            }
+          }
           if (sample._tag === 'Value') {
             try {
               prepareValue(sample.value)
@@ -278,7 +353,19 @@ export const makeSeriesStore = (options?: {
           ring.nextSequence++
           if (ring.length === series.capacity) ring.overflowCount++
           else ring.length++
-          publish()
+          let faults: unknown[] | undefined
+          try {
+            onAppend?.()
+          } catch (cause) {
+            faults = [cause]
+          }
+          try {
+            publish()
+          } catch (cause) {
+            ;(faults ??= []).push(cause)
+          }
+          if (faults !== undefined)
+            throw new AggregateError(faults, 'Series append notification failed')
         },
       }
     },
@@ -314,16 +401,4 @@ export const makeSeriesStore = (options?: {
       }
     },
   }
-}
-
-const notifyListeners = (subscribers: ReadonlySet<() => void>): void => {
-  let faults: unknown[] | undefined
-  for (const notify of subscribers) {
-    try {
-      notify()
-    } catch (cause) {
-      ;(faults ??= []).push(cause)
-    }
-  }
-  if (faults !== undefined) throw new AggregateError(faults, 'Series subscriber failed')
 }

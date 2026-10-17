@@ -1,7 +1,13 @@
 import { Effect, Exit, Scope, Semaphore } from 'effect'
 
 import { makeHeadless, type Headless, type SessionEvidence } from '../headless/internal.ts'
-import { makeSeriesStore, type SeriesStore } from '../series/index.ts'
+import {
+  makeSeriesStore,
+  type Sample,
+  type Series,
+  type SeriesStore,
+  type StatusValue,
+} from '../series/index.ts'
 import { publishRevision } from '../series/internal.ts'
 import { makeFrameClock, type FrameClock, type Platform } from './clock.ts'
 import {
@@ -11,11 +17,17 @@ import {
   type SourceError,
   type SourceRegistration,
 } from './source.ts'
-import { publication, visibility } from './types.ts'
+import { publication } from './types.ts'
 
 export type { FrameClock, FrameTick, ClockStopped, Platform } from './clock.ts'
 export { runInterval } from './clock.ts'
-export type { Source, SourceRegistration, SourceError, SourceEvidence } from './source.ts'
+export type {
+  Source,
+  SourceRegistration,
+  SourceError,
+  SourceEvidence,
+  Freshness,
+} from './source.ts'
 export { makeSource } from './source.ts'
 export type { Calibration, FpsValue, FrameStats } from './frame.ts'
 export { frameSource } from './frame.ts'
@@ -42,6 +54,27 @@ export const makeMeters = <TEnv = never>(options: {
     if (ids.has(source.id) === true) throw new TypeError(`Duplicate source: ${source.id}`)
     ids.add(source.id)
   }
+  // Resolve only selected identities, before any source or platform acquisition.
+  const ordered: SourceRegistration<TEnv>[] = []
+  const visiting = new Set<SourceRegistration<TEnv>>()
+  const visited = new Set<SourceRegistration<TEnv>>()
+  const visit = (source: SourceRegistration<TEnv>): void => {
+    if (visited.has(source) === true) return
+    if (visiting.has(source) === true)
+      throw new TypeError(`Cyclic freshness dependency: ${source.id}`)
+    visiting.add(source)
+    if (source.freshness?._tag === 'While') {
+      const status = source.freshness.status
+      const dependency = options.sources.find((candidate) => candidate.series === status)
+      if (dependency === undefined)
+        throw new TypeError(`Freshness status must be explicitly selected: ${status.id}`)
+      visit(dependency)
+    }
+    visiting.delete(source)
+    visited.add(source)
+    ordered.push(source)
+  }
+  for (const source of options.sources) visit(source)
   const store = makeSeriesStore({
     subscribePublication: (publish) => controller.clock[publication](publish),
   })
@@ -80,16 +113,73 @@ export const makeMeters = <TEnv = never>(options: {
       }
     },
   })
-  for (const source of options.sources)
-    registrations.push(
-      source[registration]({
-        store,
-        clock: controller.clock,
-        isActive: () =>
-          acquisitionActive === true &&
-          (source.cadence._tag !== 'Interval' || controller.clock[visibility].isVisible() === true),
-      }),
-    )
+  const boundBySeries = new Map<object, BoundSource<TEnv>>()
+  type StatusListener = (sample: Sample<StatusValue> | undefined) => void
+  const statusDispatchers = new Map<
+    Series<StatusValue>,
+    { readonly listeners: Set<StatusListener>; readonly unsubscribe: () => void }
+  >()
+  for (const source of ordered) {
+    const bound = source[registration]({
+      store,
+      clock: controller.clock,
+      isActive: () => acquisitionActive,
+      observeStatus: (series, listener) =>
+        Effect.acquireRelease(
+          Effect.sync(() => {
+            listener(undefined)
+            const dependency = boundBySeries.get(series)
+            if (dependency === undefined)
+              throw new TypeError(`Unbound freshness status: ${series.id}`)
+            let dispatcher = statusDispatchers.get(series)
+            if (dispatcher === undefined) {
+              const listeners = new Set<StatusListener>()
+              const pending: (Sample<StatusValue> | undefined)[] = []
+              let draining = false
+              const unsubscribe = dependency.observe(() => {
+                pending.push(store.read({ series }).latest)
+                if (draining === true) return
+                draining = true
+                let failures: unknown[] | undefined
+                try {
+                  // A nested append queues its captured evidence until this fanout completes.
+                  for (let index = 0; index < pending.length; index++) {
+                    const sample = pending[index]
+                    for (const notify of listeners) {
+                      try {
+                        notify(sample)
+                      } catch (cause) {
+                        failures ??= []
+                        failures.push(cause)
+                      }
+                    }
+                  }
+                } finally {
+                  pending.length = 0
+                  draining = false
+                }
+                if (failures !== undefined)
+                  throw new AggregateError(failures, 'Status transition listeners failed')
+              })
+              dispatcher = { listeners, unsubscribe }
+              statusDispatchers.set(series, dispatcher)
+            }
+            const subscribed = dispatcher
+            subscribed.listeners.add(listener)
+            return () => {
+              subscribed.listeners.delete(listener)
+              if (subscribed.listeners.size === 0) {
+                subscribed.unsubscribe()
+                statusDispatchers.delete(series)
+              }
+            }
+          }),
+          (unsubscribe) => Effect.sync(unsubscribe),
+        ).pipe(Effect.asVoid),
+    })
+    boundBySeries.set(source.series, bound)
+    registrations.push(bound)
+  }
   const seriesIds = new Set<string>()
   for (const source of registrations) {
     const id = source.retention().id
@@ -130,11 +220,14 @@ export const makeMeters = <TEnv = never>(options: {
     session.revision++
     const run = Effect.runForkWith(context)
     reportFault = (cause) => {
-      run(Effect.die(cause))
+      run(Effect.die(cause).pipe(Effect.withErrorReporting))
     }
     const acquired = yield* Effect.exit(
       Effect.gen(function* () {
         deactivate = yield* Effect.sync(() => controller.activate(reportFault))
+        yield* Effect.forEach(registrations, (source) => Scope.provide(source.prepare, scope), {
+          discard: true,
+        })
         yield* Effect.forEach(registrations, (source) => Scope.provide(source.acquire, scope), {
           discard: true,
         })

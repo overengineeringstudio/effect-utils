@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest'
 import { parsePeerDepsFromLockfile, validateCatalogPeerDeps } from './mod.ts'
 
 const makeLockfileYaml = (
-  packages: Record<string, { peerDependencies?: Record<string, string> }>,
+  packages: Record<string, { version?: string; peerDependencies?: Record<string, string> }>,
 ) => {
   const lines = ["lockfileVersion: '9.0'", '', 'packages:', '']
   for (const [spec, data] of Object.entries(packages)) {
     lines.push(`  '${spec}':`)
     lines.push(`    resolution: {integrity: sha512-fake}`)
+    if (data.version !== undefined) lines.push(`    version: ${data.version}`)
     if (data.peerDependencies !== undefined) {
       lines.push('    peerDependencies:')
       for (const [name, range] of Object.entries(data.peerDependencies)) {
@@ -84,6 +85,127 @@ describe('parsePeerDepsFromLockfile', () => {
 })
 
 describe('validateCatalogPeerDeps', () => {
+  const archive = 'https://example.com/releases/core-a.tgz'
+  const otherArchive = 'https://example.com/releases/core-b.tgz'
+
+  it('resolves only the selected archive metadata, not another record for the same package', () => {
+    const issues = validateCatalogPeerDeps({
+      catalog: { adapter: '1.0.0', core: archive },
+      lockfileContent: makeLockfileYaml({
+        'adapter@1.0.0': { peerDependencies: { core: '^0.1.0' } },
+        [`core@${otherArchive}`]: { version: '0.1.0' },
+        [`core@${archive}`]: { version: '0.2.0' },
+      }),
+    })
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        severity: 'error',
+        dependency: 'core',
+        rule: 'catalog-peer-dep-conflict',
+        message: 'adapter@1.0.0 peers on core: ^0.1.0, but catalog has 0.2.0',
+      }),
+    )
+  })
+
+  it('does not resolve missing archive metadata from a different archive', () => {
+    const issues = validateCatalogPeerDeps({
+      catalog: { adapter: '1.0.0', core: archive },
+      lockfileContent: makeLockfileYaml({
+        'adapter@1.0.0': { peerDependencies: { core: '*' } },
+        [`core@${otherArchive}`]: { version: '0.1.0' },
+      }),
+    })
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        severity: 'error',
+        dependency: 'core',
+        rule: 'catalog-peer-dep-conflict',
+      }),
+    )
+  })
+
+  it('uses archive metadata for peer overrides', () => {
+    const issues = validateCatalogPeerDeps({
+      catalog: { adapter: '1.0.0', core: archive },
+      lockfileContent: makeLockfileYaml({
+        'adapter@1.0.0': { peerDependencies: { core: '^0.2.0' } },
+        [`core@${archive}`]: { version: '0.1.0' },
+      }),
+      peerDependencyRules: { allowedVersions: { core: '^0.1.0' } },
+    })
+    expect(issues).toEqual([
+      expect.objectContaining({
+        severity: 'warning',
+        dependency: 'core',
+        rule: 'catalog-peer-dep-conflict-suppressed',
+      }),
+    ])
+  })
+
+  it.each([
+    ['0.1.0', 0],
+    ['0.2.0', 1],
+  ])('checks archive peers against metadata version %s', (version, errors) => {
+    const issues = validateCatalogPeerDeps({
+      catalog: { adapter: '1.0.0', core: archive },
+      lockfileContent: makeLockfileYaml({
+        'adapter@1.0.0': { peerDependencies: { core: '^0.1.0' } },
+        [`core@${archive}`]: { version },
+      }),
+    })
+    expect(issues.filter((issue) => issue.severity === 'error')).toHaveLength(errors)
+  })
+
+  it('selects the exact archive record even when another archive appears first', () => {
+    expect(
+      validateCatalogPeerDeps({
+        catalog: { adapter: archive, core: '0.1.0' },
+        lockfileContent: makeLockfileYaml({
+          [`adapter@${otherArchive}`]: {
+            version: '0.1.0',
+            peerDependencies: { core: '^0.2.0' },
+          },
+          [`adapter@${archive}`]: {
+            version: '0.1.0',
+            peerDependencies: { core: '^0.1.0' },
+          },
+        }),
+      }),
+    ).toEqual([])
+  })
+
+  it.each([undefined, 'invalid'])(
+    'reports unresolved archive metadata (%s) even for wildcard peers',
+    (version) => {
+      const issues = validateCatalogPeerDeps({
+        catalog: { adapter: '1.0.0', core: archive },
+        lockfileContent: makeLockfileYaml({
+          'adapter@1.0.0': { peerDependencies: { core: '*' } },
+          [`core@${archive}`]: version !== undefined ? { version } : {},
+        }),
+        peerDependencyRules: { allowedVersions: { core: '*' } },
+      })
+      expect(issues).toContainEqual(
+        expect.objectContaining({
+          severity: 'error',
+          dependency: 'core',
+          rule: 'catalog-peer-dep-conflict',
+        }),
+      )
+    },
+  )
+
+  it('retains registry semver fallback without lock metadata', () => {
+    expect(
+      validateCatalogPeerDeps({
+        catalog: { adapter: '1.0.0', core: '0.1.2' },
+        lockfileContent: makeLockfileYaml({
+          'adapter@1.0.0': { peerDependencies: { core: '^0.1.0' } },
+        }),
+      }),
+    ).toEqual([])
+  })
+
   it('returns no issues when all peers are satisfied', () => {
     const lockfile = makeLockfileYaml({
       '@effect/platform@0.96.0': {

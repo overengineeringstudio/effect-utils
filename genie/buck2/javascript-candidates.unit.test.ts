@@ -57,7 +57,7 @@ const expectedPublications = [
     module: 'mr.js',
     productKind: 'cli',
     productName: 'megarepo',
-    runtimeKind: 'node',
+    runtimeKind: 'bun',
   },
   {
     label: '//packages/@overeng/notion-cli:notion-cli-candidate',

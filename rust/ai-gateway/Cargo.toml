@@ -30,6 +30,7 @@ opentelemetry = "0.31"
 [dev-dependencies]
 axum = "0.8"
 parking_lot = "0.12"
+proptest = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
 opentelemetry_sdk = { version = "0.31", features = ["testing"] }
 tracing-subscriber = { version = "0.3", features = ["registry"] }

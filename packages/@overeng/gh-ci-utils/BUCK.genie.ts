@@ -32,7 +32,11 @@ export const buck2TypeScriptAdmission = {
       name: 'test',
       runner: 'vitest',
       // App-auth fixtures use the library-owned platform transport against loopback servers.
-      excludes: ['src/node/GitHubClient.integration.test.ts', 'test/GitHubClient.test.ts'],
+      excludes: [
+        'src/node/GitHubClient.integration.test.ts',
+        'src/node/ArtifactTransport.integration.test.ts',
+        'test/GitHubClient.test.ts',
+      ],
     },
   ],
 } as const satisfies Buck2TypeScriptAdmission

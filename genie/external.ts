@@ -299,6 +299,10 @@ export const catalog = defineCatalog({
   // Schema
   '@standard-schema/spec': '1.1.0',
 
+  // Retained Actions artifacts: lazy ZIP metadata and bounded member streams.
+  yauzl: '3.4.0',
+  '@types/yauzl': '3.4.0',
+
   // Effect ecosystem
   // Effect 4 cohort (see `effectV4Cohort`): platform/cli/rpc/schema/http/
   // socket/process/ai/cluster/workflow/sql and Atom reactivity are merged into

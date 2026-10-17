@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/data-graph/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:a65ace637ba3c61ca91282252197971bca08cf79a6a20af604ddfa7217305889
+# Semantic fingerprint: sha256:165d7df5db28672e15b5acc5a6b9f3f7fa3f57e5ab1260c5be8720a205d84263
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -21,10 +21,13 @@ export_file(
 )
 
 export_materialization_inputs([
+    "src/cache.integration.test.ts",
     "src/identity.unit.test.ts",
     "src/mod.integration.test.ts",
     "src/mod.ts",
     "src/properties.integration.test.ts",
+    "src/recovery.integration.test.ts",
+    "src/scale.integration.test.ts",
     "src/scenario.ts",
     "src/selection.integration.test.ts",
     "src/spike.ts",
@@ -69,10 +72,13 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_data_graph_71f8ed469693",
     files = {
         "package.json": "package.json",
+        "src/cache.integration.test.ts": "src/cache.integration.test.ts",
         "src/identity.unit.test.ts": "src/identity.unit.test.ts",
         "src/mod.integration.test.ts": "src/mod.integration.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/properties.integration.test.ts": "src/properties.integration.test.ts",
+        "src/recovery.integration.test.ts": "src/recovery.integration.test.ts",
+        "src/scale.integration.test.ts": "src/scale.integration.test.ts",
         "src/scenario.ts": "src/scenario.ts",
         "src/selection.integration.test.ts": "src/selection.integration.test.ts",
         "src/spike.ts": "src/spike.ts",
@@ -101,10 +107,13 @@ package_view(
     dependency_view = "//buck2/dependencies:product_view_packages_overeng_data_graph_71f8ed469693",
     files = {
         "package.json": "package.json",
+        "src/cache.integration.test.ts": "src/cache.integration.test.ts",
         "src/identity.unit.test.ts": "src/identity.unit.test.ts",
         "src/mod.integration.test.ts": "src/mod.integration.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/properties.integration.test.ts": "src/properties.integration.test.ts",
+        "src/recovery.integration.test.ts": "src/recovery.integration.test.ts",
+        "src/scale.integration.test.ts": "src/scale.integration.test.ts",
         "src/scenario.ts": "src/scenario.ts",
         "src/selection.integration.test.ts": "src/selection.integration.test.ts",
         "src/spike.ts": "src/spike.ts",
@@ -131,10 +140,13 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_data_graph_71f8ed469693",
     files = {
         "package.json": "package.json",
+        "src/cache.integration.test.ts": "src/cache.integration.test.ts",
         "src/identity.unit.test.ts": "src/identity.unit.test.ts",
         "src/mod.integration.test.ts": "src/mod.integration.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/properties.integration.test.ts": "src/properties.integration.test.ts",
+        "src/recovery.integration.test.ts": "src/recovery.integration.test.ts",
+        "src/scale.integration.test.ts": "src/scale.integration.test.ts",
         "src/scenario.ts": "src/scenario.ts",
         "src/selection.integration.test.ts": "src/selection.integration.test.ts",
         "src/spike.ts": "src/spike.ts",

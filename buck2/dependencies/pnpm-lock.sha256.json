@@ -1,9 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:3bcf5772b0237a6f3072191066102ada592b6ae73d45eb4ab35d412446c1398d",
-  "source": "pnpm-lock.yaml",
-  "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
-  "regenerate": "devenv tasks run genie:run",
+  "lockfileFingerprint": "sha256:e173b58cd0bc7614acd0a8c3ffdcb3868ad2076b42886fb06b51c9eae791f26d",
   "packages": {
     "@adobe/css-tools@4.5.0": {
       "bins": {},
@@ -3035,6 +3032,15 @@
       "sha256": "dc2763952a24bf15dc920830a2d2884c23bccc08a853e8556e34771401254fa5",
       "sizeBytes": 6013
     },
+    "@types/yauzl@3.4.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-NRPn5w6h8dhcnmx3YIRQcqMywY/+nND/uOkJessedcrowO3C0AssHp3tMJpxKAwOhFOo0OV1y9VtsC5hbKKBAw==",
+      "packageIdentity": "@types/yauzl@3.4.0",
+      "registryUrl": "https://registry.npmjs.org/@types/yauzl/-/yauzl-3.4.0.tgz",
+      "sha256": "ec097b0820d9e7b3054e9d8006453a232447a9ef187eef2b9739a6f44d21f99e",
+      "sizeBytes": 2914
+    },
     "@typescript-eslint/parser@8.69.0": {
       "bins": {},
       "classification": "public",
@@ -5625,6 +5631,15 @@
       "sha256": "af089e2e7a104703a2e59d1f35f785b69381ba4d13a60ca9fb53820cb6bf3a7c",
       "sizeBytes": 4869
     },
+    "pend@1.2.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==",
+      "packageIdentity": "pend@1.2.0",
+      "registryUrl": "https://registry.npmjs.org/pend/-/pend-1.2.0.tgz",
+      "sha256": "a12f279b25a9df710b52a9892bad00bdeeb862a9b5d1e4f4db77131129436d7f",
+      "sizeBytes": 2308
+    },
     "picocolors@1.1.1": {
       "bins": {},
       "classification": "public",
@@ -6729,6 +6744,15 @@
       "sha256": "50f14ae6cfe8360cb2259ba3e93305e069036f13251d69d3cbee9e1d4775ca04",
       "sizeBytes": 4496
     },
+    "yauzl@3.4.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==",
+      "packageIdentity": "yauzl@3.4.0",
+      "registryUrl": "https://registry.npmjs.org/yauzl/-/yauzl-3.4.0.tgz",
+      "sha256": "ec962fa3205d4be5849f0fc3bebd0492b0abe8acf402656fd80490531fa8ba88",
+      "sizeBytes": 31577
+    },
     "yocto-queue@0.1.0": {
       "bins": {},
       "classification": "public",
@@ -6766,5 +6790,8 @@
       "sizeBytes": 4529
     }
   },
-  "fingerprint": "sha256:9411ff7dc8b455861d1bdac37fad1dbc4998d957e23002fdfc1ffbab2cc1c066"
+  "source": "pnpm-lock.yaml",
+  "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
+  "regenerate": "devenv tasks run genie:run",
+  "fingerprint": "sha256:c77c75855bafb336f4791f2c63b1443dd5c5e0d732f40a3e5b0f3d025402900f"
 }
