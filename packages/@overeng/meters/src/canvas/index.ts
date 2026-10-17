@@ -23,6 +23,7 @@ export {
   numericBlock,
   plotRange,
   resolveBlockAggregation,
+  tileBlock,
 } from './blocks.ts'
 export type {
   BlockAggregation,
@@ -35,6 +36,7 @@ export type {
   MeterTheme,
   PlotOptions,
   PlotRange,
+  TileAggregation,
 } from './blocks.ts'
 export { fitText, historyX, layoutBlockText, layoutStrip } from './layout.ts'
 export type { BlockTextLayout, Rect, StripLayout, TextRun } from './layout.ts'

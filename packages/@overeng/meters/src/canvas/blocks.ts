@@ -10,7 +10,7 @@ import {
 } from '../series/index.ts'
 import { scanBins } from '../series/internal.ts'
 import type { FpsValue } from '../session/frame.ts'
-import { fitText, historyX, layoutBlockText, type Rect } from './layout.ts'
+import { fitText, historyX, layoutBlockText, type Rect, type TextRun } from './layout.ts'
 
 /** Semantic color/font values; hosts may resolve StyleX tokens or CSS variables. */
 export interface MeterTheme {
@@ -671,3 +671,242 @@ export const commitBlock = <TValue extends { readonly actualDurationMs: number }
   options: BlockOptions<TValue>,
 ): CanvasBlockSpec =>
   numericBlock({ ...options, mode: 'Event', values: (value) => value.actualDurationMs })
+/** Completed-bucket aggregation used by a tile; its output unit is explicit. */
+export type TileAggregation = Extract<BlockAggregation, { readonly _tag: 'Bucket' }>
+/** One reader's reusable tile reduction; NaN marks an undefined bucket. */
+interface TileScratch<TValue> {
+  readonly values: Float64Array
+  carried: Sample<TValue> | undefined
+  filling: boolean
+  readonly range: {
+    minimum: number
+    maximum: number
+    readonly nominalMax: number
+    readonly minSpanRatio: number
+    readonly mode: 'auto' | 'fixed'
+    readonly target: { lo: number; hi: number }
+  }
+}
+/**
+ * A standalone tile: drawn label, newest completed-bucket value, and a sparkline
+ * over the same buckets. Draw and describe reduce the same view with the shared
+ * bucket scan at the same explicit time, so drawn and described values agree.
+ * The drawn label is the tile's static accessible name: `widthPx` must fit it plus
+ * 8px padding. A narrower rect draws an ellipsized prefix of the name and no value.
+ * Value callbacks must not read the tile reader being drawn or described.
+ */
+export const tileBlock = <TValue>(
+  options: PlotOptions & {
+    readonly id: string
+    readonly series: Series<TValue>
+    readonly shortLabel?: string | undefined
+    readonly widthPx: number
+    readonly aggregation: TileAggregation
+    readonly value: (value: TValue) => number
+  },
+): CanvasBlockSpec => {
+  const nominalMax = options.nominalMax ?? 1
+  const minSpanRatio = options.minSpanRatio ?? 0.1
+  validateScale({ nominalMax, minSpanRatio })
+  if (typeof options.range === 'object') validateRange(options.range)
+  const policy = options.aggregation
+  // Validate the bucket policy inertly before any buffer is sized from it.
+  resolveBlockAggregation({ aggregation: policy, nowMs: 0 })
+  const label = options.shortLabel ?? options.series.label
+  const rangeMode = typeof options.range === 'string' ? options.range : 'fixed'
+  // block() exposes no per-reader state, so scratch is keyed by the bound history: live
+  // readers of this definition share the store's live view scratch (reads are synchronous),
+  // and each frozen snapshot owns its own. Allocated on first read, reused every frame.
+  const scratches = new WeakMap<SeriesView<TValue>, TileScratch<TValue>>()
+  // Mirrors bucketSeries: a bucket is defined only when its newest observation is a Value.
+  const fill = ({
+    history,
+    nowMs,
+  }: {
+    readonly history: SeriesView<TValue>
+    readonly nowMs: number
+  }): TileScratch<TValue> => {
+    const aggregation = resolveBlockAggregation({ aggregation: policy, nowMs })
+    if (aggregation._tag !== 'Bucket') throw new TypeError('Tiles require bucket aggregation')
+    let scratch = scratches.get(history)
+    if (scratch === undefined) {
+      scratch = {
+        values: new Float64Array(policy.buckets),
+        carried: undefined,
+        filling: false,
+        range: {
+          minimum: Infinity,
+          maximum: -Infinity,
+          nominalMax,
+          minSpanRatio,
+          mode: rangeMode,
+          target: { lo: 0, hi: 1 },
+        },
+      }
+      scratches.set(history, scratch)
+    }
+    // A value callback reading this same reader would overwrite bins mid-scan.
+    if (scratch.filling === true)
+      throw new TypeError('Tile value callbacks must not re-enter the reader being read')
+    const target = scratch
+    target.filling = true
+    target.carried = undefined
+    try {
+      scanBins({
+        history,
+        endMs: aggregation.endMs,
+        spanMs: policy.bucketMs * policy.buckets,
+        bins: policy.buckets,
+        mode: policy.mode,
+        value: options.value,
+        saturate: true,
+        // oxlint-disable-next-line overeng/named-args -- Streaming visitor avoids allocating one object per bin.
+        visit: (bin, endMs, sample, aggregate) => {
+          target.carried = sample !== undefined && sample.atMs <= endMs ? sample : undefined
+          if (sample?._tag !== 'Value' || sample.atMs > endMs) {
+            target.values[bin] = NaN
+            return
+          }
+          const value = policy.mode === 'Gauge' ? options.value(sample.value) : aggregate
+          target.values[bin] = Number.isFinite(value) === true ? value : NaN
+        },
+      })
+    } finally {
+      target.filling = false
+    }
+    return target
+  }
+  const text = ({
+    scratch,
+    format,
+  }: {
+    readonly scratch: TileScratch<TValue>
+    readonly format: MeterValueFormat
+  }): string => {
+    const newest = scratch.values[policy.buckets - 1] ?? NaN
+    if (Number.isNaN(newest) === false)
+      return formatMeterValue({ value: newest, unit: policy.unit, format })
+    const sample = scratch.carried
+    if (sample === undefined) return 'n/a (NoSamples)'
+    if (sample._tag === 'Unavailable') return `n/a (${sample.reason})`
+    if (sample._tag === 'Gap') return `n/a (${sample.reason} gap)`
+    return 'n/a (MeasurementFailed)'
+  }
+  return block({
+    id: options.id,
+    series: options.series,
+    shortLabel: options.shortLabel,
+    widthPx: options.widthPx,
+    aggregation: policy,
+    describe: ({ history, nowMs }) => text({ scratch: fill({ history, nowMs }), format: 'full' }),
+    draw: ({ ctx, rect, history, nowMs, theme }) => {
+      const scratch = fill({ history, nowMs })
+      const values = scratch.values
+      const rangeState = scratch.range
+      const resolvedRange = rangeState.target
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(rect.x, rect.y, rect.width, rect.height)
+      ctx.clip()
+      ctx.fillStyle = theme.background
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
+      const chart = {
+        x: rect.x + 4,
+        y: rect.y + 18,
+        width: rect.width - 8,
+        height: Math.max(1, rect.height - 20),
+      }
+      let minimum = Infinity
+      let maximum = -Infinity
+      for (let bin = 0; bin < policy.buckets; bin++) {
+        const value = values[bin] ?? NaN
+        if (Number.isNaN(value) === true) continue
+        minimum = Math.min(minimum, value)
+        maximum = Math.max(maximum, value)
+      }
+      if (typeof options.range === 'object') {
+        minimum = options.range.lo
+        maximum = options.range.hi
+      } else {
+        rangeState.minimum = minimum
+        rangeState.maximum = maximum
+        resolveRange(rangeState)
+        minimum = resolvedRange.lo
+        maximum = resolvedRange.hi
+      }
+      // Normalize first so opposite finite extrema cannot overflow the denominator.
+      const scale = Math.max(Math.abs(minimum), Math.abs(maximum))
+      const span = maximum / scale - minimum / scale
+      const y = (value: number): number =>
+        chart.y + chart.height * ((maximum / scale - value / scale) / span)
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(chart.x, chart.y, chart.width, chart.height)
+      ctx.clip()
+      ctx.fillStyle = theme.border
+      ctx.fillRect(chart.x, chart.y + chart.height - 1, chart.width, 1)
+      for (const mark of options.marks ?? noValues) {
+        if (Number.isFinite(mark) === false || mark < minimum || mark > maximum) continue
+        ctx.fillRect(chart.x, Math.min(chart.y + chart.height - 1, y(mark)), chart.width, 1)
+      }
+      const step = chart.width / policy.buckets
+      ctx.strokeStyle = theme.normal
+      ctx.fillStyle = theme.normal
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      let open = false
+      for (let bin = 0; bin < policy.buckets; bin++) {
+        const value = values[bin] ?? NaN
+        if (Number.isNaN(value) === true) {
+          open = false
+          continue
+        }
+        const x = chart.x + (bin + 0.5) * step
+        if (open === true) ctx.lineTo(x, y(value))
+        else ctx.moveTo(x, y(value))
+        open = true
+        // Undefined buckets break the line; an isolated observation remains visible.
+        const before = bin === 0 ? NaN : (values[bin - 1] ?? NaN)
+        const after = bin === policy.buckets - 1 ? NaN : (values[bin + 1] ?? NaN)
+        if (Number.isNaN(before) === true && Number.isNaN(after) === true)
+          ctx.fillRect(x - 1, y(value) - 1, 2, 2)
+      }
+      ctx.stroke()
+      ctx.restore()
+      // The label is the tile's static accessible name, so it outranks the value. A rect
+      // narrower than the label shows an ellipsized prefix of that name and no value.
+      ctx.font = theme.font
+      ctx.textBaseline = 'top'
+      ctx.textAlign = 'left'
+      const measure = (candidate: string): number => ctx.measureText(candidate).width
+      const left = rect.x + 4
+      const right = rect.x + rect.width - 4
+      const drawnLabel = fitText({ text: label, maxWidth: right - left, measure })
+      if (drawnLabel !== undefined) {
+        ctx.fillStyle = theme.muted
+        ctx.fillText(drawnLabel.text, left, rect.y + 3)
+      }
+      if (drawnLabel === undefined || drawnLabel.text !== label) {
+        ctx.restore()
+        return
+      }
+      const space = right - (left + drawnLabel.width + 6)
+      let fitted: TextRun | undefined
+      for (const format of valueFormats) {
+        const candidate = text({ scratch, format })
+        const width = measure(candidate)
+        if (width <= space) {
+          fitted = { text: candidate, x: right - width, width }
+          break
+        }
+      }
+      fitted ??= fitText({ text: text({ scratch, format: 'number' }), maxWidth: space, measure })
+      if (fitted !== undefined) {
+        ctx.fillStyle = theme.foreground
+        ctx.fillText(fitted.text, right - fitted.width, rect.y + 3)
+      }
+      ctx.restore()
+    },
+  })
+}
+const valueFormats: readonly MeterValueFormat[] = ['full', 'compact', 'number']

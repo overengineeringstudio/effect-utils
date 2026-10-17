@@ -16,6 +16,7 @@ import { makeMeters, makeSource } from '../session/index.ts'
 import { testCanvas } from './_test-canvas.ts'
 import {
   block,
+  type BlockReader,
   resolveBlockAggregation,
   type BlockAggregation,
   type DrawInput,
@@ -31,6 +32,8 @@ import {
   numericBlock,
   plotRange,
   resolveMeterTheme,
+  tileBlock,
+  type TileAggregation,
 } from './index.ts'
 
 afterEach(() => vi.restoreAllMocks())
@@ -1140,4 +1143,271 @@ describe('canvas strip', () => {
       expect(view.getSnapshot()).toEqual(['n/a (Unsupported)'])
     }),
   )
+})
+
+describe('tile block', () => {
+  const gauge = {
+    _tag: 'Bucket',
+    mode: 'Gauge',
+    bucketMs: 1000,
+    buckets: 4,
+    unit: 'count',
+  } satisfies TileAggregation
+  const rect = { x: 0, y: 0, width: 88, height: 48 }
+  const tileFixture = (aggregation: TileAggregation = gauge) => {
+    const surface = testCanvas()
+    const ctx = surface.canvas.getContext('2d')
+    if (ctx === null) throw new TypeError('Injected canvas context is required')
+    const series = makeSeries<NumberValue>({
+      id: 'tile',
+      label: 'Requests',
+      unit: 'count',
+      capacity: 16,
+    })
+    const store = makeSeriesStore()
+    const writer = store.register({ series })
+    const make = (options: Partial<Parameters<typeof tileBlock<NumberValue>>[0]> = {}) =>
+      tileBlock({
+        id: 'tile',
+        series,
+        widthPx: rect.width,
+        aggregation,
+        value: (value) => value.value,
+        ...options,
+      })
+    const reader = make().read(store)
+    const draw = (options: {
+      readonly nowMs: number
+      readonly target?: typeof reader
+      readonly width?: number
+    }) => {
+      surface.context.clearRect()
+      surface.texts.length = 0
+      surface.drawnTexts.length = 0
+      ;(options.target ?? reader).draw({
+        ctx,
+        rect: { ...rect, width: options.width ?? rect.width },
+        nowMs: options.nowMs,
+        historyMs: 1,
+        theme: lightMeterTheme,
+      })
+    }
+    const append = (sample: Sample<NumberValue>) => writer.append({ sample })
+    const value = (atMs: number, number: number) =>
+      append({ _tag: 'Value', atMs, value: { _tag: 'Number', value: number } })
+    return { surface, series, store, reader, make, draw, append, value }
+  }
+  // Chart geometry shared with numeric blocks: x+4, y+18, width-8, height-20.
+  const chart = { x: 4, y: 18, width: 80, height: 28 }
+  const step = chart.width / gauge.buckets
+  const binX = (bin: number) => chart.x + (bin + 0.5) * step
+
+  it('draws and describes the same completed buckets as bucketSeries at one explicit time', () => {
+    const f = tileFixture()
+    f.value(500, 2)
+    f.value(1500, 4)
+    f.value(3500, 8)
+    const nowMs = 4250
+    const policy = resolveBlockAggregation({ aggregation: gauge, nowMs })
+    if (policy._tag !== 'Bucket') throw new TypeError('Expected bucket policy')
+    const buckets = bucketSeries({
+      ...policy,
+      history: f.store.read({ series: f.series }),
+      value: (value) => value.value,
+    })
+    expect(buckets).toEqual([2, 4, 4, 8])
+    const text = formatMeterValue({ value: 8, unit: 'count' })
+    expect(f.reader.describe({ nowMs })).toBe(text)
+    expect(f.reader.evidence({ nowMs })).toMatchObject({
+      label: 'Requests',
+      text,
+      unit: 'count',
+      evaluatedAtMs: nowMs,
+      aggregation: { ...gauge, endMs: 4000 },
+    })
+    f.draw({ nowMs })
+    // The label is always drawn (it is the static accessible name), then the value.
+    expect(f.surface.texts).toEqual(['Requests', text])
+    expect(f.surface.drawnTexts.every((drawn) => drawn.maxWidth === undefined)).toBe(true)
+    // Default fixed range: [0, ceil(max(nominalMax, maximum))] = [0, 8].
+    const y = (value: number) => chart.y + chart.height * ((8 - value) / 8)
+    expect(f.surface.paths).toEqual([
+      ['moveTo', binX(0), y(2)],
+      ['lineTo', binX(1), y(4)],
+      ['lineTo', binX(2), y(4)],
+      ['lineTo', binX(3), y(8)],
+      ['stroke', NaN, NaN],
+    ])
+    expect(f.surface.context.strokeStyle).toBe(lightMeterTheme.normal)
+  })
+
+  it('keeps live and frozen scratch separate so interleaved reads never retain stale bins', () => {
+    const f = tileFixture()
+    f.value(500, 2)
+    f.value(1500, 4)
+    const frozen = f.reader.snapshot()
+    f.value(2500, 6)
+    const nowMs = 3250
+    expect(f.reader.describe({ nowMs })).toBe(formatMeterValue({ value: 6, unit: 'count' }))
+    // Gauge holds the newest retained value into later buckets.
+    expect(frozen.describe({ nowMs })).toBe(formatMeterValue({ value: 4, unit: 'count' }))
+    expect(f.reader.describe({ nowMs })).toBe(formatMeterValue({ value: 6, unit: 'count' }))
+    f.draw({ nowMs, target: frozen })
+    expect(f.surface.texts.at(-1)).toBe(frozen.evidence({ nowMs }).text)
+    f.draw({ nowMs })
+    expect(f.surface.texts.at(-1)).toBe(f.reader.evidence({ nowMs }).text)
+    // The live redraw after a frozen one plots live bins (range 0–6), not the frozen ones (0–4).
+    expect(f.surface.paths.at(-3)?.[2]).toBeCloseTo(chart.y + chart.height / 3)
+    // A second tile definition owns its own buffer; reads never leak between definitions.
+    const other = f.make({ shortLabel: 'Req' }).read(f.store)
+    expect(other.describe({ nowMs: 1250 })).toBe(formatMeterValue({ value: 2, unit: 'count' }))
+    expect(f.reader.describe({ nowMs })).toBe(formatMeterValue({ value: 6, unit: 'count' }))
+    f.draw({ nowMs, target: other })
+    expect(f.surface.texts[0]).toBe('Req')
+  })
+
+  it('keeps a reader correct when its value callback reads a sibling reader, and rejects self re-entry', () => {
+    const f = tileFixture()
+    f.value(500, 2)
+    f.value(1500, 4)
+    let probe: BlockReader | undefined
+    let nested = false
+    const probed: string[] = []
+    const spec = f.make({
+      value: (value) => {
+        if (probe !== undefined && nested === false) {
+          nested = true
+          probed.push(probe.describe({ nowMs: 1250 }))
+          nested = false
+        }
+        return value.value
+      },
+    })
+    const live = spec.read(f.store)
+    probe = live.snapshot()
+    f.value(2500, 6)
+    // Each sibling read fills the frozen reader's own scratch mid-scan of the live reader.
+    expect(live.describe({ nowMs: 3250 })).toBe(formatMeterValue({ value: 6, unit: 'count' }))
+    expect(probed.length).toBeGreaterThan(0)
+    const frozenText = formatMeterValue({ value: 2, unit: 'count' })
+    expect(probed.every((probedText) => probedText === frozenText)).toBe(true)
+    let self: typeof live | undefined
+    const reentrant = f
+      .make({
+        value: (value) => {
+          self?.describe({ nowMs: 3250 })
+          return value.value
+        },
+      })
+      .read(f.store)
+    self = reentrant
+    expect(() => reentrant.describe({ nowMs: 3250 })).toThrow(TypeError)
+    // The guard is released after the failed read.
+    self = undefined
+    expect(reentrant.describe({ nowMs: 3250 })).toBe(formatMeterValue({ value: 6, unit: 'count' }))
+  })
+
+  it('draws the whole label as the static name and lets the value yield first', () => {
+    const f = tileFixture()
+    f.value(3500, 8)
+    const nowMs = 4250
+    // 'Requests' measures 48px; 56px leaves no room beside it after 4px padding per side.
+    f.draw({ nowMs, width: 56 })
+    expect(f.surface.texts).toEqual(['Requests'])
+    // Narrower than the name: an ellipsized prefix, never a glyph-squeezed or clipped label.
+    f.draw({ nowMs, width: 40 })
+    expect(f.surface.texts).toHaveLength(1)
+    expect(f.surface.texts[0]?.endsWith('…')).toBe(true)
+    expect('Requests'.startsWith(f.surface.texts[0]?.slice(0, -1) ?? '')).toBe(true)
+    expect(f.surface.drawnTexts.every((drawn) => drawn.maxWidth === undefined)).toBe(true)
+    expect(f.reader.describe({ nowMs })).toBe(formatMeterValue({ value: 8, unit: 'count' }))
+  })
+
+  it('breaks the line at undefined buckets and keeps isolated observations visible', () => {
+    const f = tileFixture()
+    f.value(500, 2)
+    f.append({ _tag: 'Unavailable', atMs: 1500, reason: 'NotConfigured' })
+    f.value(2500, 4)
+    f.append({ _tag: 'Gap', atMs: 3500, durationMs: 100, reason: 'MissedFrame' })
+    f.draw({ nowMs: 4250 })
+    const y = (value: number) => chart.y + chart.height * ((4 - value) / 4)
+    expect(f.surface.paths).toEqual([
+      ['moveTo', binX(0), y(2)],
+      ['moveTo', binX(2), y(4)],
+      ['stroke', NaN, NaN],
+    ])
+    expect(f.surface.rectangles.filter(([, , w, h]) => w === 2 && h === 2)).toEqual([
+      [binX(0) - 1, y(2) - 1, 2, 2],
+      [binX(2) - 1, y(4) - 1, 2, 2],
+    ])
+    expect(f.reader.describe({ nowMs: 4250 })).toBe('n/a (MissedFrame gap)')
+    // At 88px beside 'Requests', 26px remain: the reason is ellipsized, never squeezed.
+    expect(f.surface.texts).toEqual(['Requests', 'n/a…'])
+    f.draw({ nowMs: 4250, width: 200 })
+    expect(f.surface.texts).toEqual(['Requests', 'n/a (MissedFrame gap)'])
+  })
+
+  it('names the newest bucket state without substituting zero', () => {
+    const f = tileFixture()
+    expect(f.reader.describe({ nowMs: 4250 })).toBe('n/a (NoSamples)')
+    f.draw({ nowMs: 4250, width: 200 })
+    expect(f.surface.texts).toEqual(['Requests', 'n/a (NoSamples)'])
+    expect(f.surface.paths).toEqual([['stroke', NaN, NaN]])
+    f.append({ _tag: 'Unavailable', atMs: 1500, reason: 'NotConfigured' })
+    expect(f.reader.describe({ nowMs: 2250 })).toBe('n/a (NotConfigured)')
+    // A sample after the newest completed bucket end is not yet evidence for it.
+    f.value(2500, 3)
+    expect(f.reader.describe({ nowMs: 2250 })).toBe('n/a (NotConfigured)')
+    expect(f.reader.describe({ nowMs: 3000 })).toBe(formatMeterValue({ value: 3, unit: 'count' }))
+    // The store admits only finite observations; a non-finite projection is a failed measurement.
+    const projected = f.make({ value: (value) => value.value / 0 }).read(f.store)
+    expect(projected.describe({ nowMs: 3000 })).toBe('n/a (MeasurementFailed)')
+  })
+
+  it('reduces events and counters per completed bucket in the policy unit', () => {
+    const events = tileFixture({ ...gauge, mode: 'Event', unit: 'count/s' })
+    events.value(1100, 1)
+    events.value(1200, 1)
+    events.value(1300, 1)
+    expect(events.reader.describe({ nowMs: 2500 })).toBe(
+      formatMeterValue({ value: 3, unit: 'count/s' }),
+    )
+    expect(events.reader.describe({ nowMs: 3500 })).toBe(
+      formatMeterValue({ value: 0, unit: 'count/s' }),
+    )
+    const counter = tileFixture({ ...gauge, mode: 'Counter' })
+    counter.value(500, 10)
+    counter.value(1200, 15)
+    counter.value(1700, 12)
+    counter.value(1800, 20)
+    // Positive deltas only: +5, (reset), +8.
+    expect(counter.reader.describe({ nowMs: 2000 })).toBe(
+      formatMeterValue({ value: 13, unit: 'count' }),
+    )
+  })
+
+  it('plots with auto, explicit, and marked ranges', () => {
+    const f = tileFixture()
+    f.value(500, 2)
+    f.value(3500, 8)
+    const nowMs = 4250
+    const explicit = f.make({ range: { lo: 0, hi: 16 }, marks: [4, 32] }).read(f.store)
+    f.draw({ nowMs, target: explicit })
+    const y = (value: number) => chart.y + chart.height * ((16 - value) / 16)
+    expect(f.surface.paths.at(-2)).toEqual(['lineTo', binX(3), y(8)])
+    // Baseline plus the in-range mark only.
+    expect(f.surface.rectangles.filter(([, , w, h]) => w === chart.width && h === 1)).toEqual([
+      [chart.x, chart.y + chart.height - 1, chart.width, 1],
+      [chart.x, y(4), chart.width, 1],
+    ])
+    const auto = f.make({ range: 'auto' }).read(f.store)
+    f.draw({ nowMs, target: auto })
+    const range = plotRange({ history: [2, 2, 2, 8], nominalMax: 1, mode: 'auto' })
+    const autoY = (value: number) =>
+      chart.y + chart.height * ((range.hi - value) / (range.hi - range.lo))
+    expect(f.surface.paths[0]?.[2]).toBeCloseTo(autoY(2))
+    expect(f.surface.paths.at(-2)?.[2]).toBeCloseTo(autoY(8))
+    expect(() => f.make({ range: { lo: 1, hi: 1 } })).toThrow(TypeError)
+    expect(() => f.make({ aggregation: { ...gauge, buckets: 0 } })).toThrow(TypeError)
+  })
 })

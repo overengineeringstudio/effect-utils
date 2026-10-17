@@ -573,7 +573,7 @@ for this agreed gauge.
 
 ## Canvas and Independent Renderers
 
-Trace: DT.MET-R03, R29–R32; parent Q1/Q7.
+Trace: DT.MET-R03, R29–R32, R35; parent Q1/Q7.
 
 ```text
 SeriesStore -> CanvasBlock<T> closures -> one CanvasStrip
@@ -848,6 +848,51 @@ Freeze has a separate accessible control. It materializes a bounded renderer
 snapshot and freezes canvas/text/tooltip evidence together; sources, clock,
 other renderers, and brackets keep advancing. The view shows its frozen state
 and observation time. Unfreeze returns to current shared evidence.
+
+### Tile blocks
+
+Trace: DT.MET-R35; parent DT-R02, DT-R14.
+
+```ts
+type TileAggregation = Extract<BlockAggregation, { readonly _tag: 'Bucket' }>
+declare const tileBlock: <TValue>(
+  options: PlotOptions & {
+    readonly id: string
+    readonly series: Series<TValue>
+    readonly shortLabel?: string
+    readonly widthPx: number
+    readonly aggregation: TileAggregation
+    readonly value: (value: TValue) => number
+  },
+) => CanvasBlockSpec
+```
+
+`tileBlock` is the canvas half of a Tile: an ordinary `CanvasBlockSpec`, so a
+tile reuses `makeStripView`, `makeCanvasStrip`, the session clock, and frozen
+snapshots with a single block. Its required `Bucket` policy is validated at
+construction before any buffer is sized. Draw and describe reduce the bound
+history with the shared internal scan at the supplied time, with exactly the
+`bucketSeries` semantics: the horizon is `buckets * bucketMs`, independent of
+strip `historyMs`, ending at the newest completed bucket. The value text formats
+the newest bucket in the policy unit; an undefined newest bucket reads
+`n/a (NoSamples)`, `n/a (<reason>)`, `n/a (<reason> gap)` from the newest
+observation it covers, or `n/a (MeasurementFailed)` for a non-finite value.
+
+The chart uses the numeric block geometry and the shared plot-range policy,
+marks and `theme.border` baseline. History is a `theme.normal` 1.5px polyline
+through bucket centers; undefined buckets break the line and an isolated
+bucket draws a 2px dot. Reduction writes into one `Float64Array` per bound
+history, allocated on first read and reused for every later frame: live readers
+of a definition share the store's live view scratch, and each frozen snapshot
+owns its own. A value callback that reads the reader being reduced throws
+`TypeError` rather than overwriting bins mid-scan.
+
+The drawn label is `shortLabel ?? label` and is the tile's static accessible
+name, so it outranks the value: the value then tries full, compact and number
+forms, and is ellipsized last. `widthPx` must fit the label plus 8px padding; a
+narrower rect draws an ellipsized prefix of the name and no value, never a
+clipped or `fillText`-squeezed label. The unabridged value remains available
+through on-demand evidence.
 
 ## Headless Snapshots and Measure Brackets
 
@@ -1228,7 +1273,7 @@ Trace: DT.MET-R34 and [parent verification](../spec.md#conformance-evidence).
 | Lifecycle         | One collector per source/one clock across multiple readers, last-release cleanup, single-flight probes, discarded late results, serialized StrictMode reacquisition                                                                                                                                                                                                                                     |
 | Brackets          | Cumulative deltas; defaults 0/30; atomic concurrent/duplicate end; retry after invalid options; escaped scope and restart rejection; original work Cause preserved; hidden/calibration/loss reasons; stop endpoint frozen before source teardown; no live registry/finalizer growth after sequential end; schema round trips and malformed evidence rejection; browser-local bridge token/scope cleanup |
 | Built-ins         | Capability detection, distinct LoAF/fallback, heap versus app-memory, disabled metric n/a, exact completion/commit counters beyond ring capacity, no RPC imports or diagnostic sockets                                                                                                                                                                                                                  |
-| Renderers         | Fractional DPR, sizing changes, timestamp history, value/text parity, semantic themes, keyboard tooltips/detail action, bounded freeze without collection pause                                                                                                                                                                                                                                         |
+| Renderers         | Fractional DPR, sizing changes, timestamp history, value/text parity, semantic themes, keyboard tooltips/detail action, bounded freeze without collection pause, tile draw/describe/`bucketSeries` parity, broken undefined buckets, label-first fitting                                                                                                                                                |
 | Disabled host     | No loader/module/runtime/rAF/timer/observer/listener/hook/metric starts and no diagnostic production graph, as defined by the parent                                                                                                                                                                                                                                                                    |
 
 ## Open Design Questions
