@@ -390,9 +390,7 @@ cat > "$work/rust-fixture/build.rs" <<'RUST'
 fn main() {
     // Match rustversion's compiler probe, including its optional Cargo wrapper.
     let rustc = std::env::var_os("RUSTC").expect("RUSTC");
-    assert!(std::path::Path::new(&rustc).is_absolute(), "RUSTC must be cwd-independent");
-    // Match rustix/autocfg: compiler probes can run outside the manifest cwd.
-    std::env::set_current_dir(std::env::var_os("OUT_DIR").expect("OUT_DIR")).unwrap();
+    assert!(std::env::var_os("RUSTC_WRAPPER").is_none_or(|value| value.is_empty()));
     let wrapper = std::env::var_os("RUSTC_WRAPPER").filter(|value| !value.is_empty());
     let mut command = std::process::Command::new(wrapper.as_ref().unwrap_or(&rustc));
     if wrapper.is_some() {

@@ -211,15 +211,12 @@ pkgs.runCommand "buck2-rules"
       substituteInPlace "$script" \
         --replace-fail '"#!/usr/bin/env bash"' '"#!${pkgs.bash}/bin/bash"'
     done
-    # RUSTC is the shim path relative to the build-script cwd, unlike the other
-    # tool variables (which Prelude already anchors to the action root). Resolve
-    # it inside the runner, before build.rs can choose another cwd for a probe.
-    # Keep the analysis-time environment relative so action keys stay portable.
-    substituteInPlace "$out/prelude/rust/tools/buildscript_run.py" \
-      --replace-fail '    ensure_rustc_available(' \
-        '    env["RUSTC"] = os.path.abspath(os.path.join(cwd, env["RUSTC"]))
-
-        ensure_rustc_available('
+    # Reindeer calls Prelude directly, bypassing our first-party buildscript
+    # wrapper. Declare the same compiler-wrapper isolation on those actions:
+    # daemon-local Cargo/sccache selection must not affect Buck tool selection.
+    substituteInPlace "$out/prelude/rust/cargo_buildscript.bzl" \
+      --replace-fail '    env = {}' \
+        '    env = {"RUSTC_WRAPPER": "", "RUSTC_WORKSPACE_WRAPPER": ""}'
     ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
       # Product binaries intentionally use the portable /lib64 interpreter.
       # A Cargo build script is an executable build-time tool, however, and
