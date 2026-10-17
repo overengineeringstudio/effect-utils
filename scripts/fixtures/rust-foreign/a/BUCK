@@ -4,7 +4,7 @@
 # Projection source: scripts/fixtures/rust-foreign/a/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:fb4850150e371945913cf67a4b9aef93b0fb7747abab0795ac50172a50e74f63
+# Semantic fingerprint: sha256:efd54cf52f0b51afa3ec79c4e85966f753d56ee3a954397944ef14bfc7406268
 # Semantic inputs: genie/buck2/mod.ts, rust/buck2-tools/core/cargo-buck2-package-projection.ts, scripts/fixtures/rust-foreign/a/BUCK.genie.ts, scripts/fixtures/rust-foreign/a/Cargo.lock, scripts/fixtures/rust-foreign/a/Cargo.toml, scripts/fixtures/rust-foreign/a/app/Cargo.toml, scripts/fixtures/rust-foreign/a/foreign-packages.json, scripts/fixtures/rust-foreign/a/reindeer.toml, scripts/fixtures/rust-foreign/a/src/**/*.rs, scripts/fixtures/rust-foreign/a/tests/**/*.rs, scripts/fixtures/rust-foreign/a/third-party/BUCK, scripts/fixtures/rust-foreign/a/third-party/cargo-resolution.json, scripts/fixtures/rust-foreign/b/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/src/**/*.rs, scripts/fixtures/rust-foreign/projection.ts
 # Regenerate: devenv tasks run genie:run
 

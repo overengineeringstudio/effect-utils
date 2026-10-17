@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:feb6f13a8deea29ad0b3c3a3ab54066408f789c0e365d1bca29c1e8b47b7e65f
+# Semantic fingerprint: sha256:316bcc091ba3fac183cbdc9d4f3b44fd4c87a01a968e8a2bacacff94c6143531
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
