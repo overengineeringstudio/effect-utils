@@ -14,7 +14,7 @@ import {
   generateJsonSchema,
   type MegarepoConfig,
 } from '../core/config.ts'
-import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
+import { authorizeAuthorWorkspaceWrite } from '../store/store-path.ts'
 
 /** Options for the JSON Schema generator */
 export interface SchemaGeneratorOptions {
@@ -41,21 +41,29 @@ export const generateSchema = (options: SchemaGeneratorOptions) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     // Root authorization prevents a canonical caller from escaping through an output alias.
-    yield* assertCanonicalMutationAllowed({ target: options.megarepoRoot })
+    yield* authorizeAuthorWorkspaceWrite({
+      target: options.megarepoRoot,
+      workspaceRoot: options.megarepoRoot,
+    })
 
     const content = generateSchemaContent()
     const outputPath = EffectPath.ops.join(
       options.megarepoRoot,
       EffectPath.unsafe.relativeFile(options.outputPath ?? 'schema/megarepo.schema.json'),
     )
-    yield* assertCanonicalMutationAllowed({ target: outputPath })
-    const outputDir = EffectPath.ops.parent(outputPath)
+    const authorizedPath = EffectPath.unsafe.absoluteFile(
+      yield* authorizeAuthorWorkspaceWrite({
+        target: outputPath,
+        workspaceRoot: options.megarepoRoot,
+      }),
+    )
+    const outputDir = EffectPath.ops.parent(authorizedPath)
 
     if (outputDir !== undefined) {
       yield* fs.makeDirectory(outputDir, { recursive: true })
     }
 
-    yield* fs.writeFileString(outputPath, content)
+    yield* fs.writeFileString(authorizedPath, content)
 
-    return { path: outputPath, content }
+    return { path: authorizedPath, content }
   })

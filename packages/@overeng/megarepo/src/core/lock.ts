@@ -9,13 +9,15 @@
  * Note: Local path sources are NOT in the lock file - they're already local.
  */
 
+import path from 'node:path'
+
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
 
 import type { AbsoluteFilePath } from '@overeng/effect-path'
 
-import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
+import { authorizeAuthorWorkspaceWrite } from '../store/store-path.ts'
 
 // =============================================================================
 // Lock File Schema
@@ -91,23 +93,20 @@ export const readLockFile = (
 export const writeLockFile = ({
   lockPath,
   lockFile,
-  materializationRoot,
+  workspaceRoot = path.dirname(lockPath),
 }: {
   lockPath: AbsoluteFilePath
   lockFile: LockFile
-  /** Top-level fetch root that owns this lock file (see assertCanonicalMutationAllowed). */
-  materializationRoot?: string
+  /** Invoking workspace identity; defaults to the lock path's lexical parent, never its target. */
+  workspaceRoot?: string
 }): Effect.Effect<void, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
-    yield* assertCanonicalMutationAllowed({
-      target: lockPath,
-      ...(materializationRoot !== undefined ? { materializationRoot, lockFile: lockPath } : {}),
-    })
+    const authorizedPath = yield* authorizeAuthorWorkspaceWrite({ target: lockPath, workspaceRoot })
     const fs = yield* FileSystem.FileSystem
     const content = yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(
       lockFile,
     )
-    yield* fs.writeFileString(lockPath, content + '\n')
+    yield* fs.writeFileString(authorizedPath, content + '\n')
   })
 
 /**

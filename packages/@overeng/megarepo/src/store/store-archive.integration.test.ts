@@ -230,7 +230,7 @@ describe('store-archive: archiveWorktree', () => {
         ).toBe('precious\n')
 
         // The moved worktree still reports its dirt (status preserved).
-        const status = yield* Git.getWorktreeStatus(dest)
+        const status = yield* Git.getWorktreeStatus({ worktreePath: dest })
         expect(status.isDirty).toBe(true)
       },
       Effect.provide(NodeServices.layer),

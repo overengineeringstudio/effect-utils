@@ -282,7 +282,7 @@ describe('canonical mutation write boundaries', () => {
             config: new MegarepoConfig({ members: {} }),
           }),
         ),
-      ).rejects.toThrow('--lock-sync=off')
+      ).rejects.toThrow('Authoring writes require an owned author workspace')
       await expect(readFile(`${canonical}/schema/megarepo.schema.json`)).rejects.toMatchObject({
         code: 'ENOENT',
       })
