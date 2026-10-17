@@ -22,8 +22,7 @@ export type UserTimingFilter =
   | { readonly _tag: 'Names'; readonly names: readonly string[] }
   | { readonly _tag: 'Prefix'; readonly prefix: string }
 
-const byCompletion = (left: BrowserEntry, right: BrowserEntry): number =>
-  left.startTime + left.duration - (right.startTime + right.duration)
+const completedAt = (entry: BrowserEntry): number => entry.startTime + entry.duration
 
 /**
  * Observe `performance.measure()` entries matching `filter` as event samples for the source
@@ -102,7 +101,7 @@ export const userTimingSource = (options: {
                   }
                   valid.push(entry)
                 }
-                valid.sort(byCompletion)
+                valid.sort((left, right) => completedAt(left) - completedAt(right))
                 for (const entry of valid) {
                   const startedAtMs = entry.startTime + offset
                   sink.append({
