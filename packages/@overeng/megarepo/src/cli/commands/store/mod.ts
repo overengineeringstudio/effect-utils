@@ -4118,7 +4118,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
           ...(noFetch === true ? { env: { GIT_NO_LAZY_FETCH: '1' } } : {}),
         }).pipe(
           Effect.mapError((error) =>
-            noFetch === true
+            noFetch === true && error._tag === 'GitCommandError'
               ? new StoreCommandError({
                   message: `--no-fetch could not create worktree from local objects; fetching is disabled: ${error.stderr}`,
                 })
