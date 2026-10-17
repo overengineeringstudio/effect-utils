@@ -100,7 +100,9 @@ assert_eq '{"defaultIsNull":true,"noAmbientPath":true,"unchanged":true}' \
 launcher_test="$(nix build --impure --no-link --print-out-paths --expr \
   "$watchman_expr pkgs.writeShellScript \"buck2-watchman-override-test\" (render overridden)")"
 # A hostile ambient PATH must neither win selection nor survive replacement.
-actual="$(PATH=/nonexistent DEVENV_ROOT="$work" "$BASH" "$launcher_test")"
+# Isolate this launcher-only fixture from CI telemetry: an inherited absolute
+# OTEL_SPAN_BIN would otherwise activate tracing, which needs bash on PATH.
+actual="$(env -i PATH=/nonexistent DEVENV_ROOT="$work" "$BASH" "$launcher_test")"
 assert_eq $'host:--output-encoding\nhost:argument with spaces' "$actual" \
   'override executes the exact host binary and preserves argument boundaries'
 if nix eval --impure --raw --expr \
