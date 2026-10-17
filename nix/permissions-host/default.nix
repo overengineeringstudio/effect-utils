@@ -41,6 +41,11 @@ let
   # the runtime policy cannot accidentally disagree through a policy override.
   policyData = consumerPolicy // { inherit enabledGrants automationTargets; };
   policy = pkgs.writeText "${name}-policy.json" (builtins.toJSON policyData);
+  # ctl compares Info.plist metadata as well as compiled source bytes. Bind the
+  # exact sealed policy/entitlement bytes there so policy-only upgrades install.
+  bundlePolicyHash = builtins.hashString "sha256" (
+    builtins.toJSON policyData + "\n" + entitlementsXml
+  );
   source = lib.fileset.toSource {
     # Preserve the relative Cargo path dependency ../../macos-app/host.
     root = ../.;
@@ -110,8 +115,7 @@ let
       platforms = lib.platforms.darwin;
     };
   };
-  infoPlist = pkgs.writeText "${name}-Info.plist" (
-    lib.generators.toPlist { escape = true; } (
+  infoPlistData =
       {
         CFBundleIdentifier = bundleId;
         CFBundleDisplayName = displayName;
@@ -122,6 +126,7 @@ let
         CFBundleShortVersionString = "1";
         LSUIElement = true;
         LSMinimumSystemVersion = darwinRust.compileEnv.MACOSX_DEPLOYMENT_TARGET;
+        MacPermissionsHostPolicyHash = bundlePolicyHash;
       }
       # FDA has no universal usage key or entitlement. This describes the
       # bounded Documents operation, not an automatic Full Disk Access grant.
@@ -142,9 +147,11 @@ let
       }
       # Notifications and Accessibility use their native authorization APIs;
       # neither has a general-purpose Info.plist usage-description requirement.
-    )
+    ;
+  infoPlist = pkgs.writeText "${name}-Info.plist" (
+    lib.generators.toPlist { escape = true; } infoPlistData
   );
-  entitlements = pkgs.writeText "${name}-entitlements.plist" (
+  entitlementsXml =
     lib.generators.toPlist { escape = true; } (
       lib.optionalAttrs (enabled "microphone") {
         "com.apple.security.device.audio-input" = true;
@@ -155,8 +162,8 @@ let
       # No sandbox: FDA, Notifications, Screen Recording, system-audio process
       # taps and Accessibility have no general hardened-runtime entitlement
       # that grants permission. Audio-input is for microphone input, not taps.
-    )
-  );
+    );
+  entitlements = pkgs.writeText "${name}-entitlements.plist" entitlementsXml;
   bundle = pkgs.runCommand "${name}-native-bundle" { } ''
     mkdir -p "$out/${name}.app/Contents/MacOS" "$out/${name}.app/Contents/Resources"
     cp '${runtime}/bin/macos-permissions-host' "$out/${name}.app/Contents/MacOS/macos-permissions-host"
@@ -192,7 +199,7 @@ assert lib.assertMsg (
   && builtins.length automationTargets == builtins.length (lib.unique automationTargets)
 ) "permissions-host automationTargets must be unique bundle identifiers";
 {
-  inherit runtime policy infoPlist entitlements hostSourceHash;
+  inherit runtime policy infoPlist infoPlistData entitlements hostSourceHash bundlePolicyHash;
   # Preserve the normal mkMacosApp lifecycle interface. hostApp alone stays
   # unsigned; ctl, primitives and desiredDescriptor lazily depend on the existing
   # genericHost tooling derivation, whose postFixup ad-hoc signs its own binaries.

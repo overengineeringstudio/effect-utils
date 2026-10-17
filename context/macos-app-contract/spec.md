@@ -480,6 +480,12 @@ lazy: `hostApp` is the unsigned permissions app. Building generic tooling such
 as `ctl`, `primitives` or `desiredDescriptor` may run its existing ad-hoc-signing
 build steps; that does not seal or authorize activation of the permissions app.
 The app remains unsigned until explicit sealing in the authorized session.
+`Info.plist` includes `MacPermissionsHostPolicyHash`, a digest of the exact merged
+policy JSON and entitlement plist bytes. This binds policy-only and entitlement-only
+changes to the metadata identity already compared by `macos-app-ctl`; the compiled
+`hostSourceHash` need not change. `identity-tests.nix` asserts both upgrade cases
+without assembling or signing a bundle. `infoPlistData` and `bundlePolicyHash`
+expose the corresponding immutable metadata for consumer evaluation.
 
 The native runtime implements the standard ctl socket lifecycle separately
 from the policy-configured typed-operation socket. These are distinct protocols:
