@@ -67,10 +67,10 @@ Canonical terms are defined in [ontology.md](./ontology.md).
   context and terminal handler cause plus encoded Request, Chunk batch, Ack,
   Interrupt, Exit, send attempt/result, disconnect, and connection-fault
   signals available through supported Effect 4 seams.
-- **RPCX-R06 Public seams only:** Capture must use `RpcMiddleware` and decorators
-  around public client/server Protocol services, forwarding every Protocol
-  capability unchanged; it must not import private implementation files or
-  rely on APIs marked internal.
+- **RPCX-R06 Public seams only:** Capture must consume the shared observer's
+  public middleware/Protocol lifecycle and transient raw callbacks, preserving
+  transport behavior. It must not implement another coordinator/decorator,
+  import private implementation files, or rely on APIs marked internal.
 - **RPCX-R07 Typed request identity:** Correlation must preserve connection,
   direction, observer side, and the original string-or-number request-ID type.
   It must not correlate through string coercion or across connections.

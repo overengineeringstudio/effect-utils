@@ -442,7 +442,16 @@ pub(super) fn provision(ctl: &Ctl) -> Result<Value> {
     let ctl_path = record_ctl(&path, key.0)?;
     #[cfg(feature = "test-signing-cert")]
     if let Some(out) = ctl.args.get("test-self-signed-cert-out") {
-        test_certificate::issue(key.0, common_name, &spki, Path::new(out))?;
+        let certificate_sha1 = test_certificate::issue(key.0, common_name, &spki, Path::new(out))?;
+        let record_path = fixture_identity_path(&path);
+        let mut temporary = record_path.as_os_str().to_owned();
+        temporary.push(format!(".tmp-{}", std::process::id()));
+        let mut file = { use std::os::unix::fs::OpenOptionsExt;
+            fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&temporary)? };
+        file.write_all(serde_json::to_vec(&json!({"keychain": path, "certificateSha1": certificate_sha1,
+            "subject": common_name, "publicKeySha256": sha256(&spki)}))?.as_slice())?;
+        file.sync_all()?;
+        fs::rename(temporary, record_path)?;
     }
     window.close()?;
     if let Some(parent) = csr_out.parent() { fs::create_dir_all(parent)?; }
@@ -525,17 +534,20 @@ fn sole_identity(keychain: &Keychain) -> Result<(Cf, Cf, Cf)> {
     Ok((identity, key, certificate))
 }
 /// Private key and certificate of the named identity (SHA-1 or subject, as codesign resolves it).
-fn named_identity(keychain: &Keychain, name: &str) -> Result<(Cf, Cf)> {
+fn named_identity(keychain: &Keychain, name: &str) -> Result<(Cf, Cf, Cf)> {
     let found = keychain_identities(keychain)?;
     let mut keys = Vec::new();
     for identity in found.as_ref().map(|f| elements(f.0)).unwrap_or_default() {
         let (key, certificate) = identity_parts(identity)?;
         // SAFETY: certificate is live; the summary follows the copy rule.
         let subject = owned(unsafe { SecCertificateCopySubjectSummary(certificate.0) }, "SecCertificateCopySubjectSummary").ok().and_then(|s| string(s.0));
-        if certificate_sha1(certificate.0)?.eq_ignore_ascii_case(name) || subject.as_deref() == Some(name) { keys.push((key, certificate)); }
+        if certificate_sha1(certificate.0)?.eq_ignore_ascii_case(name) || subject.as_deref() == Some(name) {
+            // SAFETY: retain the matching identity so it outlives `found`.
+            keys.push((Cf(unsafe { CFRetain(identity) }), key, certificate));
+        }
     }
     let count = keys.len();
-    match <[(Cf, Cf); 1]>::try_from(keys) {
+    match <[(Cf, Cf, Cf); 1]>::try_from(keys) {
         Ok([parts]) => Ok(parts),
         Err(_) => Err(fail(22, "verification-failed", format!("Codesign guard: {count} identities match {name:?}; exactly one is required"))),
     }
@@ -558,7 +570,7 @@ fn codesign_guard(keychain_path: &Path, key: Ref) -> Result<Guard> {
 /// `install-host`'s pre-codesign check, run inside the unlock window (key ACLs are only readable
 /// while unlocked). Fails (22, or 64 for the ACL record) without invoking codesign unless ready.
 pub(super) fn require_codesign_ready(keychain_path: &Path, keychain: &Keychain, identity: &str) -> Result<()> {
-    let (key, certificate) = named_identity(keychain, identity)?;
+    let (_, key, certificate) = named_identity(keychain, identity)?;
     let guard = codesign_guard(keychain_path, key.0)?;
     if guard.ready { require_chain(certificate.0)?; return Ok(()); }
     Err(fail(22, "verification-failed", format!("Codesign guard refused (partitionCapable {}, partitionList {:?}, signAclExact {} for ctl {}); run prove-signing-key", guard.capable, guard.partitions, guard.sign_acl_exact, guard.ctl)))
@@ -752,6 +764,21 @@ fn export_status(identity: Ref) -> Result<i32> {
     if !data.is_null() { drop(Cf(data)); }
     Ok(status)
 }
+struct Nonextractable { extractable: Option<bool>, export: Option<i32> }
+/// Shared by key proof and fixture signing. Never attempt export of an extractable
+/// key (it may prompt), or a pinned key (ctl's partition can no longer use it).
+fn prove_nonextractable(identity: Ref, key: Ref, pinned_before: bool) -> Result<Nonextractable> {
+    let extractable = key_extractable(key)?;
+    if extractable != Some(false) {
+        return Err(fail(22, "verification-failed", "Signing requires a non-extractable key"));
+    }
+    let export = if pinned_before { None } else { Some(export_status(identity)?) };
+    if export.is_some_and(|status| status != -25316) {
+        return Err(fail(22, "verification-failed", format!("Non-extractable key export was not refused with errSecDataNotAvailable: {export:?}")));
+    }
+    Ok(Nonextractable { extractable, export })
+}
+
 /// Bounds process lifetime and pipe draining. Observe leader exit without reaping it,
 /// keeping its PGID reserved until the whole group is killed; only then reap and drain.
 pub(super) fn bounded_codesign(args: &[&str]) -> Result<Output> {
@@ -876,11 +903,8 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
     let window = keychain.unlock(&password)?;
     let (identity, key, certificate) = sole_identity(&keychain)?;
     let identity_sha1 = certificate_sha1(certificate.0)?;
-    let extractable = key_extractable(key.0)?;
     let pinned_before = codesign_guard(&path, key.0)?.ready;
-    // An extractable key could make export ask for confirmation, so it is only attempted when the
-    // attribute already says non-extractable.
-    let export = if !pinned_before && extractable == Some(false) { Some(export_status(identity.0)?) } else { None };
+    let Nonextractable { extractable, export } = prove_nonextractable(identity.0, key.0, pinned_before)?;
     if !pinned_before { pin_partition(key.0, &password)?; }
     drop(password);
     let guard = codesign_guard(&path, key.0)?;
@@ -889,7 +913,7 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
     let settings = keychain_settings(&keychain)?;
     window.close()?;
     let locked_after = keychain_locked(&keychain)?;
-    let export_refused = match export { Some(status) => status == -25316, None => pinned_before && extractable == Some(false) }; // errSecDataNotAvailable only
+    let export_refused = true; // The shared proof requires errSecDataNotAvailable, or a pinned readback.
     // `security` runs in partition `apple-tool:`; an exact `[apple:]` list excludes it structurally.
     let security_excluded = guard.partitions == [CODESIGN_PARTITION];
     let proof = json!({
@@ -903,6 +927,142 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
     let ok = partition_capable && guard.ready && export_refused && extractable == Some(false) && locked_after
         && settings.lock_on_sleep != 0 && settings.lock_interval == LOCK_INTERVAL && (no_sign || sign_ok == Some(true));
     if ok { Ok(proof) } else { Err(fail(22, "verification-failed", format!("Signing-key proof failed: {proof}"))) }
+    })();
+    keychain.finish(result)
+}
+
+fn fixture_identity_path(keychain: &Path) -> PathBuf {
+    let mut path = keychain.as_os_str().to_owned();
+    path.push(".fixture-identity.json");
+    PathBuf::from(path)
+}
+/// Deliberate fixture allowlist. Production provisioning never writes this record.
+fn require_fixture_identity(keychain: &Path, sha1: &str) -> Result<String> {
+    let path = fixture_identity_path(keychain);
+    let refuse = || fail(64, "invalid-input", "Identity is not explicitly recorded as a fixture identity");
+    let metadata = fs::symlink_metadata(&path).map_err(|_| refuse())?;
+    // SAFETY: geteuid has no preconditions.
+    if !metadata.file_type().is_file() || metadata.mode() & 0o777 != 0o600 || metadata.uid() != unsafe { libc::geteuid() } {
+        return Err(refuse());
+    }
+    let record: Value = serde_json::from_slice(&fs::read(&path)?).map_err(|_| refuse())?;
+    let allowed = record["certificateSha1"].as_str().is_some_and(|s| s.eq_ignore_ascii_case(sha1));
+    if record["keychain"].as_str() != Some(text(keychain)?) || !allowed { return Err(refuse()); }
+    record["publicKeySha256"].as_str().filter(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+        .map(str::to_owned).ok_or_else(refuse)
+}
+/// Certificates and their public keys are readable while K is locked. The sidecar
+/// is only an allowlist: production exclusion uses actual certificate metadata,
+/// including other certificates for the same production private key.
+fn require_not_production(ctl: &Ctl, keychain: &Keychain, sha1: &str, recorded_key: &str) -> Result<()> {
+    let list = search_list(keychain)?;
+    // SAFETY: Security constants are immutable; only public certificate refs are requested.
+    let query = unsafe { cf_dictionary(&[(kSecClass, kSecClassCertificate), (kSecMatchSearchList, list.0),
+        (kSecMatchLimit, kSecMatchLimitAll), (kSecReturnRef, kCFBooleanTrue)])? };
+    let found = matching(&query)?;
+    let production = ctl.config["signer"]["identity"].as_str().ok_or_else(|| fail(64, "invalid-input", "Missing configured production signer"))?;
+    let refuse = || fail(64, "invalid-input", "The configured production signer cannot sign fixtures");
+    let mut selected = None;
+    let mut production_keys = Vec::new();
+    for certificate in found.as_ref().map(|f| elements(f.0)).unwrap_or_default() {
+        let actual_sha1 = certificate_sha1(certificate)?;
+        // SAFETY: certificate is live; subject summary follows the copy rule.
+        let subject = owned(unsafe { SecCertificateCopySubjectSummary(certificate) }, "SecCertificateCopySubjectSummary")?;
+        let is_production = actual_sha1.eq_ignore_ascii_case(production) || string(subject.0).as_deref() == Some(production);
+        let is_selected = actual_sha1.eq_ignore_ascii_case(sha1);
+        if is_selected && is_production { return Err(refuse()); }
+        if !is_selected && !is_production { continue; }
+        // SAFETY: certificate is live; its public key and external bytes follow the copy rule.
+        let public = owned(unsafe { SecCertificateCopyKey(certificate) }, "SecCertificateCopyKey")?;
+        let mut error = std::ptr::null();
+        let data = unsafe { SecKeyCopyExternalRepresentation(public.0, &mut error) };
+        if data.is_null() { return Err(cf_failure(error, "SecKeyCopyExternalRepresentation(public certificate)")); }
+        let key = sha256(&subject_public_key_info(&bytes(Cf(data).0)));
+        if is_selected { selected = Some(key); } else { production_keys.push(key); }
+    }
+    let selected = selected.ok_or_else(|| fail(64, "invalid-input", "Fixture certificate is not present in the dedicated keychain"))?;
+    if production_keys.contains(&selected) { return Err(refuse()); }
+    if !selected.eq_ignore_ascii_case(recorded_key) {
+        return Err(fail(64, "invalid-input", "Fixture allowlist public key differs from the actual certificate"));
+    }
+    Ok(())
+}
+
+
+/// Fixture sealing has the same password-authorized pin, non-extractability readback and
+/// exact ACL/chain preflight as the key proof. Inventory entries are relative descendants;
+/// sorting by depth seals leaves before containers, never using codesign's `--deep`.
+pub(super) fn sign_fixture(ctl: &Ctl) -> Result<Value> {
+    let path = dedicated_keychain(ctl)?;
+    let keychain = Keychain::open_locked(&path)?;
+    let result = (|| {
+    let sha1 = ctl.arg("certificate-sha1")?;
+    if sha1.len() != 40 || !sha1.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(fail(64, "invalid-input", "A certificate SHA1 is required"));
+    }
+    let fixture_key = require_fixture_identity(&path, sha1)?;
+    require_not_production(ctl, &keychain, sha1, &fixture_key)?;
+    let target = fs::canonicalize(ctl.arg("target")?)?;
+    if ctl.args.contains_key("requirement") {
+        return Err(fail(64, "invalid-input", "Fixture requirements are ctl-constructed; supply --identifier"));
+    }
+    let identifier = ctl.arg("identifier")?;
+    let suffix = identifier.strip_prefix("dev.overeng.macos-app.fixture.").filter(|s| !s.is_empty());
+    if suffix.is_none() || !identifier.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')) {
+        return Err(fail(64, "invalid-input", "Fixture identifier must start with dev.overeng.macos-app.fixture. and contain only identifier characters"));
+    }
+    let requirement = canonical_requirement(&format!("identifier \"{identifier}\" and certificate leaf = H\"{sha1}\""))?;
+    // Each ctl config pins one product DR, not a repository-wide product inventory.
+    // The explicit inventory is mandatory; include the current product's pinned DR too.
+    let mut production: Vec<String> = serde_json::from_slice(&fs::read(ctl.arg("production-requirements")?)?)?;
+    production.push(ctl.field("requirement")?.to_owned());
+    for declared in production {
+        if canonical_requirement(&declared)? == requirement {
+            return Err(fail(64, "invalid-input", "Fixture requirement matches a production designated requirement"));
+        }
+    }
+    let mut inventory = Vec::new();
+    if let Some(file) = ctl.args.get("inventory") {
+        let entries: Vec<String> = serde_json::from_slice(&fs::read(file)?)?;
+        for entry in entries {
+            let relative = Path::new(&entry);
+            if relative.is_absolute() || relative.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+                return Err(fail(64, "invalid-input", "Inventory entries must be relative descendants"));
+            }
+            let child = fs::canonicalize(target.join(relative))?;
+            if child == target || !child.starts_with(&target) {
+                return Err(fail(64, "invalid-input", "Inventory entry escapes the fixture"));
+            }
+            inventory.push(child);
+        }
+    }
+    inventory.sort_unstable_by(|a, b| b.components().count().cmp(&a.components().count()).then_with(|| a.cmp(b)));
+    inventory.dedup();
+    inventory.push(target.clone());
+        let password = Password::read(ctl.password_fd()?)?;
+        let window = keychain.unlock(&password)?;
+        let (identity, key, _) = named_identity(&keychain, sha1)?;
+        if !key_id(key.0)?.eq_ignore_ascii_case(&fixture_key) {
+            return Err(fail(64, "invalid-input", "Fixture identity record names a different private key"));
+        }
+        // Read the recorded ACL before changing anything. Missing/foreign records refuse.
+        let guard = codesign_guard(&path, key.0)?;
+        prove_nonextractable(identity.0, key.0, guard.ready)?;
+        if !guard.ready { pin_partition(key.0, &password)?; }
+        drop(password);
+        require_codesign_ready(&path, &keychain, sha1)?;
+        for item in &inventory {
+            // Recheck immediately before every spawn, including nested code.
+            require_codesign_ready(&path, &keychain, sha1)?;
+            let signed = bounded_codesign(&["--force", "--keychain", text(&path)?, "--sign", sha1,
+                "--identifier", identifier, "--requirements", &format!("=designated => {requirement}"), text(item)?])?;
+            if !signed.status.success() {
+                return Err(signing("sign-failed", String::from_utf8_lossy(&signed.stderr).trim().to_owned()));
+            }
+            ctl.signature_with(item, &requirement)?;
+        }
+        window.close()?;
+        Ok(json!({"target": target, "signedPaths": inventory, "certificateSha1": sha1, "identifier": identifier, "requirement": requirement}))
     })();
     keychain.finish(result)
 }

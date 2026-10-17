@@ -52,6 +52,7 @@ it('loads installed Node config, preserving immutable Nix metadata and runtime c
     for (const name of ['cli-build-identity.js', 'vite-build-identity.js']) {
       copyFileSync(join(source, name), join(installed, 'src/node', name))
     }
+    copyFileSync(join(source, '../build-identity.js'), join(installed, 'src/build-identity.js'))
     writeFileSync(
       join(root, 'entry.js'),
       "import {buildIdentity,deploymentId} from 'virtual:build-identity'; globalThis.provenance={buildIdentity,deploymentId};",
@@ -125,6 +126,7 @@ it('reads the served worktree revision and dirty state instead of a stale shell 
       'fixture',
     )
     const rev = git('rev-parse', 'HEAD')
+    const commitTs = Number(git('log', '-1', '--format=%ct', rev))
     writeFileSync(join(root, 'entry.js'), 'export const value = 2\n')
     server = await createServer({
       configFile: false,
@@ -140,10 +142,72 @@ it('reads the served worktree revision and dirty state instead of a stale shell 
     expect(result.buildIdentity.machineVersion).toBe(`1.2.3+local.${rev}.dirty`)
     expect(result.buildIdentity.sourceKind).toBe('local')
     expect(result.buildIdentity.dirty).toBe(true)
+    expect(result.buildIdentity.commitTs).toBe(commitTs)
     expect(result.buildIdentity.buildTs).toBeGreaterThan(0)
     expect(result.deploymentId).toBe('dev (HMR)')
   } finally {
     await server?.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('omits local commitTs when the Git timestamp lookup fails', async () => {
+  const root = fixtureRoot('build-identity-git-failure-')
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
+  const originalPath = process.env['PATH']
+  const originalFixturePath = process.env['BUILD_IDENTITY_FIXTURE_GIT_PATH']
+  let server: ViteDevServer | undefined
+  try {
+    git('init', '--quiet')
+    writeFileSync(join(root, 'entry.js'), 'export const value = 1\n')
+    git('add', 'entry.js')
+    git(
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--quiet',
+      '-m',
+      'fixture',
+    )
+    const rev = git('rev-parse', 'HEAD')
+    const bin = join(root, 'bin')
+    mkdirSync(bin)
+    // Fail only the timestamp query; revision/status still use the real Git fixture.
+    writeFileSync(
+      join(bin, 'git'),
+      '#!/bin/sh\nfor arg do\n  if [ "$arg" = log ]; then exit 1; fi\ndone\nPATH="$BUILD_IDENTITY_FIXTURE_GIT_PATH" exec git "$@"\n',
+      { mode: 0o755 },
+    )
+    process.env['BUILD_IDENTITY_FIXTURE_GIT_PATH'] = originalPath ?? ''
+    process.env['PATH'] = `${bin}:${originalPath ?? ''}`
+    server = await createServer({
+      configFile: false,
+      root,
+      logLevel: 'silent',
+      optimizeDeps: { noDiscovery: true },
+      plugins: [
+        createBuildIdentityPlugin({ baseVersion: '1.2.3', buildStamp: '__CLI_BUILD_STAMP__' }),
+      ],
+      server: { middlewareMode: true },
+    })
+    const { buildIdentity } = await server.ssrLoadModule('virtual:build-identity')
+    expect(buildIdentity).toMatchObject({
+      sourceKind: 'local',
+      rev,
+      buildTs: expect.any(Number),
+    })
+    expect(buildIdentity).not.toHaveProperty('commitTs')
+  } finally {
+    await server?.close()
+    if (originalPath === undefined) delete process.env['PATH']
+    else process.env['PATH'] = originalPath
+    if (originalFixturePath === undefined) delete process.env['BUILD_IDENTITY_FIXTURE_GIT_PATH']
+    else process.env['BUILD_IDENTITY_FIXTURE_GIT_PATH'] = originalFixturePath
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -239,6 +303,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     expect(response.headers.get('cache-control')).toBe('no-cache')
     expect(await response.json()).toMatchObject({
       rev: git('rev-parse', 'HEAD'),
+      commitTs: Number(git('log', '-1', '--format=%ct', git('rev-parse', 'HEAD'))),
       dirty: false,
       sourceKind: 'local',
     })
@@ -310,6 +375,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     const revision = git('rev-parse', 'HEAD')
     expect((await identity()).rev).toBe(revision)
     expect((await identity()).dirty).toBe(false)
+    expect((await identity()).commitTs).toBe(Number(git('log', '-1', '--format=%ct', revision)))
     expect(await (await fetch(probeUrl)).json()).toEqual(await identity())
   } finally {
     await server?.close()

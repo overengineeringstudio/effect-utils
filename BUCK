@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:3aed4a57038caae80ec1b115c48307a3a95964cc9fe192ada0245d231d8012c2
+# Semantic fingerprint: sha256:21deb314d3cd7122937bb33b5c6b4176e2b71c9154e63f5c65d9f406acd7d793
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -171,6 +171,9 @@ check_aggregate(
         "//packages/@overeng/ci-tools:typecheck",
         "//packages/@overeng/content-address:typecheck",
         "//packages/@overeng/devbar:typecheck",
+        "//packages/@overeng/meters:typecheck",
+        "//packages/@overeng/effect-rpc-observer:typecheck",
+        "//packages/@overeng/rpc-devtools:typecheck",
         "//packages/@overeng/effect-ai-claude-cli:typecheck",
         "//packages/@overeng/effect-ai-gateway:typecheck",
         "//packages/@overeng/effect-distributed-lock:typecheck",
@@ -235,6 +238,9 @@ check_aggregate(
         "//packages/@overeng/ci-tools:dist",
         "//packages/@overeng/content-address:dist",
         "//packages/@overeng/devbar:dist",
+        "//packages/@overeng/meters:dist",
+        "//packages/@overeng/effect-rpc-observer:dist",
+        "//packages/@overeng/rpc-devtools:dist",
         "//packages/@overeng/effect-ai-claude-cli:dist",
         "//packages/@overeng/effect-ai-gateway:dist",
         "//packages/@overeng/effect-distributed-lock:dist",
@@ -291,6 +297,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/effect-react:test",
         "effect_utils//packages/@overeng/effect-rpc-explorer-react:test",
         "effect_utils//packages/@overeng/effect-rpc-explorer:test",
+        "effect_utils//packages/@overeng/effect-rpc-observer:test",
         "effect_utils//packages/@overeng/effect-rpc-tanstack:test",
         "effect_utils//packages/@overeng/effect-rust:test",
         "effect_utils//packages/@overeng/effect-schema-form-aria:test",
@@ -301,6 +308,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/kdl-effect:test",
         "effect_utils//packages/@overeng/kdl:test",
         "effect_utils//packages/@overeng/megarepo:test",
+        "effect_utils//packages/@overeng/meters:test",
         "effect_utils//packages/@overeng/notion-cli:test",
         "effect_utils//packages/@overeng/notion-core:test",
         "effect_utils//packages/@overeng/notion-datasource-sync:test",
@@ -318,6 +326,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/pty-effect:test",
         "effect_utils//packages/@overeng/react-inspector:test",
         "effect_utils//packages/@overeng/restate-effect:test",
+        "effect_utils//packages/@overeng/rpc-devtools:test",
         "effect_utils//packages/@overeng/tui-core:test",
         "effect_utils//packages/@overeng/tui-react:test",
         "effect_utils//packages/@overeng/tui-stories:test",

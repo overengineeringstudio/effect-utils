@@ -72,6 +72,43 @@ let
     };
   first = product "first";
   second = product "second";
+  # Products own complete bundle construction, including their native helpers.
+  completeBundle = pkgs.runCommand "synthetic-complete-bundle" { } ''
+    mkdir -p "$out"
+    cp -R '${first.hostApp}/SyntheticHost.app' "$out/SyntheticHost.app"
+    chmod -R u+w "$out/SyntheticHost.app"
+    mkdir -p "$out/SyntheticHost.app/Contents/Helpers"
+    cp '${first.primitives}/bin/macos-app-host' \
+      "$out/SyntheticHost.app/Contents/Helpers/synthetic-helper"
+  '';
+  completeProduct = mkMacosApp {
+    name = "SyntheticHost";
+    bundleId = "dev.example.synthetic-host";
+    displayName = "Synthetic Host";
+    # An incumbent's predicate is pinned verbatim, not replaced by the team default.
+    requirement = ''identifier "dev.example.synthetic-host" and anchor apple generic and certificate leaf[subject.CN] = "Example certificate identity (not used by tests)"'';
+    signer = {
+      teamId = "EXAMPLE123";
+      identity = "Example certificate identity (not used by tests)";
+    };
+    hostBundle = {
+      path = "${completeBundle}/SyntheticHost.app";
+      executable = "Contents/MacOS/macos-app-host";
+      hostSourceHash = first.hostSourceHash;
+      signingOptions = [ "runtime" ];
+      nestedCode = [
+        {
+          path = "Contents/Helpers/synthetic-helper";
+          identifier = "dev.example.synthetic-host.helper";
+          requirement = ''identifier "dev.example.synthetic-host.helper" and anchor apple generic and certificate leaf[subject.CN] = "Example certificate identity (not used by tests)"'';
+          options = [ "runtime" ];
+        }
+      ];
+    };
+    launchd.label = "dev.example.synthetic-host";
+    statusAllowedUids = [ 501 ];
+    actions = { };
+  };
   tampered = pkgs.runCommand "synthetic-tampered-payload" { } ''
     mkdir -p "$out"
     cp '${payload "first"}' "$out/payload"
@@ -121,6 +158,22 @@ let
       name = "tamperedPayload";
       path = tampered;
     }
+    {
+      name = "desired-host.json";
+      path = first.desiredDescriptor;
+    }
+    {
+      name = "completeHostApp";
+      path = completeProduct.hostApp;
+    }
+    {
+      name = "complete-ctl-config.json";
+      path = completeProduct.ctlConfig;
+    }
+    {
+      name = "complete-desired-host.json";
+      path = completeProduct.desiredDescriptor;
+    }
   ];
   check = pkgs.runCommand "macos-app-host-stability" { } ''
     cmp '${first.hostApp}/SyntheticHost.app/Contents/MacOS/macos-app-host' \
@@ -135,6 +188,9 @@ let
       "$PWD/nix/macos-app/integration.py" "$@"
   '';
   ctlIntegration = pkgs.writeShellScriptBin "macos-app-ctl-integration" ''
+    # Pin the production and test-feature ctl binaries, including fixture signing,
+    # as runtime dependencies rather than rebuilding the example inside the test.
+    if [ "$#" -eq 0 ]; then set -- ${example}; fi
     exec ${pkgs.python3}/bin/python3 "$PWD/nix/macos-app/ctl-integration.py" "$@"
   '';
   smokeProduct =

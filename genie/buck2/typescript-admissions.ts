@@ -15,6 +15,7 @@ import { buck2TypeScriptAdmission as effectPathAdmission } from '../../packages/
 import { buck2TypeScriptAdmission as effectReactAdmission } from '../../packages/@overeng/effect-react/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcExplorerReactAdmission } from '../../packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcExplorerAdmission } from '../../packages/@overeng/effect-rpc-explorer/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectRpcObserverAdmission } from '../../packages/@overeng/effect-rpc-observer/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackAdmission } from '../../packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcTanstackBasicAdmission } from '../../packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRustAdmission } from '../../packages/@overeng/effect-rust/BUCK.genie.ts'
@@ -27,6 +28,7 @@ import { buck2TypeScriptAdmission as ghCiUtilsAdmission } from '../../packages/@
 import { buck2TypeScriptAdmission as kdlEffectAdmission } from '../../packages/@overeng/kdl-effect/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as kdlAdmission } from '../../packages/@overeng/kdl/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as megarepoAdmission } from '../../packages/@overeng/megarepo/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as metersAdmission } from '../../packages/@overeng/meters/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as notionCliAdmission } from '../../packages/@overeng/notion-cli/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as notionCoreAdmission } from '../../packages/@overeng/notion-core/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as notionDatasourceSyncAdmission } from '../../packages/@overeng/notion-datasource-sync/BUCK.genie.ts'
@@ -43,6 +45,7 @@ import { buck2TypeScriptAdmission as oxcConfigAdmission } from '../../packages/@
 import { buck2TypeScriptAdmission as ptyEffectAdmission } from '../../packages/@overeng/pty-effect/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as reactInspectorAdmission } from '../../packages/@overeng/react-inspector/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as restateEffectAdmission } from '../../packages/@overeng/restate-effect/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as rpcDevtoolsAdmission } from '../../packages/@overeng/rpc-devtools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as stylexTokensAdmission } from '../../packages/@overeng/stylex-tokens/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as tuiCoreAdmission } from '../../packages/@overeng/tui-core/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as tuiReactAdmission } from '../../packages/@overeng/tui-react/BUCK.genie.ts'
@@ -94,6 +97,9 @@ export const buck2TypeScriptAdmissions = {
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,
   devbar: devbarAdmission,
+  meters: metersAdmission,
+  effectRpcObserver: effectRpcObserverAdmission,
+  rpcDevtools: rpcDevtoolsAdmission,
   effectAiClaudeCli: effectAiClaudeCliAdmission,
   effectAiGateway: effectAiGatewayAdmission,
   effectDistributedLock: effectDistributedLockAdmission,

@@ -1,6 +1,5 @@
-import { type Cause, Deferred, Duration, Effect, type Queue, Schema, Stream } from 'effect'
-import { Headers } from 'effect/http'
-import { Rpc, RpcGroup, RpcMessage } from 'effect/rpc'
+import { Duration, Effect, Queue, Schema, Stream } from 'effect'
+import { Rpc, RpcClient, RpcGroup, type RpcMessage, RpcSerialization, RpcServer } from 'effect/rpc'
 
 import {
   defaultNormalizationBounds,
@@ -8,17 +7,20 @@ import {
   makeExplorerStore,
   makeDescriptorSet,
   makeInspectorGroup,
-  makeProtocolObserver,
+  makeCaptureSink,
   makeRpcDescriptors,
   type ExplorerEventInput,
   type ExplorerStore,
   type InspectorGroup,
-  type ProtocolObserver,
   type RequestIdentity,
   type Timestamp,
 } from '@overeng/effect-rpc-explorer'
-
-import type { ExplorerClient } from '../projection.ts'
+import type { ExplorerClient } from '@overeng/effect-rpc-explorer'
+import {
+  decorateClientProtocol,
+  decorateServerProtocol,
+  makeProtocolObserver,
+} from '@overeng/effect-rpc-observer'
 
 const applicationGroup = RpcGroup.make(
   Rpc.make('Fixture.ApplicationRpc', {
@@ -58,104 +60,110 @@ const descriptorForTag = (tag: string) => {
   }
 }
 
-const handlerOptions = {
-  client: new Rpc.ServerClient(1),
-  requestId: RpcMessage.RequestId(1),
-  headers: Headers.empty,
-}
-
-const resolveUnary = <A, E>(result: A | Deferred.Deferred<A, E>): Effect.Effect<A, E> =>
-  Deferred.isDeferred<A, E>(result) === true ? Deferred.await(result) : Effect.succeed(result)
-
-const resolveStream = <A, E, R>(
-  result: Stream.Stream<A, E, R> | Effect.Effect<Queue.Dequeue<A, E | Cause.Done>, E, R>,
-): Stream.Stream<A, E, R> =>
-  Stream.isStream(result) === true
-    ? result
-    : Stream.unwrap(Effect.map(result, (queue) => Stream.fromQueue(queue)))
+const ignoreDelivery = (): Effect.Effect<void> => Effect.void
 
 const makeInspectorClient = ({
   inspector,
-  observer,
+  store,
 }: {
   readonly inspector: InspectorGroup
-  readonly observer: ProtocolObserver
+  readonly store: ExplorerStore
 }): ExplorerClient => {
-  let nextRequestId = 100
-  const observeRequest = ({
-    tag,
-    payload,
-  }: {
-    readonly tag: string
-    readonly payload: unknown
-  }) => {
-    const requestId = nextRequestId++
-    const identity = observer.request({
-      clientId: 1,
-      direction: 'clientToServer',
-      message: { _tag: 'Request', id: requestId, tag, payload, headers: [] },
+  let nextConnection = 1
+  let observerMillis = 1_795_027_201_100
+  const makeClient = Effect.gen(function* () {
+    const connection = nextConnection++
+    let deliverToServer: (
+      clientId: number,
+      message: RpcMessage.FromClientEncoded,
+    ) => Effect.Effect<void> = ignoreDelivery
+    let deliverToClient: (
+      clientId: number,
+      message: RpcMessage.FromServerEncoded,
+    ) => Effect.Effect<void> = ignoreDelivery
+    const serverProtocol = yield* RpcServer.Protocol.make((writeRequest) => {
+      deliverToServer = writeRequest
+      return Effect.map(Queue.make<number>(), (disconnects) => ({
+        disconnects,
+        clientIds: Effect.succeed(new Set<number>()),
+        initialMessage: Effect.succeedNone,
+        // oxlint-disable-next-line overeng/named-args -- Protocol callback shape belongs to Effect.
+        send: (clientId, message) => deliverToClient(clientId, message),
+        end: () => Effect.void,
+        supportsAck: true,
+        supportsTransferables: false,
+        supportsSpanPropagation: true,
+        supportsNotifications: true,
+        codecFor: RpcSerialization.json.codecFor,
+      }))
     })
-    observer.sendAttempted(identity)
-    observer.sendFinished(identity, true, false)
-    return requestId
-  }
-  const observeTerminal = ({
-    requestId,
-    value,
-  }: {
-    readonly requestId: number
-    readonly value: unknown
-  }): void =>
-    observer.terminal(1, 'clientToServer', {
-      _tag: 'Exit',
-      requestId,
-      exit: { _tag: 'Success', value },
+    const clientProtocol = yield* RpcClient.Protocol.make((writeResponse) => {
+      deliverToClient = writeResponse
+      return Effect.succeed({
+        // oxlint-disable-next-line overeng/named-args -- Protocol callback shape belongs to Effect.
+        send: (clientId, message) => deliverToServer(clientId, message),
+        supportsAck: true,
+        supportsTransferables: false,
+        codecFor: RpcSerialization.json.codecFor,
+      })
     })
-
+    const serverObserver = yield* makeProtocolObserver({
+      side: 'server',
+      capacity: 32,
+      connectionId: (clientId) => `fixture-server-${connection}-${clientId}`,
+      clock: { now: () => timestamp(observerMillis++) },
+      sinks: [
+        { capture: true, sink: makeCaptureSink({ store, side: 'server', descriptorForTag }) },
+      ],
+    })
+    const clientObserver = yield* makeProtocolObserver({
+      side: 'client',
+      capacity: 32,
+      connectionId: (clientId) => `fixture-client-${connection}-${clientId}`,
+      clock: { now: () => timestamp(observerMillis++) },
+      sinks: [
+        { capture: true, sink: makeCaptureSink({ store, side: 'client', descriptorForTag }) },
+      ],
+    })
+    yield* RpcServer.make(InspectorRpcGroup).pipe(
+      Effect.provideService(
+        RpcServer.Protocol,
+        decorateServerProtocol({ protocol: serverProtocol, observer: serverObserver }),
+      ),
+      Effect.provide(inspector.layer),
+      Effect.forkScoped,
+    )
+    return yield* RpcClient.make(InspectorRpcGroup).pipe(
+      Effect.provideService(
+        RpcClient.Protocol,
+        decorateClientProtocol({ protocol: clientProtocol, observer: clientObserver }),
+      ),
+    )
+  })
   return {
-    getSnapshot: async () => {
-      const requestId = observeRequest({ tag: 'RpcExplorer.GetSnapshot', payload: {} })
-      const result = await Effect.runPromise(
-        Effect.gen(function* () {
-          const handler = yield* inspector.group.accessHandler('RpcExplorer.GetSnapshot')
-          const handlerResult = yield* handler({}, handlerOptions)
-          return yield* resolveUnary(handlerResult)
-        }).pipe(Effect.provide(inspector.layer)),
-      )
-      observeTerminal({ requestId: requestId, value: result })
-      return result
-    },
-    watch: ({ afterRevision, descriptorRevision }) => ({
-      async *[Symbol.asyncIterator]() {
-        const payload = {
-          ...(afterRevision === undefined ? {} : { afterRevision }),
-          ...(descriptorRevision === undefined ? {} : { descriptorRevision }),
-        }
-        const requestId = observeRequest({ tag: 'RpcExplorer.Watch', payload: payload })
-        const handler = await Effect.runPromise(
-          inspector.group.accessHandler('RpcExplorer.Watch').pipe(Effect.provide(inspector.layer)),
-        )
-        for await (const frame of Stream.toAsyncIterable(
-          resolveStream(handler(payload, handlerOptions)),
-        )) {
-          observer.chunk(1, 'clientToServer', { _tag: 'Chunk', requestId, values: [frame] })
-          observer.correlated('AckObserved', 1, 'clientToServer', requestId)
-          yield frame
-        }
-      },
-    }),
-    clearHistory: async () => {
-      const requestId = observeRequest({ tag: 'RpcExplorer.ClearHistory', payload: {} })
-      const result = await Effect.runPromise(
-        Effect.gen(function* () {
-          const handler = yield* inspector.group.accessHandler('RpcExplorer.ClearHistory')
-          const handlerResult = yield* handler({}, handlerOptions)
-          return yield* resolveUnary(handlerResult)
-        }).pipe(Effect.provide(inspector.layer)),
-      )
-      observeTerminal({ requestId: requestId, value: result })
-      return result
-    },
+    getSnapshot: () =>
+      makeClient.pipe(
+        Effect.flatMap((client) => client['RpcExplorer.GetSnapshot']({})),
+        Effect.scoped,
+        Effect.runPromise,
+      ),
+    watch: ({ afterRevision, descriptorRevision }) =>
+      Stream.toAsyncIterable(
+        Stream.unwrap(
+          Effect.map(makeClient, (client) =>
+            client['RpcExplorer.Watch']({
+              ...(afterRevision === undefined ? {} : { afterRevision }),
+              ...(descriptorRevision === undefined ? {} : { descriptorRevision }),
+            }),
+          ),
+        ),
+      ),
+    clearHistory: () =>
+      makeClient.pipe(
+        Effect.flatMap((client) => client['RpcExplorer.ClearHistory']({})),
+        Effect.scoped,
+        Effect.runPromise,
+      ),
   }
 }
 
@@ -200,10 +208,9 @@ export interface LiveCoreFixture {
 }
 
 /**
- * Builds the Storybook integration bridge from the real core store and inspector
- * handler layer. Every inspector Request/Chunk/Ack/Exit is fed through the
- * public protocol observer, proving the inspector descriptors exclude their own
- * traffic while application observations remain visible.
+ * Builds the Storybook integration bridge with real scoped client/server RPC
+ * protocols and shared observer capture sinks. Inspector traffic exercises the
+ * production transport seams while excluded descriptors keep it out of the store.
  */
 export const makeLiveCoreFixture = (): LiveCoreFixture => {
   const store = makeExplorerStore({
@@ -242,18 +249,9 @@ export const makeLiveCoreFixture = (): LiveCoreFixture => {
   const descriptorSet = makeDescriptorSet(descriptors)
   const inspector = makeInspectorGroup({ store, descriptors: descriptorSet })
   let releaseRuntimeProvider: (() => void) | undefined
-  let observerMillis = 1_795_027_201_100
-  const observer = makeProtocolObserver(
-    {
-      store,
-      descriptorForTag,
-      timestamp: () => timestamp(observerMillis++),
-    },
-    'client',
-  )
   let emitted = false
   return {
-    client: makeInspectorClient({ inspector, observer }),
+    client: makeInspectorClient({ inspector, store }),
     emitLifecycle: () => {
       if (emitted === true) return
       emitted = true
