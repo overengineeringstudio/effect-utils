@@ -56,10 +56,10 @@ const resolvePhysicalMutationPath = (
       const resolved = yield* fs.realPath(candidate).pipe(
         Effect.catchIf(
           (error) => error.reason._tag === 'NotFound',
-          () => Effect.succeed(undefined),
+          () => Effect.void,
         ),
       )
-      if (resolved !== undefined) {
+      if (typeof resolved === 'string') {
         current = resolved
         continue
       }
@@ -67,11 +67,11 @@ const resolvePhysicalMutationPath = (
       const link = yield* fs.readLink(candidate).pipe(
         Effect.catchIf(
           (error) => error.reason._tag === 'NotFound',
-          () => Effect.succeed(undefined),
+          () => Effect.void,
         ),
       )
       current =
-        link === undefined
+        typeof link !== 'string'
           ? candidate
           : yield* resolvePhysicalMutationPath(
               path.isAbsolute(link) === true ? link : `${current}/${link}`,

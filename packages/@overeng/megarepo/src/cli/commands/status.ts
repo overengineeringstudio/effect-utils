@@ -152,7 +152,7 @@ const scanMembersRecursive = ({
         const isGit = yield* Git.isGitRepo(memberPath)
         if (isGit === true) {
           // Get worktree status (dirty, unpushed)
-          const worktreeStatus = yield* Git.getWorktreeStatus(memberPath).pipe(
+          const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath: memberPath }).pipe(
             Effect.orElseSucceed(() => ({
               isDirty: false,
               hasUnpushed: false,

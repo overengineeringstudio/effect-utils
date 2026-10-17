@@ -2128,7 +2128,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                       }
                     }
 
-                    const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
+                    const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath }).pipe(
                       Effect.orElseSucceed(() => ({
                         isDirty: false,
                         hasUnpushed: false,
