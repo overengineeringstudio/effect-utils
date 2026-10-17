@@ -430,6 +430,7 @@ let
     )
   );
   testPackagePublisherName = name: "buck2:editor:publish:test:${name}";
+  consumerPublisherName = path: "buck2:editor:publish:consumer:${builtins.baseNameOf path}";
   standaloneTestPublicationPackages =
     allSourceTestPackages
     ++ map (lane: {
@@ -629,6 +630,13 @@ let
     }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
+  consumerPublicationPackagePaths = lib.unique (
+    map (pkg: pkg.path) packagesWithStorybook
+    ++ [
+      "packages/@overeng/notion-effect-client"
+      "packages/@overeng/notion-datasource-sync"
+    ]
+  );
   # Repository-specific semantic inputs read by Genie sources. The shared
   # Genie module already owns the direct and nested `.genie.ts` census; this
   # single list is composed into both its warm fingerprint and lint freshness.
@@ -848,9 +856,17 @@ in
         ) standaloneTestPublicationPackages
       );
     }
+    {
+      tasks = lib.listToAttrs (
+        map (path: lib.nameValuePair (consumerPublisherName path) (scopedEditorViewPublisher {
+          description = "Publish only the ${builtins.baseNameOf path} consumer dependency view";
+          packagePaths = [ path ];
+          traceScope = "consumer:${builtins.baseNameOf path}";
+        })) consumerPublicationPackagePaths
+      );
+    }
     (taskModules.storybook {
-      installTask = "buck2:editor:publish:all";
-      packages = packagesWithStorybook;
+      packages = map (pkg: pkg // { installTask = consumerPublisherName pkg.path; }) packagesWithStorybook;
     })
     (taskModules.netlify {
       siteName = "overeng-utils";
@@ -980,13 +996,11 @@ in
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
   };
   tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
-  tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish:all" ];
-  tasks."test:notion-integration:notion-cli".after = lib.mkForce [ "buck2:editor:publish:all" ];
-  tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [
-    "buck2:editor:publish:all"
-  ];
-  tasks."test:notion-integration:notion-md".after = lib.mkForce [ "buck2:editor:publish:all" ];
-  tasks."test:notion-integration:notion-react".after = lib.mkForce [ "buck2:editor:publish:all" ];
+  tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-effect-client") ];
+  tasks."test:notion-integration:notion-cli".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-cli") ];
+  tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-datasource-sync") ];
+  tasks."test:notion-integration:notion-md".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-md") ];
+  tasks."test:notion-integration:notion-react".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-react") ];
   tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish:otel-contract" ];
   tasks."test:pty-effect:unbounded".env = {
     NODE_PTY_NATIVE_PACKAGE = "${nodePtyNative}/node_modules/node-pty";
@@ -1249,7 +1263,7 @@ in
   };
 
   tasks."test:megarepo-cold-gc" = {
-    after = [ "buck2:editor:publish:all" ];
+    after = [ (consumerPublisherName "packages/@overeng/megarepo") ];
     description = "Run fixture-isolated megarepo cold-GC integration tests from the standalone checkout";
     cwd = "packages/@overeng/megarepo";
     exec = trace.exec "test:megarepo-cold-gc" ''
@@ -1443,14 +1457,14 @@ in
   # updated before freshness is checked, but standalone genie:check must remain
   # mutation-free. Keep that mutating sequence in one explicit entrypoint.
   tasks."buck2:editor:materialize" = {
-    description = "Regenerate, freshness-check, and publish every editor dependency view in order";
+    description = "Regenerate, freshness-check, and publish source-generator dependency views";
     exec = trace.exec "buck2:editor:materialize" ''
       set -euo pipefail
       export DEVENV_TUI=false
       devenv tasks run buck2:editor:bootstrap --mode single
       devenv tasks run genie:run --mode single
       devenv tasks run genie:check --mode single
-      devenv tasks run buck2:editor:publish:all --mode single
+      devenv tasks run buck2:editor:publish:generators --mode single
     '';
   };
 
@@ -1479,6 +1493,12 @@ in
       mode = "publish";
       traceScope = "all";
     };
+  };
+
+  tasks."buck2:editor:publish:generators" = scopedEditorViewPublisher {
+    description = "Publish only dependency views needed by source generators and declaration tooling";
+    packagePaths = editorBootstrapPackagePaths;
+    traceScope = "generators";
   };
 
   tasks."buck2:editor:publish:restate-effect" = scopedEditorViewPublisher {

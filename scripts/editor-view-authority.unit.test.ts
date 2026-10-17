@@ -10,6 +10,7 @@ import {
   editorViewPlan,
   resolveEditorViewPackageScope,
 } from './editor-view-authority.ts'
+import { workspaceEditorDependencies } from './editor-view-authority.ts'
 
 describe('editor view authority orchestration', () => {
   it('fails closed to all consumers for changes, including reverse dependencies and global inputs', () => {
@@ -20,6 +21,47 @@ describe('editor view authority orchestration', () => {
       }),
     ).toEqual(['.', 'packages/a', 'packages/ab'])
     expect(changedEditorConsumers({ changed: [], packagePaths: ['.'] })).toEqual([])
+  })
+
+  it('selects the importer reverse closure, not just the changed owner', () => {
+    const dependencies = workspaceEditorDependencies(`importers:
+  .: {}
+  packages/a: {}
+  packages/consumer:
+    dependencies:
+      a: {specifier: 'workspace:*', version: 'link:../a'}
+  packages/transitive:
+    devDependencies:
+      consumer: {specifier: 'workspace:*', version: 'link:../consumer'}
+  packages/unrelated: {}
+`)
+    expect(
+      changedEditorConsumers({
+        changed: ['packages/a/src/one.ts'],
+        packagePaths: Object.keys(dependencies),
+        readDependencies: () => dependencies,
+      }),
+    ).toEqual(['packages/a', 'packages/consumer', 'packages/transitive'])
+  })
+
+  it('falls back to all consumers for global inputs and unproven ownership', () => {
+    const packagePaths = ['.', 'packages/a', 'packages/consumer']
+    expect(
+      changedEditorConsumers({
+        changed: ['packages/a/BUCK'],
+        packagePaths,
+        readDependencies: () => {
+          throw new Error('must not query global invalidators')
+        },
+      }),
+    ).toEqual(packagePaths)
+    expect(
+      changedEditorConsumers({
+        changed: ['packages/a/src/removed.ts'],
+        packagePaths,
+        readDependencies: () => ({}),
+      }),
+    ).toEqual(packagePaths)
   })
 
   it('derives one deterministic editor publication entry per workspace consumer', () => {

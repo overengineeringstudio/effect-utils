@@ -1375,10 +1375,10 @@ const extraJobs: Record<string, any> = {
       setupSteps: baseSteps,
       taskProbes: [
         {
-          task: 'buck2:editor:publish:all',
+          task: 'buck2:editor:publish:generators',
           label: 'Editor dependency publication',
           group: 'workspace setup',
-          description: 'Publishes the complete Buck-owned editor dependency surface.',
+          description: 'Publishes the source-generator editor dependency views.',
           warmupRepetitions: 1,
           repetitions: 5,
         },

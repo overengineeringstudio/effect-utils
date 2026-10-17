@@ -229,23 +229,26 @@ devenv shell
 ### Publish Dependency Views
 
 Editor publication is explicit: shell entry, `genie:run`, and `lint:fix` never
-publish dependency views. Prepare a cold checkout (or refresh dependencies) separately
-from the lint/Genie heavy lane:
+publish dependency views. Prepare a cold checkout's source-generator dependencies
+separately from the lint/Genie heavy lane:
 
 ```bash
 devenv tasks run buck2:editor:materialize
 ```
 
 Publish only requested consumers (JSON package paths), or omit the environment
-variable to reconcile changes since `origin/main`. Automatic selection conservatively
-includes all consumers, including reverse dependencies, whenever tracked files changed.
+variable to reconcile changes since `origin/main`. Automatic selection uses the pnpm
+lockfile importer graph, including transitive workspace-dependent consumers. Global
+dependency inputs or unproven ownership fail closed to the complete authority with a diagnostic.
 
 ```bash
 EDITOR_VIEW_PACKAGES='["packages/@overeng/notion-core"]' devenv tasks run buck2:editor:publish
 ```
 
 The default never substitutes a whole-workspace publication for an empty change
-set. For the separately bounded full workspace operation:
+set. Every automated consumer selects its own scoped publisher. The full operation
+is **manual only and currently exceeds its 300-second deadline**; verification
+optimization is tracked in [#1915](https://github.com/overengineeringstudio/effect-utils/issues/1915):
 
 ```bash
 devenv tasks run buck2:editor:publish:all

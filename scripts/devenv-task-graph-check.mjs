@@ -654,13 +654,37 @@ const closureOf = (start) => {
   closures.set(start, seen)
   return seen
 }
+const publisherScopes = new Map(
+  editorPublishers.map((name) => {
+    const command = tasks.get(name)?.command
+    const body =
+      typeof command === 'string' && existsSync(command) === true
+        ? readFileSync(command, 'utf8')
+        : ''
+    return [name, JSON.parse(body.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]')]
+  }),
+)
 const unorderedPublishers = []
 for (const entrypoint of dependencies.keys()) {
   const scheduled = editorPublishers.filter((publisher) => closureOf(entrypoint).has(publisher))
   for (const [index, left] of scheduled.entries())
     for (const right of scheduled.slice(index + 1))
-      if (closureOf(left).has(right) === false && closureOf(right).has(left) === false)
+      if (
+        closureOf(left).has(right) === false &&
+        closureOf(right).has(left) === false &&
+        (publisherScopes.get(left).length === 0 ||
+          publisherScopes.get(right).length === 0 ||
+          publisherScopes.get(left).some((path) => publisherScopes.get(right).includes(path)) ===
+            true)
+      )
         unorderedPublishers.push(`${entrypoint}: ${left} || ${right}`)
+}
+for (const name of dependencies.keys()) {
+  if (name === 'buck2:editor:publish:all') continue
+  ok({
+    condition: reaches({ start: name, target: 'buck2:editor:publish:all' }) === false,
+    name: `${name} never schedules the manual full-workspace publisher`,
+  })
 }
 ok({
   condition: unorderedPublishers.length === 0,
@@ -726,7 +750,7 @@ const orderedMaterializationSteps = [
   'devenv tasks run buck2:editor:bootstrap --mode single',
   'devenv tasks run genie:run --mode single',
   'devenv tasks run genie:check --mode single',
-  'devenv tasks run buck2:editor:publish:all --mode single',
+  'devenv tasks run buck2:editor:publish:generators --mode single',
 ]
 const orderedMaterializationOffsets = orderedMaterializationSteps.map((step) =>
   editorMaterializeSource.indexOf(step),
