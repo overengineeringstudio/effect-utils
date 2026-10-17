@@ -29,11 +29,11 @@
 # Public cache tier (decision 0033): anonymous TLS reads. The posture script
 # adds the protected publisher's writer overlay to `.buckconfig.local`.
 [buck2_re_client]
-  action_cache_address = grpc://dev3.tail8108.ts.net:8443
-  cas_address = grpc://dev3.tail8108.ts.net:8443
-  engine_address = grpc://dev3.tail8108.ts.net:8443
+  action_cache_address = grpc://127.0.0.1:39443
+  cas_address = grpc://127.0.0.1:39443
+  engine_address = grpc://127.0.0.1:39443
   instance_name = effect-utils
-  tls = true
+  tls = false
   # Buck batches payload bytes, not protobuf overhead; leave room below 4 MiB.
   max_total_batch_size = 3145728
 
