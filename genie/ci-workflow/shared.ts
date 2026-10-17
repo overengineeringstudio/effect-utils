@@ -275,9 +275,9 @@ const validateLinuxNixSandboxRunners = ({
     )
       continue
     const labels = [job['runs-on']].flat()
-    // A fixed macOS machine label constrains the whole job, including opaque
-    // feature-label entries; Linux capability validation does not apply.
+    // Fixed machine constraints apply to the entire job, not each selector.
     if (
+      labels.includes('self-hosted') === true ||
       labels.some((label) =>
         /^(?:namespace-profile-|nscloud-)[^$;]*(?:macos|darwin)[^$;]*$/.test(
           label.split(';')[0] ?? '',
@@ -293,59 +293,71 @@ const validateLinuxNixSandboxRunners = ({
           `[${JSON.stringify(jobId)}]: 'supported' } only when every possible Linux runner supports strict Nix sandboxing.`,
       )
     }
-    const alternatives = labels.map((label) => {
+    const entries = labels.map((label) => {
       const resolved = resolveRunnerLabelAlternatives(label)
-      if (resolved !== undefined) return resolved
-      const partial = label.replace(/\$\{\{[\s\S]*?\}\}/g, 'GENIE_OPAQUE')
-      const machine = partial.split(';')[0] ?? ''
-      const knownMachine = machine.includes('GENIE_OPAQUE') === false
-      if (
-        knownMachine === true &&
-        /^(?:namespace-profile-|nscloud-|namespace-features:)/.test(machine) === false
-      )
-        return [partial]
-      if (capabilities?.[jobId] !== 'supported')
-        fail(`cannot statically determine runs-on ${JSON.stringify(label)}`)
-      // An opaque affinity value is not an opaque privilege declaration.
-      // Preserve static feature facts even when the job has an attestation.
-      if (knownMachine === true) {
-        if (/(?:^|[;:])container\.privileged=false(?:;|$)/.test(partial) === true)
-          fail(
-            `Namespace Linux runner ${JSON.stringify(label)} explicitly disables container.privileged`,
-          )
-        if (/(?:^|[;:])(?:container\.privileged=)?GENIE_OPAQUE(?:;|$)/.test(partial) === false)
-          return [partial]
+      return {
+        opaque: resolved === undefined,
+        unknownMachine: resolved === undefined && (label.split(';')[0] ?? '').includes('${{'),
+        // Unknown programs need attestation, but cannot erase their static
+        // fragments or their literal runner alternatives.
+        alternatives: resolved ?? [
+          label.replace(/\$\{\{[\s\S]*?\}\}/g, 'GENIE_OPAQUE'),
+          ...[...label.matchAll(/'((?:[^']|'')*)'/g)]
+            .map((match) => (match[1] ?? '').replaceAll("''", "'"))
+            .filter((literal) =>
+              /^(?:namespace-profile-|nscloud-|namespace-features:)/.test(literal),
+            ),
+        ],
       }
-      return undefined
     })
-    const hasOpaqueLabel = alternatives.some((entry) => entry === undefined)
-    // Each runs-on entry is required simultaneously. A feature entry guarantees
-    // privilege only if *every* one of its alternatives supplies it. This avoids
-    // exponential expansion of independent label alternatives.
-    const hasPrivilegedFeatures = alternatives.some(
-      (entry) =>
-        entry !== undefined &&
-        entry.every(
-          (label) =>
-            label.startsWith('namespace-features:') === true &&
-            /(?:^|[;:])container\.privileged=true(?:;|$)/.test(label) === true,
-        ),
+    const staticLabels = entries.flatMap((entry) => entry.alternatives)
+    const namespaceLinux = staticLabels.filter(
+      (label) =>
+        /^(?:namespace-profile-|nscloud-)/.test(label) === true &&
+        /(?:^|[-;])(?:macos|darwin)(?:[-;]|$)/.test(label) === false,
     )
-    for (const entry of alternatives) {
-      if (entry === undefined) continue
-      for (const label of entry) {
-        if (/^(?:namespace-profile-|nscloud-)/.test(label) === false) continue
-        if (/(?:^|[-;])(?:macos|darwin)(?:[-;]|$)/.test(label) === true) continue
-        const machineLabel = label.split(';')[0] ?? ''
-        const privileged =
-          machineLabel.endsWith('-with-features') === true
-            ? hasPrivilegedFeatures || hasOpaqueLabel
-            : /(?:^|;)container\.privileged=true(?:;|$)/.test(label)
-        if (privileged === false)
-          fail(
-            `Namespace Linux runner ${JSON.stringify(label)} lacks container.privileged=true in its supported label format`,
-          )
-      }
+    if (
+      namespaceLinux.length === 0 &&
+      entries.every((entry) => entry.unknownMachine === false) === true
+    )
+      continue
+    // Static disablement always wins, including separate feature alternatives.
+    if (
+      staticLabels.some((label) => /(?:^|[;:])container\.privileged=false(?:;|$)/.test(label)) ===
+      true
+    )
+      fail(
+        'literal runner feature lacks container.privileged=true: explicitly disables container.privileged',
+      )
+    const hasOpaqueLabel = entries.some((entry) => entry.opaque)
+    if (hasOpaqueLabel === true && capabilities?.[jobId] !== 'supported')
+      fail(`cannot statically determine runs-on ${JSON.stringify(job['runs-on'])}`)
+    // A separate feature entry guarantees privilege only if all its alternatives
+    // supply it. Attestation may fill an unknown entry, never an unprivileged literal.
+    const hasPrivilegedFeatures = entries.some((entry) =>
+      entry.alternatives.every(
+        (label) =>
+          label.startsWith('namespace-features:') === true &&
+          /(?:^|[;:])container\.privileged=true(?:;|$)/.test(label) === true,
+      ),
+    )
+    for (const label of staticLabels) {
+      if (
+        label.startsWith('namespace-features:') === true &&
+        label.includes('GENIE_OPAQUE') === false &&
+        /(?:^|[;:])container\.privileged=true(?:;|$)/.test(label) === false
+      )
+        fail(`literal feature label ${JSON.stringify(label)} lacks container.privileged=true`)
+    }
+    for (const label of namespaceLinux) {
+      const privileged =
+        (label.split(';')[0] ?? '').endsWith('-with-features') === true
+          ? hasPrivilegedFeatures || hasOpaqueLabel
+          : /(?:^|;)container\.privileged=true(?:;|$)/.test(label)
+      if (privileged === false)
+        fail(
+          `Namespace Linux runner ${JSON.stringify(label)} lacks container.privileged=true in its supported label format`,
+        )
     }
   }
 }

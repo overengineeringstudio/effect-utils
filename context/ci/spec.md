@@ -288,9 +288,13 @@ rather than treating incidental quoted strings as emitted feature values.
 Runtime fork admission is unchanged.
 `linuxNixSandboxCapabilities: { [jobId]: 'supported' }` attests that every
 possible Linux runner supports strict sandboxing for such expressions. This
-generation-only option cannot override a statically unprivileged Namespace
-label. Self-hosted, macOS, and jobs without the shared installer keep their
-existing behavior and sandbox policy.
+generation-only option cannot override any statically unprivileged Namespace
+machine or feature alternative, even beside opaque labels. Static Namespace
+profile fragments must include inline privilege; attestation cannot turn an
+opaque interpolated feature into a static privilege declaration. An explicit
+`self-hosted` selector constrains the entire job, including dynamic selectors.
+Self-hosted, macOS, and jobs without the shared installer keep their existing
+behavior and sandbox policy.
 
 The source-only `default-ref-policy` job must not evaluate the checkout's flake
 before checking its refs. Genie freezes the root `flake.lock` nixpkgs revision

@@ -336,7 +336,9 @@ describe('Linux Nix sandbox fallback', () => {
       ],
     ]) {
       expect(() => sandboxWorkflow(runsOn)).toThrow(/cannot statically determine/)
-      expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).not.toThrow()
+      if (typeof runsOn === 'string')
+        expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).toThrow(/lacks container/)
+      else expect(() => sandboxWorkflow(runsOn, { build: 'supported' })).not.toThrow()
     }
     expect(() =>
       sandboxWorkflow(
@@ -415,6 +417,27 @@ describe('Linux Nix sandbox fallback', () => {
       ['sh-linux-x64;github.run-id=${{ github.run_attempt }}', 'nix'],
     ])
       expect(() => sandboxWorkflow(runsOn)).not.toThrow()
+  })
+
+  it('applies an explicit self-hosted constraint to all dynamic selector labels', () => {
+    expect(() => sandboxWorkflow(['self-hosted', '${{ matrix.runner }}'])).not.toThrow()
+  })
+
+  it('rejects static false feature alternatives even beside attested opaque labels', () => {
+    const machine = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
+    for (const feature of [
+      'namespace-features:container.privileged=false',
+      "${{ inputs.fast && 'namespace-features:container.privileged=true' || 'namespace-features:container.privileged=false' }}",
+      'namespace-features:github.run-id=42',
+    ])
+      expect(() =>
+        sandboxWorkflow([machine, feature, '${{ matrix.extraLabel }}'], { build: 'supported' }),
+      ).toThrow(/container\.privileged/)
+    expect(() =>
+      sandboxWorkflow("${{ inputs.fast && 'namespace-profile-linux-x86-64' || matrix.runner }}", {
+        build: 'supported',
+      }),
+    ).toThrow(/lacks container/)
   })
 
   it('configures fresh installers only on Linux', () => {
