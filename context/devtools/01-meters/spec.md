@@ -341,8 +341,10 @@ scoped monotonic deadline ----------------------------> policy       v
 
 `makeSource.freshness` is optional and inert. The store has no temporal work,
 status subscriptions, or freshness interpretation. Each selected registration
-has one direct post-commit/pre-publication adapter; only explicit dependents
-subscribe to it, and they read the committed typed status from the same store.
+has one direct post-commit/pre-publication adapter. Explicit dependents share
+one status-series dispatcher that captures the committed typed sample for each
+transition. Its FIFO drain delivers that captured sample to every dependent
+before delivering transitions queued by reentrant appends.
 The session validates exact selected status identity and an acyclic dependency
 graph before acquisition. It prepares generation guards and all dependency
 listeners before starting any collector, then acquires dependencies first.
@@ -381,6 +383,10 @@ Expiry retires that ownership before publishing `Stale`, so a reentrant
 observation can own the next deadline; retiring cleanup clears only its own
 token. A publication defect cannot suppress initial scheduling, strand a
 renewal, or prevent a later dependent from observing disconnection.
+Status callback faults are isolated during the complete FIFO drain, then thrown
+as an aggregate from its outermost originating append. A fault in a reentrantly
+queued transition surfaces once from that outermost append, not its nested
+enqueueing append; it cannot skip other dependents or queued transitions.
 Periodic resume independently attempts its gap and unavailable commits, then
 reports aggregate notification defects. The unavailable commit is conditional
 on the exact gap sample still being latest in that series: evidence committed

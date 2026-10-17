@@ -786,6 +786,136 @@ describe('scoped meters sessions', () => {
       }),
   )
 
+  const reentrantStatusTest = (failQueuedTransition: boolean) =>
+    Effect.gen(function* () {
+      const host = testPlatform()
+      const status = makeSeries<StatusValue>({
+        id: 'reentrant-status',
+        label: '',
+        unit: 'status',
+        capacity: 10,
+      })
+      const statusSinks: SeriesWriter<StatusValue>[] = []
+      const series = ['a', 'b'].map((id) =>
+        makeSeries<number>({ id, label: id, unit: 'count', capacity: 10 }),
+      )
+      const dependents = series.map((dependent) =>
+        makeSource({
+          id: dependent.id,
+          series: dependent,
+          cadence: { _tag: 'Event' },
+          freshness: { _tag: 'While', status, state: 'Connected' },
+          start: ({ sink }) =>
+            Effect.sync(() => {
+              sink.append({ sample: { _tag: 'Value', atMs: 0, value: 1 } })
+            }),
+        }),
+      )
+      const connection = makeSource({
+        id: 'reentrant-status',
+        series: status,
+        cadence: { _tag: 'Event' },
+        start: ({ sink }) =>
+          Effect.sync(() => {
+            statusSinks.push(sink)
+            sink.append({
+              sample: {
+                _tag: 'Value',
+                atMs: 0,
+                value: { _tag: 'Status', state: 'Connected', label: 'Connected' },
+              },
+            })
+          }),
+      })
+      const meters = makeMeters({ platform: host.platform, sources: [...dependents, connection] })
+      yield* meters.start
+      let reconnected = false
+      let nestedReturned = false
+      let faultCount = 0
+      const queuedFault = new Error('queued status transition observer fault')
+      const disconnects = new Set<string>()
+      const resurrected = new Set<string>()
+      const unsubscribe = meters.store.subscribe({
+        notify: () => {
+          for (const dependent of series) {
+            const latest = meters.store.read({ series: dependent }).latest
+            if (latest?._tag === 'Unavailable' && latest.reason === 'Disconnected')
+              disconnects.add(dependent.id)
+            if (latest?._tag === 'Value' && disconnects.has(dependent.id) === true)
+              resurrected.add(dependent.id)
+            if (
+              dependent.id === 'a' &&
+              latest?._tag === 'Unavailable' &&
+              latest.reason === 'Disconnected' &&
+              reconnected === false
+            ) {
+              reconnected = true
+              statusSinks[0]?.append({
+                sample: {
+                  _tag: 'Value',
+                  atMs: 1,
+                  value: { _tag: 'Status', state: 'Connected', label: 'Connected' },
+                },
+              })
+              nestedReturned = true
+            }
+          }
+          if (
+            failQueuedTransition === true &&
+            faultCount === 0 &&
+            series.some((dependent) => {
+              const latest = meters.store.read({ series: dependent }).latest
+              return latest?._tag === 'Unavailable' && latest.reason === 'Stale'
+            }) === true
+          ) {
+            expect(nestedReturned).toBe(true)
+            faultCount++
+            throw queuedFault
+          }
+        },
+      })
+      host.advance(1)
+      const appended = yield* Effect.exit(
+        Effect.sync(() =>
+          statusSinks[0]?.append({
+            sample: {
+              _tag: 'Value',
+              atMs: 1,
+              value: { _tag: 'Status', state: 'Disconnected', label: 'Offline' },
+            },
+          }),
+        ),
+      )
+      const failure = Exit.isFailure(appended) === true ? Cause.squash(appended.cause) : undefined
+      if (failQueuedTransition === true) {
+        expect(failure).toBeInstanceOf(AggregateError)
+        const leaves = (cause: unknown): unknown[] =>
+          cause instanceof AggregateError ? cause.errors.flatMap(leaves) : [cause]
+        expect(leaves(failure)).toEqual([queuedFault])
+        expect(faultCount).toBe(1)
+      } else expect(failure).toBeUndefined()
+      expect(nestedReturned).toBe(true)
+      for (const dependent of series) {
+        expect(meters.store.read({ series: dependent }).latest).toEqual({
+          _tag: 'Unavailable',
+          atMs: 1,
+          reason: 'Stale',
+          lastKnown: { atMs: 0, value: 1 },
+        })
+      }
+      expect(disconnects).toEqual(new Set(['a', 'b']))
+      expect(resurrected.size).toBe(0)
+      unsubscribe()
+    })
+
+  it.effect('serializes reentrant status transitions across every While dependent', () =>
+    reentrantStatusTest(false),
+  )
+
+  it.effect('rethrows a queued status transition fault once from the outermost append', () =>
+    reentrantStatusTest(true),
+  )
+
   it.effect('arms a committed Window observation even when its initial publication throws', () =>
     Effect.gen(function* () {
       const { host, series, sinks, meters } = windowFaultFixture()

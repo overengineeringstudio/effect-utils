@@ -1,7 +1,13 @@
 import { Effect, Exit, Scope, Semaphore } from 'effect'
 
 import { makeHeadless, type Headless, type SessionEvidence } from '../headless/internal.ts'
-import { makeSeriesStore, type SeriesStore } from '../series/index.ts'
+import {
+  makeSeriesStore,
+  type Sample,
+  type Series,
+  type SeriesStore,
+  type StatusValue,
+} from '../series/index.ts'
 import { publishRevision } from '../series/internal.ts'
 import { makeFrameClock, type FrameClock, type Platform } from './clock.ts'
 import {
@@ -108,6 +114,11 @@ export const makeMeters = <TEnv = never>(options: {
     },
   })
   const boundBySeries = new Map<object, BoundSource<TEnv>>()
+  type StatusListener = (sample: Sample<StatusValue> | undefined) => void
+  const statusDispatchers = new Map<
+    Series<StatusValue>,
+    { readonly listeners: Set<StatusListener>; readonly unsubscribe: () => void }
+  >()
   for (const source of ordered) {
     const bound = source[registration]({
       store,
@@ -120,7 +131,48 @@ export const makeMeters = <TEnv = never>(options: {
             const dependency = boundBySeries.get(series)
             if (dependency === undefined)
               throw new TypeError(`Unbound freshness status: ${series.id}`)
-            return dependency.observe(() => listener(store.read({ series }).latest))
+            let dispatcher = statusDispatchers.get(series)
+            if (dispatcher === undefined) {
+              const listeners = new Set<StatusListener>()
+              const pending: (Sample<StatusValue> | undefined)[] = []
+              let draining = false
+              const unsubscribe = dependency.observe(() => {
+                pending.push(store.read({ series }).latest)
+                if (draining === true) return
+                draining = true
+                let failures: unknown[] | undefined
+                try {
+                  // A nested append queues its captured evidence until this fanout completes.
+                  for (let index = 0; index < pending.length; index++) {
+                    const sample = pending[index]
+                    for (const notify of listeners) {
+                      try {
+                        notify(sample)
+                      } catch (cause) {
+                        failures ??= []
+                        failures.push(cause)
+                      }
+                    }
+                  }
+                } finally {
+                  pending.length = 0
+                  draining = false
+                }
+                if (failures !== undefined)
+                  throw new AggregateError(failures, 'Status transition listeners failed')
+              })
+              dispatcher = { listeners, unsubscribe }
+              statusDispatchers.set(series, dispatcher)
+            }
+            const subscribed = dispatcher
+            subscribed.listeners.add(listener)
+            return () => {
+              subscribed.listeners.delete(listener)
+              if (subscribed.listeners.size === 0) {
+                subscribed.unsubscribe()
+                statusDispatchers.delete(series)
+              }
+            }
           }),
           (unsubscribe) => Effect.sync(unsubscribe),
         ).pipe(Effect.asVoid),
