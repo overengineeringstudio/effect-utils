@@ -5,8 +5,8 @@
 # Tasks:
 # - mr:bootstrap - Materialize the minimal lock-based members needed for local tooling
 # - mr:setup - Materialize committed root members without fetching or rewriting locks.
-#   Locally, members use tracking worktrees, except `setupCommitMembers` (see Options).
-#   With CI=true, every member uses commit worktrees (see Options).
+#   Local setup defaults to tracking; locked mode is an explicit opt-in.
+#   CI=true always selects locked commits.
 # - mr:fetch-apply - Fetch latest refs and apply to workspace (mr fetch --apply)
 # - mr:lock - Record the current workspace into megarepo.lock (mr lock)
 # - mr:apply - Apply megarepo.lock to the workspace (explicit apply operation)
@@ -22,15 +22,14 @@
 #   can evaluate. Uses lock-based `mr apply --only ...` and never fetches remote
 #   refs. Default: [ ] (task becomes a no-op)
 # - disabledTasks: Task names omitted from this module instance. Default: [ ].
-# - setupCommitMembers: Root members that mr:setup materializes as fresh commit
-#   worktrees with their nested megarepo trees prepared in the same invocation
-#   (`mr apply --commit-members ...`); local readiness checks all root members
-#   with `mr status`, then only listed, non-skipped nested megarepos with
-#   `mr status --all`, including on the outer setup cache-hit path. Use it for
-#   members whose own repos/ must exist locally (validation-only nested hooks).
-#   Other members stay on shared tracking worktrees. Default: [ ] (setup
-#   behaves as plain tracking apply). With CI=true, setup uses commit worktrees
-#   for every member; a non-empty list prepares and checks every root's tree.
+# - setupCommitMembers: Root members whose nested megarepo trees mr:setup
+#   prepares in the same invocation (`mr apply --commit-members ...`).
+#   Other root members follow effectUtils.megarepo.setup.mode (tracking by default).
+#   Local readiness checks all root members with `mr status`, then only listed,
+#   non-skipped nested megarepos with `mr status --all`, including on the outer
+#   setup cache-hit path. Use it for members whose own repos/ must exist locally
+#   (validation-only nested hooks). Default: [ ] (root-only preparation).
+#   With CI=true, a non-empty list prepares and checks every root's nested tree.
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add dependencies in their devenv.nix:
@@ -47,11 +46,22 @@
   # fallback) so passthrough does not exit 127.
   mrPkg ? null,
 }:
-{ lib, pkgs, ... }:
+{ lib, pkgs, config ? { }, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   jq = "${pkgs.jq}/bin/jq";
+  setupMode = config.effectUtils.megarepo.setup.mode or "tracking";
+  loadSetupModeScript = ''
+    mr_setup_mode="''${MR_SETUP_MODE:-${setupMode}}"
+    if [ "''${CI:-}" = "true" ]; then
+      mr_setup_mode=locked
+    fi
+    case "$mr_setup_mode" in
+      tracking|locked) ;;
+      *) echo "[devenv] Invalid MR_SETUP_MODE: $mr_setup_mode (expected tracking or locked)" >&2; exit 1 ;;
+    esac
+  '';
   bootstrapOnlyArgs = lib.concatMapStringsSep " " (
     member: "--only ${lib.escapeShellArg member}"
   ) bootstrapMembers;
@@ -266,6 +276,7 @@ let
         fi
 
         ${loadCheckSkipMembersScript}
+        ${loadSetupModeScript}
         build_mr_skip_args
         # Remove this probe after the next manifest publication includes --verify-shared.
         # Older products retain their canonical-mutation refusal; never bypass that guard.
@@ -275,11 +286,13 @@ let
           MR_VERIFY_SHARED_ARGS=(--verify-shared)
         fi
         if [ "''${CI:-}" = "true" ]; then
-          # CI materializes locked commits end to end (`--worktree-mode auto`
-          # semantics) and never advances shared branch worktrees.
+          # CI materializes locked commits end to end and never advances
+          # shared branch worktrees.
           # With nested trees, readiness is `mr status --all`, which inspects
           # every root member's nested tree, so every root member is prepared.
           mr apply --worktree-mode commit${lib.optionalString setupNestedTrees " --commit-all-members"} --lock-sync off "''${MR_VERIFY_SHARED_ARGS[@]}" "''${MR_SKIP_ARGS[@]}"
+        elif [ "$mr_setup_mode" = locked ]; then
+          mr apply --worktree-mode commit${setupCommitArgs} --lock-sync off "''${MR_VERIFY_SHARED_ARGS[@]}" "''${MR_SKIP_ARGS[@]}"
         else
           mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off "''${MR_VERIFY_SHARED_ARGS[@]}" "''${MR_SKIP_ARGS[@]}"
         fi
@@ -487,6 +500,20 @@ let
   );
 in
 {
+  imports = [
+    {
+      options.effectUtils.megarepo.setup.mode = lib.mkOption {
+        type = lib.types.enum [ "tracking" "locked" ];
+        default = "tracking";
+        description = ''
+          Root member setup policy. Locked mode materializes megarepo.lock commits;
+          tracking preserves local branch worktrees. MR_SETUP_MODE overrides this
+          per invocation, while CI=true always selects locked mode.
+        '';
+      };
+    }
+  ];
+
   # mr shells out to git for clone/fetch/worktree operations
   packages = [
     pkgs.git
