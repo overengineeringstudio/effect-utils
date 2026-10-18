@@ -143,18 +143,43 @@ for outer tasks that must complete before the nested devenv process can evaluate
     apps, while `"**"` explicitly exempts an entire repository. A reason is
     required; other library paths remain guarded.
 - `megarepo.nix` - Megarepo workspace tasks
-  - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` makes
-    `mr:setup` prepare those members' nested megarepo trees in fresh commit
-    worktrees; unlisted members stay on tracking worktrees. Local readiness
-    checks every non-skipped root member with `mr status` (without `--all`),
-    then runs `mr status --all` inside only the listed, non-skipped members
-    that have their own megarepo config. Unlisted nested trees do not block
-    readiness; ordinary listed repos need no nested check. These checks also
-    run on the outer setup cache-hit path. Default `[ ]` keeps the plain
-    tracking setup and its root-mount-only outer cache-hit check.
-    With `CI=true`, `mr:setup` uses commit worktrees for every member; with a
-    non-empty list it passes `mr apply --commit-all-members`, preparing every
-    root member's nested tree to match the `mr status --all` readiness check.
+  - `effectUtils.megarepo.setup.mode` is a typed `"tracking" | "locked"` option,
+    defaulting to `"tracking"` to preserve local development. Set it to
+    `"locked"` in consumer configuration for reproducible setup, or opt in per
+    invocation with `MR_SETUP_MODE=locked devenv tasks run check:quick` (likewise
+    `check:all`). The process-level override reaches setup dependencies;
+    setting environment only on the aggregate check task does not. `CI=true`
+    always selects locked commits, even if the override requests tracking.
+    Locked setup materializes `megarepo.lock` commits without fetching refs or
+    rewriting locks. Canonical non-CI runners must explicitly select locked mode;
+    invoking a task named `check:*` alone does not change the setup policy.
+    Status validates the effective mode before checking readiness. Successful
+    setup records its mode under `.devenv/task-cache/mr-apply/setup-mode`;
+    switching between tracking and locked invalidates readiness, including
+    outer setup cache hits, so apply materializes the requested worktree policy.
+    Every shared apply path (`mr:setup`, `mr:bootstrap`, `mr:apply`, and
+    `mr:fetch-apply`) removes that proof before mutating member mounts, so an
+    explicit remount or failed apply cannot leave stale setup readiness.
+  - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` additionally
+    prepares those members' nested megarepo trees in fresh commit worktrees.
+    Local readiness checks every non-skipped root member with `mr status`
+    (without `--all`), then runs `mr status --all` inside only the listed,
+    non-skipped members that have their own megarepo config. Unlisted nested
+    trees do not block readiness; ordinary listed repos need no nested check.
+    These exact-lock checks also run on the outer setup cache-hit path.
+    Default `[ ]` prepares and checks root members only.
+    With `CI=true`, a non-empty list passes `mr apply --commit-all-members`,
+    preparing every root member's nested tree to match the root-level
+    `mr status --all` readiness check.
+  - Setup probes `mr apply --help` before using `--verify-shared`, keeping
+    older published products usable without passing an unsupported flag.
+    Failed probes stop setup; legacy canonical-mutation refusal remains
+    fail-closed. The probe never changes the selected setup mode.
+  - Shared `genie:prepare` waits for `mr:setup` when that task exists, so Genie
+    run/check/watch and `lint:check:genie` in both lint modules await member
+    sources before their status or execution scripts. Concrete Buck task
+    dependencies remain consumer-owned; shared `buck2.nix` exposes execution
+    helpers rather than defining a generic typecheck task.
   - `megarepo-product-flags.test.sh` evaluates these task scripts with optional
     member preparation enabled and checks every emitted command/flag against
     the manifest-backed Nix `megarepo` product's help. The `pr/quality` gate runs

@@ -196,6 +196,9 @@ let
   tasks = {
     "genie:prepare" = {
       description = "Run shared prerequisites before invoking genie";
+      # Generator imports and the run-status fingerprint can read member sources.
+      # Share this prerequisite across run/check/watch and both lint modules.
+      after = lib.optionals (builtins.hasAttr "mr:setup" config.tasks) [ "mr:setup" ];
       exec = trace.exec "genie:prepare" "true";
       env = genieTaskEnv;
     };
