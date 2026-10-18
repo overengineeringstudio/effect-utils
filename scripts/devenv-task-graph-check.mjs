@@ -707,21 +707,32 @@ for (const name of editorPublishers) {
   )
 }
 const unorderedPublishers = []
+const unbatchedConsumerFanouts = []
 for (const entrypoint of dependencies.keys()) {
   const scheduled = editorPublishers.filter((publisher) => closureOf(entrypoint).has(publisher))
   for (const [index, left] of scheduled.entries())
-    for (const right of scheduled.slice(index + 1))
-      if (
-        closureOf(left).has(right) === false &&
-        closureOf(right).has(left) === false &&
-        (publisherStateRoots.get(left).length === 0 ||
-          publisherStateRoots.get(right).length === 0 ||
-          publisherStateRoots
-            .get(left)
-            .some((path) => publisherStateRoots.get(right).includes(path)) === true) &&
-        (publisherAdmissionLocks.get(left) !== true || publisherAdmissionLocks.get(right) !== true)
-      )
-        unorderedPublishers.push(`${entrypoint}: ${left} || ${right}`)
+    for (const right of scheduled.slice(index + 1)) {
+      const unordered = closureOf(left).has(right) === false && closureOf(right).has(left) === false
+      const sharedRoot =
+        publisherStateRoots.get(left).length === 0 ||
+        publisherStateRoots.get(right).length === 0 ||
+        publisherStateRoots
+          .get(left)
+          .some((path) => publisherStateRoots.get(right).includes(path)) === true
+      if (unordered === true && sharedRoot === true) {
+        const pair = `${entrypoint}: ${left} || ${right}`
+        if (
+          publisherAdmissionLocks.get(left) !== true ||
+          publisherAdmissionLocks.get(right) !== true
+        )
+          unorderedPublishers.push(pair)
+        if (
+          left.startsWith('buck2:editor:publish:consumer:') === true &&
+          right.startsWith('buck2:editor:publish:consumer:') === true
+        )
+          unbatchedConsumerFanouts.push(pair)
+      }
+    }
 }
 for (const name of dependencies.keys()) {
   if (name === 'buck2:editor:publish:all') continue
@@ -735,6 +746,95 @@ ok({
   name: 'co-scheduled publishers sharing state roots have an ordering edge or bounded flock admission',
   detail: unorderedPublishers.join('; '),
 })
+ok({
+  condition: unbatchedConsumerFanouts.length === 0,
+  name: 'no aggregate concurrently fans out individual consumer publishers sharing a state root',
+  detail: unbatchedConsumerFanouts.join('; '),
+})
+
+const commandBody = (name) => {
+  const command = requireTask(name).command
+  return typeof command === 'string' && existsSync(command) === true
+    ? readFileSync(command, 'utf8')
+    : command
+}
+const consumerAggregateContracts = [
+  { name: 'storybook:build' },
+  { name: 'storybook:test' },
+  { name: 'netlify:stage', scope: 'netlify', buildPrefix: 'storybook:build' },
+  { name: 'netlify:deploy', scope: 'netlify', buildPrefix: 'storybook:build' },
+  { name: 'test:notion-integration' },
+]
+for (const { name, scope = name, buildPrefix } of consumerAggregateContracts) {
+  const publisher = `buck2:editor:publish:batch:${scope}`
+  const standaloneTasks = [...tasks.keys()].filter(
+    (task) => task.startsWith(`${name}:`) && task.slice(name.length + 1).includes(':') === false,
+  )
+  const expectedPaths = standaloneTasks.map(
+    (task) =>
+      requireTask(
+        buildPrefix === undefined ? task : `${buildPrefix}:${task.slice(name.length + 1)}`,
+      ).cwd,
+  )
+  ok({
+    condition:
+      standaloneTasks.length > 1 && expectedPaths.every((path) => typeof path === 'string'),
+    name: `${name} has an explicit multi-consumer aggregate scope`,
+  })
+  const batchBody = commandBody(publisher)
+  ok({
+    condition:
+      typeof batchBody === 'string' &&
+      JSON.stringify(
+        JSON.parse(batchBody.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]').toSorted(),
+      ) === JSON.stringify([...new Set(expectedPaths)].toSorted()) &&
+      [...(dependencies.get(publisher) ?? [])].join('\n') === 'genie:check' &&
+      publisherAdmissionLocks.get(publisher) === true,
+    name: `${name} publishes exactly its selected consumers in one bounded batch`,
+  })
+  const scheduledPublishers = editorPublishers.filter((task) => closureOf(name).has(task))
+  ok({
+    condition:
+      scheduledPublishers
+        .filter((task) => task.startsWith('buck2:editor:publish:batch:'))
+        .join('\n') === publisher &&
+      scheduledPublishers.some((task) => task.startsWith('buck2:editor:publish:consumer:')) ===
+        false,
+    name: `${name} never fans out individual consumer installers sharing a state root`,
+    detail: scheduledPublishers.join(', '),
+  })
+  for (const standalone of standaloneTasks) {
+    const packageName = standalone.slice(name.length + 1)
+    const executionAlias = `${name}:aggregate:${packageName}`
+    const originalBuild = buildPrefix === undefined ? standalone : `${buildPrefix}:${packageName}`
+    const buildAlias =
+      buildPrefix === undefined ? executionAlias : `${name}:aggregate-build:${packageName}`
+    const consumer = `buck2:editor:publish:consumer:${posix.basename(requireTask(originalBuild).cwd)}`
+    for (const [alias, original] of [
+      [executionAlias, standalone],
+      ...(buildPrefix === undefined ? [] : [[buildAlias, originalBuild]]),
+    ]) {
+      ok({
+        condition:
+          commandBody(alias) === commandBody(original) &&
+          requireTask(alias).cwd === requireTask(original).cwd &&
+          closureOf(name).has(alias) === true,
+        name: `${alias} reuses the final standalone command and cwd`,
+      })
+    }
+    const expectedDependencies = [...(dependencies.get(originalBuild) ?? [])].map((dependency) =>
+      dependency === consumer ? publisher : dependency,
+    )
+    ok({
+      condition:
+        JSON.stringify([...(dependencies.get(buildAlias) ?? [])].toSorted()) ===
+          JSON.stringify(expectedDependencies.toSorted()) &&
+        closureOf(standalone).has(consumer) === true &&
+        closureOf(standalone).has(publisher) === false,
+      name: `${standalone} stays single-consumer while its aggregate alias replaces only installation`,
+    })
+  }
+}
 
 ok({
   condition:

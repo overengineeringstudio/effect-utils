@@ -23,6 +23,18 @@ operate on the complete current registry. The exact-token
 publication lock. These tasks require a real composed megarepo workspace and
 are not global check dependencies.
 
+Multi-consumer aggregates avoid serially queueing one publisher per package:
+`storybook:build`, `storybook:test`, `netlify:stage`, `netlify:deploy`, and
+`test:notion-integration` each select one exact-scope batch publisher.
+The two Netlify aggregates share the same 13-consumer preview batch (all configured
+Storybooks except `tui-stories`); the complete Storybook build selects 14 consumers,
+and play tests select only the packages declaring `playTests`.
+Aggregate-only execution aliases reuse the final standalone command, cwd,
+environment, status, and freshness predicates, replacing only installer edges.
+Standalone package tasks keep their single-consumer publisher and never acquire
+the aggregate's wider package set. Existing batch publication acquires each
+state-root lock once and prepares up to four consumer views concurrently.
+
 Scoped devenv publishers retain their explicit consumer sets; Storybook builds do
 not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the

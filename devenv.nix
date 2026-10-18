@@ -638,6 +638,91 @@ let
       "packages/@overeng/notion-datasource-sync"
     ]
   );
+  notionIntegrationPackages = map (name: {
+    inherit name;
+    path = "packages/@overeng/${name}";
+  }) [
+    "notion-effect-client"
+    "notion-cli"
+    "notion-datasource-sync"
+    "notion-md"
+    "notion-react"
+  ];
+  # Aggregate-only aliases follow the source-test chain pattern: reuse the final
+  # standalone command/runtime, replacing only the dependency that installs views.
+  executionAlias =
+    original: replacements:
+    let
+      execution = config.tasks.${original};
+    in
+    {
+      inherit (execution) description exec cwd;
+      env = execution.env or { };
+      execIfModified = execution.execIfModified or [ ];
+      # trace-audit-allow: reuse the final standalone task's already-instrumented status.
+      status = execution.status or null;
+      after = map (dependency: replacements.${dependency} or dependency) execution.after;
+    };
+  consumerBatchName = scope: "buck2:editor:publish:batch:${scope}";
+  consumerAggregateGroups = [
+    {
+      name = "storybook:build";
+      packages = packagesWithStorybook;
+    }
+    {
+      name = "storybook:test";
+      packages = builtins.filter (pkg: pkg.playTests or false) packagesWithStorybook;
+    }
+    {
+      name = "netlify:stage";
+      scope = "netlify";
+      packages = packagesWithNetlifyPreview;
+      buildPrefix = "storybook:build";
+    }
+    {
+      name = "netlify:deploy";
+      scope = "netlify";
+      packages = packagesWithNetlifyPreview;
+      buildPrefix = "storybook:build";
+    }
+    {
+      name = "test:notion-integration";
+      packages = notionIntegrationPackages;
+    }
+  ];
+  consumerAggregateTaskEntries =
+    group:
+    let
+      scope = group.scope or group.name;
+      publisher = consumerBatchName scope;
+      aliasName = pkg: "${group.name}:aggregate:${pkg.name}";
+      buildAliasName = pkg: "${group.name}:aggregate-build:${pkg.name}";
+      hasBuild = group ? buildPrefix;
+    in
+    [
+      (lib.nameValuePair publisher (scopedEditorViewPublisher {
+        description = "Batch publish exactly the ${scope} consumer dependency views";
+        packagePaths = map (pkg: pkg.path) group.packages;
+        traceScope = "batch:${scope}";
+      }))
+      (lib.nameValuePair group.name {
+        after = lib.mkForce (map aliasName group.packages);
+      })
+    ]
+    ++ lib.concatMap (pkg: [
+      (lib.nameValuePair (aliasName pkg) (
+        executionAlias "${group.name}:${pkg.name}" {
+          ${if hasBuild then "${group.buildPrefix}:${pkg.name}" else consumerPublisherName pkg.path} =
+            if hasBuild then buildAliasName pkg else publisher;
+        }
+      ))
+    ] ++ lib.optional hasBuild (
+      lib.nameValuePair (buildAliasName pkg) (
+        executionAlias "${group.buildPrefix}:${pkg.name}" {
+          ${consumerPublisherName pkg.path} = publisher;
+        }
+      )
+    )) group.packages;
   # Repository-specific semantic inputs read by Genie sources. The shared
   # Genie module already owns the direct and nested `.genie.ts` census; this
   # single list is composed into both its warm fingerprint and lint freshness.
@@ -875,6 +960,16 @@ in
         ) consumerPublicationPackagePaths
       );
     }
+    {
+      # listToAttrs coalesces the identical netlify stage/deploy batch task:
+      # both aggregates select the same exact preview-consumer set.
+      tasks = lib.listToAttrs (
+        lib.concatMap consumerAggregateTaskEntries consumerAggregateGroups
+        ++ map (pkg: lib.nameValuePair "test:notion-integration:${pkg.name}" {
+          after = lib.mkForce [ (consumerPublisherName pkg.path) ];
+        }) notionIntegrationPackages
+      );
+    }
     (taskModules.storybook {
       packages = map (
         pkg: pkg // { installTask = consumerPublisherName pkg.path; }
@@ -1009,21 +1104,6 @@ in
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
   };
   tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
-  tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [
-    (consumerPublisherName "packages/@overeng/notion-effect-client")
-  ];
-  tasks."test:notion-integration:notion-cli".after = lib.mkForce [
-    (consumerPublisherName "packages/@overeng/notion-cli")
-  ];
-  tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [
-    (consumerPublisherName "packages/@overeng/notion-datasource-sync")
-  ];
-  tasks."test:notion-integration:notion-md".after = lib.mkForce [
-    (consumerPublisherName "packages/@overeng/notion-md")
-  ];
-  tasks."test:notion-integration:notion-react".after = lib.mkForce [
-    (consumerPublisherName "packages/@overeng/notion-react")
-  ];
   tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish:otel-contract" ];
   tasks."test:pty-effect:unbounded".env = {
     NODE_PTY_NATIVE_PACKAGE = "${nodePtyNative}/node_modules/node-pty";
