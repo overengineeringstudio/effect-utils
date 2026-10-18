@@ -32,6 +32,32 @@ changes to transitive workspace source, declarations, or dependency bytes still
 select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
 
+Root publication also converges the authority manifest's package-local dependency
+topology: real `node_modules` directories identified by a regular `.modules.yaml`
+or dependency symlinks into the root `node_modules/.pnpm` store are renamed into
+`.editor-view/.legacy/importer-*` before root first-hop cutover. Their bytes are
+retained, not deleted; unselected importers then use normal parent resolution
+through the root view. Existing first-hop symlinks are never traversed or moved.
+Unidentified real directories fail publication before changing the root pointer.
+Move the named directory outside the workspace (or delete it only after confirming
+it is cache-only), then rerun bootstrap. Retirement also recognizes already-dangling
+pnpm links, so rerunning bootstrap repairs old residue.
+
+Root publication locks its own state root first, then all affected package state
+roots in byte-sorted order before inspecting importer directories. A batch acquires
+the complete ordered lock set before starting workers and reuses its locks.
+An existing package publisher lock fails root publication without moving importers;
+retry after that publisher finishes (recover abandoned locks using the reported
+explicit recovery command).
+
+Retired importers remain in the repository-root `.editor-view/.legacy/importer-*`;
+the old root install is retained alongside them as `node_modules-*`. After a
+successful bootstrap and once those old installs are no longer needed for recovery,
+inspect the retained entries and manually remove only the unwanted entries from
+`.editor-view/.legacy`. Publication does not automatically garbage-collect this
+legacy state. Do not remove live `.editor-view/.store` generations or first hops
+as part of legacy cleanup.
+
 Batch publication prepares up to four private candidates concurrently and
 serializes commits within each editor state root. Fingerprint requests within
 each TypeScript process queue one child at a time, including independent roots.
