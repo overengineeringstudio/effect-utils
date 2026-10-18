@@ -12,14 +12,14 @@ def buildscript_run(name, env = None, **kwargs):
     """Runs Cargo build scripts with declared tools, not daemon-local PATH."""
     platform = host_capability_platform()
     shell = require_capability(CAPABILITIES, GENERATION, platform, "rust-shell")
-    coreutils = require_capability(CAPABILITIES, GENERATION, platform, "coreutils-readlink")
+    coreutils = require_capability(CAPABILITIES, GENERATION, platform, "action-env")
     action_env = dict(env or {})
     action_env.update(RUST_COMPILER_WRAPPER_ENV)
     # Bundled Prelude shims use /usr/bin/env bash and invoke dirname/realpath.
     # A task may start the daemon with only watchman on PATH; never inherit it.
     action_env["PATH"] = ":".join([
         shell["executableStorePath"].removesuffix("/bash"),
-        coreutils["executableStorePath"].removesuffix("/readlink"),
+        coreutils["executableStorePath"].removesuffix("/coreutils"),
     ])
     _prelude_buildscript_run(name = name, env = action_env, **kwargs)
 
