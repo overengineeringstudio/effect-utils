@@ -16,7 +16,7 @@ render_config() {
       rules = flake.packages.\${system}.buck2-rules;
       capabilities = flake.packages.\${system}.buck2-capabilities;
       cellName = \"fixture\";
-    } // $1)).buckConfig
+    } // $1)).${2:-buckConfig}
   "
 }
 
@@ -42,6 +42,9 @@ require_line "$default_config" '  allow_cache_uploads = false'
 forbid_line "$default_config" '  default_allow_cache_upload = true'
 forbid_line "$default_config" '[buck2_re_client]'
 forbid_line "$default_config" '[archive_origin]'
+
+root_buck="$(render_config '{}' rootBuck)"
+require_line "$root_buck" 'toolchain_alias(name = "cxx_no_default_deps", actual = "//buck2/toolchains:cxx", visibility = ["PUBLIC"])'
 
 immutable_config="$(render_config '{ watcherPolicy = "immutable-input"; }')"
 require_line "$immutable_config" '  file_watcher = fs_hash_crawler'

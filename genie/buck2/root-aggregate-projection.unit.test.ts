@@ -59,6 +59,9 @@ describe('root Buck aggregate projection', () => {
 
     expect(output).toContain('name = "editor_view_inputs"')
     expect(output).toContain('name = "static_sources"')
+    expect(output).toContain(
+      'name = "cxx_no_default_deps",\n    actual = "//buck2/toolchains:cxx"',
+    )
     expect(output).toContain('name = "quick"')
     expect(output).toContain('name = "all"')
     expect(output).toContain('check_aggregate(')
