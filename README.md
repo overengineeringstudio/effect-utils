@@ -286,6 +286,12 @@ Fingerprint admission closes on termination. Expiry prints a deadline diagnostic
 publication is never reported as success. This bounds shared-lane occupancy
 well below the 53-minute TT-148 incident. Both view preparations and fingerprint
 subprocesses are limited to four workers, matching the native host-wide walk cap.
+Each finite view sends its unknown declared roots to one native `--batch` request.
+The request canonicalizes shared link owners once and retains the existing per-root
+byte, link-text and before/after metadata proofs. Results preserve declared-root
+order; any invalid root or malformed result fails the complete request. This
+removes per-root process launches without trusting mutable Buck output paths or
+weakening editor-mutation detection.
 Only immutable Nix-store inputs are memoized, keyed by the tool and complete
 fingerprint arguments; mutable Buck outputs are always re-proven. Phase diagnostics
 are written as work advances, with phase spans on completion, failure, and SIGTERM.

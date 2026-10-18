@@ -505,6 +505,133 @@ describe('editor view publisher', () => {
     }
   })
 
+  it('batches only unknown declared roots and preserves single-tree digests and root order', async () => {
+    const fixture = makeFixture()
+    const runFingerprintTool = fingerprintRunner.runFingerprintTool
+    const batches: string[][] = []
+    const firstBacking = join(fixture.root, 'inputs', 'batch-z')
+    const secondBacking = join(fixture.root, 'inputs', 'batch-a')
+    const backingRoots = [firstBacking, secondBacking]
+    for (const [index, root] of backingRoots.entries()) {
+      mkdirSync(root)
+      writeFileSync(join(root, 'index.js'), `export default ${index}\n`)
+    }
+    symlinkSync(firstBacking, join(fixture.nodeModules, 'external-owner'))
+    symlinkSync(join(secondBacking, 'index.js'), join(firstBacking, 'cross-root'))
+    const orderedRoots = [
+      { source: fixture.nodeModules, identity: 'node_modules' },
+      { source: secondBacking, identity: '.backing/0000' },
+      { source: firstBacking, identity: '.backing/0001' },
+    ]
+    const owners = orderedRoots.flatMap(({ source, identity }) => [
+      '--link-owner',
+      `${source}=${identity}`,
+    ])
+    const spy = vi
+      .spyOn(fingerprintRunner, 'runFingerprintTool')
+      .mockImplementation(async (request) => {
+        const stdout = await runFingerprintTool(request)
+        if (request.args[0] !== '--batch') return stdout
+        const trees = request.args.filter((_, index) => request.args[index - 1] === '--tree')
+        batches.push(trees)
+        expect(request.args).toEqual([
+          '--batch',
+          ...trees.flatMap((tree) => ['--tree', tree]),
+          ...owners,
+        ])
+        const expected = []
+        for (const [index, tree] of trees.entries()) {
+          const single = await canonicalTreeFingerprintWithResolvedLinks({
+            tree,
+            linkOwners: orderedRoots,
+            fingerprintTool,
+          })
+          expected.push(
+            `${index} ${single.digest} ${single.resolvedLinksDigest} ${single.literalLinksDigest}`,
+          )
+        }
+        expect(stdout).toBe(`${expected.join('\n')}\n`)
+        return stdout
+      })
+    try {
+      const options = { ...fixture.options, backingRoots }
+      const record = await publishEditorView(options)
+      expect(batches).toEqual([[backingRoots[1], backingRoots[0]]])
+      const hash = createHash('sha256')
+      hash.update('effect-utils/editor-view-declared-roots/v1')
+      for (const root of orderedRoots) {
+        const single = await canonicalTreeFingerprintWithResolvedLinks({
+          tree: root.source,
+          linkOwners: orderedRoots,
+          fingerprintTool,
+        })
+        for (const value of [root.identity, single.resolvedLinksDigest]) {
+          const length = Buffer.alloc(8)
+          length.writeBigUInt64BE(BigInt(Buffer.byteLength(value)))
+          hash.update(length)
+          hash.update(value)
+        }
+      }
+      expect(record.normalizedStoreDigest).toBe(hash.digest('hex'))
+      await expect(checkEditorView(options)).resolves.toEqual(record)
+      expect(batches).toEqual([
+        [backingRoots[1], backingRoots[0]],
+        orderedRoots.map(({ source }) => source),
+      ])
+    } finally {
+      spy.mockRestore()
+      cleanup(fixture)
+    }
+  })
+
+  it('does not spawn an empty batch when the selected root is already known', async () => {
+    const fixture = makeFixture()
+    const spy = vi.spyOn(fingerprintRunner, 'runFingerprintTool')
+    try {
+      await publishEditorView({ ...fixture.options, backingRoots: [fixture.nodeModules] })
+      expect(spy.mock.calls.some(([request]) => request.args[0] === '--batch')).toBe(false)
+    } finally {
+      spy.mockRestore()
+      cleanup(fixture)
+    }
+  })
+
+  const batchHash = 'a'.repeat(64)
+  const batchLine = (index: string): string => `${index} ${batchHash} ${batchHash} ${batchHash}`
+  it.each([
+    ['empty', ''],
+    ['partial', `${batchLine('0')}\n`],
+    ['extra root', `${batchLine('0')}\n${batchLine('1')}\n${batchLine('2')}\n`],
+    ['duplicate index', `${batchLine('0')}\n${batchLine('0')}\n`],
+    ['reordered index', `${batchLine('1')}\n${batchLine('0')}\n`],
+    ['noncanonical index', `${batchLine('00')}\n${batchLine('1')}\n`],
+    ['uppercase hash', `${batchLine('0').toUpperCase()}\n${batchLine('1')}\n`],
+    ['absent resolved proof', `0 ${batchHash} - ${batchHash}\n${batchLine('1')}\n`],
+    ['absent literal proof', `0 ${batchHash} ${batchHash} -\n${batchLine('1')}\n`],
+    ['extra field', `${batchLine('0')} ignored\n${batchLine('1')}\n`],
+    ['extra spacing', `${batchLine('0').replace(' ', '  ')}\n${batchLine('1')}\n`],
+    ['extra newline', `${batchLine('0')}\n${batchLine('1')}\n\n`],
+  ])('rejects %s native batch output before publishing', async (_, stdout) => {
+    const fixture = makeFixture()
+    const runFingerprintTool = fingerprintRunner.runFingerprintTool
+    const spy = vi
+      .spyOn(fingerprintRunner, 'runFingerprintTool')
+      .mockImplementation((request) =>
+        request.args[0] === '--batch' ? Promise.resolve(stdout) : runFingerprintTool(request),
+      )
+    try {
+      const backingRoots = ['first', 'second'].map((name) => join(fixture.root, 'inputs', name))
+      for (const root of backingRoots) mkdirSync(root)
+      await expect(publishEditorView({ ...fixture.options, backingRoots })).rejects.toThrow(
+        'fingerprint tool returned invalid batch output',
+      )
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+    } finally {
+      spy.mockRestore()
+      cleanup(fixture)
+    }
+  })
+
   it('rejects a link whose parent traversal escapes through an intermediate symlink', async () => {
     const fixture = makeFixture()
     try {

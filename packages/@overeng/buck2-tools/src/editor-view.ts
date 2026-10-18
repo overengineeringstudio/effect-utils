@@ -1211,36 +1211,42 @@ const fingerprintDeclaredRoots = async ({
     readonly literalLinksDigest?: string
   }
 }): Promise<DeclaredRootFingerprints> => {
-  // Queue disjoint root requests together; the shared tool runner serializes
-  // subprocesses locally and native admission bounds walks across processes.
-  // Settling first preserves deterministic failures and candidate lifetime.
-  const linkOwners: TreeLinkOwners = roots
-  const settled = await Promise.allSettled(
-    roots.map(async (root) => {
-      if (root.source === knownRoot?.source)
-        return {
-          identity: root.identity,
-          digest: knownRoot.digest,
-          resolvedLinksDigest: knownRoot.resolvedLinksDigest,
-          literalLinksDigest: knownRoot.literalLinksDigest,
-        }
-      const fingerprints = await canonicalTreeFingerprintWithResolvedLinks({
-        tree: root.source,
-        linkOwners,
-        fingerprintTool,
+  // One request shares owner canonicalization and one native host permit across
+  // sequential walks. The selected root's existing proof need not be walked again.
+  const unknownRoots = roots.filter((root) => root.source !== knownRoot?.source)
+  const fingerprints: CanonicalTreeFingerprints[] = []
+  if (unknownRoots.length > 0) {
+    if (/^\/nix\/store\/[^/]+\/bin\/buck2-fingerprint$/u.test(fingerprintTool) === false)
+      fail(`fingerprint tool must be an immutable /nix/store executable: ${fingerprintTool}`)
+    const stdout = await runFingerprintTool({
+      tool: fingerprintTool,
+      args: [
+        '--batch',
+        ...unknownRoots.flatMap(({ source }) => ['--tree', resolve(source)]),
+        ...roots.flatMap(({ source, identity }) => ['--link-owner', `${source}=${identity}`]),
+      ],
+    })
+    const lines = (stdout.endsWith('\n') === true ? stdout.slice(0, -1) : stdout).split('\n')
+    if (lines.length !== unknownRoots.length)
+      fail(`fingerprint tool returned invalid batch output: ${stdout}`)
+    for (const [index, line] of lines.entries()) {
+      const fields = /^(0|[1-9][0-9]*) ([0-9a-f]{64}) ([0-9a-f]{64}) ([0-9a-f]{64})$/u.exec(line)
+      if (fields === null || fields[1] !== String(index))
+        fail(`fingerprint tool returned invalid batch output: ${stdout}`)
+      fingerprints.push({
+        digest: fields[2] ?? fail('declared root digest is absent'),
+        resolvedLinksDigest: fields[3] ?? fail('declared root resolved digest is absent'),
+        literalLinksDigest: fields[4] ?? fail('declared root literal digest is absent'),
       })
-      return {
-        identity: root.identity,
-        digest: fingerprints.digest,
-        resolvedLinksDigest: fingerprints.resolvedLinksDigest,
-        literalLinksDigest: fingerprints.literalLinksDigest,
-      }
-    }),
-  )
-  const entries = settled.map((result) => {
-    if (result.status === 'rejected') throw result.reason
-    return result.value
-  })
+    }
+  }
+  let unknownIndex = 0
+  const entries = roots.map((root) => ({
+    identity: root.identity,
+    ...(root.source === knownRoot?.source
+      ? knownRoot
+      : (fingerprints[unknownIndex++] ?? fail('declared root batch result is absent'))),
+  }))
   return {
     digest: frameDeclaredRootDigests(
       entries.map((entry) => ({

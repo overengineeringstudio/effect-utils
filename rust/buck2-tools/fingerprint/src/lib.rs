@@ -220,19 +220,24 @@ fn tree_changed(
     fail(message)
 }
 
-struct Walker {
+struct PreparedOwner<'a> {
+    source: PathBuf,
+    identity: &'a str,
+}
+
+struct Walker<'a> {
     root: PathBuf,
-    backing: Vec<PathBuf>,
-    owners: Vec<LinkOwner>,
+    backing: &'a [PathBuf],
+    owners: &'a [PreparedOwner<'a>],
     dereference: bool,
     hash: Sha256,
     resolved: Option<Sha256>,
     links: Vec<(Vec<u8>, Vec<u8>)>,
     ancestors: HashSet<(u64, u64)>,
-    buffer: Box<[u8; 131072]>,
+    buffer: &'a mut [u8],
 }
 
-impl Walker {
+impl Walker<'_> {
     fn visit(&mut self, path: &Path, name: &[u8]) -> io::Result<()> {
         let before = fs::symlink_metadata(path)?;
         if before.file_type().is_symlink() && self.dereference {
@@ -383,6 +388,7 @@ fn real_directory(path: &Path, label: &str) -> io::Result<PathBuf> {
     fs::canonicalize(path)
 }
 
+/// Fingerprint one tree with the same preparation and mutation checks as a batch.
 pub fn fingerprint(
     tree: &Path,
     dereference: bool,
@@ -390,23 +396,76 @@ pub fn fingerprint(
     link_owners: &[LinkOwner],
 ) -> io::Result<Fingerprints> {
     let _permit = crate::fingerprint_admission::acquire()?;
-    let root = real_directory(tree, "tree input")?;
-    let backing = backing_roots
+    let prepared = PreparedFingerprint::new(dereference, backing_roots, link_owners)?;
+    let mut buffer = Box::new([0; 131072]);
+    prepared.fingerprint(tree, &mut *buffer)
+}
+
+/// Fingerprint trees sequentially in input order under one native host permit.
+///
+/// Backing roots and link owners are canonicalized once for the whole request.
+/// Any preparation or tree failure fails the batch without returning partial results.
+pub fn fingerprint_batch(
+    trees: &[PathBuf],
+    dereference: bool,
+    backing_roots: &[PathBuf],
+    link_owners: &[LinkOwner],
+) -> io::Result<Vec<Fingerprints>> {
+    let _permit = crate::fingerprint_admission::acquire()?;
+    let prepared = PreparedFingerprint::new(dereference, backing_roots, link_owners)?;
+    let mut buffer = Box::new([0; 131072]);
+    trees
         .iter()
-        .map(|root| real_directory(root, "declared backing root"))
-        .collect::<io::Result<Vec<_>>>()?;
-    let owners = link_owners
-        .iter()
-        .map(|owner| {
-            Ok(LinkOwner {
-                source: fs::canonicalize(&owner.source)?,
-                identity: owner.identity.clone(),
+        .map(|tree| prepared.fingerprint(tree, &mut *buffer))
+        .collect()
+}
+
+struct PreparedFingerprint<'a> {
+    dereference: bool,
+    backing: Vec<PathBuf>,
+    owners: Vec<PreparedOwner<'a>>,
+}
+
+impl<'a> PreparedFingerprint<'a> {
+    fn new(
+        dereference: bool,
+        backing_roots: &[PathBuf],
+        link_owners: &'a [LinkOwner],
+    ) -> io::Result<Self> {
+        let backing = backing_roots
+            .iter()
+            .map(|root| real_directory(root, "declared backing root"))
+            .collect::<io::Result<Vec<_>>>()?;
+        let owners = link_owners
+            .iter()
+            .map(|owner| {
+                Ok(PreparedOwner {
+                    source: fs::canonicalize(&owner.source)?,
+                    identity: &owner.identity,
+                })
             })
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(Self {
+            dereference,
+            backing,
+            owners,
         })
-        .collect::<io::Result<Vec<_>>>()?;
+    }
+
+    fn fingerprint(&self, tree: &Path, buffer: &mut [u8]) -> io::Result<Fingerprints> {
+        fingerprint_prepared(tree, self, buffer)
+    }
+}
+
+fn fingerprint_prepared(
+    tree: &Path,
+    prepared: &PreparedFingerprint<'_>,
+    buffer: &mut [u8],
+) -> io::Result<Fingerprints> {
+    let root = real_directory(tree, "tree input")?;
     let mut hash = Sha256::new();
     hash.update(SCHEMA);
-    let resolved = if owners.is_empty() || dereference {
+    let resolved = if prepared.owners.is_empty() || prepared.dereference {
         None
     } else {
         let mut hash = Sha256::new();
@@ -416,14 +475,14 @@ pub fn fingerprint(
     let before = fs::symlink_metadata(tree)?;
     let mut walker = Walker {
         root,
-        backing,
-        owners,
-        dereference,
+        backing: &prepared.backing,
+        owners: &prepared.owners,
+        dereference: prepared.dereference,
         hash,
         resolved,
         links: Vec::new(),
         ancestors: HashSet::from([(before.dev(), before.ino())]),
-        buffer: Box::new([0; 131072]),
+        buffer,
     };
     for name in sorted_names(tree)? {
         walker.visit(&tree.join(&name), name.as_bytes())?;
