@@ -230,7 +230,7 @@ assert_eq $'pnpm\npnpm-store-gc' "$(eval_pnpm_package_names)" "pnpm module packa
 
 echo "Preflight: generated dependency graph contract classifies workspace overrides"
 assert_json_field \
-  "4.0.0" \
+  "4.0.3" \
   "$ROOT/pnpm-install-contract.json" \
   '(value) => value.dependencyGraphContract.overrides["@effect/platform-node-shared"]' \
   "dependency graph contract should include the active Effect cohort override"

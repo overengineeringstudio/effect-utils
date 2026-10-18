@@ -117,10 +117,10 @@ layer(CaptureLayer, { excludeTestServices: true })('NotionHttp span shape (D3)',
       const summary = yield* cap.inspect({ signal: 'traces', summary: true })
       expect(summary.span_count).toBeGreaterThanOrEqual(1)
 
-      // The auto `http.client POST` child from @effect/platform exists —
+      // The auto `POST` child from Effect's HttpClient exists —
       // confirming our stub HttpClient (not the exporter's FetchHttpClient) is
       // the one being instrumented (its `url.path` is the stubbed query path).
-      const httpClientSpans = yield* cap.inspect({ signal: 'traces', name: 'http.client POST' })
+      const httpClientSpans = yield* cap.inspect({ signal: 'traces', name: 'POST' })
       expect(httpClientSpans).toHaveLength(1)
       expect(httpClientSpans[0]!.attrs['url.path']).toBe(`/v1/data_sources/${DATA_SOURCE_ID}/query`)
 
