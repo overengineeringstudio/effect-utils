@@ -270,7 +270,10 @@ EDITOR_VIEW_PACKAGES='["packages/@overeng/notion-core"]' devenv tasks run buck2:
 ```
 
 The default never substitutes a whole-workspace publication for an empty change
-set. Every automated consumer selects its own scoped publisher. The full operation
+set. Every automated consumer selects its own scoped publisher. Aggregate source-test
+chains preserve each package's own publication prerequisite; their shared harness
+publisher covers only the selected generator/module-script views, not the union
+of source-test packages. The full operation
 is **manual only and currently exceeds its 300-second deadline**; verification
 optimization is tracked in [#1915](https://github.com/overengineeringstudio/effect-utils/issues/1915):
 

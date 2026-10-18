@@ -437,10 +437,12 @@ let
       path = lane.packagePath;
       name = lib.removePrefix "test:" lane.taskName;
     }) (builtins.filter (lane: !(lane ? unboundedTaskName)) buck2TestLanes);
-  # Publish selected source packages plus the views the selected module scripts execute
-  # through. Neutral module scripts must not keep an unrelated view on Darwin's prerequisite.
+  # Only the shared harness scripts use this publisher. Aggregate package aliases
+  # preserve each package's own scoped installer, just like direct package tests.
+  # Neutral module scripts must not retain an unrelated Darwin prerequisite.
   testPublicationPackagePaths = lib.unique (
-    lib.optional (selectedTestTask "genie:buck2:test") "."
+    editorBootstrapPackagePaths
+    ++ lib.optional (selectedTestTask "genie:buck2:test") "."
     ++ lib.optional (selectedTestTask "devenv-modules:test") "packages/@overeng/genie"
     ++ lib.optional (
       testPlatform != "darwin"
@@ -452,7 +454,6 @@ let
         ]
       ) testPlatforms.moduleScripts.darwin
     ) "packages/@overeng/ci-tools"
-    ++ map (pkg: pkg.path) sourceTestPackages
   );
   typescriptPublicationRootPredicate = ''
     typescript_publication_root() {
@@ -1541,7 +1542,7 @@ in
   };
 
   tasks."buck2:editor:publish:test" = scopedEditorViewPublisher {
-    description = "Atomically publish the editor dependency views the source-side tests execute through";
+    description = "Publish only the shared source-test harness dependency views";
     packagePaths = testPublicationPackagePaths;
     traceScope = "test";
   };
