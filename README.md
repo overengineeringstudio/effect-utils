@@ -252,9 +252,11 @@ devenv shell
 
 ### Publish Dependency Views
 
-Editor publication is explicit: shell entry, `genie:run`, and `lint:fix` never
-publish dependency views. Prepare a cold checkout's source-generator dependencies
-separately from the lint/Genie heavy lane:
+Source-side generator freshness (`genie:check`) needs the root dependency view:
+it directly runs `buck2:editor:bootstrap` for only `.` and `packages/@overeng/otel-contract`,
+never whole-workspace publication. The static generator closure checker remains
+self-contained. Shell entry, `genie:run`, and `lint:fix` do not publish dependency
+views; explicitly regenerate and publish source-generator dependencies with:
 
 ```bash
 devenv tasks run buck2:editor:materialize

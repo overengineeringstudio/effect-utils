@@ -253,13 +253,16 @@ ok({
   condition: reaches({ start: 'nix:flake:eval', target: 'genie:check' }),
   name: 'nix:flake:eval waits for source-side generation freshness',
 })
-// Bootstrap publication is an explicit preparation step, not an implicit
-// prerequisite of source generation or lint fixes (TT-148).
+// Source-side generator freshness needs the minimal root dependency view, never
+// materialization or broader publication (TT-148).
+ok({
+  condition: dependencies.get('genie:check')?.has('buck2:editor:bootstrap') === true,
+  name: 'genie:check directly depends on the source-generator bootstrap',
+})
 for (const entrypoint of ['lint:fix', 'genie:run', 'genie:check', 'setup:strict']) {
   requireTask(entrypoint)
   for (const publisher of [...tasks.keys()].filter(
     (name) =>
-      name === 'buck2:editor:bootstrap' ||
       name === 'buck2:editor:materialize' ||
       name === 'buck2:editor:publish' ||
       name.startsWith('buck2:editor:publish:'),

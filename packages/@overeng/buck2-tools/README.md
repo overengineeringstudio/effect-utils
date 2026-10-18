@@ -13,9 +13,10 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
-`buck2:editor:bootstrap` publishes only the dependency views named by the
-committed generated root manifest so `genie:check` can run before trusting the
-generated graph. After generation and composition, repository tasks
+`genie:check` directly depends on `buck2:editor:bootstrap`: source-side generator
+freshness needs the root dependency view before trusting the generated graph.
+Bootstrap publishes only `.` and `packages/@overeng/otel-contract`, never the
+whole workspace. After generation and composition, repository tasks
 `buck2:editor:authority`, `buck2:editor:publish`, and `buck2:editor:check`
 operate on the complete current registry. The exact-token
 `buck2:editor:recover-lock` task recovers only the named consumer's shared

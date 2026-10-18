@@ -979,13 +979,14 @@ in
   # Genie product, which is also what downstream consumers set here.
   effectUtils.genie.package = genieCli;
 
-  # Genie consumes already-materialized editor dependencies but never publishes
-  # them implicitly. Cold checkouts must run buck2:editor:materialize explicitly;
-  # the static closure check remains a prerequisite without mutating editor views.
+  # Source-side generator freshness needs the root dependency view on cold
+  # checkouts, so genie:check bootstraps only the committed generator closure.
+  # The static closure checker is self-contained; neither runs whole-workspace publication.
   tasks."genie:run".after = [ "genie:editor-view-closure:check" ];
   tasks."genie:check".after = lib.mkForce [
     "genie:prepare"
     "genie:editor-view-closure:check"
+    "buck2:editor:bootstrap"
   ];
   tasks."lint:check:genie".after = [ "genie:editor-view-closure:check" ];
   tasks."genie:watch".after = [ "genie:editor-view-closure:check" ];
@@ -1472,8 +1473,8 @@ in
   };
 
   # Authoring and declaration publication need generated projections to be
-  # updated before freshness is checked, but standalone genie:check must remain
-  # mutation-free. Keep that mutating sequence in one explicit entrypoint.
+  # updated before freshness is checked. Standalone genie:check prepares its
+  # dependency view but never regenerates projections; keep that sequence explicit.
   tasks."buck2:editor:materialize" = {
     description = "Regenerate, freshness-check, and publish source-generator dependency views";
     exec = trace.exec "buck2:editor:materialize" ''
