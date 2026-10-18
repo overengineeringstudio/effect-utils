@@ -20,7 +20,6 @@
  * Both own the session lifetime: the `tsgo` child process is always closed, including on throw.
  */
 
-import { once } from 'node:events'
 import path from 'node:path'
 
 import type { SourceFile, StringLiteral } from 'typescript/unstable/ast'
@@ -73,38 +72,243 @@ const apiSpawnOptions = (cwd: string) => {
  */
 export type ClosableTsApi = {
   readonly close: () => Promise<void>
-  readonly client?: { readonly process?: JoinableChildProcess | undefined } | undefined
+  readonly client?:
+    | {
+        readonly process?: JoinableChildProcess | undefined
+        readonly close?: (() => Promise<void>) | undefined
+      }
+    | undefined
+}
+
+/** The child surface needed to join and, on a stalled RPC, terminate the server. */
+export type JoinableChildProcess = NodeJS.EventEmitter & {
+  readonly exitCode: number | null
+  readonly signalCode?: NodeJS.Signals | null
+  readonly kill: (signal: NodeJS.Signals) => boolean
+}
+
+// Repo cold p-max 649/673 ms, all-call max 4.73 s (sync-proof blocking): 20 s gives >4x headroom below Vitest's 30 s.
+const apiRequestTimeoutMs = 20_000
+const terminationGraceMs = 250
+const terminationJoinMs = 1_000
+
+/** A bounded compiler operation that did not respond before its deadline. */
+export class TsApiTimeoutError extends Error {
+  readonly _tag = 'TsApiTimeoutError'
+  readonly stage: string
+  readonly timeoutMs: number
+
+  constructor({ stage, timeoutMs }: { stage: string; timeoutMs: number }) {
+    super(`TypeScript API stalled at ${stage} for ${timeoutMs} ms`)
+    this.name = 'TsApiTimeoutError'
+    this.stage = stage
+    this.timeoutMs = timeoutMs
+  }
+}
+
+const apiClient = (api: API | ClosableTsApi) => (api as unknown as ClosableTsApi).client
+
+const childIsAlive = (child: JoinableChildProcess) =>
+  child.exitCode === null && child.signalCode == null
+
+const withDeadline = async <A>({
+  stage,
+  timeoutMs,
+  run,
+}: {
+  stage: string
+  timeoutMs: number
+  run: () => A | Promise<A>
+}): Promise<A> => {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      Promise.resolve().then(run),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new TsApiTimeoutError({ stage, timeoutMs })), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Attach before closing/signalling: even a synchronous exit cannot be missed. */
+const joinChild = async ({
+  child,
+  timeoutMs,
+  initiate,
+}: {
+  child: JoinableChildProcess
+  timeoutMs: number
+  initiate: () => void | Promise<void>
+}): Promise<void> => {
+  let onExit: (() => void) | undefined
+  try {
+    await withDeadline({
+      stage: 'close',
+      timeoutMs,
+      run: async () => {
+        const exited =
+          childIsAlive(child) === false
+            ? Promise.resolve()
+            : new Promise<void>((resolve) => {
+                onExit = resolve
+                child.once('exit', resolve)
+              })
+        await initiate()
+        await exited
+      },
+    })
+  } finally {
+    if (onExit !== undefined) child.removeListener('exit', onExit)
+  }
+}
+
+const terminateApi = async (child: JoinableChildProcess | undefined): Promise<void> => {
+  if (child === undefined || childIsAlive(child) === false) return
+  try {
+    await joinChild({
+      child,
+      timeoutMs: terminationGraceMs,
+      initiate: () => {
+        child.kill('SIGTERM')
+      },
+    })
+  } catch (error) {
+    if (!(error instanceof TsApiTimeoutError)) throw error
+    await joinChild({
+      child,
+      timeoutMs: terminationJoinMs,
+      initiate: () => {
+        child.kill('SIGKILL')
+      },
+    })
+  }
+}
+
+const withCleanupCause = ({
+  error,
+  cleanupError,
+}: {
+  error: unknown
+  cleanupError: unknown
+}): Error => {
+  if (!(error instanceof Error)) {
+    return new AggregateError([error, cleanupError], 'TypeScript operation and cleanup failed')
+  }
+  error.cause =
+    error.cause === undefined
+      ? cleanupError
+      : new AggregateError([error.cause, cleanupError], 'TypeScript cleanup failed')
+  return error
+}
+
+const apiRequest = async <A>({
+  api,
+  stage,
+  timeoutMs,
+  run,
+}: {
+  api: API
+  stage: string
+  timeoutMs: number
+  run: () => A | Promise<A>
+}): Promise<A> => {
+  try {
+    return await withDeadline({ stage, timeoutMs, run })
+  } catch (error) {
+    if (error instanceof TsApiTimeoutError) {
+      try {
+        await terminateApi(apiClient(api)?.process)
+      } catch (cleanupError) {
+        throw withCleanupCause({ error, cleanupError })
+      }
+    }
+    throw error
+  }
 }
 
 /**
- * The minimal child surface the joined shutdown needs: liveness plus the exit event. A real
- * `ChildProcess` satisfies this; the unit test fakes it with an `EventEmitter` and an `exitCode`.
+ * Close the client and join its child; a stalled shutdown is terminated and reported, not hidden.
+ * The structural child lookup is pinned to typescript@7.0.2, whose public close() does not join.
  */
-export type JoinableChildProcess = NodeJS.EventEmitter & { readonly exitCode: number | null }
-
-/**
- * Close an API session and do not resolve until its `tsgo` child has actually exited.
- *
- * `API.close()` ends the child's stdin but returns without awaiting child exit (about 1 ms while
- * the child is still alive), leaving unjoined process lifetime behind every session. Harmless on
- * Linux, where the child exits within milliseconds, but on macOS the lingering stdio handles stall
- * Vitest's close phase past its deadline. The client offers no public join surface (`Client` is
- * not exported from `typescript/unstable/async`), so the boundary reads the erased
- * `client.process` field structurally and joins it. Pinned to `typescript@7.0.2`: if a bump
- * reshapes the client, the lookup yields `undefined` and shutdown degrades to plain `close()`.
- *
- * Deliberately no timeout: a child that never exits is a real hang and must surface loudly,
- * not be masked by a deadline.
- */
-export const closeApi = async (api: API | ClosableTsApi): Promise<void> => {
-  const child = (api as unknown as ClosableTsApi).client?.process
-  await api.close()
-  // The check and the listener attach run synchronously after `close()` resolves, before the event
-  // loop can deliver the child's exit — so `exitCode === null` means the `exit` event is still to
-  // come and `once` cannot miss it.
-  if (child !== undefined && child.exitCode === null) {
-    await once(child, 'exit')
+export const closeApi = async ({
+  api,
+  timeoutMs = apiRequestTimeoutMs,
+}: {
+  api: API | ClosableTsApi
+  timeoutMs?: number
+}): Promise<void> => {
+  const client = apiClient(api)
+  const child = client?.process
+  // After termination no release RPC can succeed; do not spend another full request budget on it.
+  const closeTimeoutMs =
+    child !== undefined && childIsAlive(child) === false
+      ? Math.min(timeoutMs, terminationJoinMs)
+      : timeoutMs
+  let failure: { error: unknown } | undefined
+  try {
+    if (child === undefined) {
+      await withDeadline({ stage: 'close', timeoutMs: closeTimeoutMs, run: () => api.close() })
+    } else {
+      await joinChild({ child, timeoutMs: closeTimeoutMs, initiate: () => api.close() })
+    }
+  } catch (error) {
+    failure = { error }
+    try {
+      await terminateApi(child)
+    } catch (cleanupError) {
+      failure.error = withCleanupCause({ error, cleanupError })
+    }
   }
+  // API.close() releases snapshots via RPC before closing the transport. Dispose independently,
+  // then report accumulated failures outside finally so cleanup cannot replace the primary error.
+  try {
+    await withDeadline({
+      stage: 'close',
+      timeoutMs: terminationJoinMs,
+      run: () => client?.close?.(),
+    })
+  } catch (cleanupError) {
+    failure = {
+      error:
+        failure === undefined
+          ? cleanupError
+          : withCleanupCause({ error: failure.error, cleanupError }),
+    }
+  }
+  if (failure !== undefined) throw failure.error
+}
+
+const withApiSession = async <A>({
+  api,
+  timeoutMs,
+  run,
+}: {
+  api: API
+  timeoutMs: number
+  run: () => Promise<A>
+}): Promise<A> => {
+  let outcome: { ok: true; value: A } | { ok: false; error: unknown }
+  try {
+    outcome = { ok: true, value: await run() }
+  } catch (error) {
+    outcome = { ok: false, error }
+  }
+  try {
+    await closeApi({ api, timeoutMs })
+  } catch (cleanupError) {
+    outcome = {
+      ok: false,
+      error:
+        outcome.ok === true
+          ? cleanupError
+          : withCleanupCause({ error: outcome.error, cleanupError }),
+    }
+  }
+  if (outcome.ok === false) throw outcome.error
+  return outcome.value
 }
 
 /** A file opened for analysis: its AST plus the module resolution of the project that owns it. */
@@ -141,57 +345,92 @@ export const runTsFileAnalysis = async <A>({
   cwd,
   initialFiles = [],
   use: run,
+  requestTimeoutMs = apiRequestTimeoutMs,
 }: {
   /** Working directory the compiler resolves relative paths and ancestor configs against. */
   cwd: string
   /** Files to open in the first snapshot so a multi-root walk does not rebuild projects per root. */
   initialFiles?: readonly string[]
   use: (session: TsFileAnalysisSession) => A | Promise<A>
+  /** Internal deadline injection for exercising stalled servers without a long-running test. */
+  requestTimeoutMs?: number
 }): Promise<A> => {
   const api = new API(apiSpawnOptions(cwd))
-  try {
-    const opened = new Set(initialFiles)
-    // Seed multi-root walks in one snapshot. Subsequent snapshots retain every open file so
-    // analyzing a newly discovered edge does not evict and rebuild the roots' projects.
-    let snapshot =
-      opened.size === 0
-        ? await api.updateSnapshot()
-        : await api.updateSnapshot({ openFiles: [...opened] })
+  return withApiSession({
+    api,
+    timeoutMs: requestTimeoutMs,
+    run: async () => {
+      const opened = new Set(initialFiles)
+      // Seed multi-root walks in one snapshot. Subsequent snapshots retain every open file so
+      // analyzing a newly discovered edge does not evict and rebuild the roots' projects.
+      let snapshot = await apiRequest({
+        api,
+        stage: 'updateSnapshot',
+        timeoutMs: requestTimeoutMs,
+        run: () =>
+          opened.size === 0 ? api.updateSnapshot() : api.updateSnapshot({ openFiles: [...opened] }),
+      })
 
-    const analyze = async (file: string): Promise<TsFileAnalysisOutcome> => {
-      // The unstable API does not infer a ScriptKind for assets such as CSS and panics if they are opened.
-      if (isAnalyzableSourcePath(file) === false) {
-        return { kind: 'unsupported-extension' }
+      const analyze = async (file: string): Promise<TsFileAnalysisOutcome> => {
+        // The unstable API does not infer a ScriptKind for assets such as CSS and panics if they are opened.
+        if (isAnalyzableSourcePath(file) === false) {
+          return { kind: 'unsupported-extension' }
+        }
+        if (opened.has(file) === false) {
+          const superseded = snapshot
+          opened.add(file)
+          // A snapshot pins its server-side projects, programs and ASTs until it is disposed, so every
+          // superseded one is released — but only AFTER its replacement exists, so a failed open leaves
+          // the current snapshot (and the files already opened in it) intact and usable.
+          snapshot = await apiRequest({
+            api,
+            stage: 'updateSnapshot',
+            timeoutMs: requestTimeoutMs,
+            run: () => api.updateSnapshot({ openFiles: [...opened] }),
+          })
+          await apiRequest({
+            api,
+            stage: 'disposeSnapshot',
+            timeoutMs: requestTimeoutMs,
+            run: () => superseded.dispose(),
+          })
+        }
+        const project = await apiRequest({
+          api,
+          stage: 'getDefaultProjectForFile',
+          timeoutMs: requestTimeoutMs,
+          run: () => snapshot.getDefaultProjectForFile(file),
+        })
+        if (project === undefined) return { kind: 'failed', reason: 'no project found for file' }
+        const sourceFile = await apiRequest({
+          api,
+          stage: 'getSourceFile',
+          timeoutMs: requestTimeoutMs,
+          run: () => project.program.getSourceFile(file),
+        })
+        if (sourceFile === undefined) {
+          return { kind: 'failed', reason: 'the owning project has no source file for it' }
+        }
+        return {
+          kind: 'analyzed',
+          analysis: {
+            sourceFile,
+            resolveModuleSpecifier: async (moduleSpecifier) =>
+              (
+                await apiRequest({
+                  api,
+                  stage: 'symbol lookup',
+                  timeoutMs: requestTimeoutMs,
+                  run: () => project.checker.getSymbolAtLocation(moduleSpecifier),
+                })
+              )?.declarations[0]?.path,
+          },
+        }
       }
-      if (opened.has(file) === false) {
-        const superseded = snapshot
-        opened.add(file)
-        // A snapshot pins its server-side projects, programs and ASTs until it is disposed, so every
-        // superseded one is released — but only AFTER its replacement exists, so a failed open leaves
-        // the current snapshot (and the files already opened in it) intact and usable.
-        snapshot = await api.updateSnapshot({ openFiles: [...opened] })
-        await superseded.dispose()
-      }
-      const project = await snapshot.getDefaultProjectForFile(file)
-      if (project === undefined) return { kind: 'failed', reason: 'no project found for file' }
-      const sourceFile = await project.program.getSourceFile(file)
-      if (sourceFile === undefined) {
-        return { kind: 'failed', reason: 'the owning project has no source file for it' }
-      }
-      return {
-        kind: 'analyzed',
-        analysis: {
-          sourceFile,
-          resolveModuleSpecifier: async (moduleSpecifier) =>
-            (await project.checker.getSymbolAtLocation(moduleSpecifier))?.declarations[0]?.path,
-        },
-      }
-    }
 
-    return await run({ analyze })
-  } finally {
-    await closeApi(api)
-  }
+      return await run({ analyze })
+    },
+  })
 }
 
 /** Run `use` against a project synthesized from in-memory sources, closing the compiler process afterwards. */
@@ -231,32 +470,64 @@ export const runTsVirtualProject = async <A>({
         overlayDirectories.has(directory) === true ? true : undefined,
     },
   })
-  try {
-    const snapshot = await api.updateSnapshot({ openProjects: [configPath] })
-    const project = snapshot.getProject(configPath)
-    if (project === undefined) {
-      throw new Error(`TypeScript API did not open the synthesized project ${configPath}`)
-    }
-    return await run({
-      diagnosticMessages: async () =>
-        (
-          await Promise.all([
-            project.program.getConfigFileParsingDiagnostics(),
-            project.program.getProgramDiagnostics(),
-            project.program.getSyntacticDiagnostics(),
-            project.program.getSemanticDiagnostics(),
-            // Project-wide semantic errors (a missing lib, an unresolvable global type) belong to no
-            // file, so `getSemanticDiagnostics` never reports them — dropping this call is what makes
-            // a broken lib pass vacuously.
-            project.program.getGlobalDiagnostics(),
-          ])
-        )
-          .flat()
-          .map(formatDiagnostic),
-    })
-  } finally {
-    await closeApi(api)
-  }
+  return withApiSession({
+    api,
+    timeoutMs: apiRequestTimeoutMs,
+    run: async () => {
+      const snapshot = await apiRequest({
+        api,
+        stage: 'updateSnapshot',
+        timeoutMs: apiRequestTimeoutMs,
+        run: () => api.updateSnapshot({ openProjects: [configPath] }),
+      })
+      const project = snapshot.getProject(configPath)
+      if (project === undefined) {
+        throw new Error(`TypeScript API did not open the synthesized project ${configPath}`)
+      }
+      return await run({
+        diagnosticMessages: async () =>
+          (
+            await Promise.all([
+              apiRequest({
+                api,
+                stage: 'getConfigFileParsingDiagnostics',
+                timeoutMs: apiRequestTimeoutMs,
+                run: () => project.program.getConfigFileParsingDiagnostics(),
+              }),
+              apiRequest({
+                api,
+                stage: 'getProgramDiagnostics',
+                timeoutMs: apiRequestTimeoutMs,
+                run: () => project.program.getProgramDiagnostics(),
+              }),
+              apiRequest({
+                api,
+                stage: 'getSyntacticDiagnostics',
+                timeoutMs: apiRequestTimeoutMs,
+                run: () => project.program.getSyntacticDiagnostics(),
+              }),
+              apiRequest({
+                api,
+                stage: 'getSemanticDiagnostics',
+                timeoutMs: apiRequestTimeoutMs,
+                run: () => project.program.getSemanticDiagnostics(),
+              }),
+              // Project-wide semantic errors (a missing lib, an unresolvable global type) belong to no
+              // file, so `getSemanticDiagnostics` never reports them — dropping this call is what makes
+              // a broken lib pass vacuously.
+              apiRequest({
+                api,
+                stage: 'getGlobalDiagnostics',
+                timeoutMs: apiRequestTimeoutMs,
+                run: () => project.program.getGlobalDiagnostics(),
+              }),
+            ])
+          )
+            .flat()
+            .map(formatDiagnostic),
+      })
+    },
+  })
 }
 
 /** A synthesized in-memory project. */

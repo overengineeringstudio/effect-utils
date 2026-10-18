@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { API } from 'typescript/unstable/async'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   definePackageJson,
@@ -12,7 +13,8 @@ import {
   type GenieContext,
   type PackageInfo,
 } from '../mod.ts'
-import type { TsFileAnalysisSession } from '../node/ts-api.ts'
+import type { ClosableTsApi, TsFileAnalysisSession } from '../node/ts-api.ts'
+import { runTsFileAnalysis, TsApiTimeoutError } from '../node/ts-api.ts'
 import { defineCatalog } from './catalog.ts'
 import {
   createNodePackageJsonValidationRuntime,
@@ -1001,6 +1003,120 @@ describe('packageJson', () => {
       rule: 'package-json-export-environment-type-proof',
     })
   })
+
+  it.each(['updateSnapshot', 'getDefaultProjectForFile'] as const)(
+    'reports a stalled %s and closes the client even after snapshot initialization',
+    async (stage) => {
+      const repo = createTempRepo('packages/pkg')
+      const packageDir = repo.memberDirs['packages/pkg']!
+      const server = path.join(repo.repoRoot, 'unresponsive-tsgo.mjs')
+      const pidFile = path.join(repo.repoRoot, 'server.pid')
+      const methodsFile = path.join(repo.repoRoot, 'methods.log')
+      fs.mkdirSync(path.join(packageDir, 'src'))
+      fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+      // Speak enough real JSON-RPC to initialize snapshots, then stall the selected operation.
+      fs.writeFileSync(
+        server,
+        `#!${process.execPath}
+import fs from 'node:fs'
+process.on('SIGTERM', () => {})
+fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid))
+let input = Buffer.alloc(0)
+let snapshot = 0
+process.stdin.on('data', (chunk) => {
+  input = Buffer.concat([input, chunk])
+  while (true) {
+    const headerEnd = input.indexOf('\\r\\n\\r\\n')
+    if (headerEnd < 0) return
+    const length = Number(/Content-Length: (\\d+)/i.exec(input.subarray(0, headerEnd).toString())[1])
+    const end = headerEnd + 4 + length
+    if (input.length < end) return
+    const request = JSON.parse(input.subarray(headerEnd + 4, end).toString())
+    input = input.subarray(end)
+    fs.appendFileSync(${JSON.stringify(methodsFile)}, request.method + '\\n')
+    if (request.method === ${JSON.stringify(stage)}) continue
+    const result = request.method === 'initialize'
+      ? { useCaseSensitiveFileNames: true, currentDirectory: ${JSON.stringify(repo.repoRoot)} }
+      : request.method === 'updateSnapshot'
+        ? { snapshot: String(++snapshot), projects: [] }
+        : null
+    const body = JSON.stringify({ jsonrpc: '2.0', id: request.id, result })
+    process.stdout.write('Content-Length: ' + Buffer.byteLength(body) + '\\r\\n\\r\\n' + body)
+  }
+})
+`,
+      )
+      fs.chmodSync(server, 0o755)
+      const originalServer = process.env.GENIE_TYPESCRIPT_API_SERVER
+      process.env.GENIE_TYPESCRIPT_API_SERVER = server
+      let pid: number | undefined
+      let client: ClosableTsApi['client']
+      let timeout: unknown
+      const apiClose = API.prototype.close
+      const closeSpy = vi.spyOn(API.prototype, 'close').mockImplementation(function (this: API) {
+        client = (this as unknown as ClosableTsApi).client
+        return apiClose.call(this)
+      })
+      const reapServer = () => {
+        if (pid === undefined && fs.existsSync(pidFile) === true) {
+          pid = Number(fs.readFileSync(pidFile, 'utf8'))
+        }
+        if (pid === undefined) return
+        try {
+          process.kill(pid, 'SIGKILL')
+        } catch (error) {
+          if (!(error instanceof Error) || !('code' in error) || error.code !== 'ESRCH') throw error
+        }
+      }
+      try {
+        const result = await createNodePackageJsonValidationRuntime({
+          runAnalysis: async (args) => {
+            try {
+              return await runTsFileAnalysis({ ...args, requestTimeoutMs: 500 })
+            } catch (error) {
+              timeout = error
+              throw error
+            }
+          },
+        }).validateExportEnvironments({
+          cwd: repo.repoRoot,
+          location: 'packages/pkg',
+          packageName: '@test/package',
+          exports: { '.': './src/mod.ts' },
+          contracts: { '.': [{ environment: 'isomorphic-es2024', typeProof: 'strict' }] },
+        })
+        const childPid = Number(fs.readFileSync(pidFile, 'utf8'))
+        pid = childPid
+        expect(result.issues).toEqual([
+          {
+            severity: 'error',
+            packageName: '@test/package',
+            dependency: '.',
+            message: expect.stringContaining(`TypeScript API stalled at ${stage} for 500 ms`),
+            rule: 'package-json-export-environment-analysis',
+          },
+        ])
+        expect(result.cache).toEqual({ hits: 0, misses: 0 })
+        expect(() => process.kill(childPid, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }))
+        expect(timeout).toBeInstanceOf(TsApiTimeoutError)
+        expect(client).toBeDefined()
+        // The pinned client's close() clears process after disposing its JSON-RPC connection.
+        expect(client?.process).toBeUndefined()
+        const methods = fs.readFileSync(methodsFile, 'utf8').trim().split('\n')
+        expect(methods).toContain(stage)
+        if (stage === 'getDefaultProjectForFile') {
+          expect(methods.filter((method) => method === 'updateSnapshot')).toHaveLength(2)
+          expect(timeout).toHaveProperty('cause')
+        }
+      } finally {
+        closeSpy.mockRestore()
+        if (originalServer === undefined) delete process.env.GENIE_TYPESCRIPT_API_SERVER
+        else process.env.GENIE_TYPESCRIPT_API_SERVER = originalServer
+        reapServer()
+        fs.rmSync(repo.repoRoot, { recursive: true, force: true })
+      }
+    },
+  )
 
   it('reports missing strict type proof compilers as validation issues', async () => {
     const repo = createTempRepo('packages/pkg')
