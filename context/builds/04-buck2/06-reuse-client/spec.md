@@ -52,9 +52,9 @@ Tailnet hosts resolve their own raw `username:password` credential into
 `BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH` before starting the native executable. The private writer
 also declares `BUCK2_PRIVATE_CACHE_ADDRESS=grpc://<private-host>:<port>`.
 Its overlay sets all three RE client addresses, disables TLS for the direct
-private listener, permits root-authorized uploads, retains the trusted private
-archive origin, and references the Basic header variable. Credential values
-never enter the config file; the daemon expands the variable at startup.
+private listener, permits root-authorized uploads, and references the Basic
+header variable. Credential values never enter the config file; the daemon
+expands the variable at startup. Archive origins do not select the read path.
 The public read-only override takes precedence over either credential.
 No publisher credential is a fallback for a host writer.
 
@@ -321,7 +321,7 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
 {
   "invocationId": "9552ef6c-294e-4a51-9100-9006d6f2c343",
   "admissionFallbacks": { "reapi": 0, "archiveOrigin": 0 },
-  "admissionRetrySuccesses": { "reapi": 0, "archiveOrigin": 1 }
+  "admissionRetrySuccesses": { "reapi": 1, "archiveOrigin": 0 }
 }
 ```
 
@@ -336,38 +336,36 @@ Evidence-enabled invocations bypass the native-launch argument fast path so it
 cannot reuse a prior UUID or skip admission counters. The compact summary adds
 `admissionInvocations` (these rows, deduplicated by invocation UUID),
 `admissionRetrySuccesses` (endpoint-wise sums across those rows), and
-`admissionFallbacks` (those sums plus actual archive acquisition fallbacks for
-`archiveOrigin`). Each endpoint counter in an admission row is 0 or 1: healthy
-first attempts have zeroes, failure of both attempts records one fallback, and a
-successful second attempt records one retry success without a fallback. A reused
-cached failure still records one fallback for that invocation; reused cached
-health records no retry success. An endpoint not probed has zeroes. Admission
-rows describe admission decisions, not action-cache misses or native upload
-failures, and do not enter the warm99 action denominator.
+`admissionFallbacks` (endpoint-wise sums of admission decisions). Current
+invocations probe REAPI only; archive acquisition does not participate in
+endpoint admission. Retained `archiveOrigin` fields describe historical
+archive admission and acquisition evidence, not an active archive read path.
+When historical acquisition reason counts are present, the historical
+`admissionFallbacks.archiveOrigin` aggregate also includes those counts.
+Each probed endpoint counter in an admission row is 0 or 1: healthy first
+attempts have zeroes, failure of both attempts records one fallback, and a
+successful second attempt records one retry success without a fallback. A
+reused cached failure still records one fallback for that invocation; reused
+cached health records no retry success. An endpoint not probed has zeroes.
+Admission rows describe admission decisions, not action-cache misses or
+native upload failures, and do not enter the warm99 action denominator.
 The sidecar survives devenv task boundaries and is consumed into the compact
 summary, not uploaded as a separate raw artifact. Collector finalization writes
 fallback counts and invocation IDs to `GITHUB_STEP_SUMMARY`; the existing stderr
 warning remains available at invocation time.
 
-`pnpm_archive` actions emit repository-owned UTF-8 JSONL diagnostics on stderr:
-`{ "type": "archive-origin-fallback", "reason": "headers-timeout", "sha256": "<64 lowercase hex>" }`.
-The closed reason set is `not-found` (404), `headers-timeout`,
-`connection-error`, and `server-error` (5xx); HTTP responses also include
-`status`. Recovery aborts the CAS request before cancelling its body. A reset
-or otherwise errored body whose cancellation rejects is already unusable:
-cleanup does not block registry recovery, and the fallback diagnostic includes
-`cleanupDiagnostic: "body-cancel-rejected"` without raw error details.
-The projector reads only these diagnostics from native archive-action
-command stderr and retains reason counts, never raw diagnostics or response
-bodies. Each native invocation and the compact summary may include
-`archiveOriginFallbacks: { "not-found": N, "headers-timeout": N,
-"connection-error": N, "server-error": N }`; omitted fields mean no recorded
-acquisition fallback. Counts are deduplicated by native action span and build
-ID, including repeated collection across contexts. The summary's
-`admissionFallbacks.archiveOrigin` combines admission-probe fallbacks and these
-acquisition fallbacks. Endpoint admission rows retain their 0-or-1 contract;
-the reason counts distinguish ordinary missing objects from availability
-stalls. Finalization also writes the reason breakdown to the job summary.
+Standalone pnpm acquisition uses native Deferred download actions rather than
+`pnpm_archive` commands. These actions verify the canonical registry download
+against its declared SHA-256 and byte size; they are not RE CAS reads or
+command-action cache hits. Warm materialized archives need no transfer, while
+explicit fresh roots still fetch registry bytes. Extraction and assembly remain
+under the local materialization policy above.
+
+Historical archive-command evidence can contain `archive-origin-fallback`
+diagnostics with reasons `not-found`, `headers-timeout`, `connection-error`,
+and `server-error`, and projected `archiveOriginFallbacks` reason counts.
+Those describe past command-based acquisitions, not a current runtime
+fallback contract. Native downloads emit no such repository-owned diagnostics.
 
 The summary adds `cacheOutcomeMapping: "effect-utils/compact-cache-outcome/v1"`
 and `actionsArtifact: { name, rows, sha256, bytes, uncompressedBytes, complete,

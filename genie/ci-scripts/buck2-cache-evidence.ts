@@ -23,10 +23,6 @@ import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { gzipSync, gunzipSync } from 'node:zlib'
 
-import {
-  archiveOriginFallbackReasons,
-  type ArchiveOriginFallbackReason,
-} from '../../buck2/dependencies/acquire-archive.ts'
 import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
 import { decodeActionArtifact, decodeActionExclusionCounts } from './buck2-action-evidence-codec.ts'
 import {
@@ -63,6 +59,14 @@ export type CacheAdmissionInvocation = {
   admissionFallbacks: { reapi: number; archiveOrigin: number }
   admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
 }
+// Historical command diagnostics remain readable; native downloads emit none.
+const archiveOriginFallbackReasons = [
+  'not-found',
+  'headers-timeout',
+  'connection-error',
+  'server-error',
+] as const
+type ArchiveOriginFallbackReason = (typeof archiveOriginFallbackReasons)[number]
 type ArchiveOriginFallbackCounts = Record<ArchiveOriginFallbackReason, number>
 type CacheAdmissionEvidence = {
   admissionFallbacks: CacheAdmissionInvocation['admissionFallbacks']

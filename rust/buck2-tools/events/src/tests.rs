@@ -1128,3 +1128,140 @@ fn golden_local_build_log() {
         Some(json!("2"))
     );
 }
+
+fn assert_command_success(model: &Model, expected: Option<bool>) {
+    for (_, _, spans) in make_views(model, None) {
+        let command = spans
+            .iter()
+            .find(|span| span["name"].as_str().unwrap().starts_with("buck2.command "))
+            .unwrap();
+        let outcomes: Vec<_> = command["attributes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|attribute| attribute["key"] == "buck2.is_success")
+            .map(|attribute| attribute["value"]["boolValue"].as_bool().unwrap())
+            .collect();
+        assert_eq!(outcomes, expected.into_iter().collect::<Vec<_>>());
+    }
+}
+
+#[test]
+fn command_success_from_real_build_logs() {
+    // Native command-boundary/outcome projections: private argv, paths,
+    // metadata, target lists and error text are removed, not reconstructed.
+    for (fixture, expected) in [
+        ("successful-build.pb.zst", true),
+        ("failed-build.pb.zst", false),
+    ] {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join(fixture);
+        let model = decode(&path).unwrap();
+        assert!(!model.truncated);
+        assert_command_success(&model, Some(expected));
+    }
+}
+
+#[test]
+fn command_success_uses_final_response_not_deprecated_span_flag() {
+    use gen::buck::daemon::{
+        command_result::Result, BuildResponse, BxlResponse, CommandResult, TargetsResponse,
+        TestResponse,
+    };
+    let error = data::ErrorReport {
+        message: "fixture failure".into(),
+        ..Default::default()
+    };
+    let cases = [
+        (None, None),
+        (
+            Some(Result::BuildResponse(BuildResponse::default())),
+            Some(true),
+        ),
+        (
+            Some(Result::BuildResponse(BuildResponse {
+                errors: vec![error.clone()],
+                ..Default::default()
+            })),
+            Some(false),
+        ),
+        (
+            Some(Result::BxlResponse(BxlResponse::default())),
+            Some(true),
+        ),
+        (
+            Some(Result::BxlResponse(BxlResponse {
+                errors: vec![error.clone()],
+                ..Default::default()
+            })),
+            Some(false),
+        ),
+        (
+            Some(Result::TargetsResponse(TargetsResponse::default())),
+            Some(true),
+        ),
+        (
+            Some(Result::TargetsResponse(TargetsResponse {
+                error_count: 1,
+                ..Default::default()
+            })),
+            Some(false),
+        ),
+        (
+            Some(Result::TestResponse(TestResponse::default())),
+            Some(true),
+        ),
+        (
+            Some(Result::TestResponse(TestResponse {
+                executor_exit_code: 1,
+                ..Default::default()
+            })),
+            Some(false),
+        ),
+        (
+            Some(Result::TestResponse(TestResponse {
+                build_errors: vec![error.clone()],
+                ..Default::default()
+            })),
+            Some(false),
+        ),
+        (Some(Result::Error(error)), Some(false)),
+    ];
+    for (result, expected) in cases {
+        let mut raw = synthetic_log(0, true);
+        append(
+            &mut raw,
+            &event(
+                1,
+                0,
+                buck_event::Data::SpanEnd(data::SpanEndEvent {
+                    data: Some(span_end_event::Data::Command(data::CommandEnd {
+                        // Even an explicit legacy true must not override a failed
+                        // response or invent an outcome when the log is incomplete.
+                        is_success: true,
+                        ..Default::default()
+                    })),
+                    ..Default::default()
+                }),
+            ),
+        );
+        if let Some(result) = result {
+            append(
+                &mut raw,
+                &CommandProgress {
+                    progress: Some(command_progress::Progress::Result(CommandResult {
+                        result: Some(result),
+                    })),
+                },
+            );
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let path = write_log(
+            &directory,
+            "command_result.pb.zst",
+            &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
+        );
+        assert_command_success(&decode(&path).unwrap(), expected);
+    }
+}
