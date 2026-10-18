@@ -140,6 +140,9 @@ for outer tasks that must complete before the nested devenv process can evaluate
     setup records its mode under `.devenv/task-cache/mr-apply/setup-mode`;
     switching between tracking and locked invalidates readiness, including
     outer setup cache hits, so apply materializes the requested worktree policy.
+    Every shared apply path (`mr:setup`, `mr:bootstrap`, `mr:apply`, and
+    `mr:fetch-apply`) removes that proof before mutating member mounts, so an
+    explicit remount or failed apply cannot leave stale setup readiness.
   - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` additionally
     prepares those members' nested megarepo trees in fresh commit worktrees.
     Local readiness checks every non-skipped root member with `mr status`

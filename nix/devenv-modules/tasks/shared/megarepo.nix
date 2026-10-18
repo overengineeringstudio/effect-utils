@@ -69,6 +69,10 @@ let
   setupCommitArgs = lib.optionalString setupNestedTrees " --commit-members ${lib.escapeShellArg (lib.concatStringsSep "," setupCommitMembers)}";
   cacheRoot = ".devenv/task-cache/mr-apply";
   setupModeFile = "${cacheRoot}/setup-mode";
+  invalidateSetupMode = ''
+    # Any mount mutation can invalidate the policy proof, even if apply fails.
+    ${pkgs.coreutils}/bin/rm -f ${lib.escapeShellArg setupModeFile} || exit $?
+  '';
   membersFile = "${cacheRoot}/members.txt";
   recordWorkspaceMembers = ''
     set -o pipefail
@@ -241,6 +245,7 @@ let
           exit 0
         fi
 
+        ${invalidateSetupMode}
         mr apply --worktree-mode commit ${bootstrapOnlyArgs}
       '';
       status = trace.status "mr:bootstrap" "path" ''
@@ -286,6 +291,7 @@ let
         if [[ "$mr_apply_help" == *--verify-shared* ]]; then
           MR_VERIFY_SHARED_ARGS=(--verify-shared)
         fi
+        ${invalidateSetupMode}
         if [ "''${CI:-}" = "true" ]; then
           # CI materializes locked commits end to end and never advances
           # shared branch worktrees.
@@ -333,6 +339,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
+        ${invalidateSetupMode}
         mr fetch --apply --worktree-mode tracking${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
@@ -365,6 +372,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
+        ${invalidateSetupMode}
         mr apply --worktree-mode tracking${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';

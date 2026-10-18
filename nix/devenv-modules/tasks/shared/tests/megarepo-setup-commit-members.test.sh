@@ -13,12 +13,14 @@ setup_task_attr() {
   local attr="$2"
   local task="${3:-mr:setup}"
   local mode="${4:-tracking}"
+  local bootstrap="${5:-[ ]}"
   nix eval --impure --raw --expr "
     let
       flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       module = (import $ROOT/nix/devenv-modules/tasks/shared/megarepo.nix {
         setupCommitMembers = $members;
+        bootstrapMembers = $bootstrap;
       }) { inherit pkgs; lib = pkgs.lib; config.effectUtils.megarepo.setup.mode = \"$mode\"; };
     in module.tasks.\"$task\".$attr
   "
@@ -68,7 +70,11 @@ case "$*" in
     esac
     printf '{"syncNeeded":false,"applyNeeded":%s}\n' "$needed"
     ;;
-  apply*)
+  apply*|fetch*)
+    if [ "${MR_EXPECT_MODE_INVALIDATED:-0}" = 1 ] && [ -e "$MR_ROOT/.devenv/task-cache/mr-apply/setup-mode" ]; then
+      echo 'setup mode record must be removed before mutation' >&2
+      exit 65
+    fi
     if [ "${MR_SUPPORTS_VERIFY_SHARED:-1}" = 0 ] && [[ " $* " == *' --verify-shared '* ]]; then
       echo 'unsupported --verify-shared' >&2
       exit 64
@@ -346,6 +352,29 @@ for cache_hit in 0 1; do
   [ ! -s "$calls" ] && [ ! -s "$MR_PROBE_CALLS" ] \
     || fail "invalid status mode must fail before invoking mr"
 done
+echo "  ok"
+
+echo "Test 19: every other apply path invalidates previously locked setup"
+exec_fetch="$(setup_task_attr '[ ]' exec mr:fetch-apply)"
+exec_bootstrap="$(setup_task_attr '[ ]' exec mr:bootstrap tracking '[ "plain" ]')"
+for script in "$exec_apply" "$exec_fetch" "$exec_bootstrap"; do
+  for cache_hit in 0 1; do
+    [ "$(MR_SETUP_MODE=locked run_script "$exec_unset")" = 0 ] || fail "locked preparation failed"
+    [ "$(MR_SETUP_MODE=locked run_script "$status_unset")" = 0 ] || fail "locked preparation must be ready"
+    [ "$(MR_EXPECT_MODE_INVALIDATED=1 run_script "$script")" = 0 ] \
+      || fail "mount mutator must invalidate the record before it applies"
+    [ "$(MR_SETUP_MODE=locked DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 1 ] \
+      || fail "another apply must invalidate locked setup even when mr status reports ready"
+  done
+done
+echo "  ok"
+
+echo "Test 20: failed setup materialization cannot retain a previous mode proof"
+[ "$(MR_SETUP_MODE=locked run_script "$exec_unset")" = 0 ] || fail "locked preparation failed"
+[ "$(MR_EXPECT_MODE_INVALIDATED=1 MR_SHARED_ROOT=1 MR_SUPPORTS_VERIFY_SHARED=0 run_script "$exec_unset")" = 1 ] \
+  || fail "legacy shared mutation must fail after invalidating readiness"
+[ "$(MR_SETUP_MODE=locked run_script "$status_unset")" = 1 ] \
+  || fail "failed mutation must leave setup unready"
 echo "  ok"
 
 echo "All megarepo setup commit-members tests passed"
