@@ -1057,6 +1057,17 @@ process.stdin.on('data', (chunk) => {
         client = (this as unknown as ClosableTsApi).client
         return apiClose.call(this)
       })
+      const reapServer = () => {
+        if (pid === undefined && fs.existsSync(pidFile) === true) {
+          pid = Number(fs.readFileSync(pidFile, 'utf8'))
+        }
+        if (pid === undefined) return
+        try {
+          process.kill(pid, 'SIGKILL')
+        } catch (error) {
+          if (!(error instanceof Error) || !('code' in error) || error.code !== 'ESRCH') throw error
+        }
+      }
       try {
         const result = await createNodePackageJsonValidationRuntime({
           runAnalysis: async (args) => {
@@ -1101,16 +1112,7 @@ process.stdin.on('data', (chunk) => {
         closeSpy.mockRestore()
         if (originalServer === undefined) delete process.env.GENIE_TYPESCRIPT_API_SERVER
         else process.env.GENIE_TYPESCRIPT_API_SERVER = originalServer
-        if (pid === undefined && fs.existsSync(pidFile))
-          pid = Number(fs.readFileSync(pidFile, 'utf8'))
-        if (pid !== undefined) {
-          try {
-            process.kill(pid, 'SIGKILL')
-          } catch (error) {
-            if (!(error instanceof Error) || !('code' in error) || error.code !== 'ESRCH')
-              throw error
-          }
-        }
+        reapServer()
         fs.rmSync(repo.repoRoot, { recursive: true, force: true })
       }
     },

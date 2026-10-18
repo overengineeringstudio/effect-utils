@@ -22,7 +22,7 @@ describe('closeApi', () => {
     }
 
     let resolved = false
-    const closed = closeApi(api).then(() => {
+    const closed = closeApi({ api }).then(() => {
       resolved = true
     })
     // `close()` resolved but the child is still alive: the join must still be pending, and the
@@ -47,7 +47,7 @@ describe('closeApi', () => {
     }
 
     // No `exit` event will ever fire: resolving proves no listener was awaited.
-    await closeApi(api)
+    await closeApi({ api })
   })
 
   it('closes sessions without a spawned child', async () => {
@@ -58,7 +58,7 @@ describe('closeApi', () => {
       },
     }
 
-    await closeApi(api)
+    await closeApi({ api })
     expect(closed).toBe(true)
   })
 
@@ -75,7 +75,10 @@ describe('closeApi', () => {
       },
     })
     await expect(
-      closeApi({ close: () => new Promise<void>(() => {}), client: { process: child } }, 10),
+      closeApi({
+        api: { close: () => new Promise<void>(() => {}), client: { process: child } },
+        timeoutMs: 10,
+      }),
     ).rejects.toMatchObject({ _tag: 'TsApiTimeoutError', stage: 'close', timeoutMs: 10 })
     expect(signals).toEqual(['SIGTERM'])
     expect(child.listenerCount('exit')).toBe(0)
@@ -85,10 +88,12 @@ describe('closeApi', () => {
     const child = Object.assign(fakeChild(null), { signalCode: 'SIGTERM' as const })
     let closed = false
     await closeApi({
-      close: async () => {
-        closed = true
+      api: {
+        close: async () => {
+          closed = true
+        },
+        client: { process: child },
       },
-      client: { process: child },
     })
     expect(closed).toBe(true)
     expect(child.listenerCount('exit')).toBe(0)
@@ -99,12 +104,14 @@ describe('closeApi', () => {
     let transportClosed = false
     await expect(
       closeApi({
-        close: async () => {
-          throw releaseError
-        },
-        client: {
+        api: {
           close: async () => {
-            transportClosed = true
+            throw releaseError
+          },
+          client: {
+            close: async () => {
+              transportClosed = true
+            },
           },
         },
       }),
@@ -117,12 +124,14 @@ describe('closeApi', () => {
     const transportError = new Error('transport cleanup failed')
     await expect(
       closeApi({
-        close: async () => {
-          throw releaseError
-        },
-        client: {
+        api: {
           close: async () => {
-            throw transportError
+            throw releaseError
+          },
+          client: {
+            close: async () => {
+              throw transportError
+            },
           },
         },
       }),
