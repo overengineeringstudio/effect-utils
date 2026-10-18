@@ -21,6 +21,7 @@
  */
 
 import path from 'node:path'
+import type { Writable } from 'node:stream'
 
 import type { SourceFile, StringLiteral } from 'typescript/unstable/ast'
 import type { Diagnostic } from 'typescript/unstable/async'
@@ -75,7 +76,7 @@ export type ClosableTsApi = {
   readonly client?:
     | {
         readonly process?: JoinableChildProcess | undefined
-        readonly close?: (() => Promise<void>) | undefined
+        readonly close: () => Promise<void>
       }
     | undefined
 }
@@ -84,6 +85,7 @@ export type ClosableTsApi = {
 export type JoinableChildProcess = NodeJS.EventEmitter & {
   readonly exitCode: number | null
   readonly signalCode?: NodeJS.Signals | null
+  readonly stdin?: Writable | null
   readonly kill: (signal: NodeJS.Signals) => boolean
 }
 
@@ -242,17 +244,30 @@ export const closeApi = async ({
 }): Promise<void> => {
   const client = apiClient(api)
   const child = client?.process
-  // After termination no release RPC can succeed; do not spend another full request budget on it.
-  const closeTimeoutMs =
-    child !== undefined && childIsAlive(child) === false
-      ? Math.min(timeoutMs, terminationJoinMs)
-      : timeoutMs
+  const stdin = child?.stdin
+  const streamErrors: Error[] = []
+  const onStreamError = (error: Error) => {
+    streamErrors.push(error)
+  }
+  // Own errors until stream close, not just child exit: end() can fail asynchronously afterwards.
+  const streamClosed =
+    stdin === undefined || stdin === null || stdin.closed === true
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => {
+          stdin.on('error', onStreamError)
+          stdin.once('close', () => {
+            stdin.removeListener('error', onStreamError)
+            resolve()
+          })
+        })
   let failure: { error: unknown } | undefined
   try {
     if (child === undefined) {
-      await withDeadline({ stage: 'close', timeoutMs: closeTimeoutMs, run: () => api.close() })
+      await withDeadline({ stage: 'close', timeoutMs, run: () => api.close() })
     } else {
-      await joinChild({ child, timeoutMs: closeTimeoutMs, initiate: () => api.close() })
+      // Process exit releases every snapshot. API.close() instead sends release RPCs, which race
+      // killed stdin and trigger an unhandled rejection in vscode-jsonrpc's async Promise executor.
+      await joinChild({ child, timeoutMs, initiate: () => client?.close() })
     }
   } catch (error) {
     failure = { error }
@@ -262,15 +277,39 @@ export const closeApi = async ({
       failure.error = withCleanupCause({ error, cleanupError })
     }
   }
-  // API.close() releases snapshots via RPC before closing the transport. Dispose independently,
-  // then report accumulated failures outside finally so cleanup cannot replace the primary error.
+  // Socket-only sessions still need transport disposal if graceful snapshot release failed.
   try {
+    if (child === undefined) {
+      await withDeadline({
+        stage: 'close',
+        timeoutMs: terminationJoinMs,
+        run: () => client?.close(),
+      })
+    }
     await withDeadline({
       stage: 'close',
       timeoutMs: terminationJoinMs,
-      run: () => client?.close?.(),
+      run: () => streamClosed,
     })
   } catch (cleanupError) {
+    failure = {
+      error:
+        failure === undefined
+          ? cleanupError
+          : withCleanupCause({ error: failure.error, cleanupError }),
+    }
+    stdin?.destroy()
+    try {
+      await withDeadline({
+        stage: 'close',
+        timeoutMs: terminationJoinMs,
+        run: () => streamClosed,
+      })
+    } catch (streamCloseError) {
+      failure.error = withCleanupCause({ error: failure.error, cleanupError: streamCloseError })
+    }
+  }
+  for (const cleanupError of streamErrors) {
     failure = {
       error:
         failure === undefined
