@@ -60,3 +60,55 @@ assert_eq \
   '{"allAfter":["buck2:all"],"hasAllTask":true,"hasQuickTask":true,"quickAfter":["buck2:quick"]}' \
   "$(eval_check_module "$buck_args" 'buck2:quick' 'buck2:all')" \
   'consumer may select explicit Buck aggregate tasks'
+
+# Exercise the actual aggregate rendering and its host launcher, rather than
+# assuming Buck2 accepts an invented environment-variable binary selector.
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+host_watchman="$work/signed host watchman"
+printf '#!%s\nprintf "host:%%s\\n" "$@"\n' "$BASH" > "$host_watchman"
+chmod +x "$host_watchman"
+watchman_expr="
+  let
+    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+    evaluate = settings: (pkgs.lib.evalModules {
+      modules = [
+        $ROOT/nix/devenv-modules/tasks/shared/buck2.nix
+        { effectUtils.buck2 = { eventsPackage = pkgs.emptyDirectory; } // settings; }
+      ];
+      specialArgs = { inherit pkgs; inputs = {}; };
+    }).config.effectUtils.buck2;
+    default = evaluate {};
+    overridden = evaluate {
+      watchmanBin = builtins.getEnv \"TEST_HOST_WATCHMAN\";
+      prepare = \"watchman --output-encoding 'argument with spaces'; exit 0\";
+    };
+    render = cfg: cfg.aggregateExec \"fixture:watchman\" [ \"status\" ];
+  in
+"
+export TEST_HOST_WATCHMAN="$host_watchman"
+default_path_proof="$(nix eval --impure --json --expr "$watchman_expr {
+  unchanged = pkgs.lib.hasInfix
+    (builtins.unsafeDiscardStringContext (\"export PATH=\" + pkgs.lib.makeBinPath [ pkgs.watchman ] + \"\n\"))
+    (render default);
+  noAmbientPath = !(pkgs.lib.hasInfix \"\$PATH\" (render default));
+  defaultIsNull = default.watchmanBin == null;
+}")"
+assert_eq '{"defaultIsNull":true,"noAmbientPath":true,"unchanged":true}' \
+  "$default_path_proof" 'Linux default rendered PATH remains exactly nixpkgs Watchman'
+launcher_test="$(nix build --impure --no-link --print-out-paths --expr \
+  "$watchman_expr pkgs.writeShellScript \"buck2-watchman-override-test\" (render overridden)")"
+# A hostile ambient PATH must neither win selection nor survive replacement.
+# Isolate this launcher-only fixture from CI telemetry: an inherited absolute
+# OTEL_SPAN_BIN would otherwise activate tracing, which needs bash on PATH.
+actual="$(env -i PATH=/nonexistent DEVENV_ROOT="$work" "$BASH" "$launcher_test")"
+assert_eq $'host:--output-encoding\nhost:argument with spaces' "$actual" \
+  'override executes the exact host binary and preserves argument boundaries'
+if nix eval --impure --raw --expr \
+  "$watchman_expr (evaluate { watchmanBin = \"relative/watchman\"; }).watchmanBin" \
+  >"$work/relative.stdout" 2>"$work/relative.stderr"; then
+  echo 'FAIL: relative Watchman override accepted' >&2
+  exit 1
+fi
+echo 'Watchman module tests passed: unchanged default PATH, explicit host override, relative override rejected.'

@@ -60,6 +60,23 @@ the command (for example, effect-utils' capability publication).
 
 ## Observability
 
+Aggregate tasks replace (never prepend to) `PATH` with nixpkgs Watchman's bin
+directory by default. To use a signed host Watchman on macOS, explicitly declare
+the executable in the ignored `devenv.local.nix`:
+
+```nix
+{
+  effectUtils.buck2.watchmanBin = "/usr/local/bin/watchman";
+}
+```
+
+The override must be absolute. A task-local `watchman` launcher executes that
+exact binary without copying or modifying it. Buck2's Watchman client discovers
+the CLI as `watchman` through `PATH`; it does not support a
+`BUCK2_WATCHMAN_BIN`/`WATCHMAN_BINARY` selector. There is no ambient PATH probing.
+Restart an existing Buck2 daemon (`buck2 kill`) after changing the selection;
+an already-running Watchman server retains its original executable/permissions.
+
 Import the sibling observability module once to capture native devenv spans
 and effect-utils task spans as one otelite trace:
 

@@ -9,12 +9,22 @@
 let
   cfg = config.effectUtils.buck2;
   trace = import ../lib/trace.nix { inherit lib; };
+  # Buck2 invokes "watchman" through PATH, not a WATCHMAN_BINARY selector.
+  # Exec the host binary in place to preserve its signature and permissions.
+  watchman =
+    if cfg.watchmanBin == null then
+      pkgs.watchman
+    else
+      pkgs.writeShellScriptBin "watchman" ''
+        exec ${lib.escapeShellArg cfg.watchmanBin} "$@"
+      '';
+
   aggregateExec =
     taskName: argv:
     trace.exec taskName ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      export PATH=${lib.makeBinPath [ pkgs.watchman ]}
+      export PATH=${lib.makeBinPath [ watchman ]}
       cd "$root"
       ${cfg.prepare}
 
@@ -75,6 +85,18 @@ let
 in
 {
   options.effectUtils.buck2 = {
+    watchmanBin = lib.mkOption {
+      type = lib.types.nullOr (lib.types.strMatching "/.*");
+      default = null;
+      example = "/usr/local/bin/watchman";
+      description = ''
+        Absolute host Watchman executable for aggregate tasks, or null to use
+        nixpkgs Watchman. Set in devenv.local.nix for a signed macOS installation.
+        A task-local launcher exposes exactly this executable as watchman;
+        the inherited PATH is never searched or preserved.
+      '';
+    };
+
     aggregateExec = lib.mkOption {
       type = lib.types.functionTo (lib.types.functionTo lib.types.str);
       readOnly = true;
