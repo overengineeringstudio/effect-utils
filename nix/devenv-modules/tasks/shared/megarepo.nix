@@ -68,6 +68,7 @@ let
   setupNestedTrees = setupCommitMembers != [ ];
   setupCommitArgs = lib.optionalString setupNestedTrees " --commit-members ${lib.escapeShellArg (lib.concatStringsSep "," setupCommitMembers)}";
   cacheRoot = ".devenv/task-cache/mr-apply";
+  setupModeFile = "${cacheRoot}/setup-mode";
   membersFile = "${cacheRoot}/members.txt";
   recordWorkspaceMembers = ''
     set -o pipefail
@@ -296,13 +297,28 @@ let
         else
           mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off "''${MR_VERIFY_SHARED_ARGS[@]}" "''${MR_SKIP_ARGS[@]}"
         fi
+        # Record policy only after successful materialization. A mode transition
+        # must rerun apply even when the current mounts otherwise look ready.
+        mkdir -p ${lib.escapeShellArg cacheRoot}
+        setup_mode_tmp="$(mktemp ${lib.escapeShellArg "${setupModeFile}.XXXXXX"})"
+        printf '%s\n' "$mr_setup_mode" > "$setup_mode_tmp"
+        mv "$setup_mode_tmp" ${lib.escapeShellArg setupModeFile}
       '';
-      status = trace.status "mr:setup" "binary" (mkMrStatusCheck {
-        recursive = setupNestedTrees;
-        # External edits can change canonical HEAD or dirtiness without moving
-        # the root mount. Presence alone cannot prove exact-lock readiness.
-        checkRootOnCacheHit = true;
-      });
+      status = trace.status "mr:setup" "binary" (
+        ''
+          ${loadSetupModeScript}
+          if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
+            exit 0
+          fi
+          [ "$(cat ${lib.escapeShellArg setupModeFile} 2>/dev/null)" = "$mr_setup_mode" ] || exit 1
+        ''
+        + mkMrStatusCheck {
+          recursive = setupNestedTrees;
+          # External edits can change canonical HEAD or dirtiness without moving
+          # the root mount. Presence alone cannot prove exact-lock readiness.
+          checkRootOnCacheHit = true;
+        }
+      );
     };
 
     "mr:fetch-apply" = {

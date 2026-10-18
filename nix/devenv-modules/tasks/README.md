@@ -136,6 +136,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     Locked setup materializes `megarepo.lock` commits without fetching refs or
     rewriting locks. Canonical non-CI runners must explicitly select locked mode;
     invoking a task named `check:*` alone does not change the setup policy.
+    Status validates the effective mode before checking readiness. Successful
+    setup records its mode under `.devenv/task-cache/mr-apply/setup-mode`;
+    switching between tracking and locked invalidates readiness, including
+    outer setup cache hits, so apply materializes the requested worktree policy.
   - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` additionally
     prepares those members' nested megarepo trees in fresh commit worktrees.
     Local readiness checks every non-skipped root member with `mr status`

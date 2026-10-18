@@ -321,4 +321,31 @@ option_contract="$(nix eval --impure --raw --expr "
 [ "$option_contract" = typed-tracking-default ] || fail "setup mode option contract failed"
 echo "  ok"
 
+echo "Test 17: ready workspaces must reapply when the effective setup mode changes"
+for cache_hit in 0 1; do
+  [ "$(MR_SETUP_MODE=tracking run_script "$exec_unset")" = 0 ] || fail "tracking preparation failed"
+  [ "$(MR_SETUP_MODE=tracking DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 0 ] \
+    || fail "ready tracking workspace must remain cacheable"
+  [ "$(MR_SETUP_MODE=locked DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 1 ] \
+    || fail "tracking readiness must not satisfy a locked setup request"
+  [ ! -s "$calls" ] || fail "mode mismatch must invalidate before querying workspace readiness"
+  [ "$(MR_SETUP_MODE=locked run_script "$exec_unset")" = 0 ] || fail "locked transition failed"
+  grep -qx 'apply --worktree-mode commit --lock-sync off --verify-shared' "$calls" \
+    || fail "locked transition must materialize commit worktrees"
+  [ "$(MR_SETUP_MODE=locked DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 0 ] \
+    || fail "successful locked materialization must establish locked readiness"
+  [ "$(MR_SETUP_MODE=tracking DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 1 ] \
+    || fail "locked readiness must not satisfy a tracking setup request"
+done
+echo "  ok"
+
+echo "Test 18: invalid mode cannot hide behind a ready workspace"
+for cache_hit in 0 1; do
+  [ "$(MR_SETUP_MODE=invalid DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 1 ] \
+    || fail "ready workspace must reject invalid setup mode"
+  [ ! -s "$calls" ] && [ ! -s "$MR_PROBE_CALLS" ] \
+    || fail "invalid status mode must fail before invoking mr"
+done
+echo "  ok"
+
 echo "All megarepo setup commit-members tests passed"
