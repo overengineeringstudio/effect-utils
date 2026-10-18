@@ -10,6 +10,7 @@ ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 eval_genie_module_attr() {
   local module_config="$1"
   local attr_expr="$2"
+  local extra_modules="${3:-}"
 
   nix eval --impure --raw --expr "
     let
@@ -22,6 +23,7 @@ eval_genie_module_attr() {
             options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
           })
           $ROOT/nix/devenv-modules/tasks/shared/genie.nix
+          $extra_modules
           ({ ... }: $module_config)
         ];
         specialArgs = { inherit pkgs; lib = pkgs.lib; };
@@ -50,6 +52,36 @@ configured_globs="$(eval_genie_module_attr "{ effectUtils.genie.extraInputGlobs 
 if [ "$configured_globs" != '["registry.json"]' ]; then
   echo "FAIL: extraInputGlobs option should accept repo-specific generator inputs"
   echo "  actual: $configured_globs"
+  exit 1
+fi
+
+echo "Checking every Genie entrypoint waits for member setup when enabled..."
+for lint_module in lint-genie lint-oxc; do
+  lint_import="$ROOT/nix/devenv-modules/tasks/shared/$lint_module.nix"
+  if [ "$lint_module" = lint-oxc ]; then
+    lint_import="(import $lint_import { geniePatterns = []; genieCoverageDirs = []; })"
+  fi
+  graph="$(eval_genie_module_attr \
+    '{}' \
+    'builtins.toJSON (builtins.mapAttrs (_: task: task.after or [ ]) evaluated.config.tasks)' \
+    "$lint_import (import $ROOT/nix/devenv-modules/tasks/shared/megarepo.nix {})")"
+  GRAPH="$graph" node --input-type=module <<'EOF'
+const graph = JSON.parse(process.env.GRAPH)
+const reaches = (task, target, seen = new Set()) => {
+  if (task === target) return true
+  if (seen.has(task)) return false
+  seen.add(task)
+  return (graph[task] ?? []).some((dependency) => reaches(dependency, target, seen))
+}
+for (const task of ['genie:run', 'genie:check', 'genie:watch', 'lint:check:genie']) {
+  if (!reaches(task, 'mr:setup')) throw new Error(`${task} can race member setup`)
+}
+if (reaches('mr:setup', 'genie:prepare')) throw new Error('member setup depends on Genie')
+EOF
+done
+prepare_after="$(eval_genie_module_attr '{}' 'builtins.toJSON evaluated.config.tasks."genie:prepare".after')"
+if [ "$prepare_after" != '[]' ]; then
+  echo "FAIL: standalone Genie must not depend on an undefined mr:setup"
   exit 1
 fi
 
