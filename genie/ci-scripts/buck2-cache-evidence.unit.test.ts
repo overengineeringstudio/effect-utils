@@ -286,7 +286,7 @@ describe('native Buck cache evidence projection', () => {
     )
     const first = summaries[0]!
     const next = summaries[1]!
-    expect(first.actions).toHaveLength(5)
+    expect(first.actions).toHaveLength(localMaterializationCategories.length)
     const merged = mergeCacheEvidence({ previous: first, next })
     expect(merged.excludedByDesign).toEqual({
       'local-materialization-policy': 200,

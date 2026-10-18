@@ -22,8 +22,8 @@
     "ai-gateway-edge": "./src/cli.ts"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.0",
-    "effect": "4.0.0"
+    "@effect/platform-node": "4.0.3",
+    "effect": "4.0.3"
   },
   "devDependencies": {
     "@overeng/ai-gateway-conformance": "workspace:^",
