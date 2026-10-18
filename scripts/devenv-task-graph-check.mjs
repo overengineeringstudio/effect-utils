@@ -434,8 +434,8 @@ ok({
   name: 'editor bootstrap reads committed standalone dependencies without mutating projections',
 })
 
-// Aggregate-only aliases use the union publisher. Direct source tasks publish
-// only their own execution view and the generator bootstrap closure.
+// Aggregate-only aliases preserve per-package publication, admitted after their
+// own previous execution. Only shared harness scripts use the harness publisher.
 const sourceTestAggregate = 'test:run'
 const sourceTestExtraSuites = [
   'devenv-modules:test',
@@ -514,6 +514,30 @@ for (const name of sourceTestTasks) {
       reaches({ start: sourceTestAggregate, target: name }),
     name: `${name} advances only its own chain and remains in aggregate coverage`,
   })
+  const installerName = name.replace(sourceTestChainPrefix, 'test:run:install:')
+  const installerDependencies = [...(dependencies.get(installerName) ?? [])]
+  const packagePublisher = `buck2:editor:publish:${name.replace(chainExecutionPattern, 'test:')}`
+  ok({
+    condition:
+      tasks.has(installerName) === true &&
+      dependencies.get(name)?.has(installerName) === true &&
+      dependencies.get(name)?.has(packagePublisher) === false &&
+      installerDependencies.includes('genie:check') === true &&
+      predecessors.every((previous) => installerDependencies.includes(previous)) === true &&
+      installerDependencies.length === predecessors.length + 1,
+    name: `${name} admits only its scoped installer after its own predecessor`,
+  })
+  const installerCommand = tasks.get(installerName)?.command
+  const packageCommand = tasks.get(packagePublisher)?.command
+  if (typeof installerCommand === 'string' && typeof packageCommand === 'string') {
+    ok({
+      condition:
+        existsSync(installerCommand) === true &&
+        existsSync(packageCommand) === true &&
+        readFileSync(installerCommand, 'utf8') === readFileSync(packageCommand, 'utf8'),
+      name: `${installerName} preserves its standalone publisher's exact bounded command`,
+    })
+  }
 }
 for (const name of sourceTestTasks) {
   const isTail = sourceTestTasks.every((other) => dependencies.get(other)?.has(name) !== true)
@@ -557,17 +581,21 @@ const scopedPublisherContracts = {
   'buck2:editor:publish:test': {
     // check:all's observability profile names the test publisher among its prerequisites.
     consumers: [
-      ...sourceTestTasks,
+      // Execution chains use their own ordered package-scoped installer aliases.
       ...sourceTestExtraSuites,
       ...(process.env.EFFECT_UTILS_CI_TEST === '1'
         ? []
         : ['otel:profile:genie-check', 'otel:verify:genie-check']),
     ],
     packagePaths: [
-      '.',
-      'packages/@overeng/ci-tools',
-      'packages/@overeng/genie',
-      ...directSourceTestTasks.map((name) => tasks.get(name)?.cwd),
+      ...bootstrapPackagePaths,
+      ...(sourceTaskSelected('devenv-modules:test') === true ? ['packages/@overeng/genie'] : []),
+      ...(process.env.EFFECT_UTILS_TEST_PLATFORM !== 'darwin' ||
+      platformSuites.moduleScripts.darwin.some(({ script }) =>
+        ['deploy-task-e2e.test.sh', 'workflow-report-task-e2e.test.sh'].includes(script),
+      ) === true
+        ? ['packages/@overeng/ci-tools']
+        : []),
     ],
   },
   ...packagePublisherContracts,

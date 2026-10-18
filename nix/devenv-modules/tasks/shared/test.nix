@@ -240,9 +240,11 @@ let
           execIfModified = execution.execIfModified or [ ];
           # trace-audit-allow: inherit the final task's already-instrumented status; do not wrap twice.
           status = execution.status or null;
+          # Retain the direct chain edge: tail guards classify execution aliases,
+          # while the installer edge separately bounds publication admission.
           after =
             if scopedInstaller then
-              [ installAlias ] ++ lib.remove installerName (execution.after or [ ])
+              [ installAlias ] ++ lib.remove installerName (execution.after or [ ]) ++ previous
             else
               (execution.after or [ ]) ++ previous;
         };

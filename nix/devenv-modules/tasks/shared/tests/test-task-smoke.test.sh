@@ -142,9 +142,9 @@ assert_eq \
   "chain head preserves package-specific prerequisites"
 
 assert_eq \
-  '["test:run:install:3:ok-c"]' \
+  '["test:run:install:3:ok-c","test:run:chain:3:native-b"]' \
   "$(eval_test_module_attr 4 'builtins.toJSON tasks."test:run:chain:3:ok-c".after' "$weighted")" \
-  "chain test waits on its ordered scoped installation alias"
+  "chain test retains its direct predecessor and ordered scoped installation"
 
 assert_eq \
   '["test:run:chain:3:native-b"]' \
@@ -198,7 +198,7 @@ assert_eq \
   "three-chain fallback keeps long tasks separate and waits for each tail"
 
 assert_eq \
-  '["test:run:install:2:ok-c"]' \
+  '["test:run:install:2:ok-c","test:run:chain:2:native-b"]' \
   "$(eval_test_module_attr 3 'builtins.toJSON tasks."test:run:chain:2:ok-c".after' "$weighted")" \
   "three-chain fallback orders short tasks within the least-loaded chain"
 
