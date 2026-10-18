@@ -419,6 +419,12 @@ inside a Cargo development shell must not introduce ambient sccache selection.
 Compiler selection and cache identity remain owned by the declared Buck tools;
 inherited sccache settings cannot activate a wrapper when these selectors are empty.
 
+First-party and Reindeer build-script launchers also declare `PATH` from the
+immutable Bash and coreutils capabilities. Bundled Prelude shims invoke Bash
+through `/usr/bin/env` and use `dirname`/`realpath`; they must not depend on the
+environment of whichever task first started the Buck daemon (aggregate tasks
+intentionally expose only Watchman on their own `PATH`).
+
 TypeScript package projections retain census destinations below nested Buck packages,
 but resolve each input through its nearest owning `BUCK` (or `BUCK.genie.ts` during
 generation). For example, `src/main.ts` below `parent/src/BUCK` is staged from

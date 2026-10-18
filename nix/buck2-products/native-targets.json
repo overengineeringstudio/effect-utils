@@ -2,6 +2,7 @@
   "products": [
     {
       "buildCapabilities": [
+        "action-env",
         "archive-tool",
         "bun",
         "product",
@@ -40,6 +41,7 @@
     },
     {
       "buildCapabilities": [
+        "action-env",
         "archive-tool",
         "bun",
         "product",
@@ -78,6 +80,7 @@
     },
     {
       "buildCapabilities": [
+        "action-env",
         "archive-tool",
         "bun",
         "product",
