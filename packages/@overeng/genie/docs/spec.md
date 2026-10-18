@@ -383,11 +383,14 @@ wrapper. The validator writes a temporary proof
 Genie validation issues, and removes the temporary config after the proof run.
 
 Graph scanning uses a separate TypeScript 7 API server. Each API operation and
-session close has a 10-second deadline, allowing cold starts without leaving a
+session close has a 20-second deadline, allowing cold starts without leaving a
 nonresponsive compiler unbounded. Expiry terminates the child with `SIGTERM`,
 escalates to `SIGKILL` after 250 ms, and bounds the final exit join to one second.
 Export validation reports the stalled operation as an analysis validation issue;
 an incomplete scan never produces a successful proof cache entry.
+The transport is disposed independently of snapshot release, including when a
+terminated server cannot answer that release. Cleanup failures remain attached
+as causes of the original operation failure, preserving its stalled-stage identity.
 
 Built-in environment profiles are data, not core behavior. The initial profile
 set covers `isomorphic-es2024`, `node`, `bun`, `browser`, `webworker`,

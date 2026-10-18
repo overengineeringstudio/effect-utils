@@ -96,6 +96,42 @@ describe('closeApi', () => {
     expect(closed).toBe(true)
     expect(child.listenerCount('exit')).toBe(0)
   })
+
+  it('closes the transport even when snapshot release rejects', async () => {
+    const releaseError = new Error('snapshot release failed')
+    let transportClosed = false
+    await expect(
+      closeApi({
+        close: async () => {
+          throw releaseError
+        },
+        client: {
+          close: async () => {
+            transportClosed = true
+          },
+        },
+      }),
+    ).rejects.toBe(releaseError)
+    expect(transportClosed).toBe(true)
+  })
+
+  it('retains a transport cleanup defect as the snapshot failure cause', async () => {
+    const releaseError = new Error('snapshot release failed')
+    const transportError = new Error('transport cleanup failed')
+    await expect(
+      closeApi({
+        close: async () => {
+          throw releaseError
+        },
+        client: {
+          close: async () => {
+            throw transportError
+          },
+        },
+      }),
+    ).rejects.toBe(releaseError)
+    expect(releaseError.cause).toBe(transportError)
+  })
 })
 
 const root = path.resolve('/genie-virtual/ts-api')

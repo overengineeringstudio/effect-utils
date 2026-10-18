@@ -72,7 +72,12 @@ const apiSpawnOptions = (cwd: string) => {
  */
 export type ClosableTsApi = {
   readonly close: () => Promise<void>
-  readonly client?: { readonly process?: JoinableChildProcess | undefined } | undefined
+  readonly client?:
+    | {
+        readonly process?: JoinableChildProcess | undefined
+        readonly close?: (() => Promise<void>) | undefined
+      }
+    | undefined
 }
 
 /** The child surface needed to join and, on a stalled RPC, terminate the server. */
@@ -82,25 +87,26 @@ export type JoinableChildProcess = NodeJS.EventEmitter & {
   readonly kill: (signal: NodeJS.Signals) => boolean
 }
 
-// Cold sessions normally take milliseconds; 10 s allows cold starts without consuming Vitest's 30 s deadline.
-const apiRequestTimeoutMs = 10_000
+// Repo cold p-max 649/673 ms, all-call max 4.73 s (sync-proof blocking): 20 s gives >4x headroom below Vitest's 30 s.
+const apiRequestTimeoutMs = 20_000
 const terminationGraceMs = 250
 const terminationJoinMs = 1_000
 
 export class TsApiTimeoutError extends Error {
   readonly _tag = 'TsApiTimeoutError'
+  readonly stage: string
+  readonly timeoutMs: number
 
-  constructor(
-    readonly stage: string,
-    readonly timeoutMs: number,
-  ) {
+  constructor(stage: string, timeoutMs: number) {
     super(`TypeScript API stalled at ${stage} for ${timeoutMs} ms`)
     this.name = 'TsApiTimeoutError'
+    this.stage = stage
+    this.timeoutMs = timeoutMs
   }
 }
 
-const apiChild = (api: API | ClosableTsApi) =>
-  (api as unknown as ClosableTsApi).client?.process
+const apiClient = (api: API | ClosableTsApi) =>
+  (api as unknown as ClosableTsApi).client
 
 const childIsAlive = (child: JoinableChildProcess) =>
   child.exitCode === null && child.signalCode == null
@@ -161,6 +167,17 @@ const terminateApi = async (child: JoinableChildProcess | undefined): Promise<vo
   }
 }
 
+const withCleanupCause = (error: unknown, cleanupError: unknown): Error => {
+  if (!(error instanceof Error)) {
+    return new AggregateError([error, cleanupError], 'TypeScript operation and cleanup failed')
+  }
+  error.cause =
+    error.cause === undefined
+      ? cleanupError
+      : new AggregateError([error.cause, cleanupError], 'TypeScript cleanup failed')
+  return error
+}
+
 const apiRequest = async <A>(
   api: API,
   stage: string,
@@ -170,7 +187,13 @@ const apiRequest = async <A>(
   try {
     return await withDeadline(stage, timeoutMs, run)
   } catch (error) {
-    if (error instanceof TsApiTimeoutError) await terminateApi(apiChild(api))
+    if (error instanceof TsApiTimeoutError) {
+      try {
+        await terminateApi(apiClient(api)?.process)
+      } catch (cleanupError) {
+        throw withCleanupCause(error, cleanupError)
+      }
+    }
     throw error
   }
 }
@@ -183,16 +206,58 @@ export const closeApi = async (
   api: API | ClosableTsApi,
   timeoutMs = apiRequestTimeoutMs,
 ): Promise<void> => {
-  const child = apiChild(api)
+  const client = apiClient(api)
+  const child = client?.process
+  // After termination no release RPC can succeed; do not spend another full request budget on it.
+  const closeTimeoutMs =
+    child !== undefined && childIsAlive(child) === false
+      ? Math.min(timeoutMs, terminationJoinMs)
+      : timeoutMs
+  let failure: { error: unknown } | undefined
   try {
     if (child === undefined) {
-      await withDeadline('close', timeoutMs, () => api.close())
+      await withDeadline('close', closeTimeoutMs, () => api.close())
     } else {
-      await joinChild(child, timeoutMs, () => api.close())
+      await joinChild(child, closeTimeoutMs, () => api.close())
     }
   } catch (error) {
-    if (error instanceof TsApiTimeoutError) await terminateApi(child)
+    failure = { error }
+    try {
+      await terminateApi(child)
+    } catch (cleanupError) {
+      failure.error = withCleanupCause(error, cleanupError)
+    }
+    throw failure.error
+  } finally {
+    // API.close() releases snapshots via RPC before it closes the transport. A dead server can
+    // reject that release; close the transport independently so its stdio and pending RPCs drain.
+    try {
+      await withDeadline('close', terminationJoinMs, () => client?.close?.())
+    } catch (cleanupError) {
+      if (failure !== undefined) throw withCleanupCause(failure.error, cleanupError)
+      throw cleanupError
+    }
+  }
+}
+
+const withApiSession = async <A>(
+  api: API,
+  timeoutMs: number,
+  run: () => Promise<A>,
+): Promise<A> => {
+  let failure: { error: unknown } | undefined
+  try {
+    return await run()
+  } catch (error) {
+    failure = { error }
     throw error
+  } finally {
+    try {
+      await closeApi(api, timeoutMs)
+    } catch (cleanupError) {
+      if (failure !== undefined) throw withCleanupCause(failure.error, cleanupError)
+      throw cleanupError
+    }
   }
 }
 
@@ -241,7 +306,7 @@ export const runTsFileAnalysis = async <A>({
   requestTimeoutMs?: number
 }): Promise<A> => {
   const api = new API(apiSpawnOptions(cwd))
-  try {
+  return withApiSession(api, requestTimeoutMs, async () => {
     const opened = new Set(initialFiles)
     // Seed multi-root walks in one snapshot. Subsequent snapshots retain every open file so
     // analyzing a newly discovered edge does not evict and rebuild the roots' projects.
@@ -292,9 +357,7 @@ export const runTsFileAnalysis = async <A>({
     }
 
     return await run({ analyze })
-  } finally {
-    await closeApi(api, requestTimeoutMs)
-  }
+  })
 }
 
 /** Run `use` against a project synthesized from in-memory sources, closing the compiler process afterwards. */
@@ -334,7 +397,7 @@ export const runTsVirtualProject = async <A>({
         overlayDirectories.has(directory) === true ? true : undefined,
     },
   })
-  try {
+  return withApiSession(api, apiRequestTimeoutMs, async () => {
     const snapshot = await apiRequest(api, 'updateSnapshot', apiRequestTimeoutMs, () =>
       api.updateSnapshot({ openProjects: [configPath] }),
     )
@@ -369,9 +432,7 @@ export const runTsVirtualProject = async <A>({
           .flat()
           .map(formatDiagnostic),
     })
-  } finally {
-    await closeApi(api)
-  }
+  })
 }
 
 /** A synthesized in-memory project. */
