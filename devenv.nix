@@ -722,7 +722,9 @@ let
         --fingerprint-tool ${
           repoFlake.packages.${currentSystem}.buck2-fingerprint
         }/bin/buck2-fingerprint \
-        --snapshot-retention 2${packageArgument}${lib.optionalString (changedSince != null) " --changed-since ${lib.escapeShellArg changedSince}"} || status=$?
+        --snapshot-retention 2${packageArgument}${
+          lib.optionalString (changedSince != null) " --changed-since ${lib.escapeShellArg changedSince}"
+        } || status=$?
       if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
         echo "Editor-view ${mode} exceeded its 300s total deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
       fi
@@ -858,15 +860,20 @@ in
     }
     {
       tasks = lib.listToAttrs (
-        map (path: lib.nameValuePair (consumerPublisherName path) (scopedEditorViewPublisher {
-          description = "Publish only the ${builtins.baseNameOf path} consumer dependency view";
-          packagePaths = [ path ];
-          traceScope = "consumer:${builtins.baseNameOf path}";
-        })) consumerPublicationPackagePaths
+        map (
+          path:
+          lib.nameValuePair (consumerPublisherName path) (scopedEditorViewPublisher {
+            description = "Publish only the ${builtins.baseNameOf path} consumer dependency view";
+            packagePaths = [ path ];
+            traceScope = "consumer:${builtins.baseNameOf path}";
+          })
+        ) consumerPublicationPackagePaths
       );
     }
     (taskModules.storybook {
-      packages = map (pkg: pkg // { installTask = consumerPublisherName pkg.path; }) packagesWithStorybook;
+      packages = map (
+        pkg: pkg // { installTask = consumerPublisherName pkg.path; }
+      ) packagesWithStorybook;
     })
     (taskModules.netlify {
       siteName = "overeng-utils";
@@ -996,11 +1003,21 @@ in
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
   };
   tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
-  tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-effect-client") ];
-  tasks."test:notion-integration:notion-cli".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-cli") ];
-  tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-datasource-sync") ];
-  tasks."test:notion-integration:notion-md".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-md") ];
-  tasks."test:notion-integration:notion-react".after = lib.mkForce [ (consumerPublisherName "packages/@overeng/notion-react") ];
+  tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [
+    (consumerPublisherName "packages/@overeng/notion-effect-client")
+  ];
+  tasks."test:notion-integration:notion-cli".after = lib.mkForce [
+    (consumerPublisherName "packages/@overeng/notion-cli")
+  ];
+  tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [
+    (consumerPublisherName "packages/@overeng/notion-datasource-sync")
+  ];
+  tasks."test:notion-integration:notion-md".after = lib.mkForce [
+    (consumerPublisherName "packages/@overeng/notion-md")
+  ];
+  tasks."test:notion-integration:notion-react".after = lib.mkForce [
+    (consumerPublisherName "packages/@overeng/notion-react")
+  ];
   tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish:otel-contract" ];
   tasks."test:pty-effect:unbounded".env = {
     NODE_PTY_NATIVE_PACKAGE = "${nodePtyNative}/node_modules/node-pty";
