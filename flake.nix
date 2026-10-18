@@ -356,6 +356,12 @@ rec {
             buck2-pnpm-archives = pnpmArchives;
             cli-build-stamp = cliBuildStamp.package;
             otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+            restate = import ./nix/restate.nix {
+              pkgs = import nixpkgs {
+                inherit system;
+                config.allowUnfreePredicate = pkg: pkgs.lib.getName pkg == "restate";
+              };
+            };
             # Both the rasterizer and fonts follow this repository's locked nixpkgs.
             # Ignore runner fonts so identical SVGs have a deterministic font closure.
             pipeline-waterfall-rasterizer = pkgs.writeShellScriptBin "pipeline-waterfall-rasterizer" ''

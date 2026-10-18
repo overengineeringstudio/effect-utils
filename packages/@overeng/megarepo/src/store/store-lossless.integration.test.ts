@@ -221,11 +221,13 @@ describe('store-lossless', () => {
         )
         // Bare `git stash` is intercepted by the agent-policy wrapper, so bypass
         // it to produce a genuine `refs/stash` (fixture concern, not product).
+        // Override only the policy flag; git still needs the host executable PATH.
         yield* ChildProcessSpawner.use((spawner) =>
           spawner.string(
             Command.make('git', [...GIT_USER, 'stash'], {
               cwd: wt,
               env: { AGENT_POLICY_BYPASS: '1' },
+              extendEnv: true,
             }),
           ),
         )
@@ -254,11 +256,13 @@ describe('store-lossless', () => {
         )
         // Bare `git stash` is intercepted by the agent-policy wrapper, so bypass
         // it to produce a genuine `refs/stash` (fixture concern, not product).
+        // Override only the policy flag; git still needs the host executable PATH.
         yield* ChildProcessSpawner.use((spawner) =>
           spawner.string(
             Command.make('git', [...GIT_USER, 'stash'], {
               cwd: wt,
               env: { AGENT_POLICY_BYPASS: '1' },
+              extendEnv: true,
             }),
           ),
         )

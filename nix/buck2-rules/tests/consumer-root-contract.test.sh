@@ -358,11 +358,19 @@ pnpm_runtime_closure(
 )
 BUCK
 
+# Unconfigured queries traverse every select branch, including Prelude's
+# unreachable config//:none -> toolchains//:cxx_no_default_deps dependency.
+mkdir -p "$work/unconfigured"
+cat > "$work/unconfigured/BUCK" <<'BUCK'
+rust_library(name = "lib")
+BUCK
+
 (
   cd "$work"
   buck2 --isolation-dir consumer-root-contract uquery \
     'set(rules//:package_tree_runtime rules//:package_command_runtime rules//packages/@overeng/buck2-tools:typescript-runner.ts)' >/dev/null
   buck2 --isolation-dir consumer-root-contract uquery 'rules//buck2/dependencies:runtime-closure.ts' >/dev/null
+  buck2 --isolation-dir consumer-root-contract uquery 'deps(fixture//unconfigured:lib)' >/dev/null
   ignored="$(jq -cn --arg root "$work" \
     '["query",$root,{"fields":["name"],"expression":["dirname","buck-out"]}]' \
     | watchman --json-command --output-encoding=json)"

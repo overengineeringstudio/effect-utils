@@ -14,6 +14,7 @@ import {
   readlinkSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -22,6 +23,7 @@ import {
 import * as fsPromises from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it, vi } from 'vitest'
 
@@ -29,6 +31,7 @@ import { observeEditorViewProcessCandidates } from './editor-view-readers.ts'
 import {
   type EditorViewContentSharing,
   collectEditorViewContentStore,
+  repairEditorViewContentStore,
   defaultEditorViewContentStore,
   editorViewStagingCreatorIdentity,
   shareSnapshotFiles,
@@ -731,6 +734,107 @@ describe('host-wide editor snapshot content store', () => {
       expect(regularFiles(contentStore)).toEqual([])
       expectReadonlyStore(contentStore)
       expectIdleStoreLock(contentStore)
+    })
+  })
+
+  it('repairs archive chmod poisoning of shared data and executable blobs only after hashing their addresses', async () => {
+    await withStore(async ({ root, contentStore, candidate }) => {
+      const directory = candidate('worktree')
+      payload(directory, 'data', 'shared data')
+      payload(directory, 'executable', 'shared executable', 0o755)
+      await shareSnapshotFiles({ candidate: directory, contentStore })
+      const originalInode = inode(join(directory, 'data'))
+      // Simulate an unsafe recursive unlock during worktree archival, then move it.
+      // Hardlinks, unlike symlinks, propagate this chmod into the shared CAS.
+      for (const path of [
+        directory,
+        ...readdirSync(directory).map((name) => join(directory, name)),
+      ])
+        chmodSync(path, lstatSync(path).mode | 0o200)
+      const archive = join(root, 'archived-worktree')
+      renameSync(directory, archive)
+      const data = join(archive, 'data')
+      const executable = join(archive, 'executable')
+      await expect(collectEditorViewContentStore({ contentStore })).rejects.toThrow(
+        'writable blob is not trusted',
+      )
+      expect(await repairEditorViewContentStore({ contentStore, quiesced: true })).toEqual({
+        repairedBlobs: 2,
+        verifiedBlobs: 2,
+        checkedBlobInodes: 2,
+        writableBlobs: 0,
+        mismatchedBlobs: [],
+        quarantined: [],
+      })
+      expect(inode(data)).toBe(originalInode)
+      expect(mode(data)).toBe(0o444)
+      expect(mode(executable)).toBe(0o555)
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+      expect(await repairEditorViewContentStore({ contentStore, quiesced: true })).toEqual({
+        repairedBlobs: 0,
+        verifiedBlobs: 0,
+        checkedBlobInodes: 2,
+        writableBlobs: 0,
+        mismatchedBlobs: [],
+        quarantined: [],
+      })
+    })
+  })
+
+  it('quarantines corrupted writable blobs without trusting or changing linked snapshot bytes', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('snapshot')
+      const data = payload(directory, 'data', 'original data')
+      await shareSnapshotFiles({ candidate: directory, contentStore })
+      const blob = blobPath(contentStore, 'original data')
+      chmodSync(data, 0o644)
+      writeFileSync(data, 'corrupted data')
+      const result = await repairEditorViewContentStore({ contentStore, quiesced: true })
+      expect(result.repairedBlobs).toBe(0)
+      expect(result.quarantined).toHaveLength(1)
+      const quarantined = result.quarantined[0]!
+      expect(quarantined.path).toBe(blob)
+      expect(quarantined.digest).toBe(createHash('sha256').update('corrupted data').digest('hex'))
+      expect(exists(blob)).toBe(false)
+      expect(inode(quarantined.quarantine)).toBe(inode(data))
+      expect(readFileSync(quarantined.quarantine, 'utf8')).toBe('corrupted data')
+      expect(mode(data)).toBe(0o644)
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
+  it('requires explicit CLI quiescence and reports repaired counts', async () => {
+    await withStore(async ({ root, contentStore, candidate }) => {
+      const directory = candidate('snapshot')
+      const data = payload(directory, 'data', 'cli recovery')
+      await shareSnapshotFiles({ candidate: directory, contentStore })
+      chmodSync(data, 0o644)
+      const args = [
+        fileURLToPath(new URL('./editor-view.ts', import.meta.url)),
+        'repair-content',
+        '--repo-root',
+        root,
+        '--content-store',
+        contentStore,
+      ]
+      const refused = spawnSync(bun, args, { encoding: 'utf8' })
+      expect(refused.status).not.toBe(0)
+      expect(refused.stderr).toContain('repair-content requires --quiesced true')
+      expect(mode(data)).toBe(0o644)
+      const dryRun = spawnSync(bun, [...args, '--dry-run', 'true'], { encoding: 'utf8' })
+      expect(dryRun.status).toBe(0)
+      expect(dryRun.stdout).toContain('"verifiedBlobs":1')
+      expect(dryRun.stdout).toContain('"writableBlobs":1')
+      expect(dryRun.stdout).toContain('"repairedBlobs":0')
+      expect(mode(data)).toBe(0o644)
+      const repaired = spawnSync(bun, [...args, '--quiesced', 'true'], { encoding: 'utf8' })
+      expect(repaired.status).toBe(0)
+      expect(repaired.stdout).toContain('"repairedBlobs":1')
+      expect(repaired.stdout).toContain('"checkedBlobInodes":1')
+      expect(repaired.stdout).toContain('"writableBlobs":0')
+      expect(mode(data)).toBe(0o444)
     })
   })
 
