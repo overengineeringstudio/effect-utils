@@ -1,16 +1,26 @@
 """Thin Prelude rust_binary to ProductExecutableInfo adapter."""
 
+load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
 load("@prelude//rust:cargo_buildscript.bzl", _prelude_buildscript_run = "buildscript_run")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "product_platform_constraints")
 load("//buck2/provenance:defs.bzl", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
-load("//buck2/toolchains:defs.bzl", "ConfiguredRustToolchainInfo")
+load("//buck2/toolchains:defs.bzl", "ConfiguredRustToolchainInfo", "host_capability_platform", "require_capability")
 load(":toolchains.bzl", "RUST_COMPILER_WRAPPER_ENV")
 
 def buildscript_run(name, env = None, **kwargs):
-    """Runs Cargo build scripts without daemon-local compiler wrappers."""
+    """Runs Cargo build scripts with declared tools, not daemon-local PATH."""
+    platform = host_capability_platform()
+    shell = require_capability(CAPABILITIES, GENERATION, platform, "rust-shell")
+    coreutils = require_capability(CAPABILITIES, GENERATION, platform, "coreutils-readlink")
     action_env = dict(env or {})
     action_env.update(RUST_COMPILER_WRAPPER_ENV)
+    # Bundled Prelude shims use /usr/bin/env bash and invoke dirname/realpath.
+    # A task may start the daemon with only watchman on PATH; never inherit it.
+    action_env["PATH"] = ":".join([
+        shell["executableStorePath"].removesuffix("/bash"),
+        coreutils["executableStorePath"].removesuffix("/readlink"),
+    ])
     _prelude_buildscript_run(name = name, env = action_env, **kwargs)
 
 def _single_binary_output(dep):
