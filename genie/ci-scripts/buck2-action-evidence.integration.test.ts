@@ -131,11 +131,11 @@ describe('complete normalized action artifact CLI', () => {
       const summary: CacheEvidence = await Bun.file(output).json()
       const bytes = new Uint8Array(await Bun.file(actions).arrayBuffer())
       const full = decodeEvidence({ compressed: bytes, summary, expectedLane: 'main-writer' })
-      expect(summary.actionCount).toBe(600)
-      expect(summary.actions).toHaveLength(6)
-      expect(summary.counts['remote-hit']).toBe(600)
+      expect(summary.actionCount).toBe(100 * (localMaterializationCategories.length + 1))
+      expect(summary.actions).toHaveLength(localMaterializationCategories.length + 1)
+      expect(summary.counts['remote-hit']).toBe(100 * (localMaterializationCategories.length + 1))
       expect(summary.excludedByDesign).toEqual({
-        'local-materialization-policy': 500,
+        'local-materialization-policy': 100 * localMaterializationCategories.length,
         'darwin-unsandboxed': 0,
       })
       expect(full.header.excludedByDesign).toEqual(summary.excludedByDesign)
@@ -148,7 +148,7 @@ describe('complete normalized action artifact CLI', () => {
       ])
       expect(
         full.actions.filter((action) => action.exclusionReason === 'local-materialization-policy'),
-      ).toHaveLength(500)
+      ).toHaveLength(100 * localMaterializationCategories.length)
       expect(
         full.actions
           .filter((action) => action.category === 'tsgo_emit')

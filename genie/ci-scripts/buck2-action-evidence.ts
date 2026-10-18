@@ -13,6 +13,8 @@ export const localMaterializationCategories = [
   'pnpm_store_view',
   'package_tree',
   'pnpm_store_scc',
+  // Per-file runtime source copies are explicitly noncacheable materialization.
+  'runtime_module',
 ] as const
 export const darwinUnsandboxedCategories = [
   'tsgo_typecheck_darwin_unsandboxed',
