@@ -161,6 +161,9 @@ watch-build spans share deferred, fire-and-forget, drop-on-full delivery, with a
 most four queued/running exporters per process. Hung exporters are killed after
 one second and keep their slots until reaped; publication and watch cycles never
 await delivery, and telemetry never changes real command exit codes.
+The `editor-view.phases` span records a nonzero exit code and error status when
+publication fails or is interrupted. Successful publication and snapshot reuse
+record exit code zero, independently of whether a snapshot was created.
 The shared host ledger permits one budget span per content store and event kind
 every 60 seconds, across publisher processes. Suppressed event counts
 are durable and appear on the next admitted span as

@@ -2569,10 +2569,17 @@ const publishEditorViewCoordinated = async ({
       `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: name, elapsedMs: Math.round(performance.timeOrigin + performance.now() - startedAtMs) })}\n`,
     )
   }
-  const emitPhaseSpan = ({ created }: { readonly created: boolean }): void => {
+  const emitPhaseSpan = ({
+    created,
+    exitCode,
+  }: {
+    readonly created: boolean
+    readonly exitCode: number
+  }): void => {
     emitCompletedSpanAsync({
       name: 'editor-view.phases',
       label: `phases ${options.viewName}`,
+      exitCode,
       attributes: [
         ['package.path', options.package],
         ['view.name', options.viewName],
@@ -2587,7 +2594,7 @@ const publishEditorViewCoordinated = async ({
   }
   const reportInterruption = (): void => {
     enterPhase('interrupted')
-    emitPhaseSpan({ created: false })
+    emitPhaseSpan({ created: false, exitCode: 1 })
   }
   requireRecordIdentity(options)
   const paths = makePaths(options)
@@ -3055,13 +3062,13 @@ const publishEditorViewCoordinated = async ({
           if (pathExists(evictionMarker) === true) rmSync(evictionMarker)
         },
       })
-      emitPhaseSpan({ created })
+      emitPhaseSpan({ created, exitCode: 0 })
       return record
     }
     return await (coordinator === undefined ? commit() : coordinator.commit(commit))
   } catch (error) {
     enterPhase('failed')
-    emitPhaseSpan({ created: false })
+    emitPhaseSpan({ created: false, exitCode: 1 })
     // Payload failures capture siblings immediately, before waiting for other children to settle.
     // Other failures are captured here, before cleanup can mutate the candidate's metadata.
     captureFailure()
