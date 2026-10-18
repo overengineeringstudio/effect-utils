@@ -9,7 +9,6 @@ const repoRoot = new URL('../../', import.meta.url)
 
 const expectedFiles = [
   'buck2-member.json',
-  'buck2/dependencies/acquire-archive.ts',
   'buck2/dependencies/assemble-store.ts',
   'buck2/dependencies/defs.bzl',
   'buck2/dependencies/nix-archive.ts',
@@ -74,6 +73,20 @@ describe('Buck rules product inventory', () => {
     })
     expect([...buck2RulesInventory.files].toSorted()).toEqual(buck2RulesInventory.files)
     expect(new Set(buck2RulesInventory.files).size).toBe(buck2RulesInventory.files.length)
+  })
+
+  it('uses native digest-verified registry downloads without a runtime CAS command', () => {
+    const rules = readFileSync(new URL('buck2/dependencies/defs.bzl', repoRoot), 'utf8')
+    expect(rules).toContain(`ctx.actions.download_file(
+            "package.tgz",
+            ctx.attrs.url,
+            sha256 = ctx.attrs.sha256,
+            size_bytes = ctx.attrs.size_bytes,
+        )`)
+    expect(rules).not.toContain('read_config("archive_origin"')
+    expect(rules).not.toContain('_acquire_archive')
+    expect(rules).not.toContain('_public_archive_origin')
+    expect(buck2RulesInventory.files).not.toContain('buck2/dependencies/acquire-archive.ts')
   })
 
   it('ships runtime, capability, and registered patch inputs but no package product targets', () => {

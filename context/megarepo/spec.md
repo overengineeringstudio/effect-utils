@@ -185,15 +185,23 @@ lock rewrites or generators' authoring outputs.
 The invoking workspace is the one canonical root an author owns when it is a
 non-default branch worktree (`refs/heads/<branch>` where `<branch>` is not the
 store bare repo's default branch, its `HEAD`): top-level `mr apply` may populate
-its root and `repos/` mounts, and top-level `mr fetch` (including the fetch phase
-of `mr fetch --apply`) may additionally rewrite its own `megarepo.lock`. The
-default-branch worktree is the shared consumer cache and stays refused, as does a
+its root and `repos/` mounts. File-authoring writes use one author-workspace
+authorization contract: config pin/unpin, `megarepo.lock` updates (including
+`mr fetch --only`), generators, and Nix lock synchronization may write inside a
+proven author workspace. Both the requested output path and its physical
+destination must stay inside that same root. Directory and file aliases escaping
+that root remain refused. This grant never authorizes branch/ref switching or
+destructive canonical Git operations.
+Shared-cache setup uses `mr apply --verify-shared --lock-sync off` to verify
+selected members without running generators or making any writes; missing or
+drifted members require preparation from the owning workspace or an owned worktree.
+The default-branch worktree is the shared consumer cache and stays refused, as does a
 branch root whose default branch cannot be resolved. Ownership is proven offline
 from Git metadata, not from the path suffix: the root must be the top of a
 worktree of the store's `.bare` whose `HEAD` is `refs/heads/<branch>` and which
 sits at exactly `refs/heads/<branch>`; subdirectories of any worktree, detached
 or mismatched worktrees stay refused. The author grant covers only paths
-that physically resolve directly inside that root; tag worktrees, nested
+that physically resolve inside that root; tag worktrees, nested
 megarepos visited by `--all`, and aliases into other store paths stay refused.
 Accepted limitation: mr cannot tell one author's feature branch from
 another's, so any non-default branch worktree used as the invoking root is
@@ -235,12 +243,13 @@ Local readiness checks the root with `mr status`, then runs `mr status --all`
 inside each listed, non-skipped member that has its own megarepo configuration,
 including on the outer setup cache-hit path. Unlisted nested trees do not affect
 local readiness because local exec does not prepare them. The option is empty
-by default, leaving `mr:setup` a plain tracking apply.
+by default, leaving `mr:setup` a tracking apply in owned workspaces or read-only
+verification in shared canonical caches (`--verify-shared --lock-sync off`).
 Even with an empty selection, root status runs on outer cache hits: a canonical
 branch can change `HEAD` or become dirty without changing its member symlink.
 
 CI setup (`CI=true`, the same predicate as `--worktree-mode auto`) never uses
-tracking worktrees: `mr:setup` applies `--worktree-mode commit`, and with a
+tracking worktrees: `mr:setup` selects `--worktree-mode commit`, and with a
 non-empty `setupCommitMembers` it passes `--commit-all-members`, which selects
 every root member as `--commit-members` would, because `mr status --all`
 readiness inspects every root member's nested tree. The selector is resolved
@@ -252,6 +261,19 @@ prepared commit worktrees instead of refusing them.
 workspace shape — an owned worktree at `P/repos/<owned>`, read-only `cp -a`
 mounts, dist overlays, per-workspace capability projection, and a synthesized
 Buck root — is retired (principal q5, 2026-09-25).
+
+By default, `mr store worktree new` bootstraps a missing bare repository and
+fetches remote refs (including tags). For source-only branch work from objects
+already in the store, use
+`mr store worktree new owner/repo --no-fetch --ref feature/local --base <full-commit-sha>`.
+`--no-fetch` requires an existing bare repository and a full 40-character SHA
+of a commit already present locally; branch names and abbreviated SHAs are
+rejected. It never clones or fetches, including Git's implicit lazy fetching
+from promisor remotes. Missing partial-clone objects fail locally during base
+validation or checkout. Only the requested branch and standalone
+worktree registration are created; existing refs, Git configuration, and
+`FETCH_HEAD` are not refreshed. It does not write megarepo configuration, lock
+files, or composition state.
 
 ## CLI Surface
 

@@ -3,6 +3,8 @@ import type { Platform } from '../session/clock.ts'
 /** Minimal browser entry shape; no DOM library is required by meters. */
 export interface BrowserEntry {
   readonly entryType: string
+  /** User Timing mark/measure name; absent for anonymous entry types. */
+  readonly name?: string
   readonly startTime: number
   readonly duration: number
   readonly blockingDuration?: number

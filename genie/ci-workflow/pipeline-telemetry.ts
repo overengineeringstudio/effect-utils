@@ -4,8 +4,12 @@ import {
   pipelineJobIdentityForName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { namespacePrivilegeTrustedPredicate } from './setup.ts'
-import { ciJobAdmission, linuxNixSandboxFallbackConf, withCiAdmissionCleanup } from './shared.ts'
+import {
+  ciJobAdmission,
+  linuxNixSandboxFallbackConf,
+  withCiAdmissionCleanup,
+  namespacePrivilegeTrustedPredicate,
+} from './shared.ts'
 
 type Job = GitHubWorkflowArgs['jobs'][string]
 const script = 'bash genie/ci-scripts/evidence-job.sh'
@@ -65,16 +69,13 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
         }
       }
       // Never change build DNS/routes: join only after all build and span work.
-      steps.push(
-        joinTailnetStep,
-        {
-          name: pipelineExportStepName,
-          if: '${{ always() }}',
-          shell: 'bash',
-          env: { OTEL_EXPORTER_OTLP_ENDPOINT: '${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}' },
-          run: `${script} export '\${{ job.status }}' || true`,
-        },
-      )
+      steps.push(joinTailnetStep, {
+        name: pipelineExportStepName,
+        if: '${{ always() }}',
+        shell: 'bash',
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: '${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}' },
+        run: `${script} export '\${{ job.status }}' || true`,
+      })
       return [
         jobId,
         {
@@ -116,7 +117,7 @@ export const pipelineCloseJob = (jobs: Record<string, Job>): Job => ({
     joinTailnetStep,
     {
       name: 'Link started job roots',
-      if: `\${{ always() && (${namespacePrivilegeTrustedPredicate})${Object.hasOwn(jobs, 'default-ref-policy') ? " && needs.default-ref-policy.result == 'success'" : ''} }}`,
+      if: `\${{ always() && (${namespacePrivilegeTrustedPredicate})${Object.hasOwn(jobs, 'default-ref-policy') === true ? " && needs.default-ref-policy.result == 'success'" : ''} }}`,
       shell: 'bash',
       'continue-on-error': true,
       env: {

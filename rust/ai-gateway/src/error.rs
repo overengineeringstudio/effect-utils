@@ -6,6 +6,26 @@ use serde_json::Value;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+/// Tool-run failure with usage evidence from all completed model exchanges.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolRunError {
+    pub error: Error,
+    pub exchanges: Vec<Option<Usage>>,
+    pub total: Option<Usage>,
+}
+
+impl fmt::Display for ToolRunError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+
+impl std::error::Error for ToolRunError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     Http {

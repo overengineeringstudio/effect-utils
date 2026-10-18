@@ -7,6 +7,7 @@ import {
   frameBlock,
   heapBlock,
   jankBlock,
+  tileBlock,
   type CanvasBlockSpec,
 } from '../canvas/index.ts'
 import { MeasureError, MeasureResult, type Measurement } from '../headless/index.ts'
@@ -107,13 +108,68 @@ export const makeStoryFixture = (): StoryFixture => {
     counterBlock({ id: 'story.clicks', series: clickSeries, widthPx: 100 }),
     commitBlock({ id: 'story.commits', series: commitSeries, widthPx: 120 }),
   ]
-  return { meters, blocks, instrumentation, clicks, commits, siblingCommits }
+  const perSecond = { _tag: 'Bucket', bucketMs: 1000, buckets: 30 } as const
+  const tiles = [
+    tileBlock({
+      id: 'story.frames',
+      series: frames,
+      shortLabel: 'fps',
+      widthPx: 64,
+      aggregation: { ...perSecond, mode: 'Gauge', unit: 'fps' },
+      value: (value) => (value.durationMs > 0 ? 1000 / value.durationMs : 0),
+      nominalMax: 60,
+    }),
+    tileBlock({
+      id: 'story.long-frames',
+      series: longFrames,
+      shortLabel: 'lf',
+      widthPx: 64,
+      aggregation: { ...perSecond, mode: 'Event', unit: 'count/s' },
+      value: () => 1,
+    }),
+    tileBlock({
+      id: 'story.heap',
+      series: heap,
+      shortLabel: 'heap',
+      widthPx: 96,
+      aggregation: { ...perSecond, mode: 'Gauge', unit: 'bytes' },
+      value: (value) => value.usedBytes,
+      range: 'auto',
+    }),
+    tileBlock({
+      id: 'story.clicks',
+      series: clickSeries,
+      shortLabel: 'clicks',
+      widthPx: 72,
+      aggregation: { ...perSecond, mode: 'Counter', unit: 'count/s' },
+      value: (value) => value.value,
+    }),
+    tileBlock({
+      id: 'story.commits',
+      series: commitSeries,
+      shortLabel: 'commit',
+      widthPx: 72,
+      aggregation: { ...perSecond, mode: 'Event', unit: 'ms' },
+      value: (value) => value.actualDurationMs,
+    }),
+    tileBlock({
+      id: 'story.sibling-commits',
+      series: siblingSeries,
+      shortLabel: 'sibling',
+      widthPx: 80,
+      aggregation: { ...perSecond, mode: 'Event', unit: 'ms' },
+      value: (value) => value.actualDurationMs,
+    }),
+  ]
+  return { meters, blocks, tiles, instrumentation, clicks, commits, siblingCommits }
 }
 
 /** Configuration only; no collection starts until a story scope is mounted. */
 export interface StoryFixture {
   readonly meters: Meters
   readonly blocks: readonly CanvasBlockSpec[]
+  /** Six single-meter tiles over the same series as `blocks`. */
+  readonly tiles: readonly CanvasBlockSpec[]
   readonly instrumentation: Instrumentation
   readonly clicks: CounterToken
   readonly commits: CounterToken

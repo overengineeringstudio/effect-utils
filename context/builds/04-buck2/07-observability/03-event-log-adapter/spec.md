@@ -56,6 +56,57 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 - **Cache-hit classification:** each action's first end sets `buck2.execution_kind`
   and `buck2.cache_hit`; the same classification produces the command summary
   hit counts ([04](../04-trace-views/spec.md#command-summary-attributes)).
+- **Command outcome:** `buck2.is_success` comes from the final `CommandResult`,
+  not the deprecated `CommandEnd.is_success` (unset by current writers).
+  Top-level errors fail; build/BXL responses succeed only with no errors;
+  targets responses require zero errors; test responses require no build
+  errors and a zero executor exit code. Other typed responses succeed.
+  Without a final typed response the attribute is absent, not false.
+  Both trace views preserve the same outcome.
+  The outcome fixtures retain only native command boundaries and the final
+  response: `successful-build.pb.zst` projects the existing `local-build.pb.zst`;
+  `failed-build.pb.zst` captures `buck2 build //:missing` in an empty root
+  using the pinned 2026-09-01 writer. Headers, argv, metadata, target lists,
+  response paths and error text are stripped or sanitized; outcome fields
+  retain their native wire presence.
+
+## Producer Metrics
+
+```text
+CommandStart.metadata -> trace + metric host resource
+ActionExecutionEnd.commands -> explicit execution / queue durations
+LocalQueued / WorkerQueued completed intervals -> missing queue-duration fallback
+  -> bounded per-category histogram -> durable metrics chunk -> OTLP export
+```
+
+The metric resource shares the trace resource's writer metadata mapping:
+`hostname` → `host.name`, `os` → `os.type`, and `arch` → `host.arch`, alongside
+`service.name=effect-utils-buck2`. These describe the machine that produced
+the log, not the post-hoc converter. Missing metadata stays absent; the adapter
+does not substitute the converter's host. Build IDs, revision, materializer,
+and pipeline identity remain trace-only.
+Both signals also set `service.instance.id` to that same writer `hostname`,
+stable across builds and bounded per host, not per process or build. Together
+with `service.name`, this keeps writer hosts distinct through delta conversion
+and OTLP backends that map service identity to Prometheus `job` / `instance`.
+Absent writer host metadata leaves both host and instance identity absent.
+
+Queue timing prefers each command attempt's `metadata.queue_duration`, then
+the remote command's `queue_time`, summing available attempt timings. When no
+explicit timing exists for an action, completed local `LocalQueued` and
+`WorkerQueued` intervals under that action supply the duration. The nearest
+action ancestor owns the interval. Explicit zero is authoritative; fallback
+intervals are not added to explicit timing. Repeated ends count once and
+unclosed queue spans do not supply a measured duration. Actions with no queue
+evidence produce no queue observation, rather than a fabricated zero.
+
+Local queue stage names are `buck2.stage local_queued` and
+`buck2.stage worker_queued`; other local stages remain `buck2.stage local`.
+The queue instrument is `buck2.action.queue.duration` (seconds), with only
+the existing closed `category` point dimension. Empty data-point arrays do
+not create backend metric series. Conformance covers the retained local log
+and synthetic local/worker queues, explicit timing precedence (including
+zero), incomplete spans, repeated ends, and writer-host resource parity.
 
 ## Schema Bump Procedure
 

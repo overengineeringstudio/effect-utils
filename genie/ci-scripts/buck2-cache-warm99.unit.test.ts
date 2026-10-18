@@ -95,10 +95,12 @@ describe('strict action boundary', () => {
     )
     expect(decoded).toEqual(artifact)
     expect(decoded.header.excludedByDesign).toEqual({
-      'local-materialization-policy': 5,
+      'local-materialization-policy': localMaterializationCategories.length,
       'darwin-unsandboxed': 0,
     })
-    expect(decoded.actions.map((action) => action.outcome)).toEqual(Array(6).fill('remote-hit'))
+    expect(decoded.actions.map((action) => action.outcome)).toEqual(
+      Array(localMaterializationCategories.length + 1).fill('remote-hit'),
+    )
     expect(() =>
       decodeEvidence({
         compressed: encoded.compressed,
@@ -290,8 +292,11 @@ describe('warm99 identity acceptance', () => {
         eligible: 1,
         remoteHits: 1,
         hitRate: 1,
-        excluded: 24,
-        excludedByDesign: { 'local-materialization-policy': 15, 'darwin-unsandboxed': 9 },
+        excluded: 3 * (localMaterializationCategories.length + darwinUnsandboxedCategories.length),
+        excludedByDesign: {
+          'local-materialization-policy': 3 * localMaterializationCategories.length,
+          'darwin-unsandboxed': 3 * darwinUnsandboxedCategories.length,
+        },
         cold: 0,
         changed: 0,
         noncacheable: 0,

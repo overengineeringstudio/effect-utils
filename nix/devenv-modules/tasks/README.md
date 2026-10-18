@@ -38,7 +38,44 @@ Explicit `GENIE_MEMBER_OVERRIDE_MAP` overrides have the same precedence as
 genie imports. Materialize pinned sources with
 `mr apply --worktree-mode commit --lock-sync off` before staging.
 
+The check module also exports `config.effectUtils.buck2.aggregateExec`, taking
+a task name and a list of Buck2 arguments (including the subcommand). Existing
+consumers of `tasks/shared/check.nix` need no additional import:
+
+```nix
+env.BUCK2_BIN = "${inputs.effect-utils.packages.${pkgs.stdenv.hostPlatform.system}.buck2}/bin/buck2";
+env.OTEL_SPAN_BIN = "${inputs.effect-utils.packages.${pkgs.stdenv.hostPlatform.system}.otel-span}/bin/otel-span";
+tasks."bird:build".exec = config.effectUtils.buck2.aggregateExec "bird:build" [
+  "build"
+  "//flakes/bird:dist-package"
+  "//flakes/bird:bird-candidate"
+];
+```
+
+The helper preserves task tracing, the caller-root command span, event logs/build
+IDs, pipeline spooling versus standalone ingest/export, and the Buck2 exit status.
+`effectUtils.buck2.eventsPackage` defaults to the consumer's effect-utils input;
+`effectUtils.buck2.prepare` optionally supplies repository-specific setup before
+the command (for example, effect-utils' capability publication).
+
 ## Observability
+
+Aggregate tasks replace (never prepend to) `PATH` with nixpkgs Watchman's bin
+directory by default. To use a signed host Watchman on macOS, explicitly declare
+the executable in the ignored `devenv.local.nix`:
+
+```nix
+{
+  effectUtils.buck2.watchmanBin = "/usr/local/bin/watchman";
+}
+```
+
+The override must be absolute. A task-local `watchman` launcher executes that
+exact binary without copying or modifying it. Buck2's Watchman client discovers
+the CLI as `watchman` through `PATH`; it does not support a
+`BUCK2_WATCHMAN_BIN`/`WATCHMAN_BINARY` selector. There is no ambient PATH probing.
+Restart an existing Buck2 daemon (`buck2 kill`) after changing the selection;
+an already-running Watchman server retains its original executable/permissions.
 
 Import the sibling observability module once to capture native devenv spans
 and effect-utils task spans as one otelite trace:

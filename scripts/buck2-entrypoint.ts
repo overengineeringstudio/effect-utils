@@ -18,11 +18,9 @@ import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-e
 import {
   buckConfigValues,
   canonicalCacheAdmissionInvocationId,
-  probeArchiveOrigin,
   probeRemoteCacheCapabilities,
   reconcileStandaloneCachePosture,
   standaloneCachePostureConfig,
-  trustedArchiveOriginFromConfig,
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
 import {
@@ -172,7 +170,7 @@ const warning = ({
 }
 
 /** Admission probe whose deadline a test can control through `probeDeadlineSignal`. */
-export type AdmissionProbeEndpoint = 'watchman' | 'reapi' | 'archiveOrigin'
+export type AdmissionProbeEndpoint = 'watchman' | 'reapi'
 
 /** Admit the initial file watcher and cache posture before pinned native startup. */
 export const directBuckArguments = async ({
@@ -255,7 +253,6 @@ export const directBuckArguments = async ({
   const base = buckConfigValues(`${tracked}\n${local}`)
   // Unrelated Buck projects do not opt into effect-utils' cache policy.
   if (
-    trackedValues['archive_origin.trusted_url_prefix'] === undefined &&
     base['buck2_re_client.action_cache_address'] === undefined &&
     base['buck2.remote_cache_enabled'] !== 'true'
   )
@@ -285,20 +282,13 @@ export const directBuckArguments = async ({
           if (key.startsWith('buck2_re_client.') === false) cliValues[key] = configValue
     }
   }
-  // Fixed-source builds use Buck's native no-cache flag. Resolve cache selection
-  // before parsing archive trust metadata that cache-less sandboxes never use.
+  // Fixed-source builds use Buck's native no-cache flag.
   const cacheDisabled =
     env['BUCK2_NO_REMOTE_CACHE'] === '1' ||
     configArgs.includes('--no-remote-cache') === true ||
     (cliValues['buck2.remote_cache_enabled'] ?? base['buck2.remote_cache_enabled']) === 'false'
   const postureEnv = cacheDisabled === true ? { ...env, BUCK2_NO_REMOTE_CACHE: '1' } : env
-  const trustedOrigin =
-    cacheDisabled === true ||
-    env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1' ||
-    trackedValues['archive_origin.trusted_url_prefix'] === undefined
-      ? undefined
-      : trustedArchiveOriginFromConfig(tracked)
-  const posture = standaloneCachePostureConfig({ current: '', env: postureEnv, trustedOrigin })
+  const posture = standaloneCachePostureConfig({ current: '', env: postureEnv })
   // Native RE client construction ignores CLI config. Writer headers/endpoints must
   // be in the root overlay before daemon startup, including removal on public reads.
   if (
@@ -315,7 +305,6 @@ export const directBuckArguments = async ({
       standaloneCachePostureConfig({
         current: '',
         env: postureEnv,
-        trustedOrigin,
       }),
     )
     Object.assign(values, disabled)
@@ -326,19 +315,17 @@ export const directBuckArguments = async ({
     (_, key: string) => env[key] ?? '',
   )
   const remote = (values['buck2.remote_cache_enabled'] ?? 'true') === 'true'
-  const prefix = values['archive_origin.url_prefix'] ?? ''
   const admission: CacheAdmissionInvocation = {
     invocationId: canonicalCacheAdmissionInvocationId(env['BUCK_WRAPPER_UUID'] ?? randomUUID()),
     admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
     admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
   }
-  // Two sequential, independently bounded attempts: at most 5000 ms per endpoint.
-  // The endpoints run concurrently; no backoff extends the admission budget.
+  // Two sequential, independently bounded attempts: at most 5000 ms.
   const retryProbe = async ({
     endpoint,
     probe,
   }: {
-    readonly endpoint: 'reapi' | 'archiveOrigin'
+    readonly endpoint: 'reapi'
     readonly probe: () => Promise<boolean>
   }): Promise<boolean> => {
     if ((await probe()) === true) return true
@@ -346,10 +333,10 @@ export const directBuckArguments = async ({
     if (available === true) admission.admissionRetrySuccesses[endpoint] = 1
     return available
   }
-  const [remoteAvailable, archiveAvailable] = await Promise.all([
+  const remoteAvailable =
     remote === false
       ? true
-      : cachedProbe({
+      : await cachedProbe({
           cacheDirectory,
           key: JSON.stringify([
             'reapi',
@@ -380,26 +367,8 @@ export const directBuckArguments = async ({
                     ),
                 }),
             }),
-        }),
-    prefix === ''
-      ? true
-      : cachedProbe({
-          cacheDirectory,
-          key: JSON.stringify(['archive', prefix]),
-          probe: () =>
-            retryProbe({
-              endpoint: 'archiveOrigin',
-              probe: () =>
-                probeArchiveOrigin({
-                  urlPrefix: prefix,
-                  deadlineMs,
-                  deadlineSignal: probeDeadlineSignal?.('archiveOrigin'),
-                }),
-            }),
-        }),
-  ])
+        })
   admission.admissionFallbacks.reapi = remoteAvailable === false ? 1 : 0
-  admission.admissionFallbacks.archiveOrigin = archiveAvailable === false ? 1 : 0
   const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
   if (evidencePath !== undefined && evidencePath !== '') {
     try {
@@ -425,19 +394,10 @@ export const directBuckArguments = async ({
       'buck2.allow_cache_uploads': 'false',
     })
   }
-  if (archiveAvailable === false) {
-    warning({
-      message: 'archive origin is unreachable; fetching archives from the registry',
-      env,
-    })
-    Object.assign(overrides, { 'archive_origin.url_prefix': '', 'archive_origin.tier': 'public' })
-  }
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =
-    remoteAvailable === false || archiveAvailable === false
-      ? before.filter((arg) => arg !== '--reuse-current-config')
-      : before
+    remoteAvailable === false ? before.filter((arg) => arg !== '--reuse-current-config') : before
   return [...admitted, ...extra, ...(sentinel === -1 ? [] : args.slice(sentinel))]
 }
 

@@ -774,7 +774,11 @@ fn start_shape(start: span_start_event::Data) -> (String, Vec<Value>, bool) {
                         _ => "remote",
                     }
                 }
-                Some(Stage::Local(_)) => "local",
+                Some(Stage::Local(local)) => match local.stage {
+                    Some(data::local_stage::Stage::Queued(_)) => "local_queued",
+                    Some(data::local_stage::Stage::WorkerQueued(_)) => "worker_queued",
+                    _ => "local",
+                },
                 Some(Stage::CacheQuery(_)) => "cache_query",
                 Some(Stage::CacheHit(_)) => "cache_hit",
                 Some(Stage::Prepare(_)) => "prepare",
@@ -864,6 +868,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
     let mut by_id = HashMap::new();
     let mut critical = HashSet::new();
     let mut last_time = 0;
+    let mut command_success = None;
     let mut records = 1u64;
     let mut critical_ids_read = 0u64;
     loop {
@@ -901,8 +906,25 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         // Prost drops fields outside the pinned schema. Record each envelope
         // with discarded bytes; ingestion remains forward-compatible.
         model.unknown_fields += usize::from(progress.encoded_len() < buf.len());
-        let Some(command_progress::Progress::Event(e)) = progress.progress else {
-            continue;
+        let e = match progress.progress {
+            Some(command_progress::Progress::Event(event)) => event,
+            Some(command_progress::Progress::Result(result)) => {
+                // CommandEnd.is_success is deprecated and unset by current Buck.
+                // The final response carries command errors and test exit status.
+                use gen::buck::daemon::command_result::Result;
+                command_success = result.result.map(|result| match result {
+                    Result::Error(_) => false,
+                    Result::BuildResponse(response) => response.errors.is_empty(),
+                    Result::BxlResponse(response) => response.errors.is_empty(),
+                    Result::TargetsResponse(response) => response.error_count == 0,
+                    Result::TestResponse(response) => {
+                        response.build_errors.is_empty() && response.executor_exit_code == 0
+                    }
+                    _ => true,
+                });
+                continue;
+            }
+            _ => continue,
         };
         if model.uuid.is_empty() {
             model.uuid = e.trace_id.clone();
@@ -920,6 +942,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                         for (source, target) in [
                             ("buck2_revision", "service.version"),
                             ("hostname", "host.name"),
+                            ("hostname", "service.instance.id"),
                             ("os", "os.type"),
                             ("arch", "host.arch"),
                             ("materializer", "buck2.materializer"),
@@ -1042,9 +1065,6 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                                     .push(int_attr("buck2.total_bytes", m.total_bytes));
                                 span.attrs.push(attr("buck2.path", m.path));
                             }
-                            span_end_event::Data::Command(c) => {
-                                span.attrs.push(bool_attr("buck2.is_success", c.is_success))
-                            }
                             _ => {}
                         }
                     }
@@ -1098,6 +1118,36 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
     if model.uuid.is_empty() {
         return Err("no Buck event in log".into());
     }
+    // Local executors can omit CommandExecutionMetadata.queue_duration while
+    // still emitting LocalQueued/WorkerQueued spans. Use their completed
+    // intervals only when the action has no explicit queue timing.
+    let mut local_queue = HashMap::<usize, u64>::new();
+    for (index, span) in model.spans.iter().enumerate() {
+        if !span.ended
+            || !matches!(
+                span.name.as_str(),
+                "buck2.stage local_queued" | "buck2.stage worker_queued"
+            )
+        {
+            continue;
+        }
+        let mut child = index;
+        while let Some(&parent) = by_id.get(&model.spans[child].parent) {
+            // Parents precede children; this also rejects malformed cycles.
+            if parent >= child {
+                break;
+            }
+            if model.spans[parent].action {
+                let total = local_queue.entry(parent).or_default();
+                *total = total.saturating_add(span.end.saturating_sub(span.start));
+                break;
+            }
+            child = parent;
+        }
+    }
+    for (index, duration) in local_queue {
+        model.spans[index].queue_ns.get_or_insert(duration);
+    }
     for span in &mut model.spans {
         if !span.ended {
             span.end = last_time.max(span.start);
@@ -1137,6 +1187,9 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         .iter_mut()
         .find(|s| s.name.starts_with("buck2.command "))
     {
+        if let Some(success) = command_success {
+            command.attrs.push(bool_attr("buck2.is_success", success));
+        }
         command.attrs.extend([
             int_attr("buck2.action_count", actions),
             int_attr("buck2.cache_hit_count", hits),
@@ -1485,8 +1538,23 @@ fn metric_payload(model: &Model) -> Vec<u8> {
         ),
         metric_histogram("buck2.action.queue.duration", duration_points(queue)),
     ];
+    // Reuse the log writer's host identity, not the machine doing post-hoc
+    // conversion. Build/run identity remains trace-only.
+    let mut resource_attrs = vec![attr("service.name", "effect-utils-buck2")];
+    resource_attrs.extend(
+        model
+            .resource_attrs
+            .iter()
+            .filter(|attribute| {
+                matches!(
+                    attribute["key"].as_str(),
+                    Some("host.name" | "service.instance.id" | "os.type" | "host.arch")
+                )
+            })
+            .cloned(),
+    );
     serde_json::to_vec(&json!({"resourceMetrics":[{
-        "resource":{"attributes":[attr("service.name","effect-utils-buck2")]},
+        "resource":{"attributes":resource_attrs},
         "scopeMetrics":[{"scope":{"name":"buck2-events"},"metrics":metrics}]
     }]}))
     .expect("OTLP metrics JSON")

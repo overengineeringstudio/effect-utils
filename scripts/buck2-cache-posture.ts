@@ -9,12 +9,6 @@ import process from 'node:process'
 const MANAGED_BEGIN = '# effect-utils standalone cache posture: begin'
 const MANAGED_END = '# effect-utils standalone cache posture: end'
 
-/** Trusted digest-CAS endpoint and publication tier declared by tracked Buck config. */
-export type TrustedArchiveOrigin = {
-  readonly tier: 'private'
-  readonly urlPrefix: string
-}
-
 /** Match Buck's UUID parser and emit the native lowercase hyphenated trace-ID spelling. */
 export const canonicalCacheAdmissionInvocationId = (value: unknown): string => {
   if (typeof value !== 'string') throw new Error('Invalid cache admission invocation ID')
@@ -52,25 +46,11 @@ export const buckConfigValues = (text: string): Record<string, string> => {
   return values
 }
 
-/** Parse the reviewed trusted archive destination from tracked Buck config. */
-export const trustedArchiveOriginFromConfig = (text: string): TrustedArchiveOrigin => {
-  const values = buckConfigValues(text)
-  const urlPrefix = values['archive_origin.trusted_url_prefix']
-  const tier = values['archive_origin.trusted_tier']
-  if (urlPrefix === undefined || /^https?:\/\/.+\/cas\/$/u.test(urlPrefix) === false)
-    return fail('tracked trusted archive origin must be an http(s) URL ending with /cas/')
-  if (tier !== 'private') return fail('tracked trusted archive tier must be private')
-  return { tier, urlPrefix }
-}
-
 /** Public CI reads anonymously; tracked REAPI addresses and TLS remain in force. */
 const PUBLIC_READ_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
   remote_cache_enabled = true
   allow_cache_uploads = false
-[archive_origin]
-  url_prefix =
-  tier = public
 ${MANAGED_END}`
 
 /** Explicit escape hatch for cache outages, including public CI. */
@@ -78,17 +58,13 @@ const NO_REMOTE_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
-[archive_origin]
-  url_prefix =
-  tier = public
 ${MANAGED_END}`
 
 /**
  * Protected public-tier publisher. The tracked cache tier is read-only; a job that
  * holds the writer credential enables uploads and the Basic header. Buck expands
  * the header variable in the daemon, so the credential value never enters any
- * config file. Publishers run off the tailnet, so archives come from the public
- * registry rather than the private trusted origin.
+ * config file.
  */
 const PUBLISHER_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
@@ -96,26 +72,14 @@ const PUBLISHER_CACHE_BLOCK = `${MANAGED_BEGIN}
   default_allow_cache_upload = true
 [buck2_re_client]
   http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH
-[archive_origin]
-  url_prefix =
-  tier = public
 ${MANAGED_END}`
 
-const trustedCacheBlock = (origin: TrustedArchiveOrigin | undefined): string =>
-  origin === undefined
-    ? `${MANAGED_BEGIN}\n${MANAGED_END}`
-    : `${MANAGED_BEGIN}
-[archive_origin]
-  url_prefix = ${origin.urlPrefix}
-  tier = ${origin.tier}
-${MANAGED_END}`
+const DEFAULT_CACHE_BLOCK = `${MANAGED_BEGIN}\n${MANAGED_END}`
 
 const privateWriterCacheBlock = ({
   env,
-  trustedOrigin,
 }: {
   readonly env: Readonly<Record<string, string | undefined>>
-  readonly trustedOrigin: TrustedArchiveOrigin | undefined
 }): string => {
   const address = env['BUCK2_PRIVATE_CACHE_ADDRESS']
   if (address === undefined || /^grpc:\/\/[^/\s]+$/u.test(address) === false)
@@ -129,14 +93,7 @@ const privateWriterCacheBlock = ({
   cas_address = ${address}
   engine_address = ${address}
   tls = false
-  http_headers = authorization: Basic $BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH${
-    trustedOrigin === undefined
-      ? ''
-      : `
-[archive_origin]
-  url_prefix = ${trustedOrigin.urlPrefix}
-  tier = ${trustedOrigin.tier}`
-  }
+  http_headers = authorization: Basic $BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH
 ${MANAGED_END}`
 }
 
@@ -176,11 +133,9 @@ export const withoutManagedBlock = (
 export const standaloneCachePostureConfig = ({
   current,
   env,
-  trustedOrigin,
 }: {
   readonly current: string
   readonly env: Readonly<Record<string, string | undefined>>
-  readonly trustedOrigin: TrustedArchiveOrigin | undefined
 }): string => {
   const withoutManaged = withoutManagedBlock(current)
   const managed =
@@ -189,10 +144,10 @@ export const standaloneCachePostureConfig = ({
       : env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1'
         ? PUBLIC_READ_CACHE_BLOCK
         : (env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
-          ? privateWriterCacheBlock({ env, trustedOrigin })
+          ? privateWriterCacheBlock({ env })
           : (env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
             ? PUBLISHER_CACHE_BLOCK
-            : trustedCacheBlock(trustedOrigin)
+            : DEFAULT_CACHE_BLOCK
   const unmanaged = withoutManaged.content
   return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }
@@ -210,14 +165,7 @@ export const reconcileStandaloneCachePosture = ({
   if (exists === true && lstatSync(output).isSymbolicLink() === true)
     fail('.buckconfig.local must not be a symbolic link')
   const current = exists === true ? readFileSync(output, 'utf8') : ''
-  const tracked = readFileSync(resolve(repoRoot, '.buckconfig'), 'utf8')
-  const trustedOrigin =
-    env['BUCK2_NO_REMOTE_CACHE'] === '1' ||
-    env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1' ||
-    buckConfigValues(tracked)['archive_origin.trusted_url_prefix'] === undefined
-      ? undefined
-      : trustedArchiveOriginFromConfig(tracked)
-  const next = standaloneCachePostureConfig({ current, env, trustedOrigin })
+  const next = standaloneCachePostureConfig({ current, env })
   if (next === current) return
   const candidate = `${output}.candidate-${randomUUID().replaceAll('-', '')}`
   try {
@@ -225,31 +173,6 @@ export const reconcileStandaloneCachePosture = ({
     renameSync(candidate, output)
   } finally {
     rmSync(candidate, { force: true })
-  }
-}
-
-/**
- * Any HTTP response proves the origin answers (a bare prefix request is not a valid CAS key, so a
- * 4xx is expected); only DNS, connection, or deadline failures count as unreachable.
- */
-export const probeArchiveOrigin = async ({
-  urlPrefix,
-  deadlineMs,
-  deadlineSignal,
-}: {
-  readonly urlPrefix: string
-  readonly deadlineMs: number
-  readonly deadlineSignal?: AbortSignal
-}): Promise<boolean> => {
-  try {
-    await fetch(urlPrefix, {
-      method: 'HEAD',
-      redirect: 'manual',
-      signal: deadlineSignal ?? AbortSignal.timeout(deadlineMs),
-    })
-    return true
-  } catch {
-    return false
   }
 }
 

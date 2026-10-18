@@ -26,6 +26,7 @@ Trace: DT.MET-R01–R04, R21, R28, R33.
   +-- /series                deterministic storage and reducers
   +-- /sources/frame         frame evidence and calibration
   +-- /sources/long-frames   shared scoped LoAF/longtask collector adapter
+  +-- /sources/user-timing   scoped performance.measure observer (name/prefix filter)
   +-- /sources/memory        heap source and explicit app-memory probe
   +-- /sources/fibers        host-enabled runtime gauge
   +-- /sources/spans         content-free completed-span aggregation
@@ -34,7 +35,7 @@ Trace: DT.MET-R01–R04, R21, R28, R33.
   +-- /sources/status        host-provided status events, no transport
   +-- /canvas                pure blocks/layout + scoped canvas attachment
   +-- /headless              snapshots/brackets + optional scoped test bridge
-  +-- /react                 provider/hooks/strip/text/tooltips/panel/Profiler
+  +-- /react                 provider/hooks/strip/tile/text/tooltips/panel/Profiler
 ```
 
 There is no `/sources/rpc` or `/sources/rpc-explorer`: the corresponding source
@@ -79,10 +80,17 @@ type UnavailableReason =
   | 'HistoryLost'
   | 'CalibrationInvalid'
   | 'Stopped'
+  | 'Stale'
+  | 'Disconnected'
 
 type Sample<TValue> =
   | { readonly _tag: 'Value'; readonly atMs: number; readonly value: TValue }
-  | { readonly _tag: 'Unavailable'; readonly atMs: number; readonly reason: UnavailableReason }
+  | {
+      readonly _tag: 'Unavailable'
+      readonly atMs: number
+      readonly reason: UnavailableReason
+      readonly lastKnown?: { readonly atMs: number; readonly value: TValue }
+    }
   | {
       readonly _tag: 'Gap'
       readonly atMs: number
@@ -247,6 +255,8 @@ interface FrameClock {
 }
 interface SourceRegistration<TEnv = never> {
   readonly id: string
+  readonly series: { readonly id: string }
+  readonly freshness?: Freshness
   readonly cadence: Cadence
   // opaque, type-erased registration closure; no public untyped writer
 }
@@ -257,10 +267,14 @@ interface Source<TValue, TEnv = never> extends SourceRegistration<TEnv> {
     readonly clock: FrameClock
   }) => Effect.Effect<void, SourceError, TEnv | Scope.Scope>
 }
+type Freshness =
+  | { readonly _tag: 'Window'; readonly ms: number }
+  | { readonly _tag: 'While'; readonly status: Series<StatusValue>; readonly state: 'Connected' }
 declare const makeSource: <TValue, TEnv = never>(options: {
   readonly id: string
   readonly cadence: Cadence
   readonly series: Series<TValue>
+  readonly freshness?: Freshness
   readonly start: Source<TValue, TEnv>['start']
 }) => Source<TValue, TEnv>
 
@@ -314,6 +328,95 @@ frames. Finalization cancels browser callbacks synchronously before awaiting
 asynchronous cleanup; a late probe checks its acquisition generation and
 cannot append after release. Reacquisition waits behind unfinished cleanup.
 A new session is the cumulative-counter reset boundary.
+
+### Source freshness policy
+
+Trace: DT.MET-R03–R06, R13–R16, R28, R30, R33–R34.
+
+```text
+actual source observation -> generation/visibility guard -> policy -> ring commit
+selected status commit -------------------------------> policy       |
+scoped monotonic deadline ----------------------------> policy       v
+                                                   shared reader publication
+```
+
+`makeSource.freshness` is optional and inert. The store has no temporal work,
+status subscriptions, or freshness interpretation. Each selected registration
+has one direct post-commit/pre-publication adapter. Explicit dependents share
+one status-series dispatcher that captures the committed typed sample for each
+transition. Its FIFO drain delivers that captured sample to every dependent
+before delivering transitions queued by reentrant appends.
+The session validates exact selected status identity and an acyclic dependency
+graph before acquisition. It prepares generation guards and all dependency
+listeners before starting any collector, then acquires dependencies first.
+Existing current-generation status is delivered at subscription time; retained
+status from a previous generation is not current connection evidence.
+Neither selecting a dependent nor subscribing a reader selects another source
+or acquires a transport.
+
+| Policy/event                            | Materialized evidence                                                                                                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Window { ms }`                         | Positive finite monotonic age budget, independent of connection status                                                                                                 |
+| Actual `Value`                          | Renews deadline at observation `atMs + ms`; updates typed `lastKnown`                                                                                                  |
+| Actual `Unavailable(MeasurementFailed)` | Renews deadline but remains unavailable; preserves prior actual `lastKnown`                                                                                            |
+| Other explicit failure                  | Remains unavailable with its reason; cancels a previous window deadline                                                                                                |
+| Gap or renderer draw                    | Never renews a deadline                                                                                                                                                |
+| Deadline reached                        | One `Unavailable(Stale)` with prior actual `lastKnown`, even without readers or rAF                                                                                    |
+| `While` status not `Value(Connected)`   | `Unavailable(Disconnected)`; dependent values are not accepted                                                                                                         |
+| Reconnect                               | Remains unavailable: prior explicit failure if present, otherwise `Stale`; never restores a value                                                                      |
+| Next accepted observation               | Supplies new evidence, not a replay of the disconnected value                                                                                                          |
+| Hidden periodic source                  | `Hidden` dominates deadline and status callbacks; periodic collection remains paused                                                                                   |
+| Periodic resume                         | Retains the hidden gap, then unavailable evidence until a new observation; disconnected/explicit failure reasons are preserved, an expired measured failure is `Stale` |
+| Final release or acquisition rollback   | Synchronous `Stopped` dominates; old writers and callbacks cannot change evidence during asynchronous cleanup                                                          |
+
+An event source continues to observe real events while hidden; its window age
+still advances. A periodic source cannot publish values while hidden.
+Window scheduling is one scope-owned worker with at most one pending Effect
+deadline wait. An observation can extend its deadline without cancelling and
+recreating a timer on each observation; waking at the old deadline schedules
+only the remaining real duration. There is no frame subscription or periodic
+freshness polling. Scope closure interrupts pending waits.
+Committed source hooks and dependent notifications use the same aggregate
+delivery contract: every listener and originating reader publication is
+attempted before notification defects propagate. Window ownership is installed
+by its scoped committed-observation hook, not after successful publication.
+Expiry retires that ownership before publishing `Stale`, so a reentrant
+observation can own the next deadline; retiring cleanup clears only its own
+token. A publication defect cannot suppress initial scheduling, strand a
+renewal, or prevent a later dependent from observing disconnection.
+Status callback faults are isolated during the complete FIFO drain, then thrown
+as an aggregate from its outermost originating append. A fault in a reentrantly
+queued transition surfaces once from that outermost append, not its nested
+enqueueing append; it cannot skip other dependents or queued transitions.
+Periodic resume independently attempts its gap and unavailable commits, then
+reports aggregate notification defects. The unavailable commit is conditional
+on the exact gap sample still being latest in that series: evidence committed
+reentrantly by a gap subscriber supersedes it and is never overwritten by the
+resume transition. Unrelated series revisions cannot suppress the transition.
+Callback and Window-worker defects preserve their original Effect causes and
+are explicitly delivered through Effect's `ErrorReporter` boundary. The host
+supplies its selected `ErrorReporter` layer; the default reporter set is empty.
+The collector captures that context on its first lease. The library installs
+neither a console nor a default reporter, and reporting does not turn a failed
+effect into a healthy result.
+
+Synthetic evidence is appended at the injected session clock time.
+Source timestamps remain finite, session-local and nondecreasing: policy-bound
+writers reject delayed observations older than already committed evidence
+instead of retimestamping/resurrecting them. An otherwise ordered observation
+already outside its window materializes `Stale` immediately, with the actual
+observed value/time in `lastKnown`, never a transient live value.
+`lastKnown` is only the last actual accepted value, not a zero, a failed request,
+or a synthetic sample. Its timestamp/payload and retained samples are immutable;
+it may outlive the corresponding value's ring slot and survives lease restart
+without making that value live.
+
+There is no renderer-local validity policy. The removed
+`numericBlock`/`numberBlock.staleAfterMs` option migrates to
+`makeSource({ freshness: { _tag: 'Window', ms } })`. Renderers may format
+observation age, last-known evidence and history, but cannot reinterpret a
+stored `Value` as stale. Numeric descriptions expose unavailable reason and
+last-known value with its session timestamp.
 
 ## Frame Bookkeeping
 
@@ -501,6 +604,21 @@ declare const longFramesSource: (options: {
   readonly id: string
   readonly series: Series<LongFrameValue>
 }) => Source<LongFrameValue>
+interface UserTimingValue {
+  readonly _tag: 'UserTiming'
+  readonly name: string
+  readonly startedAtMs: number
+  readonly endedAtMs: number
+  readonly durationMs: number
+}
+type UserTimingFilter =
+  | { readonly _tag: 'Names'; readonly names: readonly string[] }
+  | { readonly _tag: 'Prefix'; readonly prefix: string }
+declare const userTimingSource: (options: {
+  readonly id: string
+  readonly series: Series<UserTimingValue>
+  readonly filter: UserTimingFilter
+}) => Source<UserTimingValue>
 declare const heapSource: (options: {
   readonly id: string
   readonly series: Series<HeapMemory>
@@ -557,6 +675,21 @@ lifetime totals: old retained spans may seed visible history but never bracket
 counter baselines. OTLP sampling does not change local completion counters, and
 meters does not stack another tracer wrapper on an already instrumented host.
 
+`userTimingSource` observes `measure` entries with `buffered: true` for its
+lease, so app-owned `performance.measure()` spans (for example a host's
+`fractal:` prefix) become event samples whose durations bucket tiles reduce to
+p50/p95. A sample is dated at delivery, the observer callback instant on the
+session clock, so buckets aggregate measures by observation time, not completion
+time; the payload keeps the measure's true start, end and duration on the
+session clock. Entries of one delivery are recorded in completion order. Each
+accepted entry object is remembered, so a later lease replaying the buffer
+records only new entries, even one ending when an old one did. Other entry types
+and names outside the filter are ignored; an empty filter is rejected at
+construction. Without `PerformanceObserver`, a performance clock or `measure`
+support the series reads `Unsupported`. An entry whose start, duration or end is
+not finite, or whose duration is negative, reads `MeasurementFailed` once; it is
+never a zero.
+
 `appMemoryProbe` creates no automatic timer. `probe` requires its source's live
 lease; concurrent invocations share one outstanding request. Unsupported or
 non-isolated acquisition emits unavailable evidence without calling the API.
@@ -573,7 +706,7 @@ for this agreed gauge.
 
 ## Canvas and Independent Renderers
 
-Trace: DT.MET-R03, R29–R32; parent Q1/Q7.
+Trace: DT.MET-R03, R29–R32, R35; parent Q1/Q7.
 
 ```text
 SeriesStore -> CanvasBlock<T> closures -> one CanvasStrip
@@ -636,6 +769,7 @@ interface BlockEvidence {
         readonly _tag: 'Unavailable'
         readonly atMs: number
         readonly reason: UnavailableReason
+        readonly lastKnownAtMs?: number
       }
     | {
         readonly _tag: 'Gap'
@@ -646,6 +780,13 @@ interface BlockEvidence {
     | undefined
   readonly retention: Retention
   readonly aggregation: BlockAggregationEvidence
+  readonly range?: BlockEvidenceRange // only blocks that reduce a window and have a value in it
+}
+interface BlockEvidenceRange {
+  readonly windowMs: number
+  readonly endMs: number
+  readonly minimum: number
+  readonly maximum: number
 }
 interface BlockReader {
   readonly revision: () => number
@@ -683,6 +824,10 @@ declare const block: <TValue>(options: {
     readonly history: SeriesView<TValue>
     readonly nowMs: number
   }) => string
+  readonly range?: (input: {
+    readonly history: SeriesView<TValue>
+    readonly nowMs: number
+  }) => BlockEvidenceRange | undefined // on-demand evidence only, never drawn
 }) => CanvasBlockSpec
 declare const makeStripView: (options: {
   readonly store: SeriesStore
@@ -690,6 +835,14 @@ declare const makeStripView: (options: {
   readonly now: () => number
   readonly frozenAtMs?: number
 }) => StripView
+interface MeterFreeze {
+  readonly atMs: number
+  readonly view: (id: string) => StripView | undefined // single-block frozen view
+}
+declare const freezeMeters: (options: {
+  readonly meters: MeterSession
+  readonly blocks: readonly CanvasBlockSpec[]
+}) => MeterFreeze
 interface Renderer {
   readonly attach: Effect.Effect<void, never, Scope.Scope>
 }
@@ -761,8 +914,12 @@ canvas scaling and unsaturated aggregation remain unchanged.
 `evaluatedAtMs` is exactly the supplied evaluation time. `latest.atMs` is the
 timestamp of the latest typed evidence, which may be a synthetic state
 transition rather than a measurement; it must not be interpreted as measurement age.
-Metadata projects only declared tag/timestamp/reason/gap duration, never extra
-payload fields. Evidence performs no store lookup, subscription or caching.
+For unavailable evidence, optional `latest.lastKnownAtMs` projects only the
+actual prior observation timestamp from `Sample.lastKnown.atMs`, never its
+payload. It is absent when there is no last-known observation. This remains
+distinct from both synthetic transition time and explicit evaluation time.
+Metadata projects only declared tags, timestamps, reasons and gap duration,
+never extra payload fields. Evidence performs no store lookup, subscription or caching.
 
 Aggregation defaults to `Latest` with the series unit. An optional `Bucket`
 policy specifies mode, duration, count and explicit output unit. The pure
@@ -849,6 +1006,64 @@ snapshot and freezes canvas/text/tooltip evidence together; sources, clock,
 other renderers, and brackets keep advancing. The view shows its frozen state
 and observation time. Unfreeze returns to current shared evidence.
 
+### Tile blocks
+
+Trace: DT.MET-R35; parent DT-R02, DT-R14.
+
+```ts
+type TileAggregation = Extract<BlockAggregation, { readonly _tag: 'Bucket' }>
+declare const tileBlock: <TValue>(
+  options: PlotOptions & {
+    readonly id: string
+    readonly series: Series<TValue>
+    readonly shortLabel?: string
+    readonly widthPx: number
+    readonly aggregation: TileAggregation
+    readonly value: (value: TValue) => number
+  },
+) => CanvasBlockSpec
+```
+
+`tileBlock` is the canvas half of a Tile: an ordinary `CanvasBlockSpec`, so a
+tile reuses `makeStripView`, `makeCanvasStrip`, the session clock, and frozen
+snapshots with a single block. Its required `Bucket` policy is validated at
+construction before any buffer is sized. Draw and describe reduce the bound
+history with the shared internal scan at the supplied time, with exactly the
+`bucketSeries` semantics: the horizon is `buckets * bucketMs`, independent of
+strip `historyMs`, ending at the newest completed bucket. The full value text
+formats the newest bucket in the policy unit; an undefined newest bucket reads
+`n/a (NoSamples)`, `n/a (<reason>)`, `n/a (<reason> gap)` from the newest
+observation it covers, or `n/a (MeasurementFailed)` for a non-finite value.
+Every compact and number form without a value, including a stale or offline
+source, is a bare `n/a`, so the canvas shows `n/a` and the reason stays in the
+full description and evidence. Evidence adds
+`range`: the minimum and maximum of the defined buckets over `windowMs =
+buckets * bucketMs` ending at the completed `endMs`, absent when none is defined.
+
+The chart uses the numeric block geometry and the shared plot-range policy,
+marks and `theme.border` baseline. History is a `theme.normal` 1.5px polyline
+through bucket centers; undefined buckets break the line and an isolated
+bucket draws a 2px dot. Reduction writes into one `Float64Array` per bound
+history, allocated on first read and reused for every later frame: live readers
+of a definition share the store's live view scratch, and each frozen snapshot
+owns its own. A value callback that reads the reader being reduced throws
+`TypeError` rather than overwriting bins mid-scan.
+
+The drawn label is `shortLabel ?? label` and is the tile's static accessible
+name, so it outranks the value: the value then tries full, compact and number
+forms, and is ellipsized last. `widthPx` must fit the label plus 8px padding; a
+narrower rect draws an ellipsized prefix of the name and no value, never a
+clipped or `fillText`-squeezed label. The unabridged value remains available
+through on-demand evidence.
+
+The tile consumes source-owned freshness and has no renderer stale policy: when
+the newest observation is `Unavailable` `Stale` or `Disconnected`, it mutes the
+sparkline and shows `stale` or `offline` in the value slot beside its label.
+Draw and describe derive this state once from the same read, so the description
+then reports it too, even when the newest completed bucket holds a value. It adds
+the last-known gauge value, or, for event and counter tiles, only the last
+observation time.
+
 ## Headless Snapshots and Measure Brackets
 
 Trace: DT.MET-R17–R21; parent DT-R15 and Q11.
@@ -887,11 +1102,17 @@ const UnavailableReason = Schema.Literals([
   'HistoryLost',
   'CalibrationInvalid',
   'Stopped',
+  'Stale',
+  'Disconnected',
 ])
 const NumberValue = Schema.TaggedStruct('Number', { value: Schema.Finite })
 const NumberSample = Schema.Union([
   Schema.TaggedStruct('Value', { atMs: Schema.Finite, value: NumberValue }),
-  Schema.TaggedStruct('Unavailable', { atMs: Schema.Finite, reason: UnavailableReason }),
+  Schema.TaggedStruct('Unavailable', {
+    atMs: Schema.Finite,
+    reason: UnavailableReason,
+    lastKnown: Schema.optionalKey(Schema.Struct({ atMs: Schema.Finite, value: NumberValue })),
+  }),
   Schema.TaggedStruct('Gap', {
     atMs: Schema.Finite,
     durationMs: NonNegativeFinite,
@@ -1096,13 +1317,15 @@ the bridge is absent outside its explicitly enabled test scope.
 
 ## React Bindings
 
-Trace: DT.MET-R03, R08, R14, R27, R30–R31.
+Trace: DT.MET-R03, R08, R14, R27, R30–R31, R35–R36.
 
 ```text
 host Effect/React runtime
   -> MetersProvider (scoped session lease)
        +-- useSeries / accessible output (cached external-store selection)
        +-- MeterStrip (renderer attachment only)
+       +-- MeterTile (one canvas per block + captured MeterEvidence card)
+       +-- MeterFreezeButton (host-owned shared MeterFreeze)
        +-- MetersPanel (controlled meter list + host-rendered detail; no lease)
        +-- RenderProfiler (host-selected commit instrumentation)
 ```
@@ -1151,6 +1374,32 @@ declare const reactCommitsSource: (options: {
   readonly instrumentation: Instrumentation
   readonly counter: CounterToken
 }) => Source<ReactCommit>
+type MeterEvidenceTrigger = 'Focus' | 'Hover' | 'Activation' | 'Refresh'
+interface MeterEvidenceProps {
+  readonly id: string
+  readonly evidence: BlockEvidence
+  readonly trigger: MeterEvidenceTrigger
+  readonly frozen: boolean
+  readonly theme: MeterTheme
+  readonly style?: React.CSSProperties
+}
+declare const MeterEvidence: (props: MeterEvidenceProps) => React.ReactNode
+interface MeterTileProps {
+  readonly meters: MeterSession
+  readonly block: CanvasBlockSpec // usually a tileBlock
+  readonly theme: MeterTheme
+  readonly frozen?: MeterFreeze // absent: live
+  readonly heightPx?: number // default 32
+  readonly platform?: CanvasPlatform
+}
+declare const MeterTile: (props: MeterTileProps) => React.ReactNode
+interface MeterFreezeButtonProps {
+  readonly frozenAtMs: number | undefined
+  readonly onToggle: () => void
+  readonly theme: MeterTheme
+  readonly compact?: boolean // icon only; the accessible name is unchanged
+}
+declare const MeterFreezeButton: (props: MeterFreezeButtonProps) => React.ReactNode
 ```
 
 The provider acquires the stable session's `start` through effect-react
@@ -1180,6 +1429,44 @@ visually hidden description with a strip-unique generated ID is referenced by
 availability reasons), configured history span, and detail action. The description
 is separate from the hover/focus tooltip and remains associated when the tooltip
 is absent or dismissed. Full-label DOM outputs remain available independently.
+
+`MeterTile` renders one block as a native `<button>` wrapping one canvas,
+attached with `makeCanvasStrip` to a single-block view, so every tile draws in
+the session clock's shared Draw phase and no tile owns a frame loop (R35). Its
+accessible name is the drawn label `shortLabel ?? label` and its title is the
+full `label`; neither ever contains a value. A sample causes no DOM write and no
+React commit: the tile does not subscribe to the store. One `captured` state
+(`{ trigger, evidence }`) is the only per-tile state. Focus, hover, activation
+(click, Enter, Space) and `R` capture `reader.evidence({ nowMs })` at the session
+clock, or at `MeterFreeze.atMs` when frozen; activation is the explicit refresh
+and opens no panel. The captured snapshot feeds `MeterEvidence`, rendered in a
+manual popover (top layer, so host scrollports do not clip it) placed above the
+tile and referenced by `aria-describedby` while shown. Blur, leaving hover
+without focus, and Escape dismiss it; the first Escape is consumed, the next
+reaches the host. Evidence is never published live or through `aria-live`
+(R36).
+
+`MeterEvidence` is pure: its lines derive only from its props. It shows the
+full label and value text (or unavailable reason), the newest observation as an
+age before evaluation (`latest sample 1.5 s before evaluation`, `unavailable
+(<reason>) …`, `gap (<reason>, <duration>) ending …`, or `no sample before
+evaluation`), for bucket blocks the evidence `range` as `range over <window>
+ending <age> before evaluation: min <a> / max <b>` (or `no values`), where the
+window and its end are the completed buckets the extrema cover (the
+aggregation's completed end when the window is empty), `evaluated at session
+clock <t> · revision <n>` with `(frozen)` for a frozen view, and the capturing
+action. A source-owned `Stale` or `Disconnected` observation with
+`lastKnownAtMs` adds `; last sample <age> before evaluation`; the stale state
+itself is the tile block's, and React adds no stale policy. Ages are measured
+from the evaluation instant; the card never says "ago", "now" or "current".
+
+`freezeMeters` snapshots every given block synchronously at one clock instant;
+tiles, their canvases and their cards then read that one `MeterFreeze` while
+sources and the clock keep running. A tile's view changes on freeze or unfreeze,
+which drops any card captured from the previous view. `MeterFreezeButton` is
+the host's single toggle: its accessible name stays "Freeze meters", state is
+`aria-pressed`, the title names the frozen clock instant, and `compact` hides the
+visible text for narrow hosts.
 
 `MetersPanel` is the shared renderer-only list/detail composition exported from
 `/react`. It lists every supplied block in order as a native keyboard-operable
@@ -1220,16 +1507,16 @@ host; meters owns neither RPC domain semantics nor shell storage.
 
 Trace: DT.MET-R34 and [parent verification](../spec.md#conformance-evidence).
 
-| Test family       | Required observations                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Injected platform | Deterministic ticks, cancellation, source-before-draw order, no factory/import work                                                                                                                                                                                                                                                                                                                     |
-| Frame calibration | 60/120/144/160/240, strict tolerance, unsupported/pending, refresh change rebasing, hidden gaps and no hidden missed-frame burst                                                                                                                                                                                                                                                                        |
-| Storage           | O(1) bounded append, overflow/range metadata, independent readers, immutable snapshot identity, custom payload typing                                                                                                                                                                                                                                                                                   |
-| Lifecycle         | One collector per source/one clock across multiple readers, last-release cleanup, single-flight probes, discarded late results, serialized StrictMode reacquisition                                                                                                                                                                                                                                     |
-| Brackets          | Cumulative deltas; defaults 0/30; atomic concurrent/duplicate end; retry after invalid options; escaped scope and restart rejection; original work Cause preserved; hidden/calibration/loss reasons; stop endpoint frozen before source teardown; no live registry/finalizer growth after sequential end; schema round trips and malformed evidence rejection; browser-local bridge token/scope cleanup |
-| Built-ins         | Capability detection, distinct LoAF/fallback, heap versus app-memory, disabled metric n/a, exact completion/commit counters beyond ring capacity, no RPC imports or diagnostic sockets                                                                                                                                                                                                                  |
-| Renderers         | Fractional DPR, sizing changes, timestamp history, value/text parity, semantic themes, keyboard tooltips/detail action, bounded freeze without collection pause                                                                                                                                                                                                                                         |
-| Disabled host     | No loader/module/runtime/rAF/timer/observer/listener/hook/metric starts and no diagnostic production graph, as defined by the parent                                                                                                                                                                                                                                                                    |
+| Test family       | Required observations                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Injected platform | Deterministic ticks, cancellation, source-before-draw order, no factory/import work                                                                                                                                                                                                                                                                                                                                                                 |
+| Frame calibration | 60/120/144/160/240, strict tolerance, unsupported/pending, refresh change rebasing, hidden gaps and no hidden missed-frame burst                                                                                                                                                                                                                                                                                                                    |
+| Storage           | O(1) bounded append, overflow/range metadata, independent readers, immutable snapshot identity, custom payload typing                                                                                                                                                                                                                                                                                                                               |
+| Lifecycle         | One collector per source/one clock across multiple readers, last-release cleanup, single-flight probes, discarded late results, serialized StrictMode reacquisition                                                                                                                                                                                                                                                                                 |
+| Brackets          | Cumulative deltas; defaults 0/30; atomic concurrent/duplicate end; retry after invalid options; escaped scope and restart rejection; original work Cause preserved; hidden/calibration/loss reasons; stop endpoint frozen before source teardown; no live registry/finalizer growth after sequential end; schema round trips and malformed evidence rejection; browser-local bridge token/scope cleanup                                             |
+| Built-ins         | Capability detection, distinct LoAF/fallback, heap versus app-memory, disabled metric n/a, exact completion/commit counters beyond ring capacity, no RPC imports or diagnostic sockets                                                                                                                                                                                                                                                              |
+| Renderers         | Fractional DPR, sizing changes, timestamp history, value/text parity, semantic themes, keyboard tooltips/detail action, bounded freeze without collection pause, tile draw/describe/`bucketSeries` parity, broken undefined buckets, label-first fitting, tile evidence range, static tile names, zero commits and DOM writes across samples, captured (not live) evidence cards, one shared tile freeze, sub-0.5 ms added frame cost for six tiles |
+| Disabled host     | No loader/module/runtime/rAF/timer/observer/listener/hook/metric starts and no diagnostic production graph, as defined by the parent                                                                                                                                                                                                                                                                                                                |
 
 ## Open Design Questions
 
