@@ -75,10 +75,7 @@ describe('closeApi', () => {
       },
     })
     await expect(
-      closeApi(
-        { close: () => new Promise<void>(() => {}), client: { process: child } },
-        10,
-      ),
+      closeApi({ close: () => new Promise<void>(() => {}), client: { process: child } }, 10),
     ).rejects.toMatchObject({ _tag: 'TsApiTimeoutError', stage: 'close', timeoutMs: 10 })
     expect(signals).toEqual(['SIGTERM'])
     expect(child.listenerCount('exit')).toBe(0)

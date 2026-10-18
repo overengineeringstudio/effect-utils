@@ -1101,12 +1101,14 @@ process.stdin.on('data', (chunk) => {
         closeSpy.mockRestore()
         if (originalServer === undefined) delete process.env.GENIE_TYPESCRIPT_API_SERVER
         else process.env.GENIE_TYPESCRIPT_API_SERVER = originalServer
-        if (pid === undefined && fs.existsSync(pidFile)) pid = Number(fs.readFileSync(pidFile, 'utf8'))
+        if (pid === undefined && fs.existsSync(pidFile))
+          pid = Number(fs.readFileSync(pidFile, 'utf8'))
         if (pid !== undefined) {
           try {
             process.kill(pid, 'SIGKILL')
           } catch (error) {
-            if (!(error instanceof Error) || !('code' in error) || error.code !== 'ESRCH') throw error
+            if (!(error instanceof Error) || !('code' in error) || error.code !== 'ESRCH')
+              throw error
           }
         }
         fs.rmSync(repo.repoRoot, { recursive: true, force: true })

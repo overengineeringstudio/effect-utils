@@ -105,8 +105,7 @@ export class TsApiTimeoutError extends Error {
   }
 }
 
-const apiClient = (api: API | ClosableTsApi) =>
-  (api as unknown as ClosableTsApi).client
+const apiClient = (api: API | ClosableTsApi) => (api as unknown as ClosableTsApi).client
 
 const childIsAlive = (child: JoinableChildProcess) =>
   child.exitCode === null && child.signalCode == null
@@ -311,9 +310,7 @@ export const runTsFileAnalysis = async <A>({
     // Seed multi-root walks in one snapshot. Subsequent snapshots retain every open file so
     // analyzing a newly discovered edge does not evict and rebuild the roots' projects.
     let snapshot = await apiRequest(api, 'updateSnapshot', requestTimeoutMs, () =>
-      opened.size === 0
-        ? api.updateSnapshot()
-        : api.updateSnapshot({ openFiles: [...opened] }),
+      opened.size === 0 ? api.updateSnapshot() : api.updateSnapshot({ openFiles: [...opened] }),
     )
 
     const analyze = async (file: string): Promise<TsFileAnalysisOutcome> => {
