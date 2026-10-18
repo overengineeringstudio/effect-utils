@@ -937,7 +937,8 @@ describe('editor view publisher', () => {
             '../../../../node_modules/.pnpm/effect@4.0.3/node_modules/effect',
             join(importer, 'effect'),
           )
-        if (residue === 'marker') writeFileSync(join(importer, '.modules.yaml'), 'layoutVersion: 5\n')
+        if (residue === 'marker')
+          writeFileSync(join(importer, '.modules.yaml'), 'layoutVersion: 5\n')
         if (residue === 'published') await publishEditorView(fixture.options)
         const publishedTarget = residue === 'published' ? readlinkSync(importer) : undefined
         writeFileSync(
