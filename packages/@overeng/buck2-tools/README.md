@@ -326,7 +326,57 @@ or reused same-host owners; all uncertain ownership retains explicit exact-token
 The persistent control file records a dirty byte before repair/mutation and clears
 it only after successful restoration. Normal acquisitions inspect the bounded
 directory set and staging metadata; dirty acquisitions also scan shard metadata
-for abandoned temporary links. Repair never rewrites or chmods payload inodes.
+for abandoned temporary links. Automatic crash repair never rewrites or chmods
+payload inodes.
+
+### Recovering a chmod-poisoned shared store
+
+Cleanup must unlock **directories only**, never recursively chmod payload files:
+snapshot payloads are hardlinked into the CAS and other worktrees. A writable
+blob is rejected even when its bytes happen to match its address. Do not bypass
+this check with a blanket chmod or a private-copy fallback.
+
+An initial read-only census requires no quiescence acknowledgement and does not
+create a flock, normalize directories, or change any inode:
+
+```sh
+bun packages/@overeng/buck2-tools/src/editor-view.ts repair-content \
+  --repo-root "$PWD" --dry-run true
+```
+
+It reports matching writable blobs, mismatches, and total checked blob inodes;
+`repairedBlobs` is zero. It fails if entries change while being hashed.
+
+First stop every editor-view publisher, watcher and reader using this shared
+store, and stop the cleanup process that made its files writable. The CAS flock
+excludes cooperating publishers, but cannot exclude arbitrary open writable
+descriptors. Then explicitly acknowledge that quiescence:
+
+```sh
+bun packages/@overeng/buck2-tools/src/editor-view.ts repair-content \
+  --repo-root "$PWD" --quiesced true
+```
+
+Like `collect-content`, this command accepts `--content-store` for an explicitly
+selected store (including an offline copy). Under the existing CAS flock it
+hashes each writable blob against its SHA-256 content address before restoring
+its addressed mode (0444 or 0555). Matching inodes retain their hardlinks, so
+their linked snapshots regain immutability too. It never blesses bytes solely
+from a filename or cached source manifest.
+The final locked metadata census requires every surviving blob inode to have its
+addressed immutable mode. Since mode belongs to the inode, this also proves
+that every alias outside the store is readonly, not only the CAS pathname.
+
+Mismatches are moved to a private sibling `<content-store>.quarantine` directory
+without chmodding their inodes. The JSON receipt lists the original and
+quarantine paths and actual digest; any quarantine makes the CLI exit nonzero.
+Linked snapshots still hold the corrupted, untrusted inode: retire those
+snapshots using directory-only unlock/unlink and republish their views from
+admitted sources before restarting readers. Keep quarantine evidence until the
+incident is understood. After a matching-only repair, rerun bootstrap and the
+normal quick gate before resuming work. Never run repair against a shared live
+store without coordinating its users.
+
 The dirty byte provides **process-crash recovery, not power-loss durability**:
 metadata/control writes are not fsync-ordered for machine or filesystem failure.
 Five-minute eviction of unknowable-owner staging files is an **availability

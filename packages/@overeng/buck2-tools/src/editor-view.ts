@@ -44,6 +44,8 @@ import {
 } from './editor-view-readers.ts'
 import {
   collectEditorViewContentStore,
+  repairEditorViewContentStore,
+  inspectEditorViewContentStore,
   editorViewStagingCreatorIdentity,
   defaultEditorViewContentStore,
   editorViewGitCommonDirectory,
@@ -3466,12 +3468,14 @@ type ParsedCli = {
     | 'recover-lock'
     | 'release'
     | 'collect-content'
+    | 'repair-content'
     | 'pin'
     | 'unpin'
   readonly options: EditorViewOptions
   readonly token: string | undefined
   readonly name: string | undefined
   readonly snapshot: string | undefined
+  readonly dryRun: boolean
 }
 
 const commands = [
@@ -3481,6 +3485,7 @@ const commands = [
   'recover-lock',
   'release',
   'collect-content',
+  'repair-content',
   'pin',
   'unpin',
 ] as const
@@ -3505,7 +3510,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
     }
   }
   const recover = command === 'recover-lock'
-  const storeMaintenance = command === 'collect-content'
+  const storeMaintenance = command === 'collect-content' || command === 'repair-content'
   const managingPins = command === 'pin' || command === 'unpin'
   const maintenance =
     recover === true || command === 'release' || storeMaintenance === true || managingPins === true
@@ -3514,7 +3519,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
     fail(`unexpected option for ${command}: --backing-root`)
   const allowed = new Set(
     storeMaintenance === true
-      ? ['--repo-root']
+      ? ['--repo-root', ...(command === 'repair-content' ? ['--quiesced', '--dry-run'] : [])]
       : maintenance === true
         ? [
             '--repo-root',
@@ -3557,6 +3562,12 @@ const parseCli = (args: readonly string[]): ParsedCli => {
   allowed.add('--content-store')
   for (const flag of values.keys())
     if (allowed.has(flag) === false) fail(`unexpected option for ${command}: ${flag}`)
+  if (
+    command === 'repair-content' &&
+    values.get('--quiesced') !== 'true' &&
+    values.get('--dry-run') !== 'true'
+  )
+    fail('repair-content requires --quiesced true after stopping all editor-view readers/writers')
   const get = (flag: string): string => values.get(flag) ?? fail(`missing required option ${flag}`)
   const getUnlessMaintaining = (flag: string): string => (maintenance === true ? '' : get(flag))
   const getWhenAdmitting = (flag: string): string => (admitting === true ? get(flag) : '')
@@ -3591,6 +3602,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
   }
   return {
     command,
+    dryRun: values.get('--dry-run') === 'true',
     options,
     token: recover === true ? get('--token') : undefined,
     name: managingPins === true ? get('--name') : undefined,
@@ -3655,6 +3667,16 @@ const main = async (): Promise<void> => {
       contentStore: makePaths(parsed.options).contentStore,
     })
     process.stdout.write(`collected editor content ${JSON.stringify(collected)}\n`)
+  } else if (parsed.command === 'repair-content') {
+    const contentStore = makePaths(parsed.options).contentStore
+    const repaired =
+      parsed.dryRun === true
+        ? await inspectEditorViewContentStore({ contentStore })
+        : await repairEditorViewContentStore({ contentStore, quiesced: true })
+    process.stdout.write(
+      `${parsed.dryRun === true ? 'inspected' : 'repaired'} editor content ${JSON.stringify(repaired)}\n`,
+    )
+    if (repaired.mismatchedBlobs.length > 0) process.exitCode = 1
   } else if (parsed.command === 'pin') {
     const pin = await pinEditorView({
       options: parsed.options,
