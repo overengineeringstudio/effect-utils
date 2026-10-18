@@ -433,6 +433,11 @@ and platform-gated package manifest; bundling does not execute the entrypoint.
 The subsequent compiled-product action likewise consumes the portable module
 without invoking the fingerprint tool.
 
+CLI bundles override `import.meta.main` only in the selected entry and require
+exactly one override. Entry matching resolves symlinks while preserving hardlink
+names, so macOS file-descriptor path ambiguity cannot select a source outside the
+portable farm or skip the entry override.
+
 Non-bundle package execution (`exec`, `check`, `native-check`, and `build-dir`)
 still requires an explicitly declared immutable `/nix/store/.../bin/buck2-fingerprint`
 executable and fingerprints its declared read roots before and after the child
