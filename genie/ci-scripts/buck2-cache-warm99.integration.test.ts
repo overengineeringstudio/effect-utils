@@ -211,8 +211,11 @@ describe('warm99 CLI manifest completeness', () => {
       expect(accepted.lanes[0]?.observations[0]).toMatchObject({
         eligible: 1,
         remoteHits: 1,
-        excluded: 5,
-        excludedByDesign: { 'local-materialization-policy': 5, 'darwin-unsandboxed': 0 },
+        excluded: localMaterializationCategories.length,
+        excludedByDesign: {
+          'local-materialization-policy': localMaterializationCategories.length,
+          'darwin-unsandboxed': 0,
+        },
         cold: 0,
         changed: 0,
       })
