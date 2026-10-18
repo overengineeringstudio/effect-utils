@@ -1052,11 +1052,13 @@ process.stdin.on('data', (chunk) => {
       let pid: number | undefined
       let client: ClosableTsApi['client']
       let timeout: unknown
-      const apiClose = API.prototype.close
-      const closeSpy = vi.spyOn(API.prototype, 'close').mockImplementation(function (this: API) {
-        client = (this as unknown as ClosableTsApi).client
-        return apiClose.call(this)
-      })
+      const updateSnapshot = API.prototype.updateSnapshot
+      const snapshotSpy = vi
+        .spyOn(API.prototype, 'updateSnapshot')
+        .mockImplementation(function (this: API, options) {
+          client = (this as unknown as ClosableTsApi).client
+          return updateSnapshot.call(this, options)
+        })
       const reapServer = () => {
         if (pid === undefined && fs.existsSync(pidFile) === true) {
           pid = Number(fs.readFileSync(pidFile, 'utf8'))
@@ -1106,10 +1108,10 @@ process.stdin.on('data', (chunk) => {
         expect(methods).toContain(stage)
         if (stage === 'getDefaultProjectForFile') {
           expect(methods.filter((method) => method === 'updateSnapshot')).toHaveLength(2)
-          expect(timeout).toHaveProperty('cause')
+          expect(methods.filter((method) => method === 'release')).toHaveLength(1)
         }
       } finally {
-        closeSpy.mockRestore()
+        snapshotSpy.mockRestore()
         if (originalServer === undefined) delete process.env.GENIE_TYPESCRIPT_API_SERVER
         else process.env.GENIE_TYPESCRIPT_API_SERVER = originalServer
         reapServer()
