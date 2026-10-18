@@ -897,7 +897,13 @@ export const defaultEditorViewName = (packagePath: string): string => {
   return requireViewName(segments[segments.length - 1] ?? normalized)
 }
 
-const packageEditorRoot = (repoRoot: string, packagePath: string): string =>
+const packageEditorRoot = ({
+  repoRoot,
+  packagePath,
+}: {
+  repoRoot: string
+  packagePath: string
+}): string =>
   packagePath === '.'
     ? resolve(repoRoot, '.editor-view')
     : resolve(repoRoot, packagePath, '..', '..', '.editor-view')
@@ -924,7 +930,7 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
   requireDirectory({ path: packageDir, field: 'package directory' })
   if (realpathSync(packageDir) !== packageDir)
     fail(`package path must not contain symbolic links: ${packageDir}`)
-  const editorRoot = packageEditorRoot(repoRoot, packagePath)
+  const editorRoot = packageEditorRoot({ repoRoot, packagePath })
   if (isWithin({ root: repoRoot, candidate: editorRoot }) === false)
     fail(`editor root escapes repository: ${editorRoot}`)
   // The consumer cache is the one path a caller supplies absolutely, so it can
@@ -2387,7 +2393,7 @@ const importerPublicationRoots = ({
   const roots = new Map<string, string>()
   for (const packagePath of packages) {
     if (packagePath === '.') continue
-    const editorRoot = packageEditorRoot(repoRoot, packagePath)
+    const editorRoot = packageEditorRoot({ repoRoot, packagePath })
     if (isWithin({ root: repoRoot, candidate: editorRoot }) === false)
       fail(`importer editor root escapes repository: ${editorRoot}`)
     roots.set(editorRoot, packagePath)
@@ -2421,8 +2427,7 @@ const retireLegacyImporters = ({
     const status = lstatSync(path)
     // Selected editor views own their first-hop symlinks, including dangling ones.
     if (status.isSymbolicLink() === true) continue
-    if (status.isDirectory() === false)
-      ambiguousImporter(path)
+    if (status.isDirectory() === false) ambiguousImporter(path)
     const marker = join(path, '.modules.yaml')
     let pnpm = pathExists(marker) === true && lstatSync(marker).isFile() === true
     const entries = readdirSync(path).flatMap((name) => {
