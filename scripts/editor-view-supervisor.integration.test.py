@@ -1,7 +1,9 @@
+import fcntl
 import importlib.util
 import os
 from pathlib import Path
 import signal
+import selectors
 import subprocess
 import sys
 import tempfile
@@ -11,6 +13,74 @@ from unittest import mock
 
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_serializes_scoped_publishers_and_releases_after_exit(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock = Path(scratch) / "publication.lock"
+            state = Path(scratch) / ".publish.lock"
+            supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
+            fixture = (
+                "import os,pathlib,sys; p=pathlib.Path(sys.argv[1]); p.mkdir(); "
+                "print('publishing',flush=True); sys.stdin.buffer.read(1); p.rmdir()"
+            )
+            command = [sys.executable, supervisor, "5", "0.1", "--lock", str(lock),
+                       sys.executable, "-c", fixture, str(state)]
+            first = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True)
+            second = None
+            try:
+                self.assertEqual(first.stdout.readline().strip(), "publishing")
+                second = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, text=True)
+                # The second real mkdir publisher must remain queued, not fail
+                # EEXIST or enter publication while the first owns the state root.
+                with selectors.DefaultSelector() as selector:
+                    selector.register(second.stdout, selectors.EVENT_READ)
+                    self.assertEqual(selector.select(timeout=0.2), [])
+                _, stderr = first.communicate("x", timeout=5)
+                self.assertEqual(first.returncode, 0, stderr)
+                stdout, stderr = second.communicate("x", timeout=5)
+                self.assertEqual(second.returncode, 0, stderr)
+                self.assertEqual(stdout.strip(), "publishing")
+                self.assertFalse(state.exists())
+                self.assertTrue(lock.exists())  # Never unlink the flock inode.
+            finally:
+                for process in (first, second):
+                    if process is not None:
+                        if process.poll() is None:
+                            process.kill()
+                        process.communicate(timeout=10)
+
+    def test_lock_wait_counts_toward_deadline_and_names_lock(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock_path = Path(scratch) / "publication.lock"
+            entered = Path(scratch) / "entered"
+            command = [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
+                       "0.2", "0.1", "--lock", str(lock_path), sys.executable, "-c",
+                       "import pathlib,sys; pathlib.Path(sys.argv[1]).touch()", str(entered)]
+            with lock_path.open("a") as holder:
+                fcntl.flock(holder, fcntl.LOCK_EX)
+                result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 124, result.stderr)
+                self.assertIn("waiting for another publication", result.stderr)
+                self.assertIn(str(lock_path), result.stderr)
+                self.assertFalse(entered.exists())
+            # No stale lock recovery after either the holder or timed-out waiter exits.
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(entered.exists())
+
+    def test_crashed_publisher_does_not_leave_admission_locked(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock_path = Path(scratch) / "publication.lock"
+            supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
+            for code in (7, 0):
+                result = subprocess.run(
+                    [sys.executable, supervisor, "2", "0.1", "--lock", str(lock_path),
+                     sys.executable, "-c", f"import os; os._exit({code})"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                self.assertEqual(result.returncode, code, result.stderr)
+
     def test_signal_during_wait_overrides_direct_child_success(self):
         spec = importlib.util.spec_from_file_location(
             "editor_view_supervisor", Path(__file__).with_name("editor-view-supervisor.py")

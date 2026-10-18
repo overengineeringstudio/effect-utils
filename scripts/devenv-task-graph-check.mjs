@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
+import { posix } from 'node:path'
 
 const root = process.argv[2]
 if (root === undefined) {
@@ -663,8 +664,8 @@ ok({
   name: 'both Playwright lanes depend on one canonical union publisher',
 })
 
-// Publishers sharing an editor state root fail fast on its `.publish.lock` (no waiting, no
-// theft), so any two publishers one entrypoint schedules together must be ordered by an edge.
+// Distinct package views can still share one state root (all @overeng packages
+// use packages/.editor-view). Unordered publishers need the same bounded flock admission.
 const editorPublishers = [...dependencies.keys()].filter(
   (name) =>
     name === 'buck2:editor:bootstrap' ||
@@ -685,16 +686,26 @@ const closureOf = (start) => {
   closures.set(start, seen)
   return seen
 }
-const publisherScopes = new Map(
-  editorPublishers.map((name) => {
-    const command = tasks.get(name)?.command
-    const body =
-      typeof command === 'string' && existsSync(command) === true
-        ? readFileSync(command, 'utf8')
-        : ''
-    return [name, JSON.parse(body.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]')]
-  }),
-)
+const publisherStateRoots = new Map()
+const publisherAdmissionLocks = new Map()
+for (const name of editorPublishers) {
+  const command = tasks.get(name)?.command
+  const body =
+    typeof command === 'string' && existsSync(command) === true ? readFileSync(command, 'utf8') : ''
+  const packages = JSON.parse(body.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]')
+  publisherStateRoots.set(
+    name,
+    packages.map((path) =>
+      path === '.' ? '.editor-view' : posix.join(path, '..', '..', '.editor-view'),
+    ),
+  )
+  publisherAdmissionLocks.set(
+    name,
+    /editor-view-supervisor\.py" 300 5\s+\\\s+--lock "\$root\/\.devenv\/editor-view-publication\.lock"/u.test(
+      body,
+    ),
+  )
+}
 const unorderedPublishers = []
 for (const entrypoint of dependencies.keys()) {
   const scheduled = editorPublishers.filter((publisher) => closureOf(entrypoint).has(publisher))
@@ -703,10 +714,12 @@ for (const entrypoint of dependencies.keys()) {
       if (
         closureOf(left).has(right) === false &&
         closureOf(right).has(left) === false &&
-        (publisherScopes.get(left).length === 0 ||
-          publisherScopes.get(right).length === 0 ||
-          publisherScopes.get(left).some((path) => publisherScopes.get(right).includes(path)) ===
-            true)
+        (publisherStateRoots.get(left).length === 0 ||
+          publisherStateRoots.get(right).length === 0 ||
+          publisherStateRoots
+            .get(left)
+            .some((path) => publisherStateRoots.get(right).includes(path)) === true) &&
+        (publisherAdmissionLocks.get(left) !== true || publisherAdmissionLocks.get(right) !== true)
       )
         unorderedPublishers.push(`${entrypoint}: ${left} || ${right}`)
 }
@@ -719,7 +732,7 @@ for (const name of dependencies.keys()) {
 }
 ok({
   condition: unorderedPublishers.length === 0,
-  name: 'no entrypoint co-schedules two editor publishers without an ordering edge',
+  name: 'co-scheduled publishers sharing state roots have an ordering edge or bounded flock admission',
   detail: unorderedPublishers.join('; '),
 })
 

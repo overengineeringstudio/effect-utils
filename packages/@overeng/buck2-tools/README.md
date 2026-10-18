@@ -23,6 +23,24 @@ operate on the complete current registry. The exact-token
 publication lock. These tasks require a real composed megarepo workspace and
 are not global check dependencies.
 
+Scoped devenv publishers retain their explicit consumer sets; Storybook builds do
+not publish the whole workspace. Different `packages/@overeng/*` consumers still
+share `packages/.editor-view/.publish.lock`, so task invocations queue on the
+per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
+The supervisor uses a blocking kernel `flock`, without polling or lock theft,
+**inside each invocation's existing 300 s deadline** (plus 5 s kill grace).
+A waiter that exhausts that deadline fails closed and names the admission lock
+and its wait for another publication. The supervisor retains ownership through
+process-group cleanup; process exit releases it automatically. The persistent
+flock file must not be unlinked while publishers are active.
+
+This deliberately serializes task invocations, not private candidates within one
+batch, and never adds unrelated package views to a standalone request. It leaves
+the publisher's state-root lock and exact-token recovery contract unchanged for
+direct CLI/API callers. The admission lock precedes all state-root and content-store
+locks, so it does not change their ordering. Per-package publication locks would
+not protect shared state-root inventory, pointer commits, and retention metadata.
+
 Snapshot identity is computed from the admitted inputs and all declared roots
 **before copying**. An unchanged publication validates and reuses the immutable
 store entry without writing payloads, pointers, retention records, or the package

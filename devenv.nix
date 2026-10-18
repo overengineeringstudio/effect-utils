@@ -708,8 +708,12 @@ let
       ${publishBuckCapabilities}
       # Bound the whole authority/build/publication process tree, including synchronous
       # filesystem work and lock waits that an in-process JS timer cannot interrupt.
+      # Scoped consumers share packages/.editor-view: queue whole invocations
+      # on a per-worktree flock without expanding their requested package sets.
+      # Admission waits are inside the same 300s process-tree deadline.
       status=0
       ${pkgs.python3}/bin/python "$root/scripts/editor-view-supervisor.py" 300 5 \
+        --lock "$root/.devenv/editor-view-publication.lock" \
         ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
         --workspace-root "$root" \
