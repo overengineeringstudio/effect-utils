@@ -32,6 +32,16 @@ changes to transitive workspace source, declarations, or dependency bytes still
 select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
 
+Root publication also converges the authority manifest's package-local dependency
+topology: real `node_modules` directories identified by a regular `.modules.yaml`
+or dependency symlinks into the root `node_modules/.pnpm` store are renamed into
+`.editor-view/.legacy/importer-*` before root first-hop cutover. Their bytes are
+retained, not deleted; unselected importers then use normal parent resolution
+through the root view. Existing first-hop symlinks are never traversed or moved.
+Unidentified real directories fail publication before changing the root pointer;
+resolve their ownership explicitly rather than discarding them. Retirement also
+recognizes already-dangling pnpm links, so rerunning bootstrap repairs old residue.
+
 Batch publication prepares up to four private candidates concurrently and
 serializes commits within each editor state root. Fingerprint requests within
 each TypeScript process queue one child at a time, including independent roots.

@@ -2375,6 +2375,62 @@ const describeIdentity = (path: string): string => {
   return `${status.dev}:${status.ino}:${status.mode}`
 }
 
+/** Remove only positively identified pnpm importers; never traverse publisher first hops. */
+const retireLegacyImporters = ({
+  paths,
+  packages,
+  token,
+}: {
+  paths: ViewPaths
+  packages: readonly string[]
+  token: string
+}): void => {
+  const virtualStore = join(paths.repoRoot, 'node_modules', '.pnpm')
+  const pending: { path: string; identity: string; retained: string }[] = []
+  for (const packagePath of packages) {
+    if (packagePath === '.') continue
+    const path = join(paths.repoRoot, packagePath, 'node_modules')
+    if (pathExists(path) === false) continue
+    const status = lstatSync(path)
+    // Selected editor views own their first-hop symlinks, including dangling ones.
+    if (status.isSymbolicLink() === true) continue
+    if (status.isDirectory() === false)
+      fail(`ambiguous package-local node_modules ownership: ${path}`)
+    const marker = join(path, '.modules.yaml')
+    let pnpm = pathExists(marker) === true && lstatSync(marker).isFile() === true
+    const entries = readdirSync(path).flatMap((name) => {
+      const entry = join(path, name)
+      return name.startsWith('@') && lstatSync(entry).isDirectory() === true
+        ? readdirSync(entry).map((child) => join(entry, child))
+        : [entry]
+    })
+    for (const entry of entries) {
+      if (lstatSync(entry).isSymbolicLink() === false) continue
+      // Lexical resolution also recognizes links after the root store has already gone.
+      const target = resolve(dirname(entry), readlinkSync(entry))
+      if (target !== virtualStore && isWithin({ root: virtualStore, candidate: target }) === true)
+        pnpm = true
+    }
+    if (pnpm === false) fail(`ambiguous package-local node_modules ownership: ${path}`)
+    pending.push({
+      path,
+      identity: describeIdentity(path),
+      retained: join(paths.legacyDir, `importer-${encodeURIComponent(packagePath)}-${token}`),
+    })
+  }
+  // Classify the whole workspace before moving anything. Keep bytes in the same
+  // legacy state as first-hop adoption, without installing another package view.
+  if (pending.length === 0) return
+  ensureRealDirectory({ path: paths.legacyDir, field: 'legacy directory' })
+  for (const entry of pending) {
+    if (describeIdentity(entry.path) !== entry.identity)
+      fail(`package-local node_modules changed during retirement: ${entry.path}`)
+    renameSync(entry.path, entry.retained)
+    if (describeIdentity(entry.retained) !== entry.identity)
+      fail(`legacy importer retirement did not retain the directory: ${entry.retained}`)
+  }
+}
+
 const adoptFirstHop = ({
   paths,
   mv,
@@ -2584,7 +2640,7 @@ const publishEditorViewCoordinated = async ({
   }
   requireRecordIdentity(options)
   const paths = makePaths(options)
-  validateWorkspaceDependencyAuthority({
+  const authority = validateWorkspaceDependencyAuthority({
     path: options.workspaceAuthority,
     repoRoot: paths.repoRoot,
     packageName: options.package,
@@ -2991,6 +3047,8 @@ const publishEditorViewCoordinated = async ({
         pathExists(paths.firstHop) === false ||
         lstatSync(paths.firstHop).isSymbolicLink() === false ||
         readlinkSync(paths.firstHop) !== paths.firstHopTarget
+      if (options.package === '.')
+        retireLegacyImporters({ paths, packages: authority.requiredPackages, token })
       publishCurrentPointer({ paths, identity, token })
       adoptFirstHop({ paths, mv: options.mv, token })
       if (pointerChanged === true || firstHopChanged === true)
