@@ -8,7 +8,7 @@ import { closeApi, runTsVirtualProject } from './ts-api.ts'
 
 /** A structural stand-in for the spawned child: liveness plus the exit event, no process. */
 const fakeChild = (exitCode: number | null): JoinableChildProcess =>
-  Object.assign(new EventEmitter(), { exitCode }) as JoinableChildProcess
+  Object.assign(new EventEmitter(), { exitCode, kill: () => true })
 
 describe('closeApi', () => {
   it('does not resolve until the child has exited', async () => {
@@ -60,6 +60,41 @@ describe('closeApi', () => {
 
     await closeApi(api)
     expect(closed).toBe(true)
+  })
+
+  it('terminates a child when closing the client never resolves', async () => {
+    const signals: NodeJS.Signals[] = []
+    const child = Object.assign(new EventEmitter(), {
+      exitCode: null,
+      signalCode: null as NodeJS.Signals | null,
+      kill: (signal: NodeJS.Signals) => {
+        signals.push(signal)
+        child.signalCode = signal
+        child.emit('exit', null, signal)
+        return true
+      },
+    })
+    await expect(
+      closeApi(
+        { close: () => new Promise<void>(() => {}), client: { process: child } },
+        10,
+      ),
+    ).rejects.toMatchObject({ _tag: 'TsApiTimeoutError', stage: 'close', timeoutMs: 10 })
+    expect(signals).toEqual(['SIGTERM'])
+    expect(child.listenerCount('exit')).toBe(0)
+  })
+
+  it('does not wait for another exit event after a signal exit', async () => {
+    const child = Object.assign(fakeChild(null), { signalCode: 'SIGTERM' as const })
+    let closed = false
+    await closeApi({
+      close: async () => {
+        closed = true
+      },
+      client: { process: child },
+    })
+    expect(closed).toBe(true)
+    expect(child.listenerCount('exit')).toBe(0)
   })
 })
 

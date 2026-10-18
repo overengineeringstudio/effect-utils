@@ -13,6 +13,7 @@ import {
   type PackageInfo,
 } from '../mod.ts'
 import type { TsFileAnalysisSession } from '../node/ts-api.ts'
+import { runTsFileAnalysis } from '../node/ts-api.ts'
 import { defineCatalog } from './catalog.ts'
 import {
   createNodePackageJsonValidationRuntime,
@@ -1000,6 +1001,66 @@ describe('packageJson', () => {
       message: expect.stringContaining('fake compiler failure'),
       rule: 'package-json-export-environment-type-proof',
     })
+  })
+
+  it('reports a stalled TypeScript API stage and kills the unresponsive server', async () => {
+    const repo = createTempRepo('packages/pkg')
+    const packageDir = repo.memberDirs['packages/pkg']!
+    const server = path.join(repo.repoRoot, 'unresponsive-tsgo')
+    const pidFile = path.join(repo.repoRoot, 'server.pid')
+    fs.mkdirSync(path.join(packageDir, 'src'))
+    fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+    // Accept stdin without answering JSON-RPC. Ignoring TERM exercises the KILL escalation too.
+    fs.writeFileSync(
+      server,
+      [
+        '#!/usr/bin/env bash',
+        "trap '' TERM",
+        `printf '%s' "$$" > ${JSON.stringify(pidFile)}`,
+        'while IFS= read -r line; do :; done',
+      ].join('\n'),
+    )
+    fs.chmodSync(server, 0o755)
+    const originalServer = process.env.GENIE_TYPESCRIPT_API_SERVER
+    process.env.GENIE_TYPESCRIPT_API_SERVER = server
+    let pid: number | undefined
+    try {
+      const result = await createNodePackageJsonValidationRuntime({
+        runAnalysis: (args) => runTsFileAnalysis({ ...args, requestTimeoutMs: 500 }),
+      }).validateExportEnvironments({
+        cwd: repo.repoRoot,
+        location: 'packages/pkg',
+        packageName: '@test/package',
+        exports: { '.': './src/mod.ts' },
+        contracts: { '.': [{ environment: 'isomorphic-es2024', typeProof: 'strict' }] },
+      })
+      const childPid = Number(fs.readFileSync(pidFile, 'utf8'))
+      pid = childPid
+      expect(result.issues).toEqual([
+        {
+          severity: 'error',
+          packageName: '@test/package',
+          dependency: '.',
+          message: expect.stringContaining('TypeScript API stalled at updateSnapshot for 500 ms'),
+          rule: 'package-json-export-environment-analysis',
+        },
+      ])
+      expect(result.cache).toEqual({ hits: 0, misses: 0 })
+      expect(() => process.kill(childPid, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }))
+    } finally {
+      if (originalServer === undefined) delete process.env.GENIE_TYPESCRIPT_API_SERVER
+      else process.env.GENIE_TYPESCRIPT_API_SERVER = originalServer
+      // Also reap the deliberately broken server if an assertion or an earlier operation failed.
+      if (pid === undefined && fs.existsSync(pidFile)) pid = Number(fs.readFileSync(pidFile, 'utf8'))
+      if (pid !== undefined) {
+        try {
+          process.kill(pid, 'SIGKILL')
+        } catch (error) {
+          if (!(error instanceof Error) || !('code' in error) || error.code !== 'ESRCH') throw error
+        }
+      }
+      fs.rmSync(repo.repoRoot, { recursive: true, force: true })
+    }
   })
 
   it('reports missing strict type proof compilers as validation issues', async () => {
