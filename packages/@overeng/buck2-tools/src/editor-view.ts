@@ -897,6 +897,11 @@ export const defaultEditorViewName = (packagePath: string): string => {
   return requireViewName(segments[segments.length - 1] ?? normalized)
 }
 
+const packageEditorRoot = (repoRoot: string, packagePath: string): string =>
+  packagePath === '.'
+    ? resolve(repoRoot, '.editor-view')
+    : resolve(repoRoot, packagePath, '..', '..', '.editor-view')
+
 const makePaths = (options: EditorViewOptions): ViewPaths => {
   const viewName = requireViewName(options.viewName)
   if (
@@ -919,10 +924,7 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
   requireDirectory({ path: packageDir, field: 'package directory' })
   if (realpathSync(packageDir) !== packageDir)
     fail(`package path must not contain symbolic links: ${packageDir}`)
-  const editorRoot =
-    packagePath === '.'
-      ? resolve(repoRoot, '.editor-view')
-      : resolve(packageDir, '..', '..', '.editor-view')
+  const editorRoot = packageEditorRoot(repoRoot, packagePath)
   if (isWithin({ root: repoRoot, candidate: editorRoot }) === false)
     fail(`editor root escapes repository: ${editorRoot}`)
   // The consumer cache is the one path a caller supplies absolutely, so it can
@@ -2375,6 +2377,31 @@ const describeIdentity = (path: string): string => {
   return `${status.dev}:${status.ino}:${status.mode}`
 }
 
+const importerPublicationRoots = ({
+  repoRoot,
+  packages,
+}: {
+  repoRoot: string
+  packages: readonly string[]
+}): readonly { readonly editorRoot: string; readonly packagePath: string }[] => {
+  const roots = new Map<string, string>()
+  for (const packagePath of packages) {
+    if (packagePath === '.') continue
+    const editorRoot = packageEditorRoot(repoRoot, packagePath)
+    if (isWithin({ root: repoRoot, candidate: editorRoot }) === false)
+      fail(`importer editor root escapes repository: ${editorRoot}`)
+    roots.set(editorRoot, packagePath)
+  }
+  return Array.from(roots, ([editorRoot, packagePath]) => ({ editorRoot, packagePath })).toSorted(
+    (left, right) => compareBytes({ left: left.editorRoot, right: right.editorRoot }),
+  )
+}
+
+const ambiguousImporter = (path: string): never =>
+  fail(
+    `ambiguous package-local node_modules ownership: ${path}; move this path outside the workspace, or delete it only if you have confirmed it is cache-only, then rerun bootstrap`,
+  )
+
 /** Remove only positively identified pnpm importers; never traverse publisher first hops. */
 const retireLegacyImporters = ({
   paths,
@@ -2395,7 +2422,7 @@ const retireLegacyImporters = ({
     // Selected editor views own their first-hop symlinks, including dangling ones.
     if (status.isSymbolicLink() === true) continue
     if (status.isDirectory() === false)
-      fail(`ambiguous package-local node_modules ownership: ${path}`)
+      ambiguousImporter(path)
     const marker = join(path, '.modules.yaml')
     let pnpm = pathExists(marker) === true && lstatSync(marker).isFile() === true
     const entries = readdirSync(path).flatMap((name) => {
@@ -2411,7 +2438,7 @@ const retireLegacyImporters = ({
       if (target !== virtualStore && isWithin({ root: virtualStore, candidate: target }) === true)
         pnpm = true
     }
-    if (pnpm === false) fail(`ambiguous package-local node_modules ownership: ${path}`)
+    if (pnpm === false) ambiguousImporter(path)
     pending.push({
       path,
       identity: describeIdentity(path),
@@ -2607,10 +2634,12 @@ const budgetReservationBytes = ({
 const publishEditorViewCoordinated = async ({
   options,
   coordinator,
+  heldStateRoots,
   onContentChanged,
 }: {
   options: EditorViewOptions
   coordinator?: PublicationCoordinator
+  heldStateRoots?: ReadonlySet<string>
   onContentChanged: () => void
 }): Promise<EditorViewRecord> => {
   const startedAtMs = performance.timeOrigin + performance.now()
@@ -2662,6 +2691,7 @@ const publishEditorViewCoordinated = async ({
       editorRoot: paths.editorRoot,
       recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
     }))
+  const importerLocks: { readonly path: string; readonly token: string }[] = []
   // A batch shares its exclusive state-root lock, not its private candidate/pointer names.
   const token = tokenSafe(coordinator === undefined ? lock.token : randomUUID())
   let candidate: string | undefined
@@ -2690,6 +2720,31 @@ const publishEditorViewCoordinated = async ({
     }))
   }
   try {
+    if (options.package === '.') {
+      // Root first, then sorted package state roots. A batch already owns the
+      // entire ordered lock set before starting workers, so never reacquire it.
+      for (const { editorRoot, packagePath } of importerPublicationRoots({
+        repoRoot: paths.repoRoot,
+        packages: authority.requiredPackages,
+      })) {
+        if (editorRoot === paths.editorRoot) continue
+        if (heldStateRoots !== undefined) {
+          if (heldStateRoots.has(editorRoot) === false)
+            fail(
+              `batch importer authority changed after lock acquisition: ${editorRoot}; retry publication`,
+            )
+          continue
+        }
+        ensureRealDirectory({ path: editorRoot, field: 'importer editor root' })
+        ensureRealDirectory({ path: join(editorRoot, '.store'), field: 'editor snapshot store' })
+        // eslint-disable-next-line no-await-in-loop -- State-root locks must be acquired in order.
+        const importerLock = await acquirePublicationLock({
+          editorRoot,
+          recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${packagePath}`,
+        })
+        importerLocks.push(importerLock)
+      }
+    }
     enterPhase('fingerprint')
     const evictionMarker = join(paths.editorRoot, `.evicted-${paths.viewName}.json`)
     if (pathExists(evictionMarker) === true) {
@@ -3146,6 +3201,7 @@ const publishEditorViewCoordinated = async ({
       })
     }
     workers.delete(token)
+    for (const importerLock of importerLocks.toReversed()) releaseLock(importerLock)
     if (coordinator === undefined) releaseLock(lock)
   }
 }
@@ -3187,6 +3243,8 @@ export const publishEditorViews = async ({
   const identities = new Set<string>()
   const results: PromiseSettledResult<EditorViewRecord>[] = []
   const changedStores = new Set<string>()
+  const lockRequests = new Map<string, string>()
+  const repositoryRoots = new Set<string>()
   let next = 0
   try {
     for (const option of options) {
@@ -3195,17 +3253,47 @@ export const publishEditorViews = async ({
       if (identities.has(identity) === true)
         fail(`duplicate batch publication identity: ${identity}`)
       identities.add(identity)
-      if (coordinators.has(paths.editorRoot) === true) continue
       ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
       ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
-      // Establish each root coordinator before starting any batch publication workers.
-      // eslint-disable-next-line no-await-in-loop
+      lockRequests.set(
+        paths.editorRoot,
+        `recover-lock --repo-root ${paths.repoRoot} --package ${option.package}`,
+      )
+      if (option.package !== '.') continue
+      repositoryRoots.add(paths.editorRoot)
+      const authority = validateWorkspaceDependencyAuthority({
+        path: option.workspaceAuthority,
+        repoRoot: paths.repoRoot,
+        packageName: option.package,
+      })
+      for (const { editorRoot, packagePath } of importerPublicationRoots({
+        repoRoot: paths.repoRoot,
+        packages: authority.requiredPackages,
+      })) {
+        if (lockRequests.has(editorRoot) === false)
+          lockRequests.set(
+            editorRoot,
+            `recover-lock --repo-root ${paths.repoRoot} --package ${packagePath}`,
+          )
+      }
+    }
+    const orderedRoots = Array.from(lockRequests.keys()).toSorted((left, right) => {
+      const leftRoot = repositoryRoots.has(left)
+      const rightRoot = repositoryRoots.has(right)
+      if (leftRoot !== rightRoot) return leftRoot === true ? -1 : 1
+      return compareBytes({ left, right })
+    })
+    for (const editorRoot of orderedRoots) {
+      ensureRealDirectory({ path: editorRoot, field: 'editor root' })
+      ensureRealDirectory({ path: join(editorRoot, '.store'), field: 'editor snapshot store' })
+      // Acquire the complete lock set root-first, even when request order is reversed.
+      // eslint-disable-next-line no-await-in-loop -- State-root locks must be acquired in order.
       const lock = await acquirePublicationLock({
-        editorRoot: paths.editorRoot,
-        recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${option.package}`,
+        editorRoot,
+        recoveryCommand: lockRequests.get(editorRoot) ?? fail('batch recovery command is absent'),
       })
       let committed = Promise.resolve()
-      coordinators.set(paths.editorRoot, {
+      coordinators.set(editorRoot, {
         lock,
         workers,
         commit: (operation) => {
@@ -3218,6 +3306,7 @@ export const publishEditorViews = async ({
         },
       })
     }
+    const heldStateRoots = new Set(coordinators.keys())
     const worker = async (): Promise<void> => {
       while (next < options.length) {
         const index = next++
@@ -3240,6 +3329,7 @@ export const publishEditorViews = async ({
           const record = await publishEditorViewCoordinated({
             options: option,
             coordinator,
+            heldStateRoots,
             onContentChanged: () => {
               changedStores.add(makePaths(option).contentStore)
             },
@@ -3278,7 +3368,7 @@ export const publishEditorViews = async ({
       return result.value
     })
   } finally {
-    for (const { lock } of coordinators.values()) releaseLock(lock)
+    for (const { lock } of Array.from(coordinators.values()).toReversed()) releaseLock(lock)
   }
 }
 

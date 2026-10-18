@@ -913,7 +913,7 @@ describe('editor view publisher', () => {
     }
   })
 
-  for (const residue of ['link', 'marker', 'ambiguous', 'published'] as const) {
+  for (const residue of ['link', 'marker', 'ambiguous', 'published', 'locked', 'batch'] as const) {
     it(`retires only pnpm-owned unselected importers at root cutover (${residue})`, async () => {
       const fixture = makeFixture()
       try {
@@ -937,7 +937,7 @@ describe('editor view publisher', () => {
             '../../../../node_modules/.pnpm/effect@4.0.3/node_modules/effect',
             join(importer, 'effect'),
           )
-        if (residue === 'marker')
+        if (residue === 'marker' || residue === 'locked' || residue === 'batch')
           writeFileSync(join(importer, '.modules.yaml'), 'layoutVersion: 5\n')
         if (residue === 'published') await publishEditorView(fixture.options)
         const publishedTarget = residue === 'published' ? readlinkSync(importer) : undefined
@@ -956,6 +956,46 @@ describe('editor view publisher', () => {
           cell: 'effect_utils',
           target: '//:editor_inputs',
           consumerCache: join(fixture.root, '.devenv', 'vite-cache', 'root'),
+        }
+        if (residue === 'locked') {
+          const packageLock = join(fixture.editorRoot, '.publish.lock')
+          mkdirSync(packageLock, { recursive: true })
+          writeFileSync(
+            join(packageLock, 'owner.json'),
+            '{"schema":"effect-utils/editor-view-lock/v1","token":"held-package-publisher","pid":1}\n',
+          )
+          // Normal live publication contention fails closed rather than waiting.
+          // The importer cannot be classified or moved while its publisher owns it.
+          await expect(publishEditorView(options)).rejects.toThrow('publication lock exists')
+          expect(statSync(importer, { bigint: true }).ino).toBe(legacyIdentity)
+          expect(lstatSync(join(fixture.root, 'node_modules')).isDirectory()).toBe(true)
+          expect(existsSync(join(fixture.root, '.editor-view', '.publish.lock'))).toBe(false)
+          expect(readFileSync(join(packageLock, 'owner.json'), 'utf8')).toContain(
+            'held-package-publisher',
+          )
+          rmSync(packageLock, { recursive: true })
+          await publishEditorView(options)
+          expect(existsSync(importer)).toBe(false)
+          return
+        }
+        if (residue === 'batch') {
+          const acquired: string[] = []
+          fsMocks.mkdirSync.mockImplementation((...args) => {
+            const path = String(args[0])
+            if (path.endsWith('/.publish.lock') === true) acquired.push(path)
+            return nativeFs.mkdirSync(...args)
+          })
+          // Reverse request order must still lock root first and reuse the
+          // package lock already owned by the batch, without self-contention.
+          await publishEditorViews({ options: [fixture.options, options] })
+          expect(acquired).toEqual([
+            join(fixture.root, '.editor-view', '.publish.lock'),
+            join(fixture.editorRoot, '.publish.lock'),
+          ])
+          expect(lstatSync(importer).isSymbolicLink()).toBe(true)
+          expect(existsSync(join(fixture.root, '.editor-view', '.publish.lock'))).toBe(false)
+          expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+          return
         }
         if (residue === 'ambiguous') {
           await expect(publishEditorView(options)).rejects.toThrow(
