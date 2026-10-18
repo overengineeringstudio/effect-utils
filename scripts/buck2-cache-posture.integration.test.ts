@@ -501,6 +501,18 @@ describe('fresh-root remote build proof', () => {
     expect(result.exitCode).toBe(0)
   })
 
+  it('accepts noncacheable runtime module copies alongside remote compute hits', async () => {
+    const result = await replay([
+      descriptorHit,
+      { category: 'tsgo_emit', executionKind: 3 },
+      ...[1, 7, 8, 10].map((executionKind) => ({
+        category: 'runtime_module',
+        executionKind,
+      })),
+    ])
+    expect(result.exitCode).toBe(0)
+  })
+
   // Each replay gets the runner's normal hang guard, not one shared wall-clock
   // budget for 18 subprocess trees. Await the actual exit without blocking Bun.
   for (const category of ['tsgo_emit', 'package_bin_artifact', 'unknown_category']) {
