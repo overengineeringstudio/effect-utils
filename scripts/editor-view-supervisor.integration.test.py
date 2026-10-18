@@ -22,7 +22,7 @@ class PublicationSupervisorTest(unittest.TestCase):
                 "import os,pathlib,sys; p=pathlib.Path(sys.argv[1]); p.mkdir(); "
                 "print('publishing',flush=True); sys.stdin.buffer.read(1); p.rmdir()"
             )
-            command = [sys.executable, supervisor, "5", "0.1", "--lock", str(lock),
+            command = [sys.executable, supervisor, "none", "0.1", "--lock", str(lock),
                        sys.executable, "-c", fixture, str(state)]
             first = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE, text=True)
@@ -102,7 +102,7 @@ class PublicationSupervisorTest(unittest.TestCase):
                  mock.patch.object(supervisor.os, "killpg", side_effect=ProcessLookupError) as kill, \
                  mock.patch.object(supervisor.os, "waitpid", side_effect=ChildProcessError), \
                  mock.patch.object(supervisor.time, "sleep"):
-                self.assertEqual(supervisor.supervise(["fixture"], 2, 0.1), 143)
+                self.assertEqual(supervisor.supervise(["fixture"], None, 0.1), 143)
                 self.assertEqual(kill.call_args_list, [
                     mock.call(child.pid, signal.SIGTERM),
                     mock.call(child.pid, signal.SIGKILL),
@@ -147,10 +147,11 @@ time.sleep(60)
                     os.kill(int(pid), 0)
 
     def test_preserves_success_and_failure(self):
-        for code in (0, 7):
-            result = subprocess.run([sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
-                                     "2", "0.1", sys.executable, "-c", f"raise SystemExit({code})"], timeout=5)
-            self.assertEqual(result.returncode, code)
+        for deadline in ("2", "none"):
+            for code in (0, 7):
+                result = subprocess.run([sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
+                                         deadline, "0.1", sys.executable, "-c", f"raise SystemExit({code})"], timeout=5)
+                self.assertEqual(result.returncode, code)
 
 
 if __name__ == "__main__":

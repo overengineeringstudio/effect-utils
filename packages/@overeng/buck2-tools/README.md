@@ -36,11 +36,14 @@ the aggregate's wider package set. Existing batch publication acquires each
 state-root lock once and prepares up to four consumer views concurrently.
 
 Bootstrap and ordinary scoped publication keep their **300 s** deadline.
-Aggregate batch deadlines are calculated at Nix evaluation time from the selected
-consumers and `genie/ci-workflow/test-scheduling.json`'s `editorViewSeconds`
-(seconds; the committed measurement input records `baselineRun: 37886131764`).
-Missing consumers use the **maximum measured estimate**, currently 65 s; this is
-an explicit fallback, not a new measurement or an edit to that input file.
+The non-required `storybook:build`, `netlify:stage`, `netlify:deploy`, and
+`test:notion-integration` batch publications have **no total deadline**.
+On dev5, cold publication of 13 consumers takes about 25–30 minutes and a single
+consumer's verification can take 670 s; the previous 944 s Netlify cap killed
+healthy work. These batches retain supervisor ownership and emit per-phase JSON
+progress with `package`, `phase`, and `elapsedMs`.
+
+Only `storybook:test` retains its derived **380 s** publication cap:
 
 ```text
 deadlineSeconds = ceil(sum(measuredSeconds or maxMeasuredFallbackSeconds) / 4)
@@ -48,38 +51,33 @@ deadlineSeconds = ceil(sum(measuredSeconds or maxMeasuredFallbackSeconds) / 4)
 maximumSeconds = 1200
 ```
 
-The four workers match `publishEditorViews`. The separately named 4x headroom
-budgets for dev5's IO-heavy full-backing-root verification, which exceeded 300 s
-both cold and warm; 120 s is reserved for authority/build work. Evaluation fails
-if the derived deadline exceeds the reviewed 1200 s maximum, rather than silently
-clamping or allowing an unbounded process. Current budgets are:
+The measurements come from `genie/ci-workflow/test-scheduling.json`'s
+`editorViewSeconds` (`baselineRun: 37886131764`). The four play-test consumers
+currently use the maximum measured fallback of 65 s each (260 s total), because
+`effect-schema-form-aria`, `effect-rpc-explorer-react`, `devbar`, and `meters`
+have no measurements. The four workers match `publishEditorViews`.
+Only this capped batch embeds budget inputs and missing-consumer metadata;
+the graph guard independently recomputes its deadline and checks that all other
+aggregate publications remain uncapped.
 
-| Aggregate                           | Consumers | Estimated seconds including fallback | Deadline |
-| ----------------------------------- | --------: | -----------------------------------: | -------: |
-| Storybook build                     |        14 |                                  863 |    984 s |
-| Storybook play tests                |         4 |                                  260 |    380 s |
-| Netlify stage/deploy (shared batch) |        13 |                                  823 |    944 s |
-| Notion integration                  |         5 |                                  321 |    444 s |
-
-The Storybook-build and Netlify fallbacks cover `tui-react`, `effect-react`,
-`effect-schema-form-aria`, `react-inspector`, `notion-react`, `gh-ci-utils`,
-`effect-rpc-explorer-react`, `devbar`, and `meters`. Play-test fallbacks cover
-`effect-schema-form-aria`, `effect-rpc-explorer-react`, `devbar`, and `meters`;
-Notion fallbacks cover `notion-effect-client` and `notion-react`.
-Each evaluated batch command embeds its formula inputs and missing-consumer list
-in comments; the graph guard independently recomputes the deadline and reports
-those gaps. These conservative budgets require calibration with the timed dev5
-batch and its per-consumer timings; they are not measured completion guarantees.
+There is no no-progress watchdog: the supervisor currently inherits child output
+rather than reading it. Safely forwarding and parsing streams without blocking
+on partial lines, handling EOF and descendant-held pipes during cancellation,
+and testing those lifecycle paths exceeds the small-change threshold. A future
+watchdog would incrementally inspect forwarded JSON lines, reset one named 600 s
+window only on `package`/`phase` progress, and use the existing process-group
+TERM/KILL cleanup on expiry, with separate handling for queued lock admission.
 
 Scoped devenv publishers retain their explicit consumer sets; Storybook builds do
 not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the
 per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
 The supervisor uses a blocking kernel `flock`, without polling or lock theft,
-**inside each invocation's deadline** (plus 5 s kill grace), including the
-derived aggregate budget or the unchanged scoped/bootstrap 300 s cap.
-A waiter that exhausts that deadline fails closed and names the admission lock
-and its wait for another publication. The supervisor retains ownership through
+with a **5 s kill grace** on interruption or deadline expiry. Scoped/bootstrap
+invocations include admission waits in their 300 s cap; Storybook play tests
+include them in the derived 380 s cap. Uncapped batches can wait without a total
+deadline. A capped waiter that exhausts its deadline fails closed and names the
+admission lock and its wait for another publication. The supervisor retains ownership through
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 

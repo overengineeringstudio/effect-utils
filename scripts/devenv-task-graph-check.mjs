@@ -700,7 +700,7 @@ ok({
     batchWorkerCount > 0 &&
     measuredPublicationEstimates.length > 0 &&
     measuredPublicationEstimates.every((seconds) => Number.isInteger(seconds) && seconds > 0),
-  name: 'aggregate publication budgets have positive measured seconds and the real batch worker count',
+  name: 'Storybook play-test publication budget has positive measured seconds and the real batch worker count',
 })
 const fallbackPublicationSeconds = Math.max(...measuredPublicationEstimates)
 for (const name of editorPublishers) {
@@ -708,8 +708,8 @@ for (const name of editorPublishers) {
   const body =
     typeof command === 'string' && existsSync(command) === true ? readFileSync(command, 'utf8') : ''
   const packages = JSON.parse(body.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]')
-  const actualDeadline = Number(body.match(/editor-view-supervisor\.py" (\d+) 5/u)?.[1])
-  if (name.startsWith('buck2:editor:publish:batch:') === true) {
+  const actualDeadline = body.match(/editor-view-supervisor\.py" (\d+|none) 5/u)?.[1]
+  if (name === 'buck2:editor:publish:batch:storybook:test') {
     const budget = JSON.parse(body.match(/# editor-view-batch-budget: ([^\n]+)/u)?.[1] ?? 'null')
     const missingConsumers = packages.filter(
       (path) => scheduling.editorViewSeconds[path] === undefined,
@@ -731,9 +731,9 @@ for (const name of editorPublishers) {
         budget.fallbackSeconds === fallbackPublicationSeconds &&
         budget.totalEstimateSeconds === totalEstimateSeconds &&
         budget.deadlineSeconds === expectedDeadline &&
-        actualDeadline === expectedDeadline &&
+        Number(actualDeadline) === expectedDeadline &&
         actualDeadline <= 1200,
-      name: `${name} derives its ${expectedDeadline}s deadline from selected consumers (maximum 1200s)`,
+      name: `${name} retains its derived ${expectedDeadline}s deadline (maximum 1200s)`,
     })
     ok({
       condition:
@@ -741,9 +741,15 @@ for (const name of editorPublishers) {
         JSON.stringify(missingConsumers.toSorted()),
       name: `${name} explicitly reports ${fallbackPublicationSeconds}s max-measured fallback consumers: ${missingConsumers.join(', ') || '(none)'}`,
     })
+  } else if (name.startsWith('buck2:editor:publish:batch:') === true) {
+    ok({
+      condition:
+        actualDeadline === 'none' && body.includes('# editor-view-batch-budget:') === false,
+      name: `${name} has no total publication deadline or unused budget metadata`,
+    })
   } else {
     ok({
-      condition: actualDeadline === 300,
+      condition: actualDeadline === '300',
       name: `${name} retains the 300s scoped/bootstrap publication cap`,
     })
   }
@@ -755,7 +761,7 @@ for (const name of editorPublishers) {
   )
   publisherAdmissionLocks.set(
     name,
-    /editor-view-supervisor\.py" \d+ 5\s+\\\s+--lock "\$root\/\.devenv\/editor-view-publication\.lock"/u.test(
+    /editor-view-supervisor\.py" (?:\d+|none) 5\s+\\\s+--lock "\$root\/\.devenv\/editor-view-publication\.lock"/u.test(
       body,
     ),
   )
@@ -1014,18 +1020,20 @@ ok({
 })
 ok({
   condition:
-    /if\s+publicationBudget\s*==\s*null\s+then\s+300\s+else\s+publicationBudget\.deadlineSeconds/u.test(
-      editorViewHelper,
+    editorViewHelper.includes('deadlineSeconds ? 300') &&
+    editorViewHelper.includes(
+      'if deadlineSeconds == null then "none" else toString deadlineSeconds',
     ) &&
-    editorViewHelper.includes('editor-view-supervisor.py" ${toString deadlineSeconds} 5') &&
-    editorViewHelper.includes('exceeded its ${toString deadlineSeconds}s total deadline') &&
-    source.includes('publicationBudget = editorViewBatchBudget packagePaths;') &&
-    /builtins\.div\s+\(\s*totalEstimateSeconds\s*\+\s*editorViewBatchWorkers\s*-\s*1\s*\)/u.test(
-      source,
+    editorViewHelper.includes('lib.optionalString (deadlineSeconds != null)') &&
+    source.includes(
+      'if group.name == "storybook:test" then editorViewBatchBudget packagePaths else null;',
+    ) &&
+    source.includes(
+      'deadlineSeconds = if publicationBudget == null then null else publicationBudget.deadlineSeconds;',
     ) &&
     source.includes('deadlineSeconds <= editorViewBatchMaximumSeconds') &&
     editorViewHelper.includes('exit "$status"'),
-  name: 'every authority/bootstrap/publication invocation has a fail-closed process-tree deadline',
+  name: 'publication supervision preserves scoped caps and only budgets the Storybook play-test aggregate',
 })
 
 const capabilityPublisherHelper = source.slice(

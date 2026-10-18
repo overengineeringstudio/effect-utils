@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Own the publication process group through unconditional deadline escalation."""
+"""Own publication admission and process-group cleanup, with optional deadlines."""
 import ctypes
 import fcntl
 import os
@@ -18,7 +18,7 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
     interrupted = []
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda number, _frame: interrupted.append(number))
-    expires = time.monotonic() + deadline
+    expires = time.monotonic() + deadline if deadline is not None else float("inf")
     while not interrupted and time.monotonic() < expires:
         try:
             result = child.wait(timeout=min(0.05, max(0.001, expires - time.monotonic())))
@@ -38,7 +38,8 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
             acquired = False
         if not acquired:
             print(f"Editor-view publication was waiting for another publication on lock {lock_path}.", file=sys.stderr, flush=True)
-    print(f"Editor-view publication exceeded its {deadline:g}s total deadline or was interrupted; terminating process group (grace {grace:g}s), publication failed.", file=sys.stderr, flush=True)
+    reason = "was interrupted" if interrupted else f"exceeded its {deadline:g}s total deadline"
+    print(f"Editor-view publication {reason}; terminating process group (grace {grace:g}s), publication failed.", file=sys.stderr, flush=True)
     def send(sig):
         try:
             os.killpg(child.pid, sig)
@@ -91,7 +92,9 @@ if __name__ == "__main__":
         os.close(ready_fd)
         os.set_inheritable(lock_fd, True)
         os.execvp(sys.argv[4], sys.argv[4:])
-    elif sys.argv[3] == "--lock":
-        sys.exit(supervise_locked(sys.argv[5:], float(sys.argv[1]), float(sys.argv[2]), sys.argv[4]))
     else:
-        sys.exit(supervise(sys.argv[3:], float(sys.argv[1]), float(sys.argv[2])))
+        deadline = None if sys.argv[1] == "none" else float(sys.argv[1])
+        if sys.argv[3] == "--lock":
+            sys.exit(supervise_locked(sys.argv[5:], deadline, float(sys.argv[2]), sys.argv[4]))
+        else:
+            sys.exit(supervise(sys.argv[3:], deadline, float(sys.argv[2])))
