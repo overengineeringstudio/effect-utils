@@ -143,7 +143,7 @@ fn open_at(parent: &File, name: &OsStr, flags: i32, mode: libc::mode_t) -> io::R
     // SAFETY: live borrowed descriptor and valid NUL-terminated name.
     let fd = unsafe {
         libc::openat(parent.as_raw_fd(), name.as_ptr(),
-            flags | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK, mode)
+            flags | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK, libc::c_uint::from(mode))
     };
     if fd < 0 {
         Err(io::Error::last_os_error())
