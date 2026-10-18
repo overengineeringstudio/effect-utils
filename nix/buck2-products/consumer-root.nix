@@ -100,6 +100,9 @@ let
     load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
     toolchain_alias(name = "rust", actual = "//buck2/toolchains:rust", visibility = ["PUBLIC"])
     toolchain_alias(name = "cxx", actual = "//buck2/toolchains:cxx", visibility = ["PUBLIC"])
+    # uquery visits Prelude's unreachable config//:none Cxx toolchain branch.
+    # Our Cxx toolchain has no default deps; both spellings use the same instance.
+    toolchain_alias(name = "cxx_no_default_deps", actual = "//buck2/toolchains:cxx", visibility = ["PUBLIC"])
     toolchain_alias(name = "go_bootstrap", actual = "//buck2/toolchains:go_bootstrap", visibility = ["PUBLIC"])
     toolchain_alias(name = "python_bootstrap", actual = "//buck2/toolchains:python_bootstrap", visibility = ["PUBLIC"])
     system_genrule_toolchain(name = "genrule", visibility = ["PUBLIC"])
