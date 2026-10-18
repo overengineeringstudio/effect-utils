@@ -388,6 +388,15 @@ fn main() {
 RUST
 cat > "$work/rust-fixture/build.rs" <<'RUST'
 fn main() {
+    if std::env::var_os("EXPECT_DECLARED_BUILD_SCRIPT_PATH").is_some() {
+        let path = std::env::var("PATH").expect("declared build-script PATH");
+        assert!(path.split(':').all(|entry| entry.starts_with("/nix/store/")), "{path}");
+        for tool in ["bash", "dirname", "realpath"] {
+            let version = std::process::Command::new(tool)
+                .arg("--version").output().expect("declared build-script tool");
+            assert!(version.status.success(), "{tool}");
+        }
+    }
     // Match rustversion's compiler probe, including its optional Cargo wrapper.
     let rustc = std::env::var_os("RUSTC").expect("RUSTC");
     assert!(std::env::var_os("RUSTC_WRAPPER").is_none_or(|value| value.is_empty()));
@@ -451,6 +460,7 @@ buildscript_run(
     buildscript_rule = ":build-script",
     manifest_dir = ":build-script",
     version = "0.1.0",
+    env = {"EXPECT_DECLARED_BUILD_SCRIPT_PATH": "1"},
 )
 # Reindeer calls Prelude directly, bypassing both first-party wrapper layers.
 prelude_buildscript_run(
@@ -484,6 +494,7 @@ BUCK
   buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1 || true
   RUSTC_WRAPPER="$work/nonexistent-rust-wrapper" \
     RUSTC_WORKSPACE_WRAPPER="$work/nonexistent-rust-wrapper" \
+    PATH="$PATH:/undeclared-host-build-script-tools" \
     buck2 --isolation-dir consumer-root-contract build \
       'fixture//rust-fixture:build-script-run[rustc_flags]' \
       'fixture//rust-fixture:vendored-build-script-run[rustc_flags]' >/dev/null
