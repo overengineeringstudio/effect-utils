@@ -667,6 +667,43 @@ let
       after = map (dependency: replacements.${dependency} or dependency) execution.after;
     };
   consumerBatchName = scope: "buck2:editor:publish:batch:${scope}";
+  # Four is publishEditorViews' worker count (guarded against editor-view.ts).
+  editorViewBatchWorkers = 4;
+  editorViewBatchHeadroom = 4;
+  editorViewBatchBuildAuthoritySeconds = 120;
+  editorViewBatchMaximumSeconds = 1200;
+  # test-scheduling.json records seconds from baselineRun; missing consumers use
+  # the maximum measured estimate, never invented entries in that measured file.
+  editorViewBatchFallbackSeconds = lib.foldl' lib.max 0 (
+    builtins.attrValues testScheduling.editorViewSeconds
+  );
+  editorViewBatchBudget =
+    packagePaths:
+    let
+      missingConsumers = builtins.filter (
+        path: !(builtins.hasAttr path testScheduling.editorViewSeconds)
+      ) packagePaths;
+      totalEstimateSeconds = lib.foldl' (
+        sum: path: sum + (testScheduling.editorViewSeconds.${path} or editorViewBatchFallbackSeconds)
+      ) 0 packagePaths;
+      # deadline = ceil(sum(estimates including max-measured fallback) / workers)
+      #            * headroom + separately budgeted build/authority allowance.
+      deadlineSeconds =
+        builtins.div (totalEstimateSeconds + editorViewBatchWorkers - 1) editorViewBatchWorkers
+        * editorViewBatchHeadroom
+        + editorViewBatchBuildAuthoritySeconds;
+    in
+    assert lib.assertMsg (
+      deadlineSeconds <= editorViewBatchMaximumSeconds
+    ) "editor-view aggregate publication deadline exceeds its reviewed 1200s maximum";
+    {
+      inherit missingConsumers totalEstimateSeconds deadlineSeconds;
+      workers = editorViewBatchWorkers;
+      headroom = editorViewBatchHeadroom;
+      buildAuthoritySeconds = editorViewBatchBuildAuthoritySeconds;
+      maximumSeconds = editorViewBatchMaximumSeconds;
+      fallbackSeconds = editorViewBatchFallbackSeconds;
+    };
   consumerAggregateGroups = [
     {
       name = "storybook:build";
@@ -701,11 +738,13 @@ let
       aliasName = pkg: "${group.name}:aggregate:${pkg.name}";
       buildAliasName = pkg: "${group.name}:aggregate-build:${pkg.name}";
       hasBuild = group ? buildPrefix;
+      packagePaths = map (pkg: pkg.path) group.packages;
+      publicationBudget = editorViewBatchBudget packagePaths;
     in
     [
       (lib.nameValuePair publisher (scopedEditorViewPublisher {
-        description = "Batch publish exactly the ${scope} consumer dependency views";
-        packagePaths = map (pkg: pkg.path) group.packages;
+        description = "Batch publish exactly the ${scope} consumer dependency views (${toString publicationBudget.deadlineSeconds}s deadline)";
+        inherit packagePaths publicationBudget;
         traceScope = "batch:${scope}";
       }))
       (lib.nameValuePair group.name {
@@ -787,12 +826,14 @@ let
       packagePaths ? null,
       traceScope ? null,
       changedSince ? null,
+      publicationBudget ? null,
     }:
     let
       traceName = "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
       packageArgument = lib.optionalString (
         packagePaths != null
       ) " --packages ${lib.escapeShellArg (builtins.toJSON packagePaths)}";
+      deadlineSeconds = if publicationBudget == null then 300 else publicationBudget.deadlineSeconds;
     in
     trace.exec traceName ''
       set -euo pipefail
@@ -802,9 +843,13 @@ let
       # filesystem work and lock waits that an in-process JS timer cannot interrupt.
       # Scoped consumers share packages/.editor-view: queue whole invocations
       # on a per-worktree flock without expanding their requested package sets.
-      # Admission waits are inside the same 300s process-tree deadline.
+      # Admission waits are inside the same process-tree deadline.
+      ${lib.optionalString (publicationBudget != null) ''
+        # editor-view-batch-budget: ${builtins.toJSON publicationBudget}
+        # Max-measured fallback covers: ${lib.concatStringsSep ", " publicationBudget.missingConsumers}
+      ''}
       status=0
-      ${pkgs.python3}/bin/python "$root/scripts/editor-view-supervisor.py" 300 5 \
+      ${pkgs.python3}/bin/python "$root/scripts/editor-view-supervisor.py" ${toString deadlineSeconds} 5 \
         --lock "$root/.devenv/editor-view-publication.lock" \
         ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
@@ -823,7 +868,7 @@ let
           lib.optionalString (changedSince != null) " --changed-since ${lib.escapeShellArg changedSince}"
         } || status=$?
       if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-        echo "Editor-view ${mode} exceeded its 300s total deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
+        echo "Editor-view ${mode} exceeded its ${toString deadlineSeconds}s total deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
       fi
       exit "$status"
     '';
@@ -832,6 +877,7 @@ let
       description,
       packagePaths,
       traceScope,
+      publicationBudget ? null,
     }:
     {
       inherit description;
@@ -839,7 +885,7 @@ let
       # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
       exec = editorViewExec {
         mode = "publish";
-        inherit packagePaths traceScope;
+        inherit packagePaths traceScope publicationBudget;
       };
     };
 in

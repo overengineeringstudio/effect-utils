@@ -35,12 +35,49 @@ Standalone package tasks keep their single-consumer publisher and never acquire
 the aggregate's wider package set. Existing batch publication acquires each
 state-root lock once and prepares up to four consumer views concurrently.
 
+Bootstrap and ordinary scoped publication keep their **300 s** deadline.
+Aggregate batch deadlines are calculated at Nix evaluation time from the selected
+consumers and `genie/ci-workflow/test-scheduling.json`'s `editorViewSeconds`
+(seconds; the committed measurement input records `baselineRun: 37886131764`).
+Missing consumers use the **maximum measured estimate**, currently 65 s; this is
+an explicit fallback, not a new measurement or an edit to that input file.
+
+```text
+deadlineSeconds = ceil(sum(measuredSeconds or maxMeasuredFallbackSeconds) / 4)
+                  × 4 preparation headroom + 120 build/authority allowance
+maximumSeconds = 1200
+```
+
+The four workers match `publishEditorViews`. The separately named 4x headroom
+budgets for dev5's IO-heavy full-backing-root verification, which exceeded 300 s
+both cold and warm; 120 s is reserved for authority/build work. Evaluation fails
+if the derived deadline exceeds the reviewed 1200 s maximum, rather than silently
+clamping or allowing an unbounded process. Current budgets are:
+
+| Aggregate                           | Consumers | Estimated seconds including fallback | Deadline |
+| ----------------------------------- | --------: | -----------------------------------: | -------: |
+| Storybook build                     |        14 |                                  863 |    984 s |
+| Storybook play tests                |         4 |                                  260 |    380 s |
+| Netlify stage/deploy (shared batch) |        13 |                                  823 |    944 s |
+| Notion integration                  |         5 |                                  321 |    444 s |
+
+The Storybook-build and Netlify fallbacks cover `tui-react`, `effect-react`,
+`effect-schema-form-aria`, `react-inspector`, `notion-react`, `gh-ci-utils`,
+`effect-rpc-explorer-react`, `devbar`, and `meters`. Play-test fallbacks cover
+`effect-schema-form-aria`, `effect-rpc-explorer-react`, `devbar`, and `meters`;
+Notion fallbacks cover `notion-effect-client` and `notion-react`.
+Each evaluated batch command embeds its formula inputs and missing-consumer list
+in comments; the graph guard independently recomputes the deadline and reports
+those gaps. These conservative budgets require calibration with the timed dev5
+batch and its per-consumer timings; they are not measured completion guarantees.
+
 Scoped devenv publishers retain their explicit consumer sets; Storybook builds do
 not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the
 per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
 The supervisor uses a blocking kernel `flock`, without polling or lock theft,
-**inside each invocation's existing 300 s deadline** (plus 5 s kill grace).
+**inside each invocation's deadline** (plus 5 s kill grace), including the
+derived aggregate budget or the unchanged scoped/bootstrap 300 s cap.
 A waiter that exhausts that deadline fails closed and names the admission lock
 and its wait for another publication. The supervisor retains ownership through
 process-group cleanup; process exit releases it automatically. The persistent
