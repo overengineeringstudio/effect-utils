@@ -170,7 +170,10 @@ const requireBlob = ({
   if (status.isFile() === false)
     fail(`blob must be a real regular file, not a symbolic link: ${path}`)
   requireOwned({ path: path, status: status })
-  if ((status.mode & 0o222n) !== 0n) fail(`writable blob is not trusted: ${path}`)
+  if ((status.mode & 0o222n) !== 0n)
+    fail(
+      `writable blob is not trusted: ${path}; stop all editor-view readers/writers, then run editor-view.ts repair-content --repo-root <repo> --quiesced true`,
+    )
   if (permissions(status) !== BigInt(mode)) fail(`blob mode does not match its address: ${path}`)
 }
 
@@ -491,11 +494,13 @@ const shardDirectory = async ({
 const withStoreLock = async <T>({
   contentStore,
   afterStoreLock,
+  writableRepair,
   afterStoreLockContended,
   run,
 }: {
   readonly contentStore: string
   readonly afterStoreLock?: (() => void | Promise<void>) | undefined
+  readonly writableRepair?: EditorViewContentRepair
   readonly afterStoreLockContended?: (() => void | Promise<void>) | undefined
   readonly run: (directories: Directories) => Promise<T>
 }): Promise<T> => {
@@ -509,7 +514,11 @@ const withStoreLock = async <T>({
     // Mark before repair too: a crash during repair must leave the next holder
     // able to finish it. Only successful directory restoration clears this byte.
     await lock.write('1', 0, 'utf8')
-    await repairStore({ contentStore, dirty: bytesRead === 0 || marker[0] === 49 })
+    await repairStore({
+      contentStore,
+      dirty: bytesRead === 0 || marker[0] === 49 || writableRepair !== undefined,
+      ...(writableRepair === undefined ? {} : { writableRepair }),
+    })
     const directories: Directories = new Map()
     let outcome: { readonly value: T } | { readonly error: unknown }
     try {
@@ -1481,17 +1490,182 @@ export const editorViewStagingCreatorIdentity = ({
   return 'unknown'
 }
 
+/** Explicit recovery receipt; quarantined inodes remain untrusted in existing snapshots. */
+export type EditorViewContentRepair = {
+  verifiedBlobs: number
+  checkedBlobInodes: number
+  writableBlobs: number
+  readonly mismatchedBlobs: { readonly path: string; readonly digest: string }[]
+  repairedBlobs: number
+  readonly quarantined: {
+    readonly path: string
+    readonly quarantine: string
+    readonly digest: string
+  }[]
+}
+
+/* eslint-disable no-await-in-loop -- Recovery deliberately bounds filesystem/hash pressure to one blob at a time. */
+/** Read-only census: no flock creation, directory normalization, or payload chmod. */
+export const inspectEditorViewContentStore = async ({
+  contentStore,
+}: {
+  readonly contentStore: string
+}): Promise<EditorViewContentRepair> => {
+  const result: EditorViewContentRepair = {
+    verifiedBlobs: 0,
+    checkedBlobInodes: 0,
+    writableBlobs: 0,
+    mismatchedBlobs: [],
+    repairedBlobs: 0,
+    quarantined: [],
+  }
+  const identities = new Set<string>()
+  const rootStatus = await lstat(contentStore, { bigint: true })
+  await requireRealDirectory({ path: contentStore, status: rootStatus })
+  requireOwned({ path: contentStore, status: rootStatus })
+  for (const shard of await readdir(contentStore, { withFileTypes: true })) {
+    if (shard.name === stagingDirectoryName) continue
+    const directory = join(contentStore, shard.name)
+    if (shardPattern.test(shard.name) === false || shard.isDirectory() === false)
+      fail(`unknown content-store shard during census: ${directory}`)
+    const directoryStatus = await lstat(directory, { bigint: true })
+    await requireRealDirectory({ path: directory, status: directoryStatus })
+    requireOwned({ path: directory, status: directoryStatus })
+    for (const entry of await readdir(directory)) {
+      if (temporaryPattern.test(entry) === true) continue
+      const path = join(directory, entry)
+      const address = blobNamePattern.exec(entry)
+      if (address === null || address[1]?.slice(0, 2) !== shard.name)
+        fail(`unknown content-store blob during census: ${path}`)
+      const status = await lstat(path, { bigint: true })
+      if (status.isFile() === false) fail(`census blob must be a real regular file: ${path}`)
+      requireOwned({ path, status })
+      identities.add(`${status.dev}:${status.ino}`)
+      const mode = address[2] === '0444' ? 0o444 : 0o555
+      if ((status.mode & 0o222n) === 0n) {
+        requireBlob({ path, status, mode })
+        continue
+      }
+      result.writableBlobs += 1
+      const digest = await fingerprint({ path, expected: status })
+      if (digest === undefined) fail(`census blob disappeared: ${path}`)
+      if (digest === address[1]) result.verifiedBlobs += 1
+      else result.mismatchedBlobs.push({ path, digest })
+    }
+  }
+  result.checkedBlobInodes = identities.size
+  return result
+}
+/* eslint-enable no-await-in-loop */
+
+/**
+ * Recover chmod-poisoned payloads only after their owners have stopped every
+ * reader and writer. flock excludes publishers, not arbitrary open descriptors.
+ * Normal publication and crash repair deliberately continue to fail closed.
+ */
+export const repairEditorViewContentStore = async ({
+  contentStore,
+  quiesced,
+}: {
+  readonly contentStore: string
+  readonly quiesced: true
+}): Promise<EditorViewContentRepair> => {
+  if (quiesced !== true)
+    fail('content repair requires all editor-view readers/writers to be stopped')
+  const result: EditorViewContentRepair = {
+    verifiedBlobs: 0,
+    checkedBlobInodes: 0,
+    writableBlobs: 0,
+    mismatchedBlobs: [],
+    repairedBlobs: 0,
+    quarantined: [],
+  }
+  await withStoreLock({
+    contentStore,
+    writableRepair: result,
+    run: async () => {
+      const census = await inspectEditorViewContentStore({ contentStore })
+      // Mode is an inode property: this proves every non-store hardlink to each
+      // surviving blob is readonly too, without finding each alias by pathname.
+      if (census.writableBlobs !== 0) fail('content repair left writable shared blob inodes')
+      result.checkedBlobInodes = census.checkedBlobInodes
+    },
+  })
+  return result
+}
+
+const repairWritableBlob = async ({
+  path,
+  contentStore,
+  status,
+  mode,
+  digest,
+  result,
+}: {
+  readonly path: string
+  readonly contentStore: string
+  readonly status: BigIntStats
+  readonly mode: number
+  readonly digest: string
+  readonly result: EditorViewContentRepair
+}): Promise<void> => {
+  const actual = await fingerprint({ path, expected: status })
+  if (actual === undefined) fail(`repair payload disappeared: ${path}`)
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+  try {
+    if (
+      unchanged({ left: status, right: await file.stat({ bigint: true }) }) === false ||
+      unchanged({ left: status, right: await lstat(path, { bigint: true }) }) === false
+    )
+      fail(`repair payload changed after hashing: ${path}`)
+    if (actual !== digest) {
+      const directory = `${contentStore}.quarantine`
+      try {
+        await mkdir(directory, { mode: 0o700 })
+      } catch (error) {
+        if (hasCode({ error, code: 'EEXIST' }) === false) throw error
+      }
+      const quarantineStatus = await lstat(directory, { bigint: true })
+      await requireRealDirectory({ path: directory, status: quarantineStatus })
+      requireOwned({ path: directory, status: quarantineStatus })
+      if (permissions(quarantineStatus) !== 0o700n)
+        fail(`quarantine directory must have mode 0700: ${directory}`)
+      const quarantine = join(directory, `${basename(path)}-${randomUUID()}`)
+      await rename(path, quarantine)
+      result.quarantined.push({ path, quarantine, digest: actual })
+      result.mismatchedBlobs.push({ path, digest: actual })
+      return
+    }
+    await file.chmod(mode)
+    const after = await file.stat({ bigint: true })
+    requireBlob({ path, status: after, mode })
+    if (
+      sameInode({ left: status, right: after }) === false ||
+      status.size !== after.size ||
+      status.mtimeNs !== after.mtimeNs ||
+      unchanged({ left: after, right: await lstat(path, { bigint: true }) }) === false
+    )
+      fail(`repair payload changed during hardening: ${path}`)
+    result.verifiedBlobs += 1
+    result.repairedBlobs += 1
+  } finally {
+    await file.close()
+  }
+}
+
 /* eslint-disable no-await-in-loop -- Crash repair is an excluded metadata-only walk, not a payload census or hash pass. */
 const repairDirectory = async ({
   path,
   root,
   scan,
   staging = false,
+  writableRepair,
 }: {
   readonly path: string
   readonly root: string
   readonly scan: boolean
   readonly staging?: boolean
+  readonly writableRepair?: EditorViewContentRepair
 }): Promise<void> => {
   const status = await statusIfPresent(path)
   if (status === undefined) return
@@ -1521,7 +1695,13 @@ const repairDirectory = async ({
         // The normal path checks only the bounded shard directory set. A dirty
         // acquisition additionally scans shard metadata for abandoned links.
         if (scan === false && permissions(childStatus) === 0o555n && isStaging === false) continue
-        await repairDirectory({ path: child, root, scan, staging: isStaging })
+        await repairDirectory({
+          path: child,
+          root,
+          scan,
+          staging: isStaging,
+          ...(writableRepair === undefined ? {} : { writableRepair }),
+        })
         continue
       }
       const payload = await statusIfPresent(child)
@@ -1549,7 +1729,21 @@ const repairDirectory = async ({
         const blob = blobNamePattern.exec(entry.name)
         if (blob === null || blob[1]?.slice(0, 2) !== basename(path))
           fail(`unknown content-store blob during repair: ${child}`)
-        requireBlob({ path: child, status: payload, mode: blob[2] === '0444' ? 0o444 : 0o555 })
+        const mode = blob[2] === '0444' ? 0o444 : 0o555
+        if (writableRepair !== undefined && (payload.mode & 0o222n) !== 0n) {
+          if (writable === false) {
+            await file.chmod(0o755)
+            writable = true
+          }
+          await repairWritableBlob({
+            path: child,
+            contentStore: root,
+            status: payload,
+            mode,
+            digest: blob[1]!,
+            result: writableRepair,
+          })
+        } else requireBlob({ path: child, status: payload, mode })
       }
       if (remove === false) continue
       if (writable === false) {
@@ -1572,10 +1766,17 @@ const repairDirectory = async ({
 const repairStore = async ({
   contentStore,
   dirty,
+  writableRepair,
 }: {
   readonly contentStore: string
   readonly dirty: boolean
+  readonly writableRepair?: EditorViewContentRepair
 }): Promise<void> => {
-  await repairDirectory({ path: contentStore, root: contentStore, scan: dirty })
+  await repairDirectory({
+    path: contentStore,
+    root: contentStore,
+    scan: dirty,
+    ...(writableRepair === undefined ? {} : { writableRepair }),
+  })
 }
 /* eslint-enable no-await-in-loop */
