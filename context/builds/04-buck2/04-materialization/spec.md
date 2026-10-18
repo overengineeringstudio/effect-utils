@@ -35,7 +35,7 @@ assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/
           local-materialization-policy (BUILD.BUCK.MAT-T01); public node_modules output
 ```
 
-Extract, store-entry, store-SCC, store-view, and package-tree rules use the
+Extract, store-entry, store-SCC, store-view, package-tree, and runtime-module rules use the
 default non-remote execution platform, not the cache-admitted platform.
 Their cheap filesystem projections are recomputed locally; declared outputs,
 incremental invalidation, and editor backing-root completeness are unchanged.

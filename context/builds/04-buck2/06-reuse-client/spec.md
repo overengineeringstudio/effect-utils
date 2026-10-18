@@ -91,13 +91,16 @@ audited compute/verdict action  -> cache_hermetic executor -> root cache posture
 ```
 
 **BUILD.BUCK.REUSE-DQ04 (resolved):** `pnpm_extract`, `pnpm_store_entry`,
-`pnpm_store_scc`, `pnpm_store_view`, and `package_tree` execute locally without
-remote-cache lookup or upload. Their rules retain `cache_guarded_rule` but do
+`pnpm_store_scc`, `pnpm_store_view`, `package_tree`, and `runtime_module` execute
+locally without remote-cache lookup or upload. Their rules retain `cache_guarded_rule` but do
 not admit the `cache_hermetic` constraint; their actions prohibit cache uploads.
 The default execution platform has `remote_cache_enabled = False` and
 `allow_cache_uploads = False`, independently of the root writer posture.
 `local_only` alone is insufficient: it restricts execution, not remote-cache
 reads. Compute actions such as `tsgo_emit` retain audited remote-cache admission.
+`runtime_module` dereferences each declared runtime source file into an ordinary
+artifact; these cheap copies are excluded from the proof and evidence denominator
+just like tree/store assembly, without admitting other local compute actions.
 
 The policy favors recomputing cheap filesystem projections over transferring
 their expanded trees. The Linux test-lane bootstrap in
@@ -398,7 +401,7 @@ Missing fields remain explicit `null`; they do not suppress a row.
 | Outcomes              | `outcome` and `cacheOutcome` use the named compact mapping; `uploadOutcome` is `uploaded`, `failed` (native values 9–15), or `not-uploaded` |
 | Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                            |
 | `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                   |
-| `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the five policy categories; `null` otherwise                               |
+| `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the policy categories; `null` otherwise                                    |
 
 All times are integer Unix milliseconds. The pinned log decoder emits native
 timestamps as `[seconds,nanoseconds]`; conversion floors sub-millisecond time.
