@@ -638,16 +638,19 @@ let
       "packages/@overeng/notion-datasource-sync"
     ]
   );
-  notionIntegrationPackages = map (name: {
-    inherit name;
-    path = "packages/@overeng/${name}";
-  }) [
-    "notion-effect-client"
-    "notion-cli"
-    "notion-datasource-sync"
-    "notion-md"
-    "notion-react"
-  ];
+  notionIntegrationPackages =
+    map
+      (name: {
+        inherit name;
+        path = "packages/@overeng/${name}";
+      })
+      [
+        "notion-effect-client"
+        "notion-cli"
+        "notion-datasource-sync"
+        "notion-md"
+        "notion-react"
+      ];
   # Aggregate-only aliases follow the source-test chain pattern: reuse the final
   # standalone command/runtime, replacing only the dependency that installs views.
   executionAlias =
@@ -709,20 +712,24 @@ let
         after = lib.mkForce (map aliasName group.packages);
       })
     ]
-    ++ lib.concatMap (pkg: [
-      (lib.nameValuePair (aliasName pkg) (
-        executionAlias "${group.name}:${pkg.name}" {
-          ${if hasBuild then "${group.buildPrefix}:${pkg.name}" else consumerPublisherName pkg.path} =
-            if hasBuild then buildAliasName pkg else publisher;
-        }
-      ))
-    ] ++ lib.optional hasBuild (
-      lib.nameValuePair (buildAliasName pkg) (
-        executionAlias "${group.buildPrefix}:${pkg.name}" {
-          ${consumerPublisherName pkg.path} = publisher;
-        }
+    ++ lib.concatMap (
+      pkg:
+      [
+        (lib.nameValuePair (aliasName pkg) (
+          executionAlias "${group.name}:${pkg.name}" {
+            ${if hasBuild then "${group.buildPrefix}:${pkg.name}" else consumerPublisherName pkg.path} =
+              if hasBuild then buildAliasName pkg else publisher;
+          }
+        ))
+      ]
+      ++ lib.optional hasBuild (
+        lib.nameValuePair (buildAliasName pkg) (
+          executionAlias "${group.buildPrefix}:${pkg.name}" {
+            ${consumerPublisherName pkg.path} = publisher;
+          }
+        )
       )
-    )) group.packages;
+    ) group.packages;
   # Repository-specific semantic inputs read by Genie sources. The shared
   # Genie module already owns the direct and nested `.genie.ts` census; this
   # single list is composed into both its warm fingerprint and lint freshness.
@@ -965,9 +972,12 @@ in
       # both aggregates select the same exact preview-consumer set.
       tasks = lib.listToAttrs (
         lib.concatMap consumerAggregateTaskEntries consumerAggregateGroups
-        ++ map (pkg: lib.nameValuePair "test:notion-integration:${pkg.name}" {
-          after = lib.mkForce [ (consumerPublisherName pkg.path) ];
-        }) notionIntegrationPackages
+        ++ map (
+          pkg:
+          lib.nameValuePair "test:notion-integration:${pkg.name}" {
+            after = lib.mkForce [ (consumerPublisherName pkg.path) ];
+          }
+        ) notionIntegrationPackages
       );
     }
     (taskModules.storybook {
