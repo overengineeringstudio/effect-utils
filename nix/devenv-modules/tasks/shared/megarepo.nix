@@ -46,7 +46,12 @@
   # fallback) so passthrough does not exit 127.
   mrPkg ? null,
 }:
-{ lib, pkgs, config ? { }, ... }:
+{
+  lib,
+  pkgs,
+  config ? { },
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
@@ -527,7 +532,10 @@ in
   imports = [
     {
       options.effectUtils.megarepo.setup.mode = lib.mkOption {
-        type = lib.types.enum [ "tracking" "locked" ];
+        type = lib.types.enum [
+          "tracking"
+          "locked"
+        ];
         default = "tracking";
         description = ''
           Root member setup policy. Locked mode materializes megarepo.lock commits;
