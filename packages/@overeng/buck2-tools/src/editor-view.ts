@@ -2400,7 +2400,7 @@ const retireLegacyImporters = ({
     let pnpm = pathExists(marker) === true && lstatSync(marker).isFile() === true
     const entries = readdirSync(path).flatMap((name) => {
       const entry = join(path, name)
-      return name.startsWith('@') && lstatSync(entry).isDirectory() === true
+      return name.startsWith('@') === true && lstatSync(entry).isDirectory() === true
         ? readdirSync(entry).map((child) => join(entry, child))
         : [entry]
     })
