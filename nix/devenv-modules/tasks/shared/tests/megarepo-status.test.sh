@@ -227,8 +227,8 @@ echo "  ok: shared mutation tasks stop after a failed mr command"
 echo ""
 echo "Test 9: setup delegates shared-cache verification without writing a manifest"
 setup_block="$(sed -n '/"mr:setup" = {/,/status =/p' "$module_file")"
-if [ "$(grep -Fc 'MR_VERIFY_SHARED_ARGS[@]' <<< "$setup_block")" -ne 2 ]; then
-  echo "FAIL: both setup worktree strategies must use capability-selected shared verification"
+if [ "$(grep -Fc 'MR_VERIFY_SHARED_ARGS[@]' <<< "$setup_block")" -ne 3 ]; then
+  echo "FAIL: every setup mode must use capability-selected shared verification"
   exit 1
 fi
 if ! grep -Fq 'MR_VERIFY_SHARED_ARGS=(--verify-shared)' <<< "$setup_block"; then

@@ -20,6 +20,8 @@ export const productBuildCapabilities = (product: ProductCapabilityShape): reado
   const capabilities =
     product.kind === 'native' && product.cargoWorkspaceRoot !== undefined
       ? [
+          // Prelude build-script shims need declared Bash and coreutils on PATH.
+          'action-env',
           'archive-tool',
           'bun',
           'product',
