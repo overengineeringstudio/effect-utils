@@ -134,6 +134,31 @@ Repin merged immutable DSL revisions and migrate singular `gate` fields and the 
 See [the isolated-daemon acceptance plan](./HUMAN_GATE_ACCEPTANCE.md) before a
 risky mission relies on consent reuse or consultative fallback.
 
+## Accountable fleet roots
+
+Author a top-level fleet root with `accountable: person('person/NAME')`. This
+renders exactly one `accountable "person/NAME"` child. Accountable references
+must name one concrete person (ASCII letters, digits, `_`, `-`, `.`); bare
+strings, agent references, nested person paths and `person/..` are rejected.
+Omitting the field preserves the existing declaration.
+
+Native support starts at `compoundingtech/smalltalk` merge
+`8cdac1e4c62693d09dd527159ccef8b5cf430f57` (#2453). Upgrade **every fleet
+member** before publication. Only the named person may publish the root;
+`st apply roots.kdl --as person/NAME` names the required author but does not
+itself prove that person's signature. Agents, other people, missing authors
+and mission-owned declarations are refused; delegation is unsupported.
+
+This is trace evidence, never authority. The separate resolver (#2454,
+`1f24d91be9f0c6e490ac23bfce700e25290fa277`) follows verified declaration
+authors, not `under` grouping, account bindings or mission requesters. The root
+needs a verified full-content signature by that exact person, without
+`on_behalf`; missing roots, cycles and chains beyond 64 declarations fail
+closed. Do not copy the field onto descendants or infer accountability from a
+repository label. Unit tests cover exact lowering, invalid references and
+unchanged declarations without the field; person-authenticated native
+publication must be exercised by the accountable human.
+
 ## Nested agent tasks
 
 Agent `pty` and `exec` tasks accept exactly one `command` or `argv` launch form and optional `host`/`workspace`; they do not accept or render `restart`. Excess task fields are rejected even when the containing agent is referenced rather than rendered. Unit assertions cover both task authoring types and runtime rejection, including an explicitly undefined `restart`. Root agent restart policy is unchanged; mission-step `ExecSchema.restart` remains a separate modeled field.
