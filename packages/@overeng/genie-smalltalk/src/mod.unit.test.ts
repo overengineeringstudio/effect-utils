@@ -186,7 +186,7 @@ describe('attributed human gates', () => {
     ).toBe(`version 2
 mission "home/berlin/cutover" report-to="agent/example/owner" state="ready" {
   goal "Apply only the reviewed Berlin cutover plan."
-  step "approve-cutover" timeout="86400000ms" {
+  step "approve-cutover" timeout="1d" {
     agentless
     gate "Approve the bounded Berlin cutover" mode="approve" type="human" {
       reviewer "person/schickling"
@@ -405,13 +405,101 @@ step "check" {
     ).toBe(`version 2
 schedule "once" {
   host "local"
-  at "2026-10-19T07:00:00.000Z"
+  at "2026-10-19T07:00:00Z"
   work {
     mission "demo"
     workspace "/work/demo"
   }
 }
 `)
+  })
+})
+
+describe('compact native time rendering', () => {
+  it('lowers every duration surface without changing canonical mission values', () => {
+    const input = {
+      id: 'compact-time',
+      state: 'ready',
+      reportTo: owner,
+      goal: 'Preserve exact native timing.',
+      timeout: '172800000ms',
+      stalledAfter: '3600000ms',
+      steps: [
+        {
+          id: 'wait',
+          timeout: '90000ms',
+          agentless: true,
+          retry: { attempts: 2, backoff: '1501ms' },
+          gates: [
+            gate.exec({
+              name: 'ready',
+              command: 'true',
+              host: 'local',
+              workspace: '/work',
+              timeLimit: '60000ms',
+            }),
+          ],
+        },
+        {
+          id: 'poll',
+          timeout: '86400000ms',
+          maxRounds: 2,
+          until: [gate.exists({ name: 'result', subject: 'resource/result' })],
+          round: {
+            steps: [
+              {
+                id: 'retry',
+                agentless: true,
+                retry: { attempts: 2, backoff: '0ms' },
+              },
+            ],
+          },
+          onExhausted: { outcome: 'fail' },
+        },
+      ],
+    } as const
+    const wire = missionWire(input)
+    expect(wire.timeout).toBe('172800000ms')
+    expect(wire.stalledAfter).toBe('3600000ms')
+    expect(wire.steps[0]).toMatchObject({
+      timeout: '90000ms',
+      retry: { backoff: '1501ms' },
+      gates: [{ timeLimit: '60000ms' }],
+    })
+    const kdl = emit([
+      mission(input),
+      agent({ id: 'compact-time/worker', shutdownTimeout: '30000ms' }),
+      schedule({
+        id: 'compact-time/every',
+        host: 'local',
+        timing: Timing.every({
+          every: '7200000ms',
+          anchor: '2026-10-19T00:00:00.000Z',
+          catchUp: 'latest',
+        }),
+        work: { mission: 'compact-time', workspace: '/work' },
+      }),
+      schedule({
+        id: 'compact-time/once',
+        host: 'local',
+        timing: Timing.at('2026-10-19T00:00:00.123Z'),
+        work: { mission: 'compact-time', workspace: '/work' },
+      }),
+    ])
+    for (const native of [
+      'timeout="2d" stalled-after="1h"',
+      'step "wait" timeout="90s"',
+      'backoff "1501ms"',
+      'time-limit "1m"',
+      'loop "poll" timeout="1d"',
+      'backoff "0ms"',
+      'shutdown-timeout "30s"',
+      'every "2h"',
+      'anchor "2026-10-19T00:00:00Z"',
+      'at "2026-10-19T00:00:00.123Z"',
+    ]) {
+      expect(kdl).toContain(native)
+    }
   })
 })
 
@@ -489,7 +577,7 @@ schedule "daily" {
       work: scheduleWork,
     } as const
     const rendered = emit([schedule(interval)])
-    expect(rendered).toContain('  every "21600000ms"\n  anchor "2026-01-01T00:00:00.000Z"\n')
+    expect(rendered).toContain('  every "6h"\n  anchor "2026-01-01T00:00:00Z"\n')
     expect(rendered).not.toContain('calendar')
     for (const legacy of [
       { every: '6h', anchor: '2026-01-01T00:00:00Z', catchUp: 'latest' },
@@ -607,23 +695,27 @@ describe('Smalltalk declarations', () => {
     expect(emit([declaration])).not.toContain('harness')
   })
   it.each([
-    ['1ms', '1ms'],
-    ['30s', '30000ms'],
-    ['45m', '2700000ms'],
-    ['2h', '7200000ms'],
-    ['1d', '86400000ms'],
-    ['45 minutes', '2700000ms'],
-  ])('renders mission stalledAfter %s as canonical duration %s', (stalledAfter, normalized) => {
-    const input = { ...fanInMission(), timeout: '2d', stalledAfter }
-    const decoded = Schema.decodeSync(MissionSchema)(input)
-    expect(decoded.stalledAfter).toBe(normalized)
-    const declaration = mission(input)
-    expect(declaration.props['stalled-after']).toBe(normalized)
-    expect(declaration.props.timeout).toBe('172800000ms')
-    expect(emit([declaration])).toContain(`stalled-after="${normalized}"`)
-    expect(declaration.children?.some((entry) => entry.name === 'stalled-after')).toBe(false)
-    expect(missionWire(input).stalledAfter).toBe(normalized)
-  })
+    ['1ms', '1ms', '1ms'],
+    ['30s', '30000ms', '30s'],
+    ['45m', '2700000ms', '45m'],
+    ['2h', '7200000ms', '2h'],
+    ['1d', '86400000ms', '1d'],
+    ['45 minutes', '2700000ms', '45m'],
+  ])(
+    'renders mission stalledAfter %s as native duration %s (%s)',
+    (stalledAfter, normalized, native) => {
+      const input = { ...fanInMission(), timeout: '2d', stalledAfter }
+      const decoded = Schema.decodeSync(MissionSchema)(input)
+      expect(decoded.stalledAfter).toBe(normalized)
+      const declaration = mission(input)
+      expect(declaration.props['stalled-after']).toBe(native)
+      expect(declaration.props.timeout).toBe('2d')
+      expect(emit([declaration])).toContain(`stalled-after="${native}"`)
+      expect(declaration.children?.some((entry) => entry.name === 'stalled-after')).toBe(false)
+      expect(missionWire(input).stalledAfter).toBe(normalized)
+      expect(missionWire(input).timeout).toBe('172800000ms')
+    },
+  )
   it('omits the native stalled-after property when no duration is authored', () => {
     expect(mission(fanInMission()).props).not.toHaveProperty('stalled-after')
   })
@@ -1112,7 +1204,7 @@ describe('Smalltalk declarations', () => {
     'emits scheduled work for mission %s',
     (mission) => {
       expect(emit([cycle(mission)])).toBe(
-        `version 2\nschedule "cycle" {\n  host "local"\n  every "21600000ms"\n  anchor "2026-01-01T00:00:00.000Z"\n  catch-up "latest"\n  work {\n    mission "${mission}"\n    workspace "/work/cycles"\n  }\n}\n`,
+        `version 2\nschedule "cycle" {\n  host "local"\n  every "6h"\n  anchor "2026-01-01T00:00:00Z"\n  catch-up "latest"\n  work {\n    mission "${mission}"\n    workspace "/work/cycles"\n  }\n}\n`,
       )
     },
   )
@@ -1297,7 +1389,7 @@ describe('native mission grammar', () => {
   it('renders public PR inputs and config-time fragments with the same ordered flow', () => {
     expect(emit([prLanding()])).toContain('input "commit" kind="text"')
     expect(emit([prLandingFragment({ number: 7, commit: 'abc' })])).toContain('repo="acme/garden"')
-    expect(upstreamRepin()).toContain('loop "await-upstream" timeout="2592000000ms"')
+    expect(upstreamRepin()).toContain('loop "await-upstream" timeout="30d"')
     expect(upstreamRepinKdl).toContain('report-to="agent/example/owner"')
   })
   it('preserves native mission-level assignment without injecting it into steps', () => {

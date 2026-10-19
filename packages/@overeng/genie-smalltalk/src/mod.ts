@@ -35,6 +35,8 @@ import {
   DurationSchema as Duration,
   NonNegativeDurationSchema as NonNegativeDuration,
   launchReferences,
+  lowerDuration,
+  lowerInstant,
   lowerReview,
   reviewReferences,
   PinnedDocumentReferenceSchema,
@@ -55,6 +57,8 @@ export {
   InstantSchema,
   normalizeDuration,
   normalizeInstant,
+  lowerDuration,
+  lowerInstant,
   lowerLaunch,
   lowerTiming,
   lowerReview,
@@ -951,7 +955,7 @@ export const observer = (input: typeof ObserverSchema.Encoded): Node => {
       child({ name: 'provider', value: o.provider }),
       child({ name: 'locator', value: o.locator }),
       ...o.fields.map((field) => child({ name: 'field', value: field })),
-      ...optionalChild({ name: 'every', value: o.every }),
+      ...optionalChild({ name: 'every', value: nativeDuration(o.every) }),
     ],
   })
 }
@@ -992,6 +996,9 @@ const ownedDeclarationNodes = (input: {
   ...(input.observers ?? []).map(observer),
   ...(input.subscriptions ?? []).map(subscription),
 ]
+
+const nativeDuration = (value: string | undefined): string | undefined =>
+  value === undefined ? undefined : lowerDuration(value)
 
 const launchNodes = (launch: Launch): readonly Node[] => [
   launch._tag === 'Argv'
@@ -1036,10 +1043,10 @@ export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
             }),
           ]
         : s.timing._tag === 'At'
-          ? [child({ name: 'at', value: s.timing.at })]
+          ? [child({ name: 'at', value: lowerInstant(s.timing.at) })]
           : [
-              child({ name: 'every', value: s.timing.every }),
-              child({ name: 'anchor', value: s.timing.anchor }),
+              child({ name: 'every', value: lowerDuration(s.timing.every) }),
+              child({ name: 'anchor', value: lowerInstant(s.timing.anchor) }),
             ]),
       ...(s.timing._tag === 'At' ? [] : [child({ name: 'catch-up', value: 'latest' })]),
       block({
@@ -1104,7 +1111,7 @@ const lowerGate = (input: typeof GateSchema.Encoded): Node => {
         ? [
             ...optionalChild({ name: 'host', value: g.host }),
             ...optionalChild({ name: 'workspace', value: g.workspace }),
-            ...optionalChild({ name: 'time-limit', value: g.timeLimit }),
+            ...optionalChild({ name: 'time-limit', value: nativeDuration(g.timeLimit) }),
             ...(g.kind === 'exec' && g.env !== undefined
               ? [
                   block({
@@ -1568,14 +1575,14 @@ const lowerStep = (input: typeof StepSchema.Encoded): Node => {
         name: 'retry',
         children: [
           child({ name: 'attempts', value: s.retry.attempts }),
-          ...optionalChild({ name: 'backoff', value: s.retry.backoff }),
+          ...optionalChild({ name: 'backoff', value: nativeDuration(s.retry.backoff) }),
         ],
       }),
     )
   return node({
     name: 'step',
     args: [s.id],
-    props: s.timeout === undefined ? {} : { timeout: s.timeout },
+    props: s.timeout === undefined ? {} : { timeout: lowerDuration(s.timeout) },
     children,
   })
 }
@@ -2014,7 +2021,7 @@ export const loop = (input: LoopInput): Node => {
   return node({
     name: 'loop',
     args: [l.id],
-    props: l.timeout === undefined ? {} : { timeout: l.timeout },
+    props: l.timeout === undefined ? {} : { timeout: lowerDuration(l.timeout) },
     children: [
       ...(l.dependsOn === undefined ? [] : [dependenciesNode(l.dependsOn)]),
       child({ name: 'max-rounds', value: l.maxRounds }),
@@ -2286,8 +2293,8 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
     props: {
       state: m.state,
       'report-to': `agent/${m.reportTo.id}`,
-      ...(m.timeout === undefined ? {} : { timeout: m.timeout }),
-      ...(m.stalledAfter === undefined ? {} : { 'stalled-after': m.stalledAfter }),
+      ...(m.timeout === undefined ? {} : { timeout: lowerDuration(m.timeout) }),
+      ...(m.stalledAfter === undefined ? {} : { 'stalled-after': lowerDuration(m.stalledAfter) }),
       ...(m.reportStalls === undefined ? {} : { 'report-stalls': m.reportStalls }),
       ...(m.reportCompleted === undefined ? {} : { 'report-completed': m.reportCompleted }),
     },
@@ -2385,7 +2392,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
   children.push(
     ...optionalChild({ name: 'restart', value: a.restart }),
     ...optionalChild({ name: 'rollout', value: a.rollout }),
-    ...optionalChild({ name: 'shutdown-timeout', value: a.shutdownTimeout }),
+    ...optionalChild({ name: 'shutdown-timeout', value: nativeDuration(a.shutdownTimeout) }),
   )
   if (a.launch !== undefined) children.push(...launchNodes(a.launch))
   const env = { ...a.env }

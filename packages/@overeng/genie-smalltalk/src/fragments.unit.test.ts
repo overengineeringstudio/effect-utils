@@ -171,7 +171,11 @@ describe('immutable fragments and scoped rounds', () => {
     }
     const fragment = Fragment.steps(inspect, authored)
     const round = Round.make({ completion: { when: 'all-steps-exhausted' }, steps: fragment })
-    const composed = Mission.make({ ...base, inputs: [plan], steps: fragment })
+    const composed = Mission.make({
+      ...base,
+      inputs: [plan],
+      steps: Fragment.steps(inspect, { id: authored.id, agentless: true, goal }),
+    })
 
     expect(fragment[0]).toBe(inspect)
     expect(fragment[1]).not.toBe(authored)

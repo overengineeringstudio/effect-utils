@@ -89,6 +89,7 @@ const invalidDuration = (): never => {
   )
 }
 const scales = { ms: 1n, s: 1000n, m: 60000n, h: 3600000n, d: 86400000n } as const
+const descendingNativeUnits = ['d', 'h', 'm', 's'] as const
 const readableScales: Readonly<Record<string, bigint>> = {
   nano: 1n,
   nanos: 1n,
@@ -152,6 +153,17 @@ export const normalizeDuration = ({
   return `${millis}ms`
 }
 
+/** Lower canonical integer milliseconds to the largest exact native unit. */
+export const lowerDuration = (input: string): string => {
+  const millis = BigInt(input.slice(0, -2))
+  if (millis === 0n) return '0ms'
+  for (const unit of descendingNativeUnits) {
+    const scale = scales[unit]
+    if (millis % scale === 0n) return `${millis / scale}${unit}`
+  }
+  return input
+}
+
 const normalizableDuration = (allowZero: boolean) =>
   Schema.declare<DurationInput>((value): value is DurationInput => {
     if (typeof value !== 'string' && Duration.isDuration(value) === false) return false
@@ -200,6 +212,9 @@ export const normalizeInstant = (input: DateTime.DateTime | string): `${string}Z
     throw new TypeError('Instant outside native four-digit year range')
   return `${iso.slice(0, -1)}Z`
 }
+/** Lower canonical UTC instants without a redundant zero fractional second. */
+export const lowerInstant = (input: string): string => input.replace(/\.000Z$/u, 'Z')
+
 /** Explicit-offset Effect instants normalized to lossless UTC ISO strings. */
 export const InstantSchema = Schema.declare<InstantInput>((value): value is InstantInput => {
   if (typeof value !== 'string' && DateTime.isDateTime(value) === false) return false
@@ -464,10 +479,13 @@ export const Timing = {
 /** Lowers canonical timing into its exact native-shaped constructor input. */
 export const lowerTiming = (input: Timing): TimingInput => {
   const value = decodeTiming(input)
-  if (value._tag === 'At') return { at: value.at }
+  if (value._tag === 'At') return { at: lowerInstant(value.at) as InstantInput }
   if (value._tag === 'Every') {
-    const { _tag, ...native } = value
-    return native
+    return {
+      every: lowerDuration(value.every),
+      anchor: lowerInstant(value.anchor) as InstantInput,
+      ...(value.catchUp === undefined ? {} : { catchUp: value.catchUp }),
+    }
   }
   const { _tag, catchUp, ...calendar } = value
   return { calendar, ...(catchUp === undefined ? {} : { catchUp }) }

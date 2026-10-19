@@ -14,6 +14,8 @@ import {
   Timing,
   TimingSchema,
   lowerTiming,
+  lowerDuration,
+  lowerInstant,
   Review,
   ReviewSchema,
   lowerReview,
@@ -76,6 +78,28 @@ describe('strict duration normalization', () => {
     expect(Schema.decodeSync(NonNegativeDurationSchema)(Duration.zero)).toBe('0ms')
     expect(() => Schema.decodeSync(NonNegativeDurationSchema)('-1 millis')).toThrow()
   })
+
+  it('lowers to the largest exact unit without changing canonical normalization', () => {
+    for (const [canonical, native] of [
+      ['0ms', '0ms'],
+      ['1ms', '1ms'],
+      ['1001ms', '1001ms'],
+      ['60001ms', '60001ms'],
+      ['1000ms', '1s'],
+      ['61000ms', '61s'],
+      ['60000ms', '1m'],
+      ['86700000ms', '1445m'],
+      ['43200000ms', '12h'],
+      ['86400000ms', '1d'],
+      ['172800000ms', '2d'],
+      ['18446744073709551615ms', '18446744073709551615ms'],
+      ['18446744073709551000ms', '18446744073709551s'],
+    ] as const) {
+      expect(lowerDuration(canonical)).toBe(native)
+      expect(normalizeDuration({ input: native, allowZero: true })).toBe(canonical)
+      expect(Schema.decodeSync(NonNegativeDurationSchema)(native)).toBe(canonical)
+    }
+  })
 })
 
 describe('strict instant normalization', () => {
@@ -85,6 +109,21 @@ describe('strict instant normalization', () => {
     expect(normalizeInstant('2026-10-19T12:00:00.123000Z')).toBe('2026-10-19T12:00:00.123Z')
     expect(normalizeInstant('0000-01-01T00:00:00Z')).toBe('0000-01-01T00:00:00.000Z')
     expect(normalizeInstant('9999-12-31T23:59:59.999Z')).toBe('9999-12-31T23:59:59.999Z')
+  })
+
+  it('omits only zero fractional UTC seconds when lowering', () => {
+    for (const [canonical, native] of [
+      [anchor, '2026-10-19T12:00:00Z'],
+      ['2026-10-19T12:00:00.001Z', '2026-10-19T12:00:00.001Z'],
+      ['2026-10-19T12:00:00.010Z', '2026-10-19T12:00:00.010Z'],
+      ['2026-10-19T12:00:00.100Z', '2026-10-19T12:00:00.100Z'],
+      ['2026-10-19T12:00:00.123Z', '2026-10-19T12:00:00.123Z'],
+    ] as const) {
+      expect(lowerInstant(canonical)).toBe(native)
+      expect(normalizeInstant(native)).toBe(canonical)
+      expect(Schema.decodeSync(InstantSchema)(native)).toBe(canonical)
+    }
+    expect(lowerInstant('2026-10-19T12:00:00.000+00:00')).toBe('2026-10-19T12:00:00.000+00:00')
   })
 
   it('rejects offsetless dates, calendar rollover, overflow, and lost fractions', () => {
@@ -176,6 +215,12 @@ describe('canonical timing values', () => {
       catchUp: 'latest',
     })
     expect(every).toEqual({ _tag: 'Every', every: '3600000ms', anchor, catchUp: 'latest' })
+    expect(lowerTiming(every)).toEqual({
+      every: '1h',
+      anchor: '2026-10-19T12:00:00Z',
+      catchUp: 'latest',
+    })
+    expect(Timing.from(lowerTiming(every))).toEqual(every)
     const calendar = Timing.calendar({
       at: '09:30',
       timezone: 'Europe/Berlin',
@@ -184,6 +229,10 @@ describe('canonical timing values', () => {
     })
     expect(Timing.from(lowerTiming(calendar))).toEqual(calendar)
     expect(Timing.at(anchor)).toEqual({ _tag: 'At', at: anchor })
+    expect(lowerTiming(Timing.at(anchor))).toEqual({ at: '2026-10-19T12:00:00Z' })
+    expect(lowerTiming(Timing.at('2026-10-19T12:00:00.123Z'))).toEqual({
+      at: '2026-10-19T12:00:00.123Z',
+    })
     expect(Object.isFrozen(calendar)).toBe(true)
     if (calendar._tag === 'Calendar') expect(Object.isFrozen(calendar.days)).toBe(true)
   })
@@ -276,6 +325,7 @@ it.prop(
     const canonical = normalizeDuration({ input: Duration.nanos(millis * 1000000n) })
     expect(normalizeDuration({ input: canonical })).toBe(canonical)
     expect(normalizeDuration({ input: `${millis} millis` })).toBe(canonical)
+    expect(normalizeDuration({ input: lowerDuration(canonical) })).toBe(canonical)
   },
 )
 
@@ -283,6 +333,7 @@ it.prop('instant normalization is idempotent', [Schema.Int], ([integer]) => {
   const instant = DateTime.makeUnsafe(integer % 1000000000000)
   const canonical = normalizeInstant(instant)
   expect(normalizeInstant(canonical)).toBe(canonical)
+  expect(normalizeInstant(lowerInstant(canonical))).toBe(canonical)
 })
 
 it.prop(
@@ -300,13 +351,25 @@ it.prop(
   'timing normalization and native-shaped round-trip are idempotent',
   [Schema.Int],
   ([integer]) => {
+    const instant = normalizeInstant(DateTime.makeUnsafe(integer % 1000000000000))
     for (const value of [
-      Timing.at(anchor),
-      Timing.every({ every: `${BigInt(Math.abs(integer % 1000000000)) + 1n}ms`, anchor }),
+      Timing.at(instant),
+      Timing.every({ every: `${BigInt(Math.abs(integer % 1000000000)) + 1n}ms`, anchor: instant }),
       Timing.calendar({ at: '09:00', timezone: 'UTC' }),
     ]) {
       expect(Schema.decodeSync(TimingSchema)(value)).toEqual(value)
       expect(Timing.from(lowerTiming(value))).toEqual(value)
+      if (value._tag === 'At') {
+        expect(lowerTiming(value)).toEqual({ at: lowerInstant(value.at) })
+        expect(value.at).toBe(normalizeInstant(value.at))
+      } else if (value._tag === 'Every') {
+        expect(lowerTiming(value)).toEqual({
+          every: lowerDuration(value.every),
+          anchor: lowerInstant(value.anchor),
+        })
+        expect(value.every).toBe(normalizeDuration({ input: value.every }))
+        expect(value.anchor).toBe(normalizeInstant(value.anchor))
+      }
     }
   },
 )
