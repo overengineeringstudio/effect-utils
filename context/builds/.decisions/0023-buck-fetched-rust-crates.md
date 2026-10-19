@@ -55,6 +55,12 @@ it. The eight fixups whose keys are inert non-vendored (`extra_srcs`,
 `precise_srcs = false` — compensations for vendored-mode source pruning) are
 re-verified by building their crates before the graph is admitted.
 
+Check mode keeps its Cargo home, candidate graphs, sidecar pins, and foreign
+supply in an automatically removed temporary directory outside the checkout;
+`TMPDIR` resolving inside the repository is rejected. Comparisons remain
+byte-for-byte and fail closed on drift. Generate mode retains same-directory
+graph and sidecar candidates with atomic rename into place.
+
 ## Consequences
 
 - Decision 0017 Amendment 1's "network-free during Buck execution" narrows to
