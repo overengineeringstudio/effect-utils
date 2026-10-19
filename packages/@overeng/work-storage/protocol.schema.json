@@ -22,7 +22,9 @@
     },
     "paths": {
       "type": "object",
-      "propertyNames": { "enum": ["state", "cache", "data", "runtime", "checkouts", "credentials"] },
+      "propertyNames": {
+        "enum": ["state", "cache", "data", "runtime", "checkouts", "credentials"]
+      },
       "additionalProperties": { "$ref": "#/$defs/canonicalPath" }
     },
     "environment": { "type": "object", "additionalProperties": { "type": "string" } }

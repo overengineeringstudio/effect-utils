@@ -1,0 +1,178 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+load("//buck2/rust:defs.bzl", "rust_test_receipt")
+# Projection source: rust/work-storage/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:4abc79fef2a6d1b4da5dd0888d05984cb350c284acd28ecfaa87ebca3995c858
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/BUCK.genie.ts, rust/work-storage/Cargo.toml, rust/work-storage/src/**/*.rs, rust/work-storage/tests/**/*.rs
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+load("//buck2/rust:defs.bzl", "buildscript_run", "cargo_build_script")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/work-storage",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "build.rs",
+        "src/lib.rs",
+        "tests/conformance.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/build.rs",
+    src = "build.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_binary(
+    name = "work-storage-build-script-build",
+    crate = "build_script_build",
+    crate_root = "build.rs",
+    srcs = [
+        "build.rs",
+    ],
+    deps = [
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "work-storage",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "build_script_build",
+        "CARGO_MANIFEST_DIR": "rust/work-storage",
+    },
+)
+
+cargo_build_script(
+    name = "work-storage-build-script",
+    build_script = ":work-storage-build-script-build",
+    package_path = "rust/work-storage",
+    srcs = {
+        "packages/@overeng/work-storage/fixtures/conformance.json": "//packages/@overeng/work-storage:conformance-fixtures",
+        "packages/@overeng/work-storage/protocol.schema.json": "//packages/@overeng/work-storage:protocol-schema",
+        "rust/work-storage/Cargo.toml": "Cargo.toml",
+        "rust/work-storage/build.rs": "build.rs",
+        "rust/work-storage/src/lib.rs": "src/lib.rs",
+        "rust/work-storage/tests/conformance.rs": "tests/conformance.rs",
+    },
+)
+
+buildscript_run(
+    name = "work-storage-build-script-run",
+    package_name = "work-storage",
+    buildscript_rule = ":work-storage-build-script",
+    manifest_dir = ":work-storage-build-script",
+    env = {
+        "CARGO_PKG_NAME": "work-storage",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "build_script_build",
+        "DEBUG": "false",
+        "NUM_JOBS": "1",
+        "PROFILE": "debug",
+    },
+    version = "0.0.0",
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "work_storage",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/lib.rs",
+    ],
+    deps = [
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "work-storage",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "work_storage",
+        "CARGO_MANIFEST_DIR": "rust/work-storage",
+        "OUT_DIR": "$(location :work-storage-build-script-run[out_dir])",
+    },
+    rustc_flags = ["@$(location :work-storage-build-script-run[rustc_flags])"],
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_test(
+    name = "conformance",
+    crate = "work_storage_conformance",
+    crate_root = "tests/conformance.rs",
+    srcs = ["tests/conformance.rs"],
+    edition = "2021",
+    deps = [
+        ":lib",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:tempfile",
+    ],
+    env = {
+        "OUT_DIR": "$(location :work-storage-build-script-run[out_dir])",
+    },
+    visibility = ["PUBLIC"],
+)
+
+rust_test_receipt(
+    name = "conformance-receipt",
+    test = ":conformance",
+    visibility = ["PUBLIC"],
+)

@@ -281,7 +281,6 @@ to alternate storage. After input validation, failure precedence is
 typed error. Provider admission is a launch-time observation, not a promise of
 continuous mount liveness or proof that a supplied observation is trustworthy.
 
-
 ## Quick Start
 
 ### Enter the dev shell

@@ -55,6 +55,10 @@
   ],
   "neutral": [
     {
+      "task": "test:work-storage:unbounded",
+      "rationale": "Portable shared manifest conformance and temporary filesystem reads; no Darwin-specific lifecycle, watcher or process behavior."
+    },
+    {
       "task": "buck2:rust:generators:test",
       "rationale": "Platform-neutral Bun/JS contract generation and USTAR round-trips through pinned GNU tar; no Darwin-specific behavior."
     },
@@ -135,6 +139,10 @@
       }
     ],
     "neutral": [
+      {
+        "task": "test:work-storage",
+        "rationale": "Portable manifest, schema acceptance and role-resolution contracts; no platform-specific provider implementation."
+      },
       {
         "task": "test:agent-session-ingest",
         "rationale": "agent-session-ingest bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."

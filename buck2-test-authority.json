@@ -2182,6 +2182,20 @@
         "src/node/watch.unit.test.ts"
       ],
       "unboundedTaskName": "test:utils:unbounded"
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/work-storage:test_collect",
+      "excludes": [],
+      "packageName": "work-storage",
+      "packagePath": "packages/@overeng/work-storage",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/mod.integration.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/work-storage:test",
+      "taskName": "test:work-storage",
+      "testFiles": ["src/mod.integration.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
     }
   ],
   "schemaVersion": 2

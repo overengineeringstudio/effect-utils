@@ -33,7 +33,17 @@ export default packageJson(
   } satisfies PackageJsonInputData,
   catalog.compose({
     workspace: workspaceMember({ memberPath: 'packages/@overeng/work-storage' }),
-    devDependencies: { external: catalog.pick('effect', '@effect/platform-node', '@effect/vitest', '@types/node', 'typescript', 'vitest', 'ajv') },
+    devDependencies: {
+      external: catalog.pick(
+        'effect',
+        '@effect/platform-node',
+        '@effect/vitest',
+        '@types/node',
+        'typescript',
+        'vitest',
+        'ajv',
+      ),
+    },
     peerDependencies: { external: catalog.pick('effect') },
   }),
 )

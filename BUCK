@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:300aad6e219d97dc5d38b6adcb7f36bd189894708e5b9710a746207012401b36
+# Semantic fingerprint: sha256:fd4a354cdd7b4cac9bd17f019139dbb78f7987a5ddfb90a1c99796de604714b6
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -225,6 +225,7 @@ check_aggregate(
         "//packages/@overeng/tui-core:typecheck",
         "//packages/@overeng/tui-react:typecheck",
         "//packages/@overeng/tui-stories:typecheck",
+        "//packages/@overeng/work-storage:typecheck",
         "//packages/@overeng/utils:typecheck",
         "//packages/@overeng/utils-dev:typecheck",
         "//packages/@overeng/utils-storybook:typecheck",
@@ -291,6 +292,7 @@ check_aggregate(
         "//packages/@overeng/tui-core:dist",
         "//packages/@overeng/tui-react:dist",
         "//packages/@overeng/tui-stories:dist",
+        "//packages/@overeng/work-storage:dist",
         "//packages/@overeng/utils:dist",
         "//packages/@overeng/utils-dev:dist",
         "//packages/@overeng/utils-storybook:dist",
@@ -345,8 +347,10 @@ check_aggregate(
         "effect_utils//packages/@overeng/utils-dev:test",
         "effect_utils//packages/@overeng/utils-storybook:test",
         "effect_utils//packages/@overeng/utils:test",
+        "effect_utils//packages/@overeng/work-storage:test",
         "//buck2/toolchains:archive_tool",
         "//buck2/toolchains:product_tool",
+        "//rust/work-storage:conformance-receipt",
         "//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-node",
         "//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-bun",
         "//rust/effect-rust-fixtures/napi-adapter:napi-smoke-node",
