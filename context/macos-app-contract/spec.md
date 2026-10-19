@@ -188,6 +188,14 @@ socket and typed `config.socket` therefore require different precreated,
 user-owned mode-0700 parent directories; different filenames in one directory
 are insufficient and would contend for the same listener lock.
 
+Ctl waits up to 15 seconds for a running launchd job's control socket, retrying
+only `ENOENT` and `ECONNREFUSED` at 50 ms intervals. Each attempt rechecks that
+the job remains loaded with the originally observed PID; exit or replacement
+returns `job-not-running` immediately. Deadline expiry returns `endpoint-unready`
+with the socket path and elapsed duration (exit 23). Other connection failures
+are not retried. This wait covers supplied-plist evidence and generic host IPC;
+it does not retry requests or change peer authentication or PID checks.
+
 One newline-delimited UTF-8 JSON request and response per connection; maximum
 request 64 KiB including newline, maximum response 1 MiB. Reject invalid UTF-8,
 multiple/trailing requests and oversized frames. Use an absolute five-second
