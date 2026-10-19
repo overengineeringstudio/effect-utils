@@ -502,7 +502,7 @@ describe('the CLI entry override', () => {
       const nativeFs = { ...process.getBuiltinModule('fs') }
       const realpath = vi.spyOn(fs, 'realpathSync')
       const priorImplementation = realpath.getMockImplementation()
-      if (preexistingMock) {
+      if (preexistingMock === true) {
         // Exercise the shared-mock state even when this file runs before editor-view.
         realpath.mockImplementation(vi.fn(nativeFs.realpathSync))
       }
