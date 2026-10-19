@@ -80,8 +80,10 @@ export interface UnsupportedPolicy {
 }
 export class UnsupportedLowering extends TypeError {
   readonly _tag = 'UnsupportedLowering'
-  constructor(readonly feature: string) {
+  readonly feature: string
+  constructor(feature: string) {
     super(`Native lowering does not support ${feature}; no declaration was emitted`)
+    this.feature = feature
   }
 }
 const rejectUnsupported = (input: UnsupportedPolicy): void => {
@@ -143,10 +145,12 @@ const makeStep = (input: StepFragment): StepFragment => {
 const reviewText = (review: Review): string => review._tag === 'subject' ? review.subject : review.reference
 const stepWire = (fragment: StepFragment): NativeStep => {
   makeStep(fragment)
-  return fragment.review === undefined ? fragment.native : {
+  if (fragment.review === undefined) return fragment.native
+  const review = fragment.review.map(reviewText)
+  return {
     ...fragment.native,
-    gates: fragment.native.gates?.map((gate) => gate.kind === 'human'
-      ? { ...gate, review: fragment.review?.map(reviewText) }
+    gates: (fragment.native.gates ?? []).map((gate) => gate.kind === 'human'
+      ? { ...gate, review }
       : gate),
   }
 }
@@ -281,7 +285,12 @@ const fromNativeTiming = (input: NativeTiming): Timing => {
     : timing.calendar({ ...input.calendar, ...(input.catchUp === undefined ? {} : { catchUp: input.catchUp }) })
 }
 export class MissionBuilder {
-  constructor(readonly native: NativeMission, readonly options: MissionOptions = {}) {}
+  readonly native: NativeMission
+  readonly options: MissionOptions
+  constructor(native: NativeMission, options: MissionOptions = {}) {
+    this.native = native
+    this.options = options
+  }
   withSteps(...steps: readonly StepFragment[]): MissionBuilder { return new MissionBuilder(this.native, { ...this.options, steps }) }
   withFinally(...steps: readonly StepFragment[]): MissionBuilder { return new MissionBuilder(this.native, { ...this.options, finally: steps }) }
   withSchedule(schedule: Schedule): MissionBuilder { return new MissionBuilder(this.native, { ...this.options, schedule }) }
@@ -294,12 +303,12 @@ export const DesignB = {
   timing: (input: NativeTiming): Timing => fromNativeTiming(input),
   exec: (input: NativeExec): Exec => {
     const { id, host, workspace, restart, policy, hardTimeout, consent, ...command } = input
-    rejectUnsupported({ policy, hardTimeout, consent })
+    rejectUnsupported({ policy, consent, ...(hardTimeout === undefined ? {} : { hardTimeout }) })
     return DesignA.exec({ id, host, workspace, restart, launch: fromNativeLaunch(command) })
   },
   schedule: (input: NativeSchedule): Schedule => {
     const { id, host, work, policy, hardTimeout, consent, ...nativeTiming } = input
-    rejectUnsupported({ policy, hardTimeout, consent })
+    rejectUnsupported({ policy, consent, ...(hardTimeout === undefined ? {} : { hardTimeout }) })
     return DesignA.schedule({ id, host, work, timing: fromNativeTiming(nativeTiming) })
   },
   step: (native: NativeStep, options: Omit<StepFragment, 'native'> = {}): StepFragment => makeStep({ native, ...options }),
