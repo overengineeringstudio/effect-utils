@@ -104,6 +104,8 @@ export type Node = {
   readonly children?: readonly Node[]
 }
 
+const immutableNodes = new WeakSet<Node>()
+
 /** Builds a KDL node; omitted args and props are empty. */
 export const node = ({
   name,
@@ -115,13 +117,22 @@ export const node = ({
   readonly args?: readonly Value[]
   readonly props?: Readonly<Record<string, Value>>
   readonly children?: readonly Node[]
-}): Node =>
-  Object.freeze({
+}): Node => {
+  const value = Object.freeze({
     name,
     args: Object.freeze([...args]),
     props: Object.freeze({ ...props }),
-    ...(children === undefined ? {} : { children: Object.freeze([...children]) }),
+    ...(children === undefined
+      ? {}
+      : {
+          children: Object.freeze(
+            children.map((child) => (immutableNodes.has(child) === true ? child : node(child))),
+          ),
+        }),
   })
+  immutableNodes.add(value)
+  return value
+}
 
 const renderValue = (value: Value): string => {
   if (typeof value === 'string') return JSON.stringify(value)
@@ -316,7 +327,7 @@ export type PersonReference = typeof PersonReferenceSchema.Type
 
 /** References a named person; it is attribution, not a person credential. */
 export const person = (subject: `person/${string}`): PersonReference =>
-  decode({ schema: PersonReferenceSchema, input: { kind: 'person', subject } })
+  Object.freeze(decode({ schema: PersonReferenceSchema, input: { kind: 'person', subject } }))
 
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
@@ -918,10 +929,12 @@ export const omp = ({
   readonly effort: (typeof OmpSchema.Encoded)['effort']
   readonly resume?: typeof OmpResumeSchema.Encoded
 }): typeof OmpSchema.Type =>
-  decode({
-    schema: OmpSchema,
-    input: { kind: 'omp', model, effort, ...(resume === undefined ? {} : { resume }) },
-  })
+  snapshotComposition(
+    decode({
+      schema: OmpSchema,
+      input: { kind: 'omp', model, effort, ...(resume === undefined ? {} : { resume }) },
+    }),
+  )
 
 /** Decodes and renders a resource node. */
 export const resource = (input: typeof ResourceSchema.Encoded): Node => {
@@ -1146,8 +1159,9 @@ const withReferences = <TGate extends object>({
   readonly value: TGate
   readonly references: readonly RunReference[]
 }): TGate => {
-  gateReferences.set(value, references)
-  return value
+  const snapshot = snapshotComposition(value)
+  gateReferences.set(snapshot, Object.freeze([...references]))
+  return snapshot
 }
 type AuthoredText = string | TextTemplate
 type AuthoredGoal = AuthoredText | readonly [AuthoredText, ...AuthoredText[]]
@@ -1775,7 +1789,7 @@ const stepDependency = <TMission extends string>({
 }: {
   readonly handle: StepHandle<TMission>
   readonly state: StepDependency['state']
-}): StepDependency<TMission> => ({ [dependencyBrand]: true, handle, state })
+}): StepDependency<TMission> => Object.freeze({ [dependencyBrand]: true, handle, state })
 /** Wait for a step to complete successfully. */
 export const completed = <TMission extends string>(
   handle: StepHandle<TMission>,

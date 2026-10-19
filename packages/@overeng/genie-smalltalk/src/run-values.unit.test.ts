@@ -17,6 +17,140 @@ import {
   utf8ByteLength,
 } from './run-values.ts'
 
+describe('immutable run-value snapshots', () => {
+  it('makes text input declarations immutable without changing reference identity', () => {
+    const head = input.text('head')
+    const text = t`${head}`
+    expect(Object.isFrozen(head)).toBe(true)
+    expect(Reflect.set(head, 'name', 'other')).toBe(false)
+    expect(Reflect.set(head, 'kind', 'resource')).toBe(false)
+    expect(head.name).toBe('head')
+    expect(head.kind).toBe('text')
+    expect(templateReferences(text)[0]).toBe(head)
+    expect(templateText(t`${head}`)).toBe('${input.head}')
+  })
+
+  it('snapshots resource input options without freezing the caller', () => {
+    const options = { name: 'source', kind: 'vcs.ref' }
+    const source = input.resource(options)
+    options.name = 'other'
+    options.kind = 'other.kind'
+    expect(Object.isFrozen(options)).toBe(false)
+    expect(Object.isFrozen(source)).toBe(true)
+    expect(Reflect.set(source, 'name', 'changed')).toBe(false)
+    expect(Reflect.set(source, 'resourceKind', 'changed')).toBe(false)
+    expect(source.name).toBe('source')
+    expect(source.kind).toBe('resource')
+    expect(source.resourceKind).toBe('vcs.ref')
+    expect(templateReferences(t`${source}`)[0]).toBe(source)
+  })
+
+  it('copies and freezes field product constraints while retaining template identity', () => {
+    const head = input.text('head')
+    const label = t`exact/${head}`
+    const callerTemplate: TextTemplate = { kind: 'template', text: 'caller-owned' }
+    const fields = { state: 'ready', label, callerTemplate }
+    const options = { subject: 'message/report' as `message/${string}`, fields }
+    const report = product.field(options)
+    fields.state = 'changed'
+    fields.label = t`replacement`
+    options.subject = 'message/other'
+    expect(Object.isFrozen(options)).toBe(false)
+    expect(Object.isFrozen(fields)).toBe(false)
+    expect(Object.isFrozen(callerTemplate)).toBe(false)
+    expect(report.subject).toBe('message/report')
+    expect(report.fields).not.toBe(fields)
+    expect(report.fields.state).toBe('ready')
+    expect(report.fields.label).toBe(label)
+    expect(report.fields.callerTemplate).toBe(callerTemplate)
+    expect(templateReferences(report.fields.label)[0]).toBe(head)
+    expect(Object.isFrozen(report)).toBe(true)
+    expect(Object.isFrozen(report.fields)).toBe(true)
+    expect(Reflect.set(report, 'subject', 'message/changed')).toBe(false)
+    expect(Reflect.set(report.fields, 'state', 'changed')).toBe(false)
+    expect(Reflect.set(report.fields, 'added', true)).toBe(false)
+  })
+
+  it('copies and freezes resource product constraints while retaining template identity', () => {
+    const head = input.text('head')
+    const label = t`exact/${head}`
+    const callerTemplate: TextTemplate = { kind: 'template', text: 'caller-owned' }
+    const fields = { state: 'ready', label, callerTemplate, kind: 'overridden' }
+    const options = {
+      kind: 'example.report',
+      subject: 'resource/report' as `resource/${string}`,
+      fields,
+    }
+    const report = product.resource(options)
+    fields.state = 'changed'
+    fields.label = t`replacement`
+    fields.kind = 'changed'
+    options.kind = 'other.kind'
+    options.subject = 'resource/other'
+    expect(Object.isFrozen(options)).toBe(false)
+    expect(Object.isFrozen(fields)).toBe(false)
+    expect(Object.isFrozen(callerTemplate)).toBe(false)
+    expect(report.subject).toBe('resource/report')
+    expect(report.fields).not.toBe(fields)
+    expect(report.fields.state).toBe('ready')
+    expect(report.fields.kind).toBe('example.report')
+    expect(report.fields.label).toBe(label)
+    expect(report.fields.callerTemplate).toBe(callerTemplate)
+    expect(templateReferences(report.fields.label)[0]).toBe(head)
+    expect(Object.isFrozen(report)).toBe(true)
+    expect(Object.isFrozen(report.fields)).toBe(true)
+    expect(Reflect.set(report, 'subject', 'resource/changed')).toBe(false)
+    expect(Reflect.set(report.fields, 'state', 'changed')).toBe(false)
+    expect(Reflect.set(report.fields, 'added', true)).toBe(false)
+  })
+
+  it('keeps tag results and their exposed provenance immutable', () => {
+    const head = input.text('head')
+    const other = input.text('other')
+    const text = t`exact/${head}`
+    const document = doc`doc/${text}`
+    const child = childMission`example/${text}`
+    for (const value of [text, document, child]) {
+      expect(Object.isFrozen(value)).toBe(true)
+      expect(Reflect.set(value, 'kind', 'changed')).toBe(false)
+      const references = templateReferences(value)
+      expect(Object.isFrozen(references)).toBe(true)
+      expect(Reflect.set(references, '0', other)).toBe(false)
+      expect(Reflect.set(references, 'length', 0)).toBe(false)
+      expect(references).toHaveLength(1)
+      expect(references[0]).toBe(head)
+    }
+    expect(Reflect.set(text, 'text', 'changed')).toBe(false)
+    expect(Reflect.set(document, 'subject', 'doc/changed')).toBe(false)
+    expect(Reflect.set(child, 'id', 'changed')).toBe(false)
+    expect(templateText(text)).toBe('exact/${input.head}')
+    expect(document.subject).toBe('doc/exact/${input.head}')
+    expect(child.id).toBe('example/exact/${input.head}')
+    const emptyReferences = templateReferences({})
+    expect(Object.isFrozen(emptyReferences)).toBe(true)
+    expect(Reflect.set(emptyReferences, '0', other)).toBe(false)
+    expect(templateReferences({})).toEqual([])
+  })
+
+  it('snapshots pull request options without freezing the caller', () => {
+    const options = { repo: 'example/repository', number: 7 }
+    const target = pr(options)
+    options.repo = 'other/repository'
+    options.number = 8
+    expect(Object.isFrozen(options)).toBe(false)
+    expect(Object.isFrozen(target)).toBe(true)
+    expect(Reflect.set(target, 'repo', 'changed/repository')).toBe(false)
+    expect(Reflect.set(target, 'number', 9)).toBe(false)
+    expect(target).toEqual({ kind: 'pull-request', repo: 'example/repository', number: 7 })
+  })
+
+  it('keeps the shared run context immutable', () => {
+    expect(Object.isFrozen(runId)).toBe(true)
+    expect(Reflect.set(runId, 'name', 'OTHER')).toBe(false)
+    expect(templateText(t`${runId}`)).toBe('${ST_MISSION_RUN}')
+  })
+})
+
 describe('typed native interpolation', () => {
   it('interpolates typed input references without reading runtime values', () => {
     const head = input.text('head')

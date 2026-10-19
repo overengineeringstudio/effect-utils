@@ -171,6 +171,65 @@ describe('canonical launch values', () => {
     expect(Object.isFrozen(value.unset)).toBe(true)
   })
 
+  it('snapshots constructor and decoded launch arrays and environment without freezing callers', () => {
+    for (const make of [
+      Launch.argv,
+      Launch.from,
+      (value: Parameters<typeof Launch.argv>[0]) =>
+        Schema.decodeUnknownSync(LaunchSchema)({ _tag: 'Argv', ...value }),
+    ]) {
+      const argv: [string, ...string[]] = ['printf', 'original']
+      const env = { MODE: 'original' }
+      const unset = ['TOKEN']
+      const source = { argv, env, unset }
+      const value = make(source)
+      expect(Object.isFrozen(source)).toBe(false)
+      expect(Object.isFrozen(argv)).toBe(false)
+      expect(Object.isFrozen(env)).toBe(false)
+      expect(Object.isFrozen(unset)).toBe(false)
+      argv[1] = 'changed'
+      env.MODE = 'changed'
+      unset.push('OTHER')
+      expect(value).toEqual({
+        _tag: 'Argv',
+        argv: ['printf', 'original'],
+        env: { MODE: 'original' },
+        unset: ['TOKEN'],
+      })
+      expect(Object.isFrozen(value)).toBe(true)
+      if (value._tag === 'Argv') {
+        expect(value.argv).not.toBe(argv)
+        expect(Object.isFrozen(value.argv)).toBe(true)
+      }
+      expect(Object.isFrozen(value.env)).toBe(true)
+      expect(Object.isFrozen(value.unset)).toBe(true)
+    }
+    for (const make of [
+      Launch.shell,
+      Launch.from,
+      (value: Parameters<typeof Launch.shell>[0]) =>
+        Schema.decodeUnknownSync(LaunchSchema)({ _tag: 'Shell', ...value }),
+    ]) {
+      const source = { command: 'original', env: { MODE: 'original' }, unset: ['TOKEN'] }
+      const value = make(source)
+      expect(Object.isFrozen(source)).toBe(false)
+      expect(Object.isFrozen(source.env)).toBe(false)
+      expect(Object.isFrozen(source.unset)).toBe(false)
+      source.command = 'changed'
+      source.env.MODE = 'changed'
+      source.unset.push('OTHER')
+      expect(value).toEqual({
+        _tag: 'Shell',
+        command: 'original',
+        env: { MODE: 'original' },
+        unset: ['TOKEN'],
+      })
+      expect(Object.isFrozen(value)).toBe(true)
+      expect(Object.isFrozen(value.env)).toBe(true)
+      expect(Object.isFrozen(value.unset)).toBe(true)
+    }
+  })
+
   it('rejects empty argv and executables, mixed variants and excess properties', () => {
     for (const value of [
       { _tag: 'Argv', argv: [] },
@@ -198,6 +257,8 @@ describe('canonical launch values', () => {
       env: { NAME: t`${name}` },
     })
     expect(launchReferences(command)).toEqual([name, name, name])
+    expect(launchReferences(command)[0]).toBe(name)
+    expect(Object.isFrozen(launchReferences(command))).toBe(true)
     expect(launchReferences(Launch.argv({ argv: ['echo', t`${name}`] }))).toEqual([name])
     expect(lowerLaunch(command)).toEqual({
       command: 'echo ${input.name}',
@@ -237,6 +298,29 @@ describe('canonical timing values', () => {
     if (calendar._tag === 'Calendar') expect(Object.isFrozen(calendar.days)).toBe(true)
   })
 
+  it('snapshots calendar days through constructors and direct decoding without freezing callers', () => {
+    for (const make of [
+      Timing.calendar,
+      (calendar: Parameters<typeof Timing.calendar>[0]) => Timing.from({ calendar }),
+      (calendar: Parameters<typeof Timing.calendar>[0]) =>
+        Schema.decodeUnknownSync(TimingSchema)({ _tag: 'Calendar', ...calendar }),
+    ]) {
+      const days: ['Mon' | 'Tue'] = ['Mon']
+      const source = { at: '09:00', timezone: 'UTC', days }
+      const value = make(source)
+      expect(Object.isFrozen(source)).toBe(false)
+      expect(Object.isFrozen(days)).toBe(false)
+      source.at = '10:00'
+      days[0] = 'Tue'
+      expect(value).toEqual({ _tag: 'Calendar', at: '09:00', timezone: 'UTC', days: ['Mon'] })
+      expect(Object.isFrozen(value)).toBe(true)
+      if (value._tag === 'Calendar') {
+        expect(value.days).not.toBe(days)
+        expect(Object.isFrozen(value.days)).toBe(true)
+      }
+    }
+  })
+
   it('rejects mixed forms, invalid calendar values, and unsupported catch-up', () => {
     for (const value of [
       { _tag: 'At', at: anchor, every: '1h' },
@@ -273,6 +357,34 @@ describe('canonical review values', () => {
     expect(Object.isFrozen(Review.subject('mission/example'))).toBe(true)
   })
 
+  it('snapshots review inputs through constructors and direct decoding without freezing callers', () => {
+    for (const make of [
+      Review.file,
+      (source: Parameters<typeof Review.file>[0]) =>
+        Schema.decodeUnknownSync(ReviewSchema)({ _tag: 'File', ...source }),
+    ]) {
+      const source = { host: 'dev1', path: '/tmp/original' }
+      const value = make(source)
+      expect(Object.isFrozen(source)).toBe(false)
+      source.host = 'dev2'
+      source.path = '/tmp/changed'
+      expect(value).toEqual({ _tag: 'File', host: 'dev1', path: '/tmp/original' })
+      expect(Object.isFrozen(value)).toBe(true)
+    }
+    const template = { kind: 'template' as const, text: 'mission/original' }
+    const value = Review.subject(template)
+    expect(Object.isFrozen(template)).toBe(false)
+    template.text = 'mission/changed'
+    expect(value).toEqual({ _tag: 'Subject', subject: 'mission/original' })
+    expect(Object.isFrozen(value)).toBe(true)
+    const source = { _tag: 'Subject', subject: 'mission/original' }
+    const decoded = Schema.decodeUnknownSync(ReviewSchema)(source)
+    expect(Object.isFrozen(source)).toBe(false)
+    source.subject = 'mission/changed'
+    expect(decoded).toEqual({ _tag: 'Subject', subject: 'mission/original' })
+    expect(Object.isFrozen(decoded)).toBe(true)
+  })
+
   it('rejects unpinned, interpolated or malformed pinned documents and traversal', () => {
     for (const reference of [
       'doc/example',
@@ -294,15 +406,30 @@ describe('canonical review values', () => {
     ).toThrow()
   })
 
-  it('retains imported subject references until tree resolution', () => {
+  it('retains imported subject references as mutable external identities until tree resolution', () => {
     const ref = {
-      _tag: 'SubjectRef',
-      kind: 'mission',
+      _tag: 'SubjectRef' as const,
+      kind: 'mission' as const,
       url: 'file:///subjects/example/mission.ts',
-    } as const
+      intent: { description: 'original' },
+    }
     const review = Review.subject(ref)
     expect(review).toEqual({ _tag: 'Subject', subject: ref })
     expect(() => lowerReview(review)).toThrow('must be resolved')
+    expect(review._tag === 'Subject' && review.subject).toBe(ref)
+    expect(Object.isFrozen(review)).toBe(true)
+    expect(Object.isFrozen(ref)).toBe(false)
+    const source = { _tag: 'Subject', subject: ref }
+    const decoded = Schema.decodeUnknownSync(ReviewSchema)(source)
+    expect(decoded._tag === 'Subject' && decoded.subject).toBe(ref)
+    expect(Object.isFrozen(decoded)).toBe(true)
+    expect(Object.isFrozen(source)).toBe(false)
+    expect(Object.isFrozen(ref)).toBe(false)
+    expect(Object.isFrozen(ref.intent)).toBe(false)
+    ref.url = 'file:///subjects/changed/mission.ts'
+    ref.intent.description = 'changed'
+    expect(review._tag === 'Subject' && review.subject).toBe(ref)
+    expect(decoded._tag === 'Subject' && decoded.subject).toBe(ref)
   })
 
   it('retains exact run reference identities for human-gate validation', () => {
@@ -313,6 +440,8 @@ describe('canonical review values', () => {
       Review.subject(doc`doc/example/${name}`),
     ]) {
       expect(reviewReferences(review)).toEqual([name])
+      expect(reviewReferences(review)[0]).toBe(name)
+      expect(Object.isFrozen(reviewReferences(review))).toBe(true)
     }
   })
 })

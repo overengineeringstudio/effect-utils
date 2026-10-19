@@ -31,17 +31,21 @@ export type InstantInput =
   | `${string}Z`
   | `${string}${'+' | '-'}${number}:${number}`
 
-/** Freeze canonical data, never the imported subject definition it points to. */
-const freezeCanonical = <T>(value: T): T => {
+/** Snapshot owned data before freezing; imported subject definitions retain their identity. */
+const snapshotCanonical = <T>(value: T): T => {
   if (
-    typeof value === 'object' &&
-    value !== null &&
-    !('_tag' in value && value._tag === 'SubjectRef')
-  ) {
-    for (const nested of Object.values(value)) freezeCanonical(nested)
-    Object.freeze(value)
-  }
-  return value
+    typeof value !== 'object' ||
+    value === null ||
+    ('_tag' in value && value._tag === 'SubjectRef')
+  )
+    return value
+  return Object.freeze(
+    Array.isArray(value) === true
+      ? value.map(snapshotCanonical)
+      : Object.fromEntries(
+          Object.entries(value).map(([key, nested]) => [key, snapshotCanonical(nested)]),
+        ),
+  ) as T
 }
 /** Closed on both decoder and type predicates, including Schema.is callers. */
 const canonicalCodec = <TSchema extends Schema.ConstraintCodec<unknown, unknown>>(
@@ -78,8 +82,8 @@ const canonicalCodec = <TSchema extends Schema.ConstraintCodec<unknown, unknown>
     Schema.declare<TSchema['Encoded']>((input): input is TSchema['Encoded'] => closed(input)),
   )
   return Schema.decodeTo<typeof canonical, typeof closedShape>(canonical, {
-    // Decode the shape once; the terminal declaration does not clone frozen data.
-    decode: SchemaGetter.transform(freezeCanonical<TSchema['Type']>),
+    // Object decoders may retain unchanged inputs, so snapshot before freezing.
+    decode: SchemaGetter.transform(snapshotCanonical<TSchema['Type']>),
     encode: SchemaGetter.transform((input) => input),
   })(closedShape)
 }
@@ -387,7 +391,7 @@ const makeLaunch = (input: LaunchInput): Launch => {
       ? { ...normalized, _tag: 'Argv', argv: input.argv.map(text) }
       : { ...normalized, _tag: 'Shell', command: text(input.command) },
   )
-  launchRefs.set(value, references)
+  launchRefs.set(value, Object.freeze(references))
   return value
 }
 /** Semantic and native-shaped constructors for canonical launches. */
@@ -559,7 +563,7 @@ const subjectReview = (input: ReviewSubjectInput): Review => {
     (subject.startsWith('file/') === true || isPinnedDocument(subject) === true)
       ? fromReview(subject)
       : decodeReview({ _tag: 'Subject', subject })
-  reviewRefs.set(value, references)
+  reviewRefs.set(value, Object.freeze([...references]))
   return value
 }
 const fromReview = (input: string): Review => {
