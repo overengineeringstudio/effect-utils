@@ -38,6 +38,14 @@ SERVICES = {'ScreenCapture': 'kTCCServiceScreenCapture', 'Accessibility': 'kTCCS
 
 
 
+def new_forbidden_windows(windows, preexisting):
+    """Only explicitly snapshotted window numbers are tolerated, never owners."""
+    numbers = {window['number'] for window in preexisting}
+    return [window for window in windows
+            if window['owner'] in {'SecurityAgent', 'UserNotificationCenter'}
+            and window['number'] not in numbers]
+
+
 def gui_watch(directory):
     """Run ONLY as a directly launched gui-domain process, never from prep/SSH."""
     if subprocess.check_output(['/bin/launchctl', 'managername'], text=True).strip() != 'Aqua':
@@ -53,26 +61,48 @@ def gui_watch(directory):
     cf.CFDictionaryGetValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     cf.CFDictionaryGetValue.restype = ctypes.c_void_p
     cf.CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long, ctypes.c_uint32]
+    cf.CFNumberGetValue.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+    cf.CFNumberGetValue.restype = ctypes.c_bool
     cf.CFRelease.argtypes = [ctypes.c_void_p]
     owner_key = ctypes.c_void_p.in_dll(cg, 'kCGWindowOwnerName').value
+    number_key = ctypes.c_void_p.in_dll(cg, 'kCGWindowNumber').value
+    pid_key = ctypes.c_void_p.in_dll(cg, 'kCGWindowOwnerPID').value
+    tolerate_preexisting = os.environ.get('MACOS_APPS_TOLERATE_PREEXISTING_DIALOGS') == '1'
+    preexisting = None
     try:
         while True:
             array = cg.CGWindowListCopyWindowInfo(1, 0)
             if not array:
                 raise RuntimeError('GUI window list unavailable')
-            owners = []
+            windows = []
             try:
                 for index in range(cf.CFArrayGetCount(array)):
                     item = cf.CFArrayGetValueAtIndex(array, index)
                     owner = cf.CFDictionaryGetValue(item, owner_key)
                     buffer = ctypes.create_string_buffer(1024)
                     if owner and cf.CFStringGetCString(owner, buffer, len(buffer), 0x08000100):
-                        owners.append(buffer.value.decode('utf-8'))
+                        name = buffer.value.decode('utf-8')
+                        if name in {'SecurityAgent', 'UserNotificationCenter'}:
+                            values = {}
+                            for field, key in (('number', number_key), ('pid', pid_key)):
+                                value = cf.CFDictionaryGetValue(item, key)
+                                integer = ctypes.c_int64()
+                                if not value or not cf.CFNumberGetValue(value, 4, ctypes.byref(integer)):
+                                    raise RuntimeError('GUI window identity unavailable')
+                                values[field] = integer.value
+                            windows.append({'owner': name, **values})
             finally:
                 cf.CFRelease(array)
-            forbidden = sorted(set(owners) & {'SecurityAgent', 'UserNotificationCenter'})
+            if preexisting is None:
+                (directory / 'gui-preexisting.json').write_text(json.dumps(windows) + '\n')
+                preexisting = windows if tolerate_preexisting else []
+                if tolerate_preexisting:
+                    append(directory / 'session.jsonl',
+                           {'event': 'gui-preexisting-tolerated', 'windows': preexisting})
+            forbidden = new_forbidden_windows(windows, preexisting)
             if forbidden:
-                raise RuntimeError('forbidden dialog owner: ' + ', '.join(forbidden))
+                raise RuntimeError('forbidden dialog owner: ' +
+                                   ', '.join(sorted({window['owner'] for window in forbidden})))
             # Do not include arbitrary app/window names in evidence.
             temporary = directory / 'gui-heartbeat.next'
             temporary.write_text(str(time.time()))
@@ -116,6 +146,8 @@ class Session:
             plistlib.dump({'Label': self.label, 'ProgramArguments': [sys.executable,
                 str(ROOT / 'session.py'), 'watch-gui', str(self.directory)],
                 'RunAtLoad': True, 'ProcessType': 'Interactive',
+                'EnvironmentVariables': {'MACOS_APPS_TOLERATE_PREEXISTING_DIALOGS':
+                    '1' if os.environ.get('MACOS_APPS_TOLERATE_PREEXISTING_DIALOGS') == '1' else '0'},
                 'StandardErrorPath': str(self.directory / 'gui.stderr')}, stream)
         subprocess.run(['/bin/launchctl', 'bootstrap', self.domain, str(plist)], check=True)
         self.bootstrapped = True

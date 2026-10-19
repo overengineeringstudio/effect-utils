@@ -3,6 +3,7 @@ import json
 import unittest
 
 from evidence import Tripwire, correlate_audit, parse
+from session import new_forbidden_windows
 
 
 class AuditCorrelationTests(unittest.TestCase):
@@ -174,6 +175,27 @@ class TripwireTests(unittest.TestCase):
                         'AUTHREQ_CTX: msgID=1.2, service=kTCCServiceMicrophone'):
             with self.subTest(message=message), self.assertRaises(RuntimeError):
                 self.observe(message)
+
+
+class GuiWindowFilterTests(unittest.TestCase):
+    def setUp(self):
+        self.existing = {'owner': 'UserNotificationCenter', 'number': 100, 'pid': 123}
+
+    def test_preexisting_window_is_tolerated_even_if_bounds_change(self):
+        moved = {**self.existing, 'bounds': {'X': 200, 'Y': 100}}
+        self.assertEqual(new_forbidden_windows([moved], [self.existing]), [])
+
+    def test_new_notification_window_is_forbidden(self):
+        new = {**self.existing, 'number': 101}
+        self.assertEqual(new_forbidden_windows([self.existing, new], [self.existing]), [new])
+
+    def test_new_security_agent_window_is_forbidden(self):
+        new = {'owner': 'SecurityAgent', 'number': 102, 'pid': 456}
+        self.assertEqual(new_forbidden_windows([self.existing, new], [self.existing]), [new])
+
+    def test_no_snapshot_preserves_default_abort_filter(self):
+        ordinary = {'owner': 'Example', 'number': 103, 'pid': 789}
+        self.assertEqual(new_forbidden_windows([ordinary, self.existing], []), [self.existing])
 
 
 if __name__ == '__main__':

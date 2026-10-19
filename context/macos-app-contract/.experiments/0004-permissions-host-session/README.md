@@ -111,7 +111,12 @@ config but does not generate or rewrite it.
 
 A directly launched `gui/<uid>` Python watcher polls CoreGraphics window owners. Any
 visible `SecurityAgent` or `UserNotificationCenter` window aborts, **even during an
-announced prompt**; do not dismiss it automatically. Those owners are never waived.
+announced prompt**; do not dismiss it automatically. The explicit opt-in environment
+flag `MACOS_APPS_TOLERATE_PREEXISTING_DIALOGS=1` tolerates only forbidden-owner window
+numbers snapshotted at arm time, even if their bounds change. The snapshot records
+owner, window number and PID in `gui-preexisting.json`, with a
+`gui-preexisting-tolerated` event in `session.jsonl`. Every new forbidden-owner window
+number still aborts; without the flag, existing forbidden windows also abort.
 An unavailable window list, dead watcher, stale heartbeat, dead/malformed tccd stream,
 unknown AUTHREQ kind, ambiguous audit correlation, or request timeout aborts. Polling is
 a tripwire, not a proof that an arbitrarily brief window never existed. The host's silent
