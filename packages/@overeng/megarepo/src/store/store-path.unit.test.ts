@@ -4,6 +4,8 @@ import path from 'node:path'
 import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { describe, expect, test } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -13,7 +15,11 @@ import { createEmptyLockFile, LockFile, LockedMember, writeLockFile } from '../c
 import { syncNixLocks } from '../core/nix-lock/mod.ts'
 import { generateSchema } from '../generators/schema.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
-import { abbreviateStorePath, assertCanonicalMutationAllowed } from './store-path.ts'
+import {
+  abbreviateStorePath,
+  assertCanonicalMutationAllowed,
+  makeStoreDirectory,
+} from './store-path.ts'
 
 // Buck's TMPDIR can sit beneath an enclosing canonical refs/heads checkout.
 // Owned/shared fixture identities must not inherit that checkout's identity.
@@ -27,6 +33,104 @@ const makeFixtureRoot = (prefix: string) =>
       return yield* fs.realPath(yield* fs.makeTempDirectory({ directory: fixtureTempRoot, prefix }))
     }).pipe(Effect.provide(NodeServices.layer)),
   )
+
+describe('makeStoreDirectory', () => {
+  test.each([0o000, 0o077])(
+    'sets only newly created components to 0755 under umask %s',
+    async (mask) => {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const root = yield* fs.makeTempDirectoryScoped()
+          yield* fs.chmod(root, 0o700)
+          const components = ['store', 'example.com', 'org', 'repo', 'refs', 'heads', 'feature']
+          const target = path.join(root, ...components)
+          // Umask is process-global, so never change it in the Vitest/Bun worker.
+          const script = `
+          import { Effect } from 'effect'
+          import { NodeServices } from '@effect/platform-node'
+          import { makeStoreDirectory } from '${new URL('./store-path.ts', import.meta.url).href}'
+          const previous = process.umask(${mask})
+          try {
+            await Effect.runPromise(makeStoreDirectory(process.argv[1]).pipe(Effect.provide(NodeServices.layer)))
+          } finally {
+            process.umask(previous)
+          }
+        `
+          const bun =
+            process.env.BUN_BIN ?? (process.versions.bun === undefined ? 'bun' : process.execPath)
+          const spawner = yield* ChildProcessSpawner
+          const code = yield* spawner.exitCode(
+            ChildProcess.make(bun, ['--eval', script, target], { stderr: 'inherit' }),
+          )
+          expect(code).toBe(0)
+          expect((yield* fs.stat(root)).mode & 0o777).toBe(0o700)
+          let directory = root
+          for (const component of components) {
+            directory = path.join(directory, component)
+            expect((yield* fs.stat(directory)).mode & 0o777).toBe(0o755)
+          }
+          // An idempotent call must not repair or widen existing permissions.
+          yield* fs.chmod(target, 0o700)
+          yield* makeStoreDirectory(target)
+          expect((yield* fs.stat(target)).mode & 0o777).toBe(0o700)
+        }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+      )
+    },
+  )
+
+  test('resolves physical parents without chmodding existing alias targets', async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.makeTempDirectoryScoped()
+        const parent = `${root}/physical`
+        yield* fs.makeDirectory(`${parent}/child`, { recursive: true })
+        yield* fs.chmod(parent, 0o700)
+        yield* fs.symlink(`${parent}/child`, `${root}/alias`)
+        yield* makeStoreDirectory(`${root}/alias/../refs/heads/feature`)
+        expect((yield* fs.stat(parent)).mode & 0o777).toBe(0o700)
+        expect(yield* fs.exists(`${parent}/refs/heads/feature`)).toBe(true)
+        expect(yield* fs.exists(`${root}/refs`)).toBe(false)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  })
+
+  test('refuses a newly created component replaced by a symlink without chmodding its target', async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+        const existing = `${root}/existing`
+        const target = `${root}/namespace`
+        yield* fs.makeDirectory(existing)
+        yield* fs.chmod(existing, 0o700)
+        const racingFs: FileSystem.FileSystem = {
+          ...fs,
+          makeDirectory: (directory, options) =>
+            fs
+              .makeDirectory(directory, options)
+              .pipe(
+                Effect.andThen(
+                  directory === target
+                    ? fs
+                        .remove(target, { recursive: true })
+                        .pipe(Effect.andThen(fs.symlink(existing, target)))
+                    : Effect.void,
+                ),
+              ),
+        }
+        const error = yield* makeStoreDirectory(target).pipe(
+          Effect.provideService(FileSystem.FileSystem, racingFs),
+          Effect.flip,
+        )
+        expect(error.reason._tag).toBe('PermissionDenied')
+        expect((yield* fs.stat(existing)).mode & 0o777).toBe(0o700)
+        expect(yield* fs.readLink(target)).toBe(existing)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  })
+})
 
 describe('abbreviateStorePath', () => {
   test('branch ref', () => {

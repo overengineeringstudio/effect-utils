@@ -69,6 +69,10 @@ my-megarepo/
 
 Branch worktrees use raw Git ref paths in the store, for example `feature/foo` becomes `refs/heads/feature/foo/`.
 
+New store namespace directories and authorized workspace member roots use mode `0755`,
+independent of the caller's umask. Existing directories retain their permissions; creating
+a namespace does not repair permissions on pre-existing store directories.
+
 Store enumeration skips non-directory entries in host, owner, repository, and ref namespaces.
 It emits a warning with the entry's path and type instead of aborting `mr store gc`; these
 foreign entries are never removed. Existing symlink handling is unchanged.

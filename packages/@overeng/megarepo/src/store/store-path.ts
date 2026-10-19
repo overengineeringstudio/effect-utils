@@ -1,3 +1,5 @@
+import { constants } from 'node:fs'
+import { lstat, open } from 'node:fs/promises'
 import path from 'node:path'
 
 import { Effect } from 'effect'
@@ -79,6 +81,80 @@ const resolvePhysicalMutationPath = (
     }
     return current
   })
+
+/**
+ * Create store namespace components with a stable mode, independent of umask.
+ * Resolve aliases first, then use exclusive, non-recursive mkdir calls so only
+ * directories created by this invocation are chmodded (including under races).
+ */
+export const makeStoreDirectory = Effect.fn('megarepo/store/make-directory')(function* (
+  target: string,
+) {
+  const fs = yield* FileSystem.FileSystem
+  const physical = yield* resolvePhysicalMutationPath(target)
+  let current = path.parse(physical).root
+  for (const component of physical.slice(current.length).split(path.sep)) {
+    if (component === '') continue
+    current = path.join(current, component)
+    const created = yield* fs.makeDirectory(current, { mode: 0o755 }).pipe(
+      Effect.as(true),
+      Effect.catchIf(
+        (error) => error.reason._tag === 'AlreadyExists',
+        () => Effect.succeed(false),
+      ),
+    )
+    if (
+      created === true &&
+      (process.platform === 'win32' ||
+        typeof constants.O_DIRECTORY !== 'number' ||
+        typeof constants.O_NOFOLLOW !== 'number')
+    ) {
+      return yield* systemError({
+        _tag: 'PermissionDenied',
+        module: 'megarepo',
+        method: 'makeStoreDirectory',
+        pathOrDescriptor: current,
+        description: 'No-follow directory permission updates are unsupported on this platform',
+      })
+    }
+    const isDirectory = yield* Effect.tryPromise({
+      try: async () => {
+        if ((await lstat(current)).isDirectory() === false) return false
+        if (created === true) {
+          // Pin the inode: chmod must never follow a symlink substituted after mkdir.
+          const directory = await open(
+            current,
+            constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+          )
+          try {
+            await directory.chmod(0o755)
+          } finally {
+            await directory.close()
+          }
+        }
+        return true
+      },
+      catch: (cause) =>
+        systemError({
+          _tag: 'Unknown',
+          module: 'megarepo',
+          method: 'makeStoreDirectory',
+          pathOrDescriptor: current,
+          description: 'Cannot inspect or set the mode of a physical store directory',
+          cause,
+        }),
+    })
+    if (isDirectory === false) {
+      return yield* systemError({
+        _tag: 'PermissionDenied',
+        module: 'megarepo',
+        method: 'makeStoreDirectory',
+        pathOrDescriptor: current,
+        description: 'Store namespace component must be a physical directory',
+      })
+    }
+  }
+})
 
 /** Ref worktrees are shared. Resolve aliases and missing output parents before authorizing writes. */
 export const assertCanonicalMutationAllowed = ({
