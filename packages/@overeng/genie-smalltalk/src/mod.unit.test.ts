@@ -287,6 +287,17 @@ step "draft" {
 })
 
 describe('canonical launch and review authoring', () => {
+  it.each([
+    Launch.shell({ command: 'true', cwd: '/tmp' }),
+    Launch.argv({ argv: ['true'], unset: ['ONE', 'TWO'] }),
+  ])('rejects task-only launch options at root agent admission %j', (launch) => {
+    expect(() => agent({ id: 'example/root', launch })).toThrow()
+    expect(() => Schema.decodeUnknownSync(AgentSchema)({ id: 'example/root', launch })).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(AgentReferenceSchema)({ id: 'example/root', launch }),
+    ).toThrow()
+    expect(() => agent({ id: 'example/root', exec: [{ id: 'child', launch }] })).not.toThrow()
+  })
   it('lowers argv execution options and immutable reviews to exact native KDL', () => {
     const hash = 'b'.repeat(64)
     expect(
@@ -331,8 +342,7 @@ step "check" {
       ALPHA "first"
       ZED "last"
     }
-    unset "GIT_DIR"
-    unset "GIT_WORK_TREE"
+    unset "GIT_DIR" "GIT_WORK_TREE"
     restart "never"
   }
   gate "review" mode="approve" type="human" {
@@ -2089,6 +2099,81 @@ const stJson = <T>(st: IsolatedSt, ...args: string[]): T => {
   ).toBe(0)
   return JSON.parse(result.stdout) as T
 }
+
+testWithSt(
+  'admits canonical task launches through native grammar and rejects invalid native options',
+  async ({ signal }) =>
+    withIsolatedSt({ kind: 'production', signal }, async ({ dir, command }) => {
+      const taskLaunch = Launch.argv({
+        argv: ['true'],
+        cwd: dir,
+        env: { KEEP: 'yes' },
+        unset: ['REMOVE_ONE', 'REMOVE_TWO'],
+      })
+      const agentSource = join(dir, 'launch-agent.kdl')
+      const apply = (text: string) => {
+        writeFileSync(agentSource, text)
+        return command('agents', 'apply', agentSource, '--as', gateReviewer)
+      }
+      const validAgent = emit([
+        agent({
+          id: 'grammar/tasks',
+          workspace: dir,
+          exec: [{ id: 'check', launch: taskLaunch }],
+          pty: [{ id: 'terminal', launch: taskLaunch }],
+        }),
+      ])
+      const admitted = apply(validAgent)
+      expect(admitted.status, admitted.stderr).toBe(0)
+      const repeatedUnset = apply(
+        validAgent.replaceAll(
+          'unset "REMOVE_ONE" "REMOVE_TWO"',
+          'unset "REMOVE_ONE"; unset "REMOVE_TWO"',
+        ),
+      )
+      expect(repeatedUnset.status).not.toBe(0)
+      for (const option of [`cwd ${JSON.stringify(dir)}`, 'unset "REMOVE_ONE" "REMOVE_TWO"']) {
+        const invalidRoot = apply(
+          `version 2\nagent "grammar/root" { command "true"; ${option}; }\n`,
+        )
+        expect(invalidRoot.status).not.toBe(0)
+      }
+      const missionSource = join(dir, 'launch-mission.kdl')
+      writeFileSync(
+        missionSource,
+        emit([
+          mission({
+            id: 'grammar/launch',
+            reportTo: { id: 'grammar/tasks' },
+            goal: 'Validate native task launch grammar without running work.',
+            steps: [
+              {
+                id: 'check',
+                agentless: true,
+                exec: {
+                  id: 'check',
+                  host: 'local',
+                  workspace: dir,
+                  restart: 'never',
+                  launch: taskLaunch,
+                },
+              },
+            ],
+          }),
+        ]),
+      )
+      const published = command(
+        'missions',
+        'publish',
+        missionSource,
+        '--no-gate-check',
+        '--as',
+        gateReviewer,
+      )
+      expect(published.status, published.stderr).toBe(0)
+    }),
+  30000,
+)
 
 testWithSt(
   'round-trips canonical mission and strict agent fields through isolated st daemon',

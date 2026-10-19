@@ -12,6 +12,7 @@ import {
   loadSubjectTree,
   type AgentRef,
   type MissionRef,
+  type MissionIntent,
   type PinnedMissionRef,
   type ScheduleIntent,
 } from './tree.ts'
@@ -127,6 +128,65 @@ describe('loadSubjectTree', () => {
     }),
   )
 
+  it.effect('lowers imported subject reviews in loop until gates', () =>
+    Effect.gen(function* () {
+      const authoring = new URL('./mod.ts', import.meta.url).href
+      const root = fixture({
+        'owner/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: () => ({}) })`,
+        'source/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'owner' }, goal: 'Source.', steps: [{ id: 'run', agentless: true }] } })`,
+        'work/mission.ts': `${define}import { Review } from '${authoring}'\nimport owner from '../owner/agent.ts'\nimport source from '../source/mission.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: owner, goal: 'Review.', steps: [{ id: 'loop', maxRounds: 2, onExhausted: { outcome: 'fail' }, until: [{ name: 'review', kind: 'human', reviewer: { kind: 'person', subject: 'person/reviewer' }, review: [Review.subject(owner), Review.subject(source)] }], round: { steps: [{ id: 'run', agentless: true }], completion: { when: 'all-steps-exhausted' } } }] } })`,
+      })
+      expect((yield* load(root)).find(({ id }) => id === 'work')?.declaration).toMatchObject({
+        intent: {
+          steps: [
+            {
+              until: [
+                {
+                  review: [
+                    { _tag: 'Subject', subject: 'agent/owner' },
+                    { _tag: 'Subject', subject: 'mission/source' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      })
+    }),
+  )
+
+  it.effect(
+    'rejects pinned waitFor together with native usesMission instead of overwriting it',
+    () =>
+      Effect.gen(function* () {
+        const root = fixture({
+          'source/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'owner' }, goal: 'Source.', steps: [{ id: 'run', agentless: true }] } })`,
+          'work/mission.ts': `${define}import source from '../source/mission.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'owner' }, goal: 'Wait.', steps: [{ id: 'wait', agentless: true, waitFor: pinMission({ subject: source, revision: '${'a'.repeat(64)}' }), usesMission: { kind: 'revision', revision: 'source@${'b'.repeat(64)}' } }] } })`,
+        })
+        expect(yield* loadError(root)).toMatchObject({
+          path: 'work/mission.ts',
+          message: 'A step cannot specify both pinned waitFor and usesMission',
+        })
+      }),
+  )
+
+  it('makes pinned waitFor and native usesMission exclusive in mission and round step types', () => {
+    type PinnedWait = { id: string; agentless: true; waitFor: PinnedMissionRef }
+    type NativeWait = {
+      id: string
+      agentless: true
+      usesMission: { kind: 'revision'; revision: string }
+    }
+    type MissionStep = MissionIntent['steps'][number]
+    type RoundStep = Extract<MissionStep, { readonly round: unknown }>['round']['steps'][number]
+    expectTypeOf<PinnedWait>().toExtend<MissionStep>()
+    expectTypeOf<NativeWait>().toExtend<MissionStep>()
+    expectTypeOf<PinnedWait & NativeWait>().not.toExtend<MissionStep>()
+    expectTypeOf<PinnedWait>().toExtend<RoundStep>()
+    expectTypeOf<NativeWait>().toExtend<RoundStep>()
+    expectTypeOf<PinnedWait & NativeWait>().not.toExtend<RoundStep>()
+  })
+
   it('rejects malformed native hashes at the pin constructor', () => {
     const ref: MissionRef = {
       _tag: 'SubjectRef',
@@ -217,6 +277,28 @@ describe('loadSubjectTree', () => {
           steps: [
             { id: 'first', goal: ['Review ${input.head}.'] },
             { id: 'second', dependsOn: [{ step: 'first', state: 'completed' }] },
+          ],
+        },
+      })
+    }),
+  )
+
+  it.effect('preserves scoped child-mission waitFor handles during reference lowering', () =>
+    Effect.gen(function* () {
+      const authoring = new URL('./mod.ts', import.meta.url).href
+      const root = fixture({
+        'owner/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: {} })`,
+        'work/mission.ts': `${define}import { childMission, step } from '${authoring}'\nimport owner from '../owner/agent.ts'\nconst publish = step({ id: 'publish', assignedTo: { id: 'owner' }, produces: childMission\`child\` })\nconst execute = step({ id: 'execute', agentless: true, dependsOn: publish, waitFor: publish })\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: owner, goal: 'Run child.', steps: [publish, execute] } })`,
+      })
+      expect((yield* load(root)).find(({ id }) => id === 'work')?.declaration).toMatchObject({
+        intent: {
+          steps: [
+            { id: 'publish', producesMission: 'child' },
+            {
+              id: 'execute',
+              dependsOn: [{ step: 'publish', state: 'completed' }],
+              usesMission: { kind: 'output', outputOf: 'publish' },
+            },
           ],
         },
       })

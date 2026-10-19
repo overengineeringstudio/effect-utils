@@ -336,7 +336,14 @@ const AgentSchemaFields = Schema.Struct({
   restart: Schema.optionalKey(Restart),
   rollout: Schema.optionalKey(Schema.Literal('manual')),
   shutdownTimeout: Schema.optionalKey(Duration),
-  launch: Schema.optionalKey(LaunchSchema),
+  launch: Schema.optionalKey(
+    LaunchSchema.pipe(
+      Schema.refine(
+        (launch): launch is typeof launch => launch.cwd === undefined && launch.unset === undefined,
+        { message: 'root agent launches do not support cwd or unset; use child tasks instead' },
+      ),
+    ),
+  ),
   env: Schema.optionalKey(Env),
   render: Schema.optionalKey(Schema.Array(RenderOperation)),
   harness: Schema.optionalKey(Schema.Union([OmpSchema, CodexSchema])),
@@ -1000,7 +1007,7 @@ const launchNodes = (launch: Launch): readonly Node[] => [
             .map(([name, value]) => child({ name, value })),
         }),
       ]),
-  ...(launch.unset ?? []).map((name) => child({ name: 'unset', value: name })),
+  ...(launch.unset === undefined ? [] : [node({ name: 'unset', args: launch.unset })]),
 ]
 
 /** Decodes and renders a schedule node. */
@@ -1660,20 +1667,56 @@ export type MissionInput<TMission extends string> = Omit<
   )[]
 }
 
+/** Snapshot plain authoring data, but never copy identities used by provenance WeakMaps. */
+const snapshotComposition = <T>(input: T): T => {
+  const copies = new WeakMap<object, object>()
+  const snapshot = (value: unknown): unknown => {
+    if (typeof value !== 'object' || value === null) return value
+    const prototype = Object.getPrototypeOf(value)
+    if (
+      (prototype !== Object.prototype && prototype !== null && !Array.isArray(value)) ||
+      Object.getOwnPropertySymbols(value).length > 0 ||
+      gateReferences.has(value) ||
+      templateReferences(value).length > 0 ||
+      ('_tag' in value &&
+        (((value._tag === 'Argv' || value._tag === 'Shell') &&
+          launchReferences(value as Launch).length > 0) ||
+          ((value._tag === 'Subject' || value._tag === 'File' || value._tag === 'PinnedDocument') &&
+            reviewReferences(value as Review).length > 0))) ||
+      ('kind' in value &&
+        (value.kind === 'template' ||
+          (value.kind === 'document' && !('name' in value)) ||
+          value.kind === 'child-mission' ||
+          value.kind === 'context' ||
+          value.kind === 'pull-request')) ||
+      ('_tag' in value && (value._tag === 'SubjectRef' || value._tag === 'PinnedMissionRef'))
+    )
+      return value
+    const existing = copies.get(value)
+    if (existing !== undefined) return existing
+    const copy: object = Array.isArray(value) ? new Array(value.length) : Object.create(prototype)
+    copies.set(value, copy)
+    for (const [key, nested] of Object.entries(value))
+      Object.defineProperty(copy, key, {
+        value: snapshot(nested),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      })
+    return Object.freeze(copy)
+  }
+  return snapshot(input) as T
+}
+
 /** Immutable reusable graph fragments retain the exact scoped handle objects. */
 export const Fragment = {
   steps: <const TSteps extends MissionInput<string>['steps']>(...steps: TSteps): Readonly<TSteps> =>
-    Object.freeze(steps),
+    snapshotComposition(steps),
 }
 
 const immutableMission = <const TMission extends string>(
   input: MissionInput<TMission>,
-): MissionInput<TMission> =>
-  Object.freeze({
-    ...input,
-    steps: Object.freeze([...input.steps]),
-    ...(input.finally === undefined ? {} : { finally: Object.freeze([...input.finally]) }),
-  })
+): MissionInput<TMission> => snapshotComposition(input)
 
 /** Pure composition; references are checked by the single mission assembly boundary. */
 export const Mission = {
@@ -1700,14 +1743,7 @@ export const Mission = {
 
 /** A round fragment snapshots both phases without replacing scoped handles. */
 export const Round = {
-  make: (input: LoopInput['round']): LoopInput['round'] =>
-    Object.freeze({
-      ...input,
-      steps: Object.freeze([...input.steps]),
-      ...(input.finally === undefined
-        ? {}
-        : { finally: Object.freeze([input.finally[0], ...input.finally.slice(1)] as const) }),
-    }),
+  make: (input: LoopInput['round']): LoopInput['round'] => snapshotComposition(input),
 }
 
 const stepData = new WeakMap<

@@ -46,6 +46,8 @@ export interface PinnedMissionRef {
 /**
  * Pins imported mission work, never its moving published head. Without an explicit hash,
  * the graph renderer binds the zero sentinel to this source mission's native revision.
+ * A step's `waitFor` requires an explicit revision and is exclusive with native `usesMission`;
+ * scoped producer handles authored with `step({ waitFor })` retain their native semantics.
  */
 export const pinMission = ({
   subject,
@@ -73,7 +75,10 @@ type TreeStep<T> = T extends { readonly round: infer R }
   ? Omit<T, 'round'> & { readonly round: TreeRound<R> }
   : {
       [K in keyof T]: K extends 'assignedTo' ? T[K] | AgentRef : T[K]
-    } & { readonly waitFor?: PinnedMissionRef }
+    } & (
+      | { readonly waitFor?: never }
+      | { readonly waitFor: PinnedMissionRef; readonly usesMission?: never }
+    )
 
 type TreeSteps<T> = T extends readonly unknown[] ? { [K in keyof T]: TreeStep<T[K]> } : T
 
@@ -272,10 +277,11 @@ type ReferenceFields = {
   readonly finally?: unknown
   readonly under?: unknown
   readonly gates?: unknown
+  readonly until?: unknown
   readonly review?: unknown
 }
 
-/** Lowers only reference-bearing fields, preserving identity-bearing authoring handles. */
+/** Lowers reference-bearing fields, including loop-until reviews, preserving scoped handles. */
 const lowerReferences: (args: {
   readonly root: string
   readonly path: string
@@ -295,7 +301,7 @@ const lowerReferences: (args: {
         set({ key, value: { id } })
       }
     }
-    for (const key of ['steps', 'finally', 'under', 'gates', 'review'] as const) {
+    for (const key of ['steps', 'finally', 'under', 'gates', 'until', 'review'] as const) {
       if (key in intent && Array.isArray(fields[key]) === true) {
         const values = fields[key]
         const next = yield* Effect.forEach(values as readonly unknown[], (value) =>
@@ -325,6 +331,12 @@ const lowerReferences: (args: {
       set({ key: 'subject', value: `${ref.kind === 'agent' ? 'agent' : 'mission'}/${id}` })
     }
     if ('waitFor' in intent && isPinnedRef(intent.waitFor) === true) {
+      if ('usesMission' in intent) {
+        return yield* new SubjectTreeError({
+          path,
+          message: 'A step cannot specify both pinned waitFor and usesMission',
+        })
+      }
       const revision = yield* resolvePinnedRef({ root, path, ref: intent.waitFor })
       if (intent.waitFor.revision === '0'.repeat(64)) {
         return yield* new SubjectTreeError({
