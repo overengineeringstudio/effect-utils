@@ -368,6 +368,43 @@ describe('mr store gc --generated-artifacts', () => {
   )
 
   it.effect(
+    'admits legacy and Fractal agent pages without weakening activity protection',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const f = yield* fixture()
+        const artifact = yield* oldIgnoredArtifact(f.worktree)
+        const workspace = yield* fs.realPath(f.worktree)
+        for (const apiVersion of ['st3.client.v0', 'fractal.client.v0']) {
+          for (const activeWorkspacePaths of [[], [workspace]]) {
+            yield* configure({
+              config: f.config,
+              activeWorkspacePaths,
+              listing: { ...agentListing({ activeWorkspacePaths }), api_version: apiVersion },
+            })
+            const result = yield* runGc({
+              cwd: f.outside,
+              storePath: f.storePath,
+              args: ['--dry-run'],
+            })
+            expect(
+              generated(result.results, 'node_modules'),
+              `${apiVersion}: ${activeWorkspacePaths.length} active workspaces`,
+            ).toMatchObject(
+              activeWorkspacePaths.length === 0
+                ? { outcome: 'would-delete' }
+                : { outcome: 'keep', reason: 'live' },
+            )
+            expect(yield* fs.exists(artifact)).toBe(true)
+          }
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'uses configured native paths and executable names instead of poisoned PATH defaults',
     Effect.fnUntraced(
       function* () {

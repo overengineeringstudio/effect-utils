@@ -102,6 +102,7 @@ Configure the host at `$MEGAREPO_STORE/.state/gc-config.json`:
 The allowlist may contain only the compiled canonical classes, including `storybook-static`.
 Activity is captured directly from `st3 agents ls --all --json`, each agent's
 `st3 subject show <id> --json` `actual.workspace`, and `pty list --json --tags`.
+The agent-page reader accepts both `st3.client.v0` and `fractal.client.v0` envelopes.
 There is no external activity manifest to configure. By default `st3` and `pty` are resolved
 on PATH. Set `MEGAREPO_GC_ST3_BIN` and `MEGAREPO_GC_PTY_BIN` to explicit executable paths
 (for example Nix store paths in a systemd unit). A configured executable that cannot be run
