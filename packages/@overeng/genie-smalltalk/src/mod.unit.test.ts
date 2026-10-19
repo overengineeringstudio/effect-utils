@@ -471,7 +471,7 @@ describe('compact native time rendering', () => {
       mission(input),
       agent({ id: 'compact-time/worker', shutdownTimeout: '30000ms' }),
       schedule({
-        id: 'compact-time/every',
+        id: 'compact-time-every',
         host: 'local',
         timing: Timing.every({
           every: '7200000ms',
@@ -481,7 +481,7 @@ describe('compact native time rendering', () => {
         work: { mission: 'compact-time', workspace: '/work' },
       }),
       schedule({
-        id: 'compact-time/once',
+        id: 'compact-time-once',
         host: 'local',
         timing: Timing.at('2026-10-19T00:00:00.123Z'),
         work: { mission: 'compact-time', workspace: '/work' },
