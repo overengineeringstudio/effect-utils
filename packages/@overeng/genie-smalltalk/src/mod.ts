@@ -874,6 +874,7 @@ export const MissionSchema = Schema.Struct({
   timeout: Schema.optionalKey(Duration),
   stalledAfter: Schema.optionalKey(Duration),
   reportStalls: Schema.optionalKey(Schema.Boolean),
+  reportCompleted: Schema.optionalKey(Schema.Boolean),
   goal: Goal,
   gates: Schema.optionalKey(
     Gates.pipe(
@@ -2288,6 +2289,7 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
       ...(m.timeout === undefined ? {} : { timeout: m.timeout }),
       ...(m.stalledAfter === undefined ? {} : { 'stalled-after': m.stalledAfter }),
       ...(m.reportStalls === undefined ? {} : { 'report-stalls': m.reportStalls }),
+      ...(m.reportCompleted === undefined ? {} : { 'report-completed': m.reportCompleted }),
     },
     children: [
       ...(m.inputs ?? []).map((value) =>

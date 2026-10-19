@@ -287,6 +287,23 @@ step "draft" {
 })
 
 describe('canonical launch and review authoring', () => {
+  it.each([true, false, undefined])(
+    'preserves native completion-report policy %s',
+    (reportCompleted) => {
+      const input = {
+        id: 'example/reporting',
+        state: 'ready' as const,
+        reportTo: owner,
+        goal: 'Retain completion reporting policy.',
+        steps: [],
+        ...(reportCompleted === undefined ? {} : { reportCompleted }),
+      }
+      expect(missionWire(input).reportCompleted).toBe(reportCompleted)
+      const rendered = emit([mission(input)])
+      if (reportCompleted === undefined) expect(rendered).not.toContain('report-completed')
+      else expect(rendered).toContain(`report-completed=#${reportCompleted}`)
+    },
+  )
   it.each([
     Launch.shell({ command: 'true', cwd: '/tmp' }),
     Launch.argv({ argv: ['true'], unset: ['ONE', 'TWO'] }),
@@ -2146,6 +2163,7 @@ testWithSt(
             id: 'grammar/launch',
             state: 'ready',
             reportTo: { id: 'grammar/tasks' },
+            reportCompleted: false,
             goal: 'Validate native task launch grammar without running work.',
             steps: [
               {

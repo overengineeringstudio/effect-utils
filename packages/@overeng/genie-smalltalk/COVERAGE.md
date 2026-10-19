@@ -156,6 +156,8 @@ Use an exact transcript for managed seats when preserving a particular conversat
 
 ## Goals, retries and graph phases
 
+Mission `reportCompleted?: boolean` lowers directly to the native `report-completed` property, retaining explicit false and omission. The DSL supplies no reporting-policy default; graph supervision policy may supply one before assembly. This belongs to the canonical mission schema rather than a caller-owned schema extension or KDL patch.
+
 The field remains `goal`: author one nonempty string or a nonempty array of one to three strings. Scalar and singleton-array declarations emit exactly the same `goal` node; arrays preserve authored order. There is no plural `goals` alias. Mission goals are required, while step goals are optional.
 
 `retry: { attempts, backoff? }` counts the initial attempt in its 1–100 bound. Backoff accepts positive native durations and explicit zero durations. Native exec gates preserve command, host, workspace, environment and time-limit semantics; reserved st context keys cannot be overridden, while application keys and `PATH` remain authorable.
