@@ -358,10 +358,14 @@ describe.skipIf(buckSkipReason !== undefined)('mr store gc — real pinned Buck2
               Effect.orDie,
             ),
           )
+          // This fixture owns daemon retirement; preserve warm PID identity
+          // without changing the actual gate class or kernel accounting.
           yield* ChildProcessSpawner.use((spawner) =>
             spawner.string(
               Command.make(PINNED_BUCK2, ['--isolation-dir', BUCK_ISOLATION, 'audit', 'cell'], {
                 cwd: root,
+                env: { BUCK2_GATE_WRAPPER_ACTIVE: '1' },
+                extendEnv: true,
               }),
             ),
           )
@@ -395,6 +399,8 @@ describe.skipIf(buckSkipReason !== undefined)('mr store gc — real pinned Buck2
               spawner.spawn(
                 Command.make(PINNED_BUCK2, ['--isolation-dir', BUCK_ISOLATION, 'lsp'], {
                   cwd: root,
+                  env: { BUCK2_GATE_WRAPPER_ACTIVE: '1' },
+                  extendEnv: true,
                   stdin: 'pipe',
                 }),
               ),

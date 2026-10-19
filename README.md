@@ -583,6 +583,42 @@ and other worktrees and isolations are never stopped. Failed stops prevent
 startup and do not record successful migration. Maintenance `kill`, `status`,
 and `log` commands bypass Watchman admission so diagnosis and shutdown remain
 available during an outage.
+
+When `GATE_SLOT_CLASS` is set, the packaged wrapper owns gated admission and
+teardown for the selected project/isolation. On Linux it compares native
+`buck2 status` plus `/proc/<buck2d pid>/cgroup` with the caller's own cgroup.
+An idle foreign daemon is stopped before the client runs, so its replacement
+and local actions inherit the job's lane limits and accounting. A daemon
+already in the caller's cgroup is reused. A foreign daemon with active clients
+is retained and reused with exactly one stderr accounting warning naming its
+foreign cgroup; moving or interrupting another build/editor client is unsafe.
+
+An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
+At exit it invokes native `buck2 kill` only when a fresh status identifies the
+selected daemon and reports zero active commands, even if this invocation
+started it. Busy status quietly retains the daemon; unavailable/malformed status
+warns and never authorizes a kill. Cleanup preserves the client's exit code or
+signal-derived status. `kill`, `status`, and `log` remain diagnostic/lifecycle
+commands and bypass both gated admission and teardown.
+
+Outside gate-slot, native warm-daemon behavior and the admitted-argument fast
+path are unchanged. A nested wrapper inherits the outer wrapper's cleanup
+ownership rather than stopping the daemon beneath its caller. No daemon memory
+cap or separate daemon unit is installed. At the pinned Buck2 revision,
+resource control places actions in a daemon-owned reusable cgroup pool;
+the public client protocol has no per-command caller-cgroup destination.
+Moving the daemon alone therefore moves local build work out of gate-slot's
+limits, while a daemon-unit memory cap would cap compiler/test actions too.
+
+Buck's kill RPC has no conditional-idle form. At both **start** (foreign idle
+daemon migration) and **exit** (idle teardown), a new client can arrive between
+the final empty-active-commands status read and `buck2 kill`, and be interrupted.
+An already observed active client is never deliberately killed. Reusing a
+foreign busy daemon leaves an explicitly logged accounting gap for that
+invocation, and retaining a busy daemon at exit may keep its original job scope
+alive. Independent idle-daemon maintenance remains the backstop for this
+conservative concurrent-client case.
+
 The existing explicit local `[buck2] file_watcher = notify` choice is retained
 for deliberate non-agent use, but is unsafe for agent builds: completed source
 writes can race notify's unsynchronized callback buffer and produce stale

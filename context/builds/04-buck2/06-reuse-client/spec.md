@@ -246,7 +246,11 @@ Remote endpoint outcomes expire after five seconds. Complete successful
 read-only invocations can bypass the JavaScript launcher within the remaining
 probe lifetime; the key includes config contents, arguments, working directory
 and exported environment. Writer credentials, includes and external mode files
-bypass that fast path.
+bypass that fast path. Inside gate-slot, an outer shell retains cleanup ownership
+even when arguments are cached: it waits for the native client and stops only
+the selected idle daemon, leaving all local build work in the job's cgroup.
+The [wrapper lifecycle contract](../../../../README.md) defines signal handling,
+concurrent-client protection and the residual status-to-kill race.
 
 RE client configuration alone opts into admission. A missing
 `remote_cache_enabled` inherits the execution policy's enabled default;

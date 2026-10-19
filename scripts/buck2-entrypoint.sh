@@ -2,6 +2,38 @@
 # Keep a warm pinned-Buck loop out of the JavaScript runtime. Cache only complete
 # read-only invocations with identical config, arguments and exported environment.
 set -euo pipefail
+# Keep local actions in the gate's cgroup. Native Buck cannot route individual
+# commands back to their client's cgroup from a shared daemon-owned scope.
+if [[ -n "${GATE_SLOT_CLASS:-}" && "${BUCK2_GATE_WRAPPER_ACTIVE:-}" != 1 ]]; then
+  export BUCK2_GATE_WRAPPER_ACTIVE=1
+  gate_args=("$@")
+  gate_child=""
+  gate_cleanup() {
+    local result=$?
+    trap - EXIT
+    trap '' INT TERM HUP
+    @launcher@ @native@ --gate-cleanup "${gate_args[@]}" || true
+    exit "$result"
+  }
+  gate_signal() {
+    local signal="$1" result="$2"
+    trap '' "$signal"
+    if [[ -n "$gate_child" ]]; then
+      kill -s "$signal" "$gate_child" 2>/dev/null || true
+      wait "$gate_child" 2>/dev/null || true
+    fi
+    exit "$result"
+  }
+  trap gate_cleanup EXIT
+  trap 'gate_signal INT 130' INT
+  trap 'gate_signal TERM 143' TERM
+  trap 'gate_signal HUP 129' HUP
+  @launcher@ @native@ --gate-admit "${gate_args[@]}"
+  "$0" "$@" <&0 &
+  gate_child=$!
+  wait "$gate_child"
+  exit $?
+fi
 root="$PWD"
 while [[ ! -f "$root/.buckroot" && "$root" != / ]]; do root="${root%/*}"; [[ -n "$root" ]] || root=/; done
 cache=""

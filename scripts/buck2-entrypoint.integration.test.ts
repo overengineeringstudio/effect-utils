@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from 'bun:test'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
@@ -13,12 +13,13 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createServer, type ServerHttp2Stream } from 'node:http2'
-import { getPriority, tmpdir } from 'node:os'
+import { getPriority, homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createServer as createTlsServer } from 'node:tls'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import { type AdmissionProbeEndpoint, directBuckArguments } from './buck2-entrypoint.ts'
+import './buck2-entrypoint.unit.test.ts'
 
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()
@@ -1298,4 +1299,300 @@ printf 'native build\\n'
       })
     })
   }
+})
+
+// These platform processes expose no awaitable state event to a non-parent.
+// Fake time cannot advance systemd teardown or a native daemon's startup.
+const waitForGateCondition = async (description: string, condition: () => boolean) => {
+  const deadline = Date.now() + 30000
+  while (condition() === false) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${description}`)
+    await Bun.sleep(25)
+  }
+}
+
+describe('gate wrapper EXIT and signal traps', () => {
+  for (const signal of ['EXIT', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    it(`preserves ${signal} status and cleans only the selected isolation`, async () => {
+      const root = fixture()
+      writeFileSync(join(root, '.buckconfig'), '[cells]\nroot = .\n')
+      const native = join(root, 'native')
+      const launcher = join(root, 'launcher')
+      const wrapper = join(root, 'buck2')
+      const ready = join(root, 'ready')
+      const killed = join(root, 'killed')
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+const args = process.argv.slice(2)
+if (args.at(-1) === 'status') {
+  console.log(JSON.stringify({project_root: ${JSON.stringify(realpathSync(root))}, isolation_dir: 'owned', active_commands: [], process_info: {pid: process.ppid}}))
+} else if (args.at(-1) === 'kill') {
+  await Bun.write(${JSON.stringify(killed)}, args.join(' '))
+} else if (${JSON.stringify(signal)} === 'EXIT') {
+  process.exit(23)
+} else {
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => process.exit(0))
+  await Bun.write(${JSON.stringify(ready)}, 'ready')
+  process.stdin.resume()
+  await Promise.withResolvers().promise
+}
+`,
+        { mode: 0o700 },
+      )
+      writeFileSync(
+        launcher,
+        `#!${Bun.which('bash')}\nexec '${process.execPath}' '${join(import.meta.dir, 'buck2-entrypoint.ts')}' "$@"\n`,
+        { mode: 0o700 },
+      )
+      writeFileSync(
+        wrapper,
+        readFileSync(join(import.meta.dir, 'buck2-entrypoint.sh'), 'utf8')
+          .replaceAll('@shell@', Bun.which('bash') ?? '')
+          .replaceAll('@native@', native)
+          .replaceAll('@launcher@', launcher)
+          .replaceAll('@sha256@', Bun.which('sha256sum') ?? 'false'),
+        { mode: 0o700 },
+      )
+      const child = Bun.spawn([wrapper, '--isolation-dir', 'owned', 'build', '//:fixture'], {
+        cwd: root,
+        detached: true,
+        env: { ...process.env, GATE_SLOT_CLASS: 'heavy', BUCK2_GATE_WRAPPER_ACTIVE: undefined },
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      launchProcesses.add(child)
+      const stderr = new Response(child.stderr).text()
+      if (signal !== 'EXIT') {
+        await waitForGateCondition('fake native signal readiness', () => existsSync(ready))
+        child.kill(signal)
+      }
+      expect(await child.exited, await stderr).toBe(
+        signal === 'EXIT' ? 23 : signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 129,
+      )
+      expect(readFileSync(killed, 'utf8')).toBe('--isolation-dir owned kill')
+      child.stdin.end()
+    }, 60000)
+  }
+})
+
+describe('Linux gate daemon lifecycle', () => {
+  const manager =
+    process.platform === 'linux' && Bun.which('systemctl') !== null
+      ? Bun.spawnSync(['systemctl', '--user', 'show-environment'], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+      : { exitCode: 1, stderr: Buffer.from('ENOENT: systemctl --user unavailable') }
+  const unavailable = process.platform !== 'linux' || manager.exitCode !== 0
+  const reason =
+    process.platform !== 'linux'
+      ? `platform ${process.platform} has no Linux user manager`
+      : manager.stderr.toString()
+  if (unavailable === true) {
+    it('asserts the reason for skipping the native user-manager proof', () => {
+      expect(reason.length).toBeGreaterThan(0)
+      if (process.platform === 'linux')
+        expect(reason).toMatch(
+          /not found|ENOENT|Failed to connect|No such file|No medium|not been booted/iu,
+        )
+      console.error(`SKIP buck2 gate scope: ${reason.trim()}`)
+    })
+  }
+  it.skipIf(unavailable)(
+    'keeps daemon/forkserver in the job scope, ends that scope, and retains an active concurrent client',
+    async () => {
+      const wrapper = process.env['BUCK2_BIN'] ?? Bun.which('buck2')
+      if (wrapper === null || wrapper === undefined)
+        throw new Error('pinned buck2 wrapper required')
+      const native = join(dirname(dirname(realpathSync(wrapper))), 'libexec', 'buck2')
+      expect(existsSync(native)).toBe(true)
+      const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-gate-lifecycle-')))
+      writeFileSync(join(root, '.buckroot'), '')
+      writeFileSync(
+        join(root, '.buckconfig'),
+        '[cells]\nroot = .\n[buck2]\nfile_watcher = fs_hash_crawler\n',
+      )
+      const isolation = `gate-${randomUUID()}`
+      const job = `buck2-gate-test-${randomUUID()}.scope`
+      const env = { ...process.env, GATE_SLOT_CLASS: 'heavy', BUCK2_GATE_WRAPPER_ACTIVE: undefined }
+      const ungated = { ...env, GATE_SLOT_CLASS: '' }
+      const command = (argv: string[]) =>
+        Bun.spawnSync(argv, { cwd: root, env: ungated, stdout: 'pipe', stderr: 'pipe' })
+      const status = () => {
+        const result = command([native, '--isolation-dir', isolation, 'status'])
+        if (result.exitCode !== 0) throw new Error(result.stderr.toString())
+        return result.stdout.length === 0 ? undefined : JSON.parse(result.stdout.toString())
+      }
+      let client: Bun.Subprocess<'pipe', 'pipe', 'pipe'> | undefined
+      let peer: Bun.Subprocess<'pipe', 'pipe', 'pipe'> | undefined
+      try {
+        expect(command([native, '--isolation-dir', isolation, 'server']).exitCode).toBe(0)
+        const foreignIdlePid = status().process_info.pid
+        client = Bun.spawn(
+          [
+            'systemd-run',
+            '--user',
+            '--scope',
+            '--quiet',
+            `--unit=${job}`,
+            '--',
+            wrapper,
+            '--isolation-dir',
+            isolation,
+            'lsp',
+          ],
+          { cwd: root, env, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+        )
+        const clientStderr = new Response(client.stderr).text()
+        const clientStdout = new Response(client.stdout).text()
+        await waitForGateCondition(
+          'gated LSP client',
+          () => (status()?.active_commands.length ?? 0) > 0,
+        )
+        const daemon = status()
+        expect(daemon.process_info.pid).not.toBe(foreignIdlePid)
+        expect(existsSync(`/proc/${foreignIdlePid}`)).toBe(false)
+        expect(readFileSync(`/proc/${daemon.process_info.pid}/cgroup`, 'utf8')).toContain(`/${job}`)
+        expect(readFileSync(`/proc/${daemon.forkserver_pid}/cgroup`, 'utf8')).toContain(`/${job}`)
+        console.log(command(['systemctl', '--user', 'status', job]).stdout.toString())
+        client.stdin.end()
+        expect(await client.exited, await clientStderr).toBe(0)
+        await clientStdout
+        expect(status()).toBeUndefined()
+        await waitForGateCondition(
+          'empty job scope removal',
+          () =>
+            command(['systemctl', '--user', 'show', job, '-p', 'LoadState', '--value'])
+              .stdout.toString()
+              .trim() === 'not-found',
+        )
+        console.log(`job scope ended and daemon stopped: ${job}`)
+
+        const sameJob = `buck2-gate-test-same-${randomUUID()}.scope`
+        const sameStatus = join(root, 'same-scope-status.json')
+        const sameScript = join(root, 'same-scope.sh')
+        writeFileSync(
+          sameScript,
+          `#!${Bun.which('bash')}
+set -e
+'${native}' --isolation-dir '${isolation}' server --status > '${sameStatus}'
+exec '${wrapper}' --isolation-dir '${isolation}' lsp
+`,
+          { mode: 0o700 },
+        )
+        client = Bun.spawn(
+          ['systemd-run', '--user', '--scope', '--quiet', `--unit=${sameJob}`, '--', sameScript],
+          { cwd: root, env, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+        )
+        const sameStderr = new Response(client.stderr).text()
+        const sameStdout = new Response(client.stdout).text()
+        await waitForGateCondition(
+          'same-scope LSP attachment',
+          () => (status()?.active_commands.length ?? 0) > 0,
+        )
+        expect(status().process_info.pid).toBe(
+          JSON.parse(readFileSync(sameStatus, 'utf8')).process_info.pid,
+        )
+        expect(readFileSync(`/proc/${status().process_info.pid}/cgroup`, 'utf8')).toContain(
+          `/${sameJob}`,
+        )
+        client.stdin.end()
+        expect(await client.exited, await sameStderr).toBe(0)
+        await sameStdout
+        expect(status()).toBeUndefined()
+        await waitForGateCondition(
+          'same-scope job removal',
+          () =>
+            command(['systemctl', '--user', 'show', sameJob, '-p', 'LoadState', '--value'])
+              .stdout.toString()
+              .trim() === 'not-found',
+        )
+        console.log(
+          'same-scope daemon reused without a restart; idle exit teardown removed its job scope',
+        )
+
+        // Quantify native cold startup separately from cached build work.
+        const cold: number[] = []
+        const warm: number[] = []
+        for (let index = 0; index < 3; index++) {
+          let pid: number | undefined
+          for (const measurements of [cold, warm]) {
+            const start = performance.now()
+            const result = command([wrapper, '--isolation-dir', isolation, 'server'])
+            expect(result.exitCode, result.stderr.toString()).toBe(0)
+            measurements.push(performance.now() - start)
+            const currentPid = status().process_info.pid
+            if (pid !== undefined) expect(currentPid).toBe(pid)
+            pid = currentPid
+          }
+          expect(command([native, '--isolation-dir', isolation, 'kill']).exitCode).toBe(0)
+        }
+        console.log(`cold/warm wrapper server milliseconds: ${JSON.stringify({ cold, warm })}`)
+
+        peer = Bun.spawn([native, '--isolation-dir', isolation, 'lsp'], {
+          cwd: root,
+          env: ungated,
+          stdin: 'pipe',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const peerStderr = new Response(peer.stderr).text()
+        const peerStdout = new Response(peer.stdout).text()
+        await waitForGateCondition(
+          'concurrent peer attachment',
+          () => (status()?.active_commands.length ?? 0) > 0,
+        )
+        const before = status().process_info.pid
+        const foreignBusyCgroup = readFileSync(`/proc/${before}/cgroup`, 'utf8').trim()
+        const busyJob = `buck2-gate-test-busy-${randomUUID()}.scope`
+        const gated = Bun.spawnSync(
+          [
+            'systemd-run',
+            '--user',
+            '--scope',
+            '--quiet',
+            `--unit=${busyJob}`,
+            '--',
+            wrapper,
+            '--isolation-dir',
+            isolation,
+            'server',
+          ],
+          {
+            cwd: root,
+            env,
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        )
+        expect(gated.exitCode, gated.stderr.toString()).toBe(0)
+        const warnings = gated.stderr
+          .toString()
+          .split('\n')
+          .filter((line) => line.startsWith('warning: Buck2 gate'))
+        expect(warnings).toHaveLength(1)
+        expect(warnings[0]).toContain(
+          `reusing active daemon in foreign cgroup ${foreignBusyCgroup}`,
+        )
+        expect(status().process_info.pid).toBe(before)
+        expect(peer.exitCode).toBeNull()
+        peer.stdin.end()
+        expect(await peer.exited, await peerStderr).toBe(0)
+        await peerStdout
+        console.log('active concurrent client retained; ungated daemon remains warm')
+      } finally {
+        client?.stdin.end()
+        peer?.stdin.end()
+        if (client !== undefined) await client.exited
+        if (peer !== undefined) await peer.exited
+        const stopped = command([native, '--isolation-dir', isolation, 'kill'])
+        expect(stopped.exitCode, stopped.stderr.toString()).toBe(0)
+        rmSync(root, { recursive: true, force: true })
+        rmSync(join(homedir(), '.buck', 'buckd', root.slice(1)), { recursive: true, force: true })
+      }
+    },
+    180000,
+  )
 })

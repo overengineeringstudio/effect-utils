@@ -18,6 +18,9 @@ if (buck2 === undefined || buck2.length === 0)
 // to it so the test can never stop a daemon it did not start.
 const scratch = mkdtempSync(join(tmpdir(), 'buck2-daemon-reaper-test-'))
 const lspClients: Bun.Subprocess<'pipe', 'ignore', 'ignore'>[] = []
+// This fixture owns shutdown and must retain idle daemons between observations.
+// Keep the real gate class/cgroup while taking the wrapper's outer-owner role.
+const fixtureEnv = { ...process.env, BUCK2_GATE_WRAPPER_ACTIVE: '1' }
 
 const makeRoot = (name: string) => {
   const root = join(scratch, name)
@@ -33,6 +36,7 @@ const makeRoot = (name: string) => {
 const buck = (root: string, args: readonly string[]) => {
   const result = Bun.spawnSync([buck2, ...args], {
     cwd: root,
+    env: fixtureEnv,
     stdout: 'pipe',
     stderr: 'pipe',
     timeout: 60_000,
@@ -73,7 +77,13 @@ it('kills only the idle daemon and its forkserver, keeps an editor session, repo
   buck(idle, ['audit', 'cell'])
   buck(gone, ['audit', 'cell'])
   lspClients.push(
-    Bun.spawn([buck2, 'lsp'], { cwd: editor, stdin: 'pipe', stdout: 'ignore', stderr: 'ignore' }),
+    Bun.spawn([buck2, 'lsp'], {
+      cwd: editor,
+      env: fixtureEnv,
+      stdin: 'pipe',
+      stdout: 'ignore',
+      stderr: 'ignore',
+    }),
   )
   await waitFor('the editor session to be active', () => {
     const daemon = daemonAt(editor)

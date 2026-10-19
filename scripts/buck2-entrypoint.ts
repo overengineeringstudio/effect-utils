@@ -1,4 +1,5 @@
 #!/usr/bin/env -S bun
+import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   appendFileSync,
@@ -401,10 +402,133 @@ export const directBuckArguments = async ({
   return [...admitted, ...extra, ...(sentinel === -1 ? [] : args.slice(sentinel))]
 }
 
+/** Unknown status never grants permission to interrupt a shared daemon. */
+export const gateDaemonStopDecision = ({
+  status,
+  root,
+  isolation,
+}: {
+  readonly status: unknown
+  readonly root: string
+  readonly isolation: string
+}): 'stop' | 'keep-active' | 'keep-unrecognized' => {
+  if (
+    typeof status !== 'object' ||
+    status === null ||
+    'project_root' in status === false ||
+    status.project_root !== root ||
+    'isolation_dir' in status === false ||
+    status.isolation_dir !== isolation ||
+    'active_commands' in status === false ||
+    Array.isArray(status.active_commands) === false
+  )
+    return 'keep-unrecognized'
+  return status.active_commands.length === 0 ? 'stop' : 'keep-active'
+}
+
+/** Native status is ExistingOnly: admission and cleanup never spawn a daemon. */
+export const reconcileGateDaemon = ({
+  native,
+  root,
+  args,
+  env,
+  phase,
+}: {
+  readonly native: string
+  readonly root: string
+  readonly args: readonly string[]
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly phase: 'start' | 'exit'
+}): void => {
+  if (skipsWatcherAdmission(args) === true) return
+  let isolation = env['BUCK_ISOLATION_DIR'] ?? 'v2'
+  for (let index = 0; index < args.length && args[index] !== '--'; index++) {
+    const arg = args[index] ?? ''
+    if (arg === '--isolation-dir') isolation = args[++index] ?? ''
+    else if (arg.startsWith('--isolation-dir=') === true) isolation = arg.slice(16)
+  }
+  const globalArgs = ['--isolation-dir', isolation]
+  const options = { cwd: root, env, encoding: 'utf8' as const, timeout: 30000 }
+  const warn = (reason: string): void => {
+    process.stderr.write(`warning: Buck2 gate ${phase} retained ${isolation}: ${reason}\n`)
+  }
+  const result = spawnSync(native, [...globalArgs, 'status'], options)
+  if (result.error !== undefined || result.status !== 0) {
+    warn('native status unavailable')
+    return
+  }
+  if (result.stdout.trim() === '') return
+  let status: unknown
+  try {
+    status = JSON.parse(result.stdout)
+  } catch {
+    warn('native status is not JSON')
+    return
+  }
+  const decision = gateDaemonStopDecision({ status, root: realpathSync(root), isolation })
+  if (decision === 'keep-unrecognized') {
+    warn('unrecognized daemon status')
+    return
+  }
+  if (phase === 'start') {
+    if (process.platform !== 'linux') return
+    if (
+      typeof status !== 'object' ||
+      status === null ||
+      'process_info' in status === false ||
+      typeof status.process_info !== 'object' ||
+      status.process_info === null ||
+      'pid' in status.process_info === false ||
+      typeof status.process_info.pid !== 'number' ||
+      Number.isSafeInteger(status.process_info.pid) === false ||
+      status.process_info.pid <= 0
+    ) {
+      warn('unrecognized daemon PID')
+      return
+    }
+    let foreign: string
+    try {
+      foreign = readFileSync(`/proc/${status.process_info.pid}/cgroup`, 'utf8').trim()
+      const caller = readFileSync('/proc/self/cgroup', 'utf8').trim()
+      if (foreign === caller) return
+    } catch (error) {
+      // A daemon that exited between status and procfs needs no migration.
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return
+      warn('daemon cgroup unavailable')
+      return
+    }
+    if (decision === 'keep-active') {
+      process.stderr.write(
+        `warning: Buck2 gate accounting: reusing active daemon in foreign cgroup ${foreign.replaceAll('\n', '; ')}\n`,
+      )
+      return
+    }
+  } else if (decision === 'keep-active') return
+  // Buck has no conditional kill RPC. A client arriving after this idle status
+  // read can still race the kill; never kill a daemon already observed as busy.
+  const stopped = spawnSync(native, [...globalArgs, 'kill'], options)
+  if (stopped.error !== undefined || stopped.status !== 0) {
+    if (phase === 'start') throw new Error('Buck2 gate admission: foreign idle daemon stop failed')
+    warn('native kill failed')
+  }
+}
+
 if (import.meta.main === true) {
   try {
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
+    if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
+      const root = findRoot(process.cwd())
+      if (root !== undefined)
+        reconcileGateDaemon({
+          native,
+          root,
+          args: process.argv.slice(4),
+          env: process.env,
+          phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
+        })
+      process.exit(0)
+    }
     const auth = process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
     if (
       auth !== undefined &&
