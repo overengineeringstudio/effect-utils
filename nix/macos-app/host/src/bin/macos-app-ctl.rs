@@ -821,16 +821,62 @@ fn run() -> Result<Value> {
     cancellation()?;
     Ok(json!({"ok": true, "primitive": action, "result": result}))
 }
+fn print_failure(e: Failure) -> ! {
+    println!("{}", json!({"ok": false, "error": {"kind": e.kind, "category": e.category, "reason": e.reason, "exitCode": e.code}}));
+    std::process::exit(e.code);
+}
 fn main() {
     match run() {
         Ok(v) => println!("{v}"),
-        Err(e) => { println!("{}", json!({"ok": false, "error": {"kind": e.kind, "category": e.category, "reason": e.reason}})); std::process::exit(e.code); }
+        Err(e) => print_failure(e),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn failure_json_process_fixture() {
+        let Ok(kind) = std::env::var("MACOS_APP_CTL_ERROR_JSON_FIXTURE") else { return };
+        let error = match kind.as_str() {
+            "invalid-input" => fail(64, "invalid-input", "Invalid fixture input"),
+            "verification-failed" => mismatch("Fixture verification failed"),
+            "endpoint-unready" => fail(23, "endpoint-unready", "Fixture endpoint was not ready"),
+            "signing-failed" => signing("password-invalid", "Invalid fixture password"),
+            _ => panic!("Unknown failure fixture"),
+        };
+        print_failure(error);
+    }
+
+    #[test]
+    fn failure_json_exit_code_matches_process_status() {
+        for (kind, code, category) in [
+            ("invalid-input", 64, Value::Null),
+            ("verification-failed", 22, Value::Null),
+            ("endpoint-unready", 23, Value::Null),
+            ("signing-failed", 20, json!("password-invalid")),
+        ] {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "tests::failure_json_process_fixture", "--nocapture"])
+                .env("MACOS_APP_CTL_ERROR_JSON_FIXTURE", kind)
+                .output().unwrap();
+            assert_eq!(output.status.code(), Some(code), "{kind}: {output:?}");
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            let value: Value = stdout.lines().find_map(|line| serde_json::from_str(line).ok())
+                .expect("Failure process prints a JSON envelope");
+            assert_eq!(value, json!({"ok": false, "error": {
+                "kind": kind, "category": category,
+                "reason": match kind {
+                    "invalid-input" => "Invalid fixture input",
+                    "verification-failed" => "Fixture verification failed",
+                    "endpoint-unready" => "Fixture endpoint was not ready",
+                    _ => "Invalid fixture password",
+                },
+                "exitCode": output.status.code().unwrap(),
+            }}));
+        }
+    }
+
     fn pipe_with(bytes: &[u8], close_writer: bool) -> (i32, Option<File>) {
         let mut fds = [0; 2];
         // SAFETY: fds has room for the two descriptors pipe writes.
