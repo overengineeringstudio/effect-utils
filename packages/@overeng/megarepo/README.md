@@ -365,6 +365,13 @@ worktree step additionally refuses when a live process has its cwd inside the ta
 children are excluded so a `git` child cannot self-veto. A host without a supported process table,
 or a scan that cannot be read, is `unknown` and keeps.
 
+`mr store buck-maintain` currently supports Linux only: its complete holder census needs
+process cwd, root, open-file, mapped-file, and lifetime evidence. On Darwin and other
+platforms every discovered worktree reports `census-unsupported-platform`, with no output
+measurement, cleanup, daemon shutdown, or deletion lease. Decision tests assert this
+fail-closed result on Darwin rather than skipping. Native Darwin census support is tracked
+in [#1955](https://github.com/overengineeringstudio/effect-utils/issues/1955).
+
 ## Testing
 
 `devenv tasks run test:megarepo` runs the bounded Buck lane and its source integration

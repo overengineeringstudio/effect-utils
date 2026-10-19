@@ -49,7 +49,7 @@ const makeOutput = Effect.fn('test.makeOutput')(function* ({
 it.live('discovers slash refs but rejects descendant links, archives, and nested worktrees', () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const temp = yield* fs.makeTempDirectoryScoped()
+    const temp = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
     const root = join(temp, 'roots')
     const branch = join(root, 'refs/heads/owner/branch')
     const other = join(root, 'refs/heads/other')

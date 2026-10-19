@@ -9,7 +9,7 @@ import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { encodeJson } from '../test-utils/mod.ts'
-import { runBuckMaintain } from './store-buck-maintain.ts'
+import { type BuckMaintainReceipt, runBuckMaintain } from './store-buck-maintain.ts'
 import { WORKSPACE_ACTIVITY_V2_SCHEMA } from './store-workspace-activity.ts'
 
 const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
@@ -170,7 +170,7 @@ const makeFixture = Effect.fn('test.buckMaintainSafety.fixture')(function* () {
     }
     yield* fs.makeDirectory(join(path, 'buck-out', 'v2'), { recursive: true })
     yield* fs.writeFileString(join(path, 'buck-out', 'v2', 'retained-output'), 'must survive')
-    return path
+    return yield* fs.realPath(path)
   })
   const idleFs: FileSystem.FileSystem = {
     ...fs,
@@ -185,6 +185,33 @@ const makeFixture = Effect.fn('test.buckMaintainSafety.fixture')(function* () {
     expect(yield* fs.readFileString(duCalls)).toBe('')
     expect(yield* fs.readFileString(nativeCalls)).toBe('')
   })
+  const expectUnsupportedPlatform = Effect.fn('test.buckMaintainSafety.unsupportedPlatform')(
+    function* (receipt: BuckMaintainReceipt, worktrees: readonly string[]) {
+      const canonicalWorktrees = yield* Effect.forEach(worktrees, (path) => fs.realPath(path))
+      expect(receipt.entries).toEqual(
+        expect.arrayContaining(
+          canonicalWorktrees.map((worktree) => ({
+            worktree,
+            action: 'none',
+            reason: 'census-unsupported-platform',
+            bytesBefore: null,
+            bytesAfter: null,
+            daemon: [],
+            ownerEvidence: [],
+          })),
+        ),
+      )
+      expect(receipt.entries).toHaveLength(canonicalWorktrees.length)
+      expect(receipt.summary).toEqual({
+        worktrees: canonicalWorktrees.length,
+        actions: 0,
+        skipped: canonicalWorktrees.length,
+      })
+      yield* expectNoCommands()
+      expect(yield* fs.exists(measured)).toBe(false)
+      expect(yield* fs.exists(join(store, 'killed'))).toBe(false)
+    },
+  )
   return {
     fs,
     store,
@@ -202,6 +229,7 @@ const makeFixture = Effect.fn('test.buckMaintainSafety.fixture')(function* () {
     idleFs,
     run,
     expectNoCommands,
+    expectUnsupportedPlatform,
   }
 })
 
@@ -248,6 +276,14 @@ it.live('vetoes a complete unrelated holder first observed after output measurem
       readLink: (path) => fs.readLink(mapProc(path)),
     }
     const receipt = yield* fixture.run(boundary)
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      expect(observedAfterMeasurement).toBe(false)
+      expect(yield* fs.readFileString(join(worktree, 'buck-out/v2/retained-output'))).toBe(
+        'must survive',
+      )
+      return
+    }
     expect(observedAfterMeasurement).toBe(true)
     expect(receipt.entries).toHaveLength(1)
     expect(receipt.entries[0]).toMatchObject({
@@ -281,6 +317,10 @@ it.live(
         { workspace: active, owner: 'seat/a', active: true },
       ])
       const receipt = yield* fixture.run()
+      if (process.platform !== 'linux') {
+        yield* fixture.expectUnsupportedPlatform(receipt, [locked, foreign, active])
+        return
+      }
       expect(receipt.entries).toHaveLength(3)
       for (const [worktree, reason] of [
         [locked, 'git-locked'],
@@ -309,6 +349,10 @@ it.live('treats a missing Git activity file as unknown before measuring output',
     )
     yield* fixture.fs.remove(join(gitDir, 'logs', 'HEAD'))
     const receipt = yield* fixture.run()
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      return
+    }
     expect(receipt.entries).toHaveLength(1)
     expect(receipt.entries[0]).toMatchObject({
       worktree,
@@ -328,6 +372,10 @@ it.live('rejects a Git worktree that resolves to an ancestor Buck project', () =
     yield* fixture.fs.writeFileString(join(fixture.store, '.buckconfig'), '[cells]\n  root = .\n')
     const worktree = yield* fixture.addWorktree('ancestor-buck-root', false)
     const receipt = yield* fixture.run()
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      return
+    }
     expect(receipt.entries).toHaveLength(1)
     expect(receipt.entries[0]).toMatchObject({
       worktree,
@@ -348,6 +396,10 @@ it.live(
       const worktree = yield* fixture.addWorktree('native-unavailable')
       yield* fixture.fs.remove(fixture.st3)
       const receipt = yield* fixture.run()
+      if (process.platform !== 'linux') {
+        yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+        return
+      }
       expect(receipt.entries).toHaveLength(1)
       expect(receipt.entries[0]).toMatchObject({
         worktree,
@@ -380,6 +432,10 @@ it.live('protects a waiting remote seat with no local holder even when the manif
       }),
     )
     const receipt = yield* fixture.run()
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      return
+    }
     expect(receipt.entries).toHaveLength(1)
     expect(receipt.entries[0]).toMatchObject({
       worktree,
@@ -433,6 +489,12 @@ it.live('keeps recent daemon-state activity even when Git and Buck logs are ten 
       }),
     )
     const receipt = yield* fixture.run()
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      expect(yield* fs.exists(join(output, 'log', 'state'))).toBe(true)
+      expect(yield* fs.exists(join(output, 'daemon', 'state'))).toBe(true)
+      return
+    }
     expect(receipt.entries).toHaveLength(1)
     expect(receipt.entries[0]).toMatchObject({
       worktree,
@@ -466,6 +528,13 @@ it.live(
         }),
       )
       const receipt = yield* fixture.run()
+      if (process.platform !== 'linux') {
+        yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+        expect(
+          yield* fixture.fs.readFileString(join(worktree, 'buck-out/v2/retained-output')),
+        ).toBe('must survive')
+        return
+      }
       expect(receipt.entries).toHaveLength(1)
       expect(receipt.entries[0]).toMatchObject({
         worktree,
@@ -529,6 +598,10 @@ for (const recentCommand of [false, true]) {
           }),
         )
         const receipt = yield* fixture.run()
+        if (process.platform !== 'linux') {
+          yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+          return
+        }
         expect(receipt.entries).toHaveLength(1)
         expect(receipt.entries[0]).toMatchObject({
           worktree,
@@ -562,6 +635,10 @@ for (const resolvable of [true, false]) {
         if (resolvable === true) yield* fixture.fs.symlink(worktree, alias)
         yield* fixture.writeManifest([{ workspace: alias, owner: 'seat/foreign', active: false }])
         const receipt = yield* fixture.run()
+        if (process.platform !== 'linux') {
+          yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+          return
+        }
         expect(receipt.entries[0]?.reason).toBe('foreign-owner')
         expect(receipt.entries[0]?.ownerEvidence).toContainEqual({
           source: 'st3-seat',
@@ -584,6 +661,10 @@ for (const boundary of ['', 'v2', 'v2/log']) {
       if (boundary !== 'v2/log') yield* fixture.fs.remove(path, { recursive: true })
       yield* fixture.fs.symlink(target, path)
       const receipt = yield* fixture.run()
+      if (process.platform !== 'linux') {
+        yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+        return
+      }
       expect(receipt.entries[0]?.reason).toBe('output-activity-unknown')
       yield* fixture.expectNoCommands()
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -611,6 +692,10 @@ for (const history of ['absent', 'empty', 'partial'] as const) {
         }),
       )
       const receipt = yield* fixture.run()
+      if (process.platform !== 'linux') {
+        yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+        return
+      }
       expect(receipt.entries[0]).toMatchObject({
         action: 'none',
         reason: history === 'absent' ? 'no-buck-out' : 'inactivity-unknown',
@@ -730,6 +815,10 @@ for (const arrival of [false, true]) {
           arrival,
         )
         const receipt = yield* fixture.run(boundary)
+        if (process.platform !== 'linux') {
+          yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+          return
+        }
         expect(receipt.entries[0]?.daemon.map((daemon) => daemon.outcome)).toEqual(
           arrival === true ? ['stopped', 'kept-active'] : ['stopped', 'stopped'],
         )
@@ -761,6 +850,10 @@ it.live('vetoes a daemon first appearing after measurement before full clean', (
     )
     const boundary = yield* makeDaemonBoundary(fixture, worktree, [], true)
     const receipt = yield* fixture.run(boundary)
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      return
+    }
     expect(receipt.entries[0]?.action).toBe('none')
     expect(yield* fixture.fs.exists(fixture.measured)).toBe(true)
     expect(receipt.entries[0]?.reason).toBe('holder-live')
@@ -794,6 +887,10 @@ for (const failure of ['clean', 'kill'] as const) {
         boundary = yield* makeDaemonBoundary(fixture, worktree, [2000000001], false, false, true)
       }
       const receipt = yield* fixture.run(boundary)
+      if (process.platform !== 'linux') {
+        yield* fixture.expectUnsupportedPlatform(receipt, [worktree, other])
+        return
+      }
       expect(receipt.entries.map((entry) => entry.worktree).sort()).toEqual(
         [worktree, other].sort(),
       )
@@ -818,6 +915,10 @@ it.live('does not admit an unproven daemon arriving between native isolation cle
     yield* fixture.fs.makeDirectory(join(worktree, 'buck-out/second'), { recursive: true })
     const boundary = yield* makeDaemonBoundary(fixture, worktree, [], false, false, false, true)
     const receipt = yield* fixture.run(boundary)
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      return
+    }
     expect(receipt.entries[0]?.action).toBe('clean-stale')
     expect(receipt.entries[0]?.reason).not.toBe('completed')
     expect((yield* fixture.fs.readFileString(fixture.nativeCalls)).trim().split('\n')).toHaveLength(
@@ -863,6 +964,10 @@ it.live(
         }),
       )
       const receipt = yield* fixture.run()
+      if (process.platform !== 'linux') {
+        yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+        return
+      }
       expect(receipt.entries[0]).toMatchObject({ action: 'none', reason: 'within-budget' })
       expect((yield* fs.readFileString(fixture.duCalls)).trim().split('\n')).toHaveLength(1)
       expect(yield* fs.readFileString(fixture.nativeCalls)).toBe('')

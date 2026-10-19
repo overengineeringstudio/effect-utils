@@ -47,6 +47,7 @@ describe('Buck maintenance script receipt contract', () => {
         import { mock } from 'bun:test'
         import { Effect } from ${JSON.stringify(import.meta.resolve('effect'))}
         mock.module(${JSON.stringify(runner)}, () => ({
+          BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON: 'census-unsupported-platform',
           runBuckMaintain: () => Effect.succeed(${JSON.stringify(receipt)}),
         }))
         process.argv = ['bun', ${JSON.stringify(entrypoint)}, '--json']

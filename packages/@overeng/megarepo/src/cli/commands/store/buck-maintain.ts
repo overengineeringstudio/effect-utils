@@ -1,7 +1,10 @@
 import { Console, Effect, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 
-import { runBuckMaintain } from '../../../store/store-buck-maintain.ts'
+import {
+  BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON,
+  runBuckMaintain,
+} from '../../../store/store-buck-maintain.ts'
 import * as Observability from '../../observability.ts'
 
 const encodeReceipt = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
@@ -40,6 +43,11 @@ export const storeBuckMaintainCommand = Cli.Command.make(
       if (json === true) {
         yield* Console.log(encodeReceipt(receipt))
       } else {
+        if (process.platform !== 'linux') {
+          yield* Console.log(
+            `Buck maintenance is unsupported on ${process.platform}: ${BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON}. No outputs or daemons will be changed. See #1955.`,
+          )
+        }
         yield* Console.log(
           `Buck maintenance${receipt.dryRun === true ? ' (dry run)' : ''}: ${receipt.summary.worktrees} worktrees · ${receipt.summary.actions} actions · ${receipt.summary.skipped} skipped`,
         )

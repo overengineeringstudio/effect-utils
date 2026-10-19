@@ -50,6 +50,9 @@ export interface BuckMaintainOwnerEvidence {
   readonly workspace?: string
 }
 
+/** Full cwd/root/fd/mapping census is Linux-only until Darwin support (#1955). */
+export const BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON = 'census-unsupported-platform'
+
 /** Stable outcome for one discovered worktree. */
 export interface BuckMaintainEntry {
   readonly worktree: string
@@ -188,6 +191,18 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
   const blackout = isInBlackout({ now: Date.now(), blackout: config.blackout })
   const entries: BuckMaintainEntry[] = []
   for (const worktree of yield* discoverBuckMaintainWorktrees(roots)) {
+    if (process.platform !== 'linux') {
+      entries.push({
+        worktree,
+        action: 'none',
+        reason: BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON,
+        bytesBefore: null,
+        bytesAfter: null,
+        daemon: [],
+        ownerEvidence: [],
+      })
+      continue
+    }
     let daemons = yield* findWorktreeBuckDaemons({ worktreePath: worktree })
     let ignoredProcesses = daemons.flatMap((entry) => entry.processes)
     const ownerEvidence: BuckMaintainOwnerEvidence[] = []
