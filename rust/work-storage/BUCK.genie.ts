@@ -7,7 +7,8 @@ const projection = cargoBuck2PackageProjection({ sourceUrl: import.meta.url })
 // shared wire conformance suite to the repository's full CI authority.
 export default createGenieOutput({
   ...projection,
-  stringify: (context) => `${projection.stringify(context)}
+  stringify: (context) => `load("//buck2/rust:defs.bzl", "rust_test_receipt")
+${projection.stringify(context)}
 native.rust_test(
     name = "conformance",
     crate = "work_storage_conformance",
@@ -23,6 +24,12 @@ native.rust_test(
     env = {
         "OUT_DIR": "$(location :work-storage-build-script-run[out_dir])",
     },
+    visibility = ["PUBLIC"],
+)
+
+rust_test_receipt(
+    name = "conformance-receipt",
+    test = ":conformance",
     visibility = ["PUBLIC"],
 )
 `,
