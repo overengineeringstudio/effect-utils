@@ -460,7 +460,7 @@ export const gateCgroupRelation = (
  * Do not execute Python argfiles or consume stdin a second time, and do not
  * approximate Buck's config-backed cell resolver. Those forms retain daemons.
  */
-export const resolveGateIsolation = ({
+export const resolveGateInvocation = ({
   args,
   env,
   cwd,
@@ -476,7 +476,7 @@ export const resolveGateIsolation = ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cwd: string
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
-}): string | undefined => {
+}): { readonly isolation: string; readonly args: readonly string[] } | undefined => {
   const expanded: string[] = []
   const active = new Set<string>()
   const expand = (input: readonly string[], depth: number): boolean => {
@@ -544,7 +544,7 @@ export const resolveGateIsolation = ({
     isolation !== '.' &&
     isolation !== '..' &&
     isolation.startsWith('._buck2') === false
-    ? isolation
+    ? { isolation, args: expanded }
     : undefined
 }
 
@@ -562,15 +562,16 @@ export const reconcileGateDaemon = ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly phase: 'start' | 'exit'
 }): void => {
-  const isolation = resolveGateIsolation({ args, env, cwd: process.cwd() })
-  if (isolation === undefined) {
+  const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
+  if (invocation === undefined) {
     if (phase === 'start')
       process.stderr.write(
         'warning: Buck2 gate retained daemon: native isolation could not be determined safely\n',
       )
     return
   }
-  if (skipsWatcherAdmission(args) === true) return
+  if (skipsWatcherAdmission(invocation.args) === true) return
+  const { isolation } = invocation
   const globalArgs = ['--isolation-dir', isolation]
   const options = { cwd: root, env, encoding: 'utf8' as const, timeout: 30000 }
   const warn = (reason: string): void => {

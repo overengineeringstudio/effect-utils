@@ -1,6 +1,9 @@
 import { expect, it } from 'bun:test'
 
-import { resolveGateIsolation } from './buck2-entrypoint.ts'
+import { resolveGateInvocation } from './buck2-entrypoint.ts'
+
+const resolveGateIsolation = (options: Parameters<typeof resolveGateInvocation>[0]) =>
+  resolveGateInvocation(options)?.isolation
 
 const cwd = '/project/subdir'
 const files: Record<string, string> = {

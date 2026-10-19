@@ -34,7 +34,7 @@ appendFileSync(${JSON.stringify(calls)}, JSON.stringify(args) + '\\n')
 const isolation = args[1]
 if (args[0] !== '--isolation-dir') process.exit(2)
 if (args[2] === 'status') {
-  console.log(JSON.stringify({ project_root: ${JSON.stringify(root)}, isolation_dir: isolation, active_commands: [] }))
+  console.log(JSON.stringify({ project_root: ${JSON.stringify(root)}, isolation_dir: isolation, active_commands: [], process_info: {pid: process.ppid} }))
 } else if (args[2] === 'kill') {
   const state = JSON.parse(readFileSync(${JSON.stringify(state)}, 'utf8'))
   state[isolation] = 'stopped'
@@ -79,6 +79,20 @@ for (const phase of ${JSON.stringify(phases)}) reconcileGateDaemon({ native: ${J
       ])
       expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual({ owned: 'stopped', v2: 'running' })
     }
+    for (const subcommand of ['status', 'log', 'kill']) {
+      writeFileSync(join(cwd, 'maintenance'), `${subcommand}\n--isolation-dir\nowned\n`)
+      writeFileSync(calls, '')
+      const result = invoke(['@maintenance'], {}, ['start', 'exit'])
+      expect(result.status).toBe(0)
+      expect(result.stderr).toBe('')
+      expect(readFileSync(calls, 'utf8')).toBe('')
+    }
+    writeFileSync(calls, '')
+    const admission = invoke(['@nested/outer'], {}, ['start'])
+    expect(admission.status).toBe(0)
+    expect(readFileSync(calls, 'utf8').trim()).toBe(
+      JSON.stringify(['--isolation-dir', 'owned', 'status']),
+    )
     for (const args of [
       ['build', '--isolation-dir'],
       ['build', '--isolation-dir=one', '--isolation-dir=two'],
