@@ -46,8 +46,9 @@ describe('Buck maintenance script receipt contract', () => {
       const bootstrap = `
         import { mock } from 'bun:test'
         import { Effect } from ${JSON.stringify(import.meta.resolve('effect'))}
+        const runnerExports = await import(${JSON.stringify(runner)})
         mock.module(${JSON.stringify(runner)}, () => ({
-          BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON: 'census-unsupported-platform',
+          ...runnerExports,
           runBuckMaintain: () => Effect.succeed(${JSON.stringify(receipt)}),
         }))
         process.argv = ['bun', ${JSON.stringify(entrypoint)}, '--json']

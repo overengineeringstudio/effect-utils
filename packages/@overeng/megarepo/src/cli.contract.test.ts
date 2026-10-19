@@ -183,7 +183,9 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
         const bootstrap = `
         import { mock } from 'bun:test'
         import { Effect } from ${JSON.stringify(import.meta.resolve('effect'))}
+        const runner = await import(${JSON.stringify(fileURLToPath(new URL('./store/store-buck-maintain.ts', import.meta.url)))})
         mock.module(${JSON.stringify(fileURLToPath(new URL('./store/store-buck-maintain.ts', import.meta.url)))}, () => ({
+          ...runner,
           runBuckMaintain: () => Effect.succeed(${JSON.stringify(receipt)}),
         }))
         process.argv = ['bun', ${JSON.stringify(entrypoint)}, ...${JSON.stringify(args)}]

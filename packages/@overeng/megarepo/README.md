@@ -380,6 +380,9 @@ complement. Root script adapter contracts run in `genie:buck2:test`, part of the
 the aggregate's existing megarepo installer before importing the CLI from the root adapter;
 the shared test publisher alone does not provide that CLI's workspace dependencies.
 This ordering reuses the required megarepo publication rather than adding a second publisher.
+The mr receipt contracts in `cli.contract.test.ts` belong to the bounded lane
+(`test:buck2:unit`), not the source-only megarepo chain. Receipt fixtures preserve the
+runner module's real exports and replace only `runBuckMaintain`.
 
 Native ownership safety assertions use deterministic subprocess projections on every
 host. An additional real-`pty` test skips only when the executable is absent from
