@@ -1,4 +1,6 @@
 /** Root-scoped Buck2 shutdown before GC renames or removes a worktree. */
+import { dirname } from 'node:path'
+
 import { Effect, Option, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Command from 'effect/process/ChildProcess'
@@ -83,7 +85,7 @@ export const recognizeBuckDaemon = ({
     daemonId.startsWith('-') === true
   )
     return undefined
-  const cwdDeleted = cwd.endsWith(' (deleted)')
+  const cwdDeleted = cwd.endsWith(' (deleted)') === true
   const path = cwdDeleted === true ? cwd.slice(0, -' (deleted)'.length) : cwd
   const suffix = `/buck-out/${isolation}`
   if (path.startsWith('/') === false) return undefined
@@ -208,8 +210,157 @@ export const findWorktreeBuckDaemons = Effect.fn('store.findWorktreeBuckDaemons'
   return daemons
 })
 
+/** Filesystem observations in cwd-to-root order, as used by pinned Buck's get_roots. */
+export interface BuckRootAncestor {
+  readonly path: string
+  readonly buckconfig: boolean
+  readonly buckroot: boolean
+}
+
+/**
+ * Buck selects the outermost .buckconfig before .buckroot, excluding HOME's
+ * configuration override. A .buckroot alone does not establish a project.
+ */
+export const buckClientProjectRoot = ({
+  ancestors,
+  homeDirectory,
+}: {
+  ancestors: ReadonlyArray<BuckRootAncestor>
+  homeDirectory: string | undefined
+}): string | undefined => {
+  let root: string | undefined
+  for (const ancestor of ancestors) {
+    if (ancestor.buckconfig === true) {
+      if (ancestor.path === homeDirectory) break
+      root = ancestor.path
+    }
+    if (ancestor.buckroot === true) break
+  }
+  return root
+}
+
+/** Unknown client identity holds teardown; known identity requires root AND isolation. */
+export const buckClientHoldsWorktree = ({
+  cwd,
+  root,
+  isolation,
+  worktree,
+  daemons,
+}: {
+  cwd: string
+  root: string | undefined
+  isolation: string | undefined
+  worktree: string
+  daemons: ReadonlyArray<BuckDaemonIdentity>
+}): boolean =>
+  isInsideWorktree({ candidate: cwd, worktreePath: worktree }) === true ||
+  root === undefined ||
+  isolation === undefined ||
+  daemons.some((daemon) => daemon.root === root && daemon.isolation === isolation) === true
+
+/** Resolve pinned Buck's project root without starting a daemon; unreadable markers fail. */
+export const readBuckProjectRoot = Effect.fn('store.readBuckProjectRoot')(function* ({
+  cwd,
+  homeDirectory,
+}: {
+  cwd: string
+  homeDirectory: string | undefined
+}) {
+  const fs = yield* FileSystem.FileSystem
+  if (cwd.startsWith('/') === false || cwd.endsWith(' (deleted)') === true) return undefined
+  const ancestors: BuckRootAncestor[] = []
+  let directory = cwd
+  while (true) {
+    // exists() can hide permission errors. Only NotFound proves an absent marker.
+    const markers = yield* Effect.forEach(['.buckconfig', '.buckroot'], (name) =>
+      fs.stat(`${directory}/${name}`).pipe(
+        Effect.map(() => true),
+        Effect.catchIf(
+          (error) => error.reason._tag === 'NotFound',
+          () => Effect.succeed(false),
+        ),
+      ),
+    )
+    const buckconfig = markers[0] === true
+    const buckroot = markers[1] === true
+    ancestors.push({ path: directory, buckconfig, buckroot })
+    if (buckroot === true || (buckconfig === true && directory === homeDirectory)) break
+    const parent = dirname(directory)
+    if (parent === directory) break
+    directory = parent
+  }
+  return buckClientProjectRoot({ ancestors, homeDirectory })
+})
+/** Any non-daemon Buck client targeting this root/isolation holds the daemon, including before RPC context registration. */
+export const hasWorktreeBuckClients = Effect.fn('store.hasWorktreeBuckClients')(function* (
+  worktree: string,
+  daemons: ReadonlyArray<WorktreeBuckDaemon>,
+) {
+  const fs = yield* FileSystem.FileSystem
+  const listing = yield* fs.readDirectory('/proc').pipe(Effect.option)
+  if (Option.isNone(listing) === true) return true
+  for (const name of listing.value) {
+    if (/^[0-9]+$/u.test(name) === false || Number(name) === process.pid) continue
+    const executable = yield* fs.readLink(`/proc/${name}/exe`).pipe(Effect.option)
+    if (Option.isNone(executable) === true || executable.value.endsWith('/buck2') === false)
+      continue
+    const argv = yield* fs.readFileString(`/proc/${name}/cmdline`).pipe(Effect.option)
+    const cwd = yield* fs.readLink(`/proc/${name}/cwd`).pipe(Effect.option)
+    if (Option.isNone(argv) === true || Option.isNone(cwd) === true) return true
+    const args = argv.value.split('\0').filter((arg) => arg !== '')
+    if (
+      (args.includes('daemon') === true && args.includes('--daemon-id') === true) ||
+      args[1] === 'forkserver'
+    )
+      continue
+    if (isInsideWorktree({ candidate: cwd.value, worktreePath: worktree }) === true) return true
+    // Native Buck 2026-09-01 has no -C/--cwd override: cwd comes from current_dir().
+    // Argfiles can hide identity flags, so they remain an uncertainty gate.
+    const separator = args.indexOf('--')
+    const options = separator < 0 ? args : args.slice(0, separator)
+    if (options.some((arg) => arg.startsWith('@') === true || arg === '--flagfile') === true)
+      return true
+    const environment = yield* fs.readFileString(`/proc/${name}/environ`).pipe(Effect.option)
+    if (Option.isNone(environment) === true) return true
+    const variables = environment.value.split('\0')
+    const homeDirectory = variables
+      .find((variable) => variable.startsWith('HOME=') === true)
+      ?.slice(5)
+    // Without HOME we cannot reproduce Buck's user-config ascent boundary.
+    if (homeDirectory === undefined || homeDirectory.startsWith('/') === false) return true
+    const isolationIndex = options.indexOf('--isolation-dir')
+    const isolation =
+      isolationIndex < 0
+        ? (options
+            .find((argument) => argument.startsWith('--isolation-dir=') === true)
+            ?.slice('--isolation-dir='.length) ??
+          variables
+            .find((variable) => variable.startsWith('BUCK_ISOLATION_DIR=') === true)
+            ?.slice('BUCK_ISOLATION_DIR='.length) ??
+          'v2')
+        : options[isolationIndex + 1]
+    const root = yield* readBuckProjectRoot({ cwd: cwd.value, homeDirectory }).pipe(
+      Effect.orElseSucceed(() => undefined),
+    )
+    if (
+      buckClientHoldsWorktree({
+        cwd: cwd.value,
+        root,
+        isolation:
+          isolation === undefined || isolation.length === 0 || isolation.startsWith('-') === true
+            ? undefined
+            : isolation,
+        worktree,
+        daemons: daemons.map((entry) => entry.daemon),
+      }) === true
+    )
+      return true
+  }
+  return false
+})
+
 /** Newest event-log file write; `buck2 kill` itself only adds a directory there. */
-const newestBuckLogWriteMs = Effect.fn('store.newestBuckLogWriteMs')(function* (
+export const newestBuckLogWriteMs = Effect.fn('store.newestBuckLogWriteMs')(function* (
   daemon: BuckDaemonIdentity,
 ) {
   const fs = yield* FileSystem.FileSystem
@@ -226,7 +377,8 @@ const newestBuckLogWriteMs = Effect.fn('store.newestBuckLogWriteMs')(function* (
   return newest
 })
 
-const runBuck2 = Effect.fn('store.runBuck2')(function* ({
+/** Invoke the native binary against an existing daemon's exact root and isolation. */
+export const runBuck2 = Effect.fn('store.runBuck2')(function* ({
   binary,
   daemon,
   subcommand,
@@ -267,12 +419,27 @@ const runBuck2 = Effect.fn('store.runBuck2')(function* ({
 export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons')(function* ({
   worktreePath,
   archived = false,
+  binary: requestedBinary,
+  idleSinceMs,
+  beforeKill,
+  reportRaces = true,
+  afterStop,
 }: {
   worktreePath: string
   archived?: boolean
+  /** Maintenance uses the observed native executable, never the admission launcher. */
+  binary?: string
+  /** Require event-log and daemon start time to precede this policy cutoff. */
+  idleSinceMs?: number
+  /** Final lease-protected holder/client check, immediately before the kill. */
+  beforeKill?: () => Effect.Effect<boolean, never, FileSystem.FileSystem | ChildProcessSpawner>
+  /** JSON receipt consumers record raced outcomes without contaminating stdout. */
+  reportRaces?: boolean
+  /** Observe a confirmed stop before considering the next isolation. */
+  afterStop?: (daemon: BuckDaemonStopped) => Effect.Effect<void>
 }) {
-  const binary = process.env['MEGAREPO_GC_BUCK2_BIN'] ?? 'buck2'
-  if (binary === '') return []
+  const configuredBinary = requestedBinary ?? process.env['MEGAREPO_GC_BUCK2_BIN']
+  if (configuredBinary === '') return []
   const daemons = yield* findWorktreeBuckDaemons({ worktreePath })
   const results: BuckDaemonResult[] = []
   for (const { daemon, memoryKiB } of daemons) {
@@ -286,7 +453,32 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
       })
       continue
     }
+    const fs = yield* FileSystem.FileSystem
+    const binary =
+      configuredBinary ??
+      (yield* fs.readLink(`/proc/${daemon.pid}/exe`).pipe(Effect.orElseSucceed(() => undefined)))
+    if (binary === undefined) {
+      results.push({
+        _tag: 'unreachable',
+        ...identity,
+        memoryKiB,
+        reason: 'native-binary-unavailable',
+      })
+      continue
+    }
+    if ((yield* hasWorktreeBuckClients(worktreePath, daemons)) === true) {
+      results.push({ _tag: 'kept-active', ...identity })
+      continue
+    }
     const decidedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
+    if (idleSinceMs !== undefined) {
+      const daemonInfo = yield* fs.stat(`/proc/${daemon.pid}`).pipe(Effect.option)
+      // Start time is read from status below; /proc existence is an additional lifetime check.
+      if (Option.isNone(daemonInfo) === true || (decidedLogWriteMs ?? 0) > idleSinceMs) {
+        results.push({ _tag: 'kept-active', ...identity })
+        continue
+      }
+    }
     const statusRun = yield* runBuck2({ binary, daemon, subcommand: 'status' })
     const status =
       Option.isSome(statusRun) === true && statusRun.value.exitCode === 0
@@ -297,6 +489,16 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
     if (Option.isNone(status) === true) {
       results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'status-unreadable' })
       continue
+    }
+    if (idleSinceMs !== undefined) {
+      const started = yield* Schema.decodeEffect(
+        Schema.fromJsonString(Schema.Struct({ start_time: Schema.String })),
+      )(Option.isSome(statusRun) === true ? statusRun.value.stdout : '').pipe(Effect.option)
+      const startedMs = Option.isSome(started) === true ? Date.parse(started.value.start_time) : NaN
+      if (Number.isFinite(startedMs) === false || startedMs > idleSinceMs) {
+        results.push({ _tag: 'kept-active', ...identity })
+        continue
+      }
     }
     const decision = decideBuckDaemon({ daemon, status: status.value })
     if (decision === 'kept-active') {
@@ -310,6 +512,10 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
         memoryKiB,
         reason: 'status-identity-mismatch',
       })
+      continue
+    }
+    if (beforeKill !== undefined && (yield* beforeKill()) === false) {
+      results.push({ _tag: 'kept-active', ...identity })
       continue
     }
     const observedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
@@ -331,17 +537,19 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
     let raced: string | undefined
     if (Number(exitedPid) !== daemon.pid) raced = `kill-stopped-other-pid-${exitedPid}`
     else if (logWriteAfterKillMs !== observedLogWriteMs) raced = 'command-log-written-during-kill'
-    if (raced !== undefined) {
+    if (raced !== undefined && reportRaces === true) {
       yield* Effect.logWarning(
         `RACED stopping Buck2 daemon pid ${daemon.pid} (${daemon.daemonId}) at ${daemon.root}: ${raced}`,
       )
     }
-    results.push({
-      _tag: 'stopped',
+    const stopped = {
+      _tag: 'stopped' as const,
       ...identity,
       freedKiB: memoryKiB,
       ...(raced === undefined ? {} : { raced }),
-    })
+    }
+    results.push(stopped)
+    if (afterStop !== undefined) yield* afterStop(stopped)
   }
   return results
 })

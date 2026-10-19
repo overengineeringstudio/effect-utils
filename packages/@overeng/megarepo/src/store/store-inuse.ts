@@ -599,11 +599,14 @@ export const readWorktreeReferencesInUse = ({
   selfPid = process.pid,
   scope = 'all-uids',
   coveredProcesses,
+  ignoredProcesses,
 }: {
   worktreePath: AbsoluteDirPath | string
   selfPid?: number | undefined
   scope?: ProcessScanScope | undefined
   coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+  /** Only exact observed daemon/forkserver lifetimes may be checked separately via status. */
+  ignoredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
 }): Effect.Effect<InUseResult, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -611,8 +614,16 @@ export const readWorktreeReferencesInUse = ({
     if (canonical._tag !== 'value') return { _tag: 'unknown', reason: 'scan-failed' } as const
     const scan = yield* readProcessReferences({ fs, selfPid, scope, coveredProcesses })
     if (scan._tag === 'unknown') return { _tag: 'unknown', reason: scan.reason } as const
-    const holder = scan.references.find((reference) =>
-      isInsideWorktree({ candidate: reference.path, worktreePath: canonical.value }),
+    const ignored = new Map(ignoredProcesses?.map((entry) => [entry.pid, entry.startTime]))
+    const excluded = new Set(
+      scan.processIdentities
+        .filter((entry) => ignored.get(entry.pid) === entry.startTime)
+        .map((entry) => entry.pid),
+    )
+    const holder = scan.references.find(
+      (reference) =>
+        excluded.has(reference.pid) === false &&
+        isInsideWorktree({ candidate: reference.path, worktreePath: canonical.value }),
     )
     return holder === undefined
       ? ({ _tag: 'free' } as const)

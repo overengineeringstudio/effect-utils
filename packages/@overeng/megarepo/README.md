@@ -365,6 +365,30 @@ worktree step additionally refuses when a live process has its cwd inside the ta
 children are excluded so a `git` child cannot self-veto. A host without a supported process table,
 or a scan that cannot be read, is `unknown` and keeps.
 
+`mr store buck-maintain` currently supports Linux only: its complete holder census needs
+process cwd, root, open-file, mapped-file, and lifetime evidence. On Darwin and other
+platforms every discovered worktree reports `census-unsupported-platform`, with no output
+measurement, cleanup, daemon shutdown, or deletion lease. Decision tests assert this
+fail-closed result on Darwin rather than skipping. Native Darwin census support is tracked
+in [#1955](https://github.com/overengineeringstudio/effect-utils/issues/1955).
+
+## Testing
+
+`devenv tasks run test:megarepo` runs the bounded Buck lane and its source integration
+complement. Root script adapter contracts run in `genie:buck2:test`, part of the required
+`test:run` aggregate, without adding scripts to package or Nix closures. The task waits for
+the aggregate's existing megarepo installer before importing the CLI from the root adapter;
+the shared test publisher alone does not provide that CLI's workspace dependencies.
+This ordering reuses the required megarepo publication rather than adding a second publisher.
+The mr receipt contracts in `cli.contract.test.ts` belong to the bounded lane
+(`test:buck2:unit`), not the source-only megarepo chain. Receipt fixtures preserve the
+runner module's real exports and replace only `runBuckMaintain`.
+
+Native ownership safety assertions use deterministic subprocess projections on every
+host. An additional real-`pty` test skips only when the executable is absent from
+`PATH`; other probe failures fail the test. Empty native projections also require PTY
+capture: unavailable PTY evidence is unknown, not proof of no owners.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
