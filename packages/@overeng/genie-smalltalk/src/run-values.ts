@@ -70,7 +70,7 @@ export interface ResourceInput<TName extends string = string, TKind extends stri
 export type InputHandle = TextInput | ResourceInput
 /** Scalar graph-field constraints carried by a product. */
 export type ProductFields = Readonly<Record<string, string | number | boolean | TextTemplate>>
-/** Identity-bearing graph product assigned to exactly one producing step. */
+/** Immutable graph product snapshot assigned to exactly one producing step. */
 export interface ProductHandle<TFields extends ProductFields = ProductFields> {
   readonly [productBrand]: true
   readonly subject?: string
@@ -88,7 +88,7 @@ export interface ContextReference {
 }
 
 /** The attempt-independent run ID used in child-mission and document names. */
-export const runId: ContextReference = { kind: 'context', name: 'ST_MISSION_RUN' }
+export const runId: ContextReference = Object.freeze({ kind: 'context', name: 'ST_MISSION_RUN' })
 
 /** Identity-bearing authored text, resolved only at the native wire boundary. */
 export interface TextTemplate {
@@ -97,7 +97,7 @@ export interface TextTemplate {
 }
 
 const referencesByTemplate = new WeakMap<object, readonly RunReference[]>()
-const noReferences: readonly RunReference[] = []
+const noReferences: readonly RunReference[] = Object.freeze([])
 
 /** Resolves authored text without discarding its identity before assembly. */
 export const templateText = (value: string | TextTemplate): string =>
@@ -141,8 +141,8 @@ export const t = (
   ...values: readonly TemplateValue[]
 ): TextTemplate => {
   const { text, references } = interpolate({ strings, values })
-  const value: TextTemplate = { kind: 'template', text }
-  referencesByTemplate.set(value, references)
+  const value: TextTemplate = Object.freeze({ kind: 'template', text })
+  referencesByTemplate.set(value, Object.freeze(references))
   return value
 }
 
@@ -158,8 +158,8 @@ export const doc = (
   ...values: readonly TemplateValue[]
 ): DocumentReference => {
   const { text, references } = interpolate({ strings, values })
-  const value: DocumentReference = { kind: 'document', subject: text }
-  referencesByTemplate.set(value, references)
+  const value: DocumentReference = Object.freeze({ kind: 'document', subject: text })
+  referencesByTemplate.set(value, Object.freeze(references))
   return value
 }
 
@@ -179,8 +179,8 @@ export const childMission = (
   ...values: readonly TemplateValue[]
 ): ChildMission => {
   const { text, references } = interpolate({ strings, values })
-  const value: ChildMission = { kind: 'child-mission', id: text }
-  referencesByTemplate.set(value, references)
+  const value: ChildMission = Object.freeze({ kind: 'child-mission', id: text })
+  referencesByTemplate.set(value, Object.freeze(references))
   return value
 }
 
@@ -205,14 +205,14 @@ export const pr = ({
     number < 1
   )
     throw new TypeError('Pull request needs OWNER/REPO and a positive integer number')
-  return { kind: 'pull-request', repo, number }
+  return Object.freeze({ kind: 'pull-request', repo, number })
 }
 
-/** Constructors for per-run mission input declarations. */
+/** Constructors for immutable per-run mission input declarations. */
 export const input = {
   text: <const TName extends string>(name: TName): TextInput<TName> => {
     Schema.decodeSync(Name)(name)
-    return { [inputBrand]: true, name, kind: 'text' }
+    return Object.freeze({ [inputBrand]: true as const, name, kind: 'text' })
   },
   resource: <const TName extends string, const TKind extends string>({
     name,
@@ -223,27 +223,38 @@ export const input = {
   }): ResourceInput<TName, TKind> => {
     Schema.decodeSync(Name)(name)
     if (kind.length === 0) throw new TypeError('Resource input needs a kind')
-    return { [inputBrand]: true, name, kind: 'resource', resourceKind: kind }
+    return Object.freeze({
+      [inputBrand]: true as const,
+      name,
+      kind: 'resource',
+      resourceKind: kind,
+    })
   },
 }
 
-/** Constructors for scalar-constrained graph products. */
+/** Product snapshots copy field records while retaining identity-bearing text templates. */
 export const product = {
   /** Scalar field constraints on an existing non-resource graph subject. */
   field: <const TFields extends ProductFields>(options: {
     readonly subject: `message/${string}` | `agent/${string}` | `exec/${string}` | `pty/${string}`
     readonly fields: TFields
-  }): ProductHandle<TFields> => ({ [productBrand]: true, ...options }),
+  }): ProductHandle<TFields> =>
+    Object.freeze({
+      [productBrand]: true as const,
+      subject: options.subject,
+      fields: Object.freeze({ ...options.fields }),
+    }),
   /** Omitted subject is scoped to this run, producing step, and product name. */
   resource: <const TKind extends string, const TFields extends ProductFields>(options: {
     readonly kind: TKind
     readonly subject?: `resource/${string}`
     readonly fields: TFields
-  }): ProductHandle<TFields & { readonly kind: TKind }> => ({
-    [productBrand]: true,
-    ...(options.subject === undefined ? {} : { subject: options.subject }),
-    fields: { ...options.fields, kind: options.kind },
-  }),
+  }): ProductHandle<TFields & { readonly kind: TKind }> =>
+    Object.freeze({
+      [productBrand]: true as const,
+      ...(options.subject === undefined ? {} : { subject: options.subject }),
+      fields: Object.freeze({ ...options.fields, kind: options.kind }),
+    }),
 }
 
 /** Distinguishes identity-bearing input declarations from products. */

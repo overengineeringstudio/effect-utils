@@ -7,6 +7,7 @@ import {
   mission,
   product,
   person,
+  Review,
   step,
   type Node,
 } from './mod.ts'
@@ -27,7 +28,11 @@ export const prLanding = (): Node => {
     },
     gates: [
       gate.fieldIs({ name: 'open-pr', subject: pr, path: 'state', value: 'open' }),
-      gate.human({ name: 'review', reviewer: person('person/reviewer'), review: [pr] }),
+      gate.human({
+        name: 'review',
+        reviewer: person('person/reviewer'),
+        review: [Review.subject(pr)],
+      }),
     ],
   })
   const ci = step({
@@ -96,7 +101,11 @@ export const prLandingFragment = (pr: {
     },
     gates: [
       gate.fieldIs({ name: 'open-pr', subject, path: 'state', value: 'open' }),
-      gate.human({ name: 'review', reviewer: person('person/reviewer'), review: [subject] }),
+      gate.human({
+        name: 'review',
+        reviewer: person('person/reviewer'),
+        review: [Review.subject(subject)],
+      }),
     ],
   })
   const ci = step({

@@ -6,6 +6,8 @@ import {
   emit,
   gate,
   input,
+  Launch,
+  Review,
   mission,
   missionWire,
   person,
@@ -40,7 +42,10 @@ const textGates = (value: TextInput) => [
   gate.human({
     name: 'review',
     reviewer: person('person/reviewer'),
-    review: [t`resource/example/${value}`, doc`doc/example/${value}`],
+    review: [
+      Review.subject(t`resource/example/${value}`),
+      Review.subject(doc`doc/example/${value}`),
+    ],
   }),
   gate.exec({ name: 'exec', command: 'true', host: t`${value}`, workspace: t`/work/${value}` }),
   gate.exec({
@@ -88,11 +93,19 @@ const isolatedGateTexts: readonly [
   ['explicit name', (v) => gate.exists({ subject: 'resource/example', name: t`${v}` })],
   [
     'human review text',
-    (v) => gate.human({ reviewer: person('person/reviewer'), review: [t`resource/example/${v}`] }),
+    (v) =>
+      gate.human({
+        reviewer: person('person/reviewer'),
+        review: [Review.subject(t`resource/example/${v}`)],
+      }),
   ],
   [
     'human review document',
-    (v) => gate.human({ reviewer: person('person/reviewer'), review: [doc`doc/example/${v}`] }),
+    (v) =>
+      gate.human({
+        reviewer: person('person/reviewer'),
+        review: [Review.subject(doc`doc/example/${v}`)],
+      }),
   ],
   ['exec host', (v) => gate.exec({ command: 'true', host: t`${v}`, workspace: '/work' })],
   ['exec workspace', (v) => gate.exec({ command: 'true', host: 'dev3', workspace: t`/work/${v}` })],
@@ -148,7 +161,7 @@ const missionWithText = (
     restart: 'never',
     host: t`${value}`,
     workspace: t`/work/${value}`,
-    command: t`git checkout ${value}`,
+    launch: Launch.shell({ command: t`git checkout ${value}` }),
   } as const
   const worker = { id: 'work', agentless: true, exec: command } as const
   const loopNode = {
