@@ -65,6 +65,7 @@ Keep configuration and raw evidence outside version control. Required private JS
 | --- | --- |
 | `authorizedHost` | Exact authorized runtime machine hostname; never commit it |
 | `client` | Absolute built native client executable path |
+| `hostExecutable` | Absolute installed host executable path (inside the installed `.app`, not the build output) |
 | `socket` | Host Unix socket path, as configured for the installed GUI job |
 | `hostAudit` | Exact native host JSONL audit path |
 | `evidenceDirectory` | New private directory for this invocation |
@@ -94,8 +95,15 @@ granted services during that operation, or the one announced prompt service. Aut
 uses the grant for the selected target, not the other target's allowance. Missing or
 unrecognized correlation/preflight data aborts. `AUTHREQ_*` JSON records are correlated
 by `msgID`; CTX, SUBJECT, ATTRIBUTION and RESULT are preserved, not collapsed into an
-invented verdict. Global unrelated unannounced AUTHREQ activity can also abort: this is
-intentionally conservative. Close unrelated apps before starting.
+invented verdict. Non-preflight requests for unallowed services wait for attribution:
+the experiment bundle identifier, installed `hostExecutable`, or native `client` path
+in any accessing/requesting/responsible process (or SUBJECT path) aborts. Requests
+attributed entirely to foreign processes are ignored and recorded once in
+`tccd.foreign.jsonl`. A pending request reaching RESULT without usable attribution
+aborts as ambiguous. An unannounced PROMPTING still aborts regardless of attribution.
+Both `live.sh` and `revocation.sh` use these same identities through `session.py`.
+Existing private configurations must add `hostExecutable`; `prep.sh` validates the
+config but does not generate or rewrite it.
 
 A directly launched `gui/<uid>` Python watcher polls CoreGraphics window owners. Any
 visible `SecurityAgent` or `UserNotificationCenter` window aborts, **even during an

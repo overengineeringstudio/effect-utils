@@ -90,7 +90,11 @@ class Session:
         self.directory.mkdir(parents=True, exist_ok=False)
         os.chmod(self.directory, 0o700)
         self.events = queue.Queue()
-        self.tripwire = Tripwire()
+        identities = {'dev.overeng.permissions-host.experiment'}
+        for key in ('client', 'hostExecutable'):
+            path = Path(config[key]).expanduser()
+            identities.update((str(path), str(path.resolve())))
+        self.tripwire = Tripwire(identities)
         self.allowed = set()
         self.log = None
         self.label = 'dev.overeng.permissions-host.experiment.tripwire.' + str(os.getpid())
@@ -155,7 +159,11 @@ class Session:
             event = parse(row)
             if event:
                 append(self.directory / 'tccd.parsed.jsonl', event)
-                self.tripwire.observe(event, self.allowed)
+                state = self.tripwire.observe(event, self.allowed)
+                if state['recordForeign']:
+                    append(self.directory / 'tccd.foreign.jsonl',
+                           {'attribution': 'foreign', 'fields': event['fields'],
+                            'request': state})
 
     def ask(self, op, allow_prompt=False, remote=False):
         if op not in OPS or (allow_prompt and op not in PROMPTS):
@@ -249,11 +257,13 @@ class Session:
 
 def prepare(config_path):
     config = json.loads(Path(config_path).read_text())
-    for key in ('authorizedHost', 'client', 'socket', 'evidenceDirectory', 'hostAudit'):
+    for key in ('authorizedHost', 'client', 'hostExecutable', 'socket', 'evidenceDirectory', 'hostAudit'):
         if not config.get(key):
             raise RuntimeError('missing external configuration: ' + key)
     if not Path(config['client']).is_file():
         raise RuntimeError('native client is not built; preparation never builds it')
+    if not Path(config['hostExecutable']).is_absolute() or not Path(config['hostExecutable']).is_file():
+        raise RuntimeError('hostExecutable must be the absolute installed host executable path')
     print('Configuration ready. No GUI watcher, host, protected call, build, signing or install was started.')
     return config
 

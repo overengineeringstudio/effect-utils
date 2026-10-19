@@ -5,8 +5,11 @@ import json
 import re
 import sys
 
-FIELD = re.compile(r'\b(msgID|service|authValue|preflight|identifier|subject|client|responsible|accessing)\s*[:=]\s*(?:"([^"]*)"|([^,;\s}]+))')
+FIELD = re.compile(r'\b(msgID|service|authValue|preflight)\s*[:=]\s*(?:"([^"]*)"|([^,;\s}]+))')
 KIND = re.compile(r'\bAUTHREQ_([A-Z_]+)\b')
+PROCESS = re.compile(r'\b(accessing|requesting|responsible)\s*=\s*\{TCCDProcess:\s*([^}]+)\}')
+IDENTITY = re.compile(r'\b(identifier|binary_path)\s*=\s*(?:"([^"]*)"|([^,}]+))')
+SUBJECT = re.compile(r'\bsubject\s*=\s*(?:"([^"]*)"|([^,]+))')
 
 
 def parse(row):
@@ -15,8 +18,20 @@ def parse(row):
     if not match:
         return None
     fields = {m[1]: m[2] if m[2] is not None else m[3] for m in FIELD.finditer(message)}
-    return {'kind': match[1], 'timestamp': row.get('timestamp'), 'fields': fields,
-            'message': message, 'processID': row.get('processID')}
+    event = {'kind': match[1], 'timestamp': row.get('timestamp'), 'fields': fields,
+             'message': message, 'processID': row.get('processID')}
+    if event['kind'] == 'ATTRIBUTION':
+        event['attribution'] = [
+            {'role': process[1], **{
+                value[1]: (value[2] if value[2] is not None else value[3]).strip()
+                for value in IDENTITY.finditer(process[2])
+            }} for process in PROCESS.finditer(message)
+        ]
+    if event['kind'] == 'SUBJECT':
+        subject = SUBJECT.search(message)
+        if subject:
+            fields['subject'] = (subject[1] if subject[1] is not None else subject[2]).strip()
+    return event
 
 
 def correlate_audit(rows, audit_id):
@@ -31,7 +46,10 @@ def correlate_audit(rows, audit_id):
 
 class Tripwire:
     """Correlate interleaved AUTHREQ lines by msgID; unknowns deny, never allow."""
-    def __init__(self):
+    def __init__(self, host_identities):
+        self.host_identities = frozenset(host_identities)
+        if not self.host_identities:
+            raise ValueError('experiment host identities required')
         self.requests = {}
 
     def observe(self, event, allowed_services):
@@ -45,12 +63,33 @@ class Tripwire:
             raise RuntimeError('unrecognized AUTHREQ record: ' + event['kind'])
         if event['kind'] == 'PROMPTING' and state.get('service') not in allowed_services:
             raise RuntimeError('unannounced AUTHREQ prompting')
+        if event['kind'] == 'ATTRIBUTION':
+            identities = [process.get(key) for process in event['attribution']
+                          for key in ('identifier', 'binary_path')]
+        elif event['kind'] == 'SUBJECT':
+            identities = [fields.get('subject')]
+        else:
+            identities = []
+        identities = {value for value in identities if value and value != '<private>'}
+        if identities:
+            state['attributionSeen'] = True
+            if identities & self.host_identities:
+                state['attribution'] = 'host'
+            elif state.get('attribution') != 'host':
+                state['attribution'] = 'foreign'
         if event['kind'] == 'CTX':
             if state.get('preflight') not in ('0', '1', 'true', 'false', 'YES', 'NO', 'yes', 'no'):
                 raise RuntimeError('AUTHREQ preflight field unavailable')
-            if state['preflight'] in ('0', 'false', 'NO', 'no') and state.get('service') not in allowed_services:
-                raise RuntimeError('unannounced non-preflight AUTHREQ: ' + str(state.get('service')))
-        return dict(state)
+            state['pending'] = (state['preflight'] in ('0', 'false', 'NO', 'no')
+                                and state.get('service') not in allowed_services)
+        if state.get('pending') and state.get('attribution') == 'host':
+            raise RuntimeError('unannounced non-preflight AUTHREQ: ' + str(state.get('service')))
+        if event['kind'] == 'RESULT' and state.get('pending') and not state.get('attributionSeen'):
+            raise RuntimeError('unannounced non-preflight AUTHREQ: ambiguous attribution')
+        record_foreign = state.get('attribution') == 'foreign' and not state.get('foreignRecorded')
+        if record_foreign:
+            state['foreignRecorded'] = True
+        return {**state, 'recordForeign': record_foreign}
 
 
 def main():
