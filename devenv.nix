@@ -845,7 +845,7 @@ let
       # filesystem work and lock waits that an in-process JS timer cannot interrupt.
       # Scoped consumers share packages/.editor-view: queue whole invocations
       # on a per-worktree flock without expanding their requested package sets.
-      # Capped invocations include admission waits in their process-tree deadline.
+      # Capped invocations start their execution deadline only after admission.
       ${lib.optionalString (publicationBudget != null) ''
         # editor-view-batch-budget: ${builtins.toJSON publicationBudget}
         # Max-measured fallback covers: ${lib.concatStringsSep ", " publicationBudget.missingConsumers}
@@ -873,7 +873,7 @@ let
         } || status=$?
       ${lib.optionalString (deadlineSeconds != null) ''
         if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-          echo "Editor-view ${mode} exceeded its ${toString deadlineSeconds}s total deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
+          echo "Editor-view ${mode} exceeded its ${toString deadlineSeconds}s execution deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
         fi
       ''}
       exit "$status"
@@ -1697,7 +1697,7 @@ in
   };
 
   tasks."buck2:editor:publish:all" = {
-    description = "Publish every workspace editor view under a separate total deadline";
+    description = "Publish every workspace editor view under a separate execution deadline";
     after = [ "genie:check" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec {

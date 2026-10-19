@@ -35,7 +35,7 @@ Standalone package tasks keep their single-consumer publisher and never acquire
 the aggregate's wider package set. Existing batch publication acquires each
 state-root lock once and prepares up to four consumer views concurrently.
 
-Bootstrap and ordinary scoped publication keep their **300 s** deadline.
+Bootstrap and ordinary scoped publication keep their **300 s execution deadline**.
 The non-required `storybook:build`, `netlify:stage`, `netlify:deploy`, and
 `test:notion-integration` batch publications have **no total deadline**.
 On dev5, cold publication of 13 consumers takes about 25–30 minutes and a single
@@ -73,11 +73,14 @@ not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the
 per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
 The supervisor uses a blocking kernel `flock`, without polling or lock theft,
-with a **5 s kill grace** on interruption or deadline expiry. Scoped/bootstrap
-invocations include admission waits in their 300 s cap; Storybook play tests
-include them in the derived 380 s cap. Uncapped batches can wait without a total
-deadline. A capped waiter that exhausts its deadline fails closed and names the
-admission lock and its wait for another publication. The supervisor retains ownership through
+with a **5 s kill grace** on interruption or deadline expiry. The execution clock
+starts only after admission: scoped/bootstrap work keeps its 300 s cap and
+Storybook play tests keep their derived 380 s cap, excluding queue time.
+Each admitted invocation logs the lock path and admission wait in seconds.
+Signals still cancel queued waiters and identify the lock they were waiting for.
+Uncapped batches have no execution deadline. On Darwin, process-group EPERM is
+treated as termination only after a process census proves no live members remain;
+live-member permission failures still fail closed. The supervisor retains ownership through
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 

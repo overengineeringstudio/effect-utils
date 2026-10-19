@@ -25,7 +25,9 @@ if (evaluatedTaskJson === undefined) {
     console.error(`devenv tasks list --json failed with exit ${result.status}`)
     process.exit(result.status ?? 1)
   }
-  taskJson = result.stdout
+  // `tasks list --json` is presentation-only: it omits executable paths.
+  // Read the full evaluated config it just refreshed, as task-guards:check does.
+  taskJson = readFileSync(`${root}/.devenv/gc/task-config-devenv-config-task-config`, 'utf8')
 } else {
   taskJson = readFileSync(evaluatedTaskJson, 'utf8')
 }
