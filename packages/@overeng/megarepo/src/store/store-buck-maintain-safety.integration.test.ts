@@ -549,3 +549,276 @@ for (const recentCommand of [false, true]) {
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 }
+
+for (const resolvable of [true, false]) {
+  it.live(
+    `preserves inactive foreign ownership through ${resolvable === true ? 'a physical alias' : 'an unresolved path'}`,
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        const worktree = yield* fixture.addWorktree('foreign-alias')
+        const alias = join(fixture.store, 'workspace-alias')
+        if (resolvable === true) yield* fixture.fs.symlink(worktree, alias)
+        yield* fixture.writeManifest([{ workspace: alias, owner: 'seat/foreign', active: false }])
+        const receipt = yield* fixture.run()
+        expect(receipt.entries[0]?.reason).toBe('foreign-owner')
+        expect(receipt.entries[0]?.ownerEvidence).toContainEqual({
+          source: 'st3-seat',
+          owner: 'seat/foreign',
+          workspace: alias,
+        })
+        yield* fixture.expectNoCommands()
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+}
+
+for (const boundary of ['', 'v2', 'v2/log']) {
+  it.live(`rejects a linked buck-out boundary ${boundary || 'root'} before measurement`, () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture()
+      const worktree = yield* fixture.addWorktree('linked-output')
+      const target = join(fixture.store, 'external-output')
+      yield* fixture.fs.makeDirectory(target)
+      const path = join(worktree, 'buck-out', boundary)
+      if (boundary !== 'v2/log') yield* fixture.fs.remove(path, { recursive: true })
+      yield* fixture.fs.symlink(target, path)
+      const receipt = yield* fixture.run()
+      expect(receipt.entries[0]?.reason).toBe('output-activity-unknown')
+      yield* fixture.expectNoCommands()
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+}
+
+for (const history of ['absent', 'empty', 'partial'] as const) {
+  it.live(`handles ${history} output history conservatively before full cleaning`, () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture()
+      const worktree = yield* fixture.addWorktree('lost-history')
+      const output = join(worktree, 'buck-out')
+      if (history === 'absent') yield* fixture.fs.remove(output, { recursive: true })
+      else if (history === 'empty')
+        yield* fixture.fs.remove(join(output, 'v2'), { recursive: true })
+      else yield* fixture.fs.makeDirectory(join(output, 'v2', 'daemon'))
+      yield* fixture.fs.writeFileString(
+        fixture.configPath,
+        encodeJson({
+          version: 1,
+          worktreeRoots: [fixture.roots],
+          buckOut: { budgetBytes: 0, keepSince: '0s', fullCleanWhenInactiveFor: '24h' },
+          maintainOwners: ['seat/a'],
+          maintainUnowned: true,
+        }),
+      )
+      const receipt = yield* fixture.run()
+      expect(receipt.entries[0]).toMatchObject({
+        action: 'none',
+        reason: history === 'absent' ? 'no-buck-out' : 'inactivity-unknown',
+        bytesBefore: null,
+        bytesAfter: null,
+      })
+      yield* fixture.expectNoCommands()
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+}
+
+interface DaemonFixture {
+  readonly fs: FileSystem.FileSystem
+  readonly store: string
+  readonly idleFs: FileSystem.FileSystem
+  readonly nativeCalls: string
+  readonly measured: string
+}
+
+const makeDaemonBoundary = Effect.fn('test.buckMaintainSafety.daemons')(function* (
+  fixture: DaemonFixture,
+  worktree: string,
+  initial: readonly number[],
+  arriveAfterMeasurement = false,
+  arriveAfterKill = false,
+  failKill = false,
+  arriveAfterClean = false,
+) {
+  const { fs, store, idleFs } = fixture
+  const procRoot = join(store, 'daemon-proc')
+  const binary = join(store, 'bin', 'buck2')
+  const killed = join(store, 'killed')
+  for (const pid of [2000000001, 2000000002, 2000000003]) {
+    const root = join(procRoot, String(pid))
+    yield* fs.makeDirectory(join(root, 'fd'), { recursive: true })
+    yield* fs.writeFileString(
+      join(root, 'stat'),
+      `${pid} (buck2) S 0 ${pid} ${pid} 0 -1 4194560 ${'0 '.repeat(12)}12345`,
+    )
+    const uid = process.getuid?.() ?? 0
+    yield* fs.writeFileString(
+      join(root, 'status'),
+      `Name:\tbuck2\nPPid:\t0\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\n`,
+    )
+    yield* fs.writeFileString(join(root, 'environ'), 'ST_AGENT=seat/a\0')
+    yield* fs.writeFileString(
+      join(root, 'cmdline'),
+      `buck2\0--isolation-dir\0iso-${pid}\0daemon\0--daemon-id\0id-${pid}\0`,
+    )
+    yield* fs.writeFileString(join(root, 'maps'), '')
+    yield* fs.symlink(worktree, join(root, 'cwd'))
+    yield* fs.symlink('/', join(root, 'root'))
+    yield* fs.symlink(binary, join(root, 'exe'))
+  }
+  yield* fs.writeFileString(
+    binary,
+    `#!/bin/sh\nset -eu\nprintf '%s\\n' "$*" >> ${shellQuote(fixture.nativeCalls)}
+pid="\${2#iso-}"
+case "$3" in
+status) printf '{"process_info":{"pid":%s},"daemon_constraints":{"daemon_id":"id-%s"},"active_commands":[],"start_time":"2000-01-01T00:00:00Z"}\\n' "$pid" "$pid" ;;
+kill) ${failKill === true ? 'exit 1' : `printf '%s\\n' "$pid" >> ${shellQuote(killed)}\nprintf 'Buck2 daemon pid %s has exited\\n' "$pid" >&2`} ;;
+esac\n`,
+    { mode: 0o755 },
+  )
+  const mapProc = (path: string) => {
+    const match = /^\/proc\/(200000000[123])(?:\/(.*))?$/u.exec(path)
+    return match === null ? path : join(procRoot, match[1]!, match[2] ?? '')
+  }
+  const boundary: FileSystem.FileSystem = {
+    ...idleFs,
+    readDirectory: (path, options) =>
+      path === '/proc'
+        ? Effect.gen(function* () {
+            const stopped = yield* fs.readFileString(killed).pipe(Effect.orElseSucceed(() => ''))
+            const arrival =
+              (arriveAfterMeasurement === true && (yield* fs.exists(fixture.measured))) ||
+              (arriveAfterKill === true && stopped !== '') ||
+              (arriveAfterClean === true &&
+                (yield* fs.readFileString(fixture.nativeCalls)).includes(' clean'))
+            return [...initial, ...(arrival === true ? [2000000003] : [])]
+              .filter((pid) => stopped.split('\n').includes(String(pid)) === false)
+              .map(String)
+          })
+        : fs.readDirectory(mapProc(path), options),
+    readFileString: (path, options) => fs.readFileString(mapProc(path), options),
+    readLink: (path) => fs.readLink(mapProc(path)),
+    stat: (path) => fs.stat(mapProc(path)),
+  }
+  return boundary
+})
+
+for (const arrival of [false, true]) {
+  it.live(
+    arrival === false
+      ? 'stops multiple idle isolations independently and records each stopped lifetime'
+      : 'vetoes a new daemon lifetime arriving between isolation kills and records partial outcomes',
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        const worktree = yield* fixture.addWorktree('idle-daemons')
+        yield* fixture.fs.writeFileString(
+          fixture.configPath,
+          encodeJson({
+            version: 1,
+            worktreeRoots: [fixture.roots],
+            buckOut: { budgetBytes: 100000, keepSince: '0s' },
+            daemon: { idleStopAfter: '0s' },
+            maintainOwners: ['seat/a'],
+            maintainUnowned: true,
+          }),
+        )
+        const boundary = yield* makeDaemonBoundary(
+          fixture,
+          worktree,
+          [2000000001, 2000000002],
+          false,
+          arrival,
+        )
+        const receipt = yield* fixture.run(boundary)
+        expect(receipt.entries[0]?.daemon.map((daemon) => daemon.outcome)).toEqual(
+          arrival === true ? ['stopped', 'kept-active'] : ['stopped', 'stopped'],
+        )
+        expect(
+          (yield* fixture.fs.readFileString(fixture.nativeCalls)).match(/ kill/gu),
+        ).toHaveLength(arrival === true ? 1 : 2)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+}
+
+it.live('vetoes a daemon first appearing after measurement before full clean', () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeFixture()
+    const worktree = yield* fixture.addWorktree('late-full-clean-daemon')
+    yield* fixture.fs.makeDirectory(join(worktree, 'buck-out/v2/log'), { recursive: true })
+    const log = join(worktree, 'buck-out/v2/log/old-event')
+    yield* fixture.fs.writeFileString(log, 'old event')
+    // A zero interval makes all already-recorded Git and output history eligible.
+    yield* fixture.fs.writeFileString(
+      fixture.configPath,
+      encodeJson({
+        version: 1,
+        worktreeRoots: [fixture.roots],
+        buckOut: { budgetBytes: 100000, keepSince: '0s', fullCleanWhenInactiveFor: '0s' },
+        maintainOwners: ['seat/a'],
+        maintainUnowned: true,
+      }),
+    )
+    const boundary = yield* makeDaemonBoundary(fixture, worktree, [], true)
+    const receipt = yield* fixture.run(boundary)
+    expect(receipt.entries[0]?.action).toBe('none')
+    expect(receipt.entries[0]?.reason).not.toBe('completed')
+    expect(yield* fixture.fs.readFileString(fixture.nativeCalls)).toBe('')
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+for (const failure of ['clean', 'kill'] as const) {
+  it.live(`retains every worktree receipt after a native ${failure} failure`, () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture()
+      const worktree = yield* fixture.addWorktree('failed')
+      const other = yield* fixture.addWorktree('other')
+      let boundary = fixture.idleFs
+      if (failure === 'clean') {
+        yield* fixture.fs.writeFileString(join(fixture.store, 'bin/buck2'), '#!/bin/sh\nexit 1\n', {
+          mode: 0o755,
+        })
+      } else {
+        yield* fixture.fs.writeFileString(
+          fixture.configPath,
+          encodeJson({
+            version: 1,
+            worktreeRoots: [fixture.roots],
+            buckOut: { budgetBytes: 100000, keepSince: '0s' },
+            daemon: { idleStopAfter: '0s' },
+            maintainOwners: ['seat/a'],
+            maintainUnowned: true,
+          }),
+        )
+        boundary = yield* makeDaemonBoundary(fixture, worktree, [2000000001], false, false, true)
+      }
+      const receipt = yield* fixture.run(boundary)
+      expect(receipt.entries.map((entry) => entry.worktree).sort()).toEqual(
+        [worktree, other].sort(),
+      )
+      expect(receipt.entries.find((entry) => entry.worktree === worktree)?.reason).toBe(
+        `${failure}-failed`,
+      )
+      if (failure === 'kill')
+        expect(
+          receipt.entries.find((entry) => entry.worktree === worktree)?.daemon[0],
+        ).toMatchObject({
+          outcome: 'unreachable',
+          reason: 'kill-failed',
+        })
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+}
+
+it.live('does not admit an unproven daemon arriving between native isolation cleans', () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeFixture()
+    const worktree = yield* fixture.addWorktree('between-cleans')
+    yield* fixture.fs.makeDirectory(join(worktree, 'buck-out/second'), { recursive: true })
+    const boundary = yield* makeDaemonBoundary(fixture, worktree, [], false, false, false, true)
+    const receipt = yield* fixture.run(boundary)
+    expect(receipt.entries[0]?.action).toBe('clean-stale')
+    expect(receipt.entries[0]?.reason).not.toBe('completed')
+    expect((yield* fixture.fs.readFileString(fixture.nativeCalls)).trim().split('\n')).toHaveLength(
+      1,
+    )
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)

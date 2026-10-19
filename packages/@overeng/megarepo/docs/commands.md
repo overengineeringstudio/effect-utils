@@ -193,9 +193,10 @@ the configuration file. The neutral repository configuration is:
 }
 ```
 
-The 2 GiB output budget is **soft**: native Buck stale cleaning preserves recent
-outputs (`keepSince`, default `24h`) and may leave usage above budget. Cleanup
-uses Buck's native clean commands only, never recursive filesystem deletion.
+The 2 GiB output budget is **per worktree**, not a store-wide quota, and **soft**:
+native Buck stale cleaning preserves recent outputs (`keepSince`, default `24h`)
+and may leave usage above budget. Cleanup uses Buck's native clean commands only,
+never recursive filesystem deletion.
 Optional `buckOut.fullCleanWhenInactiveFor` permits a full native clean only
 after complete inactivity evidence: Git HEAD/index/reflog, every isolation's
 event logs and daemon-state directories must all have known timestamps older
@@ -203,8 +204,16 @@ than the policy interval, with no current daemon, client, claim or holder.
 Inactivity means no work, not continuous process absence: a daemon killed
 recently after ten idle days may qualify if all activity timestamps remain old.
 A recent command event log or daemon-state mutation restarts the interval.
-Missing Git activity is `git-activity-unknown`; missing Buck inactivity evidence
-is `inactivity-unknown`.
+Missing Git activity is `git-activity-unknown`; existing output with missing or
+partial isolation/log/daemon history is `inactivity-unknown`, including history
+removed by a previous clean or daemon exit. No persistent inactivity marker is
+created. A worktree with no `buck-out` is a `no-buck-out` no-op, not unknown.
+Symlinked output roots, isolations or history directories are protective
+`output-activity-unknown` skips. Ownership paths are compared by physical
+canonical path; unresolvable claim paths remain protective foreign evidence.
+Git lock checks inspect only known admin-root operation/lock names and Git's
+`refs/` namespace. They never walk objects, other worktree admin directories,
+reflogs, caches or unrelated checkouts under the shared Git directory.
 
 The default `daemon.idleStopAfter` of **30 minutes is maintenance policy**, not a
 Buck guarantee or `daemon_idle_timeout_s` setting. Active streaming commands,
@@ -217,8 +226,8 @@ and can wrap midnight.
 
 Discovery rejects symlink descendants and never escapes configured canonical
 roots. Maintenance requires the worktree itself to be Buck's resolved project
-root. Git's worktree lock, operation state and all admin-directory `*.lock`
-files veto maintenance, even when stale. Cheap skip gates run before output
+root. Git's worktree lock, operation state and known Git lock paths veto
+maintenance, even when stale. Cheap skip gates run before output
 accounting; skipped worktrees have null byte counts. Accounting and isolation
 enumeration finish before the lease-protected final recheck, repeated immediately
 before each native action.
@@ -238,6 +247,11 @@ or root processes are unreadable, configure the existing store GC
 `generatedArtifacts.manifestPath` and admitted producer names with the host's
 fresh trusted all-UID workspace-activity snapshot. Without that coverage,
 maintenance remains conservative rather than assuming those processes are idle.
+Each daemon receipt includes its own outcome (`not-attempted`, `would-stop`,
+`stopped`, `kept-active` or `unreachable`) and optional reason. A successful stop
+removes only that exact lifetime from the expected census; newly arriving
+daemons veto subsequent actions. Native clean/kill failures produce a nonzero
+CLI exit status after the complete receipt for every worktree is emitted.
 
 Owner scope defaults to the current exact `ST_AGENT` identity. Explicit
 `maintainOwners` entries select exact identities or glob patterns; they do not

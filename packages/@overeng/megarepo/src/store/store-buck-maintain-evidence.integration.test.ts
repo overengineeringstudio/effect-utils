@@ -96,7 +96,7 @@ it.live('requires all three readable Git activity files, including index and log
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
 
-it.live('vetoes stale lock files recursively and every Git operation state', () =>
+it.live('vetoes known Git locks, refs locks and every Git operation state', () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const temp = yield* fs.makeTempDirectoryScoped()
@@ -105,7 +105,9 @@ it.live('vetoes stale lock files recursively and every Git operation state', () 
       'index.lock',
       'HEAD.lock',
       'refs/heads/topic.lock',
-      'custom/nested/other.lock',
+      'packed-refs.lock',
+      'config.lock',
+      'shallow.lock',
       'MERGE_HEAD',
       'rebase-apply',
       'rebase-merge',
@@ -165,7 +167,7 @@ it.live('keeps failed lock scans and unresolved common directories unknown', () 
     yield* fs.writeFileString(join(gitDir, 'commondir'), '../missing')
     expect((yield* readBuckMaintainGitEvidence(temp)).locked).toBeUndefined()
     yield* fs.remove(join(gitDir, 'commondir'))
-    yield* fs.symlink(join(temp, 'missing'), join(gitDir, 'unreadable-subtree'))
+    yield* fs.symlink(join(temp, 'missing'), join(gitDir, 'refs'))
     expect((yield* readBuckMaintainGitEvidence(temp)).locked).toBeUndefined()
     yield* fs.writeFileString(join(gitDir, 'index.lock'), '')
     expect((yield* readBuckMaintainGitEvidence(temp)).locked).toBe(true)
@@ -198,11 +200,11 @@ it.live(
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
 
-it.live('missing output, isolation logs, or daemon state cannot prove inactivity', () =>
+it.live('distinguishes absent output from missing isolation logs or daemon state', () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const temp = yield* fs.makeTempDirectoryScoped()
-    expect(yield* readBuckMaintainOutputActivity(temp)).toBeUndefined()
+    expect(yield* readBuckMaintainOutputActivity(temp)).toBe('absent')
     yield* fs.makeDirectory(join(temp, 'buck-out'))
     expect(yield* readBuckMaintainOutputActivity(temp)).toBeUndefined()
     for (const missing of ['log', 'daemon']) {
@@ -252,5 +254,60 @@ it.live('unknown Git or output timestamps remain unknown even when other evidenc
         ).toBeUndefined()
       }
     }
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('bounds common-dir scans and ignores foreign locks and nested checkouts', () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const temp = yield* fs.makeTempDirectoryScoped()
+    const gitDir = yield* makeGitWorktree(temp)
+    const common = join(temp, 'shared')
+    yield* fs.makeDirectory(join(common, 'gate-worktrees', 'checkout', '.git'), { recursive: true })
+    yield* fs.writeFileString(join(common, 'foo.lock'), 'persistent foreign lock')
+    yield* fs.writeFileString(join(common, 'gate-worktrees', 'checkout', '.git', 'index.lock'), '')
+    yield* fs.writeFileString(join(gitDir, 'commondir'), '../shared')
+    let statCalls = 0
+    const directories: string[] = []
+    const boundedFs: FileSystem.FileSystem = {
+      ...fs,
+      stat: (path) => {
+        statCalls++
+        return fs.stat(path)
+      },
+      readDirectory: (path, options) => {
+        directories.push(path)
+        return fs.readDirectory(path, options)
+      },
+    }
+    expect(
+      yield* readBuckMaintainGitEvidence(temp).pipe(
+        Effect.provideService(FileSystem.FileSystem, boundedFs),
+      ),
+    ).toEqual({ locked: false, lastActivityMs: old.getTime() })
+    expect(statCalls).toBe(5)
+    expect(directories).toEqual([gitDir, common])
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('checks output boundaries without walking history for stale-only maintenance', () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const temp = yield* fs.makeTempDirectoryScoped()
+    yield* makeOutput({ worktree: temp, isolation: 'v2' })
+    const directories: string[] = []
+    const boundaryFs: FileSystem.FileSystem = {
+      ...fs,
+      readDirectory: (path, options) => {
+        directories.push(path)
+        return fs.readDirectory(path, options)
+      },
+    }
+    expect(
+      yield* readBuckMaintainOutputActivity(temp, false).pipe(
+        Effect.provideService(FileSystem.FileSystem, boundaryFs),
+      ),
+    ).toBeUndefined()
+    expect(directories).toEqual([join(temp, 'buck-out')])
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )

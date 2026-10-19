@@ -6,6 +6,12 @@ import * as Observability from '../../observability.ts'
 
 const encodeReceipt = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
+/** Reports native action failure after the complete maintenance receipt has been emitted. */
+export class BuckMaintainCommandFailed extends Schema.TaggedError<BuckMaintainCommandFailed>()(
+  'BuckMaintainCommandFailed',
+  { message: Schema.String },
+) {}
+
 /** Buck owns output deletion and daemon shutdown; mr supplies the maintenance policy. */
 export const storeBuckMaintainCommand = Cli.Command.make(
   'buck-maintain',
@@ -46,6 +52,14 @@ export const storeBuckMaintainCommand = Cli.Command.make(
           )
         }
       }
+      if (
+        receipt.entries.some(
+          (entry) => entry.reason === 'clean-failed' || entry.reason === 'kill-failed',
+        ) === true
+      )
+        return yield* new BuckMaintainCommandFailed({
+          message: 'Native Buck maintenance failed; see the complete maintenance receipt above',
+        })
     }).pipe(
       Observability.withCommandSpan({
         name: 'megarepo/store/buck-maintain',

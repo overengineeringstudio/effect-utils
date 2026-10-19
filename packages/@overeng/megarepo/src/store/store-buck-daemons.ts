@@ -423,6 +423,7 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
   idleSinceMs,
   beforeKill,
   reportRaces = true,
+  afterStop,
 }: {
   worktreePath: string
   archived?: boolean
@@ -434,6 +435,8 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
   beforeKill?: () => Effect.Effect<boolean, never, FileSystem.FileSystem | ChildProcessSpawner>
   /** JSON receipt consumers record raced outcomes without contaminating stdout. */
   reportRaces?: boolean
+  /** Observe a confirmed stop before considering the next isolation. */
+  afterStop?: (daemon: BuckDaemonStopped) => Effect.Effect<void>
 }) {
   const configuredBinary = requestedBinary ?? process.env['MEGAREPO_GC_BUCK2_BIN']
   if (configuredBinary === '') return []
@@ -539,12 +542,14 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
         `RACED stopping Buck2 daemon pid ${daemon.pid} (${daemon.daemonId}) at ${daemon.root}: ${raced}`,
       )
     }
-    results.push({
-      _tag: 'stopped',
+    const stopped = {
+      _tag: 'stopped' as const,
       ...identity,
       freedKiB: memoryKiB,
       ...(raced === undefined ? {} : { raced }),
-    })
+    }
+    results.push(stopped)
+    if (afterStop !== undefined) yield* afterStop(stopped)
   }
   return results
 })

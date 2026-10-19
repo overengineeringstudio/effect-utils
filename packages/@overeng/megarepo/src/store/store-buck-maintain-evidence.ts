@@ -92,29 +92,43 @@ const scanGitLocks: (args: {
   const fs = yield* FileSystem.FileSystem
   const entries = yield* fs.readDirectory(directory).pipe(Effect.option)
   if (Option.isNone(entries) === true) return undefined
-  let complete = true
-  for (const name of entries.value) {
+  if (
+    entries.value.some(
+      (name) =>
+        ['packed-refs.lock', 'config.lock', 'shallow.lock'].includes(name) === true ||
+        (adminRoot === true &&
+          (['index.lock', 'HEAD.lock'].includes(name) === true ||
+            operationStates[name] === true ||
+            name.startsWith('BISECT') === true ||
+            name.startsWith('REBASE') === true ||
+            name.startsWith('CHERRY_PICK') === true)),
+    ) === true
+  )
+    return true
+  // Only Git's refs namespace is traversed. In particular, common directories
+  // may contain millions of unrelated gate checkouts and persistent tool locks.
+  const pending = entries.value.includes('refs') === true ? [join(directory, 'refs')] : []
+  while (pending.length > 0) {
+    const refs = pending.pop()
+    if (refs === undefined) break
+    const root = yield* readEntry(refs)
     if (
-      name.endsWith('.lock') === true ||
-      (adminRoot === true &&
-        (operationStates[name] === true ||
-          name.startsWith('BISECT') === true ||
-          name.startsWith('REBASE') === true ||
-          name.startsWith('CHERRY_PICK') === true))
+      Option.isNone(root) === true ||
+      root.value.isDirectory() === false ||
+      root.value.isSymbolicLink() === true
     )
-      return true
-    const entry = yield* readEntry(join(directory, name))
-    if (Option.isNone(entry) === true || entry.value.isSymbolicLink() === true) {
-      complete = false
-      continue
-    }
-    if (entry.value.isDirectory() === true) {
-      const locked = yield* scanGitLocks({ directory: join(directory, name), adminRoot: false })
-      if (locked === true) return true
-      if (locked === undefined) complete = false
+      return undefined
+    const names = yield* fs.readDirectory(refs).pipe(Effect.option)
+    if (Option.isNone(names) === true) return undefined
+    for (const name of names.value) {
+      if (name.endsWith('.lock') === true) return true
+      const path = join(refs, name)
+      const entry = yield* readEntry(path)
+      if (Option.isNone(entry) === true || entry.value.isSymbolicLink() === true) return undefined
+      if (entry.value.isDirectory() === true) pending.push(path)
     }
   }
-  return complete === true ? false : undefined
+  return false
 })
 
 /** Read Git lock/operation vetoes and complete HEAD/index/reflog activity; uncertainty never proves idleness. */
@@ -209,28 +223,54 @@ const readOutputTreeActivity: (
   return newest
 })
 
-/** Latest log and daemon-state activity across every isolation, including directory changes after daemon exit. */
+/**
+ * Missing output is a no-op. Existing output with missing/partial history is unknown:
+ * clean/kill may have removed an isolation, so remaining bytes do not prove inactivity.
+ * Links at the output, isolation or history boundary are unsafe even for stale cleaning.
+ */
 export const readBuckMaintainOutputActivity = Effect.fn('store.buckMaintain.readOutputActivity')(
-  function* (worktree: string) {
+  function* (
+    worktree: string,
+    includeHistory = true,
+  ): Effect.fn.Return<number | 'absent' | 'unsafe' | undefined, never, FileSystem.FileSystem> {
     const fs = yield* FileSystem.FileSystem
     const output = join(worktree, 'buck-out')
+    const outputEntry = yield* readEntry(output)
+    if (Option.isNone(outputEntry) === true)
+      return yield* fs.stat(output).pipe(
+        Effect.match({
+          onFailure: (error) =>
+            error.reason._tag === 'NotFound' ? ('absent' as const) : ('unsafe' as const),
+          onSuccess: () => 'unsafe' as const,
+        }),
+      )
+    if (outputEntry.value.isSymbolicLink() === true || outputEntry.value.isDirectory() === false)
+      return 'unsafe'
     const isolations = yield* fs.readDirectory(output).pipe(Effect.option)
-    if (Option.isNone(isolations) === true || isolations.value.length === 0) return undefined
+    if (Option.isNone(isolations) === true) return 'unsafe'
     let newest: number | undefined
+    let complete = isolations.value.length > 0
     for (const isolation of isolations.value) {
       const directory = join(output, isolation)
       const entry = yield* readEntry(directory)
-      if (Option.isNone(entry) === true || entry.value.isSymbolicLink() === true) return undefined
+      if (Option.isNone(entry) === true || entry.value.isSymbolicLink() === true) return 'unsafe'
       if (entry.value.isDirectory() === false) continue
       for (const name of ['log', 'daemon']) {
         const path = join(directory, name)
-        const info = yield* fs.stat(path).pipe(Effect.option)
-        if (Option.isNone(info) === true || info.value.type !== 'Directory') return undefined
+        const history = yield* readEntry(path)
+        if (Option.isSome(history) === true && history.value.isSymbolicLink() === true)
+          return 'unsafe'
+        if (Option.isNone(history) === true || history.value.isDirectory() === false) {
+          complete = false
+          continue
+        }
+        // Stale-only maintenance needs boundary safety, not a recursive log walk.
+        if (includeHistory === false) continue
         const activity = yield* readOutputTreeActivity(path)
-        if (activity === undefined) return undefined
-        newest = Math.max(newest ?? activity, activity)
+        if (activity === undefined) complete = false
+        else newest = Math.max(newest ?? activity, activity)
       }
     }
-    return newest
+    return complete === true ? newest : undefined
   },
 )
