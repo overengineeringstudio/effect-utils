@@ -29,6 +29,15 @@ export interface WorkspaceActivityEpoch {
 export interface WorkspaceActivity {
   readonly activePaths: ReadonlySet<string>
   /**
+   * Complete native seat ownership, including non-running and remote seats.
+   * Missing claims mean coverage is unknown; a successful native capture always
+   * includes this array, even when the projection has no current owners.
+   */
+  readonly ownerClaims?: ReadonlyArray<{
+    readonly workspace: string
+    readonly agents: ReadonlyArray<string>
+  }>
+  /**
    * Kernel-reported process cwd/root/fd/map paths. These only protect a
    * worktree that contains them: a process rooted at `/` owns no worktree.
    */
@@ -330,14 +339,15 @@ export const readWorkspaceActivity: (options: {
             ) {
               return Effect.fail(unavailable('Activity subject is missing or ambiguous'))
             }
-            return Effect.succeed(result.status.subjects[0].actual)
+            return Effect.succeed({ agent: agent.id, actual: result.status.subjects[0].actual })
           }),
         ),
       { concurrency: 8 },
     )
     // true means local evidence requires the path; false is foreign-only.
     const rawPaths = new Map<string, boolean>()
-    for (const actual of subjects) {
+    const rawOwnerAgents = new Map<string, Set<string>>()
+    for (const { agent, actual } of subjects) {
       if (actual === null) return yield* unavailable('Activity subject has no actual observation')
       // `terminal` means a terminal exists, NOT that the process has exited.
       // stopped/exited are final runtime states; waiting/idle/suspended and
@@ -354,6 +364,9 @@ export const readWorkspaceActivity: (options: {
       const actualHost =
         actual.host.startsWith('host/') === true ? actual.host : `host/${actual.host}`
       rawPaths.set(actual.workspace, actualHost === host || rawPaths.get(actual.workspace) === true)
+      const owners = rawOwnerAgents.get(actual.workspace) ?? new Set<string>()
+      owners.add(agent)
+      rawOwnerAgents.set(actual.workspace, owners)
     }
     const sessions = yield* commandJson({
       command: ptyBinary,
@@ -379,30 +392,39 @@ export const readWorkspaceActivity: (options: {
     const paths = yield* Effect.forEach(
       rawPaths,
       ([path, required]) =>
-        fs
-          .realPath(path)
-          .pipe(
-            Effect.catch((error) =>
-              required === true
-                ? Effect.fail(error)
-                : fs
-                    .exists(path)
-                    .pipe(
-                      Effect.flatMap((exists) =>
-                        exists === true ? Effect.fail(error) : Effect.void,
-                      ),
+        fs.realPath(path).pipe(
+          Effect.catch((error) =>
+            required === true
+              ? Effect.fail(error)
+              : fs
+                  .exists(path)
+                  .pipe(
+                    Effect.flatMap((exists) =>
+                      exists === true ? Effect.fail(error) : Effect.void,
                     ),
-            ),
+                  ),
           ),
+          Effect.map((canonical) => ({ path, canonical })),
+        ),
       { concurrency: 8 },
     )
     const activePaths = new Set<string>()
-    for (const path of paths) {
-      if (path === undefined) continue
-      if (isAbsolute(path) === false) return yield* unavailable('Noncanonical workspace path')
-      activePaths.add(path)
+    const canonicalOwners = new Map<string, Set<string>>()
+    for (const { path, canonical } of paths) {
+      if (canonical === undefined) continue
+      if (isAbsolute(canonical) === false) return yield* unavailable('Noncanonical workspace path')
+      activePaths.add(canonical)
+      const ownerAgents = rawOwnerAgents.get(path)
+      if (ownerAgents === undefined) continue
+      const owners = canonicalOwners.get(canonical) ?? new Set<string>()
+      for (const agent of ownerAgents) owners.add(agent)
+      canonicalOwners.set(canonical, owners)
     }
-    return { activePaths, epoch: { host } }
+    const ownerClaims = Array.from(canonicalOwners, ([workspace, agentIds]) => ({
+      workspace,
+      agents: Array.from(agentIds),
+    }))
+    return { activePaths, ownerClaims, epoch: { host } }
   })
   return yield* read.pipe(
     Effect.timeout(CAPTURE_TIMEOUT_MS),

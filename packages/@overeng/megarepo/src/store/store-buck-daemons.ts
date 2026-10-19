@@ -258,7 +258,8 @@ export const buckClientHoldsWorktree = ({
   isolation === undefined ||
   daemons.some((daemon) => daemon.root === root && daemon.isolation === isolation) === true
 
-const readBuckClientRoot = Effect.fn('store.readBuckClientRoot')(function* ({
+/** Resolve pinned Buck's project root without starting a daemon; unreadable markers fail. */
+export const readBuckProjectRoot = Effect.fn('store.readBuckProjectRoot')(function* ({
   cwd,
   homeDirectory,
 }: {
@@ -338,7 +339,7 @@ export const hasWorktreeBuckClients = Effect.fn('store.hasWorktreeBuckClients')(
             ?.slice('BUCK_ISOLATION_DIR='.length) ??
           'v2')
         : options[isolationIndex + 1]
-    const root = yield* readBuckClientRoot({ cwd: cwd.value, homeDirectory }).pipe(
+    const root = yield* readBuckProjectRoot({ cwd: cwd.value, homeDirectory }).pipe(
       Effect.orElseSucceed(() => undefined),
     )
     if (
@@ -466,10 +467,6 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
       results.push({ _tag: 'kept-active', ...identity })
       continue
     }
-    if (beforeKill !== undefined && (yield* beforeKill()) === false) {
-      results.push({ _tag: 'kept-active', ...identity })
-      continue
-    }
     const decidedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
     if (idleSinceMs !== undefined) {
       const daemonInfo = yield* fs.stat(`/proc/${daemon.pid}`).pipe(Effect.option)
@@ -512,6 +509,10 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
         memoryKiB,
         reason: 'status-identity-mismatch',
       })
+      continue
+    }
+    if (beforeKill !== undefined && (yield* beforeKill()) === false) {
+      results.push({ _tag: 'kept-active', ...identity })
       continue
     }
     const observedLogWriteMs = yield* newestBuckLogWriteMs(daemon)

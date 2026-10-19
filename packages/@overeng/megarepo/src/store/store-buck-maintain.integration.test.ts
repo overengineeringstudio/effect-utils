@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
+import { utimes } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -17,7 +18,8 @@ import {
   runBuck2,
   stopWorktreeBuckDaemons,
 } from './store-buck-daemons.ts'
-import { discoverBuckMaintainWorktrees, runBuckMaintain } from './store-buck-maintain.ts'
+import { discoverBuckMaintainWorktrees } from './store-buck-maintain-evidence.ts'
+import { runBuckMaintain } from './store-buck-maintain.ts'
 import {
   acquireDeletionLease,
   deletionLeasePath,
@@ -166,6 +168,24 @@ it.live(
         if (idle === false) yield* Effect.yieldNow
       }
       expect(idle).toBe(true)
+      const lateLog = join(root, 'buck-out', isolation, 'log', 'late-command.fixture')
+      const arrivedDuringRecheck = yield* stopWorktreeBuckDaemons({
+        worktreePath: root,
+        binary,
+        idleSinceMs: Date.now() + 60_000,
+        beforeKill: () =>
+          fs.writeFileString(lateLog, 'command activity during final recheck').pipe(
+            Effect.andThen(
+              Effect.tryPromise(() => {
+                const touched = new Date(Date.now() + 1000)
+                return utimes(lateLog, touched, touched)
+              }),
+            ),
+            Effect.as(true),
+            Effect.orElseSucceed(() => false),
+          ),
+      })
+      expect(arrivedDuringRecheck[0]?._tag).toBe('kept-active')
       const stopped = yield* stopWorktreeBuckDaemons({
         worktreePath: root,
         binary,
@@ -189,16 +209,41 @@ it.live(
       const real = yield* fs.realPath(configured)
       const sibling = join(dirname(dirname(real)), 'libexec', 'buck2')
       const binary = (yield* fs.exists(sibling)) === true ? sibling : real
+      const st3 = join(store, 'st3')
+      const pty = join(store, 'pty')
+      const page = encodeJson({
+        api_version: 'st3.client.v0',
+        snapshot: {
+          id: 'fixture',
+          host_id: `host/${hostname()}`,
+          created_at: new Date().toISOString(),
+          store_index: 0,
+        },
+        value: {
+          kind: 'page',
+          collection: 'agents',
+          items: [],
+          page: { has_more: false, next_cursor: null },
+        },
+      })
+      yield* fs.writeFileString(st3, `#!/bin/sh\nprintf '%s\\n' '${page}'\n`)
+      yield* fs.writeFileString(pty, "#!/bin/sh\nprintf '[]\\n'\n")
+      yield* fs.chmod(st3, 0o755)
+      yield* fs.chmod(pty, 0o755)
       yield* Effect.acquireRelease(
         Effect.sync(() => {
           const saved = {
             store: process.env['MEGAREPO_STORE'],
             seat: process.env['ST_AGENT'],
             path: process.env['PATH'],
+            st3: process.env['MEGAREPO_GC_ST3_BIN'],
+            pty: process.env['MEGAREPO_GC_PTY_BIN'],
           }
           process.env['MEGAREPO_STORE'] = store
           process.env['ST_AGENT'] = 'seat/a'
           process.env['PATH'] = `${dirname(binary)}:${saved.path ?? ''}`
+          process.env['MEGAREPO_GC_ST3_BIN'] = st3
+          process.env['MEGAREPO_GC_PTY_BIN'] = pty
           return saved
         }),
         (saved) =>
@@ -207,6 +252,8 @@ it.live(
               ['MEGAREPO_STORE', saved.store],
               ['ST_AGENT', saved.seat],
               ['PATH', saved.path],
+              ['MEGAREPO_GC_ST3_BIN', saved.st3],
+              ['MEGAREPO_GC_PTY_BIN', saved.pty],
             ]) {
               if (key === undefined) continue
               if (value === undefined) delete process.env[key]

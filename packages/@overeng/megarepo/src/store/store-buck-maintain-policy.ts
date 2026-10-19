@@ -8,6 +8,7 @@ export type MaintainSkipReason =
   | 'git-locked'
   | 'holder-live'
   | 'holder-census-incomplete'
+  | 'seat-claims-incomplete'
   | 'active-claim'
   | 'foreign-owner'
   | 'unknown-owner'
@@ -15,6 +16,21 @@ export type MaintainSkipReason =
 
 /** Native output-maintenance action selected by the configured policy. */
 export type BuckOutDecision = 'within-budget' | 'clean-stale' | 'full-clean'
+
+/** Work inactivity is bounded by Git/Buck activity, not by how long a daemon has been absent. */
+export const fullCleanLastActivityMs = ({
+  gitActivityMs,
+  buckActivityMs,
+}: {
+  gitActivityMs: number | undefined
+  buckActivityMs: number | undefined
+}): number | undefined =>
+  gitActivityMs === undefined ||
+  buckActivityMs === undefined ||
+  Number.isFinite(gitActivityMs) === false ||
+  Number.isFinite(buckActivityMs) === false
+    ? undefined
+    : Math.max(gitActivityMs, buckActivityMs)
 
 /** Full cleanup is independently opt-in; stale trimming requires a strictly exceeded budget. */
 export const decideBuckOut = ({
@@ -103,6 +119,7 @@ export const decideMaintainGate = ({
   gitLocked,
   liveHolder,
   activeClaim,
+  seatClaimsComplete,
   owners,
   currentAgent,
   maintainOwners,
@@ -113,6 +130,7 @@ export const decideMaintainGate = ({
   readonly gitLocked: boolean | undefined
   readonly liveHolder: boolean | undefined
   readonly activeClaim: boolean | undefined
+  readonly seatClaimsComplete: boolean
   readonly owners: readonly (string | null)[] | undefined
   readonly currentAgent?: string | undefined
   readonly maintainOwners: readonly string[]
@@ -123,6 +141,7 @@ export const decideMaintainGate = ({
   if (gitLocked !== false) return 'git-locked'
   if (liveHolder === true) return 'holder-live'
   if (liveHolder !== false) return 'holder-census-incomplete'
+  if (seatClaimsComplete !== true) return 'seat-claims-incomplete'
   if (activeClaim !== false) return 'active-claim'
   if (owners === undefined) return 'foreign-owner'
   if (owners.length === 0) {

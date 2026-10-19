@@ -197,7 +197,14 @@ The 2 GiB output budget is **soft**: native Buck stale cleaning preserves recent
 outputs (`keepSince`, default `24h`) and may leave usage above budget. Cleanup
 uses Buck's native clean commands only, never recursive filesystem deletion.
 Optional `buckOut.fullCleanWhenInactiveFor` permits a full native clean only
-after the configured inactivity period and the runtime's safety checks.
+after complete inactivity evidence: Git HEAD/index/reflog, every isolation's
+event logs and daemon-state directories must all have known timestamps older
+than the policy interval, with no current daemon, client, claim or holder.
+Inactivity means no work, not continuous process absence: a daemon killed
+recently after ten idle days may qualify if all activity timestamps remain old.
+A recent command event log or daemon-state mutation restarts the interval.
+Missing Git activity is `git-activity-unknown`; missing Buck inactivity evidence
+is `inactivity-unknown`.
 
 The default `daemon.idleStopAfter` of **30 minutes is maintenance policy**, not a
 Buck guarantee or `daemon_idle_timeout_s` setting. Active streaming commands,
@@ -207,6 +214,14 @@ Buck does not offer conditional kill: a client can still arrive after that
 recheck and before the native kill, and detected races are reported.
 Configured blackout windows use UTC, include their start, exclude their end,
 and can wrap midnight.
+
+Discovery rejects symlink descendants and never escapes configured canonical
+roots. Maintenance requires the worktree itself to be Buck's resolved project
+root. Git's worktree lock, operation state and all admin-directory `*.lock`
+files veto maintenance, even when stale. Cheap skip gates run before output
+accounting; skipped worktrees have null byte counts. Accounting and isolation
+enumeration finish before the lease-protected final recheck, repeated immediately
+before each native action.
 
 Process claims in workspace-activity manifests may include additive `processes`
 attribution: PID, kernel start time, and executable class. Existing manifests
@@ -233,6 +248,9 @@ the option never overrides a known foreign owner. Evidence from processes and
 claims is merged and retained through the final recheck, never overwritten by
 an empty or less complete source. Ownership is never inferred from the calling
 seat. Shared task/configuration contains no machine-specific roots or identities.
+Native ST3 seat claims are captured authoritatively alongside manifests, including
+waiting or remote seats with no local holder. Unknown native claim coverage is
+`seat-claims-incomplete`, never evidence that a worktree is unowned.
 
 ### `mr store lock`
 

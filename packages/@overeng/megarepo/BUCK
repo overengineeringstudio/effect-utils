@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:7bf9734d22d7ffa9b161f71cba1f90962a49126033163a164fc3a6173491d170
+# Semantic fingerprint: sha256:d01e2c2374155804b04c06957ab4df7277c8fe0f9ab7acb861562a86fff6e3c2
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -235,8 +235,11 @@ export_materialization_inputs([
     "src/store/store-buck-daemons.unit.test.ts",
     "src/store/store-buck-maintain-config.ts",
     "src/store/store-buck-maintain-config.unit.test.ts",
+    "src/store/store-buck-maintain-evidence.integration.test.ts",
+    "src/store/store-buck-maintain-evidence.ts",
     "src/store/store-buck-maintain-policy.ts",
     "src/store/store-buck-maintain-policy.unit.test.ts",
+    "src/store/store-buck-maintain-safety.integration.test.ts",
     "src/store/store-buck-maintain.integration.test.ts",
     "src/store/store-buck-maintain.ts",
     "src/store/store-build-budgets.ts",
@@ -540,8 +543,11 @@ package_view(
         "src/store/store-buck-daemons.unit.test.ts": "src/store/store-buck-daemons.unit.test.ts",
         "src/store/store-buck-maintain-config.ts": "src/store/store-buck-maintain-config.ts",
         "src/store/store-buck-maintain-config.unit.test.ts": "src/store/store-buck-maintain-config.unit.test.ts",
+        "src/store/store-buck-maintain-evidence.integration.test.ts": "src/store/store-buck-maintain-evidence.integration.test.ts",
+        "src/store/store-buck-maintain-evidence.ts": "src/store/store-buck-maintain-evidence.ts",
         "src/store/store-buck-maintain-policy.ts": "src/store/store-buck-maintain-policy.ts",
         "src/store/store-buck-maintain-policy.unit.test.ts": "src/store/store-buck-maintain-policy.unit.test.ts",
+        "src/store/store-buck-maintain-safety.integration.test.ts": "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts": "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-buck-maintain.ts": "src/store/store-buck-maintain.ts",
         "src/store/store-build-budgets.ts": "src/store/store-build-budgets.ts",
@@ -847,8 +853,11 @@ package_view(
         "src/store/store-buck-daemons.unit.test.ts": "src/store/store-buck-daemons.unit.test.ts",
         "src/store/store-buck-maintain-config.ts": "src/store/store-buck-maintain-config.ts",
         "src/store/store-buck-maintain-config.unit.test.ts": "src/store/store-buck-maintain-config.unit.test.ts",
+        "src/store/store-buck-maintain-evidence.integration.test.ts": "src/store/store-buck-maintain-evidence.integration.test.ts",
+        "src/store/store-buck-maintain-evidence.ts": "src/store/store-buck-maintain-evidence.ts",
         "src/store/store-buck-maintain-policy.ts": "src/store/store-buck-maintain-policy.ts",
         "src/store/store-buck-maintain-policy.unit.test.ts": "src/store/store-buck-maintain-policy.unit.test.ts",
+        "src/store/store-buck-maintain-safety.integration.test.ts": "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts": "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-buck-maintain.ts": "src/store/store-buck-maintain.ts",
         "src/store/store-build-budgets.ts": "src/store/store-build-budgets.ts",
@@ -1149,8 +1158,11 @@ package_view(
         "src/store/store-buck-daemons.unit.test.ts": "src/store/store-buck-daemons.unit.test.ts",
         "src/store/store-buck-maintain-config.ts": "src/store/store-buck-maintain-config.ts",
         "src/store/store-buck-maintain-config.unit.test.ts": "src/store/store-buck-maintain-config.unit.test.ts",
+        "src/store/store-buck-maintain-evidence.integration.test.ts": "src/store/store-buck-maintain-evidence.integration.test.ts",
+        "src/store/store-buck-maintain-evidence.ts": "src/store/store-buck-maintain-evidence.ts",
         "src/store/store-buck-maintain-policy.ts": "src/store/store-buck-maintain-policy.ts",
         "src/store/store-buck-maintain-policy.unit.test.ts": "src/store/store-buck-maintain-policy.unit.test.ts",
+        "src/store/store-buck-maintain-safety.integration.test.ts": "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts": "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-buck-maintain.ts": "src/store/store-buck-maintain.ts",
         "src/store/store-build-budgets.ts": "src/store/store-build-budgets.ts",
@@ -1305,6 +1317,8 @@ vitest_test(
         "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
+        "src/store/store-buck-maintain-evidence.integration.test.ts",
+        "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-hygiene.unit.test.ts",
@@ -1342,6 +1356,8 @@ vitest_collect(
         "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
+        "src/store/store-buck-maintain-evidence.integration.test.ts",
+        "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-hygiene.unit.test.ts",

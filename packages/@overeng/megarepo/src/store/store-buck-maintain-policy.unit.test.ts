@@ -6,6 +6,7 @@ import {
   decideMaintainGate,
   isDaemonIdle,
   isInBlackout,
+  fullCleanLastActivityMs,
   matchesMaintainOwner,
   type MaintainSkipReason,
 } from './store-buck-maintain-policy.ts'
@@ -34,6 +35,7 @@ const gate = {
   blackout: false,
   gitLocked: false,
   liveHolder: false,
+  seatClaimsComplete: true,
   activeClaim: false,
   owners: ['seat/a'],
   currentAgent: 'seat/a',
@@ -57,6 +59,26 @@ describe('Buck output policy', () => {
         policy: { ...budget.policy, fullCleanWhenInactiveFor: '48h' },
       }),
     ).toBe('full-clean')
+  })
+  it('does not fully clean after recent daemon-state activity despite ten idle Git days', () => {
+    const recentStateActivity = now - 60_000
+    expect(
+      decideBuckOut({
+        ...budget,
+        sizeBytes: 0,
+        lastActivityMs: fullCleanLastActivityMs({
+          gitActivityMs: now - 10 * 24 * hour,
+          buckActivityMs: recentStateActivity,
+        }),
+        policy: { ...budget.policy, fullCleanWhenInactiveFor: '24h' },
+      }),
+    ).toBe('within-budget')
+    expect(
+      fullCleanLastActivityMs({ gitActivityMs: now - hour, buckActivityMs: undefined }),
+    ).toBeUndefined()
+    expect(
+      fullCleanLastActivityMs({ gitActivityMs: undefined, buckActivityMs: now - hour }),
+    ).toBeUndefined()
   })
   it('requires complete inactivity and the full threshold for full cleaning', () => {
     const full = { ...budget, policy: { ...budget.policy, fullCleanWhenInactiveFor: '48h' } }
@@ -170,6 +192,7 @@ describe('maintenance safety gates', () => {
     [{ gitLocked: true }, 'git-locked'],
     [{ liveHolder: true }, 'holder-live'],
     [{ liveHolder: undefined }, 'holder-census-incomplete'],
+    [{ seatClaimsComplete: false }, 'seat-claims-incomplete'],
     [{ activeClaim: true }, 'active-claim'],
     [{ owners: ['other'] }, 'foreign-owner'],
     [{ owners: [] }, 'unknown-owner'],

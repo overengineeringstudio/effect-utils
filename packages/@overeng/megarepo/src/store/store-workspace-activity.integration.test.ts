@@ -26,6 +26,7 @@ import {
   isWorkspaceActive,
   readBudgetWorkspaceActivity,
   readBudgetWorktreeInUse,
+  readWorkspaceActivity,
   writeWorkspaceActivityManifest,
   type BudgetActivityConfig,
 } from './store-workspace-activity.ts'
@@ -409,6 +410,159 @@ const retainExitedPty = Effect.fnUntraced(function* ({ id, cwd }: { id: string; 
       expect.arrayContaining([expect.objectContaining({ name: id, status: 'exited', cwd })]),
     )
   })
+})
+
+/** Real subprocess protocol boundary, with scoped native projection payloads. */
+const withNativeProjection = Effect.fnUntraced(function* ({
+  fs,
+  root,
+  subjects,
+}: {
+  fs: FileSystem.FileSystem
+  root: string
+  subjects: Readonly<
+    Record<
+      string,
+      {
+        status: string
+        workspace?: string
+        host?: string
+      } | null
+    >
+  >
+}) {
+  const binary = `${root}/st3-fixture`
+  yield* fs.writeFileString(
+    `${root}/st3-page.json`,
+    encodeJson({
+      api_version: 'st3.client.v0',
+      snapshot: {
+        id: 'native-fixture',
+        host_id: `host/${hostname()}`,
+        created_at: '2020-01-01T00:00:00.000Z',
+        store_index: 1,
+      },
+      value: {
+        kind: 'page',
+        collection: 'agents',
+        items: Object.keys(subjects).map((id) => ({ id })),
+        page: { has_more: false, next_cursor: null },
+      },
+    }),
+  )
+  for (const [id, actual] of Object.entries(subjects)) {
+    yield* fs.writeFileString(
+      `${root}/st3-${id}.json`,
+      encodeJson({ status: { store_index: 1, subjects: [{ subject: id, actual }] } }),
+    )
+  }
+  yield* fs.writeFileString(
+    binary,
+    `#!/bin/sh
+case "$1 $2" in
+  "agents ls") cat "$(dirname "$0")/st3-page.json" ;;
+  "subject show") cat "$(dirname "$0")/st3-$3.json" ;;
+  *) exit 1 ;;
+esac
+`,
+  )
+  yield* fs.chmod(binary, 0o700)
+  yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      const previous = process.env['MEGAREPO_GC_ST3_BIN']
+      process.env['MEGAREPO_GC_ST3_BIN'] = binary
+      return previous
+    }),
+    (previous) =>
+      Effect.sync(() => {
+        if (previous === undefined) delete process.env['MEGAREPO_GC_ST3_BIN']
+        else process.env['MEGAREPO_GC_ST3_BIN'] = previous
+      }),
+  )
+  return binary
+})
+
+describe('readWorkspaceActivity native ownership', () => {
+  it.live(
+    'canonicalizes current local and remote seat owners without making retained PTYs seat owners',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root, workspace } = yield* fixture
+        const alias = `${root}/workspace-alias`
+        const ptyWorkspace = `${root}/pty-workspace`
+        yield* fs.symlink(workspace, alias)
+        yield* fs.makeDirectory(ptyWorkspace)
+        yield* withRealPty({ fs, root })
+        yield* retainExitedPty({ id: 'native-owner-retained', cwd: ptyWorkspace })
+        const statuses = ['running', 'waiting', 'idle', 'suspended', 'future-status']
+        yield* withNativeProjection({
+          fs,
+          root,
+          subjects: {
+            ...Object.fromEntries(
+              statuses.map((status) => [
+                `agent-${status}`,
+                {
+                  status,
+                  workspace: alias,
+                  host: status === 'running' ? hostname() : 'host/remote-fixture',
+                },
+              ]),
+            ),
+            'agent-stopped': { status: 'stopped' },
+            'agent-exited': { status: 'exited' },
+            'agent-absent-remote': {
+              status: 'waiting',
+              workspace: `${root}/absent-remote`,
+              host: 'host/remote-fixture',
+            },
+          },
+        })
+        const activity = yield* readWorkspaceActivity({ fs })
+        expect(activity).toBeDefined()
+        expect(activity?.ownerClaims).toEqual([
+          {
+            workspace,
+            agents: statuses.map((status) => `agent-${status}`),
+          },
+        ])
+        expect(activity?.activePaths).toEqual(new Set([workspace, ptyWorkspace]))
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.live(
+    'reports complete empty ownership for a successful empty native projection',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root } = yield* fixture
+        yield* withRealPty({ fs, root })
+        yield* withNativeProjection({ fs, root, subjects: {} })
+        const activity = yield* readWorkspaceActivity({ fs })
+        expect(activity?.ownerClaims).toEqual([])
+        expect(activity?.activePaths).toEqual(new Set())
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.live(
+    'keeps unavailable native capture unknown instead of reporting empty ownership',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root } = yield* fixture
+        yield* withRealPty({ fs, root })
+        const binary = yield* withNativeProjection({ fs, root, subjects: {} })
+        yield* fs.remove(binary)
+        expect(yield* readWorkspaceActivity({ fs })).toBeUndefined()
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('readBudgetWorkspaceActivity manifest admission', () => {
