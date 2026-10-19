@@ -38,6 +38,11 @@ Explicit `GENIE_MEMBER_OVERRIDE_MAP` overrides have the same precedence as
 genie imports. Materialize pinned sources with
 `mr apply --worktree-mode commit --lock-sync off` before staging.
 
+`mr:lock-sync-check` matches named Nix lock inputs to their exact same-repository
+megarepo members. An unnamed input is accepted when its revision matches any
+member of that repository, including several members at the same revision.
+If none match, it reports `no-declared-revision`.
+
 The check module also exports `config.effectUtils.buck2.aggregateExec`, taking
 a task name and a list of Buck2 arguments (including the subcommand). Existing
 consumers of `tasks/shared/check.nix` need no additional import:
