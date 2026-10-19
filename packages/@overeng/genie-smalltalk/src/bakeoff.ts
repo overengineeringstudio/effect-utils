@@ -217,13 +217,16 @@ export const renderMission = (input: Mission): Node => {
     if (fragment?.launch === undefined || fragment.native.exec === undefined) return current
     const { id, host, workspace, restart } = fragment.native.exec
     const exec = renderExec({ id, host, workspace, restart, launch: fragment.launch })
-    return { ...current, children: current.children?.map((child) => child.name === 'exec' ? exec : child) }
+    return current.children === undefined ? current : {
+      ...current,
+      children: current.children.map((child) => child.name === 'exec' ? exec : child),
+    }
   }
   return { ...base, children: [
     ...(base.children ?? []).map((current) => current.name === 'step'
       ? replaceStep(current, input.steps)
-      : current.name === 'finally'
-        ? { ...current, children: current.children?.map((step) => replaceStep(step, input.finally)) }
+      : current.name === 'finally' && current.children !== undefined
+        ? { ...current, children: current.children.map((step) => replaceStep(step, input.finally)) }
         : current),
     ...(input.schedule === undefined ? [] : [renderSchedule(input.schedule)]),
   ] }
