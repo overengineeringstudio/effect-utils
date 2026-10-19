@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -21,6 +21,7 @@ import { decodeJson, encodeJson } from '../test-utils/mod.ts'
 import { parseProcStat, type ProcessIdentity } from './store-inuse.ts'
 import {
   PROCESS_SNAPSHOT_PRODUCER,
+  PtySessions,
   WORKSPACE_ACTIVITY_V2_SCHEMA,
   captureProcessActivityManifest,
   isWorkspaceActive,
@@ -423,15 +424,11 @@ const withPtyProjection = Effect.fnUntraced(function* ({
 }: {
   fs: FileSystem.FileSystem
   root: string
-  sessions: ReadonlyArray<{
-    name: string
-    status: 'running' | 'exited' | 'vanished'
-    pid: number | null
-    cwd: string
-  }>
+  sessions: typeof PtySessions.Type
 }) {
   const binary = `${root}/pty-fixture`
-  yield* fs.writeFileString(`${binary}.json`, encodeJson(sessions))
+  const projection = yield* Schema.encodeEffect(Schema.fromJsonString(PtySessions))(sessions)
+  yield* fs.writeFileString(`${binary}.json`, projection)
   yield* fs.writeFileString(
     binary,
     `#!/bin/sh

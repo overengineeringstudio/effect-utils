@@ -368,8 +368,8 @@ or a scan that cannot be read, is `unknown` and keeps.
 ## Testing
 
 `devenv tasks run test:megarepo` runs the bounded Buck lane and its source integration
-complement. Root script adapter contracts run in `buck2:cache-posture:test`, alongside
-the other root Buck entrypoint tests, without adding scripts to package or Nix closures.
+complement. Root script adapter contracts run in `genie:buck2:test`, part of the required
+`test:run` aggregate, without adding scripts to package or Nix closures.
 
 Native ownership safety assertions use deterministic subprocess projections on every
 host. An additional real-`pty` test skips only when the executable is absent from

@@ -101,7 +101,8 @@ const Subject = Schema.Struct({
     ),
   }),
 }).annotate({ identifier: 'StoreWorkspaceActivity.Subject' })
-const PtySessions = Schema.Array(
+/** Native `pty list --json --tags` projection, shared with subprocess fixtures. */
+export const PtySessions = Schema.Array(
   Schema.Struct({
     name: NonEmpty,
     status: Schema.Literals(['running', 'exited', 'vanished']),

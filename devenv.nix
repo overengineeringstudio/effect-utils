@@ -1305,20 +1305,18 @@ in
   };
 
   tasks."buck2:cache-posture:test" = {
-    description = "Exercise direct Buck entrypoints, maintenance receipts, cache/watcher admission and daemon migration";
+    description = "Exercise direct Buck cache/watcher admission, outages, trust precedence and scoped daemon migration";
     exec = trace.exec "buck2:cache-posture:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
         ./scripts/buck2-entrypoint.integration.test.ts \
-        ./scripts/buck2-cache-posture.integration.test.ts \
-        ./scripts/buck2-daemon-reaper.integration.test.ts
+        ./scripts/buck2-cache-posture.integration.test.ts
     '';
     execIfModified = [
       "nix/buck2.nix"
       "scripts/buck2-entrypoint.*"
       "scripts/buck2-cache-posture.*"
-      "scripts/buck2-daemon-reaper.*"
       "scripts/buck2-remote-cache-proof.sh"
       "genie/ci-scripts/buck2-action-evidence.ts"
       "scripts/buck2-file-watcher.*"
@@ -1379,14 +1377,14 @@ in
   # staged-runtime guards never run. Like test:buck2-tools it runs under pinned
   # Bun: the pnpm-lock projection it imports reads Bun.YAML.
   tasks."genie:buck2:test" = {
-    description = "Run the Buck2 genie projection and staged-runtime guards under pinned Bun";
+    description = "Run Buck2 projection, staged-runtime and root maintenance-adapter contracts under pinned Bun";
     after = [ "buck2:editor:publish:test" ];
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
-      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
     '';
     execIfModified = [
       "BUCK"
@@ -1395,6 +1393,7 @@ in
       "genie/ci-workflow/test-scheduling.json"
       "scripts/editor-view-authority.ts"
       "scripts/editor-view-authority.unit.test.ts"
+      "scripts/buck2-daemon-reaper.*"
       "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
       "packages/@overeng/buck2-tools/src/**/*.ts"
     ];
