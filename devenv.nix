@@ -1341,19 +1341,14 @@ in
     '';
   };
 
-  tasks."buck2:daemon-reaper:test" = {
-    description = "Prove the idle Buck daemon reaper stops only idle daemons and reports gone roots";
-    exec = trace.exec "buck2:daemon-reaper:test" ''
+  tasks."buck2:maintain" = {
+    description = "Maintain owner-scoped Buck outputs and idle daemons with the repository policy";
+    exec = trace.exec "buck2:maintain" ''
       set -euo pipefail
-      cd "''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun test \
-        ./scripts/buck2-daemon-reaper.unit.test.ts \
-        ./scripts/buck2-daemon-reaper.integration.test.ts
+      root="''${DEVENV_ROOT:-$PWD}"
+      cd "$root"
+      exec ${mrCli}/bin/mr store buck-maintain --config "$root/buck-maintain.json"
     '';
-    execIfModified = [
-      "nix/buck2.nix"
-      "scripts/buck2-daemon-reaper.*"
-    ];
   };
 
   tasks."worktree:teardown:test" = {
@@ -1382,14 +1377,25 @@ in
   # staged-runtime guards never run. Like test:buck2-tools it runs under pinned
   # Bun: the pnpm-lock projection it imports reads Bun.YAML.
   tasks."genie:buck2:test" = {
-    description = "Run the Buck2 genie projection and staged-runtime guards under pinned Bun";
-    after = [ "buck2:editor:publish:test" ];
+    description = "Run Buck2 projection, staged-runtime and root maintenance-adapter contracts under pinned Bun";
+    # Reuse the aggregate's existing scoped installer, not a second consumer
+    # publication. Its worker index is assigned by the weighted test scheduler.
+    after =
+      let
+        megarepoInstallers = builtins.filter (
+          name: lib.hasPrefix "test:run:install:" name && lib.hasSuffix ":megarepo:unbounded" name
+        ) (builtins.attrNames config.tasks);
+      in
+      assert lib.assertMsg (
+        builtins.length megarepoInstallers == 1
+      ) "genie:buck2:test requires exactly one scheduled megarepo installer";
+      [ "buck2:editor:publish:test" ] ++ megarepoInstallers;
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
-      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./scripts/editor-view-authority.unit.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
     '';
     execIfModified = [
       "BUCK"
@@ -1398,6 +1404,7 @@ in
       "genie/ci-workflow/test-scheduling.json"
       "scripts/editor-view-authority.ts"
       "scripts/editor-view-authority.unit.test.ts"
+      "scripts/buck2-daemon-reaper.*"
       "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
       "packages/@overeng/buck2-tools/src/**/*.ts"
     ];
@@ -1913,7 +1920,6 @@ in
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
     "buck2:cache-posture:test"
-    "buck2:daemon-reaper:test"
     "buck2:capabilities:test"
     "worktree:teardown:test"
     "cargo:proto-bindings:check"

@@ -170,6 +170,12 @@ action requests. Request IDs are not authentication or a generic exactly-once
 guarantee. A disconnect can leave an outcome unknown; clients must not blindly
 retry mutations. Each operation defines replay, commit and result-query behavior.
 
+The `macos-app-ctl` process failure envelope is
+`{ "ok": false, "error": { "kind": string, "category": string | null, "reason": string, "exitCode": integer } }`.
+`error.exitCode` equals the process exit status; consumers use it rather than
+maintaining a kind-to-exit-code table. This is distinct from the operation
+response envelope above. Intentional crash failpoints do not print an envelope.
+
 ## IPC and same-user trust
 
 ```text

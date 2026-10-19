@@ -107,6 +107,10 @@
       "operation": "buck2:editor:publish:all"
     },
     {
+      "disposition": "outside-by-policy:host-local-maintenance",
+      "operation": "buck2:maintain"
+    },
+    {
       "disposition": "buck-owned",
       "operation": "buck2:providers:check"
     },

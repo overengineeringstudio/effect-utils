@@ -124,6 +124,7 @@ import type {
   StoreWorktreeStatus,
   StoreWorktreeIssue,
 } from '../../renderers/StoreOutput/mod.ts'
+import { storeBuckMaintainCommand } from './buck-maintain.ts'
 import { storeLockCommand } from './lock.ts'
 
 /**
@@ -4333,6 +4334,7 @@ export const storeCommand = Cli.Command.make('store', {}).pipe(
     storeStatusCommand,
     storeFetchCommand,
     storeGcCommand,
+    storeBuckMaintainCommand,
     storeFixCommand,
     storeLeaseCommand,
     storeLockCommand,
