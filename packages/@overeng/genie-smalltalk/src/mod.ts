@@ -1739,7 +1739,7 @@ const stepData = new WeakMap<
 const stepOwners = new WeakMap<object, string>()
 const productOwners = new WeakMap<ProductHandle, Node>()
 const gateReferences = new WeakMap<object, readonly RunReference[]>()
-const isStepHandle = (value: object): value is StepHandle => stepData.has(value)
+export const isStepHandle = (value: object): value is StepHandle => stepData.has(value)
 
 const stepDependency = <TMission extends string>({
   handle,

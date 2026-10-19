@@ -8,17 +8,23 @@ import {
   ExecSchema,
   FullSubject,
   IanaTimezoneSchema,
+  LoopSchema,
   MissionSchema,
   StepSchema,
   WorkSchema,
   mission as nativeMission,
+  missionWire as assembleMissionWire,
+  isStepHandle,
   node,
   type Node,
+  type MissionInput,
+  type StepHandle,
 } from './mod.ts'
 
 /** Scratch APIs: native declarations remain the lossless escape hatch, not a second grammar. */
 export type NativeMission = typeof MissionSchema.Encoded
 export type NativeStep = typeof StepSchema.Encoded
+export type NativeLoop = typeof LoopSchema.Encoded
 
 const Text = Schema.NonEmptyString
 const EnvironmentName = Schema.String.pipe(
@@ -115,56 +121,104 @@ export const SchedulePrototypeSchema = Schema.Struct({
 }).annotate({ identifier: 'Bakeoff.Schedule' })
 export type Schedule = typeof SchedulePrototypeSchema.Encoded
 export interface StepFragment extends UnsupportedPolicy {
-  readonly native: NativeStep
+  readonly native: NativeStep | StepHandle
   readonly launch?: Launch
   readonly review?: readonly Review[]
 }
+export interface LoopFragment extends UnsupportedPolicy {
+  readonly native: NativeLoop
+  readonly round: {
+    readonly steps: readonly StepFragment[]
+    readonly finally?: readonly StepFragment[]
+  }
+}
+export type Fragment = StepFragment | LoopFragment
 export interface MissionOptions extends UnsupportedPolicy {
-  readonly steps?: readonly StepFragment[]
+  readonly steps?: readonly Fragment[]
   readonly finally?: readonly StepFragment[]
   readonly schedule?: Schedule
 }
 export interface Mission extends MissionOptions {
-  readonly native: NativeMission
+  readonly native: NativeMission | MissionInput<string>
 }
 
 const makeStep = (input: StepFragment): StepFragment => {
   rejectUnsupported(input)
-  validate(StepSchema, input.native)
-  if (input.launch !== undefined) {
-    validate(LaunchSchema, input.launch)
-    if (input.native.exec === undefined) throw new TypeError('A launch override requires a native exec')
-  }
-  if (input.review !== undefined) {
-    for (const review of input.review) validate(ReviewSchema, review)
-    if (input.native.gates?.some((gate) => gate.kind === 'human') !== true)
-      throw new TypeError('Review targets require a human gate')
-  }
+  if (!isStepHandle(input.native)) validate(StepSchema, input.native)
+  if (input.launch !== undefined) validate(LaunchSchema, input.launch)
+  for (const review of input.review ?? []) validate(ReviewSchema, review)
   return input
 }
-const reviewText = (review: Review): string => review._tag === 'subject' ? review.subject : review.reference
-const stepWire = (fragment: StepFragment): NativeStep => {
+export const fromHandle = (handle: StepHandle, options: Omit<StepFragment, 'native'> = {}): StepFragment => {
+  if (!isStepHandle(handle)) throw new TypeError('fromHandle requires a genuine step handle')
+  return makeStep({ native: handle, ...options })
+}
+const roundStep = (fragment: StepFragment): NativeStep => {
   makeStep(fragment)
-  if (fragment.review === undefined) return fragment.native
-  const review = fragment.review.map(reviewText)
+  if (isStepHandle(fragment.native)) throw new TypeError('Native round authoring does not accept step handles')
+  return fragment.native
+}
+const loopWire = (fragment: LoopFragment): NativeLoop => {
+  rejectUnsupported(fragment)
+  const finalSteps = fragment.round.finally?.map(roundStep)
+  if (finalSteps?.length === 0) throw new TypeError('Finally must be nonempty')
   return {
     ...fragment.native,
-    gates: (fragment.native.gates ?? []).map((gate) => gate.kind === 'human'
-      ? { ...gate, review }
-      : gate),
+    round: {
+      ...fragment.native.round,
+      steps: fragment.round.steps.map(roundStep),
+      ...(finalSteps === undefined ? {} : { finally: [finalSteps[0]!, ...finalSteps.slice(1)] }),
+    },
   }
 }
+const makeLoop = (fragment: LoopFragment): LoopFragment => {
+  validate(LoopSchema, loopWire(fragment))
+  return fragment
+}
+const reviewText = (review: Review): string => review._tag === 'subject' ? review.subject : review.reference
+const applyStep = (native: NativeStep, fragment: StepFragment): NativeStep => {
+  makeStep(fragment)
+  if (fragment.launch !== undefined && native.exec === undefined)
+    throw new TypeError('A launch override requires a native exec')
+  if (fragment.review === undefined) return native
+  if (!native.gates?.some((gate) => gate.kind === 'human')) throw new TypeError('Review targets require a human gate')
+  const review = fragment.review.map(reviewText)
+  return { ...native, gates: (native.gates ?? []).map((gate) => gate.kind === 'human' ? { ...gate, review } : gate) }
+}
+const applySteps = (steps: readonly NativeStep[], fragments: readonly StepFragment[] | undefined): readonly NativeStep[] =>
+  steps.map((step) => {
+    const fragment = fragments?.find((fragment) => fragment.native.id === step.id)
+    return fragment === undefined ? step : applyStep(step, fragment)
+  })
 const missionWire = (input: Mission): NativeMission => {
   rejectUnsupported(input)
   const { schedule: originalSchedule, ...native } = input.native
-  const steps = input.steps === undefined ? native.steps : input.steps.map(stepWire)
-  const finalSteps = input.finally === undefined ? native.finally : input.finally.map(stepWire)
-  if (finalSteps !== undefined && finalSteps.length === 0) throw new TypeError('Finally must be nonempty')
-  const wire: NativeMission = {
-    ...native,
-    steps,
-    ...(finalSteps === undefined ? {} : { finally: [finalSteps[0]!, ...finalSteps.slice(1)] }),
+  const steps = input.steps === undefined ? native.steps : input.steps.map((fragment) =>
+    'round' in fragment ? loopWire(fragment) : makeStep(fragment).native)
+  const finalSteps = input.finally === undefined ? native.finally : input.finally.map((fragment) => makeStep(fragment).native)
+  if (finalSteps?.length === 0) throw new TypeError('Finally must be nonempty')
+  const assembled = assembleMissionWire({
+    ...native, steps,
+    ...(finalSteps === undefined ? {} : { finally: finalSteps }),
     ...(input.schedule === undefined && originalSchedule !== undefined ? { schedule: originalSchedule } : {}),
+  })
+  const finalWire = assembled.finally === undefined ? undefined : applySteps(assembled.finally, input.finally)
+  const wire: NativeMission = {
+    ...assembled,
+    steps: assembled.steps.map((step) => {
+      const fragment = input.steps?.find((fragment) => fragment.native.id === step.id)
+      if (fragment === undefined) return step
+      if ('round' in step && 'round' in fragment) {
+        const finalSteps = step.round.finally === undefined ? undefined : applySteps(step.round.finally, fragment.round.finally)
+        return { ...step, round: { ...step.round, steps: applySteps(step.round.steps, fragment.round.steps),
+          ...(finalSteps === undefined ? {} : { finally: [finalSteps[0]!, ...finalSteps.slice(1)] }) } }
+      }
+      if ('round' in step || 'round' in fragment) throw new TypeError('Fragment kind does not match graph node')
+      return applyStep(step, fragment)
+    }),
+    ...(finalWire === undefined ? {} : {
+      finally: [finalWire[0]!, ...finalWire.slice(1)],
+    }),
   }
   validate(MissionSchema, wire)
   return wire
@@ -212,22 +266,32 @@ export const renderSchedule = (input: Schedule & UnsupportedPolicy): Node => {
 export const renderMission = (input: Mission): Node => {
   const wire = missionWire(input)
   const base = nativeMission(wire)
-  const replaceStep = (current: Node, fragments: readonly StepFragment[] | undefined): Node => {
-    const fragment = fragments?.find((fragment) => fragment.native.id === current.args[0])
-    if (fragment?.launch === undefined || fragment.native.exec === undefined) return current
-    const { id, host, workspace, restart } = fragment.native.exec
-    const exec = renderExec({ id, host, workspace, restart, launch: fragment.launch })
-    return current.children === undefined ? current : {
-      ...current,
-      children: current.children.map((child) => child.name === 'exec' ? exec : child),
+  const replace = (
+    nodes: readonly Node[],
+    steps: readonly (NativeStep | NativeLoop)[],
+    fragments: readonly Fragment[] | undefined,
+    finalSteps: readonly NativeStep[] = [],
+    finalFragments: readonly StepFragment[] = [],
+  ): readonly Node[] => nodes.map((current) => {
+    if (current.children === undefined) return current
+    if (current.name === 'finally') return {
+      ...current, children: replace(current.children, finalSteps, finalFragments),
     }
-  }
+    const fragment = fragments?.find((fragment) => fragment.native.id === current.args[0])
+    const native = steps.find((step) => step.id === current.args[0])
+    if (fragment === undefined || native === undefined) return current
+    if ('round' in fragment && 'round' in native) return {
+      ...current, children: current.children.map((child) => child.name !== 'round' || child.children === undefined ? child : {
+        ...child, children: replace(child.children, native.round.steps, fragment.round.steps, native.round.finally, fragment.round.finally),
+      }),
+    }
+    if ('round' in fragment || 'round' in native || fragment.launch === undefined || native.exec === undefined) return current
+    const { id, host, workspace, restart } = native.exec
+    const exec = renderExec({ id, host, workspace, restart, launch: fragment.launch })
+    return { ...current, children: current.children.map((child) => child.name === 'exec' ? exec : child) }
+  })
   return { ...base, children: [
-    ...(base.children ?? []).map((current) => current.name === 'step'
-      ? replaceStep(current, input.steps)
-      : current.name === 'finally' && current.children !== undefined
-        ? { ...current, children: current.children.map((step) => replaceStep(step, input.finally)) }
-        : current),
+    ...replace(base.children ?? [], wire.steps, input.steps, wire.finally, input.finally),
     ...(input.schedule === undefined ? [] : [renderSchedule(input.schedule)]),
   ] }
 }
@@ -255,6 +319,9 @@ export const DesignA = {
   exec: (input: Exec & UnsupportedPolicy): Exec => { rejectUnsupported(input); return validate(ExecPrototypeSchema, input) },
   schedule: (input: Schedule & UnsupportedPolicy): Schedule => { rejectUnsupported(input); return validate(SchedulePrototypeSchema, input) },
   step: makeStep,
+  loop: makeLoop,
+  fromHandle,
+  authored: <const TMission extends string>(input: { readonly native: MissionInput<TMission> } & MissionOptions): Mission => makeMission(input),
   mission: makeMission,
 }
 
@@ -288,13 +355,13 @@ const fromNativeTiming = (input: NativeTiming): Timing => {
     : timing.calendar({ ...input.calendar, ...(input.catchUp === undefined ? {} : { catchUp: input.catchUp }) })
 }
 export class MissionBuilder {
-  readonly native: NativeMission
+  readonly native: NativeMission | MissionInput<string>
   readonly options: MissionOptions
-  constructor(native: NativeMission, options: MissionOptions = {}) {
+  constructor(native: NativeMission | MissionInput<string>, options: MissionOptions = {}) {
     this.native = native
     this.options = options
   }
-  withSteps(...steps: readonly StepFragment[]): MissionBuilder { return new MissionBuilder(this.native, { ...this.options, steps }) }
+  withSteps(...steps: readonly Fragment[]): MissionBuilder { return new MissionBuilder(this.native, { ...this.options, steps }) }
   withFinally(...steps: readonly StepFragment[]): MissionBuilder { return new MissionBuilder(this.native, { ...this.options, finally: steps }) }
   withSchedule(schedule: Schedule): MissionBuilder { return new MissionBuilder(this.native, { ...this.options, schedule }) }
   build(): Mission { return makeMission({ native: this.native, ...this.options }) }
@@ -315,6 +382,10 @@ export const DesignB = {
     return DesignA.schedule({ id, host, work, timing: fromNativeTiming(nativeTiming) })
   },
   step: (native: NativeStep, options: Omit<StepFragment, 'native'> = {}): StepFragment => makeStep({ native, ...options }),
+  loop: (native: NativeLoop, round: LoopFragment['round']): LoopFragment => makeLoop({ native, round }),
+  fromHandle,
+  authored: <const TMission extends string>(native: MissionInput<TMission>, options: MissionOptions = {}): Mission => makeMission({ native, ...options }),
+  fromAuthored: <const TMission extends string>(native: MissionInput<TMission>): MissionBuilder => new MissionBuilder(native),
   mission: (native: NativeMission, options: MissionOptions = {}): Mission => makeMission({ native, ...options }),
   from: (native: NativeMission): MissionBuilder => new MissionBuilder(native),
 }

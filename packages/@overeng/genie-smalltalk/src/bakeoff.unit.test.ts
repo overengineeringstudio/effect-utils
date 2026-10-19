@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { DesignA, DesignB, TimingSchema, UnsupportedLowering, renderExec, renderMission, renderSchedule, type NativeMission } from './bakeoff.ts'
-import { emit, mission } from './mod.ts'
+import { childMission, emit, input, mission, product, runId, step, t, type MissionInput } from './mod.ts'
 
 const native: NativeMission = {
   id: 'example/bakeoff', state: 'ready', reportTo: { id: 'example/coordinator' },
@@ -58,6 +58,63 @@ describe('whole-surface scratch APIs', () => {
     }
     expect(() => Schema.decodeUnknownSync(TimingSchema, { onExcessProperty: 'error' })({ _tag: 'at', at, catchUp: { kind: 'latest' } })).toThrow()
     expect(() => DesignB.schedule({ ...common, at, catchUp: { kind: 'latest' } })).toThrow()
+  })
+
+  it('lowers launch and review fragments in loop rounds and their finalizers', () => {
+    const roundStep = native.steps[0]!
+    if ('round' in roundStep) throw new TypeError('Expected native step')
+    const finalStep = { ...roundStep, id: 'round-cleanup' }
+    const loop = {
+      id: 'retry-round', maxRounds: 2, round: {
+        completion: { when: 'all-steps-exhausted' }, steps: [roundStep], finally: [finalStep],
+      },
+    } as const
+    const review = [DesignA.review.document(`doc/example/plan@${'b'.repeat(64)}`)]
+    const aRound = {
+      steps: [DesignA.step({ native: roundStep, launch: DesignA.launch.argv(['/round-worker', 'a b']), review })],
+      finally: [DesignA.step({ native: finalStep, launch: DesignA.launch.shell('printf cleanup'), review })],
+    }
+    const bRound = {
+      steps: [DesignB.step(roundStep, { launch: DesignB.launch({ argv: ['/round-worker', 'a b'] }), review })],
+      finally: [DesignB.step(finalStep, { launch: DesignB.launch({ command: 'printf cleanup' }), review })],
+    }
+    const a = emit([renderMission(DesignA.mission({ native, steps: [DesignA.loop({ native: loop, round: aRound })] }))])
+    const b = emit([renderMission(DesignB.from(native).withSteps(DesignB.loop(loop, bRound)).build())])
+    expect(a).toBe(b)
+    expect(a).toContain('argv \"/round-worker\" \"a b\"')
+    expect(a).toContain('command \"printf cleanup\"')
+    expect(a.split('review "doc/example/plan@').length - 1).toBe(2)
+    expect(a).toContain('max-rounds 2')
+  })
+
+  it('preserves genuine typed input/product/dependency and child-mission composition in both APIs', () => {
+    const value = input.text('value')
+    const receipt = product.resource({ kind: 'custom.proof', fields: { text: t`${value}` } })
+    const produce = step({ missionId: 'example/typed', id: 'produce', agentless: true, goal: t`Produce ${value}`, produces: { receipt } })
+    const consume = step({ missionId: 'example/typed', id: 'consume', agentless: true, dependsOn: produce, goal: t`Consume ${produce.products.receipt}` })
+    const publish = step({ missionId: 'example/typed', id: 'publish-child', agentless: true, produces: childMission`example/child/${runId}` })
+    const execute = step({ missionId: 'example/typed', id: 'execute-child', agentless: true, dependsOn: publish, waitFor: publish })
+    const authored = {
+      id: 'example/typed', state: 'ready', reportTo: { id: 'example/coordinator' }, inputs: [value],
+      goal: t`Preserve ${value}`, steps: [produce, consume, publish, execute],
+    } as const satisfies MissionInput<'example/typed'>
+    const expected = emit([mission(authored)])
+    const handles = [produce, consume, publish, execute]
+    const a = DesignA.authored({ native: authored, steps: handles.map((handle) => DesignA.fromHandle(handle)) })
+    const b = DesignB.fromAuthored(authored).withSteps(...handles.map((handle) => DesignB.fromHandle(handle))).build()
+    expect(emit([renderMission(a)])).toBe(expected)
+    expect(emit([renderMission(b)])).toBe(expected)
+    expect(expected).toContain('uses-mission output-of=\"publish-child\"')
+    const foreign = input.text('value')
+    const wrongOwner: MissionInput<string> = { ...authored, id: 'example/foreign' }
+    for (const build of [
+      () => DesignA.authored({ native: { ...authored, inputs: [foreign] } }),
+      () => DesignB.fromAuthored({ ...authored, inputs: [foreign] }).build(),
+      () => DesignA.authored({ native: wrongOwner }),
+      () => DesignB.fromAuthored(wrongOwner).build(),
+      () => DesignA.authored({ native: { ...authored, steps: [consume] } }),
+      () => DesignB.fromAuthored({ ...authored, steps: [consume] }).build(),
+    ]) expect(build).toThrow()
   })
 
   it('rejects unsupported policy, hard-timeout and consent before rendering', () => {
