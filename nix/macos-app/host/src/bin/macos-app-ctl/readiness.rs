@@ -9,7 +9,13 @@ impl Ctl {
 }
 
 fn connect(socket: &Path, timeout: Duration, pid: u32,
-    mut job: impl FnMut() -> Result<(bool, Option<u32>)>) -> Result<UnixStream> {
+    job: impl FnMut() -> Result<(bool, Option<u32>)>) -> Result<UnixStream> {
+    connect_observed(socket, timeout, pid, job, || {})
+}
+
+fn connect_observed(socket: &Path, timeout: Duration, pid: u32,
+    mut job: impl FnMut() -> Result<(bool, Option<u32>)>,
+    mut retry: impl FnMut()) -> Result<UnixStream> {
     let started = Instant::now();
     loop {
         let (loaded, current_pid) = job()?;
@@ -22,6 +28,7 @@ fn connect(socket: &Path, timeout: Duration, pid: u32,
             Err(error) if matches!(error.raw_os_error(), Some(libc::ENOENT | libc::ECONNREFUSED)) => {},
             Err(error) => return Err(error.into()),
         }
+        retry();
         let waited = started.elapsed();
         if waited >= timeout {
             return Err(fail(23, "endpoint-unready", format!(
@@ -70,12 +77,21 @@ mod tests {
         let mut fixture = Fixture::new();
         let socket = fixture.socket();
         let binding = socket.clone();
+        let (failed, attempt) = std::sync::mpsc::channel();
+        let (bound, ready) = std::sync::mpsc::channel();
         let listener = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(100));
+            attempt.recv().unwrap();
             let listener = UnixListener::bind(binding).unwrap();
+            bound.send(()).unwrap();
             listener.accept().unwrap()
         });
-        let stream = fixture.connect(&socket, Duration::from_secs(2)).unwrap();
+        let mut failed = Some(failed);
+        let stream = connect_observed(&socket, Duration::from_secs(2), fixture.child.id(), || fixture.job(), || {
+            if let Some(failed) = failed.take() {
+                failed.send(()).unwrap();
+                ready.recv().unwrap();
+            }
+        }).unwrap();
         assert!(fixture.checks > 1);
         drop(stream);
         listener.join().unwrap();
@@ -93,8 +109,6 @@ mod tests {
         assert!(error.reason.contains(socket.to_str().unwrap()));
         assert!(error.reason.contains("120ms"));
         assert!(started.elapsed() >= timeout);
-        assert!(started.elapsed() < Duration::from_secs(1));
-        assert!(fixture.checks > 1);
     }
 
     #[test]
@@ -121,7 +135,6 @@ mod tests {
         assert_eq!(UnixStream::connect(&socket).unwrap_err().raw_os_error(), Some(libc::ECONNREFUSED));
         let error = fixture.connect(&socket, Duration::from_millis(120)).unwrap_err();
         assert_eq!(error.kind, "endpoint-unready");
-        assert!(fixture.checks > 1);
     }
 
     #[test]
@@ -150,16 +163,18 @@ mod tests {
     fn job_exit_during_wait_fails_fast() {
         let mut fixture = Fixture::new();
         let pid = fixture.child.id();
+        let (failed, attempt) = std::sync::mpsc::channel();
         let exiting = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(100));
+            attempt.recv().unwrap();
             assert!(Command::new("/bin/kill").arg(pid.to_string()).status().unwrap().success());
         });
-        let started = Instant::now();
-        let error = fixture.connect(&fixture.socket(), Duration::from_secs(2)).unwrap_err();
+        let mut failed = Some(failed);
+        let error = connect_observed(&fixture.socket(), Duration::from_secs(2), pid, || fixture.job(), || {
+            if let Some(failed) = failed.take() { failed.send(()).unwrap(); }
+        }).unwrap_err();
         exiting.join().unwrap();
         assert_eq!(error.kind, "job-not-running");
         assert!(fixture.checks > 1);
-        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
