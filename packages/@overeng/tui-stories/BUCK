@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:2bfcba7d0b9aa7ca192e4eab955b62233ff8df865576a7401d52c551d85eef21
+# Semantic fingerprint: sha256:9b067385ee347e0dec4628d397c3d7f6d1d47cb0e1e3200472169700ec218d89
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -170,6 +170,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/commands/pin.ts": "//packages/@overeng/megarepo:src/cli/commands/pin.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/root.ts": "//packages/@overeng/megarepo:src/cli/commands/root.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/status.ts": "//packages/@overeng/megarepo:src/cli/commands/status.ts",
+        "node_modules/@overeng/megarepo/src/cli/commands/store/buck-maintain.ts": "//packages/@overeng/megarepo:src/cli/commands/store/buck-maintain.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/store/lock.ts": "//packages/@overeng/megarepo:src/cli/commands/store/lock.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/store/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/store/mod.ts",
         "node_modules/@overeng/megarepo/src/cli/components/Header.stories.tsx": "//packages/@overeng/megarepo:src/cli/components/Header.stories.tsx",
@@ -354,6 +355,12 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-branch-worktree.ts": "//packages/@overeng/megarepo:src/store/store-branch-worktree.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-daemons.ts": "//packages/@overeng/megarepo:src/store/store-buck-daemons.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-daemons.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-daemons.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-config.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-config.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-config.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-config.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-policy.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-policy.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-policy.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-policy.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.ts",
         "node_modules/@overeng/megarepo/src/store/store-build-budgets.ts": "//packages/@overeng/megarepo:src/store/store-build-budgets.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.ts",
@@ -543,6 +550,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/commands/pin.ts": "//packages/@overeng/megarepo:src/cli/commands/pin.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/root.ts": "//packages/@overeng/megarepo:src/cli/commands/root.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/status.ts": "//packages/@overeng/megarepo:src/cli/commands/status.ts",
+        "node_modules/@overeng/megarepo/src/cli/commands/store/buck-maintain.ts": "//packages/@overeng/megarepo:src/cli/commands/store/buck-maintain.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/store/lock.ts": "//packages/@overeng/megarepo:src/cli/commands/store/lock.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/store/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/store/mod.ts",
         "node_modules/@overeng/megarepo/src/cli/components/Header.stories.tsx": "//packages/@overeng/megarepo:src/cli/components/Header.stories.tsx",
@@ -727,6 +735,12 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-branch-worktree.ts": "//packages/@overeng/megarepo:src/store/store-branch-worktree.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-daemons.ts": "//packages/@overeng/megarepo:src/store/store-buck-daemons.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-daemons.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-daemons.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-config.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-config.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-config.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-config.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-policy.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-policy.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-policy.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-policy.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.ts",
         "node_modules/@overeng/megarepo/src/store/store-build-budgets.ts": "//packages/@overeng/megarepo:src/store/store-build-budgets.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.ts",
@@ -916,6 +930,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/commands/pin.ts": "//packages/@overeng/megarepo:src/cli/commands/pin.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/root.ts": "//packages/@overeng/megarepo:src/cli/commands/root.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/status.ts": "//packages/@overeng/megarepo:src/cli/commands/status.ts",
+        "node_modules/@overeng/megarepo/src/cli/commands/store/buck-maintain.ts": "//packages/@overeng/megarepo:src/cli/commands/store/buck-maintain.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/store/lock.ts": "//packages/@overeng/megarepo:src/cli/commands/store/lock.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/store/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/store/mod.ts",
         "node_modules/@overeng/megarepo/src/cli/components/Header.stories.tsx": "//packages/@overeng/megarepo:src/cli/components/Header.stories.tsx",
@@ -1100,6 +1115,12 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-branch-worktree.ts": "//packages/@overeng/megarepo:src/store/store-branch-worktree.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-daemons.ts": "//packages/@overeng/megarepo:src/store/store-buck-daemons.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-daemons.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-daemons.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-config.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-config.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-config.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-config.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-policy.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-policy.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain-policy.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-policy.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-maintain.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.ts",
         "node_modules/@overeng/megarepo/src/store/store-build-budgets.ts": "//packages/@overeng/megarepo:src/store/store-build-budgets.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.ts",

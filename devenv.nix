@@ -1341,19 +1341,14 @@ in
     '';
   };
 
-  tasks."buck2:daemon-reaper:test" = {
-    description = "Prove the idle Buck daemon reaper stops only idle daemons and reports gone roots";
-    exec = trace.exec "buck2:daemon-reaper:test" ''
+  tasks."buck2:maintain" = {
+    description = "Maintain owner-scoped Buck outputs and idle daemons with the repository policy";
+    exec = trace.exec "buck2:maintain" ''
       set -euo pipefail
-      cd "''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun test \
-        ./scripts/buck2-daemon-reaper.unit.test.ts \
-        ./scripts/buck2-daemon-reaper.integration.test.ts
+      root="''${DEVENV_ROOT:-$PWD}"
+      cd "$root"
+      exec ${mrCli}/bin/mr store buck-maintain --config "$root/buck-maintain.json"
     '';
-    execIfModified = [
-      "nix/buck2.nix"
-      "scripts/buck2-daemon-reaper.*"
-    ];
   };
 
   tasks."worktree:teardown:test" = {
@@ -1913,7 +1908,6 @@ in
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
     "buck2:cache-posture:test"
-    "buck2:daemon-reaper:test"
     "buck2:capabilities:test"
     "worktree:teardown:test"
     "cargo:proto-bindings:check"

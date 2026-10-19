@@ -83,7 +83,7 @@ export const recognizeBuckDaemon = ({
     daemonId.startsWith('-') === true
   )
     return undefined
-  const cwdDeleted = cwd.endsWith(' (deleted)')
+  const cwdDeleted = cwd.endsWith(' (deleted)') === true
   const path = cwdDeleted === true ? cwd.slice(0, -' (deleted)'.length) : cwd
   const suffix = `/buck-out/${isolation}`
   if (path.startsWith('/') === false) return undefined
@@ -207,9 +207,46 @@ export const findWorktreeBuckDaemons = Effect.fn('store.findWorktreeBuckDaemons'
   }
   return daemons
 })
+/** Any non-daemon Buck client targeting this root/isolation holds the daemon, including before RPC context registration. */
+export const hasWorktreeBuckClients = Effect.fn('store.hasWorktreeBuckClients')(function* (
+  worktree: string,
+  daemons: ReadonlyArray<WorktreeBuckDaemon>,
+) {
+  const fs = yield* FileSystem.FileSystem
+  const listing = yield* fs.readDirectory('/proc').pipe(Effect.option)
+  if (Option.isNone(listing) === true) return true
+  for (const name of listing.value) {
+    if (/^[0-9]+$/u.test(name) === false || Number(name) === process.pid) continue
+    const executable = yield* fs.readLink(`/proc/${name}/exe`).pipe(Effect.option)
+    if (Option.isNone(executable) === true || executable.value.endsWith('/buck2') === false)
+      continue
+    const argv = yield* fs.readFileString(`/proc/${name}/cmdline`).pipe(Effect.option)
+    const cwd = yield* fs.readLink(`/proc/${name}/cwd`).pipe(Effect.option)
+    if (Option.isNone(argv) === true || Option.isNone(cwd) === true) return true
+    const args = argv.value.split('\0')
+    if (
+      (args.includes('daemon') === true && args.includes('--daemon-id') === true) ||
+      args[1] === 'forkserver'
+    )
+      continue
+    const isolationIndex = args.indexOf('--isolation-dir')
+    const isolation =
+      isolationIndex < 0
+        ? (args
+            .find((argument) => argument.startsWith('--isolation-dir=') === true)
+            ?.slice('--isolation-dir='.length) ?? 'v2')
+        : args[isolationIndex + 1]
+    if (
+      isInsideWorktree({ candidate: cwd.value, worktreePath: worktree }) === true ||
+      daemons.some((entry) => entry.daemon.isolation === isolation) === true
+    )
+      return true
+  }
+  return false
+})
 
 /** Newest event-log file write; `buck2 kill` itself only adds a directory there. */
-const newestBuckLogWriteMs = Effect.fn('store.newestBuckLogWriteMs')(function* (
+export const newestBuckLogWriteMs = Effect.fn('store.newestBuckLogWriteMs')(function* (
   daemon: BuckDaemonIdentity,
 ) {
   const fs = yield* FileSystem.FileSystem
@@ -226,7 +263,8 @@ const newestBuckLogWriteMs = Effect.fn('store.newestBuckLogWriteMs')(function* (
   return newest
 })
 
-const runBuck2 = Effect.fn('store.runBuck2')(function* ({
+/** Invoke the native binary against an existing daemon's exact root and isolation. */
+export const runBuck2 = Effect.fn('store.runBuck2')(function* ({
   binary,
   daemon,
   subcommand,
@@ -267,12 +305,24 @@ const runBuck2 = Effect.fn('store.runBuck2')(function* ({
 export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons')(function* ({
   worktreePath,
   archived = false,
+  binary: requestedBinary,
+  idleSinceMs,
+  beforeKill,
+  reportRaces = true,
 }: {
   worktreePath: string
   archived?: boolean
+  /** Maintenance uses the observed native executable, never the admission launcher. */
+  binary?: string
+  /** Require event-log and daemon start time to precede this policy cutoff. */
+  idleSinceMs?: number
+  /** Final lease-protected holder/client check, immediately before the kill. */
+  beforeKill?: () => Effect.Effect<boolean, never, FileSystem.FileSystem | ChildProcessSpawner>
+  /** JSON receipt consumers record raced outcomes without contaminating stdout. */
+  reportRaces?: boolean
 }) {
-  const binary = process.env['MEGAREPO_GC_BUCK2_BIN'] ?? 'buck2'
-  if (binary === '') return []
+  const configuredBinary = requestedBinary ?? process.env['MEGAREPO_GC_BUCK2_BIN']
+  if (configuredBinary === '') return []
   const daemons = yield* findWorktreeBuckDaemons({ worktreePath })
   const results: BuckDaemonResult[] = []
   for (const { daemon, memoryKiB } of daemons) {
@@ -286,7 +336,36 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
       })
       continue
     }
+    const fs = yield* FileSystem.FileSystem
+    const binary =
+      configuredBinary ??
+      (yield* fs.readLink(`/proc/${daemon.pid}/exe`).pipe(Effect.orElseSucceed(() => undefined)))
+    if (binary === undefined) {
+      results.push({
+        _tag: 'unreachable',
+        ...identity,
+        memoryKiB,
+        reason: 'native-binary-unavailable',
+      })
+      continue
+    }
+    if ((yield* hasWorktreeBuckClients(worktreePath, daemons)) === true) {
+      results.push({ _tag: 'kept-active', ...identity })
+      continue
+    }
+    if (beforeKill !== undefined && (yield* beforeKill()) === false) {
+      results.push({ _tag: 'kept-active', ...identity })
+      continue
+    }
     const decidedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
+    if (idleSinceMs !== undefined) {
+      const daemonInfo = yield* fs.stat(`/proc/${daemon.pid}`).pipe(Effect.option)
+      // Start time is read from status below; /proc existence is an additional lifetime check.
+      if (Option.isNone(daemonInfo) === true || (decidedLogWriteMs ?? 0) > idleSinceMs) {
+        results.push({ _tag: 'kept-active', ...identity })
+        continue
+      }
+    }
     const statusRun = yield* runBuck2({ binary, daemon, subcommand: 'status' })
     const status =
       Option.isSome(statusRun) === true && statusRun.value.exitCode === 0
@@ -297,6 +376,16 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
     if (Option.isNone(status) === true) {
       results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'status-unreadable' })
       continue
+    }
+    if (idleSinceMs !== undefined) {
+      const started = yield* Schema.decodeEffect(
+        Schema.fromJsonString(Schema.Struct({ start_time: Schema.String })),
+      )(Option.isSome(statusRun) === true ? statusRun.value.stdout : '').pipe(Effect.option)
+      const startedMs = Option.isSome(started) === true ? Date.parse(started.value.start_time) : NaN
+      if (Number.isFinite(startedMs) === false || startedMs > idleSinceMs) {
+        results.push({ _tag: 'kept-active', ...identity })
+        continue
+      }
     }
     const decision = decideBuckDaemon({ daemon, status: status.value })
     if (decision === 'kept-active') {
@@ -331,7 +420,7 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
     let raced: string | undefined
     if (Number(exitedPid) !== daemon.pid) raced = `kill-stopped-other-pid-${exitedPid}`
     else if (logWriteAfterKillMs !== observedLogWriteMs) raced = 'command-log-written-during-kill'
-    if (raced !== undefined) {
+    if (raced !== undefined && reportRaces === true) {
       yield* Effect.logWarning(
         `RACED stopping Buck2 daemon pid ${daemon.pid} (${daemon.daemonId}) at ${daemon.root}: ${raced}`,
       )

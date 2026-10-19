@@ -304,6 +304,28 @@ Only immutable Nix-store inputs are memoized, keyed by the tool and complete
 fingerprint arguments; mutable Buck outputs are always re-proven. Phase diagnostics
 are written as work advances, with phase spans on completion, failure, and SIGTERM.
 
+### Maintain Buck Outputs and Idle Daemons
+
+```bash
+devenv tasks run buck2:maintain
+# Preview the same repository policy and inspect its complete receipt:
+mr store buck-maintain --config ./buck-maintain.json --dry-run --json
+```
+
+`buck-maintain.json` contains neutral defaults for the current checkout: a soft
+2 GiB output budget, 24-hour recent-output retention, and a 30-minute idle-daemon
+**policy**. Maintenance uses native Buck clean/kill commands only; the budget is
+not a hard disk limit. It does not configure `daemon_idle_timeout_s`.
+By default only the current `ST_AGENT` owner is eligible, unowned worktrees are
+excluded, and no seat or explicit owner configuration means report-only.
+Active commands (including LSP) and live Buck clients prevent maintenance.
+The legacy `scripts/buck2-daemon-reaper.ts` entrypoint delegates to the same
+runtime; the independent reaper policy and its old flags are removed. Use
+`--config` to configure policy and `--dry-run` to preview it. See
+[the command reference](packages/@overeng/megarepo/docs/commands.md#mr-store-buck-maintain)
+for ownership, blackout windows, native cleanup, and the remaining client-arrival
+race between final activity recheck and kill.
+
 ### Check All TypeScript Projects
 
 ```bash

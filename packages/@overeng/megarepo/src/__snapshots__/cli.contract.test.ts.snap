@@ -159,16 +159,17 @@ GLOBAL FLAGS
   --cwd string                                                        Override the working directory
 
 SUBCOMMANDS
-  add         Add a repository to the store (without adding to megarepo)
-  ls          List repositories in the store
-  status      Show store status and detect issues
-  fetch       Fetch all repositories in the store
-  gc          Garbage collect unused worktrees
-  fix         Fix store issues
-  lease       Run a command while holding a store deletion lease
-  lock        Run a command under the host-local Git common-directory writer lock
-  activity    Produce workspace-activity evidence for store reclamation
-  worktree    Manage worktrees in the store
+  add              Add a repository to the store (without adding to megarepo)
+  ls               List repositories in the store
+  status           Show store status and detect issues
+  fetch            Fetch all repositories in the store
+  gc               Garbage collect unused worktrees
+  buck-maintain    Maintain owner-scoped Buck outputs and idle daemons using native Buck commands
+  fix              Fix store issues
+  lease            Run a command while holding a store deletion lease
+  lock             Run a command under the host-local Git common-directory writer lock
+  activity         Produce workspace-activity evidence for store reclamation
+  worktree         Manage worktrees in the store
 ",
 }
 `;

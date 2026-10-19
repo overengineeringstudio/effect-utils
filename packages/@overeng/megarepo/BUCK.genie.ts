@@ -81,6 +81,7 @@ export const buck2TypeScriptAdmission = {
         'src/store/git-writer-lock.integration.test.ts',
         'src/store/store-archive.integration.test.ts',
         'src/store/store-branch-worktree.integration.test.ts',
+        'src/store/store-buck-maintain.integration.test.ts',
         'src/store/store-deletion-lease.integration.test.ts',
         'src/store/store-hygiene.unit.test.ts',
         'src/store/store-inuse.integration.test.ts',

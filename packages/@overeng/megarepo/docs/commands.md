@@ -168,6 +168,69 @@ Every plan-bound deletion — generated artifact, whole worktree, archive reap �
 additionally holds the lease for its owner path, so an activation wrapped in
 `mr store lease` can never be overtaken.
 
+### `mr store buck-maintain`
+
+```bash
+mr store buck-maintain [--config <path>] [--dry-run] [--json]
+```
+
+Maintains Buck outputs and idle daemons using the shared maintenance runtime.
+`--dry-run` reports decisions without cleaning or stopping daemons; `--json`
+prints the complete versioned receipt, including per-worktree decisions and the
+summary. Normal output summarizes actions and skipped worktrees.
+
+The version 1 JSON configuration declares `worktreeRoots`, `buckOut`, `daemon`,
+optional `maintainOwners`, and `maintainUnowned`. Roots are resolved relative to
+the configuration file. The neutral repository configuration is:
+
+```json
+{
+  "version": 1,
+  "worktreeRoots": ["."],
+  "buckOut": { "budgetBytes": 2147483648, "keepSince": "24h" },
+  "daemon": { "idleStopAfter": "30m" },
+  "maintainUnowned": false
+}
+```
+
+The 2 GiB output budget is **soft**: native Buck stale cleaning preserves recent
+outputs (`keepSince`, default `24h`) and may leave usage above budget. Cleanup
+uses Buck's native clean commands only, never recursive filesystem deletion.
+Optional `buckOut.fullCleanWhenInactiveFor` permits a full native clean only
+after the configured inactivity period and the runtime's safety checks.
+
+The default `daemon.idleStopAfter` of **30 minutes is maintenance policy**, not a
+Buck guarantee or `daemon_idle_timeout_s` setting. Active streaming commands,
+including attached LSP sessions, and live Buck client processes prevent
+maintenance. The final activity/client recheck runs under the maintenance lease.
+Buck does not offer conditional kill: a client can still arrive after that
+recheck and before the native kill, and detected races are reported.
+Configured blackout windows use UTC, include their start, exclude their end,
+and can wrap midnight.
+
+Process claims in workspace-activity manifests may include additive `processes`
+attribution: PID, kernel start time, and executable class. Existing manifests
+still parse, but unattributed or mixed claims remain active. A daemon-only claim
+is waived only after every attributed daemon/forkserver lifetime is verified
+against live `/proc` evidence. Consumers must deploy the updated process
+snapshot producer before daemon-stop takes effect on hosts using these
+manifests. The same rule protects stale cleaning of daemon-bearing worktrees;
+output trimming in daemon-free worktrees does not depend on this rollout.
+
+Receipts distinguish `holder-live` (a proven live process reference) from
+`holder-census-incomplete` (absence cannot be proven). On hosts where other-UID
+or root processes are unreadable, configure the existing store GC
+`generatedArtifacts.manifestPath` and admitted producer names with the host's
+fresh trusted all-UID workspace-activity snapshot. Without that coverage,
+maintenance remains conservative rather than assuming those processes are idle.
+
+Owner scope defaults to the current exact `ST_AGENT` identity. Explicit
+`maintainOwners` entries select exact identities or glob patterns; they do not
+mean “any owner value.” Without either a current seat or configured owners the
+command is report-only. Worktrees without attributable ownership require an
+explicit `maintainUnowned: true`; ownership is never inferred from the calling
+seat. Shared task/configuration contains no machine-specific roots or identities.
+
 ### `mr store lock`
 
 ```bash
