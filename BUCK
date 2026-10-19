@@ -123,6 +123,12 @@ toolchain_alias(
     visibility = ["PUBLIC"],
 )
 
+export_file(
+    name = "scripts/buck2-daemon-reaper.ts",
+    src = "scripts/buck2-daemon-reaper.ts",
+    visibility = ["PUBLIC"],
+)
+
 static_source_set(
     name = "nix_sources",
     prefix = "",

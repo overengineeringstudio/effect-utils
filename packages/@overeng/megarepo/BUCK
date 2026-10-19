@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d01e2c2374155804b04c06957ab4df7277c8fe0f9ab7acb861562a86fff6e3c2
+# Semantic fingerprint: sha256:3bd7a93c4058afbd0cf041ccb0323eb6b58cbf3cda1471af6db4aa4ddd462ac5
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -1328,6 +1328,9 @@ vitest_test(
         "src/store/store-workspace-activity.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
+    external_inputs = {
+        "BUCK_MAINTAIN_SCRIPT": "//:scripts/buck2-daemon-reaper.ts",
+    },
     tools = {
         "BUN_BIN": "//buck2/toolchains:tool_bun",
     },
@@ -1367,6 +1370,9 @@ vitest_collect(
         "src/store/store-workspace-activity.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
+    external_inputs = {
+        "BUCK_MAINTAIN_SCRIPT": "//:scripts/buck2-daemon-reaper.ts",
+    },
     tools = {
         "BUN_BIN": "//buck2/toolchains:tool_bun",
     },

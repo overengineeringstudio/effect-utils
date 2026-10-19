@@ -33,6 +33,7 @@ import {
 
 const PRODUCER = 'acceptance-fixture'
 const runsAsRoot = process.getuid?.() === 0
+const hasPty = spawnSync('pty', ['--version'], { stdio: 'ignore', timeout: 10_000 }).status === 0
 
 const manifest = ({
   workspace,
@@ -482,7 +483,9 @@ esac
   return binary
 })
 
-describe('readWorkspaceActivity native ownership', () => {
+// Like the root-only retained-PTY fixtures below, this suite needs the real
+// optional host tool. Even an empty native projection requires PTY capture.
+describe.skipIf(hasPty === false)('readWorkspaceActivity native ownership', () => {
   it.live(
     'canonicalizes current local and remote seat owners without making retained PTYs seat owners',
     Effect.fnUntraced(

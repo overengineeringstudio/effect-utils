@@ -365,6 +365,16 @@ worktree step additionally refuses when a live process has its cwd inside the ta
 children are excluded so a `git` child cannot self-veto. A host without a supported process table,
 or a scan that cannot be read, is `unknown` and keeps.
 
+## Testing
+
+`devenv tasks run test:megarepo` runs the bounded Buck lane and its source integration
+complement. The CLI contract lane declares the root maintenance adapter as an external
+Buck input; it does not depend on scripts being present in the package tree.
+
+Native ownership integration tests require the real `pty` executable on `PATH` and
+skip when its capability probe fails. Empty native projections also require PTY
+capture: unavailable PTY evidence is unknown, not proof of no owners.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
