@@ -511,6 +511,7 @@ for (const recentCommand of [false, true]) {
         }
         yield* fs.utimes(join(output, 'retained-output'), old, old)
         yield* fs.utimes(output, old, old)
+        yield* fs.utimes(join(worktree, 'buck-out'), old, old)
         if (recentCommand === true) {
           const recent = new Date(Date.now() - 60_000)
           yield* fs.utimes(join(output, 'log', 'state'), recent, recent)
@@ -744,6 +745,7 @@ it.live('vetoes a daemon first appearing after measurement before full clean', (
     const fixture = yield* makeFixture()
     const worktree = yield* fixture.addWorktree('late-full-clean-daemon')
     yield* fixture.fs.makeDirectory(join(worktree, 'buck-out/v2/log'), { recursive: true })
+    yield* fixture.fs.makeDirectory(join(worktree, 'buck-out/v2/daemon'))
     const log = join(worktree, 'buck-out/v2/log/old-event')
     yield* fixture.fs.writeFileString(log, 'old event')
     // A zero interval makes all already-recorded Git and output history eligible.
@@ -760,7 +762,8 @@ it.live('vetoes a daemon first appearing after measurement before full clean', (
     const boundary = yield* makeDaemonBoundary(fixture, worktree, [], true)
     const receipt = yield* fixture.run(boundary)
     expect(receipt.entries[0]?.action).toBe('none')
-    expect(receipt.entries[0]?.reason).not.toBe('completed')
+    expect(yield* fixture.fs.exists(fixture.measured)).toBe(true)
+    expect(receipt.entries[0]?.reason).toBe('holder-live')
     expect(yield* fixture.fs.readFileString(fixture.nativeCalls)).toBe('')
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
@@ -821,4 +824,47 @@ it.live('does not admit an unproven daemon arriving between native isolation cle
       1,
     )
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live(
+  'does not fully clean an old surviving isolation after another isolation was removed recently',
+  () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture()
+      const { fs } = fixture
+      const worktree = yield* fixture.addWorktree('removed-isolation')
+      const gitDir = yield* Effect.sync(() =>
+        execFileSync('git', ['-C', worktree, 'rev-parse', '--absolute-git-dir'], {
+          encoding: 'utf8',
+        }).trim(),
+      )
+      const old = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
+      for (const name of ['HEAD', 'index', 'logs/HEAD'])
+        yield* fs.utimes(join(gitDir, name), old, old)
+      for (const name of ['log', 'daemon']) {
+        const path = join(worktree, 'buck-out', 'v2', name)
+        yield* fs.makeDirectory(path)
+        yield* fs.writeFileString(join(path, 'state'), 'old work')
+        yield* fs.utimes(join(path, 'state'), old, old)
+        yield* fs.utimes(path, old, old)
+      }
+      const output = join(worktree, 'buck-out')
+      yield* fs.makeDirectory(join(output, 'removed'))
+      yield* fs.utimes(output, old, old)
+      yield* fs.remove(join(output, 'removed'), { recursive: true })
+      yield* fs.writeFileString(
+        fixture.configPath,
+        encodeJson({
+          version: 1,
+          worktreeRoots: [fixture.roots],
+          buckOut: { budgetBytes: 100000, keepSince: '0s', fullCleanWhenInactiveFor: '24h' },
+          maintainOwners: ['seat/a'],
+          maintainUnowned: true,
+        }),
+      )
+      const receipt = yield* fixture.run()
+      expect(receipt.entries[0]).toMatchObject({ action: 'none', reason: 'within-budget' })
+      expect((yield* fs.readFileString(fixture.duCalls)).trim().split('\n')).toHaveLength(1)
+      expect(yield* fs.readFileString(fixture.nativeCalls)).toBe('')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )

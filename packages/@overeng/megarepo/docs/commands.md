@@ -198,9 +198,11 @@ native Buck stale cleaning preserves recent outputs (`keepSince`, default `24h`)
 and may leave usage above budget. Cleanup uses Buck's native clean commands only,
 never recursive filesystem deletion.
 Optional `buckOut.fullCleanWhenInactiveFor` permits a full native clean only
-after complete inactivity evidence: Git HEAD/index/reflog, every isolation's
-event logs and daemon-state directories must all have known timestamps older
-than the policy interval, with no current daemon, client, claim or holder.
+after complete inactivity evidence: Git HEAD/index/reflog, the `buck-out` parent,
+and every isolation's event logs and daemon-state directories must all have known
+timestamps older than policy, with no current daemon, client, claim or holder.
+Removing an isolation refreshes its parent and restarts the interval even when
+another complete old isolation survives. An unreadable parent is unknown.
 Inactivity means no work, not continuous process absence: a daemon killed
 recently after ten idle days may qualify if all activity timestamps remain old.
 A recent command event log or daemon-state mutation restarts the interval.
@@ -211,9 +213,11 @@ created. A worktree with no `buck-out` is a `no-buck-out` no-op, not unknown.
 Symlinked output roots, isolations or history directories are protective
 `output-activity-unknown` skips. Ownership paths are compared by physical
 canonical path; unresolvable claim paths remain protective foreign evidence.
-Git lock checks inspect only known admin-root operation/lock names and Git's
-`refs/` namespace. They never walk objects, other worktree admin directories,
-reflogs, caches or unrelated checkouts under the shared Git directory.
+Git lock checks inspect direct `*.lock` entries in git-only worktree admin
+directories, Git-admin filename patterns in the common directory, and Git's
+`refs/` namespace. Foreign common-directory tool locks do not veto maintenance.
+They never walk objects, other worktree admin directories, reflogs, caches or
+unrelated checkouts under the shared Git directory.
 
 The default `daemon.idleStopAfter` of **30 minutes is maintenance policy**, not a
 Buck guarantee or `daemon_idle_timeout_s` setting. Active streaming commands,

@@ -42,6 +42,7 @@ const makeOutput = Effect.fn('test.makeOutput')(function* ({
     yield* fs.utimes(join(directory, 'state'), old, old)
     yield* fs.utimes(directory, old, old)
   }
+  yield* fs.utimes(join(worktree, 'buck-out'), old, old)
   return base
 })
 
@@ -223,6 +224,7 @@ it.live('unknown Git or output timestamps remain unknown even when other evidenc
     const gitDir = yield* makeGitWorktree(temp)
     const output = yield* makeOutput({ worktree: temp, isolation: 'test' })
     for (const missingMtime of [
+      join(temp, 'buck-out'),
       join(gitDir, 'HEAD'),
       join(gitDir, 'index'),
       join(gitDir, 'logs/HEAD'),
@@ -265,6 +267,11 @@ it.live('bounds common-dir scans and ignores foreign locks and nested checkouts'
     const common = join(temp, 'shared')
     yield* fs.makeDirectory(join(common, 'gate-worktrees', 'checkout', '.git'), { recursive: true })
     yield* fs.writeFileString(join(common, 'foo.lock'), 'persistent foreign lock')
+    yield* fs.writeFileString(join(common, 'gh-stack.lock'), '')
+    yield* fs.writeFileString(join(common, 'gh-stack-operation.lock'), '')
+    yield* fs.writeFileString(join(common, 'merged-worktree-reclaim.lock'), '')
+    yield* fs.makeDirectory(join(common, 'refs/heads/owner'), { recursive: true })
+    yield* fs.writeFileString(join(common, 'refs/heads/owner/topic'), 'fixture ref')
     yield* fs.writeFileString(join(common, 'gate-worktrees', 'checkout', '.git', 'index.lock'), '')
     yield* fs.writeFileString(join(gitDir, 'commondir'), '../shared')
     let statCalls = 0
@@ -286,7 +293,13 @@ it.live('bounds common-dir scans and ignores foreign locks and nested checkouts'
       ),
     ).toEqual({ locked: false, lastActivityMs: old.getTime() })
     expect(statCalls).toBe(5)
-    expect(directories).toEqual([gitDir, common])
+    expect(directories).toEqual([
+      gitDir,
+      common,
+      join(common, 'refs'),
+      join(common, 'refs/heads'),
+      join(common, 'refs/heads/owner'),
+    ])
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
 
@@ -311,3 +324,27 @@ it.live('checks output boundaries without walking history for stale-only mainten
     expect(directories).toEqual([join(temp, 'buck-out')])
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
+
+for (const location of ['admin', 'common'] as const) {
+  for (const lock of [
+    'ORIG_HEAD.lock',
+    'config.worktree.lock',
+    'CUSTOM_ADMIN_HEAD.lock',
+    'seat-check.lock',
+  ]) {
+    it.live(`recognizes ${lock} directly in the ${location} directory`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const temp = yield* fs.makeTempDirectoryScoped()
+        const gitDir = yield* makeGitWorktree(temp)
+        const common = join(temp, 'shared')
+        yield* fs.makeDirectory(common)
+        yield* fs.writeFileString(join(gitDir, 'commondir'), '../shared')
+        yield* fs.writeFileString(join(location === 'admin' ? gitDir : common, lock), '')
+        expect((yield* readBuckMaintainGitEvidence(temp)).locked).toBe(
+          location === 'admin' || lock !== 'seat-check.lock',
+        )
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+}

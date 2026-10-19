@@ -86,19 +86,24 @@ const operationStates: Readonly<Record<string, true>> = {
 const scanGitLocks: (args: {
   directory: string
   adminRoot: boolean
+  allDirectLocks?: boolean
 }) => Effect.Effect<boolean | undefined, never, FileSystem.FileSystem> = Effect.fn(
   'store.buckMaintain.scanGitLocks',
-)(function* ({ directory, adminRoot }) {
+)(function* ({ directory, adminRoot, allDirectLocks = false }) {
   const fs = yield* FileSystem.FileSystem
   const entries = yield* fs.readDirectory(directory).pipe(Effect.option)
   if (Option.isNone(entries) === true) return undefined
   if (
     entries.value.some(
       (name) =>
-        ['packed-refs.lock', 'config.lock', 'shallow.lock'].includes(name) === true ||
+        (name.endsWith('.lock') === true &&
+          (allDirectLocks === true ||
+            /^[A-Z][A-Z_]*$/u.test(name.slice(0, -5)) === true ||
+            /^(config(\.worktree)?|packed-refs|shallow|index|description|info\/.*)$/u.test(
+              name.slice(0, -5),
+            ) === true)) ||
         (adminRoot === true &&
-          (['index.lock', 'HEAD.lock'].includes(name) === true ||
-            operationStates[name] === true ||
+          (operationStates[name] === true ||
             name.startsWith('BISECT') === true ||
             name.startsWith('REBASE') === true ||
             name.startsWith('CHERRY_PICK') === true)),
@@ -149,7 +154,6 @@ export const readBuckMaintainGitEvidence = Effect.fn('store.buckMaintain.readGit
     } else if (markerInfo.value.type !== 'Directory') return unknown
     const info = yield* fs.stat(gitDir).pipe(Effect.option)
     if (Option.isNone(info) === true || info.value.type !== 'Directory') return unknown
-    let locked = yield* scanGitLocks({ directory: gitDir, adminRoot: true })
     const common = yield* fs.readFileString(join(gitDir, 'commondir')).pipe(
       Effect.map((content) => ({ present: true as const, content })),
       Effect.catchIf(
@@ -158,6 +162,15 @@ export const readBuckMaintainGitEvidence = Effect.fn('store.buckMaintain.readGit
       ),
       Effect.option,
     )
+    let locked = yield* scanGitLocks({
+      directory: gitDir,
+      adminRoot: true,
+      allDirectLocks:
+        Option.isSome(common) === true &&
+        common.value.present === true &&
+        common.value.content.trim().length > 0 &&
+        resolve(gitDir, common.value.content.trim()) !== gitDir,
+    })
     if (Option.isNone(common) === true) {
       if (locked !== true) locked = undefined
     } else if (common.value.present === true) {
@@ -248,8 +261,18 @@ export const readBuckMaintainOutputActivity = Effect.fn('store.buckMaintain.read
       return 'unsafe'
     const isolations = yield* fs.readDirectory(output).pipe(Effect.option)
     if (Option.isNone(isolations) === true) return 'unsafe'
-    let newest: number | undefined
-    let complete = isolations.value.length > 0
+    // Removing an isolation updates its parent even if another old isolation
+    // survives. Its timestamp is part of the full-clean inactivity evidence.
+    const parent =
+      includeHistory === true ? yield* fs.stat(output).pipe(Effect.option) : Option.none()
+    const parentMs =
+      Option.isSome(parent) === true
+        ? Option.getOrUndefined(parent.value.mtime)?.getTime()
+        : undefined
+    let newest = parentMs
+    let complete =
+      isolations.value.length > 0 &&
+      (includeHistory === false || (parentMs !== undefined && Number.isFinite(parentMs) === true))
     for (const isolation of isolations.value) {
       const directory = join(output, isolation)
       const entry = yield* readEntry(directory)
