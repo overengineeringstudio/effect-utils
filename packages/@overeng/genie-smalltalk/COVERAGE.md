@@ -53,7 +53,7 @@ Every `MissionSchema` declaration requires `reportTo: importedAgent`, where `imp
 
 Omission, bare agent/person strings, and `reportTo: 'none'` are rejected. There is intentionally no opt-out: requiring a recipient prevents silently unobserved failures. Native st accepts agents only; reach a person through that person's agent. The DSL does not add unsupported person targets or step-level reporting.
 
-Native support starts at `compoundingtech/smalltalk` commit `3e7efce0663826a4e2bb517b2481b284e8df5f76` (#1984). Use that commit or a descendant for `ST_BIN` and before publishing generated missions. The daemon sends one message per failed, cancelled, or stalled run event; stalls default to 30 minutes without progress. Optional mission-level `stalledAfter` overrides that interval, using the same positive integer duration strings as `timeout` (`ms`, `s`, `m`, `h`, or `d`). For example, `stalledAfter: '45m'` emits the native mission-header property `stalled-after="45m"`, not a child node or a millisecond number. This property and duration parsing are confirmed against native revision `d56fcea` in `crates/st3/src/mission.rs` (`parse_mission`, `parse_run_report`, and `parse_duration`). Omission leaves the native default unchanged. Completion reporting is not exposed here. Messages identify the run, mission, and relevant steps, not failure reasons or step output. An unavailable reporting agent produces a native `report-to` fault rather than a delivered message.
+Native support starts at `compoundingtech/smalltalk` commit `3e7efce0663826a4e2bb517b2481b284e8df5f76` (#1984). Use that commit or a descendant for `ST_BIN` and before publishing generated missions. The daemon sends one message per failed, cancelled, or stalled run event; stalls default to 30 minutes without progress. Optional mission-level `stalledAfter` overrides that interval, using the same positive durations as `timeout`: native compact strings (`ms`, `s`, `m`, `h`, or `d`), Effect readable duration strings, or Effect Duration values. Durations must be finite and lossless integer milliseconds within native bounds, and normalize to millisecond strings. For example, `stalledAfter: '45m'` emits the native mission-header property `stalled-after="2700000ms"`, not a child node or a numeric value. This property and native duration parsing are confirmed against native revision `d56fcea` in `crates/st3/src/mission.rs` (`parse_mission`, `parse_run_report`, and `parse_duration`). Omission leaves the native default unchanged. Completion reporting is not exposed here. Messages identify the run, mission, and relevant steps, not failure reasons or step output. An unavailable reporting agent produces a native `report-to` fault rather than a delivered message.
 
 Optional mission-level `reportStalls: false` disables stalled-run reports without disabling failure or cancellation reports. This is useful for long-lived schedule-owning parent missions that intentionally wait at an agentless retirement gate. It emits the native boolean header property `report-stalls=#false`; `true` emits `#true`, and omission retains the native enabled default. Both values can be combined with `stalledAfter`. Native revision `d56fcea` validates this property as a KDL boolean in `parse_run_report`; quoted strings are not accepted.
 
@@ -136,7 +136,7 @@ risky mission relies on consent reuse or consultative fallback.
 
 ## Nested agent tasks
 
-Agent `pty` and `exec` tasks accept exactly one `command` or `argv` launch form and optional `host`/`workspace`; they do not accept or render `restart`. Excess task fields are rejected even when the containing agent is referenced rather than rendered. Unit assertions cover both task authoring types and runtime rejection, including an explicitly undefined `restart`. Root agent restart policy is unchanged; mission-step `ExecSchema.restart` remains a separate modeled field.
+Agent `pty` and `exec` tasks require one canonical `launch: Launch.shell({ command })` or `launch: Launch.argv({ argv, ...options })` value and optional `host`/`workspace`; they do not accept or render `restart`. Excess task fields and legacy `command`/`argv` authoring are rejected even when the containing agent is referenced rather than rendered. Unit assertions cover both task authoring types and runtime rejection, including an explicitly undefined `restart`. Root agent restart policy is unchanged; mission-step `ExecSchema.restart` remains a separate modeled field.
 
 ## Root agent contract and explicit routing
 
@@ -194,6 +194,10 @@ Use `gate.human`, `gate.exec`, `gate.fieldIs`, `gate.merged({ target: pr({ repo,
 
 Gate names may be omitted for deterministic constructor-derived names. Explicit names preserve existing gate identities and should be retained when migrating a pinned native definition. Human approve is the default; explicit names, predicates, reviewer attribution and review targets are otherwise lowered unchanged.
 
+Human `review` arrays contain canonical values: `Review.subject(target)` for native subjects and typed input/product/document references, `Review.file({ host, path })` for host files, and `Review.pinned(reference)` for immutable native references. Subject review values retain exact run-reference provenance; raw review strings are rejected. Native emitted review targets remain unchanged.
+
+Exec declarations and agent root/nested tasks use `launch: Launch.shell({ command })` or `launch: Launch.argv({ argv: ['program', ...args], env, unset, cwd })`. Launch values own execution environment options and lower directly to native `command`/`argv`, `cwd`, `env`, and `unset` children. Agent root `env` remains available for harness defaults, but cannot coexist with `launch.env`. Gate exec predicates retain their existing native command contract.
+
 The public authoring export is isomorphic ES2024. UTF-8 name limits use an allocation-free byte counter with TextEncoder-compatible surrogate handling. Long derived gate names retain their exact SHA-256 identities through the portable `@noble/hashes` implementation; no Node Buffer or crypto imports are required by authoring consumers.
 
 ## Child mission outputs and exact revisions
@@ -204,16 +208,17 @@ The wire representation remains native `producesMission` and `usesMission: { kin
 
 ## Calendar schedules
 
-Schedules accept a tagged calendar variant alongside the existing interval shape:
+Schedules require one canonical `timing` value; legacy top-level timing fields and lowercase schedule tags are rejected:
 
 ```ts
 schedule({
   id: 'daily',
   host: 'local',
-  _tag: 'calendar',
-  at: '08:00',
-  timezone: 'Europe/Berlin',
-  catchUp: 'latest',
+  timing: Timing.calendar({
+    at: '08:00',
+    timezone: 'Europe/Berlin',
+    catchUp: 'latest',
+  }),
   work: { mission: `demo@${'a'.repeat(64)}`, workspace: '/work/demo' },
 })
 ```
@@ -229,10 +234,9 @@ Omit `days` for a daily schedule. `days: ['Mon']` emits `at "Mon 08:00"` for a
 weekly schedule. The typed tuple accepts exactly one of `Mon`, `Tue`, `Wed`,
 `Thu`, `Fri`, `Sat`, `Sun`: st does not accept multi-day rules or a KDL `days`
 child. Calendar schedules cannot also contain `every` or `anchor`.
-Interval declarations can use `_tag: 'every'`; existing untagged
-`{ every, anchor, ... }` declarations remain source-compatible.
+Use `Timing.every({ every: '6h', anchor: '2026-01-01T00:00:00Z' })` for an anchored interval and `Timing.at('2026-01-01T00:00:00Z')` for a one-shot instant. Interval durations normalize to milliseconds and instants normalize to UTC. The constructors produce schema-derived PascalCase tags, not native override wrappers.
 
-Both variants require `catchUp: 'latest'`, preserving the library's latest-only
+Recurring timings default to `catchUp: 'latest'`, preserving the library's latest-only
 policy: an already reached occurrence is not replayed, missed occurrences
 collapse to the latest one, and a prior active mission run prevents starting
 another occurrence. Calendar keys are local dates. st resolves a spring DST

@@ -2,22 +2,22 @@ import { emit, mission, person } from './mod.ts'
 
 /** Synthetic public fixture; independent KDL exercises the same bounded waiting graph. */
 export const upstreamRepinKdl = `version 2
-mission "example/upstream-repin" report-to="agent/example/owner" state="ready" timeout="720h" {
+mission "example/upstream-repin" report-to="agent/example/owner" state="ready" timeout="2592000000ms" {
   goal "Wait for upstream readiness, then update and verify the selected revision."
   constraint "Only modify the selected worktree."
   constraint "Do not merge or deploy."
   step "install-gate" {
     agentless
-    retry { attempts 3; backoff "5m"; }
+    retry { attempts 3; backoff "300000ms"; }
     gate "the readiness helper is installed" {
       exec "printf ready > readiness-helper"
       host "local"
       workspace "\${ST_WORKSPACE}"
       env { CHECK_STYLE "plain"; }
-      time-limit "3m"
+      time-limit "180000ms"
     }
   }
-  loop "await-upstream" timeout="720h" {
+  loop "await-upstream" timeout="2592000000ms" {
     depends-on { step "install-gate" completed; }
     max-rounds 100
     until {
@@ -26,20 +26,20 @@ mission "example/upstream-repin" report-to="agent/example/owner" state="ready" t
         host "local"
         workspace "\${ST_WORKSPACE}"
         env { CHECK_STYLE "plain"; }
-        time-limit "3m"
+        time-limit "180000ms"
       }
     }
     round {
       completion { when "all-steps-exhausted" }
       step "settle" {
         agentless
-        retry { attempts 100; backoff "10m"; }
+        retry { attempts 100; backoff "600000ms"; }
         gate "readiness changed or the heartbeat is due" {
           exec "test -f heartbeat # round \${loop.round}"
           host "local"
           workspace "\${ST_WORKSPACE}"
           env { CHECK_STYLE "plain"; }
-          time-limit "3m"
+          time-limit "180000ms"
         }
       }
     }
@@ -51,7 +51,7 @@ mission "example/upstream-repin" report-to="agent/example/owner" state="ready" t
       }
     }
   }
-  step "repin" timeout="16h" {
+  step "repin" timeout="57600000ms" {
     assigned-to "agent/example/updater"
     depends-on { step "await-upstream" completed; }
     goal "Update the selected dependency to the upstream revision."

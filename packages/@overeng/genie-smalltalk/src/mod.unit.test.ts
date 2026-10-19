@@ -16,6 +16,9 @@ import {
   emit,
   type GateSchema,
   type HumanGateSchema,
+  Launch,
+  Review,
+  Timing,
   mission,
   MissionSchema,
   missionWire,
@@ -165,8 +168,8 @@ describe('attributed human gates', () => {
                   ...humanReviewGate,
                   question: 'Apply the reviewed configuration and rollback plan?',
                   review: [
-                    `doc/berlin-cutover@${'a'.repeat(64)}`,
-                    'resource/example/rollback-plan',
+                    Review.pinned(`doc/berlin-cutover@${'a'.repeat(64)}`),
+                    Review.subject('resource/example/rollback-plan'),
                   ],
                 },
               ],
@@ -183,7 +186,7 @@ describe('attributed human gates', () => {
     ).toBe(`version 2
 mission "home/berlin/cutover" report-to="agent/example/owner" state="ready" {
   goal "Apply only the reviewed Berlin cutover plan."
-  step "approve-cutover" timeout="1d" {
+  step "approve-cutover" timeout="86400000ms" {
     agentless
     gate "Approve the bounded Berlin cutover" mode="approve" type="human" {
       reviewer "person/schickling"
@@ -233,7 +236,7 @@ step "draft" {
     ).toBe(emit([step({ id: 'approve', agentless: true, gates: [humanReviewGate] })]))
     for (const invalid of [
       { mode: 'consultative' },
-      { review: ['doc/plan', 'doc/plan'] },
+      { review: [Review.subject('doc/plan'), Review.subject('doc/plan')] },
       { question: '' },
       { reviewer: 'person/schickling' },
     ]) {
@@ -283,6 +286,108 @@ step "draft" {
   })
 })
 
+describe('canonical launch and review authoring', () => {
+  it('lowers argv execution options and immutable reviews to exact native KDL', () => {
+    const hash = 'b'.repeat(64)
+    expect(
+      emit([
+        step({
+          id: 'check',
+          agentless: true,
+          exec: {
+            id: 'verify',
+            host: 'local',
+            workspace: '/work/example',
+            restart: 'never',
+            launch: Launch.argv({
+              argv: ['git', 'status', '--short'],
+              cwd: '/work/example/src',
+              env: { ZED: 'last', ALPHA: 'first' },
+              unset: ['GIT_DIR', 'GIT_WORK_TREE'],
+            }),
+          },
+          gates: [
+            {
+              kind: 'human',
+              name: 'review',
+              reviewer: operator,
+              review: [
+                Review.file({ host: 'local', path: '/work/example/plan.md' }),
+                Review.pinned(`doc/example/plan@${hash}`),
+              ],
+            },
+          ],
+        }),
+      ]),
+    ).toBe(`version 2
+step "check" {
+  agentless
+  exec "verify" {
+    host "local"
+    workspace "/work/example"
+    argv "git" "status" "--short"
+    cwd "/work/example/src"
+    env {
+      ALPHA "first"
+      ZED "last"
+    }
+    unset "GIT_DIR"
+    unset "GIT_WORK_TREE"
+    restart "never"
+  }
+  gate "review" mode="approve" type="human" {
+    reviewer "person/schickling"
+    review "file/local:/work/example/plan.md"
+    review "doc/example/plan@${hash}"
+  }
+}
+`)
+  })
+
+  it('rejects removed command, argv and raw review authoring paths', () => {
+    for (const legacy of [{ command: 'true' }, { argv: ['true'] }]) {
+      expect(() => agent({ id: 'legacy', ...legacy } as never)).toThrow()
+      for (const kind of ['pty', 'exec']) {
+        expect(() =>
+          agent({ id: 'legacy', [kind]: [{ id: 'task', ...legacy }] } as never),
+        ).toThrow()
+      }
+      expect(() =>
+        step({
+          id: 'legacy',
+          agentless: true,
+          exec: { id: 'task', host: 'local', workspace: '/tmp', restart: 'never', ...legacy },
+        } as never),
+      ).toThrow()
+    }
+    expect(() =>
+      gate.human({ reviewer: operator, review: ['resource/example'] } as never),
+    ).toThrow()
+  })
+
+  it('lowers one-shot timing without recurring catch-up fields', () => {
+    expect(
+      emit([
+        schedule({
+          id: 'once',
+          host: 'local',
+          work: { mission: 'demo', workspace: '/work/demo' },
+          timing: Timing.at('2026-10-19T09:00:00+02:00'),
+        }),
+      ]),
+    ).toBe(`version 2
+schedule "once" {
+  host "local"
+  at "2026-10-19T07:00:00.000Z"
+  work {
+    mission "demo"
+    workspace "/work/demo"
+  }
+}
+`)
+  })
+})
+
 const reporter = {
   id: 'ops/watcher',
   name: 'Mission watcher',
@@ -301,21 +406,22 @@ const canonical = () =>
     mission(fanInMission()),
   ])
 const scheduleWork = { mission: `demo@${'a'.repeat(64)}`, workspace: '/work/demo' }
+const calendarTiming = { at: '08:00', timezone: 'Europe/Berlin', catchUp: 'latest' } as const
 const calendarSchedule = {
   id: 'daily',
   host: 'local',
-  _tag: 'calendar',
-  at: '08:00',
-  timezone: 'Europe/Berlin',
-  catchUp: 'latest',
+  timing: Timing.calendar(calendarTiming),
   work: scheduleWork,
 } as const
 describe('Calendar schedules', () => {
   it('rejects unknown zones in the callable Intl timezone validator', () => {
     expect(() => Intl.DateTimeFormat(undefined, { timeZone: 'Mars/Olympus' })).toThrow(RangeError)
-    expect(() => schedule({ ...calendarSchedule, timezone: 'Mars/Olympus' })).toThrow(
-      'unknown IANA timezone',
-    )
+    expect(() =>
+      schedule({
+        ...calendarSchedule,
+        timing: Timing.calendar({ ...calendarTiming, timezone: 'Mars/Olympus' }),
+      }),
+    ).toThrow('unknown IANA timezone')
   })
   it('renders the documented Berlin daily calendar schedule without interval fields', () => {
     expect(emit([schedule(calendarSchedule)])).toBe(
@@ -339,23 +445,34 @@ schedule "daily" {
     'renders a weekly %s calendar using st DAY HH:MM syntax',
     (day) => {
       expect(
-        emit([schedule({ ...calendarSchedule, at: '09:00', days: [day] as const })]),
+        emit([
+          schedule({
+            ...calendarSchedule,
+            timing: Timing.calendar({ ...calendarTiming, at: '09:00', days: [day] }),
+          }),
+        ]),
       ).toContain(`calendar {\n    at "${day} 09:00"\n    timezone "Europe/Berlin"\n  }`)
     },
   )
-  it('supports both tagged and existing untagged interval declarations', () => {
+  it('renders canonical interval timing and rejects former schedule authoring paths', () => {
     const interval = {
       id: 'cycle',
       host: 'local',
-      every: '6h',
-      anchor: '2026-01-01T00:00:00Z',
-      catchUp: 'latest',
+      timing: Timing.every({ every: '6h', anchor: '2026-01-01T00:00:00Z', catchUp: 'latest' }),
       work: scheduleWork,
     } as const
     const rendered = emit([schedule(interval)])
-    expect(emit([schedule({ ...interval, _tag: 'every' })])).toBe(rendered)
-    expect(rendered).toContain('  every "6h"\n  anchor "2026-01-01T00:00:00Z"\n')
+    expect(rendered).toContain('  every "21600000ms"\n  anchor "2026-01-01T00:00:00.000Z"\n')
     expect(rendered).not.toContain('calendar')
+    for (const legacy of [
+      { every: '6h', anchor: '2026-01-01T00:00:00Z', catchUp: 'latest' },
+      { _tag: 'every', every: '6h', anchor: '2026-01-01T00:00:00Z', catchUp: 'latest' },
+      { _tag: 'calendar', at: '08:00', timezone: 'Europe/Berlin', catchUp: 'latest' },
+    ]) {
+      expect(() =>
+        schedule({ id: 'legacy', host: 'local', work: scheduleWork, ...legacy } as never),
+      ).toThrow()
+    }
   })
   it('renders a calendar schedule nested in a mission', () => {
     expect(
@@ -374,11 +491,15 @@ schedule "daily" {
   it.each(['24:00', '12:60', '8:00', '08:0', '08:00:00', 'Mon 08:00', '', ' 08:00'])(
     'rejects invalid calendar time %j',
     (at) => {
-      expect(() => schedule({ ...calendarSchedule, at })).toThrow()
+      expect(() =>
+        schedule({ ...calendarSchedule, timing: Timing.calendar({ ...calendarTiming, at }) }),
+      ).toThrow()
     },
   )
   it.each(['Mars/Olympus', '', '+02:00'])('rejects invalid timezone %j', (timezone) => {
-    expect(() => schedule({ ...calendarSchedule, timezone })).toThrow()
+    expect(() =>
+      schedule({ ...calendarSchedule, timing: Timing.calendar({ ...calendarTiming, timezone }) }),
+    ).toThrow()
   })
   it.each([
     { timezone: undefined },
@@ -392,10 +513,19 @@ schedule "daily" {
     { catchUp: 'all', maxCatchUp: 2 },
     { misfire: 'skip' },
   ])('rejects unsupported or conflicting calendar fields %j', (fields) => {
-    expect(() => schedule({ ...calendarSchedule, ...fields } as never)).toThrow()
+    expect(() =>
+      schedule({ ...calendarSchedule, timing: { ...calendarSchedule.timing, ...fields } } as never),
+    ).toThrow()
   })
   it.each(['00:00', '23:59'])('accepts boundary calendar time %s', (at) => {
-    expect(emit([schedule({ ...calendarSchedule, at, timezone: 'UTC' })])).toContain(`at "${at}"`)
+    expect(
+      emit([
+        schedule({
+          ...calendarSchedule,
+          timing: Timing.calendar({ ...calendarTiming, at, timezone: 'UTC' }),
+        }),
+      ]),
+    ).toContain(`at "${at}"`)
   })
 })
 
@@ -449,24 +579,28 @@ describe('Smalltalk declarations', () => {
     expect(emit([declaration])).not.toContain('Mission watcher')
     expect(emit([declaration])).not.toContain('harness')
   })
-  it.each(['1ms', '30s', '45m', '2h', '1d'])(
-    'renders mission stalledAfter %s as a native duration property',
-    (stalledAfter) => {
-      const input = { ...fanInMission(), timeout: '2d', stalledAfter }
-      const decoded = Schema.decodeSync(MissionSchema)(input)
-      expect(decoded.stalledAfter).toBe(stalledAfter)
-      const declaration = mission(input)
-      expect(declaration.props['stalled-after']).toBe(stalledAfter)
-      expect(declaration.props.timeout).toBe('2d')
-      expect(emit([declaration])).toContain(`stalled-after="${stalledAfter}"`)
-      expect(declaration.children?.some((entry) => entry.name === 'stalled-after')).toBe(false)
-      expect(missionWire(input).stalledAfter).toBe(stalledAfter)
-    },
-  )
+  it.each([
+    ['1ms', '1ms'],
+    ['30s', '30000ms'],
+    ['45m', '2700000ms'],
+    ['2h', '7200000ms'],
+    ['1d', '86400000ms'],
+    ['45 minutes', '2700000ms'],
+  ])('renders mission stalledAfter %s as canonical duration %s', (stalledAfter, normalized) => {
+    const input = { ...fanInMission(), timeout: '2d', stalledAfter }
+    const decoded = Schema.decodeSync(MissionSchema)(input)
+    expect(decoded.stalledAfter).toBe(normalized)
+    const declaration = mission(input)
+    expect(declaration.props['stalled-after']).toBe(normalized)
+    expect(declaration.props.timeout).toBe('172800000ms')
+    expect(emit([declaration])).toContain(`stalled-after="${normalized}"`)
+    expect(declaration.children?.some((entry) => entry.name === 'stalled-after')).toBe(false)
+    expect(missionWire(input).stalledAfter).toBe(normalized)
+  })
   it('omits the native stalled-after property when no duration is authored', () => {
     expect(mission(fanInMission()).props).not.toHaveProperty('stalled-after')
   })
-  it.each(['0ms', '0s', '-1m', '1.5h', '45 minutes', '45', '', 45000])(
+  it.each(['0ms', '0s', '-1m', '1.5h', '0.0001 seconds', '45', '', 45000])(
     'rejects invalid mission stalledAfter %j',
     (stalledAfter) => {
       expect(() =>
@@ -590,10 +724,10 @@ describe('Smalltalk declarations', () => {
     { harness: { kind: 'omp', model: 'example-model' } },
     { harness: { kind: 'codex', model: '', effort: 'high' } },
     {
-      command: 'true',
+      launch: Launch.shell({ command: 'true' }),
       harness: { kind: 'omp', model: 'example-model', effort: 'high' },
     },
-    { command: 'true', argv: ['true'] },
+    { launch: { _tag: 'Shell', command: 'true', argv: ['true'] } },
     { checkout: { repository: 'repo', base: 'main', branch: 'work' } },
   ])('validates the complete referenced launch declaration %j', (launch) => {
     const reference = { id: 'ops/invalid', ...launch }
@@ -630,8 +764,15 @@ describe('Smalltalk declarations', () => {
         agent({
           id: 'ops/worker',
           restart: 'always',
-          pty: [{ id: 'shell', command: 'sh' }],
-          exec: [{ id: 'check', host: 'local', workspace: '/tmp', argv: ['true'] }],
+          pty: [{ id: 'shell', launch: Launch.shell({ command: 'sh' }) }],
+          exec: [
+            {
+              id: 'check',
+              host: 'local',
+              workspace: '/tmp',
+              launch: Launch.argv({ argv: ['true'] }),
+            },
+          ],
         }),
       ]),
     ).toBe(
@@ -641,7 +782,10 @@ describe('Smalltalk declarations', () => {
   it.each(['pty', 'exec'] as const)(
     'rejects excess restart on nested %s tasks at runtime',
     (kind) => {
-      for (const launch of [{ command: 'true' }, { argv: ['true'] }]) {
+      for (const launch of [
+        { launch: Launch.shell({ command: 'true' }) },
+        { launch: Launch.argv({ argv: ['true'] }) },
+      ]) {
         for (const restart of ['never', 'always', undefined]) {
           const reference = { id: 'ops/worker', [kind]: [{ id: 'task', ...launch, restart }] }
           expect(() => agent(reference)).toThrow()
@@ -828,14 +972,16 @@ describe('Smalltalk declarations', () => {
       schedule({
         id: 'night',
         host: 'local',
-        every: '0s',
-        anchor: '2026-09-30T12:00:00Z',
-        catchUp: 'latest',
+        timing: Timing.every({ every: '0s', anchor: '2026-09-30T12:00:00Z', catchUp: 'latest' }),
         work: { mission: `demo@${'a'.repeat(64)}`, workspace: '/tmp' },
       }),
     ).toThrow()
     expect(() =>
-      agent({ id: 'seat', command: 'true', harness: { kind: 'omp', model: 'x', effort: 'low' } }),
+      agent({
+        id: 'seat',
+        launch: Launch.shell({ command: 'true' }),
+        harness: { kind: 'omp', model: 'x', effort: 'low' },
+      }),
     ).toThrow()
     expect(() =>
       agent({ id: 'seat', checkout: { repository: 'repo', base: 'main', branch: 'work' } }),
@@ -932,16 +1078,14 @@ describe('Smalltalk declarations', () => {
     schedule({
       id: 'cycle',
       host: 'local',
-      every: '6h',
-      anchor: '2026-01-01T00:00:00Z',
-      catchUp: 'latest',
+      timing: Timing.every({ every: '6h', anchor: '2026-01-01T00:00:00Z', catchUp: 'latest' }),
       work: { mission, workspace: '/work/cycles' },
     })
   it.each(['fabric/cycle', `fabric/cycle@${'a'.repeat(64)}`])(
     'emits scheduled work for mission %s',
     (mission) => {
       expect(emit([cycle(mission)])).toBe(
-        `version 2\nschedule "cycle" {\n  host "local"\n  every "6h"\n  anchor "2026-01-01T00:00:00Z"\n  catch-up "latest"\n  work {\n    mission "${mission}"\n    workspace "/work/cycles"\n  }\n}\n`,
+        `version 2\nschedule "cycle" {\n  host "local"\n  every "21600000ms"\n  anchor "2026-01-01T00:00:00.000Z"\n  catch-up "latest"\n  work {\n    mission "${mission}"\n    workspace "/work/cycles"\n  }\n}\n`,
       )
     },
   )
@@ -1117,7 +1261,7 @@ describe('native mission grammar', () => {
   it('retains every native gate, retry, completion and finalization in the synthetic graph', () => {
     const kdl = grammarCanonical()
     expect(kdl).toContain('goal "Bound goals to three."')
-    expect(kdl).toContain('retry {\n      attempts 100\n      backoff "0s"')
+    expect(kdl).toContain('retry {\n      attempts 100\n      backoff "0ms"')
     expect(kdl).toContain('completion {\n    depends-on {\n      step "last" "completed"')
     expect(kdl).toContain('finally {\n    step "cleanup"')
     expect(kdl).toContain('field "name" "resource/input" "starts-with" "input"')
@@ -1126,7 +1270,7 @@ describe('native mission grammar', () => {
   it('renders public PR inputs and config-time fragments with the same ordered flow', () => {
     expect(emit([prLanding()])).toContain('input "commit" kind="text"')
     expect(emit([prLandingFragment({ number: 7, commit: 'abc' })])).toContain('repo="acme/garden"')
-    expect(upstreamRepin()).toContain('loop "await-upstream" timeout="720h"')
+    expect(upstreamRepin()).toContain('loop "await-upstream" timeout="2592000000ms"')
     expect(upstreamRepinKdl).toContain('report-to="agent/example/owner"')
   })
   it('preserves native mission-level assignment without injecting it into steps', () => {
@@ -1407,7 +1551,7 @@ describe('native mission grammar', () => {
             reviewer: person('person/reviewer'),
             mode: 'feedback',
             question: 'Is this ready?',
-            review: ['resource/garden', 'doc/report'],
+            review: [Review.subject('resource/garden'), Review.subject('doc/report')],
           }),
         ),
       ]),
@@ -1422,7 +1566,7 @@ describe('native mission grammar', () => {
         gate.human({
           name: 'bad',
           reviewer: person('person/reviewer'),
-          review: ['resource/a', 'resource/a'],
+          review: [Review.subject('resource/a'), Review.subject('resource/a')],
         }),
       ),
     ).toThrow()
@@ -1985,7 +2129,11 @@ testWithSt(
         expect(second.status, second.stderr).toBe(0)
         expect(JSON.parse(second.stdout)).toMatchObject({ changed: false })
         const seatSource = join(dir, 'agent.kdl')
-        const launch = { id: 'garden/orchard', workspace: dir, command: 'true' }
+        const launch = {
+          id: 'garden/orchard',
+          workspace: dir,
+          launch: Launch.shell({ command: 'true' }),
+        }
         const seat = emit([agent({ ...launch, rollout: 'manual', handlesFaults: true })])
         const applySeat = (declaration: string) => {
           writeFileSync(seatSource, declaration)
@@ -2066,10 +2214,30 @@ testWithSt(
         expect(automaticShown.stdout).not.toContain('handles-faults')
         const fixtureSeats = applySeat(
           emit([
-            agent({ id: 'example/owner', workspace: dir, command: 'true', rollout: 'manual' }),
-            agent({ id: 'example/updater', workspace: dir, command: 'true', rollout: 'manual' }),
-            agent({ id: 'team/worker', workspace: dir, command: 'true', rollout: 'manual' }),
-            agent({ id: reporter.id, workspace: dir, command: 'true', rollout: 'manual' }),
+            agent({
+              id: 'example/owner',
+              workspace: dir,
+              launch: Launch.shell({ command: 'true' }),
+              rollout: 'manual',
+            }),
+            agent({
+              id: 'example/updater',
+              workspace: dir,
+              launch: Launch.shell({ command: 'true' }),
+              rollout: 'manual',
+            }),
+            agent({
+              id: 'team/worker',
+              workspace: dir,
+              launch: Launch.shell({ command: 'true' }),
+              rollout: 'manual',
+            }),
+            agent({
+              id: reporter.id,
+              workspace: dir,
+              launch: Launch.shell({ command: 'true' }),
+              rollout: 'manual',
+            }),
           ]),
         )
         expect(fixtureSeats.status, fixtureSeats.stderr).toBe(0)

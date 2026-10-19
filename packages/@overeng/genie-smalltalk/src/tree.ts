@@ -14,9 +14,20 @@ import {
   type ScheduleSchema,
   type WorkSchema,
 } from './mod.ts'
-
-/** The declaration file kind; a `schedule` is a mission that carries a schedule. */
-export type SubjectKind = 'agent' | 'mission' | 'schedule'
+import type {
+  SubjectKind,
+  SubjectRef,
+  SubjectDefinition,
+  AgentRef,
+  MissionRef,
+} from './subject-ref.ts'
+export type {
+  SubjectKind,
+  SubjectRef,
+  SubjectDefinition,
+  AgentRef,
+  MissionRef,
+} from './subject-ref.ts'
 
 /** A subject tree that cannot be loaded; `path` is relative to the tree root where known. */
 export class SubjectTreeError extends Schema.TaggedError<SubjectTreeError>()('SubjectTreeError', {
@@ -25,23 +36,27 @@ export class SubjectTreeError extends Schema.TaggedError<SubjectTreeError>()('Su
   cause: Schema.optional(Schema.Defect()),
 }) {}
 
-/** A typed pointer to a subject module; the tree loader derives its ID from the module path. */
-export interface SubjectRef<K extends SubjectKind> {
-  readonly _tag: 'SubjectRef'
-  readonly kind: K
-  /** The defining module's `import.meta.url`. */
-  readonly url: string
+/** Exact source revision binding; zero requests the graph renderer's ST_REVISION receipt. */
+export interface PinnedMissionRef {
+  readonly _tag: 'PinnedMissionRef'
+  readonly subject: MissionRef
+  readonly revision: string
 }
 
-/** A seat reference; lowers to `agent/<id>` as a step assignee. */
-export type AgentRef = SubjectRef<'agent'>
-
-/** A mission reference; lowers to the unpinned mission ID `<id>` as schedule work. */
-export type MissionRef = SubjectRef<'mission'>
-
-/** A subject module's default export: a reference plus its intent or a context factory. */
-export interface SubjectDefinition<K extends SubjectKind, I, C> extends SubjectRef<K> {
-  readonly intent: I | ((context: C) => I)
+/**
+ * Pins imported mission work, never its moving published head. Without an explicit hash,
+ * the graph renderer binds the zero sentinel to this source mission's native revision.
+ */
+export const pinMission = ({
+  subject,
+  revision = '0'.repeat(64),
+}: {
+  readonly subject: MissionRef
+  readonly revision?: string
+}): PinnedMissionRef => {
+  if (/^[0-9a-fA-F]{64}$/u.test(revision) === false)
+    throw new TypeError('Pinned mission revision must be a 64-hex native revision')
+  return Object.freeze({ _tag: 'PinnedMissionRef', subject, revision })
 }
 
 type WorkWire = typeof WorkSchema.Encoded
@@ -56,7 +71,9 @@ export type AgentIntent = Omit<typeof AgentSchema.Encoded, 'id' | 'under'> & {
 
 type TreeStep<T> = T extends { readonly round: infer R }
   ? Omit<T, 'round'> & { readonly round: TreeRound<R> }
-  : { [K in keyof T]: K extends 'assignedTo' ? T[K] | AgentRef : T[K] }
+  : {
+      [K in keyof T]: K extends 'assignedTo' ? T[K] | AgentRef : T[K]
+    } & { readonly waitFor?: PinnedMissionRef }
 
 type TreeSteps<T> = T extends readonly unknown[] ? { [K in keyof T]: TreeStep<T[K]> } : T
 
@@ -75,11 +92,10 @@ export type MissionIntent = Omit<
   readonly finally?: ReadonlyArray<TreeStep<NonNullable<MissionInput<string>['finally']>[number]>>
 }
 
-// Replace work separately for each interval/calendar variant, retaining its required fields.
 type TreeSchedule<TSchedule> = TSchedule extends unknown
   ? Omit<TSchedule, 'work'> & {
       readonly work: Omit<WorkWire, 'mission'> & {
-        readonly mission: MissionRef | WorkWire['mission']
+        readonly mission: MissionRef | PinnedMissionRef | WorkWire['mission']
       }
     }
   : never
@@ -150,6 +166,12 @@ const scheduleMismatch: Record<Exclude<SubjectKind, 'agent'>, string> = {
 const isRef = (value: unknown): value is SubjectRef<SubjectKind> =>
   typeof value === 'object' && value !== null && '_tag' in value && value._tag === 'SubjectRef'
 
+const isPinnedRef = (value: unknown): value is PinnedMissionRef =>
+  typeof value === 'object' &&
+  value !== null &&
+  '_tag' in value &&
+  value._tag === 'PinnedMissionRef'
+
 /** A declaration's subject ID is its directory relative to the tree root, POSIX-separated. */
 const subjectId = ({
   root,
@@ -180,7 +202,7 @@ const resolveRef = Effect.fnUntraced(function* ({
   readonly root: string
   readonly path: string
   readonly ref: SubjectRef<SubjectKind>
-  readonly expected: 'agent' | 'mission'
+  readonly expected: SubjectKind
 }) {
   if (ref.kind !== expected) {
     return yield* new SubjectTreeError({
@@ -199,7 +221,47 @@ const resolveRef = Effect.fnUntraced(function* ({
       message: `Reference must point at ${expected}.ts, got ${basename(file)}`,
     })
   }
-  return yield* subjectId({ root, file, path })
+  const fs = yield* FileSystem.FileSystem
+  const canonical = yield* fs
+    .realPath(file)
+    .pipe(
+      Effect.mapError(
+        (cause) =>
+          new SubjectTreeError({ path, message: 'Cannot resolve reference module', cause }),
+      ),
+    )
+  if (basename(canonical) !== `${expected}.ts`) {
+    return yield* new SubjectTreeError({
+      path,
+      message: `Reference must point at ${expected}.ts, got ${basename(canonical)}`,
+    })
+  }
+  return yield* subjectId({ root, file: canonical, path })
+})
+
+const resolvePinnedRef = Effect.fnUntraced(function* ({
+  root,
+  path,
+  ref,
+}: {
+  readonly root: string
+  readonly path: string
+  readonly ref: PinnedMissionRef
+}) {
+  if (/^[0-9a-fA-F]{64}$/u.test(ref.revision) === false) {
+    return yield* new SubjectTreeError({
+      path,
+      message: 'Pinned mission revision must be a 64-hex native revision',
+    })
+  }
+  if (isRef(ref.subject) === false) {
+    return yield* new SubjectTreeError({
+      path,
+      message: 'Pinned mission needs a mission reference',
+    })
+  }
+  const id = yield* resolveRef({ root, path, ref: ref.subject, expected: 'mission' })
+  return `${id}@${ref.revision}`
 })
 
 type ReferenceFields = {
@@ -209,6 +271,8 @@ type ReferenceFields = {
   readonly steps?: unknown
   readonly finally?: unknown
   readonly under?: unknown
+  readonly gates?: unknown
+  readonly review?: unknown
 }
 
 /** Lowers only reference-bearing fields, preserving identity-bearing authoring handles. */
@@ -216,49 +280,80 @@ const lowerReferences: (args: {
   readonly root: string
   readonly path: string
   readonly intent: unknown
-}) => Effect.Effect<unknown, SubjectTreeError> = Effect.fnUntraced(function* ({
-  root,
-  path,
-  intent,
-}) {
-  if (typeof intent !== 'object' || intent === null) return intent
-  const fields = intent as ReferenceFields
-  let lowered: Record<PropertyKey, unknown> | undefined
-  const set = ({ key, value }: { key: string; value: unknown }) => {
-    lowered ??= { ...intent }
-    lowered[key] = value
-  }
-  for (const key of ['reportTo', 'assignedTo', 'target'] as const) {
-    if (key in intent && isRef(fields[key]) === true) {
-      const id = yield* resolveRef({ root, path, ref: fields[key], expected: 'agent' })
-      set({ key, value: { id } })
+}) => Effect.Effect<unknown, SubjectTreeError, FileSystem.FileSystem> = Effect.fnUntraced(
+  function* ({ root, path, intent }) {
+    if (typeof intent !== 'object' || intent === null) return intent
+    const fields = intent as ReferenceFields
+    let lowered: Record<PropertyKey, unknown> | undefined
+    const set = ({ key, value }: { key: string; value: unknown }) => {
+      lowered ??= { ...intent }
+      lowered[key] = value
     }
-  }
-  for (const key of ['steps', 'finally', 'under'] as const) {
-    if (key in intent && Array.isArray(fields[key]) === true) {
-      const values = fields[key]
-      const next = yield* Effect.forEach(values as readonly unknown[], (value) =>
-        lowerReferences({ root, path, intent: value }),
-      )
-      if (next.some((value, index) => value !== values[index]) === true) set({ key, value: next })
-    }
-  }
-  if ('round' in intent) {
-    const round = yield* lowerReferences({ root, path, intent: intent.round })
-    if (round !== intent.round) set({ key: 'round', value: round })
-  }
-  if ('schedule' in intent && typeof intent.schedule === 'object' && intent.schedule !== null) {
-    const schedule = intent.schedule
-    if ('work' in schedule && typeof schedule.work === 'object' && schedule.work !== null) {
-      const work = schedule.work
-      if ('mission' in work && isRef(work.mission) === true) {
-        const mission = yield* resolveRef({ root, path, ref: work.mission, expected: 'mission' })
-        set({ key: 'schedule', value: { ...schedule, work: { ...work, mission } } })
+    for (const key of ['reportTo', 'assignedTo', 'target'] as const) {
+      if (key in intent && isRef(fields[key]) === true) {
+        const id = yield* resolveRef({ root, path, ref: fields[key], expected: 'agent' })
+        set({ key, value: { id } })
       }
     }
-  }
-  return lowered ?? intent
-})
+    for (const key of ['steps', 'finally', 'under', 'gates', 'review'] as const) {
+      if (key in intent && Array.isArray(fields[key]) === true) {
+        const values = fields[key]
+        const next = yield* Effect.forEach(values as readonly unknown[], (value) =>
+          lowerReferences({ root, path, intent: value }),
+        )
+        if (next.some((value, index) => value !== values[index]) === true) set({ key, value: next })
+      }
+    }
+    if ('round' in intent) {
+      const round = yield* lowerReferences({ root, path, intent: intent.round })
+      if (round !== intent.round) set({ key: 'round', value: round })
+    }
+    if (
+      '_tag' in intent &&
+      intent._tag === 'Subject' &&
+      'subject' in intent &&
+      isRef(intent.subject) === true
+    ) {
+      const ref = intent.subject
+      if (ref.kind !== 'agent' && ref.kind !== 'mission' && ref.kind !== 'schedule') {
+        return yield* new SubjectTreeError({
+          path,
+          message: 'Review reference has an invalid kind',
+        })
+      }
+      const id = yield* resolveRef({ root, path, ref, expected: ref.kind })
+      set({ key: 'subject', value: `${ref.kind === 'agent' ? 'agent' : 'mission'}/${id}` })
+    }
+    if ('waitFor' in intent && isPinnedRef(intent.waitFor) === true) {
+      const revision = yield* resolvePinnedRef({ root, path, ref: intent.waitFor })
+      if (intent.waitFor.revision === '0'.repeat(64)) {
+        return yield* new SubjectTreeError({
+          path,
+          message:
+            'waitFor needs an explicit native revision; source receipt binding is schedule-only',
+        })
+      }
+      set({ key: 'usesMission', value: { kind: 'revision', revision } })
+      if (lowered !== undefined) delete lowered.waitFor
+    }
+    if ('schedule' in intent && typeof intent.schedule === 'object' && intent.schedule !== null) {
+      const schedule = intent.schedule
+      if ('work' in schedule && typeof schedule.work === 'object' && schedule.work !== null) {
+        const work = schedule.work
+        if (
+          'mission' in work &&
+          (isRef(work.mission) === true || isPinnedRef(work.mission) === true)
+        ) {
+          const mission = yield* isPinnedRef(work.mission) === true
+            ? resolvePinnedRef({ root, path, ref: work.mission })
+            : resolveRef({ root, path, ref: work.mission, expected: 'mission' })
+          set({ key: 'schedule', value: { ...schedule, work: { ...work, mission } } })
+        }
+      }
+    }
+    return lowered ?? intent
+  },
+)
 
 const loadModule = Effect.fnUntraced(function* <C>({
   root,

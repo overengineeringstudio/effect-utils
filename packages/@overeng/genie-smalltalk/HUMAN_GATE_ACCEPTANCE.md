@@ -14,6 +14,8 @@ production conformance round-trip is independently enabled by `ST_BIN`. Each cas
 - uses a dedicated fixture person configured only in that private daemon, not Johannes or a production person. Human-gate mutations explicitly name `--as person/genie-human-gate-test`. Under Johannes's R1 decision this is an **attributed record**, not a person credential; the fixtures do not claim credential-level security (stricter authentication: [smalltalk#2184](https://github.com/compoundingtech/smalltalk/issues/2184));
 - reads the real request and episode IDs from the daemon: `/v1/reviews` gives the `gate.requested` claim ID and its `gate-operation/...` subject, `/v1/claims/by-id` gives the binding fields, and `st alerts ls --json` gives the `attention/...` card ID and episode. Waits are bounded polls (100 ms interval, 20 s deadline, 90 s for the timeout case) for a specific observed condition. Elapsed time never stands in for that condition.
 
+Human review targets are authored as `Review.subject(target)`, `Review.file({ host, path })`, or `Review.pinned(reference)`, never raw strings. Typed subject references preserve input/product provenance while emitting the same native review target strings. Step execution uses `launch: Launch.shell({ command })` or `Launch.argv({ argv, ...options })`; these canonical values do not change the native human-gate episode contract.
+
 ### Ancestry-bound actor requirement
 
 Production `st` serves the local socket with `serve_unix_bound_with_ready`.

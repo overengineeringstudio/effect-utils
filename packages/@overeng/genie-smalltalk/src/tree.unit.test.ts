@@ -8,9 +8,11 @@ import { Effect } from 'effect'
 
 import {
   defineMission,
+  pinMission,
   loadSubjectTree,
   type AgentRef,
   type MissionRef,
+  type PinnedMissionRef,
   type ScheduleIntent,
 } from './tree.ts'
 
@@ -41,7 +43,7 @@ const load = (root: string) =>
 
 const loadError = (root: string) => load(root).pipe(Effect.flip)
 
-const define = `import { defineAgent, defineMission, defineSchedule } from '${treeModule}'\n`
+const define = `import { defineAgent, defineMission, defineSchedule, pinMission } from '${treeModule}'\n`
 
 describe('loadSubjectTree', () => {
   it.effect('derives IDs from paths, passes context and lowers typed references', () =>
@@ -79,13 +81,74 @@ describe('loadSubjectTree', () => {
     Effect.gen(function* () {
       const root = fixture({
         'ops/cycle/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'ops/owner' }, goal: 'Cycle.', steps: [{ id: 'run', agentless: true }] } })`,
-        'ops/weekly/schedule.ts': `${define}import cycle from '../cycle/mission.ts'\nexport default defineSchedule({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'ops/owner' }, goal: 'Weekly.', schedule: { id: 'tick', host: 'local', every: '7d', anchor: '2026-09-28T07:00:00Z', catchUp: 'latest', work: { mission: cycle, workspace: '/srv/runs' } }, steps: [{ id: 'retire', agentless: true }] } })`,
+        'ops/weekly/schedule.ts': `${define}import cycle from '../cycle/mission.ts'\nexport default defineSchedule({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'ops/owner' }, goal: 'Weekly.', schedule: { id: 'tick', host: 'local', timing: { _tag: 'Every', every: '7d', anchor: '2026-09-28T07:00:00Z', catchUp: 'latest' }, work: { mission: cycle, workspace: '/srv/runs' } }, steps: [{ id: 'retire', agentless: true }] } })`,
       })
       const subjects = yield* load(root)
       expect(subjects[1]).toMatchObject({
         kind: 'schedule',
         id: 'ops/weekly',
         declaration: { intent: { schedule: { work: { mission: 'ops/cycle' } } } },
+      })
+    }),
+  )
+
+  it.effect(
+    'retains exact source binding and explicit immutable pins, never latest-head work',
+    () =>
+      Effect.gen(function* () {
+        const hash = 'a'.repeat(64)
+        const root = fixture({
+          'ops/cycle/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'ops/owner' }, goal: 'Cycle.', steps: [{ id: 'run', agentless: true }] } })`,
+          'ops/source/schedule.ts': `${define}import cycle from '../cycle/mission.ts'\nexport default defineSchedule({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'ops/owner' }, goal: 'Pinned.', schedule: { id: 'tick', host: 'local', timing: { _tag: 'At', at: '2026-10-20T07:00:00Z' }, work: { mission: pinMission({ subject: cycle }), workspace: '/srv/runs' } }, steps: [{ id: 'retire', agentless: true }] } })`,
+          'ops/exact/schedule.ts': `${define}import cycle from '../cycle/mission.ts'\nexport default defineSchedule({ meta: import.meta, intent: { state: 'ready', reportTo: { id: 'ops/owner' }, goal: 'Pinned.', schedule: { id: 'tick', host: 'local', timing: { _tag: 'At', at: '2026-10-20T07:00:00Z' }, work: { mission: pinMission({ subject: cycle, revision: '${hash}' }), workspace: '/srv/runs' } }, steps: [{ id: 'retire', agentless: true, waitFor: pinMission({ subject: cycle, revision: '${hash}' }) }] } })`,
+        })
+        const subjects = yield* load(root)
+        expect(subjects.find(({ id }) => id === 'ops/source')?.declaration).toMatchObject({
+          intent: { schedule: { work: { mission: `ops/cycle@${'0'.repeat(64)}` } } },
+        })
+        expect(subjects.find(({ id }) => id === 'ops/exact')?.declaration).toMatchObject({
+          intent: {
+            schedule: { work: { mission: `ops/cycle@${hash}` } },
+            steps: [{ usesMission: { kind: 'revision', revision: `ops/cycle@${hash}` } }],
+          },
+        })
+      }),
+  )
+
+  it.effect('lowers imported subject review targets without traversing definition intent', () =>
+    Effect.gen(function* () {
+      const root = fixture({
+        'owner/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: {} })`,
+        'work/mission.ts': `${define}import owner from '../owner/agent.ts'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: owner, goal: 'Review.', steps: [{ id: 'run', assignedTo: owner, gates: [{ name: 'review', kind: 'human', reviewer: { kind: 'person', subject: 'person/reviewer' }, review: [{ _tag: 'Subject', subject: owner }] }] }] } })`,
+      })
+      expect((yield* load(root)).find(({ id }) => id === 'work')?.declaration).toMatchObject({
+        intent: { steps: [{ gates: [{ review: [{ _tag: 'Subject', subject: 'agent/owner' }] }] }] },
+      })
+    }),
+  )
+
+  it('rejects malformed native hashes at the pin constructor', () => {
+    const ref: MissionRef = {
+      _tag: 'SubjectRef',
+      kind: 'mission',
+      url: 'file:///tree/m/mission.ts',
+    }
+    for (const hash of ['', 'latest', 'a'.repeat(63), 'g'.repeat(64)]) {
+      expect(() => pinMission({ subject: ref, revision: hash })).toThrow('64-hex native revision')
+    }
+  })
+
+  it.effect('rejects an imported reference whose canonical module lies outside the tree', () =>
+    Effect.gen(function* () {
+      const outside = fixture({
+        'owner/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: {} })`,
+      })
+      const root = fixture({
+        'work/mission.ts': `${define}import owner from '${join(outside, 'owner/agent.ts')}'\nexport default defineMission({ meta: import.meta, intent: { state: 'ready', reportTo: owner, goal: 'g', steps: [{ id: 's', agentless: true }] } })`,
+      })
+      expect(yield* loadError(root)).toMatchObject({
+        path: 'work/mission.ts',
+        message: expect.stringContaining('not a valid subject ID inside the tree'),
       })
     }),
   )
@@ -292,6 +355,33 @@ describe('loadSubjectTree', () => {
       path: 'a/mission.ts',
       message: 'Reference must point at agent.ts, got mission.ts',
     },
+    {
+      name: 'a forged pin with a malformed native revision',
+      files: {
+        'm/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: ${mission} })`,
+        'a/mission.ts': `${define}import m from '../m/mission.ts'\nexport default defineMission({ meta: import.meta, intent: { ...${mission}, steps: [{ id: 's', agentless: true, waitFor: { _tag: 'PinnedMissionRef', subject: m, revision: 'latest' } }] } })`,
+      },
+      path: 'a/mission.ts',
+      message: 'Pinned mission revision must be a 64-hex native revision',
+    },
+    {
+      name: 'a forged mission pin pointing to an agent',
+      files: {
+        'owner/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: {} })`,
+        'a/mission.ts': `${define}import owner from '../owner/agent.ts'\nexport default defineMission({ meta: import.meta, intent: { ...${mission}, steps: [{ id: 's', agentless: true, waitFor: pinMission({ subject: owner, revision: '${'a'.repeat(64)}' }) }] } })`,
+      },
+      path: 'a/mission.ts',
+      message: 'Reference must point at mission.ts, got agent.ts',
+    },
+    {
+      name: 'source-receipt pin used outside the schedule binding flow',
+      files: {
+        'm/mission.ts': `${define}export default defineMission({ meta: import.meta, intent: ${mission} })`,
+        'a/mission.ts': `${define}import m from '../m/mission.ts'\nexport default defineMission({ meta: import.meta, intent: { ...${mission}, steps: [{ id: 's', agentless: true, waitFor: pinMission({ subject: m }) }] } })`,
+      },
+      path: 'a/mission.ts',
+      message: 'waitFor needs an explicit native revision; source receipt binding is schedule-only',
+    },
   ]
   it.effect.each(rejections)('rejects $name', ({ files, path, message }) =>
     Effect.gen(function* () {
@@ -303,17 +393,19 @@ describe('loadSubjectTree', () => {
     }),
   )
 
-  it('preserves interval and calendar authoring fields with typed mission work', () => {
+  it('preserves all canonical timing variants with typed mission work', () => {
     type Common = {
       id: string
       host: 'local'
-      catchUp: 'latest'
-      work: { mission: MissionRef; workspace: string }
+      work: { mission: MissionRef | PinnedMissionRef; workspace: string }
     }
-    expectTypeOf<Common & { every: string; anchor: string }>().toExtend<
-      ScheduleIntent['schedule']
-    >()
-    expectTypeOf<Common & { _tag: 'calendar'; at: string; timezone: string }>().toExtend<
+    expectTypeOf<
+      Common & { timing: { _tag: 'Every'; every: string; anchor: '2026-10-20T00:00:00Z' } }
+    >().toExtend<ScheduleIntent['schedule']>()
+    expectTypeOf<
+      Common & { timing: { _tag: 'Calendar'; at: string; timezone: string } }
+    >().toExtend<ScheduleIntent['schedule']>()
+    expectTypeOf<Common & { timing: { _tag: 'At'; at: '2026-10-20T00:00:00Z' } }>().toExtend<
       ScheduleIntent['schedule']
     >()
     expectTypeOf<Common>().not.toExtend<ScheduleIntent['schedule']>()

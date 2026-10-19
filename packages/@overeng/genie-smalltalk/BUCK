@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/genie-smalltalk/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b145721b2007035dd2461140f43e4273ca92b62448f63be8124393cfee257eae
+# Semantic fingerprint: sha256:eee95716c2f5ce98b7f15c0d233d317638a4d27d638aae9b50102e4511134a0c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -23,16 +23,20 @@ export_file(
 export_materialization_inputs([
     "src/authoring-boundaries.unit.test.ts",
     "src/child-missions.unit.test.ts",
+    "src/fragments.unit.test.ts",
     "src/gate-constructors.unit.test.ts",
     "src/mod.ts",
     "src/mod.unit.test.ts",
     "src/pr-landing.fixture.ts",
     "src/run-values.ts",
     "src/run-values.unit.test.ts",
+    "src/subject-ref.ts",
     "src/testing.ts",
     "src/tree.ts",
     "src/tree.unit.test.ts",
     "src/upstream-repin.fixture.ts",
+    "src/values.ts",
+    "src/values.unit.test.ts",
 ])
 
 static_source_set(
@@ -76,16 +80,20 @@ package_view(
         "package.json": "package.json",
         "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
         "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
+        "src/fragments.unit.test.ts": "src/fragments.unit.test.ts",
         "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/pr-landing.fixture.ts": "src/pr-landing.fixture.ts",
         "src/run-values.ts": "src/run-values.ts",
         "src/run-values.unit.test.ts": "src/run-values.unit.test.ts",
+        "src/subject-ref.ts": "src/subject-ref.ts",
         "src/testing.ts": "src/testing.ts",
         "src/tree.ts": "src/tree.ts",
         "src/tree.unit.test.ts": "src/tree.unit.test.ts",
         "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
+        "src/values.ts": "src/values.ts",
+        "src/values.unit.test.ts": "src/values.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
@@ -116,16 +124,20 @@ package_view(
         "package.json": "package.json",
         "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
         "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
+        "src/fragments.unit.test.ts": "src/fragments.unit.test.ts",
         "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/pr-landing.fixture.ts": "src/pr-landing.fixture.ts",
         "src/run-values.ts": "src/run-values.ts",
         "src/run-values.unit.test.ts": "src/run-values.unit.test.ts",
+        "src/subject-ref.ts": "src/subject-ref.ts",
         "src/testing.ts": "src/testing.ts",
         "src/tree.ts": "src/tree.ts",
         "src/tree.unit.test.ts": "src/tree.unit.test.ts",
         "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
+        "src/values.ts": "src/values.ts",
+        "src/values.unit.test.ts": "src/values.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
@@ -153,16 +165,20 @@ package_view(
         "package.json": "package.json",
         "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
         "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
+        "src/fragments.unit.test.ts": "src/fragments.unit.test.ts",
         "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
         "src/pr-landing.fixture.ts": "src/pr-landing.fixture.ts",
         "src/run-values.ts": "src/run-values.ts",
         "src/run-values.unit.test.ts": "src/run-values.unit.test.ts",
+        "src/subject-ref.ts": "src/subject-ref.ts",
         "src/testing.ts": "src/testing.ts",
         "src/tree.ts": "src/tree.ts",
         "src/tree.unit.test.ts": "src/tree.unit.test.ts",
         "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
+        "src/values.ts": "src/values.ts",
+        "src/values.unit.test.ts": "src/values.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
     },
