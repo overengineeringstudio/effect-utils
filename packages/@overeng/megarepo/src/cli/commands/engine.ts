@@ -49,6 +49,7 @@ import {
   assertCanonicalMutationAllowed,
   authorizeAuthorWorkspaceWrite,
   isAuthorBranchWorkspace,
+  makeStoreDirectory,
 } from '../../store/store-path.ts'
 import { Store, StoreLayer } from '../../store/store.ts'
 import { foreignMemberMountMessage, inspectMemberMount } from '../../sync/member-mount.ts'
@@ -495,7 +496,7 @@ export const syncMegarepo = <R = never>({
             target: membersRoot,
             workspaceRoot: megarepoRoot,
           })
-          yield* fs.makeDirectory(authorizedMembersRoot, { recursive: true })
+          yield* makeStoreDirectory(authorizedMembersRoot)
         }
       } else {
         const authorization =
@@ -515,7 +516,7 @@ export const syncMegarepo = <R = never>({
           target: membersRoot,
           ...authorization,
         })
-        yield* fs.makeDirectory(authorizedMembersRoot, { recursive: true })
+        yield* makeStoreDirectory(authorizedMembersRoot)
       }
     }
 
