@@ -1789,7 +1789,7 @@ const stepDependency = <TMission extends string>({
 }: {
   readonly handle: StepHandle<TMission>
   readonly state: StepDependency['state']
-}): StepDependency<TMission> => Object.freeze({ [dependencyBrand]: true, handle, state })
+}): StepDependency<TMission> => Object.freeze({ [dependencyBrand]: true as const, handle, state })
 /** Wait for a step to complete successfully. */
 export const completed = <TMission extends string>(
   handle: StepHandle<TMission>,

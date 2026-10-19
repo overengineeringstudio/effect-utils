@@ -104,7 +104,7 @@ describe('typed native gate constructors', () => {
       gate.ciPassed({ check: 'build', repo: 'example/repository', commit: 'a'.repeat(40) }),
       gate.document({ target: doc`doc/example/proof` }),
       gate.exists({ subject: 'resource/example/proof' }),
-      gate.empty({ subject: 'queue/example' }),
+      gate.empty({ subject: 'mission-run/example' }),
       gate.has({ subject: 'message/example', text: 'proof' }),
       gate.lacks({ subject: 'message/example', text: 'failure' }),
     ]

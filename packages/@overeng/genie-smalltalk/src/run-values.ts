@@ -212,7 +212,7 @@ export const pr = ({
 export const input = {
   text: <const TName extends string>(name: TName): TextInput<TName> => {
     Schema.decodeSync(Name)(name)
-    return Object.freeze({ [inputBrand]: true, name, kind: 'text' })
+    return Object.freeze({ [inputBrand]: true as const, name, kind: 'text' })
   },
   resource: <const TName extends string, const TKind extends string>({
     name,
@@ -223,7 +223,12 @@ export const input = {
   }): ResourceInput<TName, TKind> => {
     Schema.decodeSync(Name)(name)
     if (kind.length === 0) throw new TypeError('Resource input needs a kind')
-    return Object.freeze({ [inputBrand]: true, name, kind: 'resource', resourceKind: kind })
+    return Object.freeze({
+      [inputBrand]: true as const,
+      name,
+      kind: 'resource',
+      resourceKind: kind,
+    })
   },
 }
 
@@ -235,7 +240,7 @@ export const product = {
     readonly fields: TFields
   }): ProductHandle<TFields> =>
     Object.freeze({
-      [productBrand]: true,
+      [productBrand]: true as const,
       subject: options.subject,
       fields: Object.freeze({ ...options.fields }),
     }),
@@ -246,7 +251,7 @@ export const product = {
     readonly fields: TFields
   }): ProductHandle<TFields & { readonly kind: TKind }> =>
     Object.freeze({
-      [productBrand]: true,
+      [productBrand]: true as const,
       ...(options.subject === undefined ? {} : { subject: options.subject }),
       fields: Object.freeze({ ...options.fields, kind: options.kind }),
     }),

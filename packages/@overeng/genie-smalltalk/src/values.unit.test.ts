@@ -303,7 +303,7 @@ describe('canonical timing values', () => {
       Timing.calendar,
       (calendar: Parameters<typeof Timing.calendar>[0]) => Timing.from({ calendar }),
       (calendar: Parameters<typeof Timing.calendar>[0]) =>
-        Schema.decodeUnknownSync(TimingSchema)({ _tag: 'Calendar', ...calendar }),
+        Schema.decodeSync(TimingSchema)({ _tag: 'Calendar', ...calendar }),
     ]) {
       const days: ['Mon' | 'Tue'] = ['Mon']
       const source = { at: '09:00', timezone: 'UTC', days }
@@ -361,7 +361,7 @@ describe('canonical review values', () => {
     for (const make of [
       Review.file,
       (source: Parameters<typeof Review.file>[0]) =>
-        Schema.decodeUnknownSync(ReviewSchema)({ _tag: 'File', ...source }),
+        Schema.decodeSync(ReviewSchema)({ _tag: 'File', ...source }),
     ]) {
       const source = { host: 'dev1', path: '/tmp/original' }
       const value = make(source)
