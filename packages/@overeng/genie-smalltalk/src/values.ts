@@ -388,7 +388,7 @@ export const Launch = {
 }
 /** Removes the canonical tag without changing native launch semantics. */
 export const lowerLaunch = (input: Launch) => {
-  const { _tag, ...native } = Schema.decodeUnknownSync(LaunchSchema, strict)(input)
+  const { _tag, ...native } = Schema.decodeSync(LaunchSchema, strict)(input)
   return native
 }
 
@@ -432,7 +432,7 @@ const fromTiming = (input: TimingInput): Timing => {
   if ('calendar' in input) {
     const { calendar, ...rest } = input
     // Validate both levels before flattening, so unknown outer fields cannot disappear.
-    Schema.decodeUnknownSync(
+    Schema.decodeSync(
       Schema.Struct({
         calendar: Schema.Struct({
           at: Schema.String,

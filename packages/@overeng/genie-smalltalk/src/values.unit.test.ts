@@ -29,7 +29,7 @@ describe('strict duration normalization', () => {
   it('normalizes native and Effect units immediately', () => {
     for (const value of ['1h', '60 minutes', '3600 seconds', Duration.hours(1)]) {
       expect(normalizeDuration({ input: value })).toBe('3600000ms')
-      expect(Schema.decodeUnknownSync(DurationSchema)(value)).toBe('3600000ms')
+      expect(Schema.decodeSync(DurationSchema)(value)).toBe('3600000ms')
     }
     expect(normalizeDuration({ input: '0.001 seconds' })).toBe('1ms')
     expect(normalizeDuration({ input: '1000000 nanos' })).toBe('1ms')
@@ -73,8 +73,8 @@ describe('strict duration normalization', () => {
       expect(() => Schema.decodeUnknownSync(DurationSchema)(value)).toThrow()
     }
     expect(normalizeDuration({ input: '0 seconds', allowZero: true })).toBe('0ms')
-    expect(Schema.decodeUnknownSync(NonNegativeDurationSchema)(Duration.zero)).toBe('0ms')
-    expect(() => Schema.decodeUnknownSync(NonNegativeDurationSchema)('-1 millis')).toThrow()
+    expect(Schema.decodeSync(NonNegativeDurationSchema)(Duration.zero)).toBe('0ms')
+    expect(() => Schema.decodeSync(NonNegativeDurationSchema)('-1 millis')).toThrow()
   })
 })
 
@@ -290,7 +290,7 @@ it.prop(
   [Schema.NonEmptyString],
   ([command]) => {
     for (const value of [Launch.shell({ command: command }), Launch.argv({ argv: [command] })]) {
-      expect(Schema.decodeUnknownSync(LaunchSchema)(value)).toEqual(value)
+      expect(Schema.decodeSync(LaunchSchema)(value)).toEqual(value)
       expect(Launch.from(lowerLaunch(value))).toEqual(value)
     }
   },
@@ -305,7 +305,7 @@ it.prop(
       Timing.every({ every: `${BigInt(Math.abs(integer % 1000000000)) + 1n}ms`, anchor }),
       Timing.calendar({ at: '09:00', timezone: 'UTC' }),
     ]) {
-      expect(Schema.decodeUnknownSync(TimingSchema)(value)).toEqual(value)
+      expect(Schema.decodeSync(TimingSchema)(value)).toEqual(value)
       expect(Timing.from(lowerTiming(value))).toEqual(value)
     }
   },
@@ -321,7 +321,7 @@ it.prop(
       Review.file({ host: 'dev1', path: `/tmp/${suffix}` }),
       Review.pinned(`doc/example-${suffix}@${hash}`),
     ]) {
-      expect(Schema.decodeUnknownSync(ReviewSchema)(value)).toEqual(value)
+      expect(Schema.decodeSync(ReviewSchema)(value)).toEqual(value)
       expect(Review.from(lowerReview(value))).toEqual(value)
     }
   },
