@@ -440,12 +440,19 @@ export const gateScopeIdentity = (membership: string): string | undefined => {
   return scope === -1 ? undefined : components.slice(0, scope + 1).join('/')
 }
 
-export const gateCgroupRelation = (
-  caller: string,
-  daemon: string,
-): 'same' | 'foreign' | 'unknown' => {
+/** Retain unknown ownership; compare determinable unified gate scope owners. */
+export const gateCgroupRelation = ({
+  caller,
+  daemon,
+}: {
+  readonly caller: string
+  readonly daemon: string
+}): 'same' | 'foreign' | 'unknown' => {
   const callerScope = gateScopeIdentity(caller)
-  if (callerScope === undefined || daemon.split('\n').some((line) => /^0::\//.test(line)) === false)
+  if (
+    callerScope === undefined ||
+    daemon.split('\n').some((line) => line.startsWith('0::/')) === false
+  )
     return 'unknown'
   // A valid unified path outside any gate scope is determinably foreign.
   return gateScopeIdentity(daemon) === callerScope ? 'same' : 'foreign'
@@ -479,7 +486,13 @@ export const resolveGateInvocation = ({
 }): { readonly isolation: string; readonly args: readonly string[] } | undefined => {
   const expanded: string[] = []
   const active = new Set<string>()
-  const expand = (input: readonly string[], depth: number): boolean => {
+  const expand = ({
+    input,
+    depth,
+  }: {
+    readonly input: readonly string[]
+    readonly depth: number
+  }): boolean => {
     if (depth > 64) return false
     for (let index = 0; index < input.length; index++) {
       const arg = input[index] ?? ''
@@ -511,10 +524,10 @@ export const resolveGateInvocation = ({
       active.add(file.path)
       const lines = file.contents.split('\n').map((line) => line.replace(/\r$/u, ''))
       if (
-        expand(
-          lines.filter((line) => line !== ''),
-          depth + 1,
-        ) === false
+        expand({
+          input: lines.filter((line) => line !== ''),
+          depth: depth + 1,
+        }) === false
       )
         return false
       active.delete(file.path)
@@ -522,7 +535,7 @@ export const resolveGateInvocation = ({
     return true
   }
   try {
-    if (expand(args, 0) === false) return undefined
+    if (expand({ input: args, depth: 0 }) === false) return undefined
   } catch {
     return undefined
   }
@@ -615,7 +628,7 @@ export const reconcileGateDaemon = ({
     try {
       foreign = readFileSync(`/proc/${status.process_info.pid}/cgroup`, 'utf8').trim()
       const caller = readFileSync('/proc/self/cgroup', 'utf8').trim()
-      const relation = gateCgroupRelation(caller, foreign)
+      const relation = gateCgroupRelation({ caller, daemon: foreign })
       if (relation === 'same') return
       if (relation === 'unknown') {
         warn('gate scope ownership unavailable; daemon retained without migration')

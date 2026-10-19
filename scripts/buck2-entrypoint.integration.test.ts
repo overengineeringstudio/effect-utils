@@ -19,9 +19,12 @@ import { createServer as createTlsServer } from 'node:tls'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import { type AdmissionProbeEndpoint, directBuckArguments } from './buck2-entrypoint.ts'
-import './buck2-entrypoint.unit.test.ts'
-import './buck2-gate-teardown.integration.test.ts'
-import './buck2-gate-isolation.integration.test.ts'
+import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
+import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
+import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
+
+// Register the lifecycle suites in the existing devenv test entrypoint.
+void [gateUnitTests, gateTeardownTests, gateIsolationTests]
 
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()

@@ -60,13 +60,22 @@ it('reuses parent, nested and sibling cgroups but migrates determinably foreign 
   const scope = '/user.slice/app.slice/gate-slot-heavy-123.scope'
   for (const caller of [scope, `${scope}/worker`, `${scope}/sibling`]) {
     for (const daemon of [scope, `${scope}/actions`, `${scope}/other/actions`]) {
-      expect(gateCgroupRelation(`0::${caller}`, `0::${daemon}`)).toBe('same')
+      expect(gateCgroupRelation({ caller: `0::${caller}`, daemon: `0::${daemon}` })).toBe('same')
     }
-    expect(gateCgroupRelation(`0::${caller}`, '0::/user.slice/app.slice/session.scope')).toBe(
-      'foreign',
+    expect(
+      gateCgroupRelation({
+        caller: `0::${caller}`,
+        daemon: '0::/user.slice/app.slice/session.scope',
+      }),
+    ).toBe('foreign')
+    expect(
+      gateCgroupRelation({ caller: `0::${caller}`, daemon: `0::${scope.replace('123', '999')}` }),
+    ).toBe('foreign')
+    expect(gateCgroupRelation({ caller: `0::${caller}`, daemon: '1:memory:/unknown' })).toBe(
+      'unknown',
     )
-    expect(gateCgroupRelation(`0::${caller}`, `0::${scope.replace('123', '999')}`)).toBe('foreign')
-    expect(gateCgroupRelation(`0::${caller}`, '1:memory:/unknown')).toBe('unknown')
   }
-  expect(gateCgroupRelation('0::/user.slice/session.scope', `0::${scope}`)).toBe('unknown')
+  expect(
+    gateCgroupRelation({ caller: '0::/user.slice/session.scope', daemon: `0::${scope}` }),
+  ).toBe('unknown')
 })

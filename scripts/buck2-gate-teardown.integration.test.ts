@@ -111,7 +111,7 @@ const dispose = async (
     } catch {
       // The fixture's detached process group has already drained.
     }
-    if (existsSync(fixture.ready)) {
+    if (existsSync(fixture.ready) === true) {
       const { pid } = JSON.parse(readFileSync(fixture.ready, 'utf8'))
       try {
         process.kill(pid, 'SIGKILL')
