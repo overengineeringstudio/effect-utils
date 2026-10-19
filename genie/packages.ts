@@ -60,6 +60,7 @@ export const internalPackages = [
   'utils-dev',
   'utils-storybook',
   'ci-tools',
+  'work-storage',
 ] as const
 
 /**

@@ -54,6 +54,7 @@ import { buck2TypeScriptAdmission as tuiStoriesAdmission } from '../../packages/
 import { buck2TypeScriptAdmission as utilsDevAdmission } from '../../packages/@overeng/utils-dev/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as utilsStorybookAdmission } from '../../packages/@overeng/utils-storybook/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as utilsAdmission } from '../../packages/@overeng/utils/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as workStorageAdmission } from '../../packages/@overeng/work-storage/BUCK.genie.ts'
 import { pnpmWorkspaceMemberPaths } from '../packages.ts'
 import {
   buck2TestCollectionTargetSuffix,
@@ -142,6 +143,7 @@ export const buck2TypeScriptAdmissions = {
   tuiCore: tuiCoreAdmission,
   tuiReact: tuiReactAdmission,
   tuiStories: tuiStoriesAdmission,
+  workStorage: workStorageAdmission,
   utils: utilsAdmission,
   utilsDev: utilsDevAdmission,
   utilsStorybook: utilsStorybookAdmission,

@@ -1,0 +1,2544 @@
+[
+  {
+    "name": "apfs-state",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/state/demo"
+    }
+  },
+  {
+    "name": "apfs-cache",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "cache"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/cache/demo"
+    }
+  },
+  {
+    "name": "apfs-data",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "data"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/data/demo"
+    }
+  },
+  {
+    "name": "apfs-runtime",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "runtime"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/runtime/demo"
+    }
+  },
+  {
+    "name": "apfs-checkouts",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "checkouts"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/checkouts/demo"
+    }
+  },
+  {
+    "name": "apfs-credentials",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "credentials"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/credentials/demo"
+    }
+  },
+  {
+    "name": "zfs",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "zfs",
+          "root": "/factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/factory/state/demo",
+          "cache": "/factory/cache/demo",
+          "data": "/factory/data/demo",
+          "runtime": "/factory/runtime/demo",
+          "checkouts": "/factory/checkouts/demo",
+          "credentials": "/factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/factory/state/demo"
+    }
+  },
+  {
+    "name": "fixture",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "fixture",
+          "root": "/fixture",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/fixture/state/demo",
+          "cache": "/fixture/cache/demo",
+          "data": "/fixture/data/demo",
+          "runtime": "/fixture/runtime/demo",
+          "checkouts": "/fixture/checkouts/demo",
+          "credentials": "/fixture/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/fixture/state/demo"
+    }
+  },
+  {
+    "name": "absent",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": false,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "FactoryAbsent"
+    }
+  },
+  {
+    "name": "identity-mismatch",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "other-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "IdentityMismatch"
+    }
+  },
+  {
+    "name": "unknown-purpose",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "logs"
+    },
+    "expected": {
+      "error": "UnknownPurpose"
+    }
+  },
+  {
+    "name": "undeclared-purpose",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "UndeclaredPurpose"
+    }
+  },
+  {
+    "name": "empty-role-map",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {},
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "UndeclaredPurpose"
+    }
+  },
+  {
+    "name": "empty-environment",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {}
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/state/demo"
+    }
+  },
+  {
+    "name": "additive-manifest-field",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        },
+        "future": {
+          "value": true
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/state/demo"
+    }
+  },
+  {
+    "name": "additive-provider-field",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume",
+          "future": 4
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/state/demo"
+    }
+  },
+  {
+    "name": "additive-observation-field",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume",
+        "future": true
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/state/demo"
+    }
+  },
+  {
+    "name": "additive-request-field",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state",
+      "future": true
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/state/demo"
+    }
+  },
+  {
+    "name": "numeric-version-one-point-zero",
+    "request": {
+      "manifest": {
+        "version": 1.0,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/state/demo"
+    }
+  },
+  {
+    "name": "invalid-version-0",
+    "request": {
+      "manifest": {
+        "version": 0,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-version-2",
+    "request": {
+      "manifest": {
+        "version": 2,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-version-1",
+    "request": {
+      "manifest": {
+        "version": "1",
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-version-None",
+    "request": {
+      "manifest": {
+        "version": null,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-version-True",
+    "request": {
+      "manifest": {
+        "version": true,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-version-1.5",
+    "request": {
+      "manifest": {
+        "version": 1.5,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-version",
+    "request": {
+      "manifest": {
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "null-version",
+    "request": {
+      "manifest": {
+        "version": null,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-app",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "null-app",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": null,
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-provider",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "null-provider",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": null,
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-paths",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "null-paths",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": null,
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-environment",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "null-environment",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": null
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-app-''",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-app-'Demo'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "Demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-app-'demo_app'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo_app",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-app-' demo'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": " demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-app-'demo\\n'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo\n",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-app-'9demo'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "9demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-app-'é'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "é",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-provider-kind",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-provider-kind",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-provider-root",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-provider-root",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-provider-identity",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-provider-identity",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": ""
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "relative-provider-root",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "unknown-provider",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "ext4",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "unknown-role-key",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo",
+          "logs": "/logs"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "relative-role-path",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "null-role-path",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": null,
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "numeric-environment",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo",
+          "COUNT": 3
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "nonboolean-presence",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": 1,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-observed-identity",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "null-observed",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": null,
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "nonstring-purpose",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": 3
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-request-manifest",
+    "request": {
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-request-observed",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "missing-request-purpose",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      }
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "invalid-before-absent",
+    "request": {
+      "manifest": {
+        "version": 2,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": false,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "absent-before-mismatch",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": false,
+        "identity": "wrong"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "FactoryAbsent"
+    }
+  },
+  {
+    "name": "mismatch-before-unknown",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "wrong"
+      },
+      "purpose": "logs"
+    },
+    "expected": {
+      "error": "IdentityMismatch"
+    }
+  },
+  {
+    "name": "absent-before-unknown",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": false,
+        "identity": "fixture-volume"
+      },
+      "purpose": "logs"
+    },
+    "expected": {
+      "error": "FactoryAbsent"
+    }
+  },
+  {
+    "name": "unicode-identity",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "存储"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "存储"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/state/demo"
+    }
+  },
+  {
+    "name": "empty-observed-identity-is-mismatch",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": ""
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "IdentityMismatch"
+    }
+  },
+  {
+    "name": "noncanonical-root-'/factory/../state'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/factory/../state",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "noncanonical-role-'/factory/../state'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/factory/../state",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "noncanonical-root-'/factory/./state'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/factory/./state",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "noncanonical-role-'/factory/./state'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/factory/./state",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "noncanonical-root-'/factory//state'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/factory//state",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "noncanonical-role-'/factory//state'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/factory//state",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "noncanonical-root-'/factory/state/'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/factory/state/",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "noncanonical-role-'/factory/state/'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/factory/state/",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "noncanonical-root-'/factory/\\x00state'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/factory/\u0000state",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "noncanonical-role-'/factory/\\x00state'",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/factory/\u0000state",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "error": "InvalidManifest"
+    }
+  },
+  {
+    "name": "root-provider",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/Volumes/Factory/state/demo",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/Volumes/Factory/state/demo"
+    }
+  },
+  {
+    "name": "root-role",
+    "request": {
+      "manifest": {
+        "version": 1,
+        "app": "demo",
+        "provider": {
+          "kind": "apfs",
+          "root": "/Volumes/Factory",
+          "identity": "fixture-volume"
+        },
+        "paths": {
+          "state": "/",
+          "cache": "/Volumes/Factory/cache/demo",
+          "data": "/Volumes/Factory/data/demo",
+          "runtime": "/Volumes/Factory/runtime/demo",
+          "checkouts": "/Volumes/Factory/checkouts/demo",
+          "credentials": "/Volumes/Factory/credentials/demo"
+        },
+        "environment": {
+          "XDG_STATE_HOME": "/Volumes/Factory/state/demo"
+        }
+      },
+      "observed": {
+        "present": true,
+        "identity": "fixture-volume"
+      },
+      "purpose": "state"
+    },
+    "expected": {
+      "ok": "/"
+    }
+  }
+]

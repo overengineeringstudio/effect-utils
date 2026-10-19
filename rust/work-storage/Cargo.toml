@@ -1,0 +1,23 @@
+[package]
+name = "work-storage"
+workspace = ".."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Keep external inputs with the package for downstream Buck projections.
+[[package.metadata.buck2.buildScriptInputs]]
+path = "../../packages/@overeng/work-storage/protocol.schema.json"
+label = "//packages/@overeng/work-storage:protocol-schema"
+
+[[package.metadata.buck2.buildScriptInputs]]
+path = "../../packages/@overeng/work-storage/fixtures/conformance.json"
+label = "//packages/@overeng/work-storage:conformance-fixtures"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

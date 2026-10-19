@@ -298,6 +298,7 @@ export const catalog = defineCatalog({
 
   // Schema
   '@standard-schema/spec': '1.1.0',
+  ajv: '8.20.0',
 
   // Retained Actions artifacts: lazy ZIP metadata and bounded member streams.
   yauzl: '3.4.0',

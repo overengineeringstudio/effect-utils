@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://overengineering.studio/work-storage/v1/manifest.schema.json",
+  "title": "Work storage manifest v1",
+  "description": "Normative portable manifest contract. The versioned schema and adjacent conformance fixtures, not language adapters, own compatibility. Unknown object fields are additive and ignored, except paths keys, whose vocabulary is closed. Paths are declared absolute POSIX paths; consumers must not create fallback paths or infer provider readiness from their existence.",
+  "$comment": "Namespace steward: overengineeringstudio/effect-utils. Version 1 readers reject other version values. Breaking wire or admission semantics require a new version. The launcher supplies an observation; readers validate inputs, then reject absent storage, mismatched identity, unknown purpose, and undeclared purpose, in that order. Observation is not a security proof or a substitute for the launcher's readiness gate.",
+  "type": "object",
+  "required": ["version", "app", "provider", "paths", "environment"],
+  "additionalProperties": true,
+  "properties": {
+    "version": { "const": 1 },
+    "app": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "not": { "pattern": "\\n" } },
+    "provider": {
+      "type": "object",
+      "required": ["kind", "root", "identity"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "enum": ["apfs", "zfs", "fixture"] },
+        "root": { "$ref": "#/$defs/canonicalPath" },
+        "identity": { "type": "string", "minLength": 1 }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "propertyNames": { "enum": ["state", "cache", "data", "runtime", "checkouts", "credentials"] },
+      "additionalProperties": { "$ref": "#/$defs/canonicalPath" }
+    },
+    "environment": { "type": "object", "additionalProperties": { "type": "string" } }
+  },
+  "$defs": {
+    "canonicalPath": {
+      "description": "Canonical absolute POSIX path. Root / is allowed; other paths have no trailing slash, empty, dot or parent segment, or NUL. Readers reject rather than normalize.",
+      "type": "string",
+      "pattern": "^/(?:[^/\\u0000]+(?:/[^/\\u0000]+)*)?$(?![\\s\\S])",
+      "allOf": [
+        { "not": { "pattern": "(^|/)\\.{1,2}(/|$)" } },
+        { "not": { "pattern": "\\u0000" } }
+      ]
+    }
+  }
+}
