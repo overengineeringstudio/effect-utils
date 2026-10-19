@@ -1184,10 +1184,17 @@ describe('warm publication wins the census-to-victim-lock race', () => {
                 'process.stdout.write("warm-complete\\n")',
               ].join('\n')
               const warm = spawnSync(bun, ['--eval', script], { encoding: 'utf8' })
-              expect({ status: warm.status, stderr: warm.stderr }).toEqual({
-                status: 0,
-                stderr: '',
-              })
+              expect(warm.status).toBe(0)
+              const phasePrefix = '[editor-view-phase] '
+              const remainingStderr = warm.stderr
+                .split('\n')
+                .filter((line) => {
+                  if (line.startsWith(phasePrefix) === false) return true
+                  JSON.parse(line.slice(phasePrefix.length))
+                  return false
+                })
+                .join('\n')
+              expect(remainingStderr).toBe('')
               expect(warm.stdout).toContain('warm-complete\n')
               warmed++
             }

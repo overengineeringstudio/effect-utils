@@ -59,7 +59,7 @@ import {
 } from './editor-view-sharing.ts'
 import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath, realpathThroughName } from './real-path.ts'
-import { runFingerprintTool } from './typescript-runner.ts'
+import { closeFingerprintAdmission, runFingerprintTool } from './typescript-runner.ts'
 
 /** Versioned identity of the persisted scoped editor-view record. */
 export const editorViewSchema = 'effect-utils/editor-view/v2' as const
@@ -2635,6 +2635,8 @@ const budgetReservationBytes = ({
   return bytes
 }
 
+const interruptedPublicationPhases = new Set<() => void>()
+
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
 const publishEditorViewCoordinated = async ({
   options,
@@ -2655,11 +2657,21 @@ const publishEditorViewCoordinated = async ({
     phaseTimings.push([phaseName, performance.now() - phaseStartedAt])
     phaseName = name
     phaseStartedAt = performance.now()
+    process.stderr.write(
+      `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: name, elapsedMs: Math.round(performance.timeOrigin + performance.now() - startedAtMs) })}\n`,
+    )
   }
-  const emitPhaseSpan = ({ created }: { readonly created: boolean }): void => {
+  const emitPhaseSpan = ({
+    created,
+    exitCode,
+  }: {
+    readonly created: boolean
+    readonly exitCode: number
+  }): void => {
     emitCompletedSpanAsync({
       name: 'editor-view.phases',
       label: `phases ${options.viewName}`,
+      exitCode,
       attributes: [
         ['package.path', options.package],
         ['view.name', options.viewName],
@@ -2671,6 +2683,10 @@ const publishEditorViewCoordinated = async ({
       endedAtMs: performance.timeOrigin + performance.now(),
       startedAtMs,
     })
+  }
+  const reportInterruption = (): void => {
+    enterPhase('interrupted')
+    emitPhaseSpan({ created: false, exitCode: 1 })
   }
   requireRecordIdentity(options)
   const paths = makePaths(options)
@@ -2725,6 +2741,7 @@ const publishEditorViewCoordinated = async ({
     }))
   }
   try {
+    interruptedPublicationPhases.add(reportInterruption)
     if (options.package === '.') {
       // Root first, then sorted package state roots. A batch already owns the
       // entire ordered lock set before starting workers, so never reacquire it.
@@ -3165,11 +3182,13 @@ const publishEditorViewCoordinated = async ({
           if (pathExists(evictionMarker) === true) rmSync(evictionMarker)
         },
       })
-      emitPhaseSpan({ created })
+      emitPhaseSpan({ created, exitCode: 0 })
       return record
     }
     return await (coordinator === undefined ? commit() : coordinator.commit(commit))
   } catch (error) {
+    enterPhase('failed')
+    emitPhaseSpan({ created: false, exitCode: 1 })
     // Payload failures capture siblings immediately, before waiting for other children to settle.
     // Other failures are captured here, before cleanup can mutate the candidate's metadata.
     captureFailure()
@@ -3186,6 +3205,7 @@ const publishEditorViewCoordinated = async ({
       Object.assign(contextual, { exitCode: error.exitCode })
     throw contextual
   } finally {
+    interruptedPublicationPhases.delete(reportInterruption)
     if (candidate !== undefined && pathExists(candidate) === true) {
       // A dereferencing copy reproduces read-only source directories, so the
       // abandoned candidate must be unlocked before removal.
@@ -3764,6 +3784,12 @@ const parseCli = (args: readonly string[]): ParsedCli => {
 }
 
 const main = async (): Promise<void> => {
+  process.once('SIGTERM', () => {
+    closeFingerprintAdmission()
+    for (const report of interruptedPublicationPhases) report()
+    // Give asynchronous span emission a bounded chance to flush before failing closed.
+    setTimeout(() => process.exit(143), 100)
+  })
   const args = process.argv.slice(2)
   if (args[0] === 'publish-batch') {
     if (args.length !== 1) fail('expected publish-batch with a JSON request array on stdin')

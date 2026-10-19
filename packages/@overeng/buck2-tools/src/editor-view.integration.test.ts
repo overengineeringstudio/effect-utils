@@ -2805,6 +2805,50 @@ describe('editor view publisher', () => {
       expect(captured).toContain('--attr-int phase.pointers.ms=')
       expect(captured).toContain('--attr-string package.path=packages/@overeng/tui-core')
       expect(captured).toContain('--attr-string span.label=phases tui-core')
+      expect(invocations[0]).toEqual(expect.arrayContaining(['exit.code=0', 'ok']))
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('records snapshot reuse as a successful phase span', async () => {
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      const { invocations } = await withPublisherTelemetry(fixture, () =>
+        publishEditorView(fixture.options),
+      )
+      expect(invocations).toHaveLength(1)
+      expect(invocations[0]).toEqual(
+        expect.arrayContaining([
+          'editor-view.phases',
+          'snapshot.created=false',
+          'exit.code=0',
+          'ok',
+        ]),
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('records snapshot copy failure as a failed phase span', async () => {
+    const fixture = makeFixture()
+    try {
+      const { invocations } = await withPublisherTelemetry(fixture, async () => {
+        await expect(publishEditorView({ ...fixture.options, cp: falseTool })).rejects.toThrow(
+          'cp --dereference --reflink=auto failed',
+        )
+      })
+      expect(invocations).toHaveLength(1)
+      expect(invocations[0]).toEqual(
+        expect.arrayContaining([
+          'editor-view.phases',
+          'snapshot.created=false',
+          'exit.code=1',
+          'error',
+        ]),
+      )
     } finally {
       cleanup(fixture)
     }

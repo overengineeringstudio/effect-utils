@@ -95,8 +95,16 @@
   ],
   "developerOperations": [
     {
+      "disposition": "outside-by-policy:authoring-mutation",
+      "operation": "buck2:editor:materialize"
+    },
+    {
       "disposition": "outside-by-policy:workspace-publication",
       "operation": "buck2:editor:publish"
+    },
+    {
+      "disposition": "outside-by-policy:workspace-publication",
+      "operation": "buck2:editor:publish:all"
     },
     {
       "disposition": "buck-owned",

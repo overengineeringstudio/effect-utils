@@ -412,6 +412,7 @@ export type RunCommand = (options: {
   readonly input?: string
   readonly detached?: boolean
   readonly signal?: AbortSignal
+  readonly onStderr?: (chunk: string) => void
 }) => Promise<CommandResult>
 
 /**
@@ -438,7 +439,15 @@ export class CommandFailure extends Error {
 }
 
 /** Default {@link RunCommand}: buffers output and fails closed on a non-zero exit. */
-export const runCommand: RunCommand = ({ command, args, cwd, signal, detached, input }) => {
+export const runCommand: RunCommand = ({
+  command,
+  args,
+  cwd,
+  signal,
+  detached,
+  input,
+  onStderr,
+}) => {
   const settled = Promise.withResolvers<CommandResult>()
   const child =
     input === undefined
@@ -451,6 +460,7 @@ export const runCommand: RunCommand = ({ command, args, cwd, signal, detached, i
   })
   child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
     stderr += chunk
+    onStderr?.(chunk)
   })
   child.once('error', settled.reject)
   child.stdin?.on('error', settled.reject)
@@ -561,6 +571,14 @@ export const reconcileBuckViews = async ({
   readonly options: BuckReconcilerOptions
 }): Promise<void> => {
   const execute = options.run ?? runCommand
+  let pendingDiagnostics = ''
+  const forwardDiagnostics = (chunk: string): void => {
+    pendingDiagnostics += chunk
+    const lines = pendingDiagnostics.split('\n')
+    pendingDiagnostics = lines.pop() ?? ''
+    for (const line of lines)
+      if (line.startsWith('[editor-view-phase] ') === true) process.stderr.write(`${line}\n`)
+  }
   const buildStartedAt = performance.now()
   // Telemetry is best effort: the real Buck command runs unwrapped and its exit
   // status is preserved even when span delivery afterwards fails.
@@ -656,7 +674,7 @@ export const reconcileBuckViews = async ({
       await execute({
         command: options.editorViewCommand[0],
         args: [...options.editorViewCommand.slice(1), ...(await publicationArgs(entry))],
-        detached: true,
+        onStderr: forwardDiagnostics,
         cwd: options.repoRoot,
       })
     } catch (error) {
@@ -680,7 +698,7 @@ export const reconcileBuckViews = async ({
       command: options.editorViewCommand[0],
       args: [...options.editorViewCommand.slice(1), 'publish-batch'],
       input: JSON.stringify(requests),
-      detached: true,
+      onStderr: forwardDiagnostics,
       cwd: options.repoRoot,
     })
     // Preserve the existing per-view callback as well as successful-task stderr evidence.

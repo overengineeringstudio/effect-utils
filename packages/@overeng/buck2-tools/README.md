@@ -13,14 +13,83 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
-`buck2:editor:bootstrap` publishes only the dependency views named by the
-committed generated root manifest so `genie:check` can run before trusting the
-generated graph. After generation and composition, repository tasks
+`genie:check` directly depends on `buck2:editor:bootstrap`: source-side generator
+freshness needs the root dependency view before trusting the generated graph.
+Bootstrap publishes only `.` and `packages/@overeng/otel-contract`, never the
+whole workspace. After generation and composition, repository tasks
 `buck2:editor:authority`, `buck2:editor:publish`, and `buck2:editor:check`
 operate on the complete current registry. The exact-token
 `buck2:editor:recover-lock` task recovers only the named consumer's shared
 publication lock. These tasks require a real composed megarepo workspace and
 are not global check dependencies.
+
+Multi-consumer aggregates avoid serially queueing one publisher per package:
+`storybook:build`, `storybook:test`, `netlify:stage`, `netlify:deploy`, and
+`test:notion-integration` each select one exact-scope batch publisher.
+The two Netlify aggregates share the same 13-consumer preview batch (all configured
+Storybooks except `tui-stories`); the complete Storybook build selects 14 consumers,
+and play tests select only the packages declaring `playTests`.
+Aggregate-only execution aliases reuse the final standalone command, cwd,
+environment, status, and freshness predicates, replacing only installer edges.
+Standalone package tasks keep their single-consumer publisher and never acquire
+the aggregate's wider package set. Existing batch publication acquires each
+state-root lock once and prepares up to four consumer views concurrently.
+
+Bootstrap and ordinary scoped publication keep their **300 s execution deadline**.
+The non-required `storybook:build`, `netlify:stage`, `netlify:deploy`, and
+`test:notion-integration` batch publications have **no total deadline**.
+On dev5, cold publication of 13 consumers takes about 25–30 minutes and a single
+consumer's verification can take 670 s; the previous 944 s Netlify cap killed
+healthy work. These batches retain supervisor ownership and emit per-phase JSON
+progress with `package`, `phase`, and `elapsedMs`.
+
+Only `storybook:test` retains its derived **380 s** publication cap:
+
+```text
+deadlineSeconds = ceil(sum(measuredSeconds or maxMeasuredFallbackSeconds) / 4)
+                  × 4 preparation headroom + 120 build/authority allowance
+maximumSeconds = 1200
+```
+
+The measurements come from `genie/ci-workflow/test-scheduling.json`'s
+`editorViewSeconds` (`baselineRun: 37886131764`). The four play-test consumers
+currently use the maximum measured fallback of 65 s each (260 s total), because
+`effect-schema-form-aria`, `effect-rpc-explorer-react`, `devbar`, and `meters`
+have no measurements. The four workers match `publishEditorViews`.
+Only this capped batch embeds budget inputs and missing-consumer metadata;
+the graph guard independently recomputes its deadline and checks that all other
+aggregate publications remain uncapped.
+
+There is no no-progress watchdog: the supervisor currently inherits child output
+rather than reading it. Safely forwarding and parsing streams without blocking
+on partial lines, handling EOF and descendant-held pipes during cancellation,
+and testing those lifecycle paths exceeds the small-change threshold. A future
+watchdog would incrementally inspect forwarded JSON lines, reset one named 600 s
+window only on `package`/`phase` progress, and use the existing process-group
+TERM/KILL cleanup on expiry, with separate handling for queued lock admission.
+
+Scoped devenv publishers retain their explicit consumer sets; Storybook builds do
+not publish the whole workspace. Different `packages/@overeng/*` consumers still
+share `packages/.editor-view/.publish.lock`, so task invocations queue on the
+per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
+The supervisor uses a blocking kernel `flock`, without polling or lock theft,
+with a **5 s kill grace** on interruption or deadline expiry. The execution clock
+starts only after admission: scoped/bootstrap work keeps its 300 s cap and
+Storybook play tests keep their derived 380 s cap, excluding queue time.
+Each admitted invocation logs the lock path and admission wait in seconds.
+Signals still cancel queued waiters and identify the lock they were waiting for.
+Uncapped batches have no execution deadline. On Darwin, process-group EPERM is
+treated as termination only after a process census proves no live members remain;
+live-member permission failures still fail closed. The supervisor retains ownership through
+process-group cleanup; process exit releases it automatically. The persistent
+flock file must not be unlinked while publishers are active.
+
+This deliberately serializes task invocations, not private candidates within one
+batch, and never adds unrelated package views to a standalone request. It leaves
+the publisher's state-root lock and exact-token recovery contract unchanged for
+direct CLI/API callers. The admission lock precedes all state-root and content-store
+locks, so it does not change their ordering. Per-package publication locks would
+not protect shared state-root inventory, pointer commits, and retention metadata.
 
 Snapshot identity is computed from the admitted inputs and all declared roots
 **before copying**. An unchanged publication validates and reuses the immutable
@@ -187,6 +256,9 @@ watch-build spans share deferred, fire-and-forget, drop-on-full delivery, with a
 most four queued/running exporters per process. Hung exporters are killed after
 one second and keep their slots until reaped; publication and watch cycles never
 await delivery, and telemetry never changes real command exit codes.
+The `editor-view.phases` span records a nonzero exit code and error status when
+publication fails or is interrupted. Successful publication and snapshot reuse
+record exit code zero, independently of whether a snapshot was created.
 The shared host ledger permits one budget span per content store and event kind
 every 60 seconds, across publisher processes. Suppressed event counts
 are durable and appear on the next admitted span as

@@ -42,6 +42,13 @@ eval_test_module_attr() {
             config.tasks.\"test:ok-c\".exec = lib.mkForce \"overridden-package-runtime\";
             config.tasks.\"test:ok-c\".env.RUNTIME_TOOL = \"pinned-tool\";
             config.tasks.\"test:ok-c\".status = \"package-status-check\";
+            config.tasks.\"install:ok-c\" = {
+              description = \"Scoped installer\";
+              exec = \"scoped-install-command\";
+              env.INSTALL_TOOL = \"pinned-installer\";
+              status = \"installer-status-check\";
+              after = [ ];
+            };
           })
           (import $ROOT/nix/devenv-modules/tasks/shared/test.nix {
             packages = [
@@ -135,13 +142,23 @@ assert_eq \
   "chain head preserves package-specific prerequisites"
 
 assert_eq \
-  '["pnpm:install","test:run:chain:3:native-b"]' \
+  '["test:run:install:3:ok-c","test:run:chain:3:native-b"]' \
   "$(eval_test_module_attr 4 'builtins.toJSON tasks."test:run:chain:3:ok-c".after' "$weighted")" \
-  "chain alias uses the shared installer and only its own chain predecessor"
+  "chain test retains its direct predecessor and ordered scoped installation"
+
+assert_eq \
+  '["test:run:chain:3:native-b"]' \
+  "$(eval_test_module_attr 4 'builtins.toJSON tasks."test:run:install:3:ok-c".after' "$weighted")" \
+  "scoped installation cannot start before its chain predecessor finishes"
+
+assert_eq \
+  '["scoped-install-command","pinned-installer","installer-status-check"]' \
+  "$(eval_test_module_attr 4 'builtins.toJSON [ tasks."test:run:install:3:ok-c".exec tasks."test:run:install:3:ok-c".env.INSTALL_TOOL tasks."test:run:install:3:ok-c".status ]' "$weighted")" \
+  "scoped installation reuses the final installer command, tool environment and status"
 
 # A short chain advances independently: its tail never depends on long chains.
 assert_eq \
-  '["native:link","pnpm:install","test:run:chain:3:native-b","test:run:chain:3:ok-c","test:run:chain:3:small-f"]' \
+  '["native:link","pnpm:install","test:run:chain:3:native-b","test:run:chain:3:ok-c","test:run:chain:3:small-f","test:run:install:3:ok-c"]' \
   "$(eval_test_module_attr 4 'builtins.toJSON (closureOf "test:run:chain:3:small-f")' "$weighted")" \
   "completed short chain advances without waiting for the slow chains"
 
@@ -181,9 +198,14 @@ assert_eq \
   "three-chain fallback keeps long tasks separate and waits for each tail"
 
 assert_eq \
-  '["pnpm:install","test:run:chain:2:native-b"]' \
+  '["test:run:install:2:ok-c","test:run:chain:2:native-b"]' \
   "$(eval_test_module_attr 3 'builtins.toJSON tasks."test:run:chain:2:ok-c".after' "$weighted")" \
   "three-chain fallback orders short tasks within the least-loaded chain"
+
+assert_eq \
+  '["test:run:chain:2:native-b"]' \
+  "$(eval_test_module_attr 3 'builtins.toJSON tasks."test:run:install:2:ok-c".after' "$weighted")" \
+  "three-chain fallback also orders its scoped installation"
 
 # --- Unspecified weights default to 1 with lexical tie-breaking ---
 
@@ -198,7 +220,7 @@ assert_eq \
   "unweighted test:run waits for every chain tail"
 
 assert_eq \
-  '["test:run","test:run:chain:0:ok-c"]' \
+  '["test:run","test:run:chain:0:ok-c","test:run:install:0:ok-c"]' \
   "$(eval_test_module_attr 4 'builtins.toJSON (dependentsOf "test:run:chain:0:long-d")')" \
   "failure skips only its own chain successors and the aggregate"
 

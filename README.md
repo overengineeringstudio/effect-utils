@@ -261,9 +261,48 @@ devenv shell
 
 ### Publish Dependency Views
 
+Source-side generator freshness (`genie:check`) needs the root dependency view:
+it directly runs `buck2:editor:bootstrap` for only `.` and `packages/@overeng/otel-contract`,
+never whole-workspace publication. The static generator closure checker remains
+self-contained. Shell entry, `genie:run`, and `lint:fix` do not publish dependency
+views; explicitly regenerate and publish source-generator dependencies with:
+
 ```bash
-devenv tasks run buck2:editor:publish
+devenv tasks run buck2:editor:materialize
 ```
+
+Publish only requested consumers (JSON package paths), or omit the environment
+variable to reconcile changes since `origin/main`. Automatic selection uses the pnpm
+lockfile importer graph, including transitive workspace-dependent consumers. Global
+dependency inputs or unproven ownership fail closed to the complete authority with a diagnostic.
+
+```bash
+EDITOR_VIEW_PACKAGES='["packages/@overeng/notion-core"]' devenv tasks run buck2:editor:publish
+```
+
+The default never substitutes a whole-workspace publication for an empty change
+set. Every automated consumer selects its own scoped publisher. Aggregate source-test
+chains preserve each package's own publication prerequisite; their shared harness
+publisher covers only the selected generator/module-script views, not the union
+of source-test packages. The full operation
+is **manual only and currently exceeds its 300-second deadline**; verification
+optimization is tracked in [#1915](https://github.com/overengineeringstudio/effect-utils/issues/1915):
+
+```bash
+devenv tasks run buck2:editor:publish:all
+```
+
+Each authority/bootstrap/publication invocation has a **300-second total deadline**
+(plus a 5-second forced-kill grace), including Buck builds, filesystem work and
+lock waits. A separate supervisor owns the publication session and always escalates
+to a group-wide kill after the grace, even if the authority already exited.
+Fingerprint admission closes on termination. Expiry prints a deadline diagnostic and fails nonzero; partial
+publication is never reported as success. This bounds shared-lane occupancy
+well below the 53-minute TT-148 incident. Both view preparations and fingerprint
+subprocesses are limited to four workers, matching the native host-wide walk cap.
+Only immutable Nix-store inputs are memoized, keyed by the tool and complete
+fingerprint arguments; mutable Buck outputs are always re-proven. Phase diagnostics
+are written as work advances, with phase spans on completion, failure, and SIGTERM.
 
 ### Check All TypeScript Projects
 

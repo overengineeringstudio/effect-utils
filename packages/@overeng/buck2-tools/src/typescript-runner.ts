@@ -223,10 +223,18 @@ const forEachSequential = async <T>(options: {
 const canonicalRoots = (roots: readonly string[]): readonly string[] =>
   [...new Set(roots.map((root) => resolve(root)))].toSorted()
 
-// A process-local queue prevents root Promise.all/allSettled callers from
-// spawning one child per root. The native tool separately enforces the fixed
-// host-wide walk cap across independent runners, Buck actions and publishers.
-let fingerprintQueue: Promise<void> = Promise.resolve()
+// Match the native host-wide walk cap without spawning one child per root.
+// Each lane advances after failure as well as success.
+const fingerprintWorkers = 4
+const fingerprintQueues = Array.from({ length: fingerprintWorkers }, () => Promise.resolve())
+let nextFingerprintQueue = 0
+const immutableFingerprints = new Map<
+  string,
+  {
+    readonly spawnChild: typeof spawnFingerprintChild
+    readonly result: Promise<string>
+  }
+>()
 
 /** Only the streams and lifecycle events consumed by the fingerprint runner. */
 export type FingerprintChild = {
@@ -245,22 +253,41 @@ const spawnFingerprintChild = ({
 }): FingerprintChild =>
   spawn(tool, args, { cwd: '/', env: { PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] })
 
-/** Runs one fingerprint child at a time without blocking the event loop. */
+const fingerprintAdmission = new AbortController()
+/** Stop queued and future root subprocess admission before termination drains lanes. */
+export const closeFingerprintAdmission = (): void => fingerprintAdmission.abort()
+
+/** Bound subprocess admission; memoize only immutable Nix inputs with identical semantics. */
 export const runFingerprintTool = ({
   tool,
   args,
   spawnChild = spawnFingerprintChild,
+  signal: admissionSignal = fingerprintAdmission.signal,
 }: {
   readonly tool: string
   readonly args: readonly string[]
+  readonly signal?: AbortSignal
   readonly spawnChild?: (options: {
     readonly tool: string
     readonly args: readonly string[]
   }) => FingerprintChild
 }): Promise<string> => {
-  const result = fingerprintQueue.then(
+  if (admissionSignal.aborted === true)
+    return Promise.reject(new Error('fingerprint admission closed by termination'))
+  const immutable = /^\/nix\/store\/[^/]+(?:\/|$)/u.test(args[0] ?? '')
+  const cacheKey = JSON.stringify([tool, args])
+  if (immutable === true) {
+    const cached = immutableFingerprints.get(cacheKey)
+    if (cached?.spawnChild === spawnChild) return cached.result
+  }
+  const lane = nextFingerprintQueue++ % fingerprintWorkers
+  const result = (fingerprintQueues[lane] ?? Promise.resolve()).then(
     () =>
       new Promise<string>((resolveOutput, reject) => {
+        if (admissionSignal.aborted === true) {
+          reject(new Error('fingerprint admission closed by termination'))
+          return
+        }
         const child = spawnChild({ tool: requireFingerprintTool(tool), args })
         const stdout: Buffer[] = []
         const stderr: Buffer[] = []
@@ -280,10 +307,17 @@ export const runFingerprintTool = ({
   )
   // A failed root must not poison later requests, and callers still receive
   // the original rejection through result.
-  fingerprintQueue = result.then(
+  fingerprintQueues[lane] = result.then(
     () => {},
     () => {},
   )
+  if (immutable === true) {
+    immutableFingerprints.set(cacheKey, { spawnChild, result })
+    void result.catch(() => {
+      if (immutableFingerprints.get(cacheKey)?.result === result)
+        immutableFingerprints.delete(cacheKey)
+    })
+  }
   return result
 }
 
@@ -806,6 +840,7 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
 }
 
 const forwardSignal = (signal: ForwardedSignal): void => {
+  closeFingerprintAdmission()
   forwardedSignal ??= signal
   activeChild?.kill(signalNumbers[signal])
 }
