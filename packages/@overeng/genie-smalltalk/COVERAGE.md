@@ -1,5 +1,7 @@
 # Smalltalk declaration coverage
 
+The generic declaration contract is specified by [requirements](./docs/requirements.md) and [spec](./docs/spec.md). This document records separate conformance evidence and support boundaries.
+
 Authoritative grammar: `compoundingtech/smalltalk`, `crates/st3/src/graph.rs` and `mission.rs` at native revision `d5e2302`. This library validates authoring inputs; the st daemon remains the final parser and runtime authority. Constructor field names are TypeScript camelCase only where KDL uses hyphens.
 
 | Grammar node                                                                                               | Status      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
