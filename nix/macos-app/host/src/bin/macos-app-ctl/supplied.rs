@@ -6,7 +6,7 @@ impl Ctl {
     fn supplied_summary(&self, desired: &launchd::Validated, changed: bool, loaded: bool, pid: Option<u32>) -> Result<Value> {
         let running = match pid {
             Some(pid) if self.args.contains_key("socket") => {
-                let connection = UnixStream::connect(self.arg("socket")?)?;
+                let connection = self.connect_endpoint(&desired.domain, pid)?;
                 let requirement = macos_app_host::CompiledRequirement::compile(self.field("requirement")?)
                     .map_err(|e| fail(64, "invalid-input", e.to_string()))?;
                 let peer = macos_app_host::authenticate_peer(&connection, macos_app_host::PeerPolicy {

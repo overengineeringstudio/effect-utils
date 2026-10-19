@@ -119,6 +119,8 @@ mod launchd;
 mod supplied;
 #[path = "macos-app-ctl/lifecycle.rs"]
 mod lifecycle;
+#[path = "macos-app-ctl/readiness.rs"]
+mod readiness;
 #[cfg(feature = "test-signing-cert")]
 #[path = "macos-app-ctl/helper_probe.rs"]
 mod helper_probe;
@@ -579,7 +581,10 @@ impl Ctl {
         Ok(json!({"changed": true, "domain": domain}))
     }
     fn ipc(&self) -> Result<Value> {
-        let mut stream = UnixStream::connect(self.arg("socket")?)?;
+        let domain = self.domain()?;
+        let (loaded, pid) = self.job(&domain)?;
+        let pid = pid.filter(|_| loaded).ok_or_else(|| fail(23, "job-not-running", "Launchd job is not running"))?;
+        let mut stream = self.connect_endpoint(&domain, pid)?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?; stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         stream.write_all(b"{\"wireVersion\":1,\"action\":\"status\",\"args\":{}}\n")?;
         let mut bytes = Vec::new();
