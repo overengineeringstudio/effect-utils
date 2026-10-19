@@ -75,6 +75,7 @@ import {
 } from '../../../store/store-liveness.ts'
 import { StoreLock } from '../../../store/store-lock.ts'
 import { assessLossless } from '../../../store/store-lossless.ts'
+import { makeStoreDirectory } from '../../../store/store-path.ts'
 import {
   captureDeletionIdentity,
   PinnedDeletionError,
@@ -3587,7 +3588,6 @@ const storeAddCommand = Cli.Command.make(
     Effect.gen(function* () {
       const outputMode = yield* resolveOutputOption(output)
       const store = yield* Store
-      const fs = yield* FileSystem.FileSystem
 
       // Parse the source string
       const source = parseSourceString(sourceString)
@@ -3647,7 +3647,7 @@ const storeAddCommand = Cli.Command.make(
       // Clone if needed (show progress for non-JSON modes)
       if (bareExists === false) {
         const repoBasePath = store.getRepoBasePath(source)
-        yield* fs.makeDirectory(repoBasePath, { recursive: true })
+        yield* makeStoreDirectory(repoBasePath)
         yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
       }
 
@@ -3670,7 +3670,7 @@ const storeAddCommand = Cli.Command.make(
       if (worktreeExists === false) {
         const worktreeParent = EffectPath.ops.parent(worktreePath)
         if (worktreeParent !== undefined) {
-          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+          yield* makeStoreDirectory(worktreeParent)
         }
 
         if (refType === 'commit' || refType === 'tag') {
@@ -3906,7 +3906,6 @@ const storeWorktreeNewCommand = Cli.Command.make(
     Effect.gen(function* () {
       const outputMode = yield* resolveOutputOption(output)
       const store = yield* Store
-      const fs = yield* FileSystem.FileSystem
 
       const ref = Option.getOrUndefined(refOpt)
       const base = Option.getOrUndefined(baseOpt)
@@ -4055,7 +4054,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
 
       if (autoBootstrap === true) {
         const repoBasePath = store.getRepoBasePath(source)
-        yield* fs.makeDirectory(repoBasePath, { recursive: true })
+        yield* makeStoreDirectory(repoBasePath)
         yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
       }
 
@@ -4078,7 +4077,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
       // Create parent directory
       const worktreeParent = EffectPath.ops.parent(worktreePath)
       if (worktreeParent !== undefined) {
-        yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        yield* makeStoreDirectory(worktreeParent)
       }
 
       // Fail if worktree already exists

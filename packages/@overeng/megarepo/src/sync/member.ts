@@ -29,7 +29,7 @@ import {
   resolveStoreBranchWorktree,
 } from '../store/store-branch-worktree.ts'
 import { StoreLock } from '../store/store-lock.ts'
-import { assertCanonicalMutationAllowed } from '../store/store-path.ts'
+import { assertCanonicalMutationAllowed, makeStoreDirectory } from '../store/store-path.ts'
 import { Store } from '../store/store.ts'
 import { foreignMemberMountMessage, inspectMemberMount } from './member-mount.ts'
 import type { MemberSyncResult, SyncMode } from './types.ts'
@@ -741,7 +741,7 @@ export const syncMember = <R = never>({
       if (bareExists === false) {
         if (dryRun === false) {
           const repoBasePath = store.getRepoBasePath(source)
-          yield* fs.makeDirectory(repoBasePath, { recursive: true })
+          yield* makeStoreDirectory(repoBasePath)
           const cloned = yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
           yield* Observability.annotateSyncMemberAction(
             cloned === true ? 'clone' : 'already-cloned-by-sibling',
@@ -1079,7 +1079,7 @@ export const syncMember = <R = never>({
             // Ensure worktree parent directory exists
             const worktreeParent = EffectPath.ops.parent(worktreePath)
             if (worktreeParent !== undefined) {
-              yield* fs.makeDirectory(worktreeParent, { recursive: true })
+              yield* makeStoreDirectory(worktreeParent)
             }
 
             // Create worktree
@@ -1145,7 +1145,7 @@ export const syncMember = <R = never>({
 
             const parent = EffectPath.ops.parent(commitWorktreePath)
             if (parent !== undefined) {
-              yield* fs.makeDirectory(parent, { recursive: true })
+              yield* makeStoreDirectory(parent)
             }
             yield* Git.createWorktreeDetached({
               repoPath: bareRepoPath,

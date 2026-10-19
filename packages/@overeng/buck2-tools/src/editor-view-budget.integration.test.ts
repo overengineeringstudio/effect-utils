@@ -1282,6 +1282,7 @@ describe('publication waits for a live budget eviction, but not stale publisher 
       process: expect.any(String),
     })
     const attempts = vi.spyOn(Fs, 'mkdirSync')
+    const priorImplementation = attempts.getMockImplementation()
     try {
       waiting = host.publish(victim)
       // publishEditorView reaches its first root-lock attempt synchronously. The
@@ -1290,6 +1291,8 @@ describe('publication waits for a live budget eviction, but not stale publisher 
       expect(readFileSync(join(lockPath, 'owner.json'), 'utf8')).toBe(owner)
     } finally {
       attempts.mockRestore()
+      // Preserve another test file's shared vi.fn after Bun restores the spy.
+      if (priorImplementation !== undefined) attempts.mockImplementation(priorImplementation)
     }
   })
 

@@ -38,7 +38,7 @@ import { classifyRef } from '../../core/ref.ts'
 import { resolveStoreBranchWorktree } from '../../store/store-branch-worktree.ts'
 import { runPreflightChecks } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
-import { authorizeAuthorWorkspaceWrite } from '../../store/store-path.ts'
+import { authorizeAuthorWorkspaceWrite, makeStoreDirectory } from '../../store/store-path.ts'
 import { Store, StoreLayer } from '../../store/store.ts'
 import { foreignMemberMountMessage, inspectMemberMount } from '../../sync/member-mount.ts'
 import {
@@ -295,7 +295,7 @@ export const pinCommand = Cli.Command.make(
                 }
 
                 const repoBasePath = store.getRepoBasePath(source)
-                yield* fs.makeDirectory(repoBasePath, { recursive: true })
+                yield* makeStoreDirectory(repoBasePath)
                 yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
               } else {
                 // Fetch to ensure we have the latest refs
@@ -325,7 +325,7 @@ export const pinCommand = Cli.Command.make(
                 // Ensure parent directory exists
                 const worktreeParent = EffectPath.ops.parent(worktreePath)
                 if (worktreeParent !== undefined) {
-                  yield* fs.makeDirectory(worktreeParent, { recursive: true })
+                  yield* makeStoreDirectory(worktreeParent)
                 }
 
                 // Create the worktree
@@ -356,7 +356,7 @@ export const pinCommand = Cli.Command.make(
               }
               const reposDir = EffectPath.ops.parent(memberPath)
               if (reposDir !== undefined) {
-                yield* fs.makeDirectory(reposDir, { recursive: true })
+                yield* makeStoreDirectory(reposDir)
               }
               if (currentLink !== null) yield* fs.remove(memberPathNormalized)
               yield* fs.symlink(worktreePath.replace(/\/$/, ''), memberPathNormalized)
@@ -479,7 +479,7 @@ export const pinCommand = Cli.Command.make(
                 // Create the worktree parent directory
                 const worktreeParent = EffectPath.ops.parent(commitWorktreePath)
                 if (worktreeParent !== undefined) {
-                  yield* fs.makeDirectory(worktreeParent, { recursive: true })
+                  yield* makeStoreDirectory(worktreeParent)
                 }
 
                 // Create detached worktree at the pinned commit

@@ -42,6 +42,7 @@ import * as Git from '../core/git.ts'
 import * as Observability from '../core/observability.ts'
 import type { GitWriterLockError } from './git-writer-lock.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
+import { makeStoreDirectory } from './store-path.ts'
 
 /** Relative directory name of the per-repo archive holding area. */
 export const ARCHIVE_DIR_NAME = '.archive'
@@ -181,7 +182,7 @@ export const archiveWorktree = (args: {
     // embeds `/`, so the dest is nested, e.g. `.archive/feature/x--<ISO>`). The
     // dest is always under `.archive/`, so its parent is never `undefined`.
     const destParent = EffectPath.ops.parent(destPath) ?? archiveDir
-    yield* fs.makeDirectory(destParent, { recursive: true })
+    yield* makeStoreDirectory(destParent)
 
     // (2) Move the worktree — dirty + untracked work travels intact, gitlink
     // fixed. POINT OF NO RETURN: a failure here propagates (nothing moved).
@@ -275,7 +276,7 @@ export const archiveRefMismatchWorktree = (args: {
     )
 
     const destParent = EffectPath.ops.parent(destPath) ?? archiveDir
-    yield* fs.makeDirectory(destParent, { recursive: true })
+    yield* makeStoreDirectory(destParent)
 
     yield* Git.moveWorktree({
       repoPath: args.bareRepoPath,
