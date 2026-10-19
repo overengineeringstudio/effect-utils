@@ -70,3 +70,32 @@ source paths and repository links are intentionally omitted.
 The normative target is [spec.md](../spec.md). Unresolved platform gates and
 their blockers are in [open-questions.md](../open-questions.md). This decision
 records accepted direction, not implementation, consent or migration success.
+
+## Amendment 1
+
+Date: 2026-10-17. The following Q25–Q29 outcomes refine the delivery and consent
+boundary without changing the single-host decision. They record accepted
+direction, not verified implementation or successful platform approval.
+
+| Question                              | Recorded outcome                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Q25 Build/test execution              | Use only an idle dedicated secondary build host, `nice` level 19, Nix `max-jobs = 2`, and `builders = ""`. Do not drain CI or consume active capacity; do not substitute another machine.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Q26 Implementation boundary           | Implement the real unsigned native host now. Signing, installation, launch and grants await an explicitly authorized human-present session.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Q27 Release-one grants and onboarding | Implement all six permission families: Full Disk Access, Notifications, Screen Recording, Accessibility, audio and per-target Automation. Audio includes distinct microphone and system-audio (TCC AudioCapture) categories, giving seven concrete grant strings. Explicit `onboard --human-present --config PATH` performs setup and a harmless positive check for each enabled category/target. An empty Automation target allowlist skips target checks, not implicit consent. Startup and ordinary requests never request consent; unmet prerequisites return typed action-required denials. |
+| Q28 Upgrade policy                    | Pending DQ1. Pin the consumer identity and actual designated requirement; no claim of grant continuity until positive human-present upgrade/rollback evidence.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Q29 Bundle identity                   | `bundleId` is required consumer input to the public module. The final private identity is neither chosen nor published by effect-utils.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Q30                                   | No outcome recorded; no answer was supplied.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+
+Release-one operation IDs are `host.status`, `documents.copy` and `notify`.
+The single-word `notify` is a deliberate fixed exception to the dotted-name
+grammar, not a general bare-name namespace. This replaces the draft `core.*`
+reservation and examples: clients use the assigned IDs directly, with no
+`core.notify` alias or implicit migration fallback.
+
+Permission denials use `permission-required` plus structured `actionRequired`
+details, so clients can report the human step without prompting or borrowing
+another app's grants. Positive evidence for all seven concrete categories, Documents
+through import, and upgrade continuity remains gated as described in
+[spec.md](../spec.md) and [open-questions.md](../open-questions.md).
+No build/test, signing, installation, launch, grant or migration success is
+established by this amendment.

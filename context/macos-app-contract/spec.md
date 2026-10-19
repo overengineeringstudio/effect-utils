@@ -7,11 +7,12 @@ This directory has no separate vision or requirements document.
 
 ## Status
 
-Draft. The single-host runtime and operations described here are the target
-contract, not a claim that the current generic action runner implements them.
-Existing `mkMacosApp`, `macos-app-ctl`, sealed-release and native security
-primitives are reusable implementation inputs. No production grant or tool
-migration is established by this document. Platform release gates are listed in
+Draft. A real unsigned native permissions host is the implementation target;
+implementation has not yet been verified. Existing `mkMacosApp`, `macos-app-ctl`,
+sealed-release and native security primitives are reusable implementation inputs.
+No signing, installation, launch or permission grant is authorized by this work;
+those require an explicitly authorized human-present session. No production grant
+or tool migration is established here. Positive platform release gates remain in
 [open-questions.md](./open-questions.md).
 
 ## Scope
@@ -42,9 +43,10 @@ clients (same UID, local or SSH) ------typed IPC------> signed host
 One consumer-assembled app holds all grants its operations need. The consumer
 repo fixes a descriptive, consent-facing display name before the first grant
 (for example "Mac Permissions Host"); renaming later is a re-consent migration.
-The public runtime keeps a generic technical name, `macos-app-host`. The consumer
-also pins its bundle identifier, install path, launchd label and designated
-requirement before the first grant.
+The public runtime binary is `macos-permissions-host`. The public assembly module
+requires `bundleId` as consumer input; it does not select or publish the final
+private identity. The consumer pins its bundle identifier, install path, launchd
+label and actual designated requirement before the first grant.
 
 launchd starts the installed signed native entrypoint directly, never a resident
 shell, resource-accounting wrapper or client. A socket/SSH client does not launch
@@ -94,17 +96,22 @@ derives host decoding and client types; unknown fields are rejected rather than
 passed to a command. Status advertises enabled ID/version pairs and policy
 revision, not executable paths or private source configuration.
 
-Operation IDs are repository-local protocol names, stewarded by effect-utils:
-`[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*`. `core.*` is reserved for public operations;
-`private.*` is allocated only by the assembling repo and is not interoperable
-across consumers. Examples: `core.copy-allowlisted`, `core.notify`,
-`private.archive-import`; invalid: `Core.Notify`, `notify`, `core.exec` (forbidden
-semantics despite valid spelling). There is no registered Internet namespace.
-`operation` selects semantics; `operationVersion` selects its positive-integer
-schema version. Breaking changes get a new version, never reinterpret an old
-request. Host upgrades may retain supported versions explicitly; unsupported
-versions return `unsupported-version` without work. Protocol framing has its own
-`protocolVersion`; it is not an alias for the operation version.
+Operation IDs are case-sensitive repository-local protocol names stewarded by
+effect-utils. Release one registers exactly `host.status`, `documents.copy` and
+`notify`. Dotted names use `[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*`;
+`host.*` and `documents.*` are public namespaces and `private.*` is allocated
+only by the assembling repo, with no interoperability across consumers.
+`notify` is the sole explicitly registered single-word exception: retain the
+assigned public wire ID rather than invent a `core.notify` rename or alias.
+This replaces the draft's `core.*` examples/reservation; `core.notify` and
+`core.copy-allowlisted` are not registered operations. Other bare names,
+`Core.Notify` and any arbitrary-execution operation are invalid. There is no
+registered Internet namespace. `operation` selects semantics;
+`operationVersion` selects its positive-integer schema version. Breaking changes
+get a new version, never reinterpret an old request. Host upgrades may retain
+supported versions explicitly; unsupported versions return `unsupported-version`
+without work. Protocol framing has its own `protocolVersion`; it is not an alias
+for the operation version.
 
 ### Request and response envelopes
 
@@ -115,15 +122,25 @@ type Request = {
   operation: string
   operationVersion: number
   callerLabel: string // asserted, unauthenticated; 0..128 UTF-8 bytes
-  input: CopyInput | NotifyInput // selected by operation + operationVersion
+  input: StatusInput | CopyInput | NotifyInput // selected by operation + operationVersion
 }
 type Response =
-  | { protocolVersion: 1; requestId: string; ok: true; result: CopyResult | NotifyResult }
+  | {
+      protocolVersion: 1
+      requestId: string
+      ok: true
+      result: StatusResult | CopyResult | NotifyResult
+    }
   | {
       protocolVersion: 1
       requestId: string | null
       ok: false
-      error: { code: ErrorCode; message: string; auditId: string | null }
+      error: {
+        code: ErrorCode
+        message: string
+        auditId: string | null
+        actionRequired?: { category: string; nextStep: string }
+      }
     }
 type ErrorCode =
   | 'invalid-request'
@@ -138,6 +155,12 @@ type ErrorCode =
   | 'audit-unavailable'
   | 'operation-failed'
 ```
+
+`permission-required` includes `actionRequired.category` (one of the seven grant
+strings below) and a bounded `actionRequired.nextStep` describing the
+human action. For Automation the step identifies the affected allowlisted
+target. This is a typed denial, not permission to launch onboarding from a
+request. Other errors do not imply consent is missing.
 
 Every operation supplies concrete input/result schemas and bounded public error
 messages. The envelope above is the target operation protocol, not the existing
@@ -160,6 +183,10 @@ user, mode 0700, socket mode 0600. Reuse `endpoint::bind` no-follow ancestry,
 ACL, stale-socket and same-inode cleanup checks. A non-socket or live listener
 blocks startup. No network listener or unauthenticated request-file fallback is
 part of this contract. An SSH client connects locally as the same user.
+`endpoint::bind` locks the entire socket parent directory. The standard ctl
+socket and typed `config.socket` therefore require different precreated,
+user-owned mode-0700 parent directories; different filenames in one directory
+are insufficient and would contend for the same listener lock.
 
 One newline-delimited UTF-8 JSON request and response per connection; maximum
 request 64 KiB including newline, maximum response 1 MiB. Reject invalid UTF-8,
@@ -221,10 +248,41 @@ and size limits are explicit; audit storage exhaustion refuses new work with
 work and outcome before reporting success. A crash may leave admitted work with
 unknown outcome; recovery records that uncertainty, never fabricated success.
 Same-UID audit storage is operational evidence, not tamper-proof forensics.
+Before admitting protected work, reserve capacity for its bounded terminal audit
+record under `auditMaxBytes`. Other outstanding admissions cannot consume that
+reservation; refuse new work rather than discover after a side effect that its
+outcome cannot be recorded.
 
 ## Initial operations
 
+Release one's operation IDs are `host.status` (nonprompting operation/revision
+status and consent-pending observation), `documents.copy` and `notify`. Grant-category
+onboarding is a separate human-present command, not an operation that socket
+clients can invoke.
+
+### Host status
+
+Operation ID: `host.status`, operation version 1.
+
+```typescript
+type StatusInput = {}
+type StatusResult = {
+  auditId: string
+  operations: { operation: string; operationVersion: 1 }[]
+  policyRevision: string
+  releaseRevision: string
+  consentPending: boolean
+}
+```
+
+The operation inventory contains the three release-one IDs. Status does not
+expose private paths, request consent or claim that observed authorization
+establishes positive access. A nonpending observation is not evidence that
+DQ1–DQ9 passed. The legacy ctl status remains a distinct protocol.
+
 ### Allowlisted Documents copy
+
+Operation ID: `documents.copy`, operation version 1.
 
 ```typescript
 type CopyInput = { sourceId: string; files: string[] }
@@ -235,9 +293,10 @@ type CopyResult = {
 }
 ```
 
-This is the first protected operation. The consumer maps each source ID to a
-fixed Documents directory and sentinel; callers supply only distinct basenames
-(1..255 UTF-8 bytes, no slash, NUL, `.` or `..`), never arbitrary paths. Limit
+This is the first protected operation. Each configured source requires `root`,
+`sentinel` and explicit `allowedBasenames`; a root alone does not allow all files
+within it. Callers supply only distinct allowlisted basenames (1..255 UTF-8 bytes,
+no slash, NUL, `.` or `..`), never arbitrary paths. Limit
 file count, total bytes and duration by consumer policy. Descriptor-relative
 no-follow opens require regular files under the selected root; source changes,
 symlinks, nonregular files and bound overruns refuse publication. Copy in the
@@ -256,14 +315,18 @@ successful backup import**; staging alone does not establish end-to-end readines
 
 ### Notifications
 
+Operation ID: `notify`, operation version 1.
+
 ```typescript
 type NotifyInput = { productId: string; title: string; body: string }
 type NotifyResult = { auditId: string; notificationId: string; submitted: true }
 ```
 
 `productId` selects a consumer-configured display label, not a bundle identity.
-Bound title to 256 and body to 4096 UTF-8 bytes, with consumer rate/concurrency
-limits. The host posts via its own notification APIs after Notifications consent;
+Bound the caller's title to 256 and body to 4096 UTF-8 bytes before adding the
+product prefix. Work is serialized at concurrency 1. Consumer policy
+`notificationMinIntervalMs` sets the minimum notification interval; rate-limit
+denials return `busy`. The host posts via its own notification APIs after consent;
 the banner uses the host's name/icon and prefixes the title with the product
 label. No arbitrary click command, URL, script or executable is accepted.
 `submitted` means the OS accepted submission, not that a banner was displayed or
@@ -274,29 +337,54 @@ app's UI and behavior is a later migration, not a prerequisite for the host.
 
 ## Grants and human consent
 
-| Grant              | Scope and procedure                                                                        |
-| ------------------ | ------------------------------------------------------------------------------------------ |
-| Full Disk Access   | Host identity; guided human System Settings approval, including for initial Documents copy |
-| Screen Recording   | Host operation requiring capture; separate consent and positive experiment (DQ2)           |
-| Accessibility      | Host AX operation; separate approval and positive experiment (DQ3)                         |
-| Audio / microphone | Each platform-required audio category; separate approval and positive experiment (DQ4)     |
-| Notifications      | Host allowance; verify actual sender and submission (DQ5)                                  |
-| Automation         | Separate consent per target app; bounded target policy and experiment (DQ6)                |
+Release one covers all six permission families below, with two distinct audio
+categories and seven concrete `enabledGrants` strings, not FDA-only delivery
+with other categories silently deferred. Consumer enablement selects the needed
+grants and Automation targets; compiled support does not itself grant a category.
+
+| Grant / config category               | Scope and harmless positive onboarding check                                                                          |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Full Disk Access / `full-disk-access` | Human System Settings approval; bounded read of a configured protected sentinel                                       |
+| Notifications / `notifications`       | Explicit host allowance; bounded test notification, distinguish submission from visible delivery                      |
+| Screen Recording / `screen-recording` | Explicit approval; capture and verify the host's synthetic red 32×32 fixture window, never an arbitrary desktop (DQ2) |
+| Accessibility / `accessibility`       | Explicit approval; bounded harmless AX interaction/observation of a test fixture (DQ3)                                |
+| Microphone / `microphone`             | Explicit approval; bounded disposable test capture, never retained production audio (DQ4)                             |
+| System audio / `system-audio`         | Separate AudioCapture approval; bounded process-tap capture of synthetic audio on macOS 14.4+ (DQ4)                   |
+| Automation / `automation`             | Separate approval per allowlisted target; harmless typed event per target (DQ6)                                       |
 
 One host means one stable identity, **not one universal consent click**. Each
 permission type still needs approval; Automation needs approval per target.
 There is no unmanaged pre-grant mechanism. The host holds FDA and every other
 grant its enabled operations need, with usage descriptions/entitlements assembled
 before sealing. Do not request unrelated grants merely because the host can.
+Microphone success does not establish authorization for other audio categories.
+System audio uses TCC AudioCapture and `NSAudioCaptureUsageDescription`;
+microphone capture uses aggregate input. Neither grant substitutes for the other,
+and unsupported system-audio platforms do not silently fall back to microphone.
+For the system-audio positive check, the human must play harmless non-silent test
+audio during the three-second capture window. Silence or a failed capture leaves
+the result failed/unknown, never a fabricated authorization pass.
 
-Onboarding: install and verify the pinned sealed host; explain enabled operations
-and their authority; with the human present perform the category-specific setup
-and harmless positive operation; record outcomes and remaining unknowns. Runtime
-requests never trigger unattended setup loops. Denial, revocation, missing GUI or
-new targets return explicit action-required errors. Never reset TCC, edit its
-database, impersonate another identity or fall back to another app's grant.
-Ordinary client updates need no re-consent; host upgrades must preserve pinned
-identity and pass DQ1 before claiming grant continuity.
+`macos-permissions-host serve --config PATH` never requests consent at startup.
+Only `macos-permissions-host onboard --human-present --config PATH`, during an
+explicitly authorized human-present session, may perform category-specific setup
+and the harmless positive check for each enabled category and Automation target.
+An empty Automation target allowlist grants no existing target implicitly;
+onboarding skips Automation target checks until targets are explicitly supplied.
+Install and verify the pinned sealed host first; explain the operations and
+authority, then record actual positive outcomes, denials and remaining unknowns.
+Enabling a category, inspecting authorization or observing a successful sentinel
+does not itself prove all operations in that category work.
+
+Neither startup nor an ordinary IPC request may trigger a consent prompt or
+setup loop. Denial, revocation, absent approval and a new Automation target return
+typed action-required denials identifying the required human step; missing GUI
+returns `session-unavailable`, never a substitute identity. Never reset TCC, edit
+its database, impersonate another identity or fall back to another app's grant.
+Ordinary client updates need no re-consent. Host upgrade policy remains pending
+DQ1: preserve pinned identity and the actual designated requirement, but do not
+claim grant continuity until positive human-present upgrade/rollback evidence
+establishes it for the tested categories.
 
 ## Stable signed releases and existing machinery
 
@@ -373,6 +461,58 @@ Implementation sources: [`macos-app-ctl.rs`](../../nix/macos-app/host/src/bin/ma
 [`wire.schema.json`](../../nix/macos-app/wire.schema.json), and the shared native
 security modules in [`host/src`](../../nix/macos-app/host/src). None of these
 mechanisms establishes historical TCC continuity without positive platform tests.
+
+The public unsigned assembly module is
+[`nix/permissions-host/default.nix`](../../nix/permissions-host/default.nix).
+Consumers normally call `effectUtils.lib.mkMacosPermissionsHost` with `pkgs`,
+`bundleId`, `displayName`, `signer` (`teamId`, `identity`) and ordered `policyFiles`.
+Direct imports take `pkgs` and `nixpkgsRevision` before those assembly inputs. Optional
+inputs are `name`, `launchd`, `enabledGrants` (all seven concrete grant strings by
+default) and `automationTargets` (empty by default). The consumer supplies the identity;
+public examples must not expose the final private value. Signer metadata pins
+the intended requirement but unsigned assembly does not perform signing.
+
+Policy files are JSON objects applied in order with shallow top-level overrides:
+later lists and objects replace earlier values, not deep merge.
+`enabledGrants` and `automationTargets` module arguments are authoritative;
+the files supply the remaining runtime configuration.
+`notificationMinIntervalMs` defaults to 1000 milliseconds and must be in the
+finite inclusive range 1..3600000; it is consumer configuration, not request input.
+Outputs include the standard `mkMacosApp` `hostApp`, `requirement`, `ctl`,
+`ctlConfig`, `generation`, `desiredDescriptor` and `primitives`, plus `runtime`,
+merged `policy`, `infoPlist`, `entitlements` and `hostSourceHash`. Outputs are
+lazy: `hostApp` is the unsigned permissions app. Building generic tooling such
+as `ctl`, `primitives` or `desiredDescriptor` may run its existing ad-hoc-signing
+build steps; that does not seal or authorize activation of the permissions app.
+The app remains unsigned until explicit sealing in the authorized session.
+`Info.plist` includes `MacPermissionsHostPolicyHash`, a digest of the exact merged
+policy JSON and entitlement plist bytes. This binds policy-only and entitlement-only
+changes to the metadata identity already compared by `macos-app-ctl`; the compiled
+`hostSourceHash` need not change. `identity-tests.nix` asserts both upgrade cases
+without assembling or signing a bundle. `infoPlistData` and `bundlePolicyHash`
+expose the corresponding immutable metadata for consumer evaluation.
+
+The native runtime implements the standard ctl socket lifecycle separately
+from the policy-configured typed-operation socket. These are distinct protocols:
+ctl lifecycle commands do not reinterpret operation requests, and ordinary
+operation clients cannot trigger lifecycle changes or consent.
+
+Persisted consent state is read using an initial nonblocking open and checked
+for the expected regular-file type before decoding. A FIFO must be rejected,
+not allowed to hang startup before file-type validation.
+
+### Implementation and verification boundary
+
+The public Rust runtime lives in `nix/permissions-host/host`; its binary accepts
+`serve --config PATH` and the explicitly gated `onboard --human-present --config
+PATH`. Unsigned assembly is real implementation work, not permission to sign,
+install, launch or grant the app. Such activation awaits the human-present
+session; building an unsigned artifact is not positive permission evidence.
+
+Builds and tests run only while a dedicated secondary build host is idle, at
+`nice` level 19, with Nix `max-jobs = 2` and `builders = ""`. Do not drain CI,
+commandeer active capacity or silently fall back to another host. No build/test
+pass or runtime success is claimed by this specification.
 
 ## Migration contract
 
