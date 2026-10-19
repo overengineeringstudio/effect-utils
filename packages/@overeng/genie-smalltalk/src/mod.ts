@@ -1674,9 +1674,9 @@ const snapshotComposition = <T>(input: T): T => {
     if (typeof value !== 'object' || value === null) return value
     const prototype = Object.getPrototypeOf(value)
     if (
-      (prototype !== Object.prototype && prototype !== null && !Array.isArray(value)) ||
+      (prototype !== Object.prototype && prototype !== null && Array.isArray(value) === false) ||
       Object.getOwnPropertySymbols(value).length > 0 ||
-      gateReferences.has(value) ||
+      gateReferences.has(value) === true ||
       templateReferences(value).length > 0 ||
       ('_tag' in value &&
         (((value._tag === 'Argv' || value._tag === 'Shell') &&
@@ -1694,7 +1694,7 @@ const snapshotComposition = <T>(input: T): T => {
       return value
     const existing = copies.get(value)
     if (existing !== undefined) return existing
-    const copy: object = Array.isArray(value) ? new Array(value.length) : Object.create(prototype)
+    const copy: object = Array.isArray(value) === true ? [] : Object.create(prototype)
     copies.set(value, copy)
     for (const [key, nested] of Object.entries(value))
       Object.defineProperty(copy, key, {

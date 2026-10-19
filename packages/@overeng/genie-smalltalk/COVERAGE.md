@@ -200,6 +200,8 @@ Exec declarations and agent root/nested tasks use `launch: Launch.shell({ comman
 
 The public authoring export is isomorphic ES2024. UTF-8 name limits use an allocation-free byte counter with TextEncoder-compatible surrogate handling. Long derived gate names retain their exact SHA-256 identities through the portable `@noble/hashes` implementation; no Node Buffer or crypto imports are required by authoring consumers.
 
+Source-module definitions and loading are Node-only exports of `@overeng/genie-smalltalk/tree`: import `defineAgent`, `defineMission`, `defineSchedule`, `pinMission`, `loadSubjectTree`, and their intent/reference types there. Canonical values, immutable composition, scoped handles and low-level renderers belong to the isomorphic `@overeng/genie-smalltalk` root entrypoint.
+
 ## Child mission outputs and exact revisions
 
 `produces: childMission` is a tagged-template descriptor of the child mission ID a worker will publish. It is a native attempt-bound contract, not an embedded mission or a mission launch configuration. A consumer uses `agentless: true`, `dependsOn: [producer]` and `waitFor: producer`; the producer must exist in the same phase and declare a child mission product. Waiting alone does not implicitly add a dependency. Exact fixed-revision use accepts only a mission ID plus a 64-hex revision, never a mutable mission name.

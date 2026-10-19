@@ -292,7 +292,7 @@ describe('canonical launch and review authoring', () => {
     Launch.argv({ argv: ['true'], unset: ['ONE', 'TWO'] }),
   ])('rejects task-only launch options at root agent admission %j', (launch) => {
     expect(() => agent({ id: 'example/root', launch })).toThrow()
-    expect(() => Schema.decodeUnknownSync(AgentSchema)({ id: 'example/root', launch })).toThrow()
+    expect(() => Schema.decodeSync(AgentSchema)({ id: 'example/root', launch })).toThrow()
     expect(() =>
       Schema.decodeUnknownSync(AgentReferenceSchema)({ id: 'example/root', launch }),
     ).toThrow()
@@ -2144,6 +2144,7 @@ testWithSt(
         emit([
           mission({
             id: 'grammar/launch',
+            state: 'ready',
             reportTo: { id: 'grammar/tasks' },
             goal: 'Validate native task launch grammar without running work.',
             steps: [

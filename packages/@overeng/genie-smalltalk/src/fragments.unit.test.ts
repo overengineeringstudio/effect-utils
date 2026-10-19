@@ -64,13 +64,13 @@ describe('immutable fragments and scoped rounds', () => {
   it('snapshots mutable plain fragment steps and appended finalizers recursively', () => {
     const authored = {
       id: 'inspect',
-      agentless: true,
+      agentless: true as const,
       goal: ['Inspect the original plan.'] as [string],
       retry: { attempts: 2 },
       metadata: { _tag: 'Authored', labels: ['original'] },
     }
     const fragment = Fragment.steps(authored)
-    const cleanup = { id: 'cleanup', agentless: true, retry: { attempts: 3 } }
+    const cleanup = { id: 'cleanup', agentless: true as const, retry: { attempts: 3 } }
     const assembled = Mission.withFinally({
       mission: Mission.withSteps({ mission: Mission.make(base), steps: fragment }),
       steps: [cleanup],
@@ -99,8 +99,8 @@ describe('immutable fragments and scoped rounds', () => {
   })
 
   it('isolates mission inputs, loops, completion frontiers and both round phases', () => {
-    const work = { id: 'work', agentless: true, retry: { attempts: 2 } }
-    const cleanup = { id: 'cleanup', agentless: true, retry: { attempts: 3 } }
+    const work = { id: 'work', agentless: true as const, retry: { attempts: 2 } }
+    const cleanup = { id: 'cleanup', agentless: true as const, retry: { attempts: 3 } }
     const roundInput = {
       completion: { dependsOn: ['work'] as [string] },
       steps: [work],
@@ -144,8 +144,10 @@ describe('immutable fragments and scoped rounds', () => {
     expect(Object.isFrozen(composed.constraints)).toBe(true)
     expect(Object.isFrozen(composed.completion)).toBe(true)
     expect(Object.isFrozen(round.completion)).toBe(true)
-    expect(Object.isFrozen(round.steps[0]?.retry)).toBe(true)
-    expect(Object.isFrozen(round.finally?.[0]?.retry)).toBe(true)
+    expect(Object.isFrozen(round.steps)).toBe(true)
+    expect(Object.isFrozen(round.steps[0])).toBe(true)
+    expect(Object.isFrozen(round.finally)).toBe(true)
+    expect(Object.isFrozen(round.finally?.[0])).toBe(true)
   })
 
   it('retains branded handles and reference provenance inside snapshotted plain data', () => {
@@ -163,7 +165,7 @@ describe('immutable fragments and scoped rounds', () => {
     const review = Review.subject(t`doc/example/${plan}`)
     const authored = {
       id: 'apply',
-      agentless: true,
+      agentless: true as const,
       goal,
       metadata: { plan, artifact, dependency, effect, review },
     }
@@ -183,7 +185,9 @@ describe('immutable fragments and scoped rounds', () => {
     expect(round.steps[0]).toBe(inspect)
     expect(composed.steps[0]).toBe(inspect)
     expect(composed.inputs?.[0]).toBe(plan)
-    expect(missionWire(composed).steps[1]?.goal).toEqual([goal.text])
+    const lowered = missionWire(composed).steps[1]
+    if (lowered === undefined || 'round' in lowered) throw new TypeError('Expected apply step')
+    expect(lowered.goal).toEqual([goal.text])
   })
 
   it('retains gate provenance so composition cannot hide undeclared inputs', () => {
