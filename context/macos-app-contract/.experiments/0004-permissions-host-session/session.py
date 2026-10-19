@@ -164,6 +164,9 @@ class Session:
                     append(self.directory / 'tccd.foreign.jsonl',
                            {'attribution': 'foreign', 'fields': event['fields'],
                             'request': state})
+                if state.get('silentNonPreflight'):
+                    append(self.directory / 'tccd.silent.jsonl',
+                           {**event, 'request': state})
 
     def ask(self, op, allow_prompt=False, remote=False):
         if op not in OPS or (allow_prompt and op not in PROMPTS):

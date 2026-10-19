@@ -101,6 +101,10 @@ in any accessing/requesting/responsible process (or SUBJECT path) aborts. Reques
 attributed entirely to foreign processes are ignored and recorded once in
 `tccd.foreign.jsonl`. A pending request reaching RESULT without usable attribution
 aborts as ambiguous. An unannounced PROMPTING still aborts regardless of attribution.
+The sole non-preflight exception is host-attributed Full Disk Access checking
+(`kTCCServiceSystemPolicyAllFiles`): FDA has no consent UI. These checks are recorded
+in `tccd.silent.jsonl` with `silentNonPreflight=true`; FDA PROMPTING still aborts,
+and the independent GUI watcher remains armed.
 Both `live.sh` and `revocation.sh` use these same identities through `session.py`.
 Existing private configurations must add `hostExecutable`; `prep.sh` validates the
 config but does not generate or rewrite it.

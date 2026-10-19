@@ -145,6 +145,29 @@ class TripwireTests(unittest.TestCase):
                 self.attribution([('accessing', HOST_ID, HOST_PATH)], allowed=allowed)
                 self.observe('AUTHREQ_RESULT: msgID=636.3097, authValue=0,', allowed)
 
+    def test_fda_silent_non_preflight_but_not_prompting_is_allowed(self):
+        for attribution_first in (False, True):
+            with self.subTest(attribution_first=attribution_first):
+                self.setUp()
+                processes = [('accessing', HOST_ID, HOST_PATH),
+                             ('requesting', 'com.apple.sandboxd', '/usr/libexec/sandboxd')]
+                if attribution_first:
+                    self.attribution(processes)
+                state = self.observe('AUTHREQ_CTX: msgID=636.3097, '
+                                     'service=kTCCServiceSystemPolicyAllFiles, preflight=no,')
+                if not attribution_first:
+                    state = self.attribution(processes)
+                self.assertFalse(state['pending'])
+                self.assertTrue(state['silentNonPreflight'])
+                state = self.observe('AUTHREQ_RESULT: msgID=636.3097, authValue=0,')
+                self.assertTrue(state['silentNonPreflight'])
+                with self.assertRaisesRegex(RuntimeError, 'unannounced AUTHREQ prompting'):
+                    self.observe('AUTHREQ_PROMPTING: msgID=636.3097,')
+        self.setUp()
+        self.context()
+        with self.assertRaisesRegex(RuntimeError, 'unannounced non-preflight AUTHREQ: kTCCServiceMicrophone'):
+            self.attribution([('accessing', HOST_ID, HOST_PATH)])
+
     def test_unknown_or_uncorrelatable_records_still_abort(self):
         for message in ('AUTHREQ_CTX: service=kTCCServiceMicrophone, preflight=no',
                         'AUTHREQ_UNKNOWN: msgID=1.2',

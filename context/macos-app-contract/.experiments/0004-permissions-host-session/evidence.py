@@ -10,6 +10,9 @@ KIND = re.compile(r'\bAUTHREQ_([A-Z_]+)\b')
 PROCESS = re.compile(r'\b(accessing|requesting|responsible)\s*=\s*\{TCCDProcess:\s*([^}]+)\}')
 IDENTITY = re.compile(r'\b(identifier|binary_path)\s*=\s*(?:"([^"]*)"|([^,}]+))')
 SUBJECT = re.compile(r'\bsubject\s*=\s*(?:"([^"]*)"|([^,]+))')
+# TCC has no consent UI for FDA; the GUI watcher still independently aborts
+# on any SecurityAgent/UserNotificationCenter window.
+NON_PROMPTING_SERVICES = {'kTCCServiceSystemPolicyAllFiles'}
 
 
 def parse(row):
@@ -82,6 +85,11 @@ class Tripwire:
                 raise RuntimeError('AUTHREQ preflight field unavailable')
             state['pending'] = (state['preflight'] in ('0', 'false', 'NO', 'no')
                                 and state.get('service') not in allowed_services)
+        if (state.get('attribution') == 'host'
+                and state.get('service') in NON_PROMPTING_SERVICES
+                and state.get('preflight') in ('0', 'false', 'NO', 'no')):
+            state['pending'] = False
+            state['silentNonPreflight'] = True
         if state.get('pending') and state.get('attribution') == 'host':
             raise RuntimeError('unannounced non-preflight AUTHREQ: ' + str(state.get('service')))
         if event['kind'] == 'RESULT' and state.get('pending') and not state.get('attributionSeen'):
